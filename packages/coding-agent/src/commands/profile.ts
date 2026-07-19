@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 /**
  * Manage self-contained Veyyon profiles.
  */
@@ -54,7 +55,7 @@ export default class Profile extends Command {
 		try {
 			await runProfileCommand(cmd);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			console.error(message);
 			process.exitCode = 1;
 		}

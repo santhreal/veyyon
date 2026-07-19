@@ -8,7 +8,7 @@
  *   #/runs        flat run list (legacy view)
  *   #/runs/<name> run detail — normalized trace grid + live trace viewer
  */
-import { formatCount } from "@veyyon/utils";
+import { errorMessage, formatCount } from "@veyyon/utils";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -883,7 +883,7 @@ function GoalEditor({ id, goal, onSaved }: { id: string; goal: string; onSaved: 
 			onSaved();
 			setEditing(false);
 		} catch (e) {
-			setErr(e instanceof Error ? e.message : String(e));
+			setErr(errorMessage(e));
 		} finally {
 			setBusy(false);
 		}
@@ -963,7 +963,7 @@ function ArmEditorRow({
 			});
 			onSaved();
 		} catch (e) {
-			setErr(e instanceof Error ? e.message : String(e));
+			setErr(errorMessage(e));
 			setBusy(false);
 		}
 	};

@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { type AgentTool, ThinkingLevel } from "@veyyon/agent-core";
 import { Container, Ellipsis, matchesKey, type OverlayHandle, padding, type TUI, visibleWidth } from "@veyyon/tui";
-import { formatAge, getProjectDir, logger } from "@veyyon/utils";
+import { errorMessage, formatAge, getProjectDir, logger } from "@veyyon/utils";
 import { ADVISOR_TRANSCRIPT_FILENAME, isAdvisorTranscriptName } from "../../advisor";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
@@ -629,7 +629,7 @@ export class AgentHubOverlayComponent extends Container {
 				await focusAgent(ref.id); // ensureLive inside revives parked agents; no parking, no session files
 				this.#onDone();
 			} catch (error) {
-				this.#notice = error instanceof Error ? error.message : String(error);
+				this.#notice = errorMessage(error);
 				this.#requestRender();
 			}
 		})();
@@ -658,7 +658,7 @@ export class AgentHubOverlayComponent extends Container {
 		this.#lifecycle()
 			.ensureLive(ref.id)
 			.catch((error: unknown) => {
-				this.#notice = error instanceof Error ? error.message : String(error);
+				this.#notice = errorMessage(error);
 				this.#requestRender();
 			});
 		this.#requestRender();
@@ -687,7 +687,7 @@ export class AgentHubOverlayComponent extends Container {
 				await this.#lifecycle().release(ref.id);
 			} catch (error) {
 				logger.warn("Agent hub: kill failed", { id: ref.id, error: String(error) });
-				this.#notice = error instanceof Error ? error.message : String(error);
+				this.#notice = errorMessage(error);
 			}
 			this.#refreshRows();
 			this.#requestRender();

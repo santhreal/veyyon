@@ -4,7 +4,7 @@ import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
-import { getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import { errorMessage, getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
@@ -601,7 +601,7 @@ export class SelectorController {
 						this.ctx.updateEditorBorderColor();
 						done();
 					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
+						this.ctx.showError(errorMessage(error));
 					}
 				},
 				onCancel: done,
@@ -690,7 +690,7 @@ export class SelectorController {
 							this.ctx.showStatus(`${roleInfo?.name ?? role} model: ${selector ?? model.id}`);
 						}
 					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
+						this.ctx.showError(errorMessage(error));
 					}
 				},
 				onUnassign: role => {
@@ -699,7 +699,7 @@ export class SelectorController {
 						const roleInfo = getRoleInfo(role, settings);
 						this.ctx.showStatus(`${roleInfo?.name ?? role} role cleared — auto-selection applies`);
 					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
+						this.ctx.showError(errorMessage(error));
 					}
 				},
 				onFallbackChainChange: (role, chain) => {
@@ -718,7 +718,7 @@ export class SelectorController {
 								: `${roleInfo?.name ?? role} fallbacks cleared`,
 						);
 					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
+						this.ctx.showError(errorMessage(error));
 					}
 				},
 
@@ -733,7 +733,7 @@ export class SelectorController {
 							order.length > 0 ? `Quick-switch cycle: ${order.join(" → ")}` : "Quick-switch cycle cleared",
 						);
 					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
+						this.ctx.showError(errorMessage(error));
 					}
 				},
 				onCancel: () => done(),
@@ -937,7 +937,7 @@ export class SelectorController {
 						}
 						this.ctx.showStatus("Navigated to selected point");
 					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
+						this.ctx.showError(errorMessage(error));
 					} finally {
 						if (summaryLoader) {
 							summaryLoader.stop();
@@ -1009,7 +1009,7 @@ export class SelectorController {
 						await storage.deleteSessionWithArtifacts(session.path);
 						return true;
 					} catch (err) {
-						throw new Error(`Failed to delete session: ${err instanceof Error ? err.message : String(err)}`, {
+						throw new Error(`Failed to delete session: ${errorMessage(err)}`, {
 							cause: err,
 						});
 					}
@@ -1203,7 +1203,7 @@ export class SelectorController {
 				// surfaced "Login cancelled".
 				return false;
 			}
-			this.ctx.showError(`Login failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Login failed: ${errorMessage(error)}`);
 			return false;
 		} finally {
 			if (useManualInput) {
@@ -1243,7 +1243,7 @@ export class SelectorController {
 			}
 			this.ctx.present(block);
 		} catch (error: unknown) {
-			this.ctx.showError(`Logout failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Logout failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1252,9 +1252,7 @@ export class SelectorController {
 		try {
 			await authStorage.reload();
 		} catch (error: unknown) {
-			this.ctx.showError(
-				`Could not load stored credentials: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showError(`Could not load stored credentials: ${errorMessage(error)}`);
 			return;
 		}
 		const provider = getOAuthProviders().find(candidate => candidate.id === providerId);
@@ -1356,7 +1354,7 @@ export class SelectorController {
 		try {
 			statuses = await session.listResetCredits();
 		} catch (error) {
-			this.ctx.showError(`Could not load saved resets: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Could not load saved resets: ${errorMessage(error)}`);
 			return;
 		}
 		const accounts = toResetUsageAccounts(statuses);
@@ -1394,9 +1392,7 @@ export class SelectorController {
 		try {
 			outcome = await this.ctx.session.redeemResetCredit(account.target);
 		} catch (error) {
-			this.ctx.showError(
-				`Reset failed for ${account.label}: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showError(`Reset failed for ${account.label}: ${errorMessage(error)}`);
 			return;
 		}
 		const message = describeRedeemOutcome(outcome, account.label);

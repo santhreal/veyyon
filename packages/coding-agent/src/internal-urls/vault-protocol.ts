@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, formatCount, isEnoent } from "@veyyon/utils";
+import { $which, errorMessage, formatCount, isEnoent } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { getContentType } from "./content-type";
@@ -110,7 +110,7 @@ let cachedActiveVaultPath: string | undefined;
 const cachedVaultInfo = new Map<string, string>();
 
 function toVaultValidationError(error: unknown): Error {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return new Error(message.replace("skill://", "vault://"));
 }
 

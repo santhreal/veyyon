@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import { formatCount } from "@veyyon/utils/format";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
@@ -41,13 +42,13 @@ export function SyncButton({ onSyncStart, onSyncComplete, className = "" }: Sync
 				onSyncComplete({ success: true, data: result });
 			}
 		} catch (err) {
-			const errorMessage = err instanceof Error ? err.message : String(err);
+			const errorText = errorMessage(err);
 			setStatus({
 				type: "error",
-				message: `Sync failed: ${errorMessage}`,
+				message: `Sync failed: ${errorText}`,
 			});
 			if (onSyncComplete) {
-				onSyncComplete({ success: false, error: errorMessage });
+				onSyncComplete({ success: false, error: errorText });
 			}
 		} finally {
 			setSyncing(false);

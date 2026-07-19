@@ -8,7 +8,15 @@ import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
-import { collapseWhitespace, logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/utils";
+import {
+	collapseWhitespace,
+	errorMessage,
+	logger,
+	popLoopPhase,
+	prompt,
+	pushLoopPhase,
+	untilAborted,
+} from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -590,8 +598,8 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 								? completeData
 								: (JSON.stringify(completeData, null, 2) ?? "null");
 					} catch (err) {
-						const errorMessage = err instanceof Error ? err.message : String(err);
-						rawOutput = `{"error":"Failed to serialize yield data: ${errorMessage}"}`;
+						const errorText = errorMessage(err);
+						rawOutput = `{"error":"Failed to serialize yield data: ${errorText}"}`;
 					}
 					if (!hadFailureBeforeYield) {
 						exitCode = 0;
@@ -625,8 +633,8 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 				try {
 					rawOutput = JSON.stringify(completeData, null, 2) ?? "null";
 				} catch (err) {
-					const errorMessage = err instanceof Error ? err.message : String(err);
-					rawOutput = `{"error":"Failed to serialize fallback completion: ${errorMessage}"}`;
+					const errorText = errorMessage(err);
+					rawOutput = `{"error":"Failed to serialize fallback completion: ${errorText}"}`;
 				}
 				exitCode = 0;
 				stderr = "";
@@ -754,7 +762,7 @@ export function createMCPProxyTools(mcpManager: MCPManager): CustomTool[] {
 						content: [
 							{
 								type: "text" as const,
-								text: `MCP error: ${error instanceof Error ? error.message : String(error)}`,
+								text: `MCP error: ${errorMessage(error)}`,
 							},
 						],
 						details: { serverName, mcpToolName, isError: true },
@@ -950,7 +958,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 		if (!session) return Promise.resolve();
 		activeSessionAbortPromise ??= session.abort().catch(error => {
 			logger.debug("Subagent session abort cleanup failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		});
 		return activeSessionAbortPromise;
@@ -992,7 +1000,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 		budgetStopAbortPromise = session
 			? session.abort().catch(error => {
 					logger.debug("Subagent budget-stop abort failed", {
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 					});
 				})
 			: Promise.resolve();
@@ -1118,7 +1126,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 			.catch(err => {
 				logger.debug("Subagent label generation failed", {
 					id,
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			});
 	}
@@ -1402,7 +1410,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 									.then(() => steerSession.sendUserMessage(notice, { deliverAs: "steer" }))
 									.catch(err => {
 										logger.warn("Subagent budget steer failed", {
-											error: err instanceof Error ? err.message : String(err),
+											error: errorMessage(err),
 										});
 									});
 							}
@@ -1504,7 +1512,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					processEvent(event);
 				} catch (err) {
 					logger.error("Subagent event processing failed", {
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					});
 					requestAbort("terminate");
 				} finally {
@@ -1703,7 +1711,7 @@ async function driveSessionToYield(
 					logger.debug("Subagent prompt aborted");
 				} else {
 					logger.error("Subagent prompt failed", {
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					});
 				}
 			}
@@ -2581,7 +2589,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						sendMessage: (message, options) => {
 							const sendPromise = session.sendCustomMessage(message, options).catch(e => {
 								logger.error("Extension sendMessage failed", {
-									error: e instanceof Error ? e.message : String(e),
+									error: errorMessage(e),
 								});
 							});
 							pendingExtensionMessages.push(sendPromise);
@@ -2589,7 +2597,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						sendUserMessage: (content, options) => {
 							const sendPromise = session.sendUserMessage(content, options).catch(e => {
 								logger.error("Extension sendUserMessage failed", {
-									error: e instanceof Error ? e.message : String(e),
+									error: errorMessage(e),
 								});
 							});
 							pendingExtensionMessages.push(sendPromise);

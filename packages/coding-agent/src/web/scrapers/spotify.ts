@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 /**
  * Spotify URL handler for podcasts, tracks, albums, and playlists
  *
@@ -173,7 +174,7 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 			notes.push(`oEmbed API returned status ${response.status || "error"}`);
 		}
 	} catch (err) {
-		notes.push(`Failed to fetch oEmbed data: ${err instanceof Error ? err.message : String(err)}`);
+		notes.push(`Failed to fetch oEmbed data: ${errorMessage(err)}`);
 	}
 
 	// Fetch page HTML for Open Graph metadata
@@ -187,7 +188,7 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 			notes.push(`Page fetch returned status ${pageResponse.status || "error"}`);
 		}
 	} catch (err) {
-		notes.push(`Failed to fetch page HTML: ${err instanceof Error ? err.message : String(err)}`);
+		notes.push(`Failed to fetch page HTML: ${errorMessage(err)}`);
 	}
 
 	// Format output

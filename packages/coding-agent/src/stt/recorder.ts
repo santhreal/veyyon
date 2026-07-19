@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, logger, Snowflake } from "@veyyon/utils";
+import { $which, errorMessage, logger, Snowflake } from "@veyyon/utils";
 import { $, type Subprocess } from "bun";
 import { ensureTool, getToolPath } from "../utils/tools-manager";
 import { decodePcmS16LE } from "./wav";
@@ -334,7 +334,7 @@ export async function ensureRecorder(
 }
 
 function recorderFailure(recorder: ResolvedRecorder, error: unknown): string {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return `${recorder.tool} (${recorder.bin}): ${message}`;
 }
 
@@ -465,7 +465,7 @@ async function startStreamingRecordingWithRecorder(
 			}
 		} catch (error) {
 			logger.debug("stt: streaming recorder read ended", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	};

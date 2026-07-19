@@ -2,6 +2,7 @@
  * Shared types and utilities for web-fetch handlers
  */
 import { scheduler } from "node:timers/promises";
+import { errorMessage } from "@veyyon/utils";
 import type TurndownService from "turndown";
 
 import type { AgentStorage } from "../../session/agent-storage";
@@ -34,7 +35,7 @@ export interface ScraperDegrade {
 }
 
 export function scraperDegrade(site: string, reason: unknown): ScraperDegrade {
-	const detail = reason instanceof Error ? reason.message : String(reason);
+	const detail = errorMessage(reason);
 	return { scraperDegrade: true, note: `${site} scraper failed (${detail}); fell back to a generic fetch` };
 }
 
@@ -269,7 +270,7 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 			if (signal?.aborted) {
 				throw new ToolAbortError();
 			}
-			lastError = error instanceof Error ? error.message : String(error);
+			lastError = errorMessage(error);
 			if (attempt === USER_AGENTS.length - 1) {
 				return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
 			}

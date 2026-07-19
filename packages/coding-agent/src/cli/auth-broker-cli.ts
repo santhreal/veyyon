@@ -33,7 +33,16 @@ import {
 	SqliteAuthCredentialStore,
 } from "@veyyon/ai";
 import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "@veyyon/ai/auth-broker";
-import { $which, APP_NAME, getAgentDbPath, getConfigRootDir, isEnoent, logger, VERSION } from "@veyyon/utils";
+import {
+	$which,
+	APP_NAME,
+	errorMessage,
+	getAgentDbPath,
+	getConfigRootDir,
+	isEnoent,
+	logger,
+	VERSION,
+} from "@veyyon/utils";
 import { setTransports as setLoggerTransports } from "@veyyon/utils/logger";
 import { $ } from "bun";
 import chalk from "chalk";
@@ -619,7 +628,7 @@ async function runImport(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 					process.stdout.write(`${chalk.green("uploaded")} ${describeImportEntry(entry)} → ${brokerConfig.url}\n`);
 				}
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				if (flags.json) {
 					process.stdout.write(`${JSON.stringify({ error: message, file: entry.sourceFile })}\n`);
 				} else {
@@ -862,7 +871,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 				process.stdout.write(`${chalk.green("uploaded")} [${entry.source}] ${entry.provider} ${entry.identity}\n`);
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			if (flags.json) {
 				process.stdout.write(`${JSON.stringify({ error: message, provider: entry.provider })}\n`);
 			} else {
@@ -890,7 +899,7 @@ async function runStatus(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 			process.stdout.write(`${chalk.green("OK")} ${cfg.url} (version=${health.version ?? "unknown"})\n`);
 		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		if (flags.json) {
 			process.stdout.write(`${JSON.stringify({ ok: false, url: cfg.url, error: message })}\n`);
 		} else {

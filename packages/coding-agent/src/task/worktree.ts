@@ -451,7 +451,7 @@ export async function cleanupIsolation(handle: IsolationHandle): Promise<void> {
 			logger.warn("isolation backend stop failed during cleanup", {
 				backend: handle.backend,
 				mergedDir: handle.mergedDir,
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 	} finally {

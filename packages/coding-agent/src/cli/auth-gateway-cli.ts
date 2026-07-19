@@ -27,7 +27,7 @@ import {
 import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "@veyyon/ai/auth-broker";
 import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@veyyon/ai/auth-gateway";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
-import { formatCount, getConfigRootDir, isEnoent, VERSION } from "@veyyon/utils";
+import { errorMessage, formatCount, getConfigRootDir, isEnoent, VERSION } from "@veyyon/utils";
 import chalk from "chalk";
 import { type AuthBrokerClientConfig, resolveAuthBrokerConfig } from "../session/auth-broker-config";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
@@ -305,7 +305,7 @@ async function runStatus(flags: AuthGatewayCommandArgs["flags"]): Promise<void> 
 		}
 		if (!tokenPresent) process.exitCode = 1;
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		const status = {
 			ready: false,
 			reason: "broker_unavailable",

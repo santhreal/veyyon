@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
+import { errorMessage, formatCount } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
@@ -96,7 +96,7 @@ export function createInitExperimentTool(
 						await git.commit(ctx.cwd, message);
 						harnessCommitted = true;
 					} catch (err) {
-						commitWarning = `Failed to auto-commit harness changes: ${err instanceof Error ? err.message : String(err)}. Recording baseline at current HEAD; discard may not preserve uncommitted harness files.`;
+						commitWarning = `Failed to auto-commit harness changes: ${errorMessage(err)}. Recording baseline at current HEAD; discard may not preserve uncommitted harness files.`;
 					}
 				}
 			}

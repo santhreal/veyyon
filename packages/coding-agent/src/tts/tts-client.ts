@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import {
 	createWorkerSubprocess,
 	logWorkerMessage,
@@ -385,7 +385,7 @@ export class TtsClient {
 		} catch (error) {
 			logger.debug("tts: local model download failed", {
 				modelKey,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return false;
 		} finally {

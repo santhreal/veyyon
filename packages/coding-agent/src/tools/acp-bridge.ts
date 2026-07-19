@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 /**
  * Shared ACP client bridge routing for file-write sites.
  *
@@ -70,7 +71,7 @@ export async function routeWriteThroughBridge(
 	try {
 		await bridge.writeTextFile({ path: absolutePath, content });
 	} catch (error) {
-		throw new ToolError(error instanceof Error ? error.message : String(error));
+		throw new ToolError(errorMessage(error));
 	}
 	if (session.enableLsp ?? true) {
 		await notifyWorkspaceWatchedFiles(session.cwd, [{ filePath: absolutePath, type: changeType }], signal);

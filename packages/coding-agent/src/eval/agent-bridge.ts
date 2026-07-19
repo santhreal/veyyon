@@ -4,7 +4,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { prompt, Snowflake } from "@veyyon/utils";
+import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
@@ -457,7 +457,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 				try {
 					isolationContext = await prepareIsolationContext(options.session.cwd);
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					throw new ToolError(`Isolated agent() execution requires a git repository. ${message}`);
 				}
 			}
@@ -478,7 +478,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 					description: trimToUndefined(parsed.label),
 					buildCommitMessage,
 					buildFailureResult: err => {
-						const message = err instanceof Error ? err.message : String(err);
+						const message = errorMessage(err);
 						return {
 							index: 0,
 							id,

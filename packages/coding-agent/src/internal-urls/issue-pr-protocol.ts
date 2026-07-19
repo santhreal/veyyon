@@ -17,7 +17,7 @@
  * - `issue://owner/repo?state=closed&limit=20` — list options pass through to
  *   `gh`.
  */
-import { formatCount } from "@veyyon/utils";
+import { errorMessage, formatCount } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
 import {
@@ -245,7 +245,7 @@ async function resolveListRepo(
 	try {
 		return await resolveDefaultRepoMemoized(cwd, context?.signal);
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		throw new Error(
 			`${scheme}:// could not resolve a default repo from the current session: ${message}\nUse ${scheme}://<owner>/<repo> instead.`,
 		);
@@ -408,7 +408,7 @@ async function fetchAndRenderPrDiff(
 		try {
 			repo = await resolveDefaultRepoMemoized(cwd, context?.signal);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			throw new Error(
 				`pr://${parsed.number}/diff could not resolve a default repo from the current session: ${message}\nUse pr://<owner>/<repo>/${parsed.number}/diff.`,
 			);
@@ -493,7 +493,7 @@ export class IssueProtocolHandler implements ProtocolHandler {
 			try {
 				return await fetchAndRenderList("issue", parsed, url, context);
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				throw new Error(`issue:// listing failed: ${message}`);
 			}
 		}
@@ -520,7 +520,7 @@ export class IssueProtocolHandler implements ProtocolHandler {
 				fetchedAt: lookup.fetchedAt,
 			});
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			throw new Error(`issue:// resolution failed: ${message}`);
 		}
 	}
@@ -542,7 +542,7 @@ export class PrProtocolHandler implements ProtocolHandler {
 			try {
 				return await fetchAndRenderList("pr", parsed, url, context);
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				throw new Error(`pr:// listing failed: ${message}`);
 			}
 		}
@@ -550,7 +550,7 @@ export class PrProtocolHandler implements ProtocolHandler {
 			try {
 				return await fetchAndRenderPrDiff(url, parsed, context);
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				throw new Error(`pr:// diff resolution failed: ${message}`);
 			}
 		}
@@ -560,7 +560,7 @@ export class PrProtocolHandler implements ProtocolHandler {
 			try {
 				repo = await resolveDefaultRepoMemoized(cwd, context?.signal);
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				throw new Error(
 					`pr://${parsed.number} could not resolve a default repo from the current session: ${message}\nUse pr://<owner>/<repo>/${parsed.number}.`,
 				);
@@ -585,7 +585,7 @@ export class PrProtocolHandler implements ProtocolHandler {
 				repo,
 			});
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			throw new Error(`pr:// resolution failed: ${message}`);
 		}
 	}

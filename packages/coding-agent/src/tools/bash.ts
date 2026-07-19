@@ -8,7 +8,7 @@ import type {
 } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
-import { getProjectDir, isEnoent, logger, prompt } from "@veyyon/utils";
+import { errorMessage, getProjectDir, isEnoent, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -633,7 +633,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					await reportProgress(finalText, { async: { state: "completed", jobId, type: "bash" } });
 					return finalText;
 				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					latestText = message;
 					completion.resolve({ kind: "failed", error });
 					await reportProgress(message, { async: { state: "failed", jobId, type: "bash" } });

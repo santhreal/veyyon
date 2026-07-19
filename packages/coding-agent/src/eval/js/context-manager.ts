@@ -1,4 +1,4 @@
-import { logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+import { errorMessage, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
@@ -282,12 +282,12 @@ async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, tim
 				if (failed.mode === "inline") throw error;
 				if (failed.mode === "process") {
 					logger.warn("JS eval subprocess init failed; retrying with a Bun Worker", {
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 					});
 					session.worker = spawnBunWorker();
 				} else {
 					logger.warn("JS eval worker init failed; retrying with inline worker (no sync-loop guard)", {
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 					});
 					session.worker = spawnInlineWorker();
 				}
@@ -443,7 +443,7 @@ function safeSend(session: JsSession, msg: WorkerInbound): void {
 	try {
 		session.worker.send(msg);
 	} catch (err) {
-		logger.debug("js worker send failed", { error: err instanceof Error ? err.message : String(err) });
+		logger.debug("js worker send failed", { error: errorMessage(err) });
 	}
 }
 
@@ -494,7 +494,7 @@ function spawnJsWorker(): WorkerHandle {
 			// synchronous infinite loops via terminate(), which the inline fallback
 			// cannot.
 			logger.warn("JS eval subprocess spawn failed; falling back to a Bun Worker", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 	}
@@ -510,7 +510,7 @@ function spawnBunWorker(): WorkerHandle {
 		return wrapBunWorker(worker);
 	} catch (err) {
 		logger.warn("Bun Worker spawn failed; using inline JS eval worker (no sync-loop guard)", {
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return spawnInlineWorker();
 	}

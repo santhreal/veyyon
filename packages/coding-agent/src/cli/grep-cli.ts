@@ -5,6 +5,7 @@
  */
 import * as path from "node:path";
 import { GrepOutputMode, grep } from "@veyyon/natives";
+import { errorMessage } from "@veyyon/utils";
 
 import chalk from "chalk";
 
@@ -90,7 +91,7 @@ export async function runGrepCommand(cmd: GrepCommandArgs): Promise<void> {
 			}
 		}
 	} catch (err) {
-		console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+		console.error(chalk.red(`Error: ${errorMessage(err)}`));
 		process.exit(1);
 	}
 }

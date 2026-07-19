@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
-import { getNonBlankStringProperty } from "@veyyon/utils";
+import { errorMessage, getNonBlankStringProperty } from "@veyyon/utils";
 import type { Rule } from "../../capability/rule";
 import { buildRuleFromMarkdown, createSourceMeta } from "../../discovery/helpers";
 import { TtsrManager, type TtsrMatchContext } from "../../export/ttsr";
@@ -84,7 +84,7 @@ function normalizeConditionRegex(condition: string): { condition: string } | { e
 				return { condition: repaired };
 			} catch {}
 		}
-		const message = originalError instanceof Error ? originalError.message : String(originalError);
+		const message = errorMessage(originalError);
 		return { error: `Invalid condition regex ${JSON.stringify(condition)}: ${message}` };
 	}
 }
@@ -127,7 +127,7 @@ export function parseGeneratedRule(text: string): GeneratedRuleParseResult {
 	try {
 		rule = buildOmfgRuleForPath(ruleName, fileContent, virtualPath, "project");
 	} catch (error) {
-		return { error: error instanceof Error ? error.message : String(error) };
+		return { error: errorMessage(error) };
 	}
 
 	if (!rule.condition || rule.condition.length === 0) {
@@ -141,7 +141,7 @@ export function parseGeneratedRule(text: string): GeneratedRuleParseResult {
 		try {
 			new RegExp(condition);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			return { error: `Invalid condition regex ${JSON.stringify(condition)}: ${message}` };
 		}
 	}
@@ -210,7 +210,7 @@ function parseGeneratedRulePayload(jsonText: string): GeneratedRulePayload | { e
 	try {
 		parsed = JSON.parse(jsonText);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return { error: `Generated rule JSON is invalid: ${message}` };
 	}
 

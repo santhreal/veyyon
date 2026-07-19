@@ -17,7 +17,13 @@ import * as path from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { Text } from "@veyyon/tui";
-import { escapeRegExp, getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/utils";
+import {
+	errorMessage,
+	escapeRegExp,
+	getAgentDir,
+	getProjectDir,
+	parseFrontmatter as parseOmpFrontmatter,
+} from "@veyyon/utils";
 import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
@@ -982,7 +988,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			} catch (err) {
 				diagnostics.push({
 					type: "warning",
-					message: `Failed to load additional skill path: ${err instanceof Error ? err.message : String(err)}`,
+					message: `Failed to load additional skill path: ${errorMessage(err)}`,
 					path: resolvedPath,
 				});
 			}
@@ -1020,7 +1026,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			} catch (err) {
 				diagnostics.push({
 					type: "warning",
-					message: `Failed to inspect additional prompt template path: ${err instanceof Error ? err.message : String(err)}`,
+					message: `Failed to inspect additional prompt template path: ${errorMessage(err)}`,
 					path: resolvedPath,
 				});
 				continue;
@@ -1052,7 +1058,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 				} catch (err) {
 					diagnostics.push({
 						type: "warning",
-						message: `Failed to load additional prompt template: ${err instanceof Error ? err.message : String(err)}`,
+						message: `Failed to load additional prompt template: ${errorMessage(err)}`,
 						path: filePath,
 					});
 				}

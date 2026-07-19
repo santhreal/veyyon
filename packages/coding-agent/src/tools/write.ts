@@ -10,7 +10,7 @@ import type {
 } from "@veyyon/agent-core";
 import { formatHashlineHeader, stripHashlinePrefixes } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
-import { formatCount, isEnoent, isRecord, prompt, untilAborted } from "@veyyon/utils";
+import { errorMessage, formatCount, isEnoent, isRecord, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
@@ -506,7 +506,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					entries.set(entryPath, data);
 				}
 			} catch (error) {
-				throw new ToolError(error instanceof Error ? error.message : String(error));
+				throw new ToolError(errorMessage(error));
 			}
 		}
 		entries.set(resolvedArchivePath.archiveSubPath, content);
@@ -516,7 +516,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			await fs.rename(tmpPath, finalPath);
 		} catch (error) {
 			await fs.rm(tmpPath, { force: true }).catch(() => {});
-			throw new ToolError(error instanceof Error ? error.message : String(error));
+			throw new ToolError(errorMessage(error));
 		}
 
 		invalidateFsScanAfterWrite(resolvedArchivePath.absolutePath);
@@ -615,9 +615,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				try {
 					parsedContent = Bun.JSON5.parse(content);
 				} catch (error) {
-					throw new ToolError(
-						`SQLite write content must be valid JSON5: ${error instanceof Error ? error.message : String(error)}`,
-					);
+					throw new ToolError(`SQLite write content must be valid JSON5: ${errorMessage(error)}`);
 				}
 
 				if (!isRecord(parsedContent)) {
@@ -652,7 +650,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			if (error instanceof ToolError) {
 				throw error;
 			}
-			throw new ToolError(error instanceof Error ? error.message : String(error));
+			throw new ToolError(errorMessage(error));
 		} finally {
 			db?.close();
 		}
@@ -833,7 +831,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				failedFiles.push({
 					displayPath: sample.displayPath,
 					count: fileEntries.length,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 				continue;
 			}
@@ -852,7 +850,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 						staleEntries.push(entry);
 						continue;
 					}
-					failure = error instanceof Error ? error.message : String(error);
+					failure = errorMessage(error);
 					break;
 				}
 			}

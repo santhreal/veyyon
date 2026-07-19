@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { createInterface } from "node:readline/promises";
-import { $env, getProjectDir, isEnoent, prompt } from "@veyyon/utils";
+import { $env, errorMessage, getProjectDir, isEnoent, prompt } from "@veyyon/utils";
 import { applyChangelogProposals } from "../../commit/changelog";
 import { detectChangelogBoundaries } from "../../commit/changelog/detect";
 import { parseUnreleasedSection } from "../../commit/changelog/parse";
@@ -162,8 +162,8 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 		if (agentSessionCompleted) {
 			throw error;
 		}
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		process.stderr.write(`Agent error: ${errorMessage}\n`);
+		const errorText = errorMessage(error);
+		process.stderr.write(`Agent error: ${errorText}\n`);
 		if (error instanceof Error && error.stack && $env.DEBUG) {
 			process.stderr.write(`${error.stack}\n`);
 		}

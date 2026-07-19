@@ -1,4 +1,4 @@
-import { formatCount, logger } from "@veyyon/utils";
+import { errorMessage, formatCount, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type BankScope, ensureBankExists } from "./bank";
 import type { HindsightApi, MemoryItemInput } from "./client";
@@ -166,7 +166,7 @@ export class HindsightRetainQueue {
 				});
 			}
 		} catch (err) {
-			const errorText = err instanceof Error ? err.message : String(err);
+			const errorText = errorMessage(err);
 			logger.warn("Hindsight retain queue: batch flush failed", {
 				sessionId,
 				bankId: state.bankId,

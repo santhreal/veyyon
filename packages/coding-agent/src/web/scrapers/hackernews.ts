@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { errorMessage, tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
 import { buildResult, decodeHtmlEntities, formatIsoDate, loadPage, tryParseUrl } from "./types";
 
@@ -178,7 +178,7 @@ export const handleHackerNews: SpecialHandler = async (url, timeout, signal) => 
 
 		return buildResult(content, { url, method: "hackernews", fetchedAt, notes });
 	} catch (err) {
-		const errorMsg = err instanceof Error ? err.message : String(err);
+		const errorMsg = errorMessage(err);
 		notes.push(`Error: ${errorMsg}`);
 		return buildResult(`# Error fetching Hacker News content\n\n${errorMsg}`, {
 			url,

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+import { errorMessage, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
@@ -532,7 +532,7 @@ async function clickQueryHandlerText(
 				await untilAborted(clickSignal, () => target.click());
 				return;
 			} catch (err) {
-				lastReason = err instanceof Error ? err.message : String(err);
+				lastReason = errorMessage(err);
 				await untilAborted(clickSignal, () => Bun.sleep(100));
 			}
 		} finally {
@@ -724,7 +724,7 @@ export class WorkerCore {
 			await session.send("Page.stopLoading").catch(() => undefined);
 		} catch (error) {
 			this.#log("debug", "Recovery CDP session failed; proceeding with attach", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		} finally {
 			await session?.detach().catch(() => undefined);
@@ -772,7 +772,7 @@ export class WorkerCore {
 				err =>
 					this.#log("debug", "Dialog auto-handler failed", {
 						policy,
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					}),
 			);
 		};
@@ -786,7 +786,7 @@ export class WorkerCore {
 			this.#transport.send({ type: "ready", info: await this.#currentReadyInfo() });
 		} catch (error) {
 			this.#log("debug", "Failed to refresh tab info", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}
@@ -1673,7 +1673,7 @@ export class WorkerCore {
 			}
 		} catch (error) {
 			this.#log("debug", "Page.stopLoading failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}

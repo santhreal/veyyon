@@ -8,7 +8,7 @@ import {
 	SqliteAuthCredentialStore,
 	type StoredAuthCredential,
 } from "@veyyon/ai";
-import { AsyncDrain, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/utils";
+import { AsyncDrain, errorMessage, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/utils";
 import type { RawSettings as Settings } from "../config/settings";
 
 /** Row shape for settings table queries */
@@ -152,7 +152,7 @@ export class AgentStorage {
 		} catch (err) {
 			const dir = path.dirname(dbPath);
 			const dirExists = fs.existsSync(dir);
-			const errMsg = err instanceof Error ? err.message : String(err);
+			const errMsg = errorMessage(err);
 			throw new Error(
 				`Failed to open agent database at '${dbPath}': ${errMsg}\n` +
 					`Directory '${dir}' exists: ${dirExists}\n` +

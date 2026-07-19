@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	$env,
+	errorMessage,
 	isBunTestRuntime,
 	isCompiledBinary,
 	logger,
@@ -277,7 +278,7 @@ function createStderrCapture(exitLabel: string): StderrCapture {
 		return { target: fd, fd, dir, cleanupOnExit };
 	} catch (error) {
 		logger.debug(`${exitLabel} stderr capture unavailable`, {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return { target: "ignore", fd: null, dir: null, cleanupOnExit: null };
 	}
@@ -409,7 +410,7 @@ export function createUnavailableWorker<
 	Outbound extends { type: string },
 >(error: unknown): WorkerHandle<Inbound, Outbound> {
 	const listeners = new Set<(message: Outbound) => void>();
-	const errorMessage = error instanceof Error ? error.message : String(error);
+	const errorText = errorMessage(error);
 	const emit = (message: WorkerOutboundBase): void => {
 		// The stub only ever emits pong/error — members of every concrete worker
 		// Outbound union — but the generic cannot prove it, hence the assertion.
@@ -422,7 +423,7 @@ export function createUnavailableWorker<
 					emit({ type: "pong", id: message.id });
 					return;
 				}
-				emit({ type: "error", id: message.id, error: errorMessage });
+				emit({ type: "error", id: message.id, error: errorText });
 			});
 		},
 		onMessage(handler) {
@@ -467,7 +468,7 @@ export function spawnWorkerOrUnavailable<Handle>(
 	try {
 		return spawn();
 	} catch (error) {
-		logger.warn(warnMessage, { error: error instanceof Error ? error.message : String(error) });
+		logger.warn(warnMessage, { error: errorMessage(error) });
 		return unavailable(error);
 	}
 }

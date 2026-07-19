@@ -12,7 +12,7 @@ import type {
 	AgentToolUpdateCallback,
 } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
-import { logger, pluralize } from "@veyyon/utils";
+import { errorMessage, logger, pluralize } from "@veyyon/utils";
 import { getDefault, type Settings } from "../config/settings";
 import { formatGroupedDiagnosticMessages } from "../lsp/utils";
 import type { Theme } from "../modes/theme/theme";
@@ -680,7 +680,7 @@ async function spillLargeResultToArtifact(
 	} catch (error) {
 		logger.warn("Failed to spill large tool result to artifact", {
 			tool: toolName,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 

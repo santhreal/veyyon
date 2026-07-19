@@ -16,7 +16,17 @@ import {
 } from "@veyyon/ai/providers/openai-codex-responses";
 import { FALLBACK_DIALECT, preferredDialect } from "@veyyon/catalog/identity";
 import type { Component } from "@veyyon/tui";
-import { $env, $flag, getAgentDir, getProjectDir, logger, postmortem, prompt, Snowflake } from "@veyyon/utils";
+import {
+	$env,
+	$flag,
+	errorMessage,
+	getAgentDir,
+	getProjectDir,
+	logger,
+	postmortem,
+	prompt,
+	Snowflake,
+} from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import {
 	discoverAdvisorConfigs,
@@ -1486,7 +1496,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		} catch (error) {
 			logger.warn("Failed to persist async follow-up artifact", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 
@@ -1654,7 +1664,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					// full-output copy — never degrade to that silently.
 					logger.error("Artifact allocation failed; large output will be truncated without a saved copy", {
 						toolType,
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 					});
 					return {};
 				}
@@ -1784,7 +1794,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						} catch (error) {
 							logger.error("MCP tool load failed", {
 								path: ".mcp.json",
-								error: error instanceof Error ? error.message : String(error),
+								error: errorMessage(error),
 							});
 						}
 					})();
@@ -1954,7 +1964,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// only blocked on local cache reads, not provider network fetches.
 		void modelRegistry.refreshRuntimeProviders().catch(error => {
 			logger.warn("runtime provider discovery failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		});
 
@@ -2798,7 +2808,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						cb();
 					} catch (err) {
 						logger.warn("onFirstChatDispatch hook threw", {
-							error: err instanceof Error ? err.message : String(err),
+							error: errorMessage(err),
 						});
 					}
 				}
@@ -3049,9 +3059,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							providerSessionState: session.providerSessionState,
 						});
 					} catch (error) {
-						const errorMessage = error instanceof Error ? error.message : String(error);
+						const errorText = errorMessage(error);
 						logger.debug("Codex websocket prewarm failed", {
-							error: errorMessage,
+							error: errorText,
 							provider: codexModel.provider,
 							model: codexModel.id,
 						});
@@ -3094,15 +3104,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						};
 						if (!startupQuiet) eventBus.emit(LSP_STARTUP_EVENT_CHANNEL, event);
 					} catch (error) {
-						const errorMessage = error instanceof Error ? error.message : String(error);
-						logger.warn("LSP server warmup failed", { cwd, error: errorMessage });
+						const errorText = errorMessage(error);
+						logger.warn("LSP server warmup failed", { cwd, error: errorText });
 						for (const server of lspServers ?? []) {
 							server.status = "error";
-							server.error = errorMessage;
+							server.error = errorText;
 						}
 						const event: LspStartupEvent = {
 							type: "failed",
-							error: errorMessage,
+							error: errorText,
 						};
 						if (!startupQuiet) eventBus.emit(LSP_STARTUP_EVENT_CHANNEL, event);
 					}
@@ -3157,7 +3167,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						await session.refreshMCPTools(tools, activateAll ? { activateAll: true } : undefined);
 					} catch (error) {
 						logger.warn("MCP tool refresh failed", {
-							error: error instanceof Error ? error.message : String(error),
+							error: errorMessage(error),
 						});
 					}
 				})();
@@ -3231,7 +3241,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		} catch (cleanupError) {
 			logger.warn("Failed to clean up createAgentSession resources after startup error", {
-				error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+				error: errorMessage(cleanupError),
 			});
 		}
 		throw error;

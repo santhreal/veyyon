@@ -2,7 +2,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
-import { APP_NAME, formatCount } from "@veyyon/utils";
+import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { settings } from "../../config/settings";
@@ -830,9 +830,7 @@ export class UiHelpers {
 			this.ctx.compactionQueuedMessages = queuedMessages;
 			this.ctx.updatePendingMessagesDisplay();
 			this.ctx.showError(
-				`Failed to send queued message${queuedMessages.length > 1 ? "s" : ""}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+				`Failed to send queued message${queuedMessages.length > 1 ? "s" : ""}: ${errorMessage(error)}`,
 			);
 		};
 

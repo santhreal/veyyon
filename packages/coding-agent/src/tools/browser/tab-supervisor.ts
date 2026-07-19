@@ -1,4 +1,4 @@
-import { getPuppeteerDir, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+import { errorMessage, getPuppeteerDir, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import type { Page, Target } from "puppeteer-core";
 import { callSessionTool } from "../../eval/js/tool-bridge";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
@@ -258,7 +258,7 @@ async function acquireTabImpl(
 			throw error;
 		}
 		logger.warn("Tab worker init failed; retrying with inline tab worker (no sync-loop guard)", {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		worker = await spawnInlineWorker();
 		try {
@@ -267,7 +267,7 @@ async function acquireTabImpl(
 			await worker.terminate().catch(() => undefined);
 			if (tempHold || browser.refCount === 0) await releaseBrowser(browser, { kill: false });
 			const finalError = new ToolError(
-				`Failed to start browser tab worker (inline fallback also failed): ${inlineError instanceof Error ? inlineError.message : String(inlineError)}`,
+				`Failed to start browser tab worker (inline fallback also failed): ${errorMessage(inlineError)}`,
 			);
 			(finalError as { cause?: unknown }).cause = error;
 			throw finalError;
@@ -484,7 +484,7 @@ async function runInTabWithSnapshot(
 					else await recycleTimedOutWorkerTab(tab, opts.timeoutMs + GRACE_MS);
 				} catch (recycleError) {
 					logger.warn("Failed to recycle timed-out browser tab worker; killing tab", {
-						error: recycleError instanceof Error ? recycleError.message : String(recycleError),
+						error: errorMessage(recycleError),
 					});
 					await forceKillTab(name, "Browser code execution timed out; tab killed");
 				}
@@ -534,7 +534,7 @@ export async function releaseTab(name: string, opts: ReleaseTabOptions = {}): Pr
 			} catch (err) {
 				if (isLastSurfaceCloseError(err)) {
 					logger.debug("Leaving cmux browser surface open because it is the last surface in the workspace", {
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					});
 				} else {
 					nonLastCloseError = err;
@@ -605,7 +605,7 @@ export function getTabsMapForTest(): ReadonlyMap<string, TabSession> {
 }
 
 function isLastSurfaceCloseError(err: unknown): boolean {
-	const message = err instanceof Error ? err.message : String(err);
+	const message = errorMessage(err);
 	return /last/i.test(message);
 }
 
@@ -703,7 +703,7 @@ function safeSend(tab: WorkerTabSession, msg: WorkerInbound): void {
 	try {
 		tab.worker.send(msg);
 	} catch (err) {
-		logger.debug("tab worker send failed", { error: err instanceof Error ? err.message : String(err) });
+		logger.debug("tab worker send failed", { error: errorMessage(err) });
 	}
 }
 
@@ -754,7 +754,7 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 		} catch (inlineError) {
 			await worker.terminate().catch(() => undefined);
 			const finalError = new ToolError(
-				`Failed to recycle timed-out browser tab worker (inline fallback also failed): ${inlineError instanceof Error ? inlineError.message : String(inlineError)}`,
+				`Failed to recycle timed-out browser tab worker (inline fallback also failed): ${errorMessage(inlineError)}`,
 			);
 			Object.defineProperty(finalError, "cause", { value: error, configurable: true });
 			throw finalError;
@@ -850,7 +850,7 @@ async function spawnTabWorker(): Promise<WorkerHandle> {
 		return wrapBunWorker(worker);
 	} catch (err) {
 		logger.warn("Bun Worker spawn failed; using inline tab worker (no sync-loop guard)", {
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return spawnInlineWorker();
 	}

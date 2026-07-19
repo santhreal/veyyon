@@ -7,7 +7,7 @@
 import * as path from "node:path";
 import * as url from "node:url";
 import { isDefinitiveOAuthFailure, type TSchema } from "@veyyon/ai";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";
 import { resolveConfigValue } from "../config/resolve-config-value";
@@ -331,7 +331,7 @@ export class MCPManager {
 				filterBrowser: options?.filterBrowser,
 			});
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			options?.onStatus?.({ type: "failed", serverName: ".mcp.json", error: message });
 			throw error;
 		}
@@ -493,7 +493,7 @@ export class MCPManager {
 				.catch(error => {
 					if (this.#pendingToolLoads.get(name) !== toolsPromise) return;
 					this.#pendingToolLoads.delete(name);
-					const message = error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					this.#lastErrors.set(name, message);
 					onStatus?.({ type: "failed", serverName: name, error: message, foreign: this.#isForeignServer(name) });
 					if (!allowBackgroundLogging || reportedErrors.has(name)) return;
@@ -548,8 +548,7 @@ export class MCPManager {
 					const reconnect = () => this.reconnectServer(name);
 					allTools.push(...MCPTool.fromTools(connection, serverTools, reconnect));
 				} else if (task.tracked.status === "rejected") {
-					const message =
-						task.tracked.reason instanceof Error ? task.tracked.reason.message : String(task.tracked.reason);
+					const message = errorMessage(task.tracked.reason);
 					errors.set(name, message);
 					reportedErrors.add(name);
 				} else {
@@ -940,7 +939,7 @@ export class MCPManager {
 					return null;
 				}
 
-				const msg = error instanceof Error ? error.message : String(error);
+				const msg = errorMessage(error);
 				if (attempt < delays.length) {
 					logger.debug("MCP reconnect attempt failed, retrying", {
 						path: `mcp:${name}`,
@@ -1305,10 +1304,8 @@ export class MCPManager {
 								authorizationUrl,
 							};
 						},
-						isDefinitiveFailure: error =>
-							isDefinitiveOAuthFailure(error instanceof Error ? error.message : String(error)),
-						disabledCause: error =>
-							`oauth refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+						isDefinitiveFailure: error => isDefinitiveOAuthFailure(errorMessage(error)),
+						disabledCause: error => `oauth refresh failed: ${errorMessage(error)}`,
 						keepCredentialOnRefreshFailure: error =>
 							!(error instanceof Error && error.message.includes("broker-redacted")),
 						onRefreshFailure: refreshError => {

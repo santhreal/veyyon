@@ -16,7 +16,7 @@
  *   model.
  */
 import { type AssistantMessage, completeSimple } from "@veyyon/ai";
-import { logger, prompt } from "@veyyon/utils";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
@@ -111,7 +111,7 @@ export class SpeechEnhancer {
 		} catch (error) {
 			if (!signal?.aborted) {
 				logger.debug("speech-enhancer: rewrite failed", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 			return null;

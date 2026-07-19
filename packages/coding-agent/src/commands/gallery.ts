@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 /**
  * Render every built-in tool's renderer across its lifecycle states.
  */
@@ -43,7 +44,7 @@ export default class Gallery extends Command {
 		try {
 			states = parseGalleryStates(flags.state);
 		} catch (err) {
-			process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+			process.stderr.write(`${errorMessage(err)}\n`);
 			process.exitCode = 1;
 			return;
 		}

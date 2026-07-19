@@ -41,6 +41,7 @@ import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
+	errorMessage,
 	formatCount,
 	formatNumber,
 	getProjectDir,
@@ -2253,9 +2254,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			try {
 				await this.session.setModelTemporary(resolved.model, planThinkingLevel);
 			} catch (error) {
-				this.showWarning(
-					`Failed to switch to plan model for plan mode: ${error instanceof Error ? error.message : String(error)}`,
-				);
+				this.showWarning(`Failed to switch to plan model for plan mode: ${errorMessage(error)}`);
 			}
 		} else if (planThinkingLevel) {
 			this.session.setThinkingLevel(planThinkingLevel);
@@ -2270,9 +2269,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		try {
 			await this.session.setModelTemporary(pending.model, pending.thinkingLevel);
 		} catch (error) {
-			this.showWarning(
-				`Failed to switch model after streaming: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.showWarning(`Failed to switch model after streaming: ${errorMessage(error)}`);
 		}
 	}
 
@@ -2774,9 +2771,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			await copyToClipboard(content);
 			this.showStatus("Copied plan to clipboard");
 		} catch (error) {
-			this.showWarning(
-				`Failed to copy plan to clipboard: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.showWarning(`Failed to copy plan to clipboard: ${errorMessage(error)}`);
 		}
 	}
 
@@ -2796,7 +2791,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.showError(`Plan file not found at ${planFilePath}`);
 				return;
 			}
-			this.showWarning(`Failed to open external editor: ${error instanceof Error ? error.message : String(error)}`);
+			this.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 			return;
 		}
 
@@ -2820,7 +2815,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.showStatus("Plan updated in external editor.");
 			}
 		} catch (error) {
-			this.showWarning(`Failed to open external editor: ${error instanceof Error ? error.message : String(error)}`);
+			this.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 		} finally {
 			if (ttyHandle) {
 				await ttyHandle.close();
@@ -2851,7 +2846,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				commit(result);
 			}
 		} catch (error) {
-			this.showWarning(`Failed to open external editor: ${error instanceof Error ? error.message : String(error)}`);
+			this.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 		} finally {
 			if (ttyHandle) {
 				await ttyHandle.close();
@@ -2869,9 +2864,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.updateEditorBorderColor();
 			this.showStatus(`Continuing with ${entry.role}: ${entry.model.name || entry.model.id}`);
 		} catch (error) {
-			this.showWarning(
-				`Could not switch to the ${entry.role} model: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.showWarning(`Could not switch to the ${entry.role} model: ${errorMessage(error)}`);
 		}
 	}
 
@@ -3264,7 +3257,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			if (!objective) return;
 			await this.#startGoalFromObjective(objective);
 		} catch (error) {
-			this.showError(error instanceof Error ? error.message : String(error));
+			this.showError(errorMessage(error));
 		}
 	}
 	async handleGuidedGoalCommand(rest?: string): Promise<void> {
@@ -3332,7 +3325,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			}
 			this.showWarning("Guided goal setup needs more detail. Run /guided-goal again with a narrower objective.");
 		} catch (error) {
-			this.showError(error instanceof Error ? error.message : String(error));
+			this.showError(errorMessage(error));
 		}
 	}
 
@@ -3661,9 +3654,7 @@ export class InteractiveMode implements InteractiveModeContext {
 					executionModel,
 				});
 			} catch (error) {
-				this.showError(
-					`Failed to finalize approved plan: ${error instanceof Error ? error.message : String(error)}`,
-				);
+				this.showError(`Failed to finalize approved plan: ${errorMessage(error)}`);
 			}
 			return;
 		}
@@ -3681,7 +3672,7 @@ export class InteractiveMode implements InteractiveModeContext {
 					this.showStatus("Refine plan: enter a follow-up prompt.");
 				}
 			} catch (error) {
-				this.showError(`Failed to refine plan: ${error instanceof Error ? error.message : String(error)}`);
+				this.showError(`Failed to refine plan: ${errorMessage(error)}`);
 			}
 			return;
 		}
@@ -4645,7 +4636,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				result.sessionFile ? `Branched /btw to ${path.basename(result.sessionFile)}` : "Branched /btw",
 			);
 		} catch (error) {
-			this.showError(`Cannot branch /btw: ${error instanceof Error ? error.message : String(error)}`);
+			this.showError(`Cannot branch /btw: ${errorMessage(error)}`);
 		}
 	}
 

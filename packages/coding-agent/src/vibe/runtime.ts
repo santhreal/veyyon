@@ -16,7 +16,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger, prompt, Snowflake } from "@veyyon/utils";
+import { errorMessage, logger, prompt, Snowflake } from "@veyyon/utils";
 import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
@@ -473,7 +473,7 @@ export class VibeSessionRegistry {
 		} catch (error) {
 			logger.warn("vibe: failed to release worker session", {
 				id: record.id,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 		return { id: record.id, cancelledTurn };
@@ -596,7 +596,7 @@ export class VibeSessionRegistry {
 				} catch (error) {
 					if (error instanceof VibeTurnError) throw error;
 					this.#finishTurn(session, manager, record, ownJobId);
-					const reason = error instanceof Error ? error.message : String(error);
+					const reason = errorMessage(error);
 					record.lastActivity = firstLine(`turn failed: ${reason}`);
 					throw new VibeTurnError(
 						`[vibe:${record.id} cli=${record.cli} turn=${turnIndex}] turn failed: ${reason}`,
@@ -632,7 +632,7 @@ export class VibeSessionRegistry {
 			record.queue.unshift(nextMessage);
 			logger.warn("vibe: failed to start queued follow-up turn", {
 				id: record.id,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}
@@ -693,7 +693,7 @@ export class VibeSessionRegistry {
 			// failure — the work is done; degrade to a plain-text assembly.
 			logger.warn("vibe: turn-result template render failed; using plain fallback", {
 				id: record.id,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			text = [
 				`[vibe:${record.id} cli=${record.cli} turn=${turnIndex} status=${status}]`,

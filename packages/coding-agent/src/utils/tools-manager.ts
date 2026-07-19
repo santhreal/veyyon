@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, APP_NAME, getToolsDir, logger, ptree, TempDir } from "@veyyon/utils";
+import { $which, APP_NAME, errorMessage, getToolsDir, logger, ptree, TempDir } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "./fetch-timeout";
 import { extractArchive } from "./zip";
 
@@ -291,7 +291,7 @@ async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<strin
 		try {
 			await extractArchive(archivePath, tmp.path());
 		} catch (err) {
-			throw new Error(`Failed to extract ${assetName}: ${err instanceof Error ? err.message : String(err)}`);
+			throw new Error(`Failed to extract ${assetName}: ${errorMessage(err)}`);
 		}
 
 		// Find the binary in extracted files
@@ -353,7 +353,7 @@ async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<
 		return false;
 	} catch (error) {
 		logger.warn(`Failed to install Python package ${pkg}`, {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return false;
 	}
@@ -432,7 +432,7 @@ export async function ensureTool(tool: ToolName, silentOrOptions?: EnsureToolOpt
 	} catch (e) {
 		if (!silent) {
 			logger.warn(`Failed to download ${config.name}`, {
-				error: e instanceof Error ? e.message : String(e),
+				error: errorMessage(e),
 			});
 		}
 		return undefined;

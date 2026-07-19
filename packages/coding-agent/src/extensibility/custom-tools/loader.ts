@@ -6,7 +6,7 @@
  */
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import * as zodModule from "zod/v4";
 import { toolCapability } from "../../capability/tool";
@@ -103,7 +103,7 @@ async function loadTool(
 
 		return { tools: loadedTools, errors };
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		return { tools: [], errors: [{ path: toolPath, error: `Failed to load tool: ${message}`, source }] };
 	}
 }

@@ -19,7 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, logger, Snowflake } from "@veyyon/utils";
+import { $which, errorMessage, logger, Snowflake } from "@veyyon/utils";
 import type { FileSink, Subprocess } from "bun";
 import { getToolPath } from "../utils/tools-manager";
 import { type PlayerCommand, playAudioFile } from "./player";
@@ -190,7 +190,7 @@ export class StreamingAudioPlayer {
 			} catch (error) {
 				logger.debug("tts: streaming player spawn failed", {
 					cmd,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -250,7 +250,7 @@ export class StreamingAudioPlayer {
 			}
 		} catch (error) {
 			logger.debug("tts: streaming player drain failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}
@@ -281,7 +281,7 @@ export class StreamingAudioPlayer {
 			return true;
 		} catch (error) {
 			logger.debug("tts: streaming write failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return false;
 		}
@@ -294,7 +294,7 @@ export class StreamingAudioPlayer {
 			if (!this.#stopped) await playAudioFile(wavPath, { signal: this.#abortController.signal });
 		} catch (error) {
 			logger.debug("tts: file playback failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		} finally {
 			await fs.unlink(wavPath).catch(() => {});

@@ -1,5 +1,5 @@
 import type { AuthStorage } from "@veyyon/ai";
-import { untilAborted } from "@veyyon/utils";
+import { errorMessage, untilAborted } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -146,7 +146,7 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 			if (signal.aborted) {
 				throw new SearchProviderError("mojeek", "Mojeek search timed out.", 504);
 			}
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			throw new SearchProviderError("mojeek", `Mojeek search failed: ${message}`, 503);
 		}
 

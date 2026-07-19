@@ -6,7 +6,7 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
 import { htmlToMarkdown } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
-import { $which, formatCount, ptree, truncate } from "@veyyon/utils";
+import { $which, errorMessage, formatCount, ptree, truncate } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -899,7 +899,7 @@ function getArchiveFormatHint(mime: string, extensionHint: string): ArchiveForma
 }
 
 function formatErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	return errorMessage(error);
 }
 
 function binaryContentType(mime: string): string {
@@ -1139,7 +1139,7 @@ export async function handleSpecialUrls(
 			}
 			// A handler must never take the whole fetch down: record the failure
 			// loudly and keep going so the generic fetch still runs.
-			const detail = error instanceof Error ? error.message : String(error);
+			const detail = errorMessage(error);
 			notes.push(`${handler.name || "site"} scraper threw (${detail}); fell back to a generic fetch`);
 			continue;
 		}

@@ -7,6 +7,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
 import {
 	enableAutoTheme,
 	getAvailableThemes,
@@ -216,7 +217,7 @@ class ThemeSceneController implements SetupSceneController {
 			this.#mode = "all";
 			this.#selectList = this.#createSelectList(items, selectedIndex);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			this.#message = theme.fg("error", `Failed to load themes: ${message}`);
 		} finally {
 			this.#loadingAllThemes = false;

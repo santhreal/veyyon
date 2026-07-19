@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir, getProjectDir, isEnoent, logger } from "@veyyon/utils";
+import { errorMessage, getAgentDir, getProjectDir, isEnoent, logger } from "@veyyon/utils";
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
@@ -59,7 +59,7 @@ async function loadCommandModule(
 
 		return { commands, error: null };
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		return { commands: null, error: `Failed to load command: ${message}` };
 	}
 }

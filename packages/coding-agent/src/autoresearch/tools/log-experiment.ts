@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Text } from "@veyyon/tui";
-import { formatCount, truncate } from "@veyyon/utils";
+import { errorMessage, formatCount, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
@@ -316,7 +316,7 @@ async function commitKeptExperiment(
 	try {
 		await git.stage.files(cwd, files);
 	} catch (err) {
-		return { error: `git add failed: ${err instanceof Error ? err.message : String(err)}` };
+		return { error: `git add failed: ${errorMessage(err)}` };
 	}
 	if (!(await git.diff.has(cwd, { cached: true, files }))) {
 		return { note: "nothing to commit" };
@@ -334,7 +334,7 @@ async function commitKeptExperiment(
 		const summary = `${commitResult.stdout}${commitResult.stderr}`.split("\n").find(line => line.trim().length > 0);
 		return { note: summary?.trim() ?? "committed" };
 	} catch (err) {
-		return { error: `git commit failed: ${err instanceof Error ? err.message : String(err)}` };
+		return { error: `git commit failed: ${errorMessage(err)}` };
 	}
 }
 
@@ -352,7 +352,7 @@ async function revertFailedExperiment(
 			await git.clean(cwd);
 			return { note: "worktree reset to HEAD" };
 		} catch (err) {
-			return { error: `git reset/clean failed: ${err instanceof Error ? err.message : String(err)}` };
+			return { error: `git reset/clean failed: ${errorMessage(err)}` };
 		}
 	}
 
@@ -365,7 +365,7 @@ async function revertFailedExperiment(
 		try {
 			await git.restore(cwd, { files: tracked, source: "HEAD", staged: true, worktree: true });
 		} catch (err) {
-			return { error: `git restore failed: ${err instanceof Error ? err.message : String(err)}` };
+			return { error: `git restore failed: ${errorMessage(err)}` };
 		}
 	}
 	for (const filePath of untracked) {

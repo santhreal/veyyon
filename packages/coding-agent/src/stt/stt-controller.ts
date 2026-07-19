@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { collapseWhitespace, logger, Snowflake } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, logger, Snowflake } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import { type SttStreamHandle, sttClient } from "./asr-client";
 import { downloadSttModel, isSttModelCached } from "./downloader";
@@ -150,7 +150,7 @@ export class STTController {
 			// Guard against a concurrent model switch clobbering a newer resolution.
 			if (!this.#disposed && this.#resolvedModelKey === modelKey) this.#resolvedModelKey = null;
 			logger.debug("stt: background model warmup failed", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		});
 	}
@@ -223,7 +223,7 @@ export class STTController {
 			recorder = await startStreamingRecording(samples => stream.pushAudio(samples));
 		} catch (err) {
 			logger.warn("STT streaming recorder failed to start; falling back to batch recording", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 		if (!recorder) {
@@ -250,7 +250,7 @@ export class STTController {
 			await recorder?.stop();
 		} catch (err) {
 			logger.debug("stt: streaming recorder stop failed", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 		this.#streamRecorder = null;

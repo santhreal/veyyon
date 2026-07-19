@@ -20,6 +20,7 @@
  */
 import type { Tool, ToolCall } from "@veyyon/ai/types";
 import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
+import { errorMessage } from "@veyyon/utils";
 import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
 import { isRecord } from "@veyyon/utils/type-guards";
 
@@ -320,7 +321,7 @@ function recoverFromParseSentinel(args: Record<string, unknown>): ToolCallRepair
 			hints: ["Recovered tool arguments from malformed JSON (trailing commas / relaxed parse)."],
 		};
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return {
 			status: "unrepairable",
 			reason: `Tool call arguments are not valid JSON and could not be repaired: ${message}`,
@@ -350,7 +351,7 @@ function recoverFromStringArguments(raw: string): ToolCallRepairOutcome | undefi
 			hints: ["Parsed stringified tool arguments into a JSON object."],
 		};
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return {
 			status: "unrepairable",
 			reason: `Could not parse stringified tool arguments: ${message}`,

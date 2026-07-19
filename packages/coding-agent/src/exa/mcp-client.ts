@@ -1,5 +1,5 @@
 import type { TSchema } from "@veyyon/ai";
-import { $env, asRecord, logger } from "@veyyon/utils";
+import { $env, asRecord, errorMessage, logger } from "@veyyon/utils";
 import type { CustomTool, CustomToolResult } from "../extensibility/custom-tools/types";
 import { type CallMcpOptions, callMCP } from "../mcp/json-rpc";
 import type { ExaSearchResponse, MCPCallResponse, MCPTool, MCPToolsResponse, MCPToolWrapperConfig } from "./types";
@@ -338,7 +338,7 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 				details: { raw: response, toolName: this.config.name },
 			};
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			return {
 				content: [{ type: "text" as const, text: `Error: ${message}` }],
 				details: { error: message, toolName: this.config.name },

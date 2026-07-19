@@ -15,6 +15,7 @@ import { glob, type SummaryResult, summarizeCode } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import {
+	errorMessage,
 	formatCount,
 	getRemoteDir,
 	type ImageMetadata,
@@ -954,7 +955,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				}
 			} catch (error) {
 				if (error instanceof ToolAbortError || signal?.aborted) throw error;
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				const errorNote = `Could not read ${part}: ${message}`;
 				notes.push(errorNote);
 				displayReadTargets.push(part);
@@ -1959,7 +1960,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (error instanceof ToolError) {
 				throw error;
 			}
-			throw new ToolError(error instanceof Error ? error.message : String(error));
+			throw new ToolError(errorMessage(error));
 		} finally {
 			db?.close();
 		}
@@ -3093,7 +3094,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		try {
 			urlMeta = parseInternalUrl(url);
 		} catch (e) {
-			throw new ToolError(e instanceof Error ? e.message : String(e));
+			throw new ToolError(errorMessage(e));
 		}
 		const scheme = urlMeta.protocol.replace(/:$/, "").toLowerCase();
 		let hasExtraction = false;
@@ -3227,7 +3228,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				lineCap: offset === undefined && limit !== undefined ? limit : null,
 			});
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			throw new ToolError(`Cannot read directory: ${message}`);
 		}
 		throwIfAborted(signal);

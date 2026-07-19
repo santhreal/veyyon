@@ -3,7 +3,7 @@ import type { CompactionSettings } from "@veyyon/agent-core/compaction";
 import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/agent-core/compaction";
 import type { Tool as AiTool, Model } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
-import { formatCount, formatNumber, logger } from "@veyyon/utils";
+import { errorMessage, formatCount, formatNumber, logger } from "@veyyon/utils";
 import type { Skill } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
 import { estimateInlineSavings, type SnapcompactSavingsEstimate } from "../../session/snapcompact-inline";
@@ -73,7 +73,7 @@ function wireSchemaJsonFragment(tool: Pick<Tool, "name" | "description" | "param
 			wireJsonFailureWarned.add(tool.name);
 			logger.warn("tool wire-schema serialization failed; context usage understates this tool", {
 				tool: tool.name,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 		return "{}";

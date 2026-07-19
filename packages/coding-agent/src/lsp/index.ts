@@ -7,7 +7,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
-import { logger, once, prompt, truncate, untilAborted } from "@veyyon/utils";
+import { errorMessage, logger, once, prompt, truncate, untilAborted } from "@veyyon/utils";
 import type { BunFile } from "bun";
 import { type Theme, theme } from "../modes/theme/theme";
 import lspDescription from "../prompts/tools/lsp.md" with { type: "text" };
@@ -1851,7 +1851,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						throw err;
 					}
 					if (!isMethodNotFoundError(err)) {
-						const msg = err instanceof Error ? err.message : String(err);
+						const msg = errorMessage(err);
 						serverNotes.push(`  ${serverName}: ${msg}`);
 					}
 				}
@@ -1991,7 +1991,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (err instanceof ToolAbortError || signal?.aborted) {
 						throw err;
 					}
-					const msg = err instanceof Error ? err.message : String(err);
+					const msg = errorMessage(err);
 					serverNotes.push(`  ${serverName}: ${msg}`);
 				}
 			}
@@ -2049,7 +2049,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (err instanceof ToolAbortError || signal?.aborted) {
 						throw err;
 					}
-					const msg = err instanceof Error ? err.message : String(err);
+					const msg = errorMessage(err);
 					sections.push(`${serverName}: failed to start (${msg})`);
 				}
 			}
@@ -2107,7 +2107,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				try {
 					requestParams = JSON.parse(params.payload);
 				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
+					const msg = errorMessage(err);
 					return {
 						content: [{ type: "text", text: `Error: invalid JSON in payload: ${msg}` }],
 						details: { action, serverName: chosenName, success: false, request: params },
@@ -2145,7 +2145,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				if (err instanceof ToolAbortError || signal?.aborted) {
 					throw new ToolAbortError();
 				}
-				const msg = err instanceof Error ? err.message : String(err);
+				const msg = errorMessage(err);
 				// Echo a (truncated) preview of the params we sent so the caller can
 				// tell parse / shape errors (e.g. nested args dropped, missing field)
 				// apart from genuine server errors without spinning up another debug call.
@@ -2284,8 +2284,8 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (err instanceof ToolAbortError || signal?.aborted) {
 						throw err;
 					}
-					const errorMessage = err instanceof Error ? err.message : String(err);
-					outputs.push(`Failed to reload ${workspaceServerName}: ${errorMessage}`);
+					const errorText = errorMessage(err);
+					outputs.push(`Failed to reload ${workspaceServerName}: ${errorText}`);
 				}
 			}
 			return {
@@ -2683,9 +2683,9 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				}
 				throw new ToolAbortError();
 			}
-			const errorMessage = err instanceof Error ? err.message : String(err);
+			const errorText = errorMessage(err);
 			return {
-				content: [{ type: "text", text: `LSP error: ${errorMessage}` }],
+				content: [{ type: "text", text: `LSP error: ${errorText}` }],
 				details: { serverName, action, success: false, request: params },
 			};
 		}

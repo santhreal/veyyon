@@ -1,4 +1,4 @@
-import { escapeRegExp } from "@veyyon/utils";
+import { errorMessage, escapeRegExp } from "@veyyon/utils";
 import { MCPManager } from "../mcp/manager";
 import type { MCPResourceReadResult } from "../mcp/types";
 import type { InternalResource, InternalUrl, ProtocolHandler } from "./types";
@@ -119,7 +119,7 @@ export class McpProtocolHandler implements ProtocolHandler {
 		try {
 			result = await mcpManager.readServerResource(targetServer, uri);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			throw new Error(`MCP resource read error: ${message}`);
 		}
 

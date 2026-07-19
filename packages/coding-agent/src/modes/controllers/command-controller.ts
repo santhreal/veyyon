@@ -11,7 +11,7 @@ import {
 	type UsageReport,
 } from "@veyyon/ai";
 import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/tui";
-import { APP_NAME, CHANGELOG_URL, formatDuration, Snowflake, sanitizeText } from "@veyyon/utils";
+import { APP_NAME, CHANGELOG_URL, errorMessage, formatDuration, Snowflake, sanitizeText } from "@veyyon/utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -143,7 +143,7 @@ export class CommandController {
 		try {
 			customShare = await loadCustomShare();
 		} catch (err) {
-			this.ctx.showError(err instanceof Error ? err.message : String(err));
+			this.ctx.showError(errorMessage(err));
 			return;
 		}
 
@@ -189,7 +189,7 @@ export class CommandController {
 			} catch (err) {
 				if (!loader.signal.aborted) {
 					restoreEditor();
-					this.ctx.showError(`Custom share failed: ${err instanceof Error ? err.message : String(err)}`);
+					this.ctx.showError(`Custom share failed: ${errorMessage(err)}`);
 				}
 			} finally {
 				await fs.rm(tmpFile, { force: true }).catch(() => {});
@@ -379,7 +379,7 @@ export class CommandController {
 			try {
 				usageReports = await provider.fetchUsageReports();
 			} catch (error) {
-				this.ctx.showError(`Failed to fetch usage data: ${error instanceof Error ? error.message : String(error)}`);
+				this.ctx.showError(`Failed to fetch usage data: ${errorMessage(error)}`);
 				return;
 			}
 		}
@@ -476,7 +476,7 @@ export class CommandController {
 				await this.ctx.session.refreshBaseSystemPrompt();
 				this.ctx.showStatus("Memory data cleared and system prompt refreshed.");
 			} catch (error) {
-				this.ctx.showError(`Memory clear failed: ${error instanceof Error ? error.message : String(error)}`);
+				this.ctx.showError(`Memory clear failed: ${errorMessage(error)}`);
 			}
 			return;
 		}
@@ -486,7 +486,7 @@ export class CommandController {
 				await backend.enqueue(agentDir, this.ctx.sessionManager.getCwd(), this.ctx.session);
 				this.ctx.showStatus("Memory consolidation enqueued.");
 			} catch (error) {
-				this.ctx.showError(`Memory enqueue failed: ${error instanceof Error ? error.message : String(error)}`);
+				this.ctx.showError(`Memory enqueue failed: ${errorMessage(error)}`);
 			}
 			return;
 		}
@@ -501,7 +501,7 @@ export class CommandController {
 				}
 				showMarkdownPanel(this.ctx, `Memory ${action === "stats" ? "Stats" : "Diagnostics"}`, payload);
 			} catch (error) {
-				this.ctx.showError(`Memory ${action} failed: ${error instanceof Error ? error.message : String(error)}`);
+				this.ctx.showError(`Memory ${action} failed: ${errorMessage(error)}`);
 			}
 			return;
 		}
@@ -577,7 +577,7 @@ export class CommandController {
 				.map(summarizeMentalModel);
 			showMarkdownPanel(this.ctx, `Mental Models — ${state.bankId}`, lines.join("\n"));
 		} catch (error) {
-			this.ctx.showError(`mm list failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`mm list failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -598,7 +598,7 @@ export class CommandController {
 				`**id:** \`${model.id}\`${tags}${refreshed}${sourceQuery}\n\n${content}`,
 			);
 		} catch (error) {
-			this.ctx.showError(`mm show failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`mm show failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -637,9 +637,7 @@ export class CommandController {
 						await state.client.refreshMentalModel(state.bankId, item.id);
 						queued++;
 					} catch (error) {
-						this.ctx.showWarning(
-							`Refresh failed for ${item.id}: ${error instanceof Error ? error.message : String(error)}`,
-						);
+						this.ctx.showWarning(`Refresh failed for ${item.id}: ${errorMessage(error)}`);
 					}
 				}
 				const skippedSuffix = skipped > 0 ? `; skipped ${skipped} curated model(s)` : "";
@@ -652,7 +650,7 @@ export class CommandController {
 			await Bun.sleep(500);
 			await reloadMentalModelsForSession(state.session);
 		} catch (error) {
-			this.ctx.showError(`mm refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`mm refresh failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -685,7 +683,7 @@ export class CommandController {
 			}
 			showMarkdownPanel(this.ctx, `History — ${model.name}`, sections.join("\n\n"));
 		} catch (error) {
-			this.ctx.showError(`mm history failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`mm history failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -723,14 +721,12 @@ export class CommandController {
 					});
 					created++;
 				} catch (error) {
-					this.ctx.showWarning(
-						`Seed failed for ${seed.id}: ${error instanceof Error ? error.message : String(error)}`,
-					);
+					this.ctx.showWarning(`Seed failed for ${seed.id}: ${errorMessage(error)}`);
 				}
 			}
 			this.ctx.showStatus(`Seeded ${created} new mental model(s); ${skipped} already present.`);
 		} catch (error) {
-			this.ctx.showError(`mm seed failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`mm seed failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -755,7 +751,7 @@ export class CommandController {
 			await reloadMentalModelsForSession(state.session);
 			this.ctx.showStatus(`Deleted mental model ${id} from bank ${state.bankId}.`);
 		} catch (error) {
-			this.ctx.showError(`mm delete failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`mm delete failed: ${errorMessage(error)}`);
 		}
 	}
 
@@ -923,7 +919,7 @@ export class CommandController {
 			try {
 				await fs.mkdir(resolvedPath, { recursive: true });
 			} catch (err) {
-				this.ctx.showError(`Failed to create directory: ${err instanceof Error ? err.message : String(err)}`);
+				this.ctx.showError(`Failed to create directory: ${errorMessage(err)}`);
 				return;
 			}
 		}
@@ -931,7 +927,7 @@ export class CommandController {
 		try {
 			await this.ctx.sessionManager.moveTo(resolvedPath);
 		} catch (err) {
-			this.ctx.showError(`Move failed: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Move failed: ${errorMessage(err)}`);
 			return;
 		}
 
@@ -957,7 +953,7 @@ export class CommandController {
 			const name = this.ctx.sessionManager.getSessionName()!;
 			this.ctx.showStatus(`Session renamed to "${name}".`);
 		} catch (err) {
-			this.ctx.showError(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Rename failed: ${errorMessage(err)}`);
 		}
 	}
 
@@ -1078,7 +1074,7 @@ export class CommandController {
 		try {
 			result = await this.ctx.session.shake(mode);
 		} catch (error) {
-			this.ctx.showError(`Shake failed: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Shake failed: ${errorMessage(error)}`);
 			return;
 		}
 
@@ -1149,7 +1145,7 @@ export class CommandController {
 				this.ctx.showError("Compaction cancelled");
 			} else {
 				outcome = "failed";
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				this.ctx.showError(`Compaction failed: ${message}`);
 			}
 		} finally {
@@ -1216,7 +1212,7 @@ export class CommandController {
 				this.ctx.showStatus(`Handoff document saved to: ${result.savedPath}`);
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			if (message === "Handoff cancelled" || (error instanceof Error && error.name === "AbortError")) {
 				this.ctx.showError("Handoff cancelled");
 			} else {

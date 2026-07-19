@@ -16,7 +16,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { formatCount, getWorktreesDir, isEnoent } from "@veyyon/utils";
+import { errorMessage, formatCount, getWorktreesDir, isEnoent } from "@veyyon/utils";
 import chalk from "chalk";
 import * as git from "../utils/git";
 
@@ -116,7 +116,7 @@ export async function clearWorktrees(options: ClearWorktreesOptions): Promise<vo
 			}
 			results.push({ path: target.path, ok: true });
 		} catch (err) {
-			results.push({ path: target.path, ok: false, error: err instanceof Error ? err.message : String(err) });
+			results.push({ path: target.path, ok: false, error: errorMessage(err) });
 		}
 	}
 
@@ -231,7 +231,7 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 		return {
 			path: dir,
 			kind: "pr-checkout",
-			orphanReason: `cannot read .git file: ${err instanceof Error ? err.message : String(err)}`,
+			orphanReason: `cannot read .git file: ${errorMessage(err)}`,
 		};
 	}
 	const match = /^gitdir:\s*(.+?)\s*$/m.exec(contents);

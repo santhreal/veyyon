@@ -5,7 +5,7 @@
  */
 import * as path from "node:path";
 import { type Component, replaceTabs, Spacer, Text } from "@veyyon/tui";
-import { getMCPConfigPath, getProjectDir } from "@veyyon/utils";
+import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep } from "../../discovery/helpers";
 import {
@@ -556,9 +556,7 @@ export class MCPCommandController {
 					await this.#handleTestConnection(finalConfig);
 				} catch (error) {
 					if (parsed.hasAuthToken) {
-						this.ctx.showError(
-							`Authentication failed for "${parsed.initialName}": ${error instanceof Error ? error.message : String(error)}`,
-						);
+						this.ctx.showError(`Authentication failed for "${parsed.initialName}": ${errorMessage(error)}`);
 						return;
 					}
 					const authResult = analyzeAuthError(error as Error, finalConfig.url);
@@ -623,9 +621,7 @@ export class MCPCommandController {
 								this.ctx.showStatus(`Add cancelled for "${parsed.initialName}"`);
 								return;
 							}
-							this.ctx.showError(
-								`OAuth flow failed for "${parsed.initialName}": ${oauthError instanceof Error ? oauthError.message : String(oauthError)}`,
-							);
+							this.ctx.showError(`OAuth flow failed for "${parsed.initialName}": ${errorMessage(oauthError)}`);
 							return;
 						}
 					}
@@ -877,7 +873,7 @@ export class MCPCommandController {
 				throw new MCPOAuthCancelledError();
 			}
 
-			const errorMsg = error instanceof Error ? error.message : String(error);
+			const errorMsg = errorMessage(error);
 
 			// Provide helpful error messages based on failure type
 			if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
@@ -1209,7 +1205,7 @@ export class MCPCommandController {
 
 			this.#showMessage(lines.join("\n"));
 		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
+			const errorMsg = errorMessage(error);
 
 			// Provide helpful error messages
 			let helpText = "";
@@ -1371,7 +1367,7 @@ export class MCPCommandController {
 			}
 			this.#showMessage(lines.join("\n"));
 		} catch (error) {
-			this.ctx.showError(`Failed to list servers: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to list servers: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1417,7 +1413,7 @@ export class MCPCommandController {
 
 			this.#showMessage(["", theme.fg("success", `- Removed server "${name}" from ${scope} config`), ""].join("\n"));
 		} catch (error) {
-			this.ctx.showError(`Failed to remove server: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to remove server: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1499,7 +1495,7 @@ export class MCPCommandController {
 				return;
 			}
 
-			const errorMsg = error instanceof Error ? error.message : String(error);
+			const errorMsg = errorMessage(error);
 
 			// Provide helpful error messages
 			let helpText = "";
@@ -1620,9 +1616,7 @@ export class MCPCommandController {
 			lines.push("");
 			this.#showMessage(lines.join("\n"));
 		} catch (error) {
-			this.ctx.showError(
-				`Failed to ${enabled ? "enable" : "disable"} server: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showError(`Failed to ${enabled ? "enable" : "disable"} server: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1678,7 +1672,7 @@ export class MCPCommandController {
 				["", theme.fg("success", `- Cleared auth for "${name}" (${found.scope} config)`), ""].join("\n"),
 			);
 		} catch (error) {
-			this.ctx.showError(`Failed to clear auth: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to clear auth: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1791,7 +1785,7 @@ export class MCPCommandController {
 				this.ctx.showStatus(`Reauthorization cancelled for "${name}"`);
 				return;
 			}
-			this.ctx.showError(`Failed to reauthorize server: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to reauthorize server: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1809,7 +1803,7 @@ export class MCPCommandController {
 				].join("\n"),
 			);
 		} catch (error) {
-			this.ctx.showError(`Failed to reload MCP: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to reload MCP: ${errorMessage(error)}`);
 		}
 	}
 
@@ -1848,9 +1842,7 @@ export class MCPCommandController {
 				this.ctx.showError(`Failed to reconnect to "${name}". Check server status and logs.`);
 			}
 		} catch (error) {
-			this.ctx.showError(
-				`Failed to reconnect to "${name}": ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showError(`Failed to reconnect to "${name}": ${errorMessage(error)}`);
 		}
 	}
 
@@ -2071,9 +2063,7 @@ export class MCPCommandController {
 				await this.#validateSmitheryApiKey(apiKey);
 				return apiKey;
 			} catch (error) {
-				this.ctx.showError(
-					`Smithery API key validation failed: ${error instanceof Error ? error.message : String(error)}`,
-				);
+				this.ctx.showError(`Smithery API key validation failed: ${errorMessage(error)}`);
 			}
 		}
 	}
@@ -2147,9 +2137,7 @@ export class MCPCommandController {
 		try {
 			return await this.#handleSmitheryBrowserLogin();
 		} catch (error) {
-			this.ctx.showWarning(
-				`Browser authorization failed: ${error instanceof Error ? error.message : String(error)}. Falling back to API key.`,
-			);
+			this.ctx.showWarning(`Browser authorization failed: ${errorMessage(error)}. Falling back to API key.`);
 			return await this.#handleSmitheryLoginWithApiKey();
 		}
 	}
@@ -2350,7 +2338,7 @@ export class MCPCommandController {
 
 			await this.#deployRegistryResult(selected, parsed.scope);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			if (/authentication was cancelled|login cancelled/i.test(message)) {
 				this.ctx.showError(`${message} Run /mcp smithery-login to authenticate first.`);
 				return;

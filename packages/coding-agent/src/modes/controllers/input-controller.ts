@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@veyyon/tui";
-import { $env, isEnoent, logger, sanitizeText } from "@veyyon/utils";
+import { $env, errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { resolveLocalRoot } from "../../internal-urls";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
@@ -135,7 +135,7 @@ function safeAbort(label: string, fn: () => void): void {
 	try {
 		fn();
 	} catch (err) {
-		logger.debug(`Failed to abort ${label}`, { error: err instanceof Error ? err.message : String(err) });
+		logger.debug(`Failed to abort ${label}`, { error: errorMessage(err) });
 	}
 }
 
@@ -809,7 +809,7 @@ export class InputController {
 							: images.map(() => undefined);
 						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 					}
-					this.ctx.showError(error instanceof Error ? error.message : String(error));
+					this.ctx.showError(errorMessage(error));
 				}
 				this.ctx.updatePendingMessagesDisplay();
 				this.ctx.ui.requestRender();
@@ -849,7 +849,7 @@ export class InputController {
 						logger.warn("title-generator: uncaught auto-title error", {
 							sessionId: this.ctx.session.sessionId,
 							reason: "uncaught-auto-title-error",
-							error: err instanceof Error ? err.message : String(err),
+							error: errorMessage(err),
 						});
 					});
 			}
@@ -907,7 +907,7 @@ export class InputController {
 							: images.map(() => undefined);
 						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 					}
-					this.ctx.showError(error instanceof Error ? error.message : String(error));
+					this.ctx.showError(errorMessage(error));
 				}
 				this.ctx.updatePendingMessagesDisplay();
 				this.ctx.ui.requestRender();
@@ -950,7 +950,7 @@ export class InputController {
 				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : images.map(() => undefined);
 				this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 			}
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 		}
 		this.ctx.updatePendingMessagesDisplay();
 		this.ctx.ui.requestRender();
@@ -966,7 +966,7 @@ export class InputController {
 			this.ctx.sessionManager.flushSync();
 		} catch (err) {
 			logger.warn("session-manager sync flush on Ctrl+C failed", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 
@@ -1059,7 +1059,7 @@ export class InputController {
 			process.removeListener("SIGCONT", onResume);
 			this.ctx.ui.start();
 			this.ctx.ui.requestRender(true);
-			const reason = err instanceof Error ? err.message : String(err);
+			const reason = errorMessage(err);
 			this.ctx.showError(`Failed to suspend: ${reason}`);
 		}
 	}
@@ -1113,7 +1113,7 @@ export class InputController {
 			return true;
 		} catch (error) {
 			restoreDraft();
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 			return true;
 		} finally {
 			if (this.ctx.session.isStreaming) {
@@ -1238,7 +1238,7 @@ export class InputController {
 								.join("\n")}`;
 				this.ctx.editor.setText(restored);
 			}
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 		}
 
 		this.ctx.updatePendingMessagesDisplay();
@@ -1314,7 +1314,7 @@ export class InputController {
 				this.ctx.editor.pendingImageLinks = imageLinks ? [...imageLinks] : images.map(() => undefined);
 				this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 			}
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 		};
 
 		if (this.ctx.session.isStreaming) {
@@ -1468,7 +1468,7 @@ export class InputController {
 				// autoResize and an unresized image can blow the token budget.
 				logger.warn("image auto-resize failed; attaching the original unresized image", {
 					mimeType: imageData.mimeType,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -1685,7 +1685,7 @@ export class InputController {
 				{ helpText: "Esc to paste inline" },
 			);
 		} catch (error) {
-			logger.warn("large-paste menu failed", { error: error instanceof Error ? error.message : String(error) });
+			logger.warn("large-paste menu failed", { error: errorMessage(error) });
 			choice = undefined;
 		}
 
@@ -1733,7 +1733,7 @@ export class InputController {
 			this.ctx.showStatus(`Saved ${lineCount} pasted lines to local://${name}`);
 		} catch (error) {
 			logger.warn("failed to save large paste to file", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			this.ctx.editor.insertPaste(text);
 			this.ctx.showError("Failed to save paste to a file — pasted inline instead");
@@ -1830,7 +1830,7 @@ export class InputController {
 			);
 			this.ctx.showModelCycleTrack(track);
 		} catch (error) {
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 		}
 	}
 
@@ -1935,9 +1935,7 @@ export class InputController {
 				this.ctx.editor.setText(result);
 			}
 		} catch (error) {
-			this.ctx.showWarning(
-				`Failed to open external editor: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 		} finally {
 			if (ttyHandle) {
 				await ttyHandle.close();
@@ -1962,7 +1960,7 @@ export class InputController {
 					runner.emitError({
 						extensionPath: shortcut.extensionPath,
 						event: "shortcut",
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 						stack: err instanceof Error ? err.stack : undefined,
 					});
 				}

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	errorMessage,
 	getPluginsDir,
 	getPluginsLockfile,
 	getPluginsNodeModules,
@@ -380,7 +381,7 @@ export class PluginManager {
 						errors.push(`${extensionPath}: extension does not export a valid factory function`);
 					}
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					errors.push(`${extensionPath}: ${message}`);
 				}
 			}
@@ -615,8 +616,8 @@ export class PluginManager {
 					packageSnapshot,
 				);
 			} catch (rollbackErr) {
-				const message = err instanceof Error ? err.message : String(err);
-				const rollbackMessage = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr);
+				const message = errorMessage(err);
+				const rollbackMessage = errorMessage(rollbackErr);
 				throw new Error(`${message}\nRollback failed: ${rollbackMessage}`);
 			}
 			throw err;

@@ -130,6 +130,7 @@ import { Patch } from "@veyyon/hashline";
 import { MacOSPowerAssertion } from "@veyyon/natives";
 import * as snapcompact from "@veyyon/snapcompact";
 import {
+	errorMessage,
 	escapeXmlText,
 	extractHttpStatusFromError,
 	extractRetryHint,
@@ -3086,7 +3087,7 @@ export class AgentSession {
 					// re-picks the same exhausted account every retry. Usage limits
 					// only — other failures keep the plain retry/notify path (never
 					// suspect-mark a credential on a transient advisor error).
-					const message = error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					if (!isUsageLimitOutcome(extractHttpStatusFromError(error), message)) return;
 					await this.#modelRegistry.authStorage.markUsageLimitReached(
 						advisorModel.provider,
@@ -3099,7 +3100,7 @@ export class AgentSession {
 					);
 				},
 				notifyFailure: error => {
-					const message = error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					this.emitNotice(
 						"warning",
 						`Advisor${slug ? ` "${advisorName}"` : ""} unavailable for ${formatModelString(advisorModel)}: ${message}`,
@@ -3701,13 +3702,13 @@ export class AgentSession {
 				if (isPromise(result)) {
 					result.catch(err => {
 						logger.warn("AgentSession listener rejected", {
-							error: err instanceof Error ? err.message : String(err),
+							error: errorMessage(err),
 						});
 					});
 				}
 			} catch (err) {
 				logger.warn("AgentSession listener threw", {
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			}
 		}
@@ -3782,7 +3783,7 @@ export class AgentSession {
 				sessionId: this.sessionManager.getSessionId(),
 				sessionFile: this.sessionManager.getSessionFile(),
 				reason,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}
@@ -4792,7 +4793,7 @@ export class AgentSession {
 					await this.agent.continue();
 				} catch (error) {
 					logger.warn("agent.continue failed after scheduling", {
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 					options?.onError?.();
@@ -5871,7 +5872,7 @@ export class AgentSession {
 			logger.warn("Streaming edit aborted due to patch preview failure", {
 				toolCallId,
 				path,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			this.agent.abort();
 		}
@@ -8045,7 +8046,7 @@ export class AgentSession {
 			);
 		} catch (err) {
 			logger.warn("image attachment vision fallback failed; image left undescribed", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 			return undefined;
 		}
@@ -8550,7 +8551,7 @@ export class AgentSession {
 			this.#extensionRunner.emitError({
 				extensionPath: `command:${commandName}`,
 				event: "command",
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 			return true;
 		}
@@ -8652,10 +8653,10 @@ export class AgentSession {
 				this.#extensionRunner.emitError({
 					extensionPath: `custom-command:${commandName}`,
 					event: "command",
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			} else {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				logger.error("Custom command failed", { commandName, error: message });
 			}
 			return ""; // Command was handled (with error)
@@ -9237,7 +9238,7 @@ export class AgentSession {
 			.catch(err => {
 				logger.warn("title-generator: replan refresh failed", {
 					sessionId,
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			})
 			.finally(() => {
@@ -9530,7 +9531,7 @@ export class AgentSession {
 				logger.warn("Failed to copy artifacts during fork", {
 					oldArtifactDir,
 					newArtifactDir,
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			}
 		}
@@ -9970,7 +9971,7 @@ export class AgentSession {
 				});
 			} catch (error) {
 				logger.debug("auto-thinking: classification failed; using fallback level", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			} finally {
 				clearTimeout(timer);
@@ -10941,7 +10942,7 @@ export class AgentSession {
 					} catch (error) {
 						logger.warn("Failed to save handoff document to disk", {
 							path: handoffFilePath,
-							error: error instanceof Error ? error.message : String(error),
+							error: errorMessage(error),
 						});
 					}
 				} else {
@@ -11891,7 +11892,7 @@ export class AgentSession {
 			});
 		} catch (error) {
 			logger.warn("Rewind branch checkpoint missing, falling back to root", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			this.sessionManager.branchWithSummary(null, report, { startedAt: checkpointState.startedAt });
 		}
@@ -13180,7 +13181,7 @@ export class AgentSession {
 				}
 			} catch (error) {
 				logger.warn("Dead-end shake rescue failed", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 			if (elided > 0 && options.hasProgress()) {
@@ -13199,7 +13200,7 @@ export class AgentSession {
 			if (imagesDropped > 0) this.#rebasePendingContextSnapshotAfterCompaction();
 		} catch (error) {
 			logger.warn("Dead-end image-drop rescue failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 		if (imagesDropped > 0 && options.hasProgress()) {
@@ -13626,7 +13627,7 @@ export class AgentSession {
 								throw error;
 							}
 
-							const message = error instanceof Error ? error.message : String(error);
+							const message = errorMessage(error);
 							const id = AIError.classify(error, candidate.api);
 							if (AIError.is(id, AIError.Flag.AuthFailed)) {
 								lastError = this.#buildCompactionAuthError();

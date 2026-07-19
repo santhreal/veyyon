@@ -21,7 +21,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage, AgentState } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
-import { $which, logger } from "@veyyon/utils";
+import { $which, errorMessage, logger } from "@veyyon/utils";
 import { DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { $ } from "bun";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
@@ -466,7 +466,7 @@ async function uploadToServer(sealed: Uint8Array, base: string): Promise<string>
 			body: sealed,
 		});
 	} catch (err) {
-		throw new Error(`Share upload to ${base} failed: ${err instanceof Error ? err.message : String(err)}`);
+		throw new Error(`Share upload to ${base} failed: ${errorMessage(err)}`);
 	}
 	if (!res.ok) {
 		const detail = (await res.text().catch(() => "")).trim().slice(0, 200);

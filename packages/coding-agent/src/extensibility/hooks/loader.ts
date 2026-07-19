@@ -2,7 +2,7 @@
  * Hook loader - loads TypeScript hook modules using native Bun import.
  */
 import * as path from "node:path";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
 import { hookCapability } from "../../capability/hook";
@@ -179,7 +179,7 @@ async function loadHook(hookPath: string, cwd: string): Promise<{ hook: LoadedHo
 			error: null,
 		};
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		return { hook: null, error: `Failed to load hook: ${message}` };
 	}
 }

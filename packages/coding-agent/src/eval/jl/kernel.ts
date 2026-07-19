@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, Snowflake } from "@veyyon/utils";
+import { $flag, errorMessage, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import { BaseKernel, getRemainingTimeMs, type KernelStartOptions } from "../kernel-base";
@@ -112,7 +112,7 @@ async function probeJuliaKernelAvailability(cwd: string, interpreter?: string): 
 			}
 			failures.push(`${runtime.juliaPath} (exit code ${probe.exitCode})`);
 		} catch (err) {
-			failures.push(`${runtime.juliaPath} (${err instanceof Error ? err.message : String(err)})`);
+			failures.push(`${runtime.juliaPath} (${errorMessage(err)})`);
 		}
 	}
 

@@ -13,7 +13,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { formatBytes } from "@veyyon/utils";
+import { errorMessage, formatBytes } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionInfo, SessionStatus } from "../../session/session-listing";
@@ -854,7 +854,7 @@ export class SessionSelectorComponent extends Container {
 				try {
 					global = await this.#loadAllSessions();
 				} catch (err) {
-					this.#showError(err instanceof Error ? err.message : String(err));
+					this.#showError(errorMessage(err));
 					this.#toggling = false;
 					this.#onRequestRender?.();
 					return;
@@ -920,7 +920,7 @@ export class SessionSelectorComponent extends Container {
 							this.#sessionList.removeSession(session.path);
 						}
 					} catch (err) {
-						this.#showError(err instanceof Error ? err.message : String(err));
+						this.#showError(errorMessage(err));
 					}
 				}
 				closeDialog();

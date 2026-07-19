@@ -10,7 +10,7 @@ import type {
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
 
-import { getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@veyyon/utils";
+import { errorMessage, getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Settings } from "../config/settings";
 import githubDescription from "../prompts/tools/github.md" with { type: "text" };
@@ -2985,9 +2985,7 @@ async function executePrCheckout(
 	}
 	if (failures.length > 0) {
 		throwIfAborted(signal);
-		const failureLines = failures.map(
-			f => `- ${f.prRef ?? "(current branch)"}: ${f.reason instanceof Error ? f.reason.message : String(f.reason)}`,
-		);
+		const failureLines = failures.map(f => `- ${f.prRef ?? "(current branch)"}: ${errorMessage(f.reason)}`);
 		if (outcomes.length === 0) {
 			if (failures.length === 1) throw failures[0].reason;
 			throw new ToolError(`all ${failures.length} PR checkouts failed:\n${failureLines.join("\n")}`);

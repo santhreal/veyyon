@@ -8,7 +8,7 @@
  * streamed segments into one WAV. The first run downloads the configured local
  * model into the worker's cache.
  */
-import { getProjectDir } from "@veyyon/utils";
+import { errorMessage, getProjectDir } from "@veyyon/utils";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { makeCoarseStepPrinter } from "../cli/progress-line";
@@ -163,7 +163,7 @@ export default class Say extends Command {
 				`${chalk.green("spoke")} ${chalk.dim(`(${voice}, ${model}, ${seconds.toFixed(1)}s, ${spoken} segments)`)}\n`,
 			);
 		} catch (err) {
-			process.stderr.write(chalk.red(`error: ${err instanceof Error ? err.message : String(err)}\n`));
+			process.stderr.write(chalk.red(`error: ${errorMessage(err)}\n`));
 			exitCode = 1;
 		} finally {
 			unsubscribe();

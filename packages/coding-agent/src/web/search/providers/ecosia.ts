@@ -1,4 +1,5 @@
 import type { AuthStorage } from "@veyyon/ai";
+import { errorMessage } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -122,7 +123,7 @@ async function callEcosiaHtml(params: SearchParams): Promise<string> {
 			if (signal.aborted) {
 				throw new SearchProviderError("ecosia", "Ecosia search timed out.", 504);
 			}
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			throw new SearchProviderError("ecosia", `Ecosia search failed: ${message}`, 503);
 		}
 

@@ -11,7 +11,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
+import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import { BaseKernel, getRemainingTimeMs, type KernelRuntimeEnv, type KernelStartOptions } from "../kernel-base";
@@ -117,7 +117,7 @@ async function probeRubyKernelAvailability(cwd: string, interpreter?: string): P
 				}
 				failures.push(`${runtime.rubyPath} (exit code ${probe.exitCode})`);
 			} catch (err) {
-				failures.push(`${runtime.rubyPath} (${err instanceof Error ? err.message : String(err)})`);
+				failures.push(`${runtime.rubyPath} (${errorMessage(err)})`);
 			}
 		}
 		return {
@@ -126,7 +126,7 @@ async function probeRubyKernelAvailability(cwd: string, interpreter?: string): P
 			reason: `No working Ruby interpreter found. Tried: ${failures.join("; ")}`,
 		};
 	} catch (err) {
-		return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+		return { ok: false, reason: errorMessage(err) };
 	}
 }
 

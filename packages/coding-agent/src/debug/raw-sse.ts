@@ -1,5 +1,5 @@
 import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/tui";
-import { sanitizeText } from "@veyyon/utils";
+import { errorMessage, sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -304,7 +304,7 @@ export class RawSseViewerComponent implements Component {
 			this.#statusMessage = message;
 			this.#onStatus?.(message);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			this.#statusMessage = `Copy failed: ${message}`;
 		}
 		this.#onUpdate?.();

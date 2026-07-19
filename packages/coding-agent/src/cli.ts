@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { errorMessage } from "@veyyon/utils";
+
 // Strip macOS malloc-stack-logging vars in the parent entrypoint, before any
 // subprocess/worker spawn. libmalloc reads MallocStackLogging /
 // MallocStackLoggingNoCompact during malloc bootstrap (pre-main) in every child
@@ -335,7 +337,7 @@ export async function runCli(argv: string[]): Promise<void> {
 			return;
 		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		process.stderr.write(`Error: ${message}\n`);
 		process.exitCode = 1;
 		return;

@@ -4,7 +4,7 @@
  * Handles `veyyon ssh <command>` subcommands for SSH host configuration management.
  */
 
-import { getSSHConfigPath } from "@veyyon/utils";
+import { errorMessage, getSSHConfigPath } from "@veyyon/utils";
 import chalk from "chalk";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../ssh/config-writer";
 
@@ -101,7 +101,7 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 		await addSSHHost(filePath, name, hostConfig);
 		process.stdout.write(chalk.green(`Added SSH host "${name}" to ${scope} config\n`));
 	} catch (err) {
-		process.stdout.write(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}\n`));
+		process.stdout.write(chalk.red(`Error: ${errorMessage(err)}\n`));
 		process.exitCode = 1;
 	}
 }
@@ -122,7 +122,7 @@ async function handleRemove(cmd: SSHCommandArgs): Promise<void> {
 		await removeSSHHost(filePath, name);
 		process.stdout.write(chalk.green(`Removed SSH host "${name}" from ${scope} config\n`));
 	} catch (err) {
-		process.stdout.write(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}\n`));
+		process.stdout.write(chalk.red(`Error: ${errorMessage(err)}\n`));
 		process.exitCode = 1;
 	}
 }

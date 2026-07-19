@@ -27,6 +27,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
@@ -103,7 +104,7 @@ class TextInputSubmenu extends Container {
 			try {
 				this.onSubmit(value); // empty string clears the setting
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				this.#error.setText(theme.fg("error", truncateToWidth(replaceTabs(message).replace(/[\r\n]+/g, " "), 100)));
 			}
 		};

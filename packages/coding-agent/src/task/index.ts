@@ -18,7 +18,7 @@ import * as os from "node:os";
 import path from "node:path";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
-import { $env, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
+import { $env, errorMessage, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
 import type { ToolSession } from "..";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import { MCPManager } from "../mcp/manager";
@@ -778,7 +778,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				if (started.length === 0) primaryJobId = jobId;
 				started.push({ agentId: spawn.agentId, jobId });
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				failedSchedules.push(`${spawn.agentId}: ${message}`);
 				spawn.progress.status = "failed";
 				settledCount += 1;
@@ -1026,7 +1026,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					onSettled?.(true);
 					const statusText = `Background task ${agentId} failed.`;
 					await reportProgress(statusText);
-					const message = error instanceof Error ? error.message : String(error);
+					const message = errorMessage(error);
 					const hint = AgentRegistry.global().get(agentId) ? buildFollowUpHint(false) : "";
 					throw new TaskJobError(`${message}${hint}`);
 				} finally {
@@ -1291,7 +1291,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			try {
 				isolationContext = await prepareIsolationContext(this.session.cwd);
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				return {
 					content: [{ type: "text", text: `Isolated task execution requires a git repository. ${message}` }],
 					details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
@@ -1492,7 +1492,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					artifactsDir: effectiveArtifactsDir,
 					buildCommitMessage: buildCommitMessageFn,
 					buildFailureResult: err => {
-						const message = err instanceof Error ? err.message : String(err);
+						const message = errorMessage(err);
 						return {
 							index: spawnIndex,
 							id: agentId,

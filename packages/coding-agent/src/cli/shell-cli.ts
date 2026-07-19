@@ -6,7 +6,7 @@
 import * as path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Shell } from "@veyyon/natives";
-import { APP_NAME, getProjectDir } from "@veyyon/utils";
+import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { buildMinimizerOptions } from "../exec/bash-executor";
@@ -120,7 +120,7 @@ export async function runShellCommand(cmd: ShellCommandArgs): Promise<void> {
 					process.stderr.write(chalk.yellow(`Exit code: ${result.exitCode}\n`));
 				}
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				process.stderr.write(chalk.red(`Error: ${message}\n`));
 			} finally {
 				active = false;

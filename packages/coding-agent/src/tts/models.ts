@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import type { TinyModelDtype } from "../tiny/dtype";
 
 /**
@@ -145,6 +146,6 @@ export function resolveTtsVoice(modelKey: string | undefined, voice: string | un
  * so only a fresh process recovers even after the purge lands a good file).
  */
 export function isCorruptModelCacheError(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return /protobuf parsing failed|load model from .+ failed/i.test(message);
 }

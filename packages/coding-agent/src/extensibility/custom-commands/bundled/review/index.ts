@@ -11,7 +11,7 @@
  * rich context for the orchestrating agent to distribute work across
  * multiple reviewer agents based on diff weight and locality.
  */
-import { isRecord, prompt } from "@veyyon/utils";
+import { errorMessage, isRecord, prompt } from "@veyyon/utils";
 import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
 import reviewCustomRequestTemplate from "../../../../prompts/review-custom-request.md" with { type: "text" };
@@ -404,7 +404,7 @@ async function buildPrReviewPrompt(
 		const lookup = await gh.getOrFetchPrDiff({ cwd: api.cwd, repo: ref.repo, number: ref.number });
 		diffText = lookup.payload.unified;
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		const failure = `Failed to fetch PR diff for ${ref.repo}#${ref.number}: ${message}`;
 		if (ctx.hasUI) {
 			ctx.ui.notify(failure, "error");
@@ -539,7 +539,7 @@ export class ReviewCommand implements CustomCommand {
 				try {
 					diffText = await git.diff(this.api.cwd, { base: `${baseBranch}...${currentBranch}` });
 				} catch (err) {
-					ctx.ui.notify(`Failed to get diff: ${err instanceof Error ? err.message : String(err)}`, "error");
+					ctx.ui.notify(`Failed to get diff: ${errorMessage(err)}`, "error");
 					return undefined;
 				}
 
@@ -554,7 +554,7 @@ export class ReviewCommand implements CustomCommand {
 
 			case "uncommitted": {
 				const reviewDiff = await getUncommittedReviewDiff(this.api).catch(err => {
-					ctx.ui.notify(`Failed to get diff: ${err instanceof Error ? err.message : String(err)}`, "error");
+					ctx.ui.notify(`Failed to get diff: ${errorMessage(err)}`, "error");
 					return undefined;
 				});
 				if (!reviewDiff) return undefined;
@@ -585,7 +585,7 @@ export class ReviewCommand implements CustomCommand {
 				try {
 					diffText = await git.show(this.api.cwd, hash, { format: "" });
 				} catch (err) {
-					ctx.ui.notify(`Failed to get commit: ${err instanceof Error ? err.message : String(err)}`, "error");
+					ctx.ui.notify(`Failed to get commit: ${errorMessage(err)}`, "error");
 					return undefined;
 				}
 

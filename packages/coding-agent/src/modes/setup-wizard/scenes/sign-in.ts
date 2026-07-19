@@ -3,7 +3,7 @@ import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
-import { getAgentDbPath } from "@veyyon/utils";
+import { errorMessage, getAgentDbPath } from "@veyyon/utils";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
 import { theme } from "../../theme/theme";
@@ -253,7 +253,7 @@ export class SignInTab implements SetupTab {
 				this.#authUrl = undefined;
 				this.#authLaunchUrl = undefined;
 			} else {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				this.#statusLines = [
 					theme.fg("error", `Login failed: ${message}`),
 					theme.fg("dim", "Choose another provider or press Esc to skip."),

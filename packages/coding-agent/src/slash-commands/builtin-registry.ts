@@ -1676,7 +1676,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			try {
 				await runProfileCommand(parseProfileCommand(command.args), port);
 			} catch (error) {
-				ctx.showError(error instanceof Error ? error.message : String(error));
+				ctx.showError(errorMessage(error));
 			}
 			return commandConsumed();
 		},

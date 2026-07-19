@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { isEnoent, logger, postmortem, ptree, untilAborted } from "@veyyon/utils";
+import { errorMessage, isEnoent, logger, postmortem, ptree, untilAborted } from "@veyyon/utils";
 import { MessageFramer } from "../jsonrpc/message-framing";
 import { ToolAbortError, throwIfAborted } from "../tools/tool-errors";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
@@ -371,7 +371,7 @@ async function startMessageReader(client: LspClient): Promise<void> {
 				} catch (err) {
 					logger.warn("LSP message handling failed", {
 						server: client.name,
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					});
 				}
 			}
@@ -772,7 +772,7 @@ export async function getOrCreateClient(
 			client.status = "error";
 			if (clients.get(key) === client) clients.delete(key);
 			proc.kill();
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			// Negative-cache deterministic failures. Timeouts under a
 			// caller-shortened deadline (warmup/writethrough) and caller-signal
 			// aborts are transient — the server may simply be slow or the user may

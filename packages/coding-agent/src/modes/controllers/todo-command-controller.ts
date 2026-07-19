@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { titleCaseSentence, titleCaseWords } from "@veyyon/utils";
+import { errorMessage, titleCaseSentence, titleCaseWords } from "@veyyon/utils";
 import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
 import {
 	applyOpsToPhases,
@@ -169,7 +169,7 @@ export class TodoCommandController {
 			copyToClipboard(phasesToMarkdown(phases));
 			this.ctx.showStatus("Copied todos as Markdown to clipboard.");
 		} catch (error) {
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 		}
 	}
 
@@ -188,7 +188,7 @@ export class TodoCommandController {
 			await fs.writeFile(target, phasesToMarkdown(phases), "utf8");
 			this.ctx.showStatus(`Wrote todos to ${target}`);
 		} catch (error) {
-			this.ctx.showError(`Failed to write todos: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to write todos: ${errorMessage(error)}`);
 		}
 	}
 
@@ -199,7 +199,7 @@ export class TodoCommandController {
 			source = this.#resolveTodoPath(rest);
 			content = await fs.readFile(source, "utf8");
 		} catch (error) {
-			this.ctx.showError(`Failed to read todos: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to read todos: ${errorMessage(error)}`);
 			return;
 		}
 		const { phases, errors } = markdownToPhases(content);
@@ -392,9 +392,7 @@ export class TodoCommandController {
 			const taskCount = parsed.reduce((sum, p) => sum + p.tasks.length, 0);
 			this.ctx.showStatus(`Todos updated from editor: ${parsed.length} phase(s), ${taskCount} task(s).`);
 		} catch (error) {
-			this.ctx.showWarning(
-				`Failed to open external editor: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showWarning(`Failed to open external editor: ${errorMessage(error)}`);
 		} finally {
 			if (fileHandle) {
 				await fileHandle.close().catch(() => {});

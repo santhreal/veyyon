@@ -12,7 +12,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { prompt, untilAborted } from "@veyyon/utils";
+import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -428,7 +428,7 @@ function jsMatchedLineIndexes(
 	try {
 		regex = new RegExp(pattern, flags);
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		throw new ToolError(`Invalid regex: ${message.replace(/^Invalid regular expression:\s*/i, "")}`);
 	}
 	if (!multiline) {
@@ -514,7 +514,7 @@ async function nativeChunkedLineIndexes(
 				try {
 					lineRegex = new RegExp(pattern, ignoreCase ? "i" : "");
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					throw new ToolError(`Invalid regex: ${message.replace(/^Invalid regular expression:\s*/i, "")}`);
 				}
 			}

@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { $which, APP_NAME, isEnoent, VERSION } from "@veyyon/utils";
+import { $which, APP_NAME, errorMessage, isEnoent, VERSION } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
@@ -960,7 +960,7 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 	} catch (err) {
 		// err.message, not `${err}`: the latter stringifies as "Error: …" and
 		// produces a doubled "Failed to check for updates: Error: Failed to …".
-		console.error(chalk.red(`Failed to check for updates: ${err instanceof Error ? err.message : String(err)}`));
+		console.error(chalk.red(`Failed to check for updates: ${errorMessage(err)}`));
 		process.exit(1);
 	}
 

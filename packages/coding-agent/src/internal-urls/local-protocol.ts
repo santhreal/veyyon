@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { formatBytes, formatCount, isEnoent } from "@veyyon/utils";
+import { errorMessage, formatBytes, formatCount, isEnoent } from "@veyyon/utils";
 import { AgentRegistry } from "../registry/agent-registry";
 import { getContentType } from "./content-type";
 import { buildDirectoryResource } from "./filesystem-resource";
@@ -25,7 +25,7 @@ function ensureWithinRoot(targetPath: string, rootPath: string): void {
 }
 
 function toLocalValidationError(error: unknown): Error {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return new Error(message.replace("skill://", "local://"));
 }
 const WINDOWS_LOCAL_ROOT_MAX_CHARS = 180;
