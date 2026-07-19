@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import type { ImageContent } from "@veyyon/ai";
 import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/tui";
 import { BracketedPasteHandler } from "@veyyon/tui/bracketed-paste";
+import { hasUriScheme } from "@veyyon/utils";
 import type { AppKeybinding } from "../../config/keybindings";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../image-references";
@@ -66,7 +67,6 @@ const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 const BRACKETED_IMAGE_PATH_REGEX = /\.(?:png|jpe?g|gif|webp)$/i;
 const SHELL_ESCAPED_PATH_CHAR_REGEX = /\\([\\\s'"()[\]{}&;<>|?*!$`])/g;
-const URI_SCHEME_REGEX = /^[a-z][a-z0-9+.-]*:/i;
 const FILE_URI_REGEX = /^file:\/\//i;
 const WINDOWS_DRIVE_PATH_REGEX = /^[a-z]:[\\/]/i;
 /**
@@ -135,7 +135,7 @@ function normalizePastedPath(path: string): string {
 
 function isExplicitPastedPath(path: string): boolean {
 	if (WINDOWS_DRIVE_PATH_REGEX.test(path) || FILE_URI_REGEX.test(path)) return true;
-	if (URI_SCHEME_REGEX.test(path)) return false;
+	if (hasUriScheme(path)) return false;
 	return path.includes("/") || path.includes("\\");
 }
 
