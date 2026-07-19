@@ -46,6 +46,11 @@ they opt in.
 - **First run** downloads weights from the HF Hub to a cache dir (q4 weights ~200MB–1.1GB depending
   on model); subsequent **warm** loads are sub-second to ~3s. Inference is async and
   background-friendly for memory tasks; titles are semi-interactive.
+- **`veyyon tiny-models list`** shows each catalog model with its on-disk state: `downloaded (SIZE)`
+  when the weights are cached, or `not downloaded` otherwise, so you can see what is installed and
+  how much space it uses before reclaiming it. The size is the total of every file cached under the
+  model's repo directory. With `--json`, each entry carries `downloaded` (boolean) and `cachedBytes`
+  (number).
 
 ## Task 1: Session title generation (`providers.tinyModel`)
 

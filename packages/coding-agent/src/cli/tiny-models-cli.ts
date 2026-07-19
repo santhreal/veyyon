@@ -1,11 +1,13 @@
 import { clampLow, formatBytes } from "@veyyon/utils";
 import chalk from "chalk";
+import { transformersRepoCacheState } from "../subprocess/transformers-cache";
 import {
 	DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY,
 	getTinyLocalModelSpec,
 	isTinyLocalModelKey,
 	TINY_LOCAL_MODELS,
 	type TinyLocalModelKey,
+	type TinyTitleLocalModelSpec,
 } from "../tiny/models";
 import { shutdownTinyTitleClient, tinyTitleClient } from "../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../tiny/title-protocol";
@@ -68,16 +70,41 @@ export function resolveModels(model: string | undefined): TinyLocalModelKey[] {
 	return [model];
 }
 
-function listModels(json: boolean | undefined): void {
+/** A catalog model plus its on-disk cache state, for the `list` action. */
+export interface TinyModelListing extends TinyTitleLocalModelSpec {
+	/** At least one `.onnx` weight is present, so the model can load offline. */
+	downloaded: boolean;
+	/** Total bytes the model occupies in the Transformers.js cache (0 when absent). */
+	cachedBytes: number;
+}
+
+/**
+ * Pair every catalog model with its on-disk cache state. `cacheDir` defaults to
+ * the real Transformers.js cache root; tests pass a temporary directory.
+ */
+export async function buildTinyModelListing(cacheDir?: string): Promise<TinyModelListing[]> {
+	return Promise.all(
+		TINY_LOCAL_MODELS.map(async spec => {
+			const { downloaded, bytes } = await transformersRepoCacheState(spec.repo, cacheDir);
+			return { ...spec, downloaded, cachedBytes: bytes };
+		}),
+	);
+}
+
+async function listModels(json: boolean | undefined): Promise<void> {
+	const listing = await buildTinyModelListing();
 	if (json) {
-		writeLine(JSON.stringify({ models: TINY_LOCAL_MODELS }));
+		writeLine(JSON.stringify({ models: listing }));
 		return;
 	}
 	writeLine(chalk.bold("Tiny local models"));
-	for (const spec of TINY_LOCAL_MODELS) {
-		const defaultMark = spec.key === DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY ? chalk.cyan(" default") : "";
-		writeLine(`${chalk.cyan(spec.key)}${defaultMark}`);
-		writeLine(`  ${spec.label} — ${spec.description}`);
+	for (const model of listing) {
+		const defaultMark = model.key === DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY ? chalk.cyan(" default") : "";
+		const state = model.downloaded
+			? chalk.green(` downloaded (${formatBytes(model.cachedBytes)})`)
+			: chalk.dim(" not downloaded");
+		writeLine(`${chalk.cyan(model.key)}${defaultMark}${state}`);
+		writeLine(`  ${model.label} — ${model.description}`);
 	}
 }
 
@@ -133,7 +160,7 @@ async function downloadOne(modelKey: TinyLocalModelKey, json: boolean | undefine
 
 export async function runTinyModelsCommand(command: TinyModelsCommandArgs): Promise<void> {
 	if (command.action === "list") {
-		listModels(command.flags.json);
+		await listModels(command.flags.json);
 		return;
 	}
 
