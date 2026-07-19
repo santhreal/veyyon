@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
+import { atomicWriteFileSync } from "./atomic-write";
 import { isUuid } from "./regex";
 import { errorMessage, isRecord } from "./type-guards";
 
@@ -289,7 +290,9 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 		} catch {}
 		return filePath;
 	}
-	fs.writeFileSync(filePath, YAML.stringify(existing, null, 2));
+	// Atomic: an interrupted write here would corrupt the pointer to the active
+	// profile (defaultProfile) plus any cross-profile keys.
+	atomicWriteFileSync(filePath, YAML.stringify(existing, null, 2));
 	return filePath;
 }
 
