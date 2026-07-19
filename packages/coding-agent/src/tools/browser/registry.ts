@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { errorMessage, logger, withTimeout } from "@veyyon/utils";
+import { errorMessage, logger, trimTrailingSlashes, withTimeout } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import type { Browser, CDPSession } from "puppeteer-core";
 import { ToolAbortError, ToolError } from "../tool-errors";
@@ -105,7 +105,7 @@ export async function acquireBrowser(kind: BrowserKind, opts: AcquireBrowserOpti
 }
 
 export function normalizeConnectedCdpUrl(rawCdpUrl: string): string {
-	const cdpUrl = rawCdpUrl.replace(/\/+$/, "");
+	const cdpUrl = trimTrailingSlashes(rawCdpUrl);
 	if (/^wss?:\/\//i.test(cdpUrl)) {
 		throw new ToolError(
 			"browser app.cdp_url must be the HTTP CDP discovery endpoint (for example http://127.0.0.1:9222), not a ws:// browser websocket URL.",

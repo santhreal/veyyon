@@ -29,6 +29,7 @@ import {
 	parseStreamingJsonThrottled,
 	stringifyJson,
 	structuredCloneJSON,
+	trimTrailingSlashes,
 } from "@veyyon/utils";
 import * as AIError from "../error";
 import {
@@ -158,7 +159,7 @@ export interface OpenAIRequestSetup {
 function normalizeSakanaRequestBaseUrl(baseUrl: string | undefined): string | undefined {
 	const value = baseUrl?.trim();
 	if (!value) return undefined;
-	const normalized = value.replace(/\/+$/, "");
+	const normalized = trimTrailingSlashes(value);
 	return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
 }
 

@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { z } from "zod/v4";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch, isRecord } from "../utils";
@@ -679,7 +680,7 @@ function toGraphQLRootNamespaceId(rootNamespaceId: string): string {
 
 function normalizeGitLabBaseUrl(baseUrl: string | undefined): string {
 	const raw = baseUrl?.trim() || GITLAB_DEFAULT_BASE_URL;
-	return raw.replace(/\/+$/, "") || GITLAB_DEFAULT_BASE_URL;
+	return trimTrailingSlashes(raw) || GITLAB_DEFAULT_BASE_URL;
 }
 
 function buildGitLabJsonHeaders(apiKey: string): Headers {

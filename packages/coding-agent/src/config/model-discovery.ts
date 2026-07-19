@@ -20,7 +20,7 @@ import {
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS,
 } from "@veyyon/catalog/provider-models/openai-compat";
 import type { ModelSpec, OpenAICompat } from "@veyyon/catalog/types";
-import { isRecord } from "@veyyon/utils";
+import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
 import { withScopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ProviderDiscovery } from "./models-config-schema";
 
@@ -867,7 +867,7 @@ function normalizeLlamaCppBaseUrl(baseUrl?: string): string {
 	const raw = baseUrl || defaultBaseUrl;
 	try {
 		const parsed = new URL(raw);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = trimTrailingSlashes(parsed.pathname);
 		return `${parsed.protocol}//${parsed.host}${trimmedPath}`;
 	} catch {
 		return raw;
@@ -877,7 +877,7 @@ function normalizeLlamaCppBaseUrl(baseUrl?: string): string {
 function toLlamaCppNativeBaseUrl(baseUrl: string): string {
 	try {
 		const parsed = new URL(baseUrl);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = trimTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/v1") ? trimmedPath.slice(0, -3) || "/" : trimmedPath || "/";
 		const normalized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 		return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
@@ -895,7 +895,7 @@ export function normalizeOpenAIModelsListBaseUrl(baseUrl?: string): string {
 	const raw = baseUrl || defaultBaseUrl;
 	try {
 		const parsed = new URL(raw);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = trimTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/v1") ? trimmedPath || "/v1" : `${trimmedPath}/v1`;
 		return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 	} catch {

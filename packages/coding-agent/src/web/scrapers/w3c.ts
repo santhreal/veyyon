@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { asRecord } from "./utils";
@@ -23,7 +23,7 @@ function getArray(record: JsonRecord | null, key: string): unknown[] | undefined
 }
 
 function extractShortname(pathname: string): string | null {
-	const trimmed = pathname.replace(/\/+$/g, "");
+	const trimmed = trimTrailingSlashes(pathname);
 	const segments = trimmed.split("/").filter(Boolean);
 
 	if (segments.length < 2 || segments[0] !== "TR") return null;

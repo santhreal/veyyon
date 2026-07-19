@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, errorMessage, formatCount, isEnoent } from "@veyyon/utils";
+import { $which, errorMessage, formatCount, isEnoent, trimTrailingSlashes } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { getContentType } from "./content-type";
@@ -158,7 +158,7 @@ function decodeVaultPath(url: InternalUrl): {
 		throw toVaultValidationError(error);
 	}
 
-	return { rawPathname, relativePath: decoded.replace(/\/+$/, ""), hasPath: true, isDirectory };
+	return { rawPathname, relativePath: trimTrailingSlashes(decoded), hasPath: true, isDirectory };
 }
 
 function paramsFromUrl(url: InternalUrl): VaultParams {

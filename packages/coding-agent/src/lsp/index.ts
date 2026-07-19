@@ -7,7 +7,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
-import { errorMessage, logger, once, prompt, truncate, untilAborted } from "@veyyon/utils";
+import { errorMessage, logger, once, prompt, trimTrailingSlashes, truncate, untilAborted } from "@veyyon/utils";
 import type { BunFile } from "bun";
 import { type Theme, theme } from "../modes/theme/theme";
 import lspDescription from "../prompts/tools/lsp.md" with { type: "text" };
@@ -580,7 +580,7 @@ function goWorkspaceBuildPattern(diskPath: string): string | null {
 	if (!trimmed) return null;
 
 	const isAbsolute = path.isAbsolute(trimmed) || path.win32.isAbsolute(trimmed);
-	const normalized = trimmed.replaceAll("\\", "/").replace(/\/+$/, "");
+	const normalized = trimTrailingSlashes(trimmed.replaceAll("\\", "/"));
 	const dir = normalized || ".";
 	if (dir === ".") return "./...";
 	if (dir.endsWith("/...")) return dir;

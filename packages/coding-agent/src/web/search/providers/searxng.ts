@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 /**
  * SearXNG Web Search Provider
  *
@@ -163,7 +164,7 @@ function buildRequest(
 	},
 	auth: SearXNGAuth | null,
 ): { url: URL; headers: Record<string, string> } {
-	const base = endpoint.replace(/\/+$/, "");
+	const base = trimTrailingSlashes(endpoint);
 	const url = new URL(`${base}/search`);
 
 	url.searchParams.set("q", params.query);

@@ -8,7 +8,7 @@
  * tests to spy on.
  */
 
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { HindsightConfig } from "./config";
 
@@ -224,7 +224,7 @@ export class HindsightApi {
 	#headers: Record<string, string>;
 
 	constructor(options: HindsightApiOptions) {
-		this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
+		this.#baseUrl = trimTrailingSlashes(options.baseUrl);
 		this.#headers = {
 			"User-Agent": options.userAgent ?? DEFAULT_USER_AGENT,
 			"Content-Type": "application/json",

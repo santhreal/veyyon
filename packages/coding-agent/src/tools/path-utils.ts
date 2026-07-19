@@ -1,7 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
-import { expandTilde, isEnoent, isEnotdir, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
+import {
+	expandTilde,
+	isEnoent,
+	isEnotdir,
+	stripWindowsExtendedLengthPathPrefix,
+	trimTrailingSlashes,
+} from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
 import { ToolError } from "./tool-errors";
@@ -859,7 +865,7 @@ export function combineSearchGlobs(prefixGlob?: string, suffixGlob?: string): st
 	if (!prefixGlob) return suffixGlob;
 	if (!suffixGlob) return prefixGlob;
 
-	const normalizedPrefix = prefixGlob.replace(/\/+$/, "");
+	const normalizedPrefix = trimTrailingSlashes(prefixGlob);
 	const normalizedSuffix = suffixGlob.replace(/^\/+/, "");
 
 	return `${normalizedPrefix}/${normalizedSuffix}`;
@@ -871,7 +877,7 @@ function normalizePosixPath(filePath: string): string {
 
 function joinRelativeGlob(basePath: string | undefined, globPattern: string): string {
 	if (!basePath || basePath === ".") return normalizePosixPath(globPattern).replace(/^\/+/, "");
-	const normalizedBase = normalizePosixPath(basePath).replace(/\/+$/, "");
+	const normalizedBase = trimTrailingSlashes(normalizePosixPath(basePath));
 	const normalizedGlob = normalizePosixPath(globPattern).replace(/^\/+/, "");
 	return `${normalizedBase}/${normalizedGlob}`;
 }

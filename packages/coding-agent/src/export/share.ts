@@ -21,7 +21,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage, AgentState } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
-import { $which, errorMessage, logger } from "@veyyon/utils";
+import { $which, errorMessage, logger, trimTrailingSlashes } from "@veyyon/utils";
 import { DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { $ } from "bun";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
@@ -306,7 +306,7 @@ export async function shareSession(sm: SessionManager, options?: ShareSessionOpt
 
 /** Strip trailing slashes so `<base>/<id>` composes cleanly. */
 export function normalizeShareServerUrl(serverUrl?: string): string {
-	const base = (serverUrl ?? DEFAULT_SHARE_URL).trim().replace(/\/+$/, "");
+	const base = trimTrailingSlashes((serverUrl ?? DEFAULT_SHARE_URL).trim());
 	return base || DEFAULT_SHARE_URL;
 }
 

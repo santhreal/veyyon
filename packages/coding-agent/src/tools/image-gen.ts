@@ -10,7 +10,16 @@ import {
 	URL_PATHS,
 } from "@veyyon/catalog/wire/codex";
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
-import { $env, isEnoent, parseImageMetadata, prompt, readSseJson, Snowflake, untilAborted } from "@veyyon/utils";
+import {
+	$env,
+	isEnoent,
+	parseImageMetadata,
+	prompt,
+	readSseJson,
+	Snowflake,
+	trimTrailingSlashes,
+	untilAborted,
+} from "@veyyon/utils";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import { isAuthenticated, type ModelRegistry } from "../config/model-registry";
@@ -802,7 +811,7 @@ function getOpenAIBaseUrl(model: Model): string {
 		model.api === "openai-codex-responses" || model.provider === "openai-codex"
 			? CODEX_BASE_URL
 			: DEFAULT_OPENAI_BASE_URL;
-	return (model.baseUrl || fallback).replace(/\/+$/, "");
+	return trimTrailingSlashes(model.baseUrl || fallback);
 }
 
 function getOpenAIResponsesUrl(model: Model): string {

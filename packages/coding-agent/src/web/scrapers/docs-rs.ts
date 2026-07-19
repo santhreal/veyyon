@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { getDocsRsCacheDir, isEnoent, logger, truncate, tryParseJson } from "@veyyon/utils";
+import { getDocsRsCacheDir, isEnoent, logger, trimTrailingSlashes, truncate, tryParseJson } from "@veyyon/utils";
 import { ToolAbortError } from "../../tools/tool-errors";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
@@ -66,7 +66,7 @@ function parseDocsRsUrl(url: string): DocsRsTarget | null {
 	if (!parsed) return null;
 	if (parsed.hostname !== "docs.rs") return null;
 
-	const segments = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+	const segments = trimTrailingSlashes(parsed.pathname).split("/").filter(Boolean);
 
 	// Skip /crate/{name}/{version} overview pages — those are docs.rs chrome, not rustdoc
 	if (segments[0] === "crate") return null;

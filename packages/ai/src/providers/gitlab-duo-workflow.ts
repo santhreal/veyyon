@@ -4,7 +4,7 @@ import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
-import { errorMessage, scopedTimeoutSignal } from "@veyyon/utils";
+import { errorMessage, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -2824,7 +2824,7 @@ function truncateGitLabTraceValue(value: unknown): unknown {
 }
 
 function normalizeGitLabBaseUrl(baseUrl: string): string {
-	return baseUrl.replace(/\/+$/, "") || DEFAULT_GITLAB_BASE_URL;
+	return trimTrailingSlashes(baseUrl) || DEFAULT_GITLAB_BASE_URL;
 }
 
 // Join a GitLab API path onto a base URL while preserving any relative install path

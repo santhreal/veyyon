@@ -12,7 +12,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
+import { errorMessage, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -808,7 +808,7 @@ async function resolveInternalSearchInputs(opts: {
 		// misleading. Local/skill/vault dir resources set `sourcePath` and skip this.
 		if (resource.isDirectory && !resource.sourcePath) {
 			throw new ToolError(
-				`search cannot recurse the directory listing at ${rawPath}; search a specific file under it (e.g. ${rawPath.replace(/\/+$/, "")}/<file>) or read ${rawPath} to list its entries`,
+				`search cannot recurse the directory listing at ${rawPath}; search a specific file under it (e.g. ${trimTrailingSlashes(rawPath)}/<file>) or read ${rawPath} to list its entries`,
 			);
 		}
 		if (resource.sourcePath) {

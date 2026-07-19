@@ -31,30 +31,11 @@ const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 
 const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
 
-// Inline `.replace(/\/+$/...)` trailing-slash strips remaining when this lock
-// landed — all in lane-hot files at the time. Convert a file to
-// trimTrailingSlashes, remove its entry; a stale entry fails the lock, so the
-// list can only shrink. (utils/src/url.ts is the owner and always allowed.)
-const INLINE_STRIP_GRANDFATHERED = new Set([
-	"ai/src/providers/gitlab-duo-workflow.ts",
-	"ai/src/providers/openai-shared.ts",
-	"catalog/src/discovery/gitlab-duo-workflow.ts",
-	"coding-agent/src/config/model-discovery.ts",
-	"coding-agent/src/export/share.ts",
-	"coding-agent/src/hindsight/client.ts",
-	"coding-agent/src/internal-urls/vault-protocol.ts",
-	"coding-agent/src/lsp/index.ts",
-	"coding-agent/src/tools/browser/attach.ts",
-	"coding-agent/src/tools/browser/registry.ts",
-	"coding-agent/src/tools/fetch.ts",
-	"coding-agent/src/tools/grep.ts",
-	"coding-agent/src/tools/image-gen.ts",
-	"coding-agent/src/tools/path-utils.ts",
-	"coding-agent/src/tools/read.ts",
-	"coding-agent/src/web/scrapers/docs-rs.ts",
-	"coding-agent/src/web/scrapers/w3c.ts",
-	"coding-agent/src/web/search/providers/searxng.ts",
-]);
+// Inline `.replace(/\/+$/...)` trailing-slash strips are fully drained: every
+// former site now calls trimTrailingSlashes. The set is empty, so ANY new inline
+// strip in a production `.ts` source fails the lock and must import the owner
+// instead. (utils/src/url.ts is the owner and always allowed.)
+const INLINE_STRIP_GRANDFATHERED = new Set<string>([]);
 const INLINE_STRIP = /replace\(\/\\\/\+\$\//;
 
 async function walk(dir: string, out: string[]): Promise<void> {

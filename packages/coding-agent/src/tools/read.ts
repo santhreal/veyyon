@@ -24,6 +24,7 @@ import {
 	logger,
 	prompt,
 	readImageMetadata,
+	trimTrailingSlashes,
 	untilAborted,
 } from "@veyyon/utils";
 import { type } from "arktype";
@@ -671,7 +672,7 @@ async function findUniqueSuffixMatch(
 	cwd: string,
 	signal?: AbortSignal,
 ): Promise<{ absolutePath: string; displayPath: string } | null> {
-	const normalized = rawPath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+	const normalized = trimTrailingSlashes(rawPath.replace(/\\/g, "/").replace(/^\.\//, ""));
 	if (!normalized) return null;
 	const pattern = `**/${escapeGlobMetachars(normalized)}`;
 

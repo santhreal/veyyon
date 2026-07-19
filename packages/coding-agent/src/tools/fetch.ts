@@ -6,7 +6,7 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
 import { htmlToMarkdown } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
-import { $which, errorMessage, formatCount, ptree, truncate } from "@veyyon/utils";
+import { $which, errorMessage, formatCount, ptree, trimTrailingSlashes, truncate } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -173,7 +173,7 @@ function buildLlmEndpointCandidates(url: string): string[] {
 			return [`${parsed.origin}/.well-known/llms.txt`, `${parsed.origin}/llms.txt`, `${parsed.origin}/llms.md`];
 		}
 
-		const trimmedPath = parsed.pathname.replace(/\/+$/, "");
+		const trimmedPath = trimTrailingSlashes(parsed.pathname);
 		const segments = trimmedPath.split("/").filter(Boolean);
 		const scopeDepth = parsed.pathname.endsWith("/") ? segments.length : Math.max(segments.length - 1, 1);
 		const endpoints: string[] = [];
