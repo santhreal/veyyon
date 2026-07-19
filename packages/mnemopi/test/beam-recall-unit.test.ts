@@ -571,4 +571,69 @@ describe("beam recall free functions", () => {
 		expect(results[0]?.id).toBe("triple");
 		expect(results.map(row => row.id)).toContain("single");
 	});
+
+	const insertTagged = (
+		beam: TestBeam,
+		id: string,
+		content: string,
+		fields: { source: string; veracity: string; memoryType: string },
+	): void => {
+		beam.db.run(
+			`INSERT INTO working_memory
+				(id, content, source, timestamp, session_id, importance, scope, veracity, memory_type)
+				VALUES (?, ?, ?, '2026-05-30T12:00:00.000Z', ?, 0.5, 'global', ?, ?)`,
+			[id, content, fields.source, beam.sessionId, fields.veracity, fields.memoryType],
+		);
+	};
+
+	it("restricts recall to a requested source", async () => {
+		const beam = makeBeam();
+		insertTagged(beam, "chat", "coffee mentioned in chat", { source: "chat", veracity: "true", memoryType: "fact" });
+		insertTagged(beam, "email", "coffee mentioned in email", {
+			source: "email",
+			veracity: "true",
+			memoryType: "fact",
+		});
+
+		const ids = (await recall(beam, "coffee", 10, { source: "chat" })).map(row => row.id);
+		expect(ids).toContain("chat");
+		expect(ids).not.toContain("email");
+	});
+
+	it("restricts recall to a requested veracity", async () => {
+		const beam = makeBeam();
+		insertTagged(beam, "vtrue", "coffee stated as true", { source: "chat", veracity: "true", memoryType: "fact" });
+		insertTagged(beam, "vinf", "coffee only inferred", { source: "chat", veracity: "inferred", memoryType: "fact" });
+
+		const ids = (await recall(beam, "coffee", 10, { veracity: "true" })).map(row => row.id);
+		expect(ids).toContain("vtrue");
+		expect(ids).not.toContain("vinf");
+	});
+
+	it("restricts recall to a requested memory type", async () => {
+		const beam = makeBeam();
+		insertTagged(beam, "fact", "coffee is a fact", { source: "chat", veracity: "true", memoryType: "fact" });
+		insertTagged(beam, "pref", "coffee is a preference", {
+			source: "chat",
+			veracity: "true",
+			memoryType: "preference",
+		});
+
+		const ids = (await recall(beam, "coffee", 10, { memoryType: "preference" })).map(row => row.id);
+		expect(ids).toContain("pref");
+		expect(ids).not.toContain("fact");
+	});
+
+	it("filters the topic option against the source column (see FINDING-RECALL-TOPIC-EQ-SOURCE)", async () => {
+		// buildWhere maps `topic` onto `source = ?`; there is no topic column on
+		// working/episodic memory. This locks the current behavior so a fix is a
+		// visible test change, not a silent regression.
+		const beam = makeBeam();
+		insertTagged(beam, "chat", "coffee tagged chat", { source: "chat", veracity: "true", memoryType: "fact" });
+		insertTagged(beam, "email", "coffee tagged email", { source: "email", veracity: "true", memoryType: "fact" });
+
+		const ids = (await recall(beam, "coffee", 10, { topic: "chat" })).map(row => row.id);
+		expect(ids).toContain("chat");
+		expect(ids).not.toContain("email");
+	});
 });
