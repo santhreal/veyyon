@@ -16,7 +16,7 @@ import {
 } from "@veyyon/utils";
 import { Snowflake } from "@veyyon/utils/snowflake";
 import { YAML } from "bun";
-import { createProfile, removeProfile, runProfileCommand } from "../src/cli/profile-cli";
+import { createProfile, removeProfile, runProfileCommand, writeProfileDisplayName } from "../src/cli/profile-cli";
 
 describe("profile lifecycle CLI", () => {
 	let configDir = "";
@@ -134,6 +134,52 @@ describe("profile lifecycle CLI", () => {
 		await expect(fs.rename(loser, winner)).rejects.toMatchObject({ code: "ENOTEMPTY" });
 		// The winner's contents are untouched by the failed rename.
 		expect(await Bun.file(path.join(winner, "populated")).text()).toBe("x");
+	});
+
+	it("renaming the active profile updates the live settings cache immediately", async () => {
+		const { Settings, resetSettingsForTest } = await import("../src/config/settings");
+		resetSettingsForTest();
+		await createProfile("work", "blank");
+		setProfile("work");
+		const agentDir = path.join(getProfileRootDir("work"), "agent");
+		await Settings.init({ agentDir });
+		try {
+			expect(Settings.instance.get("profile.displayName") ?? "").toBe("");
+
+			await writeProfileDisplayName("work", "Renamed Work");
+
+			// The live singleton reflects the new name with no reload — a rename of
+			// the CURRENT profile must not read stale until the next save.
+			expect(Settings.instance.get("profile.displayName")).toBe("Renamed Work");
+			// And it is persisted to the profile's own config on disk.
+			const onDisk = YAML.parse(await Bun.file(path.join(agentDir, "config.yml")).text()) as {
+				profile?: { displayName?: string };
+			};
+			expect(onDisk.profile?.displayName).toBe("Renamed Work");
+		} finally {
+			resetSettingsForTest();
+		}
+	});
+
+	it("renaming a NON-active profile does not disturb the live singleton", async () => {
+		const { Settings, resetSettingsForTest } = await import("../src/config/settings");
+		resetSettingsForTest();
+		await createProfile("work", "blank");
+		await createProfile("spare", "blank");
+		setProfile("work");
+		await Settings.init({ agentDir: path.join(getProfileRootDir("work"), "agent") });
+		try {
+			// Rename the OTHER profile; the active singleton's name stays empty and
+			// the change lands only in spare's own config file.
+			await writeProfileDisplayName("spare", "Spare Name");
+			expect(Settings.instance.get("profile.displayName") ?? "").toBe("");
+			const spareOnDisk = YAML.parse(
+				await Bun.file(path.join(getProfileRootDir("spare"), "agent", "config.yml")).text(),
+			) as { profile?: { displayName?: string } };
+			expect(spareOnDisk.profile?.displayName).toBe("Spare Name");
+		} finally {
+			resetSettingsForTest();
+		}
 	});
 
 	it("does not copy sessions or blobs when seeding from default", async () => {
