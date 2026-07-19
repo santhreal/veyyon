@@ -17,6 +17,7 @@ import {
 	popLoopPhase,
 	prompt,
 	pushLoopPhase,
+	truncate,
 	untilAborted,
 } from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
@@ -114,8 +115,7 @@ export function buildBudgetNotice(requests: number, budget: number): string {
 
 /** Flatten whitespace and clip salvage text for the cancelled-child summary line. */
 function formatSalvageSnippet(text: string, maxLength = 500): string {
-	const flattened = collapseWhitespace(text);
-	return flattened.length > maxLength ? `${flattened.slice(0, maxLength - 1)}…` : flattened;
+	return truncate(collapseWhitespace(text), maxLength);
 }
 
 /** Agent event types to forward for progress tracking. */
@@ -662,7 +662,7 @@ function extractToolArgsPreview(args: Record<string, unknown>): string {
 	for (const key of previewKeys) {
 		if (args[key] && typeof args[key] === "string") {
 			const value = args[key] as string;
-			return value.length > 60 ? `${value.slice(0, 59)}…` : value;
+			return truncate(value, 60);
 		}
 	}
 

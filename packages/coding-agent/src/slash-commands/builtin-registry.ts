@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { type AutocompleteItem, Spacer } from "@veyyon/tui";
-import { APP_NAME, CHANGELOG_URL, collapseWhitespace, getProjectDir, setProjectDir } from "@veyyon/utils";
+import { APP_NAME, CHANGELOG_URL, collapseWhitespace, getProjectDir, setProjectDir, truncate } from "@veyyon/utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
@@ -70,8 +70,7 @@ function formatFastModeStatus(session: AgentSession): string {
 const AUTOCOMPLETE_DETAIL_LIMIT = 48;
 
 function shortDetail(value: string, limit = AUTOCOMPLETE_DETAIL_LIMIT): string {
-	const singleLine = collapseWhitespace(value);
-	return singleLine.length <= limit ? singleLine : `${singleLine.slice(0, limit - 1)}…`;
+	return truncate(collapseWhitespace(value), limit);
 }
 
 function formatTokenCount(value: number): string {
