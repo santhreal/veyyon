@@ -14,10 +14,6 @@ import * as path from "node:path";
 const GRANDFATHERED = new Set([
 	// Doc comment explaining the absolute-deadline semantics, not a live timer.
 	"ai/src/utils/idle-iterator.ts",
-	// Remaining live sites, owned by in-flight work on these files; convert to
-	// scopedTimeoutSignal (cancel in finally, fence spanning body reads) when
-	// that work lands.
-	"coding-agent/src/session/agent-session.ts",
 ]);
 
 const PACKAGES_DIR = path.join(import.meta.dir, "../..");

@@ -146,6 +146,7 @@ import {
 	prompt,
 	relativePathWithinRoot,
 	Snowflake,
+	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
 import {
@@ -16799,13 +16800,18 @@ export class AgentSession {
 			coordinator.attemptedBlockKeys.add(decision.blockKey);
 			coordinator.lastAttemptAtByAccount.set(decision.accountKey, Date.now());
 			const who = decision.target.email ?? decision.target.accountId ?? "the active account";
-			const outcome = await authStorage.redeemResetCredit({
-				target: decision.target,
-				baseUrlResolver: provider => this.#modelRegistry.getProviderBaseUrl?.(provider),
-				// Not tied to the retry abort controller: aborting a consume
-				// mid-flight leaves credit state unknown.
-				signal: AbortSignal.timeout(15_000),
-			});
+			// withScopedTimeoutSignal clears the 15s deadline the moment the redeem
+			// settles, so the timer never outlives the request (a bare
+			// AbortSignal.timeout would keep firing after we already have the
+			// outcome). Not tied to the retry abort controller: aborting a consume
+			// mid-flight leaves credit state unknown.
+			const outcome = await withScopedTimeoutSignal(15_000, redeemSignal =>
+				authStorage.redeemResetCredit({
+					target: decision.target,
+					baseUrlResolver: provider => this.#modelRegistry.getProviderBaseUrl?.(provider),
+					signal: redeemSignal,
+				}),
+			);
 			switch (outcome.code) {
 				case "reset": {
 					const left = Math.max(0, decision.availableCount - 1);
