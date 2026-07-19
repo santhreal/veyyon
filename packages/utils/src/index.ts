@@ -14,6 +14,7 @@ export * from "./fs-error";
 export * from "./glob";
 export * from "./json";
 export * from "./json-parse";
+export * from "./jwt";
 export * from "./levenshtein";
 export * from "./lines";
 export * as logger from "./logger";

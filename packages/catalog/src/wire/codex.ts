@@ -2,6 +2,8 @@
  * Constants for OpenAI Codex (ChatGPT OAuth) backend
  */
 
+import { decodeJwtPayload } from "@veyyon/utils";
+
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 
 /**
@@ -45,14 +47,8 @@ export const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
  * Returns undefined if the token is not a valid Codex JWT.
  */
 export function getCodexAccountId(accessToken: string): string | undefined {
-	try {
-		const parts = accessToken.split(".");
-		if (parts.length !== 3) return undefined;
-		const decoded = Buffer.from(parts[1] ?? "", "base64").toString("utf-8");
-		const payload = JSON.parse(decoded) as Record<string, unknown>;
-		const auth = payload[JWT_CLAIM_PATH] as { chatgpt_account_id?: string } | undefined;
-		return auth?.chatgpt_account_id ?? undefined;
-	} catch {
-		return undefined;
-	}
+	const payload = decodeJwtPayload(accessToken);
+	if (!payload) return undefined;
+	const auth = payload[JWT_CLAIM_PATH] as { chatgpt_account_id?: string } | undefined;
+	return auth?.chatgpt_account_id ?? undefined;
 }

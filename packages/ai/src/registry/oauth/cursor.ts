@@ -1,3 +1,4 @@
+import { decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials } from "./types";
@@ -139,33 +140,18 @@ export async function refreshCursorToken(apiKeyOrRefreshToken: string): Promise<
 }
 
 function getTokenExpiry(token: string): number {
-	try {
-		const parts = token.split(".");
-		if (parts.length !== 3) {
-			return Date.now() + 3600 * 1000;
-		}
-		const payload = parts[1];
-		if (!payload) {
-			return Date.now() + 3600 * 1000;
-		}
-		const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-		if (decoded && typeof decoded === "object" && typeof decoded.exp === "number") {
-			return decoded.exp * 1000 - 5 * 60 * 1000;
-		}
-	} catch {
-		// Ignore parsing errors
+	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
+	if (decoded && typeof decoded.exp === "number") {
+		return decoded.exp * 1000 - 5 * 60 * 1000;
 	}
 	return Date.now() + 3600 * 1000;
 }
 
 export function isCursorTokenExpiringSoon(token: string, thresholdSeconds = 300): boolean {
-	try {
-		const [, payload] = token.split(".");
-		if (!payload) return true;
-		const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-		const currentTime = Math.floor(Date.now() / 1000);
-		return decoded.exp - currentTime < thresholdSeconds;
-	} catch {
-		return true;
-	}
+	const decoded = decodeJwtPayload<{ exp?: number }>(token);
+	if (!decoded) return true;
+	const currentTime = Math.floor(Date.now() / 1000);
+	// A token with no `exp` claim is treated as not expiring soon (NaN < n is false),
+	// matching the prior hand-rolled decode.
+	return (decoded.exp ?? Number.NaN) - currentTime < thresholdSeconds;
 }

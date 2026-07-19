@@ -1,4 +1,4 @@
-import { DAY_MS } from "@veyyon/utils";
+import { DAY_MS, decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { OAuthCallbackFlow } from "./callback-server";
 import { generatePKCE } from "./pkce";
@@ -110,16 +110,10 @@ export async function exchangeDevinCliToken(
 }
 
 function getTokenExpiry(token: string): number {
-	try {
-		const [, payload] = token.split(".");
-		if (payload) {
-			const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: unknown };
-			if (typeof decoded.exp === "number" && Number.isFinite(decoded.exp)) {
-				return decoded.exp * 1000 - 5 * 60 * 1000;
-			}
-		}
-	} catch {
-		// Ignore malformed non-JWT tokens and use a conservative long-lived fallback.
+	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
+	if (decoded && typeof decoded.exp === "number" && Number.isFinite(decoded.exp)) {
+		return decoded.exp * 1000 - 5 * 60 * 1000;
 	}
+	// Malformed / non-JWT tokens use a conservative long-lived fallback.
 	return Date.now() + FALLBACK_EXPIRES_MS;
 }

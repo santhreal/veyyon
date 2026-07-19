@@ -7,7 +7,7 @@
  * the discovered token endpoint until the user approves the login.
  */
 
-import { errorMessage, isRecord, scopedTimeoutSignal } from "@veyyon/utils";
+import { decodeJwtPayload, errorMessage, isRecord, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
@@ -135,23 +135,13 @@ async function xaiOAuthDiscovery(
  * not token validation.
  */
 export function isXAIAccessTokenExpiring(jwt: string, skewSeconds: number = 0): boolean {
-	try {
-		if (typeof jwt !== "string" || !jwt.includes(".")) return false;
-		const parts = jwt.split(".");
-		if (parts.length < 2) return false;
-		const payloadPart = parts[1];
-		if (!payloadPart) return false;
-		const decoded = Buffer.from(payloadPart, "base64url").toString("utf8");
-		const payload: unknown = JSON.parse(decoded);
-		if (!isRecord(payload)) return false;
-		const exp = payload.exp;
-		if (typeof exp !== "number" || !Number.isFinite(exp)) return false;
-		const now = Math.floor(Date.now() / 1000);
-		const skew = Math.max(0, Math.floor(skewSeconds));
-		return exp <= now + skew;
-	} catch {
-		return false;
-	}
+	const payload = decodeJwtPayload(jwt);
+	if (!isRecord(payload)) return false;
+	const exp = payload.exp;
+	if (typeof exp !== "number" || !Number.isFinite(exp)) return false;
+	const now = Math.floor(Date.now() / 1000);
+	const skew = Math.max(0, Math.floor(skewSeconds));
+	return exp <= now + skew;
 }
 
 function parseXAIDeviceAuthorization(payload: unknown): XAIDeviceAuthorization {

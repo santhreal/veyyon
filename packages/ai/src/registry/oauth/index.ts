@@ -2,6 +2,7 @@
 // High-level API
 // ============================================================================
 
+import { decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { getProviderDefinition, PROVIDER_REGISTRY } from "../registry";
 import type {
@@ -77,17 +78,9 @@ export async function refreshOAuthToken(
 	return def.refreshToken ? def.refreshToken(credentials) : credentials;
 }
 function getPerplexityJwtExpiryMs(token: string): number | undefined {
-	const parts = token.split(".");
-	if (parts.length !== 3) return undefined;
-	const payload = parts[1];
-	if (!payload) return undefined;
-	try {
-		const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: unknown };
-		if (typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;
-		return decoded.exp * 1000 - 5 * 60_000;
-	} catch {
-		return undefined;
-	}
+	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
+	if (!decoded || typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;
+	return decoded.exp * 1000 - 5 * 60_000;
 }
 
 /**

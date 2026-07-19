@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+	decodeJwtPayload,
 	errorMessage,
 	getAgentDbPath,
 	isRecord,
@@ -5938,42 +5939,33 @@ function extractOAuthCredentialIdentifiers(credential: OAuthCredential): string[
 
 function extractOAuthTokenIdentifiers(token: string | undefined): string[] | undefined {
 	if (!token) return undefined;
-	const parts = token.split(".");
-	if (parts.length !== 3) return undefined;
-	try {
-		const payload = JSON.parse(
-			new TextDecoder("utf-8").decode(Uint8Array.fromBase64(parts[1], { alphabet: "base64url" })),
-		) as Record<string, unknown>;
-		const identifiers = new Set<string>();
-		const directEmail = normalizeStoredEmail(typeof payload.email === "string" ? payload.email : undefined);
-		if (directEmail) identifiers.add(`email:${directEmail}`);
-		const openAiProfile = payload["https://api.openai.com/profile"];
-		if (isRecord(openAiProfile)) {
-			const claimEmail = normalizeStoredEmail(
-				(openAiProfile as Record<string, unknown>).email as string | undefined,
-			);
-			if (claimEmail) identifiers.add(`email:${claimEmail}`);
-		}
-		const openAiAuth = payload["https://api.openai.com/auth"];
-		const authClaims = isRecord(openAiAuth) ? (openAiAuth as Record<string, unknown>) : undefined;
-		const accountId = normalizeStoredAccountId(
-			typeof payload.account_id === "string"
-				? payload.account_id
-				: typeof payload.accountId === "string"
-					? payload.accountId
-					: typeof payload.user_id === "string"
-						? payload.user_id
-						: typeof payload.sub === "string"
-							? payload.sub
-							: typeof authClaims?.chatgpt_account_id === "string"
-								? authClaims.chatgpt_account_id
-								: undefined,
-		);
-		if (accountId) identifiers.add(`account:${accountId}`);
-		return identifiers.size > 0 ? [...identifiers] : undefined;
-	} catch {
-		return undefined;
+	const payload = decodeJwtPayload(token);
+	if (!payload) return undefined;
+	const identifiers = new Set<string>();
+	const directEmail = normalizeStoredEmail(typeof payload.email === "string" ? payload.email : undefined);
+	if (directEmail) identifiers.add(`email:${directEmail}`);
+	const openAiProfile = payload["https://api.openai.com/profile"];
+	if (isRecord(openAiProfile)) {
+		const claimEmail = normalizeStoredEmail((openAiProfile as Record<string, unknown>).email as string | undefined);
+		if (claimEmail) identifiers.add(`email:${claimEmail}`);
 	}
+	const openAiAuth = payload["https://api.openai.com/auth"];
+	const authClaims = isRecord(openAiAuth) ? (openAiAuth as Record<string, unknown>) : undefined;
+	const accountId = normalizeStoredAccountId(
+		typeof payload.account_id === "string"
+			? payload.account_id
+			: typeof payload.accountId === "string"
+				? payload.accountId
+				: typeof payload.user_id === "string"
+					? payload.user_id
+					: typeof payload.sub === "string"
+						? payload.sub
+						: typeof authClaims?.chatgpt_account_id === "string"
+							? authClaims.chatgpt_account_id
+							: undefined,
+	);
+	if (accountId) identifiers.add(`account:${accountId}`);
+	return identifiers.size > 0 ? [...identifiers] : undefined;
 }
 /**
  * Default SQLite-backed implementation of {@link AuthCredentialStore}.
