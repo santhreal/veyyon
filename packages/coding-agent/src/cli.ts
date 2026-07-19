@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
-import { errorMessage } from "@veyyon/utils";
+// Subpath, NOT the "@veyyon/utils" barrel: the barrel re-exports ./env, which
+// eagerly parses the agent-directory .env at import time (env.ts). Pulling that
+// in here would load the .env BEFORE runCli() calls setProfile(), so
+// `veyyon --profile work` would read the default profile's .env instead of the
+// selected profile's. type-guards.ts has no imports, so this stays inert.
+import { errorMessage } from "@veyyon/utils/type-guards";
 
 // Strip macOS malloc-stack-logging vars in the parent entrypoint, before any
 // subprocess/worker spawn. libmalloc reads MallocStackLogging /
