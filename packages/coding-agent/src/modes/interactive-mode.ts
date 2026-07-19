@@ -108,7 +108,7 @@ import { getRecentSessions } from "../session/session-listing";
 import type { SessionManager } from "../session/session-manager";
 import type { ShakeMode } from "../session/shake-types";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES, buildTuiBuiltinSlashCommands } from "../slash-commands/builtin-registry";
-import { formatDuration } from "../slash-commands/helpers/format";
+import { formatDurationCoarse } from "../slash-commands/helpers/format";
 import { STTController, type SttState } from "../stt";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
 import { formatTaskId } from "../task/render";
@@ -3408,7 +3408,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			`Objective: ${goal.objective}`,
 			`Status: ${goal.status}${state?.enabled ? "" : " (paused)"}`,
 			`Tokens: ${budgetLine}`,
-			`Time spent: ${formatDuration(goal.timeUsedSeconds * 1000)}`,
+			`Time spent: ${formatDurationCoarse(goal.timeUsedSeconds * 1000)}`,
 		];
 		this.showStatus(lines.join("\n"));
 	}

@@ -6,7 +6,7 @@ import { type } from "arktype";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../../modes/theme/theme";
 import goalDescription from "../../prompts/tools/goal.md" with { type: "text" };
-import { formatDuration } from "../../slash-commands/helpers/format";
+import { formatDurationCoarse } from "../../slash-commands/helpers/format";
 import type { ToolSession } from "../../tools";
 import { formatErrorDetail, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { ToolError } from "../../tools/tool-errors";
@@ -228,7 +228,7 @@ export const goalToolRenderer = {
 				: `${used} tokens`;
 		const metaParts = [tokensLine];
 		if (goal.timeUsedSeconds > 0) {
-			metaParts.push(`${formatDuration(goal.timeUsedSeconds * 1000)} elapsed`);
+			metaParts.push(`${formatDurationCoarse(goal.timeUsedSeconds * 1000)} elapsed`);
 		}
 		lines.push(uiTheme.fg("dim", metaParts.join(" · ")));
 
