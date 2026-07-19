@@ -1,5 +1,4 @@
-import { Buffer } from "node:buffer";
-import { HOUR_MS, MINUTE_MS, tryParseJson, WEEK_MS } from "@veyyon/utils";
+import { decodeJwtPayload, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -86,23 +85,8 @@ const toBoolean = (value: unknown): boolean | undefined => {
 	return undefined;
 };
 
-function base64UrlDecode(input: string): string {
-	const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
-	const padLen = (4 - (base64.length % 4)) % 4;
-	const padded = base64 + "=".repeat(padLen);
-	return Buffer.from(padded, "base64").toString("utf8");
-}
-
 function parseJwt(token: string): JwtPayload | null {
-	const parts = token.split(".");
-	if (parts.length !== 3) return null;
-	try {
-		const payloadJson = base64UrlDecode(parts[1]);
-		return tryParseJson<JwtPayload>(payloadJson);
-	} catch {
-		// base64UrlDecode throws on a malformed segment — not a valid JWT.
-		return null;
-	}
+	return decodeJwtPayload<JwtPayload>(token);
 }
 
 function normalizeEmail(email: string | undefined): string | undefined {

@@ -12,7 +12,7 @@
  * Architecture reverse-engineered from Perplexity macOS app (ai.perplexity.mac).
  */
 import * as os from "node:os";
-import { $env } from "@veyyon/utils";
+import { $env, decodeJwtPayload } from "@veyyon/utils";
 import { $ } from "bun";
 import * as AIError from "../../error";
 import type { OAuthController, OAuthCredentials } from "./types";
@@ -33,16 +33,9 @@ const APP_USER_AGENT = "Perplexity/641 CFNetwork/1568 Darwin/25.2.0";
  */
 const NEVER_EXPIRES = 8.64e15; // max safe Date value
 function getJwtExpiry(token: string): number {
-	try {
-		const parts = token.split(".");
-		if (parts.length !== 3) return NEVER_EXPIRES;
-		const payload = parts[1] ?? "";
-		const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-		if (typeof decoded?.exp === "number" && Number.isFinite(decoded.exp)) {
-			return decoded.exp * 1000 - 5 * 60_000;
-		}
-	} catch {
-		// Ignore decode errors
+	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
+	if (decoded && typeof decoded.exp === "number" && Number.isFinite(decoded.exp)) {
+		return decoded.exp * 1000 - 5 * 60_000;
 	}
 	return NEVER_EXPIRES;
 }

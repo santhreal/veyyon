@@ -1,5 +1,5 @@
 import type { AuthStorage, OAuthAccess } from "@veyyon/ai";
-import { $env } from "@veyyon/utils";
+import { $env, decodeJwtPayload } from "@veyyon/utils";
 
 export const PERPLEXITY_CHAT_BASE_URL = "https://api.perplexity.ai";
 export const PERPLEXITY_RESPONSES_BASE_URL = "https://api.perplexity.ai/v1";
@@ -88,17 +88,9 @@ export async function getApiConfigs(
  * server-side and effectively non-expiring from the client's POV).
  */
 export function jwtExpiryMs(token: string): number | undefined {
-	const parts = token.split(".");
-	if (parts.length !== 3) return undefined;
-	const payload = parts[1];
-	if (!payload) return undefined;
-	try {
-		const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: unknown };
-		if (typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;
-		return decoded.exp * 1000;
-	} catch {
-		return undefined;
-	}
+	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
+	if (!decoded || typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;
+	return decoded.exp * 1000;
 }
 
 /** Collect all available auth methods to try in priority order */
