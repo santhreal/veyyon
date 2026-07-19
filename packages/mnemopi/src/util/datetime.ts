@@ -1,4 +1,4 @@
-import { isDateOnly } from "@veyyon/utils";
+import { HOUR_MS, isDateOnly } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import { recencyHalflifeHours } from "../config";
 
@@ -53,7 +53,7 @@ export function recencyDecay(
 	if (!timestamp) return 0.5;
 	try {
 		const ts = typeof timestamp === "string" ? parseIsoDateTimeUtc(timestamp) : normalizeDateTimeUtc(timestamp);
-		const ageHours = (now.getTime() - ts.getTime()) / 3_600_000;
+		const ageHours = (now.getTime() - ts.getTime()) / HOUR_MS;
 		return Math.exp(-ageHours / halflifeHours);
 	} catch {
 		return 0.5;
@@ -65,5 +65,5 @@ export function temporalBoost(memoryTimestamp: string, queryTime: QueryTime = un
 	if (ts === undefined) return 0;
 	const query = parseQueryTime(queryTime);
 	if (ts.getTime() > query.getTime()) ts = query;
-	return Math.exp(-((query.getTime() - ts.getTime()) / 3_600_000) / halflifeHours);
+	return Math.exp(-((query.getTime() - ts.getTime()) / HOUR_MS) / halflifeHours);
 }

@@ -15,7 +15,7 @@ import {
 	type UsageReport,
 	type UsageUnit,
 } from "@veyyon/ai";
-import { formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
+import { DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
@@ -820,7 +820,7 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 		if (cmd.history) {
 			const days = cmd.days !== undefined && Number.isFinite(cmd.days) && cmd.days > 0 ? cmd.days : 7;
 			const nowMs = Date.now();
-			const sinceMs = nowMs - days * 86_400_000;
+			const sinceMs = nowMs - days * DAY_MS;
 			const entries = authStorage.listUsageHistory({ sinceMs, provider: cmd.provider?.toLowerCase() });
 			const redaction = cmd.redact ? buildRedactionMap(collectHistoryIdentityStrings(entries)) : undefined;
 			if (cmd.json) {

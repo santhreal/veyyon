@@ -54,14 +54,14 @@ const RUNTIME_DYNAMIC_MODEL_FETCH_TIMEOUT_MS = 15_000;
 // cache timings (model-manager.ts: DEFAULT_CACHE_TTL_MS / NON_AUTHORITATIVE_RETRY_MS).
 // Built-in descriptors never override cacheTtlMs, so agreeing with these values
 // makes the OAuth-refresh preflight fire exactly when the manager will fetch.
-const BUILT_IN_DISCOVERY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const BUILT_IN_DISCOVERY_CACHE_TTL_MS = 2 * HOUR_MS;
 const BUILT_IN_DISCOVERY_NON_AUTHORITATIVE_RETRY_MS = 5 * 60 * 1000;
 
 import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
 import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
 import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/catalog/identity";
-import { errorMessage, isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@veyyon/utils";
+import { DAY_MS, errorMessage, HOUR_MS, isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@veyyon/utils";
 import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
 import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
@@ -1093,7 +1093,7 @@ export class ModelRegistry {
 				continue;
 			}
 			const cacheProviderId = this.#resolveStartupModelCacheProviderId(providerId);
-			const cache = readModelCache<Api>(cacheProviderId, 24 * 60 * 60 * 1000, Date.now, this.#cacheDbPath);
+			const cache = readModelCache<Api>(cacheProviderId, DAY_MS, Date.now, this.#cacheDbPath);
 			if (!cache) {
 				continue;
 			}
@@ -1125,7 +1125,7 @@ export class ModelRegistry {
 		for (const providerConfig of this.#discoverableProviders) {
 			const cache = readModelCache<Api>(
 				this.#configuredDiscoveryCacheProviderId(providerConfig),
-				24 * 60 * 60 * 1000,
+				DAY_MS,
 				Date.now,
 				this.#cacheDbPath,
 			);
@@ -1439,7 +1439,7 @@ export class ModelRegistry {
 		strategy: ModelRefreshStrategy,
 	): Promise<Model<Api>[]> {
 		const cacheProviderId = this.#configuredDiscoveryCacheProviderId(providerConfig);
-		const cached = readModelCache<Api>(cacheProviderId, 24 * 60 * 60 * 1000, Date.now, this.#cacheDbPath);
+		const cached = readModelCache<Api>(cacheProviderId, DAY_MS, Date.now, this.#cacheDbPath);
 		const cacheOlderThanConfig = cached !== null && this.#isDiscoveryCacheOlderThanModelsConfig(cached.updatedAt);
 		const bypassFreshCache = providerConfig.discovery.type === "llama.cpp" && strategy === "online-if-uncached";
 		const effectiveStrategy =
@@ -1487,7 +1487,7 @@ export class ModelRegistry {
 			staticModels: [],
 			cacheDbPath: this.#cacheDbPath,
 			cacheProviderId,
-			cacheTtlMs: 24 * 60 * 60 * 1000,
+			cacheTtlMs: DAY_MS,
 			fetchDynamicModels,
 		});
 		const result = await manager.refresh(effectiveStrategy);
@@ -2245,7 +2245,7 @@ export class ModelRegistry {
 				providerId: providerName as Parameters<typeof createModelManager>[0]["providerId"],
 				staticModels: [],
 				cacheDbPath: this.#cacheDbPath,
-				cacheTtlMs: 24 * 60 * 60 * 1000,
+				cacheTtlMs: DAY_MS,
 				dynamicModelsAuthoritative: true,
 				fetchDynamicModels: async () => {
 					const apiKey = await this.#peekApiKeyForProvider(providerName);

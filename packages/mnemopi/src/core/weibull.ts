@@ -1,3 +1,5 @@
+import { HOUR_MS } from "@veyyon/utils";
+
 export type MemoryType = keyof typeof WEIBULL_PARAMS;
 
 export interface WeibullParams {
@@ -94,7 +96,7 @@ export function weibullBoost(
 	const resolvedQueryTime = queryTime ?? new Date();
 	if (memoryTime === null || !Number.isFinite(resolvedQueryTime.getTime())) return 0.0;
 
-	const ageHours = (resolvedQueryTime.getTime() - memoryTime.getTime()) / 3_600_000.0;
+	const ageHours = (resolvedQueryTime.getTime() - memoryTime.getTime()) / HOUR_MS;
 	if (ageHours < 0) return 1.0;
 
 	if (halflifeHours != null) {

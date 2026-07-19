@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message, TextContent } from "@veyyon/ai";
-import { getAgentDir as getDefaultAgentDir, logger, parseJsonlLenient, toError } from "@veyyon/utils";
+import { DAY_MS, getAgentDir as getDefaultAgentDir, HOUR_MS, logger, parseJsonlLenient, toError } from "@veyyon/utils";
 import { computeDefaultSessionDir } from "./session-paths";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
 
@@ -78,8 +78,8 @@ function formatTimeAgo(date: Date): string {
 	const now = Date.now();
 	const diffMs = now - date.getTime();
 	const diffMins = Math.floor(diffMs / 60000);
-	const diffHours = Math.floor(diffMs / 3600000);
-	const diffDays = Math.floor(diffMs / 86400000);
+	const diffHours = Math.floor(diffMs / HOUR_MS);
+	const diffDays = Math.floor(diffMs / DAY_MS);
 
 	if (diffMins < 1) return "just now";
 	if (diffMins < 60) return `${diffMins}m ago`;

@@ -1,4 +1,4 @@
-import { $env, normalizeBaseUrl } from "@veyyon/utils";
+import { $env, DAY_MS, HOUR_MS, MINUTE_MS, normalizeBaseUrl, SECOND_MS } from "@veyyon/utils";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
 	UsageAmount,
@@ -87,10 +87,10 @@ function buildWindow(windowData: Record<string, unknown>, nowMs: number): UsageW
 	if (duration === undefined && !label && !resetsAt) return undefined;
 	let durationMs: number | undefined;
 	if (duration !== undefined) {
-		if (timeUnit.toUpperCase().includes("MINUTE")) durationMs = duration * 60_000;
-		else if (timeUnit.toUpperCase().includes("HOUR")) durationMs = duration * 3_600_000;
-		else if (timeUnit.toUpperCase().includes("DAY")) durationMs = duration * 86_400_000;
-		else if (timeUnit.toUpperCase().includes("SECOND")) durationMs = duration * 1000;
+		if (timeUnit.toUpperCase().includes("MINUTE")) durationMs = duration * MINUTE_MS;
+		else if (timeUnit.toUpperCase().includes("HOUR")) durationMs = duration * HOUR_MS;
+		else if (timeUnit.toUpperCase().includes("DAY")) durationMs = duration * DAY_MS;
+		else if (timeUnit.toUpperCase().includes("SECOND")) durationMs = duration * SECOND_MS;
 	}
 
 	return {

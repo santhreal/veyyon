@@ -10,7 +10,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { isEnoent, logger, pathIsWithin } from "@veyyon/utils";
+import { DAY_MS, isEnoent, logger, pathIsWithin } from "@veyyon/utils";
 import { normalizePluginRuntimeConfig } from "../runtime-config";
 import type { PluginRuntimeConfig } from "../types";
 
@@ -605,7 +605,7 @@ export class MarketplaceManager {
 	// Per-marketplace failures are silently swallowed — offline is fine.
 	async refreshStaleMarketplaces(): Promise<void> {
 		const reg = await readMarketplacesRegistry(this.#opts.marketplacesRegistryPath);
-		const staleMs = 24 * 60 * 60 * 1000;
+		const staleMs = DAY_MS;
 		for (const entry of reg.marketplaces) {
 			if (Date.now() - Date.parse(entry.updatedAt) >= staleMs) {
 				try {

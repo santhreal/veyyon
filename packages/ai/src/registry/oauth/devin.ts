@@ -1,3 +1,4 @@
+import { DAY_MS } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { OAuthCallbackFlow } from "./callback-server";
 import { generatePKCE } from "./pkce";
@@ -10,7 +11,7 @@ const DEVIN_API_URL = "https://api.devin.ai";
 const CALLBACK_PORT = 59653;
 const CALLBACK_PATH = "/callback";
 const TOKEN_PATH = "/auth/cli/token";
-const FALLBACK_EXPIRES_MS = 365 * 24 * 60 * 60 * 1000;
+const FALLBACK_EXPIRES_MS = 365 * DAY_MS;
 
 interface DevinPKCEParams {
 	verifier: string;

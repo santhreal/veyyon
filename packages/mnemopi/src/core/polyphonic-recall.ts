@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { DAY_MS, WEEK_MS } from "@veyyon/utils";
 import { type Env, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { tableExists } from "../util/sqlite";
@@ -355,7 +356,7 @@ export class PolyphonicRecallEngine {
 	}
 	temporalVoice(query: string): VoiceRecallResult[] {
 		if (envDisabled("MNEMOPI_VOICE_TEMPORAL") || !looksTemporal(query)) return [];
-		const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+		const weekAgo = new Date(Date.now() - WEEK_MS).toISOString();
 		if (!tableExists(this.db, "working_memory")) return [];
 		const rows = this.db
 			.query(`
@@ -375,7 +376,7 @@ export class PolyphonicRecallEngine {
 			if (row.timestamp === null) continue;
 			const then = Date.parse(row.timestamp);
 			if (!Number.isFinite(then)) continue;
-			const ageDays = Math.max(0, (now - then) / 86_400_000);
+			const ageDays = Math.max(0, (now - then) / DAY_MS);
 			const temporalScore = Math.exp(-ageDays / 7) * row.importance;
 			results.push({
 				memoryId: row.id,

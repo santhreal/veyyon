@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import type { StopReason, Usage } from "@veyyon/ai";
 import type { GeneratedProvider } from "@veyyon/catalog/models";
 import { emptyCost, getBundledModel } from "@veyyon/catalog/models";
-import { getConfigRootDir, getStatsDbPath } from "@veyyon/utils";
+import { DAY_MS, getConfigRootDir, getStatsDbPath } from "@veyyon/utils";
 import { classifyAgentType } from "./parser";
 import type {
 	AgentType,
@@ -762,15 +762,11 @@ export function getTimeSeries(hours = 24, cutoff?: number | null, bucketMs = 60 
 /**
  * Get daily model usage time series data for the last N days.
  */
-export function getModelTimeSeries(
-	days = 14,
-	cutoff?: number | null,
-	bucketMs = 24 * 60 * 60 * 1000,
-): ModelTimeSeriesPoint[] {
+export function getModelTimeSeries(days = 14, cutoff?: number | null, bucketMs = DAY_MS): ModelTimeSeriesPoint[] {
 	if (!db) return [];
 
 	const hasCutoff = cutoff !== null;
-	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * 24 * 60 * 60 * 1000) : 0;
+	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * DAY_MS) : 0;
 
 	const stmt = db.prepare(`
 		SELECT
@@ -800,12 +796,12 @@ export function getModelTimeSeries(
 export function getModelPerformanceSeries(
 	days = 14,
 	cutoff?: number | null,
-	bucketMs = 24 * 60 * 60 * 1000,
+	bucketMs = DAY_MS,
 ): ModelPerformancePoint[] {
 	if (!db) return [];
 
 	const hasCutoff = cutoff !== null;
-	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * 24 * 60 * 60 * 1000) : 0;
+	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * DAY_MS) : 0;
 
 	const stmt = db.prepare(`
 		SELECT
@@ -928,11 +924,11 @@ export function getCostTimeSeries(days = 90, cutoff?: number | null): CostTimeSe
 	if (!db) return [];
 
 	const hasCutoff = cutoff !== null;
-	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * 24 * 60 * 60 * 1000) : 0;
+	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * DAY_MS) : 0;
 
 	const stmt = db.prepare(`
 		SELECT
-			(timestamp / 86400000) * 86400000 as bucket,
+			(timestamp / ${DAY_MS}) * ${DAY_MS} as bucket,
 			model,
 			provider,
 			SUM(cost_total) as cost,
@@ -1277,7 +1273,7 @@ export function getBehaviorTimeSeries(cutoff?: number | null): BehaviorTimeSerie
 	const hasCutoff = cutoff !== null && cutoff !== undefined && cutoff > 0;
 	const stmt = db.prepare(`
 		SELECT
-			(timestamp / 86400000) * 86400000 as bucket,
+			(timestamp / ${DAY_MS}) * ${DAY_MS} as bucket,
 			COALESCE(model, ?) as model,
 			COALESCE(provider, ?) as provider,
 			COUNT(*) as messages,
@@ -1601,15 +1597,11 @@ export function getToolStatsByModel(cutoff?: number): ToolModelStats[] {
 /**
  * Get tool-call time series (one point per bucket per tool).
  */
-export function getToolTimeSeries(
-	days = 14,
-	cutoff?: number | null,
-	bucketMs = 24 * 60 * 60 * 1000,
-): ToolTimeSeriesPoint[] {
+export function getToolTimeSeries(days = 14, cutoff?: number | null, bucketMs = DAY_MS): ToolTimeSeriesPoint[] {
 	if (!db) return [];
 
 	const hasCutoff = cutoff !== null;
-	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * 24 * 60 * 60 * 1000) : 0;
+	const seriesCutoff = hasCutoff ? (cutoff ?? Date.now() - days * DAY_MS) : 0;
 
 	const stmt = db.prepare(`
 		SELECT
