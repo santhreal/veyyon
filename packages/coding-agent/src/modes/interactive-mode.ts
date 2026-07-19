@@ -142,6 +142,7 @@ import type { HookInputComponent } from "./components/hook-input";
 import type { HookSelectorComponent, HookSelectorSlider } from "./components/hook-selector";
 import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
+import { goalProgressBar } from "./components/status-line/segments";
 import { emberBandEscape, renderSunsetField } from "./components/sun";
 import type { ToolExecutionHandle } from "./components/tool-execution";
 import { TranscriptContainer } from "./components/transcript-container";
@@ -3409,17 +3410,39 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		const used = goal.tokensUsed.toLocaleString();
-		const budgetLine =
-			goal.tokenBudget !== undefined
-				? `${used} / ${goal.tokenBudget.toLocaleString()} (${Math.max(0, goal.tokenBudget - goal.tokensUsed).toLocaleString()} left)`
-				: `${used} (no budget)`;
+		let budgetLine: string;
+		if (goal.tokenBudget !== undefined) {
+			const left = Math.max(0, goal.tokenBudget - goal.tokensUsed);
+			const pct = goal.tokenBudget > 0 ? Math.min(999, Math.round((goal.tokensUsed / goal.tokenBudget) * 100)) : 0;
+			const bar = goalProgressBar(goal.tokenBudget > 0 ? goal.tokensUsed / goal.tokenBudget : 0);
+			budgetLine = `${used} / ${goal.tokenBudget.toLocaleString()} (${pct}%, ${left.toLocaleString()} left) ${bar}`;
+		} else {
+			budgetLine = `${used} (no budget)`;
+		}
 		const lines = [
 			`Objective: ${goal.objective}`,
 			`Status: ${goal.status}${state?.enabled ? "" : " (paused)"}`,
 			`Tokens: ${budgetLine}`,
+			`Turns: ${goal.turnsCompleted}`,
 			`Time spent: ${formatDurationCoarse(goal.timeUsedSeconds * 1000)}`,
 		];
 		this.showStatus(lines.join("\n"));
+	}
+
+	/**
+	 * Open the goal detail/action menu for the current goal (active or paused)
+	 * without typing `/goal`. Reuses the existing `#openGoalMenu` opener and its
+	 * runtime-wired actions; a no-op when no goal is set. This is the target of
+	 * the down-arrow status affordance wired in {@link InputController}.
+	 */
+	async openGoalDetail(): Promise<void> {
+		if (this.goalModeEnabled) {
+			await this.#openGoalMenu("active");
+			return;
+		}
+		if (this.#getPausedGoalState()) {
+			await this.#openGoalMenu("paused");
+		}
 	}
 
 	async #promptGoalBudgetEdit(): Promise<void> {
