@@ -56,7 +56,20 @@ function makeArtifactSession(artifactDir: string): {
 	return { session, idToPath };
 }
 
-describe("BashTool timeout output spill (TW-7)", () => {
+async function readReferencedArtifact(
+	message: string,
+	idToPath: Map<string, string>,
+): Promise<{ id: string; text: string }> {
+	const match = message.match(/artifact:\/\/([^\s\]]+)/);
+	expect(match).not.toBeNull();
+	const artifactId = match![1];
+	const artifactPath = idToPath.get(artifactId);
+	expect(artifactPath).toBeDefined();
+	const text = await readFile(artifactPath!, "utf-8");
+	return { id: artifactId, text };
+}
+
+describe("BashTool timeout/cancel output spill (TW-7)", () => {
 	it("bounds a >50KB timed-out command and offloads the full output to an artifact", async () => {
 		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-timeout-spill-"));
 		const { session, idToPath } = makeArtifactSession(artifactDir);
@@ -88,12 +101,79 @@ describe("BashTool timeout output spill (TW-7)", () => {
 
 		// The artifact holds the FULL output, both sentinels, and is larger than
 		// the inline budget: nothing was lost, only moved out of the wire body.
-		const match = message.match(/artifact:\/\/([^\]\s]+)/);
-		expect(match).not.toBeNull();
-		const artifactId = match![1];
-		const artifactPath = idToPath.get(artifactId);
-		expect(artifactPath).toBeDefined();
-		const artifactText = await readFile(artifactPath!, "utf-8");
+		const { text: artifactText } = await readReferencedArtifact(message, idToPath);
+		expect(Buffer.byteLength(artifactText, "utf-8")).toBeGreaterThan(DEFAULT_MAX_BYTES);
+		expect(artifactText).toContain(HEAD_SENTINEL);
+		expect(artifactText).toContain(TAIL_SENTINEL);
+	}, 15_000);
+
+	it("bounds a >50KB cancelled command and offloads the full output to an artifact", async () => {
+		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-cancel-spill-"));
+		const { session, idToPath } = makeArtifactSession(artifactDir);
+		const tool = new BashTool(session);
+		const controller = new AbortController();
+		const sawTail = Promise.withResolvers<void>();
+
+		// Same oversized payload as the timeout case, then sleep so we can abort
+		// after the stream has landed (mirrors the cancelled-path hole).
+		const command = `printf '${HEAD_SENTINEL}\\n'; yes PADPADPADPADPADPAD | head -c 65536; printf '\\n${TAIL_SENTINEL}\\n'; sleep 30`;
+
+		const pending = tool.execute(
+			"call-cancel",
+			{ command, timeout: 60 },
+			controller.signal,
+			update => {
+				const text = update.content?.find(c => c.type === "text")?.text ?? "";
+				if (text.includes(TAIL_SENTINEL) || Buffer.byteLength(text, "utf-8") > DEFAULT_MAX_BYTES) {
+					sawTail.resolve();
+				}
+			},
+		);
+
+		await Promise.race([
+			sawTail.promise,
+			new Promise((_, reject) => setTimeout(() => reject(new Error("never saw oversized stream")), 10_000)),
+		]);
+		controller.abort("test cancel");
+
+		let thrown: unknown;
+		try {
+			await pending;
+		} catch (err) {
+			thrown = err;
+		}
+
+		expect(thrown).toBeInstanceOf(Error);
+		const message = (thrown as Error).message;
+		const messageBytes = Buffer.byteLength(message, "utf-8");
+
+		expect(messageBytes).toBeLessThan(DEFAULT_MAX_BYTES);
+		expect(message).toMatch(/cancel|abort/i);
+		expect(message).toContain("artifact://");
+		expect(message).toContain(HEAD_SENTINEL);
+
+		const { text: artifactText } = await readReferencedArtifact(message, idToPath);
+		expect(Buffer.byteLength(artifactText, "utf-8")).toBeGreaterThan(DEFAULT_MAX_BYTES);
+		expect(artifactText).toContain(HEAD_SENTINEL);
+		expect(artifactText).toContain(TAIL_SENTINEL);
+	}, 20_000);
+
+	it("keeps the completed oversized path bounded with a recoverable artifact", async () => {
+		const artifactDir = mkdtempSync(path.join(tmpdir(), "bash-complete-spill-"));
+		const { session, idToPath } = makeArtifactSession(artifactDir);
+		const tool = new BashTool(session);
+
+		const command = `printf '${HEAD_SENTINEL}\\n'; yes PADPADPADPADPADPAD | head -c 65536; printf '\\n${TAIL_SENTINEL}\\n'`;
+		const result = await tool.execute("call-complete", { command, timeout: 30 });
+		const message = result.content.find(c => c.type === "text")?.text ?? "";
+		const messageBytes = Buffer.byteLength(message, "utf-8");
+
+		expect(result.isError).toBeUndefined();
+		expect(messageBytes).toBeLessThan(DEFAULT_MAX_BYTES);
+		expect(message).toContain("artifact://");
+		expect(message).toContain(HEAD_SENTINEL);
+
+		const { text: artifactText } = await readReferencedArtifact(message, idToPath);
 		expect(Buffer.byteLength(artifactText, "utf-8")).toBeGreaterThan(DEFAULT_MAX_BYTES);
 		expect(artifactText).toContain(HEAD_SENTINEL);
 		expect(artifactText).toContain(TAIL_SENTINEL);

@@ -17,7 +17,13 @@ import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { highlightCode, type Theme } from "../modes/theme/theme";
 import bashDescription from "../prompts/tools/bash.md" with { type: "text" };
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
-import { DEFAULT_MAX_BYTES, enforceInlineByteCap, streamTailUpdates, TailBuffer } from "../session/streaming-output";
+import {
+	artifactFooter,
+	DEFAULT_MAX_BYTES,
+	enforceInlineByteCap,
+	streamTailUpdates,
+	TailBuffer,
+} from "../session/streaming-output";
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
 import { getSixelLineMask } from "../utils/sixel";
@@ -441,11 +447,25 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	 * missing-status error paths returned the full untruncated output (a >50KB
 	 * killed command carried the whole buffer for every later turn), while a
 	 * completed command of the same size was capped.
+	 *
+	 * When the executor sink already spilled (`existingArtifactId`), reuse that
+	 * handle instead of re-saving a possibly middle-elided body as a second
+	 * artifact — the sink's file holds the full pre-truncation stream.
 	 */
-	#boundBashOutput(text: string): Promise<string> {
-		return enforceInlineByteCap(text, {
-			saveArtifact: full => saveBashOriginalArtifact(this.session, full),
+	async #boundBashOutput(text: string, existingArtifactId?: string): Promise<string> {
+		const capped = await enforceInlineByteCap(text, {
+			saveArtifact: existingArtifactId
+				? async () => existingArtifactId
+				: full => saveBashOriginalArtifact(this.session, full),
 		});
+		// enforceInlineByteCap only appends a footer when it itself truncated. If
+		// the sink already truncated into the budget (and wrote the full stream
+		// to its artifact), still advertise the recoverable handle.
+		if (existingArtifactId && !capped.includes(`artifact://${existingArtifactId}`)) {
+			const sep = capped.length === 0 || capped.endsWith("\n") ? "" : "\n";
+			return `${capped}${sep}${artifactFooter(existingArtifactId)}`;
+		}
+		return capped;
 	}
 
 	/**
@@ -468,18 +488,18 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			// executeBash output already carries a `[Command cancelled]` notice from
 			// the sink; PTY/bridge interactive output does not, so annotate it here.
 			// The annotation is appended AFTER the cap so it is never elided.
-			const out = await this.#boundBashOutput(normalizeResultOutput(result));
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
 			const annotated = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out;
 			throw new ToolError(annotated || "Command aborted");
 		}
 		if (isInteractiveResult(result) && result.timedOut) {
-			const out = await this.#boundBashOutput(normalizeResultOutput(result));
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
 			const message =
 				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
 			throw new ToolError(out ? `${out}\n\n[${message}]` : message);
 		}
 		if (result.exitCode === undefined) {
-			const out = await this.#boundBashOutput(outputText);
+			const out = await this.#boundBashOutput(outputText, result.artifactId);
 			throw new ToolError(`${out}\n\nCommand failed: missing exit status`);
 		}
 	}
@@ -1120,7 +1140,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			// PTY output carries no cancel/timeout notice of its own; annotate so
 			// the model can tell an abort from a plain failure. Cap first so a
 			// killed command's output cannot exceed the inline budget.
-			const out = await this.#boundBashOutput(normalizeResultOutput(result));
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
 			const message = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out || "Command aborted";
 			if (signal?.aborted) {
 				throw new ToolAbortError(message);
@@ -1128,7 +1148,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			throw new ToolError(message);
 		}
 		if (isInteractiveResult(result) && result.timedOut) {
-			const out = await this.#boundBashOutput(normalizeResultOutput(result));
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
 			const message =
 				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
 			throw new ToolError(out ? `${out}\n\n[${message}]` : message);
