@@ -439,33 +439,54 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	/**
+	 * Bound a bash output body through the SAME artifact-spill path the
+	 * completed-command path uses ({@link enforceInlineByteCap}). A no-op when the
+	 * text already fits the inline budget; otherwise it keeps a head/tail window
+	 * and offloads the full text to a `bash-original` artifact with a recoverable
+	 * `[raw output: artifact://<id>]` footer. Without this, the abort/timeout/
+	 * missing-status error paths returned the full untruncated output (a >50KB
+	 * killed command carried the whole buffer for every later turn), while a
+	 * completed command of the same size was capped.
+	 */
+	#boundBashOutput(text: string): Promise<string> {
+		return enforceInlineByteCap(text, {
+			saveArtifact: full => saveBashOriginalArtifact(this.session, full),
+		});
+	}
+
+	/**
 	 * Throw for outcomes that are *not* a completed command: user/timeout
 	 * aborts and a missing exit status. The foreground and bridge callers plus
 	 * the async job manager rely on these throwing so cancellations surface as
 	 * aborts and jobs are recorded as failed. A definite non-zero exit is a
 	 * completed command that failed; #buildCompletedResult surfaces it as an
 	 * error *result* (carrying execution details) rather than a throw.
+	 *
+	 * Every branch caps the output body first: a killed command can never return
+	 * more than the inline budget, matching the completed path.
 	 */
-	#throwIfUnfinished(
+	async #throwIfUnfinished(
 		result: BashResult | BashInteractiveResult,
 		timeoutSec: number | undefined,
 		outputText: string,
-	): void {
+	): Promise<void> {
 		if (result.cancelled) {
 			// executeBash output already carries a `[Command cancelled]` notice from
 			// the sink; PTY/bridge interactive output does not, so annotate it here.
-			const out = normalizeResultOutput(result);
+			// The annotation is appended AFTER the cap so it is never elided.
+			const out = await this.#boundBashOutput(normalizeResultOutput(result));
 			const annotated = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out;
 			throw new ToolError(annotated || "Command aborted");
 		}
 		if (isInteractiveResult(result) && result.timedOut) {
-			const out = normalizeResultOutput(result);
+			const out = await this.#boundBashOutput(normalizeResultOutput(result));
 			const message =
 				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
 			throw new ToolError(out ? `${out}\n\n[${message}]` : message);
 		}
 		if (result.exitCode === undefined) {
-			throw new ToolError(`${outputText}\n\nCommand failed: missing exit status`);
+			const out = await this.#boundBashOutput(outputText);
+			throw new ToolError(`${out}\n\nCommand failed: missing exit status`);
 		}
 	}
 
@@ -497,7 +518,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		const outputText = outputLines.join("\n");
 
 		// Aborts / timeouts / missing-status still propagate as thrown errors.
-		this.#throwIfUnfinished(result, timeoutSec, outputText);
+		await this.#throwIfUnfinished(result, timeoutSec, outputText);
 
 		const details: BashToolDetails = {};
 		if (timeoutSec === undefined) {
@@ -1102,9 +1123,10 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				});
 		const wallTimeMs = performance.now() - wallTimeStart;
 		if (result.cancelled) {
-			const out = normalizeResultOutput(result);
 			// PTY output carries no cancel/timeout notice of its own; annotate so
-			// the model can tell an abort from a plain failure.
+			// the model can tell an abort from a plain failure. Cap first so a
+			// killed command's output cannot exceed the inline budget.
+			const out = await this.#boundBashOutput(normalizeResultOutput(result));
 			const message = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out || "Command aborted";
 			if (signal?.aborted) {
 				throw new ToolAbortError(message);
@@ -1112,7 +1134,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			throw new ToolError(message);
 		}
 		if (isInteractiveResult(result) && result.timedOut) {
-			const out = normalizeResultOutput(result);
+			const out = await this.#boundBashOutput(normalizeResultOutput(result));
 			const message =
 				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
 			throw new ToolError(out ? `${out}\n\n[${message}]` : message);
