@@ -380,6 +380,17 @@ export const INTERACTION_SETTINGS = {
 				'Display name for the active profile, shown in /profile list and resolvable by /profile <name>. Stored per profile; empty falls back to the profile\'s directory name ("default" for the base profile).',
 		},
 	},
+	"session.workdir": {
+		type: "string",
+		default: undefined,
+		ui: {
+			tab: "interaction",
+			group: "Profile",
+			label: "Default Working Directory",
+			description:
+				"Per-profile default session working directory used when launching without an explicit --cwd. Precedence: an explicit --cwd wins, then this setting, then the directory you launched from. Use an absolute or ~-relative path; a relative path or a missing directory makes launch fail loudly. The agent can override the live session cwd for that session only via set_cwd / /cwd without writing this setting.",
+		},
+	},
 
 	"share.serverUrl": {
 		type: "string",

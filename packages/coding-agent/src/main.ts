@@ -28,7 +28,7 @@ import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-fla
 import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
-import { applyStartupCwd } from "./cli/startup-cwd";
+import { applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import {
@@ -1111,6 +1111,12 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	let cwd = getProjectDir();
 	const settingsInstance =
 		deps.settings ?? (await logger.time("settings:init", Settings.init, { cwd, configFiles: parsedArgs.config }));
+	// Profile session.workdir outranks process cwd but loses to an explicit --cwd.
+	// Applied after Settings.init so the profile layer is available; re-sync `cwd`
+	// so session construction and discovery see the resolved root.
+	if (await logger.time("applySessionWorkdir", applySessionWorkdir, settingsInstance, parsedArgs.cwd)) {
+		cwd = getProjectDir();
+	}
 	if (parsedArgs.approvalMode) {
 		// Runtime override (not persisted): every settings.get("tools.approvalMode") downstream
 		// sees this value. The wrapper still honours --auto-approve / --yolo on top of it.
