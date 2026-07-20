@@ -18,6 +18,15 @@ everyone; please read this before opening a PR.
    `bun run check` and the tests pass locally.
 3. Open the PR against `main`.
 
+## UI changes
+
+If your change affects anything visible (the TUI, the onboarding flow, the
+website, a rendered output), include a **before and after screenshot** in the PR
+description. Put the current `main` behavior first, then your change, so a
+reviewer can see the difference without checking out the branch. A short GIF is
+fine when the change is about motion (a splash, a transition, a live update).
+Text-only and internal changes do not need one.
+
 ## What happens to your PR
 
 Every PR runs the full CI suite before a human looks at it:
