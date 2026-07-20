@@ -3,7 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import "@veyyon/coding-agent/discovery";
-import { loadSkills, loadSkillsFromDir, parseSkillInvocation, type Skill } from "@veyyon/coding-agent/extensibility/skills";
+import {
+	loadSkills,
+	loadSkillsFromDir,
+	parseSkillInvocation,
+	type Skill,
+} from "@veyyon/coding-agent/extensibility/skills";
 import { removeWithRetries } from "@veyyon/utils";
 import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
 
@@ -207,7 +212,11 @@ describe("skills", () => {
 
 		it("does not load project-local .veyyon/skills (no ambient project autodiscovery)", async () => {
 			await writeSkill(agentSkillsDir, "profile-skill", "A skill in the active profile.");
-			await writeSkill(path.join(tempCwd, ".veyyon", "skills"), "project-skill", "A project skill that must not load.");
+			await writeSkill(
+				path.join(tempCwd, ".veyyon", "skills"),
+				"project-skill",
+				"A project skill that must not load.",
+			);
 
 			const { skills } = await loadSkills({ cwd: tempCwd });
 			const names = skills.map(s => s.name);
@@ -266,7 +275,12 @@ describe("skills", () => {
 		});
 
 		it("hides skills with disable-model-invocation frontmatter (Agent Skills spec)", async () => {
-			await writeSkill(agentSkillsDir, "hidden-by-spec", "Hidden via the Agent Skills standard field.", "disable-model-invocation: true");
+			await writeSkill(
+				agentSkillsDir,
+				"hidden-by-spec",
+				"Hidden via the Agent Skills standard field.",
+				"disable-model-invocation: true",
+			);
 			const { skills } = await loadSkills({ cwd: tempCwd });
 			const skill = skills.find(s => s.name === "hidden-by-spec");
 			expect(skill).toBeDefined();

@@ -85,7 +85,7 @@ describe("SHMR embedding integration", () => {
 			// The degrade is surfaced loudly, not swallowed (Law 10).
 			const degraded = warn.mock.calls.find(call => String(call[0]).includes("degraded to hash embeddings"));
 			expect(degraded).toBeDefined();
-			expect((degraded?.[1] as Record<string, unknown>).error).toContain("provider offline");
+			expect((degraded![1] as Record<string, unknown>).error).toContain("provider offline");
 		} finally {
 			warn.mockRestore();
 		}

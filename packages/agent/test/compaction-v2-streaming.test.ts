@@ -346,7 +346,7 @@ describe("requestCompactionV2Streaming", () => {
 	test("errors when the stream carries more than one compaction item", async () => {
 		const item = (id: string) =>
 			`event: response.output_item.done\ndata: ${JSON.stringify({ type: "response.output_item.done", item: { type: "compaction", id } })}\n\n`;
-		const stream = item("a") + item("b") + `event: response.completed\ndata: ${JSON.stringify(COMPLETED_EVENT)}\n\n`;
+		const stream = `${item("a")}${item("b")}event: response.completed\ndata: ${JSON.stringify(COMPLETED_EVENT)}\n\n`;
 		const request = buildCompactionV2Request(makeModel(), [], "compact");
 		await expect(
 			requestCompactionV2Streaming(makeModel(), "key", request, undefined, {

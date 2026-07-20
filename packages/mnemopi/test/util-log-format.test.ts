@@ -35,7 +35,9 @@ describe("truncateForLog is the one owner of the [truncated] marker", () => {
 	const SRC_DIR = path.join(import.meta.dir, "..", "src");
 
 	it("detects the idiom but not the owner's own literal", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: literal fixture; the ${} is the idiom under test, not a template.
 		expect(MARKER_IDIOM.test("`${msg.slice(0, CAP)}...[truncated]`")).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: literal fixture; the ${} is the idiom under test, not a template.
 		expect(MARKER_IDIOM.test('`${value.slice(0, maxLen)}${"...[truncated]"}`')).toBe(false);
 	});
 

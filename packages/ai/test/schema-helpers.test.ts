@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { isRecord } from "@veyyon/utils";
 import {
 	adaptSchemaForStrict,
 	areJsonValuesEqual,
@@ -8,6 +7,7 @@ import {
 	mergePropertySchemas,
 	stripResidualCombiners,
 } from "@veyyon/ai/utils/schema";
+import { isRecord } from "@veyyon/utils";
 
 // The schema subsystem's object guard is the shared @veyyon/utils isRecord (the
 // former local isJsonObject clone was folded onto that owner). This block stays
