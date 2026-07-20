@@ -306,6 +306,28 @@ describe("findCutPoint", () => {
 		expect(result.firstKeptEntryIndex).toBe(2);
 	});
 
+	test("budget crossed only at the oldest entry cuts strictly after it (no keep-everything dead end)", () => {
+		const big = "word ".repeat(4000);
+		const entries: SessionEntry[] = [
+			{
+				type: "custom_message",
+				id: "goal",
+				parentId: null,
+				timestamp: "t",
+				customType: "goal",
+				content: [{ type: "text", text: big }],
+				display: true,
+			},
+			messageEntry(userMessage("work on the release")),
+			messageEntry(assistant([{ type: "text", text: "on it" }])),
+		];
+		// The recent tail alone is tiny; the huge oldest entry is the only one
+		// that crosses the budget. Keeping everything would leave compaction
+		// nothing to summarize, so the cut moves past the crossing entry.
+		const result = findCutPoint(entries, 0, entries.length, 100);
+		expect(result.firstKeptEntryIndex).toBe(1);
+	});
+
 	test("scans backwards over non-message entries to include them with the kept tail", () => {
 		const big = "word ".repeat(4000);
 		const entries: SessionEntry[] = [

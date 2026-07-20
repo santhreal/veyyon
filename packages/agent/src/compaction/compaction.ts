@@ -621,6 +621,7 @@ export function findCutPoint(
 	// Walk backwards from newest, accumulating estimated message sizes
 	let accumulatedTokens = 0;
 	let cutIndex = cutPoints[0]; // Default: keep from first message (not header)
+	let crossedIndex = -1; // Entry whose tokens first pushed the tally over budget
 
 	for (let i = endIndex - 1; i >= startIndex; i--) {
 		const entry = entries[i];
@@ -635,6 +636,7 @@ export function findCutPoint(
 
 		// Check if we've exceeded the budget
 		if (accumulatedTokens >= keepRecentTokens) {
+			crossedIndex = i;
 			// Find the closest valid cut point at or after this entry
 			for (let c = 0; c < cutPoints.length; c++) {
 				if (cutPoints[c] >= i) {
@@ -659,6 +661,20 @@ export function findCutPoint(
 		}
 		// Include this non-message entry (bash, settings change, etc.)
 		cutIndex--;
+	}
+
+	// Dead-end guard: if the budget was crossed only at the oldest entry and the
+	// cut (plus the backward sweep) would keep the entire range, compaction has
+	// nothing to summarize and dead-ends. Cut strictly after the crossing entry
+	// instead: the over-budget entry gets summarized and the kept tail stays
+	// within budget. Only applies when a later cut point exists.
+	if (cutIndex === startIndex && crossedIndex === startIndex) {
+		for (let c = 0; c < cutPoints.length; c++) {
+			if (cutPoints[c] > crossedIndex) {
+				cutIndex = cutPoints[c];
+				break;
+			}
+		}
 	}
 
 	// Determine if this is a split turn
