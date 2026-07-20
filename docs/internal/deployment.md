@@ -160,7 +160,8 @@ its publish leg, the release itself still ships the GitHub binaries.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
-| `NPM_TOKEN` | secret | npm publish of `@veyyon/*` (or set repo var `NPM_TRUSTED_PUBLISH=on` once a trusted publisher exists) |
+| `NPM_PUBLISH` | repo var | set `on` to opt IN to the npm publish leg. It is **off by default**: the install channel is the curl script (GitHub release binaries), so npm is a secondary convenience, and a stale or 2FA-bound token must never trigger a doomed publish that red-fails an otherwise green release. With it off, `release_npm` skips loudly. |
+| `NPM_TOKEN` | secret | credential for the npm publish leg once `NPM_PUBLISH=on`. Alternatively configure OIDC trusted publishing (no token) via `scripts/setup-npm-trust.ts`. |
 | `HOMEBREW_TAP_DEPLOY_KEY` | secret | Homebrew formula push, also needs repo var `HOMEBREW_TAP_REPO` (e.g. `santhreal/homebrew-tap`) |
 | `CLOUDFLARE_API_TOKEN` | secret | `release_site` auto-deploy (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | only if the token spans multiple Cloudflare accounts |

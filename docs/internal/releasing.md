@@ -49,8 +49,10 @@ bun run release <version|major|minor|patch>
 The tagged push triggers `ci.yml`. Seeing a release tag at `HEAD`, it builds every
 platform binary and then publishes:
 
-- the **GitHub release**: all `veyyon-*` binaries + `.sha256` checksums;
-- the **npm** packages (`@veyyon/*`);
+- the **GitHub release**: all `veyyon-*` binaries + `.sha256` checksums (this is
+  the channel the `curl | sh` installer uses);
+- the **npm** packages (`@veyyon/*`), only when the `NPM_PUBLISH=on` repo var opts
+  in (off by default, see [deployment.md](./deployment.md));
 - the **Homebrew** formula.
 
 Binaries compile with Bun bytecode by default (`VEYYON_BUILD_BYTECODE=0` opts out),
