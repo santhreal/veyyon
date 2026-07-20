@@ -237,19 +237,23 @@ describe("AgentSession mid-run threshold compaction", () => {
 		expect(compactSpy).toHaveBeenCalledTimes(1);
 		expect(observedContexts.length).toBeGreaterThanOrEqual(2);
 		const nextProviderContext = observedContexts[1];
+		// Outbound Context rewrites provider tool-call IDs to session-local `tc_<n>`
+		// handles (TW-8). The mock emitted `tc-0`; the first assigned handle is `tc_1`.
+		const outboundToolCallId = "tc_1";
 		const toolUseAssistantIndex = nextProviderContext.findIndex(
 			serialized =>
 				serialized.includes('"role":"assistant"') &&
 				serialized.includes('"stopReason":"toolUse"') &&
-				serialized.includes('"id":"tc-0"'),
+				serialized.includes(`"id":"${outboundToolCallId}"`),
 		);
 		const toolResultIndex = nextProviderContext.findIndex(
-			serialized => serialized.includes('"role":"toolResult"') && serialized.includes('"toolCallId":"tc-0"'),
+			serialized =>
+				serialized.includes('"role":"toolResult"') && serialized.includes(`"toolCallId":"${outboundToolCallId}"`),
 		);
 		expect(toolUseAssistantIndex).toBeGreaterThanOrEqual(0);
 		expect(toolResultIndex).toBeGreaterThan(toolUseAssistantIndex);
-		expect(nextProviderContext.filter(serialized => serialized.includes('"id":"tc-0"'))).toHaveLength(1);
-		expect(nextProviderContext.filter(serialized => serialized.includes('"toolCallId":"tc-0"'))).toHaveLength(1);
+		expect(nextProviderContext.filter(serialized => serialized.includes(`"id":"${outboundToolCallId}"`))).toHaveLength(1);
+		expect(nextProviderContext.filter(serialized => serialized.includes(`"toolCallId":"${outboundToolCallId}"`))).toHaveLength(1);
 		expect(nextProviderContext.join("\n")).toContain("MID-RUN-COMPACTED-WITH-PENDING-HOOK");
 		expect(nextProviderContext.join("\n")).toContain("tool output");
 

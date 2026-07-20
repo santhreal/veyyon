@@ -368,6 +368,7 @@ import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
 import type { AuthStorage } from "./auth-storage";
+import { canonicalizeToolCallIds } from "./canonicalize-tool-call-ids";
 import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
@@ -1964,6 +1965,9 @@ export class AgentSession {
 	#onResponse: SimpleStreamOptions["onResponse"] | undefined;
 	#onSseEvent: SimpleStreamOptions["onSseEvent"] | undefined;
 	#transformProviderContext: ((context: Context, model: Model) => Context | Promise<Context>) | undefined;
+	/** Session-local provider-ID → `tc_<n>` map; rebuilt from history on resume. */
+	#toolCallIdMap = new Map<string, string>();
+	#toolCallIdCounter = 0;
 	#sideStreamFn: StreamFn;
 	#advisorStreamFn: StreamFn | undefined;
 	#preferWebsockets: boolean | undefined;
@@ -2583,7 +2587,24 @@ export class AgentSession {
 		this.#builtInToolNames = new Set(config.builtInToolNames ?? []);
 		this.#requestedToolNames = config.requestedToolNames;
 		this.#transformContext = config.transformContext ?? (messages => messages);
-		this.#transformProviderContext = config.transformProviderContext;
+		// Canonicalize provider tool-call IDs to short session-local handles before
+		// obfuscation / snapcompact / provider serialization. Runs once per request
+		// after convertToLlm; map is session-stable so prior history serializes
+		// byte-identically (prompt cache preserved). On resume the map rebuilds from
+		// stored history by walking messages in order (no schema change).
+		const upstreamTransformProviderContext = config.transformProviderContext;
+		const canonicalizeProviderContext = (context: Context, model: Model): Context | Promise<Context> => {
+			const messages = canonicalizeToolCallIds(context.messages, this.#toolCallIdMap, () => {
+				this.#toolCallIdCounter += 1;
+				return `tc_${this.#toolCallIdCounter}`;
+			});
+			const next = messages === context.messages ? context : { ...context, messages };
+			return upstreamTransformProviderContext ? upstreamTransformProviderContext(next, model) : next;
+		};
+		this.#transformProviderContext = canonicalizeProviderContext;
+		// Agent was constructed before AgentSession; install the wrapped hook so the
+		// main loop / side requests / advisors share the same session-local map.
+		this.agent.setTransformProviderContext(canonicalizeProviderContext);
 		this.#sideStreamFn = config.sideStreamFn ?? streamSimple;
 		this.#advisorStreamFn = config.advisorStreamFn;
 		this.#preferWebsockets = config.preferWebsockets;

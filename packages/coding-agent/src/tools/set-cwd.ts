@@ -87,13 +87,18 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 
 export const setCwdToolRenderer = {
 	name: "set_cwd",
+	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme): Component {
+		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
+		const label = typeof pathArg === "string" ? pathArg : "…";
+		return new Text(theme.fg("toolTitle", `set_cwd ${label}`));
+	},
 	renderArguments(args: unknown): string {
 		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
 		return typeof pathArg === "string" ? pathArg : "";
 	},
 	renderResult(
 		result: AgentToolResult<SetCwdToolDetails>,
-		options: RenderResultOptions,
+		_options: RenderResultOptions,
 		theme: Theme,
 	): Component | undefined {
 		const details = result.details;
@@ -101,13 +106,14 @@ export const setCwdToolRenderer = {
 			details && details.previous !== details.cwd
 				? `${details.previous} → ${details.cwd}`
 				: (details?.cwd ?? "cwd");
-		return framedBlock([renderStatusLine(theme.icon.check, theme.fg("toolSuccess", "cwd"), line)], {
-			expanded: options.expanded,
-		});
+		return framedBlock(theme, width => ({
+			header: renderStatusLine({ icon: "success", title: "cwd", meta: [line] }, theme),
+			width,
+		}));
 	},
 	renderPending(args: unknown, theme: Theme): Component {
 		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
 		const label = typeof pathArg === "string" ? pathArg : "…";
-		return new Text(theme.fg("toolPending", `set_cwd ${label}`));
+		return new Text(theme.fg("toolTitle", `set_cwd ${label}`));
 	},
 };
