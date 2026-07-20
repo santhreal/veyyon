@@ -96,6 +96,12 @@ export interface DeferredDiagnosticsEntry {
 export interface ToolSession {
 	/** Current working directory */
 	cwd: string;
+	/**
+	 * Re-root the live session cwd for this session only.
+	 * Never writes profile `session.workdir` or other persisted config.
+	 * Returns the resolved absolute path.
+	 */
+	setCwd?(resolvedPath: string, options?: { validate?: boolean }): Promise<string>;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/**
@@ -410,6 +416,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	todo: async s => new (await import("./todo")).TodoTool(s),
 	web_search: async s => new (await import("../web/search")).WebSearchTool(s),
 	search_tool_bm25: async s => (await import("./search-tool-bm25")).SearchToolBm25Tool.createIf(s),
+	set_cwd: async s => new (await import("./set-cwd")).SetCwdTool(s),
 	write: async s => new (await import("./write")).WriteTool(s),
 	memory_edit: async s => (await import("./memory-edit")).MemoryEditTool.createIf(s),
 	retain: async s => (await import("./memory-retain")).MemoryRetainTool.createIf(s),

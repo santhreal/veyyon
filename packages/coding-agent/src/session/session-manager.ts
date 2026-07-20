@@ -441,6 +441,7 @@ export class SessionManager {
 
 	#suppressBreadcrumb = false;
 	#sessionNameChangedCallbacks = new Set<() => void>();
+	#cwdChangedCallbacks = new Set<(previous: string, next: string) => void>();
 
 	private constructor(cwd: string, sessionDir: string, persist: boolean, storage: SessionStorage) {
 		this.#cwd = cwd;
@@ -893,6 +894,16 @@ export class SessionManager {
 		}
 	}
 
+	#notifyCwdListeners(previous: string, next: string): void {
+		for (const callback of [...this.#cwdChangedCallbacks]) {
+			try {
+				callback(previous, next);
+			} catch (err) {
+				logger.warn("SessionManager: cwd change hook failed", { error: String(err) });
+			}
+		}
+	}
+
 	static #cleanTitle(raw: string): string {
 		return raw
 			.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
@@ -1254,6 +1265,50 @@ export class SessionManager {
 		return this.#cwd;
 	}
 
+	/**
+	 * Re-root this session's working directory in place.
+	 *
+	 * Unlike {@link moveTo}, this does NOT relocate session storage or artifacts —
+	 * only the live session cwd (and header) change. Profile settings are never
+	 * written. Validation (exists + isDirectory) is on by default.
+	 */
+	async setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
+		const resolvedCwd = path.resolve(newCwd);
+		const validate = options?.validate !== false;
+		if (validate) {
+			let st: fs.Stats;
+			try {
+				st = await fs.promises.stat(resolvedCwd);
+			} catch (err) {
+				if (isEnoent(err)) {
+					throw new Error(`Directory does not exist: ${resolvedCwd}`);
+				}
+				throw new Error(`Cannot access directory ${resolvedCwd}: ${errorMessage(err)}`);
+			}
+			if (!st.isDirectory()) {
+				throw new Error(`Not a directory: ${resolvedCwd}`);
+			}
+		}
+
+		if (resolvedCwd === path.resolve(this.#cwd)) {
+			return this.#cwd;
+		}
+
+		const previous = this.#cwd;
+		this.#cwd = resolvedCwd;
+		this.#header.cwd = resolvedCwd;
+
+		// Persist the updated header cwd when a session file already exists so
+		// resume/adoption sees the live root. Storage location is unchanged.
+		if (this.#persist && this.#sessionFile && this.#storage.existsSync(this.#sessionFile)) {
+			this.#forceFileCreation = true;
+			await this.#rewriteAtomically();
+		}
+
+		this.#notifyCwdListeners(previous, resolvedCwd);
+		return resolvedCwd;
+	}
+
 	getUsageStatistics(): UsageStatistics {
 		return this.#index.usageSnapshot();
 	}
@@ -1385,6 +1440,13 @@ export class SessionManager {
 		this.#sessionNameChangedCallbacks.add(cb);
 		return () => {
 			this.#sessionNameChangedCallbacks.delete(cb);
+		};
+	}
+
+	onCwdChanged(cb: (previous: string, next: string) => void): () => void {
+		this.#cwdChangedCallbacks.add(cb);
+		return () => {
+			this.#cwdChangedCallbacks.delete(cb);
 		};
 	}
 
