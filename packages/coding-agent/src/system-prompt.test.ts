@@ -23,9 +23,11 @@ async function runProbeScenario(options: {
 	try {
 		const binDir = path.join(tempRoot, "bin");
 		const cacheRoot = path.join(tempRoot, "cache");
+		const homeRoot = path.join(tempRoot, "home");
 		const probeCountPath = path.join(tempRoot, "probe-count");
 		await fs.mkdir(binDir, { recursive: true });
 		await fs.mkdir(path.join(cacheRoot, APP_NAME), { recursive: true });
+		await fs.mkdir(homeRoot, { recursive: true });
 		const lspciPath = path.join(binDir, "lspci");
 		await Bun.write(
 			lspciPath,
@@ -68,6 +70,14 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 		const env: Record<string, string | undefined> = {
 			...process.env,
 			PATH: `${binDir}:${process.env.PATH ?? ""}`,
+			// Point HOME (and its Windows twin) at a fresh dir so the dirs resolver
+			// finds no ~/.veyyon/config.yml, and therefore no default profile whose
+			// own dir would win over XDG_CACHE_HOME below. Without this, a developer
+			// with a selected profile reads that profile's real gpu_cache.json — the
+			// probe then hits a stale cache and never runs (count 0). CI's fresh HOME
+			// hid the leak; a dev machine did not.
+			HOME: homeRoot,
+			USERPROFILE: homeRoot,
 			XDG_CACHE_HOME: cacheRoot,
 			VEYYON_GPU_PROBE_COUNT: probeCountPath,
 			VEYYON_GPU_PROBE_RUNS: String(options.runs),
@@ -77,6 +87,9 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 		for (const key of DIR_OVERRIDE_ENV_KEYS) {
 			delete env[key];
 		}
+		// A selected profile is carried by VEYYON_PROFILE too, not just the dir
+		// overrides above; drop it so the resolver stays on the isolated base.
+		delete env.VEYYON_PROFILE;
 		if (options.sleepSeconds === undefined) {
 			delete env.VEYYON_GPU_PROBE_SLEEP;
 		} else {
