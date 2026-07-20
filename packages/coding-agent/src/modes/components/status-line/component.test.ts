@@ -38,6 +38,7 @@ function makeSessionWithLastMessage(lastMessage: unknown, prewalkArmed: boolean 
 		// Compaction disabled: the gauge denominates against the raw model window.
 		settings: { getGroup: () => ({ enabled: false }) },
 		isAdvisorActive: () => false,
+		isApprovalBypassed: () => false,
 		isFastModeActive: () => false,
 		configuredThinkingLevel: () => undefined,
 		modelRegistry: {

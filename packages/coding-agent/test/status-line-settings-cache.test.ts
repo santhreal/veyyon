@@ -46,6 +46,7 @@ function makeSession(sessionName = "Cache Session") {
 		autoResolvedThinkingLevel: () => undefined,
 		isFastModeActive: () => false,
 		isAdvisorActive: () => false,
+		isApprovalBypassed: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		settings: { get: () => false, getGroup: () => ({ enabled: false }) },

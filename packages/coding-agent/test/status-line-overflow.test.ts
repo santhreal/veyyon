@@ -94,6 +94,7 @@ function createStatusLineSession(sessionName: string, modelName?: string) {
 		autoResolvedThinkingLevel: () => undefined,
 		isAdvisorActive: () => false,
 		isFastModeActive: () => false,
+		isApprovalBypassed: () => false,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		getCurrentModel: () => undefined,
 		isFastModeEnabled: () => false,
