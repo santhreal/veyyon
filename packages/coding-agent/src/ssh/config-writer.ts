@@ -68,6 +68,12 @@ export async function writeSSHConfigFile(filePath: string, config: SSHConfigFile
  * state must run inside `mutate` so they see the latest committed state.
  */
 async function mutateSSHConfigFile(filePath: string, mutate: (current: SSHConfigFile) => SSHConfigFile): Promise<void> {
+	// The lock is a sibling directory of the config file (`ssh.json.lock`), and
+	// its mkdir is non-recursive, so the parent dir (e.g. `<cwd>/.veyyon`) must
+	// already exist before we lock. On a fresh project it does not yet, so ensure
+	// it here — owner-only, since it holds credentials — rather than only inside
+	// writeSSHConfigFile, which runs after the lock is taken.
+	await fs.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
 	await withFileLock(filePath, async () => {
 		const current = await readSSHConfigFile(filePath);
 		const next = mutate(current);
