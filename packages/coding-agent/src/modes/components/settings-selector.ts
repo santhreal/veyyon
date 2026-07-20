@@ -1237,12 +1237,16 @@ export class SettingsSelectorComponent implements Component {
 				};
 
 			case "enum":
+				// Bare enums (no option labels) open a chooser on activate — click
+				// and then choose — rather than cycling in place. Left/Right stay free
+				// for sidebar focus and description expand; the value only changes
+				// through the chooser, which never conflicts with navigation.
 				return {
 					id: def.path,
 					label: def.label,
 					description: def.description,
 					currentValue: String(currentValue ?? ""),
-					values: [...def.values],
+					submenu: (cv, done) => this.#createEnumSubmenu(def, cv, done),
 					changed,
 				};
 
@@ -1315,6 +1319,29 @@ export class SettingsSelectorComponent implements Component {
 			return "default";
 		}
 		return rawValue;
+	}
+
+	/**
+	 * Create a chooser submenu for a bare enum setting (one with no option
+	 * labels). Options are the enum's allowed values, labelled by their own text.
+	 * Selection reports through `done(value)` only — the list's onChange dispatch
+	 * (`#onSettingChange` / `#onSearchSettingChange`) owns the single persist for
+	 * enum values, so this submenu must not write the value a second time.
+	 */
+	#createEnumSubmenu(
+		def: SettingDef & { type: "enum" },
+		currentValue: string,
+		done: (value?: string) => void,
+	): Container {
+		const options: SelectItem[] = def.values.map(value => ({ value, label: value }));
+		return new SelectSubmenu(
+			def.label,
+			def.description,
+			options,
+			currentValue,
+			value => done(value),
+			() => done(),
+		);
 	}
 
 	/**
@@ -1807,12 +1834,10 @@ export class SettingsSelectorComponent implements Component {
 			if (matchesKey(data, "left") || data === "h") return;
 		}
 
-		// Left/Right on a boolean/enum row cycle its value in place — the
-		// gesture everyone tries first in a settings pane. Rows without an
-		// inline value list fall through to the older meanings below
-		// (Right expands the description, Left collapses / focuses the sidebar).
-		if (matchesKey(data, "right") && this.#currentList?.cycleSelected(1)) return;
-		if (matchesKey(data, "left") && this.#currentList?.cycleSelected(-1)) return;
+		// Left/Right never change a setting's value: value edits go through
+		// activation (Enter/Space/click), which toggles a boolean or opens a
+		// chooser for an enum. That keeps Left free for sidebar focus and Right
+		// for description expand, with no collision against sidebar navigation.
 
 		// Right/l expands the selected setting description; Left/h collapses.
 		if (matchesKey(data, "right") || data === "l") {

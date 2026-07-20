@@ -861,21 +861,6 @@ export class SettingsList implements Component {
 		}
 	}
 
-	/**
-	 * Cycle the selected row's value by delta — the Left/Right settings gesture.
-	 * Returns false when the row has no inline value list (heading, submenu,
-	 * text input), so the caller can give the key its fallback meaning.
-	 */
-	cycleSelected(delta: 1 | -1): boolean {
-		const item = this.#filteredItems[this.#selectedIndex];
-		if (!item || item.heading || item.submenu || !item.values || item.values.length === 0) return false;
-		const currentIndex = item.values.indexOf(item.currentValue);
-		const nextIndex = (currentIndex + delta + item.values.length) % item.values.length;
-		item.currentValue = item.values[nextIndex];
-		this.#onChange(item.id, item.currentValue);
-		return true;
-	}
-
 	#activateItem(): void {
 		const item = this.#filteredItems[this.#selectedIndex];
 		if (!item || item.heading) return;

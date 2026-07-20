@@ -105,7 +105,8 @@ describe("settings sidebar focus", () => {
 		expect(footerText(frame)).not.toContain("up/down category");
 	});
 
-	it("Right and Left on a boolean row cycle its value in place", () => {
+	it("Left/Right never change a boolean value; activation toggles it in place", () => {
+		const SPACE = " ";
 		const comp = createSelector();
 		comp.render(160);
 		// Appearance tab: Dark Theme, Light Theme, Symbol Preset, then the
@@ -114,12 +115,27 @@ describe("settings sidebar focus", () => {
 		comp.handleInput(DOWN);
 		comp.handleInput(DOWN);
 		expect(Settings.instance.get("colorBlindMode")).toBe(false);
+
+		// Right expands the description — it must NOT flip the value (left/right
+		// are reserved for sidebar focus and description expand, never edits).
 		comp.handleInput(RIGHT);
-		expect(Settings.instance.get("colorBlindMode")).toBe(true);
+		expect(Settings.instance.get("colorBlindMode")).toBe(false);
+		// Left collapses the description again, still no value change.
 		comp.handleInput(LEFT);
 		expect(Settings.instance.get("colorBlindMode")).toBe(false);
-		// Left cycled the value — it must NOT have moved focus to the sidebar.
-		expect(footerText(comp.render(160))).not.toContain("up/down category");
+		// A second Left (nothing left to collapse) focuses the sidebar, again
+		// without touching the value.
+		comp.handleInput(LEFT);
+		expect(Settings.instance.get("colorBlindMode")).toBe(false);
+		expect(footerText(comp.render(160))).toContain("up/down category");
+		// Return focus to the rows so activation lands on the boolean row.
+		comp.handleInput(RIGHT);
+
+		// Activation (Space) is the only thing that toggles the value.
+		comp.handleInput(SPACE);
+		expect(Settings.instance.get("colorBlindMode")).toBe(true);
+		comp.handleInput(SPACE);
+		expect(Settings.instance.get("colorBlindMode")).toBe(false);
 	});
 
 	it("clamps a wide multi-line status preview inside the pane", () => {
