@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-533805a5.js";
+            window.path_to_searchindex_js = "searchindex-b47278ea.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -2060,16 +2060,48 @@ files that other AI tools (Claude, Codex, Gemini, Cursor, and similar) left on
 disk, and copies the ones you pick into the active profile’s <code>skills</code> directory.
 The copy is profile-owned from then on, so it loads like any other profile skill
 and is not affected by the original tool.</p>
-<p>A separate setting, <code>discovery.importForeignConfig</code>, governs whether Veyyon reads
-other tools’ context files (<code>CLAUDE.md</code>, standalone <code>AGENTS.md</code>), rules, and MCP
-servers, and whether it offers the import scan at all. Turn it off to run Veyyon
-on its own config only:</p>
+<p>A separate setting, <code>discovery.importForeignConfig</code>, governs whether Veyyon
+ambiently reads other tools’ context files (<code>CLAUDE.md</code>, standalone <code>AGENTS.md</code>),
+rules, and MCP servers. It ships <strong>off</strong>, so by default Veyyon never picks up a
+foreign <code>CLAUDE.md</code> or <code>GEMINI.md</code> from disk. Turn it on to load them as a
+machine-wide base layer:</p>
 <pre><code class="language-yaml">discovery:
-  importForeignConfig: false
+  importForeignConfig: true
 </code></pre>
-<p>It does not change skill loading: foreign skills are never loaded ambiently
-whether it is on or off. Veyyon’s own <code>AGENTS.md</code> lives in <code>.veyyon/</code> (project)
-and the profile’s agent dir (user), and is always read.</p>
+<p>The setting does not change skill loading: foreign skills are never loaded
+ambiently whether it is on or off. It also does not gate the import scan. The
+onboarding scan always finds and offers foreign files for import, because
+importing copies a file into your profile, which is how foreign config comes in
+by default now that ambient loading is off.</p>
+<p>Veyyon’s own instructions load in three layers, and only these three:</p>
+<ol>
+<li>The compiled system prompt.</li>
+<li>The global <code>~/.veyyon/AGENTS.md</code>, which applies to every profile.</li>
+<li>The active profile’s <code>AGENTS.md</code>
+(<code>~/.veyyon/profiles/&lt;name&gt;/agent/AGENTS.md</code>).</li>
+</ol>
+<p>A project’s <code>.veyyon/AGENTS.md</code> is read too when you work inside that project.
+The layers run least specific to most specific, so the global file is the
+baseline and the profile file wins where they overlap. See
+<a href="#instruction-layers">instruction layers</a> below for how to split rules between
+the global and per-profile files.</p>
+<h2 id="instruction-layers"><a class="header" href="#instruction-layers">Instruction layers</a></h2>
+<p>Veyyon reads two <code>AGENTS.md</code> files that you own, plus the project file:</p>
+<ul>
+<li><code>~/.veyyon/AGENTS.md</code> is the <strong>global</strong> file. Put rules here that should hold
+in every profile.</li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent/AGENTS.md</code> is the <strong>profile</strong> file. Put rules
+here that apply only to that profile.</li>
+</ul>
+<p>Keep each rule in one place. A rule that belongs to every profile goes in the
+global file; a rule that is specific to one profile goes in that profile’s file.
+Splitting them this way avoids duplicating the same guidance across profiles.</p>
+<p>Veyyon creates the global file for you on first run with a short note at the top
+explaining this split. The note is an HTML comment wrapped in Veyyon markers,
+and Veyyon strips it before sending the file to the model, so it never spends any
+of your instruction budget. It is there for you when you open the file to edit
+it, not for the agent. A new profile’s <code>AGENTS.md</code> gets the same kind of note.
+Delete the note if you like; Veyyon does not add it back.</p>
 <h2 id="profiles-isolate-skills"><a class="header" href="#profiles-isolate-skills">Profiles isolate skills</a></h2>
 <p>Each <a href="#profiles-1">profile</a> is a separate config root
 (<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>), and every skill source resolves under
@@ -3008,7 +3040,7 @@ one-time migration from the legacy bare-root layout.</p>
 <p>That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root <code>~/.veyyon/profiles/&lt;name&gt;/</code> the same way. A profile never reads another profile’s tree at runtime.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
-<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is on by default and controlled per profile by <code>discovery.importForeignConfig</code>, so one profile can keep importing it while another opts out to run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
+<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
 <h2 id="activating-a-profile"><a class="header" href="#activating-a-profile">Activating a profile</a></h2>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
@@ -3062,7 +3094,7 @@ $ veyyon profile default work
 <p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and refuses the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
-<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off <code>discovery.importForeignConfig</code>.</p>
+<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
 <h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
 <p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
@@ -4447,6 +4479,7 @@ on Linux/macOS the XDG layout is available after <code>veyyon config init-xdg</c
 </thead>
 <tbody>
 <tr><td><code>config.yml</code></td><td><strong>Global</strong> settings that apply across profiles, today <code>defaultProfile</code> (which profile a bare <code>vey</code> launches). Not to be confused with a profile’s own <code>config.yml</code> (below).</td></tr>
+<tr><td><code>AGENTS.md</code></td><td><strong>Global</strong> instructions loaded into every profile’s session. Veyyon creates it on first run with a stripped-before-load guidance header. Keep profile-specific rules in the profile’s own <code>AGENTS.md</code> (below). See <a href="#instruction-layers">Instruction layers</a>.</td></tr>
 <tr><td><code>install-id</code></td><td>Persistent per-install UUID. Shared by every profile.</td></tr>
 <tr><td><code>profiles/</code></td><td>One directory per profile, including <code>profiles/default/</code>, see below.</td></tr>
 </tbody>

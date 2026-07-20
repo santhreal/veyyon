@@ -34,9 +34,18 @@ export interface ImportOutcome {
 /**
  * Enumerate importable user-level foreign config. Ambient loading of these
  * items is unaffected by importing — an import creates a profile-owned copy.
+ *
+ * This scan names the foreign providers explicitly so it works regardless of
+ * `discovery.importForeignConfig`: an explicit `providers` allowlist bypasses
+ * the foreign-config gate. That is the point of onboarding — offer the copy-in
+ * even when (by default) veyyon does not ambiently load these files.
  */
 export async function scanForeignConfig(cwd?: string, home?: string): Promise<ImportCandidate[]> {
-	const options = { ...(cwd ? { cwd } : {}), ...(home ? { home } : {}) };
+	const options = {
+		...(cwd ? { cwd } : {}),
+		...(home ? { home } : {}),
+		providers: Array.from(FOREIGN_PROVIDER_IDS),
+	};
 	const [skills, contextFiles] = await Promise.all([
 		loadCapability<Skill>(skillCapability.id, options),
 		loadCapability<ContextFile>(contextFileCapability.id, options),

@@ -25,6 +25,7 @@ import { type SystemPrompt, systemPromptCapability } from "../capability/system-
 import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
+import { getGlobalAgentsPath, getProfileAgentsPath, stripManagedGuidance } from "./agents-guidance";
 import {
 	buildRuleFromMarkdown,
 	createSourceMeta,
@@ -885,15 +886,37 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
-	const userPath = path.join(getAgentDir(), "AGENTS.md");
+	// Layer 1 (least prominent): the cross-profile global ~/.veyyon/AGENTS.md.
+	// Its managed guidance header is stripped so only real instructions load.
+	const globalPath = getGlobalAgentsPath();
+	const globalContent = await readFile(globalPath);
+	if (globalContent) {
+		const stripped = stripManagedGuidance(globalContent);
+		if (stripped.trim().length > 0) {
+			items.push({
+				path: globalPath,
+				content: stripped,
+				level: "global",
+				// Provenance only; global is a user-home file, so record it as user.
+				_source: createSourceMeta(PROVIDER_ID, globalPath, "user"),
+			});
+		}
+	}
+
+	// Layer 2: the active profile's own AGENTS.md. Same header strip so a profile
+	// seeded with the guidance note contributes nothing until the user edits it.
+	const userPath = getProfileAgentsPath();
 	const userContent = await readFile(userPath);
 	if (userContent) {
-		items.push({
-			path: userPath,
-			content: userContent,
-			level: "user",
-			_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-		});
+		const stripped = stripManagedGuidance(userContent);
+		if (stripped.trim().length > 0) {
+			items.push({
+				path: userPath,
+				content: stripped,
+				level: "user",
+				_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
+			});
+		}
 	}
 
 	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx.cwd, ctx.repoRoot);

@@ -43,10 +43,13 @@ const disabledProviders = new Set<string>();
  * Providers that discover configuration authored for *other* AI tools — skills,
  * context files (CLAUDE.md/AGENTS.md), rules, and MCP servers found by scanning
  * another tool's conventions on disk. These are gated behind
- * `discovery.importForeignConfig` (default ON: global CLAUDE.md and external
- * skills load as the machine-wide base layer; the user can opt out to run on
- * veyyon-native config only). veyyon's own providers (native, veyyon-plugins,
- * builtin, project/user commands, ssh/mcp standards) are never gated by this.
+ * `discovery.importForeignConfig` (default OFF: veyyon runs on its own three
+ * instruction layers only — the compiled system prompt, the global
+ * ~/.veyyon/AGENTS.md, and the active profile's AGENTS.md — and never ambiently
+ * picks up a foreign CLAUDE.md/GEMINI.md or external skills. The user can opt in
+ * to import them as a machine-wide base layer). veyyon's own providers (native,
+ * veyyon-plugins, builtin, project/user commands, ssh/mcp standards) are never
+ * gated by this.
  */
 export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"agents",
@@ -63,8 +66,8 @@ export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"windsurf",
 ]);
 
-/** When false, FOREIGN_PROVIDER_IDS are treated as disabled. Matches the schema default (on). */
-let importForeignConfig = true;
+/** When false, FOREIGN_PROVIDER_IDS are treated as disabled. Matches the schema default (off). */
+let importForeignConfig = false;
 
 /** Settings manager for persistence (if set) */
 let settings: Settings | null = null;

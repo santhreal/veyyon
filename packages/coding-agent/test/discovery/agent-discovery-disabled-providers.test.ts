@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { disableProvider, enableProvider } from "@veyyon/coding-agent/capability";
+import { disableProvider, enableProvider, initializeWithSettings } from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { removeSyncWithRetries } from "@veyyon/utils";
@@ -53,6 +54,11 @@ describe("discoverAgents — claude-plugins disabled provider", () => {
 			}),
 		);
 
+		// claude-plugins is a foreign provider, gated behind the (default-off)
+		// importForeignConfig master toggle. Turn it on so this test exercises the
+		// per-provider enable/disable path rather than the master gate.
+		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
+
 		// Start each test with a clean provider + cache state.
 		enableProvider("claude-plugins");
 		clearFsCache();
@@ -62,6 +68,7 @@ describe("discoverAgents — claude-plugins disabled provider", () => {
 	afterEach(() => {
 		removeSyncWithRetries(tempHome);
 		// Restore global state so other tests in the suite are not affected.
+		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false }));
 		enableProvider("claude-plugins");
 		clearFsCache();
 		clearClaudePluginRootsCache();

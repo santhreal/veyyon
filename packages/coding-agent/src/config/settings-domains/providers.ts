@@ -49,13 +49,13 @@ export const PROVIDERS_SETTINGS = {
 	// Foreign-tool config discovery
 	"discovery.importForeignConfig": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "providers",
 			group: "Discovery",
 			label: "Import Other Tools' Config",
 			description:
-				"Auto-discover skills, context files (CLAUDE.md/AGENTS.md), rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. On by default so global CLAUDE.md and external skills load as the base layer; disable to run on veyyon-native config only.",
+				"Auto-discover skills, context files (CLAUDE.md/AGENTS.md), rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, and the active profile's AGENTS.md) and never ambiently picks up a foreign CLAUDE.md/GEMINI.md. Turn on to import them as a base layer.",
 		},
 	},
 

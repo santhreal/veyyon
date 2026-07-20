@@ -16,8 +16,13 @@ export interface ContextFile {
 	path: string;
 	/** File content */
 	content: string;
-	/** Which level this came from */
-	level: "user" | "project";
+	/**
+	 * Which layer this came from. `global` is veyyon's cross-profile
+	 * `~/.veyyon/AGENTS.md`; `user` is the active profile's own AGENTS.md; and
+	 * `project` is a workspace `.veyyon/AGENTS.md`. Prominence runs global (least,
+	 * the baseline) → project → user (most, the most specific).
+	 */
+	level: "user" | "project" | "global";
 	/** Distance from cwd (0 = in cwd, 1 = parent, etc.) for project files */
 	depth?: number;
 	/** Source metadata */
@@ -28,17 +33,23 @@ export const contextFileCapability = defineCapability<ContextFile>({
 	id: "context-files",
 	displayName: "Context Files",
 	description: "Persistent instruction files (CLAUDE.md, AGENTS.md, etc.) that guide agent behavior",
-	// Deduplicate by scope: one user-level file, and one project-level file per directory depth.
-	// Within each depth level, higher-priority providers shadow lower-priority ones.
-	// This supports monorepo hierarchies where AGENTS.md exists at multiple ancestor levels.
+	// Deduplicate by scope: one global-level file, one user-level file, and one
+	// project-level file per directory depth. The three scopes are distinct keys
+	// so the global baseline and the per-profile file coexist (they would collide
+	// if both keyed as "user"). Within each depth level, higher-priority providers
+	// shadow lower-priority ones. This supports monorepo hierarchies where
+	// AGENTS.md exists at multiple ancestor levels.
 	// Clamp depth >= 0: files inside config subdirectories of an ancestor (e.g. .claude/, .github/)
 	// are same-scope as the ancestor itself.
-	key: file => (file.level === "user" ? "user" : `project:${Math.max(0, file.depth ?? 0)}`),
+	key: file =>
+		file.level === "global" ? "global" : file.level === "user" ? "user" : `project:${Math.max(0, file.depth ?? 0)}`,
 	toExtensionId: file => `context-file:${file.level}:${path.basename(file.path)}`,
 	validate: file => {
 		if (!file.path) return "Missing path";
 		if (file.content === undefined) return "Missing content";
-		if (file.level !== "user" && file.level !== "project") return "Invalid level: must be 'user' or 'project'";
+		if (file.level !== "user" && file.level !== "project" && file.level !== "global") {
+			return "Invalid level: must be 'user', 'project', or 'global'";
+		}
 		return undefined;
 	},
 });

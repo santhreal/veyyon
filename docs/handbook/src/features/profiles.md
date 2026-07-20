@@ -49,7 +49,7 @@ That resolution is uniform across settings, sessions, blobs, slash commands, rul
 
 Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped; they follow the working directory.
 
-**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is on by default and controlled per profile by `discovery.importForeignConfig`, so one profile can keep importing it while another opts out to run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile, see [Skills › Profiles isolate skills](./skills.md#profiles-isolate-skills).
+**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is **off by default** and controlled per profile by `discovery.importForeignConfig`, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile, see [Skills › Profiles isolate skills](./skills.md#profiles-isolate-skills).
 
 ## Activating a profile
 
@@ -110,7 +110,7 @@ You can still create a profile implicitly by running `veyyon --profile <name>` o
 
 ## Onboarding import
 
-On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off `discovery.importForeignConfig`.
+On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs no matter how `discovery.importForeignConfig` is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.
 
 Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.yml` files as shipped; settings use `config.yml` under the active agent dir.
 

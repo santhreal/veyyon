@@ -2,11 +2,12 @@
  * discovery.importForeignConfig gate.
  *
  * Skills, context files (CLAUDE.md / standalone AGENTS.md), rules, and MCP
- * servers authored for OTHER AI tools load by default — global CLAUDE.md and
- * external skills are the machine-wide base layer. The single /settings toggle
- * `discovery.importForeignConfig` (default ON) controls this; opting out runs
- * veyyon on native config only. veyyon's own providers (`native`,
- * `veyyon-plugins`, generic transport providers) are never gated.
+ * servers authored for OTHER AI tools stay OFF by default — veyyon runs on its
+ * own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md,
+ * and the active profile's AGENTS.md). The single /settings toggle
+ * `discovery.importForeignConfig` (default OFF) controls this; opting in loads
+ * the foreign files as a machine-wide base layer. veyyon's own providers
+ * (`native`, `veyyon-plugins`, generic transport providers) are never gated.
  *
  * The gate lives in ONE place — `isProviderEnabled` — which the capability
  * collection filter (`filterProviders`) and every UI enabled-flag consult, so
@@ -36,15 +37,15 @@ const NATIVE_PROVIDERS = ["native", "veyyon-plugins"];
 const FOREIGN_SAMPLES = ["claude", "codex", "agents", "agents-md", "cursor", "gemini"];
 
 afterEach(() => {
-	// Restore the shipped default (foreign providers ON) so sibling test files
+	// Restore the shipped default (foreign providers OFF) so sibling test files
 	// sharing this process's global capability registry see production behavior.
-	applyImportSetting(true);
+	applyImportSetting(false);
 });
 
 describe("discovery.importForeignConfig", () => {
-	test("ships on by default so global CLAUDE.md and external skills load as the base layer", () => {
+	test("ships off by default so veyyon loads only its own instruction layers", () => {
 		initializeWithSettings(Settings.isolated());
-		expect(isForeignConfigImportEnabled()).toBe(true);
+		expect(isForeignConfigImportEnabled()).toBe(false);
 	});
 
 	test("opting out gates every foreign provider off while leaving veyyon-native providers on", () => {

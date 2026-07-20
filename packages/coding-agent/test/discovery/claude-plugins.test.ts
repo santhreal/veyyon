@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@veyyon/coding-agent/capability";
+import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	clearClaudePluginRootsCache,
 	listClaudePluginRoots,
@@ -16,6 +17,12 @@ import "@veyyon/coding-agent/discovery/claude-plugins";
 import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
 import type { Skill } from "@veyyon/coding-agent/capability/skill";
 import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command";
+
+// claude-plugins is a foreign provider gated behind the (default-off)
+// importForeignConfig master toggle. Turn it on for the whole file so the
+// discovery blocks exercise plugin loading; restore the shipped default after.
+beforeEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true })));
+afterEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false })));
 
 describe("parseClaudePluginsRegistry", () => {
 	test("parses valid registry", () => {

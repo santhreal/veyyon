@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { initializeWithSettings } from "@veyyon/coding-agent/capability";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	buildSystemPrompt,
 	loadProjectContextFiles,
@@ -10,6 +12,13 @@ import {
 } from "@veyyon/coding-agent/system-prompt";
 import { escapeRegExp } from "@veyyon/utils";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+
+// Discovering a bare project AGENTS.md (not under .veyyon/) is the foreign
+// agents-md convention, gated behind the (default-off) importForeignConfig
+// toggle. Turn it on for this file so the dedup-of-discovered test can find
+// those files; restore the shipped default after each test.
+beforeEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true })));
+afterEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false })));
 
 const READ_TOOL = new Map<string, SystemPromptToolMetadata>([
 	[
