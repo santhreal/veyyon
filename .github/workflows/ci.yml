@@ -780,13 +780,16 @@ jobs:
          id-token: write
          contents: read
       env:
-         # npm publishing needs either an NPM_TOKEN secret (classic auth / first
-         # publish) or trusted publishing explicitly opted in via the
-         # NPM_TRUSTED_PUBLISH repo var. With neither, the @veyyon scope isn't set
-         # up to publish yet, so skip LOUDLY instead of red-failing the release —
-         # the GitHub binaries (what the installer uses) already shipped. Secrets
-         # can't be read in a step `if:`, so hoist the presence to a job env.
-         HAS_NPM: ${{ secrets.NPM_TOKEN != '' || vars.NPM_TRUSTED_PUBLISH == 'on' }}
+         # npm publishing is OPT-IN via the NPM_PUBLISH repo var. The install
+         # channel is the curl script, which pulls the GitHub release binaries
+         # (published by release_github, before this job). npm is a secondary
+         # convenience, not the release path. Opting in still needs a credential:
+         # OIDC trusted publishing (id-token below) or an NPM_TOKEN secret. The
+         # var gate is deliberate: the mere presence of a stale/2FA-bound token
+         # must not trigger a doomed publish that red-fails an otherwise green
+         # release. Off (default) skips LOUDLY. A repo var can't be read in a
+         # step `if:`, so hoist it to a job env.
+         HAS_NPM: ${{ vars.NPM_PUBLISH == 'on' }}
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            if: env.HAS_NPM == 'true'
@@ -832,10 +835,10 @@ jobs:
               # publisher for the package (or on a first publish).
               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
            run: bun run ci:release:publish
-         - name: No npm credentials — publish skipped
+         - name: npm publish opt-in disabled — skipped
            if: env.HAS_NPM != 'true'
            run: |
-              echo "::warning::npm publish skipped — set the NPM_TOKEN secret (or the NPM_TRUSTED_PUBLISH=on repo var once a trusted publisher is configured) to publish the @veyyon/* packages. The GitHub release binaries used by the installer already shipped."
+              echo "::warning::npm publish skipped: it is opt-in. Set the NPM_PUBLISH=on repo var (plus an NPM_TOKEN secret or a configured OIDC trusted publisher) to publish the @veyyon/* packages. The GitHub release binaries used by the curl installer already shipped."
 
    # Regenerate the Homebrew tap formula from the freshly published release assets
    # and push it to veyyon's own tap. Gated on release_github_verify so the tap
