@@ -147,6 +147,7 @@ import {
 	postmortem,
 	prompt,
 	relativePathWithinRoot,
+	setProjectDir,
 	Snowflake,
 	withScopedTimeoutSignal,
 	withTimeout,
@@ -650,7 +651,8 @@ export type AgentSessionEvent =
 			/** The level `auto` resolved to this turn, once classified. */
 			resolved?: Effort;
 	  }
-	| { type: "goal_updated"; goal: Goal | null; state?: GoalModeState };
+	| { type: "goal_updated"; goal: Goal | null; state?: GoalModeState }
+	| { type: "cwd_changed"; previous: string; cwd: string };
 /** Listener function for agent session events */
 export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
 
@@ -6114,6 +6116,40 @@ export class AgentSession {
 	 * Session persistence is handled internally (saves messages on message_end).
 	 * Multiple listeners can be added. Returns unsubscribe function for this listener.
 	 */
+
+	/**
+	 * Re-root the live session working directory for this session only.
+	 * Updates SessionManager cwd + header, aligns process project dir, emits
+	 * `cwd_changed`, and injects a visible/context system note. Never writes
+	 * profile `session.workdir` or other persisted settings.
+	 */
+	async setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
+		const previous = this.sessionManager.getCwd();
+		const cwd = await this.sessionManager.setCwd(newCwd, options);
+		if (cwd === previous) {
+			return cwd;
+		}
+
+		// Align process project dir so status-line / discovery readers that still
+		// consult getProjectDir() stay consistent with the live session root.
+		setProjectDir(cwd);
+
+		const note = `Session working directory changed: ${previous} → ${cwd}`;
+		const details = { previous, cwd };
+		this.agent.appendMessage({
+			role: "custom",
+			customType: "cwd_changed",
+			content: note,
+			display: true,
+			details,
+			attribution: "agent",
+			timestamp: Date.now(),
+		});
+		this.sessionManager.appendCustomMessageEntry("cwd_changed", note, true, details, "agent");
+		this.#emit({ type: "cwd_changed", previous, cwd });
+		return cwd;
+	}
+
 	subscribe(listener: AgentSessionEventListener): () => void {
 		this.#eventListeners.push(listener);
 

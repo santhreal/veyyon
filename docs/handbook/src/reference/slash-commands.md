@@ -12,6 +12,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/fork`, `/branch`, `/tree` | Branching and session tree UI |
 | `/rename <title>` | Rename session |
 | `/move <dir>` | Move session to another working directory |
+| `/cwd [path]` | Bare prints the current session cwd; with a path, re-roots the session after validating the directory exists (session-scoped only; does not write profile `session.workdir`) |
 | `/export [path]` | Export session JSONL or HTML |
 | `/dump` | Dump debug artifacts |
 | `/session info`, `/session delete` | Session metadata or delete |

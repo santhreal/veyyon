@@ -30,6 +30,7 @@ import { readToolRenderer } from "./read";
 import { resolveToolRenderer } from "./resolve";
 import { searchToolBm25Renderer } from "./search-tool-bm25";
 import { sshToolRenderer } from "./ssh";
+import { setCwdToolRenderer } from "./set-cwd";
 import { todoToolRenderer } from "./todo";
 import { createVibeToolRenderer } from "./vibe";
 import { writeToolRenderer } from "./write";
@@ -111,6 +112,7 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 		return taskToolRenderer as ToolRenderer;
 	},
 	todo: todoToolRenderer as ToolRenderer,
+	set_cwd: setCwdToolRenderer as ToolRenderer,
 	github: githubToolRenderer as ToolRenderer,
 	goal: goalToolRenderer as ToolRenderer,
 	web_search: webSearchToolRenderer as ToolRenderer,

@@ -81,6 +81,7 @@ export const taskItemSchema = type({
 	"name?": "string",
 	agent: "string = 'task'",
 	task: "string",
+	"cwd?": "string",
 	"+": "delete",
 });
 const taskItemSchemaIsolated = type({
@@ -88,6 +89,7 @@ const taskItemSchemaIsolated = type({
 	agent: "string = 'task'",
 	task: "string",
 	"isolated?": "boolean",
+	"cwd?": "string",
 	"+": "delete",
 });
 
@@ -101,6 +103,8 @@ export interface TaskItem {
 	task?: string;
 	/** Run this spawn in an isolated worktree (batch form; flat form carries it top-level). */
 	isolated?: boolean;
+	/** Per-spawn cwd override; see {@link TaskParams.cwd}. */
+	cwd?: string;
 }
 
 export const taskSchema = type({
@@ -108,12 +112,14 @@ export const taskSchema = type({
 	agent: "string = 'task'",
 	task: "string",
 	"isolated?": "boolean",
+	"cwd?": "string",
 	"+": "delete",
 });
 const taskSchemaNoIsolation = type({
 	"name?": "string",
 	agent: "string = 'task'",
 	task: "string",
+	"cwd?": "string",
 	"+": "delete",
 });
 const taskSchemaBatch = type({
@@ -157,6 +163,7 @@ function createTaskSchema(options: {
 				agent,
 				task: "string",
 				"isolated?": "boolean",
+				"cwd?": "string",
 				"+": "delete",
 			});
 			return type.raw({
@@ -169,6 +176,7 @@ function createTaskSchema(options: {
 			"name?": "string",
 			agent,
 			task: "string",
+			"cwd?": "string",
 			"+": "delete",
 		});
 		return type.raw({
@@ -183,6 +191,7 @@ function createTaskSchema(options: {
 			agent,
 			task: "string",
 			"isolated?": "boolean",
+			"cwd?": "string",
 			"+": "delete",
 		});
 	}
@@ -190,6 +199,7 @@ function createTaskSchema(options: {
 		"name?": "string",
 		agent,
 		task: "string",
+		"cwd?": "string",
 		"+": "delete",
 	});
 }
@@ -237,6 +247,12 @@ export interface TaskParams {
 	context?: string;
 	/** Run in an isolated worktree (flat form; per-item in batch form). */
 	isolated?: boolean;
+	/**
+	 * Working directory for this spawn.
+	 * Default / `"inherit"` = parent's live session cwd at spawn time.
+	 * An explicit absolute path must exist and be a directory.
+	 */
+	cwd?: string;
 }
 
 /**

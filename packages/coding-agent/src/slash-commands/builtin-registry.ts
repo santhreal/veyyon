@@ -1778,6 +1778,38 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
+		name: "cwd",
+		description: "Show or set the session working directory (session-scoped; does not write profile settings)",
+		acpDescription: "Show or set the session working directory",
+		inlineHint: "[<path>]",
+		allowArgs: true,
+		handle: async (command, runtime) => {
+			const current = runtime.sessionManager.getCwd();
+			if (!command.args) {
+				await runtime.output(current);
+				return commandConsumed();
+			}
+			if (runtime.session.isStreaming) return usage("Cannot change cwd while streaming.", runtime);
+			const resolvedPath = resolveToCwd(command.args, current);
+			try {
+				const st = await fs.stat(resolvedPath);
+				if (!st.isDirectory()) {
+					return usage(`Not a directory: ${resolvedPath}`, runtime);
+				}
+			} catch {
+				return usage(`Directory does not exist: ${resolvedPath}`, runtime);
+			}
+			try {
+				const next = await runtime.session.setCwd(resolvedPath, { validate: true });
+				await runtime.output(next === current ? `cwd unchanged: ${next}` : `cwd set: ${current} → ${next}`);
+				await runtime.notifyTitleChanged?.();
+				return commandConsumed();
+			} catch (err) {
+				return usage(`set cwd failed: ${errorMessage(err)}`, runtime);
+			}
+		},
+	},
+	{
 		name: "exit",
 		description: "Exit the application",
 		handleTui: shutdownHandlerTui,

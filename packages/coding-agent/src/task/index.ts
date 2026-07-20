@@ -19,7 +19,7 @@ import path from "node:path";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { emptyCost, emptyUsage } from "@veyyon/catalog/models";
-import { $env, errorMessage, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
+import { $env, directoryExists, errorMessage, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
 import type { ToolSession } from "..";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import { MCPManager } from "../mcp/manager";
@@ -283,12 +283,45 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
  * flag is only materialized when the caller sent one — `#runSpawn`
  * distinguishes an absent key from an explicit value.
  */
+
+/**
+ * Resolve the ExecutorOptions.cwd for a spawn.
+ * Default / `"inherit"` uses the parent's live session cwd at spawn time.
+ * An explicit path must be absolute, exist, and be a directory.
+ */
+export async function resolveSpawnCwd(raw: string | undefined, parentCwd: string): Promise<string> {
+	const trimmed = typeof raw === "string" ? raw.trim() : "";
+	if (!trimmed || trimmed === "inherit") {
+		return parentCwd;
+	}
+	if (!path.isAbsolute(trimmed)) {
+		throw new Error(
+			`task cwd must be absolute or "inherit" (got relative path: ${trimmed}). Pass an absolute directory path.`,
+		);
+	}
+	const resolved = path.resolve(trimmed);
+	try {
+		const st = await fs.stat(resolved);
+		if (!st.isDirectory()) {
+			throw new Error(`task cwd is not a directory: ${resolved}`);
+		}
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("task cwd")) throw err;
+		throw new Error(`task cwd does not exist: ${resolved}`);
+	}
+	if (!(await directoryExists(resolved))) {
+		throw new Error(`task cwd does not exist: ${resolved}`);
+	}
+	return resolved;
+}
+
 function resolveSpawnItems(params: TaskParams): TaskItem[] {
 	if (Array.isArray(params.tasks) && params.tasks.length > 0) {
 		return params.tasks;
 	}
 	const item: TaskItem = { name: params.name, agent: params.agent, task: params.task };
 	if ("isolated" in params) item.isolated = params.isolated;
+	if (params.cwd !== undefined) item.cwd = params.cwd;
 	return [item];
 }
 
@@ -310,6 +343,11 @@ function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string
 		spawn.isolated = item.isolated;
 	} else if ("isolated" in params) {
 		spawn.isolated = params.isolated;
+	}
+	if (item.cwd !== undefined) {
+		spawn.cwd = item.cwd;
+	} else if (params.cwd !== undefined) {
+		spawn.cwd = params.cwd;
 	}
 	return spawn;
 }
@@ -1402,8 +1440,19 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 			const buildCommitMessageFn = makeIsolationCommitMessage(this.session);
 
+			let spawnCwd: string;
+			try {
+				spawnCwd = await resolveSpawnCwd(params.cwd, this.session.cwd);
+			} catch (err) {
+				const message = errorMessage(err);
+				return {
+					content: [{ type: "text", text: message }],
+					details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
+				};
+			}
+
 			const sharedRunOptions = {
-				cwd: this.session.cwd,
+				cwd: spawnCwd,
 				agent: effectiveAgent,
 				task: renderSubagentUserPrompt(assignment),
 				assignment,
