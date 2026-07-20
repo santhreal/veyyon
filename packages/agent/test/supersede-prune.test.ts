@@ -3,6 +3,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { SessionEntry, SessionMessageEntry } from "@veyyon/agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
+	estimateTokens,
 	pruneSupersededToolResults,
 	pruneToolOutputs,
 	readToolSupersedeKey,
@@ -319,6 +320,30 @@ describe("pruneToolOutputs — supersede priority fold", () => {
 
 		expect(result.prunedCount).toBe(1);
 		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(result2)).toBe(FILE_CONTENT);
+	});
+
+	test("superseded dead weight does not consume the protectTokens window of retained results", () => {
+		const [oldCall, oldResult] = readPair("src/old.ts", FILE_CONTENT, T0);
+		const huge = "payload ".repeat(2000);
+		const [call1, result1] = readPair("src/foo.ts", huge, T0 + 1_000);
+		const [call2, result2] = readPair("src/foo.ts", FILE_CONTENT, T0 + 2_000);
+		const entries: SessionEntry[] = [oldCall, oldResult, call1, result1, call2, result2];
+
+		// protectTokens covers exactly the two retained (non-superseded)
+		// results. The superseded middle result is pruned away, so its tokens
+		// must not push the oldest result out of the protected window.
+		const retainedTokens = estimateTokens(oldResult.message as AgentMessage) + estimateTokens(result2.message as AgentMessage);
+		const result = pruneToolOutputs(entries, {
+			protectTokens: retainedTokens,
+			minimumSavings: 0,
+			protectedTools: [],
+			supersedeKey: readToolSupersedeKey,
+		});
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(oldResult)).toBe(FILE_CONTENT);
 		expect(resultText(result2)).toBe(FILE_CONTENT);
 	});
 

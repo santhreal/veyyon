@@ -464,6 +464,7 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 			}
 			break;
 		}
+		case "custom":
 		case "hookMessage":
 		case "toolResult": {
 			if (typeof message.content === "string") {
@@ -623,10 +624,13 @@ export function findCutPoint(
 
 	for (let i = endIndex - 1; i >= startIndex; i--) {
 		const entry = entries[i];
-		if (entry.type !== "message") continue;
+		const message = getMessageFromEntry(entry);
+		if (!message) continue;
 
-		// Estimate this message's size
-		const messageTokens = estimateTokens(entry.message);
+		// Estimate this message's size. branch_summary and custom_message
+		// entries stay in the retained tail, so their tokens must count
+		// toward the recent budget too.
+		const messageTokens = estimateTokens(message);
 		accumulatedTokens += messageTokens;
 
 		// Check if we've exceeded the budget
