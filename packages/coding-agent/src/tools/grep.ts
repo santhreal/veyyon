@@ -21,7 +21,13 @@ import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import type { Theme } from "../modes/theme/theme";
 import grepDescription from "../prompts/tools/grep.md" with { type: "text" };
-import { DEFAULT_MAX_COLUMN, type TruncationResult, truncateHead, truncateLine } from "../session/streaming-output";
+import {
+	artifactFooter,
+	DEFAULT_MAX_COLUMN,
+	type TruncationResult,
+	truncateHead,
+	truncateLine,
+} from "../session/streaming-output";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -40,6 +46,7 @@ import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import { formatMatchLine } from "./match-line-format";
+import { saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import {
 	expandDelimitedPathEntries,
@@ -1535,8 +1542,23 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					outputLines.push("", warningNote);
 				}
 				const rawOutput = outputLines.join("\n");
+				// A single query can return a match set that dwarfs the inline floor
+				// (the line/column budget alone permits well over a megabyte).
+				// truncateHead bounds the model-facing text to DEFAULT_MAX_BYTES, but
+				// on its own that silently DROPS the elided tail. When it truncates,
+				// save the FULL match set to an artifact and append the recoverable
+				// `artifact://<id>` footer so nothing is lost and the huge result is
+				// not carried verbatim for every later turn.
 				const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
-				const output = truncation.content;
+				let output = truncation.content;
+				let spillArtifactId: string | undefined;
+				if (truncation.truncated) {
+					spillArtifactId = await saveOutputArtifact(this.session, "grep", rawOutput);
+					if (spillArtifactId) {
+						const sep = output.endsWith("\n") ? "" : "\n";
+						output += `${sep}${artifactFooter(spillArtifactId)}`;
+					}
+				}
 				const displayText = displayLines.join("\n");
 				const truncated = Boolean(
 					fileLimitReached || perFileLimitReached || result.limitReached || truncation.truncated || linesTruncated,
@@ -1564,7 +1586,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					.text(output)
 					.limits({ columnMax: linesTruncated ? DEFAULT_MAX_COLUMN : undefined });
 				if (truncation.truncated) {
-					resultBuilder.truncation(truncation, { direction: "head" });
+					resultBuilder.truncation(truncation, { direction: "head", artifactId: spillArtifactId });
 				}
 				return resultBuilder.done();
 			} finally {

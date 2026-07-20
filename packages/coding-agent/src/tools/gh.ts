@@ -30,6 +30,7 @@ import type { ToolSession } from ".";
 import { formatShortSha } from "./gh-format";
 import { parseIssueUrl, parsePrUrl } from "./gh-url";
 import { type CacheStatus, getOrFetchView, invalidateAllForNumber, resolveGithubCacheAuthKey } from "./github-cache";
+import { saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
@@ -2403,14 +2404,8 @@ function formatSearchReposResults(query: string, items: GhSearchRepoResult[]): s
 	return lines.join("\n").trim();
 }
 
-async function saveArtifactText(session: ToolSession, toolType: string, text: string): Promise<string | undefined> {
-	const { path: artifactPath, id: artifactId } = (await session.allocateOutputArtifact?.(toolType)) ?? {};
-	if (!artifactPath || !artifactId) {
-		return undefined;
-	}
-
-	await Bun.write(artifactPath, text);
-	return artifactId;
+function saveArtifactText(session: ToolSession, toolType: string, text: string): Promise<string | undefined> {
+	return saveOutputArtifact(session, toolType, text);
 }
 
 function appendArtifactReference(text: string, artifactId: string | undefined, label: string): string {

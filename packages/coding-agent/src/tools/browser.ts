@@ -10,6 +10,7 @@ import { resolveCmuxKind } from "./browser/cmux/rpc";
 import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
 import type { Observation, ScreenshotResult } from "./browser/tab-protocol";
 import { acquireTab, dropHeadlessTabs, getTab, releaseAllTabs, releaseTab, runInTab } from "./browser/tab-supervisor";
+import { saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import { resolveToCwd } from "./path-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
@@ -352,15 +353,8 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 }
 
 /** Persist over-cap browser run output as a session artifact; mirrors the bash minimizer's save path. */
-async function saveBrowserOutputArtifact(session: ToolSession, fullText: string): Promise<string | undefined> {
-	try {
-		const alloc = await session.allocateOutputArtifact?.("browser-original");
-		if (!alloc?.path || !alloc.id) return undefined;
-		await Bun.write(alloc.path, fullText);
-		return alloc.id;
-	} catch {
-		return undefined;
-	}
+function saveBrowserOutputArtifact(session: ToolSession, fullText: string): Promise<string | undefined> {
+	return saveOutputArtifact(session, "browser-original", fullText);
 }
 
 function describeBrowser(handle: BrowserHandle): string {
