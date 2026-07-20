@@ -570,6 +570,7 @@ export class CollabHost {
 					hasSessionFile: !!ref.sessionFile,
 					createdAt: ref.createdAt,
 					lastActivity: ref.lastActivity,
+					model: ref.model,
 				}))
 		);
 	}

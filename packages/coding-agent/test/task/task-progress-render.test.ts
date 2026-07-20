@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { SettingPath, SettingValue } from "@veyyon/coding-agent/config/settings";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
@@ -441,6 +441,53 @@ describe("task progress rendering", () => {
 		// The run summary footer still counts the full batch.
 		expect(collapsed).toContain("5 succeeded");
 		expect(collapsed).toContain("1 failed");
+	});
+
+	// The user must be able to see the model of every subagent launched. The
+	// resolved-model badge now defaults on, so a launched subagent's model id
+	// shows in its status line without any opt-in.
+	it("shows the resolved model badge on a running subagent by default", async () => {
+		const theme = (await getThemeByName("dark"))!;
+		const options: RenderResultOptions = { expanded: false, isPartial: true, spinnerFrame: 0 };
+		const progress = runningProgress({
+			id: "ModelShown",
+			description: "do work",
+			resolvedModel: "anthropic/claude-opus-4-8",
+		});
+		const row = Bun.stripANSI(
+			findRow(
+				taskToolRenderer.renderResult(
+					{ content: [{ type: "text", text: "" }], details: detailsFor(progress) },
+					options,
+					theme,
+				),
+				"ModelShown",
+			),
+		);
+		// The `provider/` prefix is dropped in the badge; the id remains.
+		expect(row).toContain("claude-opus-4-8");
+	});
+
+	it("hides the resolved model badge when the setting is turned off", async () => {
+		settings.set("task.showResolvedModelBadge", false);
+		const theme = (await getThemeByName("dark"))!;
+		const options: RenderResultOptions = { expanded: false, isPartial: true, spinnerFrame: 0 };
+		const progress = runningProgress({
+			id: "ModelHidden",
+			description: "do work",
+			resolvedModel: "anthropic/claude-opus-4-8",
+		});
+		const row = Bun.stripANSI(
+			findRow(
+				taskToolRenderer.renderResult(
+					{ content: [{ type: "text", text: "" }], details: detailsFor(progress) },
+					options,
+					theme,
+				),
+				"ModelHidden",
+			),
+		);
+		expect(row).not.toContain("claude-opus-4-8");
 	});
 });
 

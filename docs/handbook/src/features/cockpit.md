@@ -28,6 +28,8 @@ Built-in segment IDs include: `pi` (legacy product mark segment), `model`, `mode
 | `/cockpit` | Live multi-agent monitor: status, model per agent, drill-in transcript (alias `/hub`; keybinding `app.agents.hub`) |
 | `/jobs` | List background async tool jobs |
 
+The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off `task.showResolvedModelBadge` (Appearance settings).
+
 Session files are append-only JSONL under the active profile’s agent `sessions/` directory. See [Sessions](../using/sessions.md).
 
 ## Inter-agent messaging

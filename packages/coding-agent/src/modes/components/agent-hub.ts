@@ -65,11 +65,21 @@ function formatModelBadge(modelId: string, level: ThinkingLevel | undefined): st
 	return `${model} ${theme.getThinkingBorderColor(level)(display)}`;
 }
 
+/** Badge from a `provider/id[:level]` selector string (executor-reported or registry-recorded). */
+function badgeFromSelector(resolved: string): string {
+	// Model ids may themselves contain colons (`qwen3:14b`), so only treat the
+	// suffix as a thinking level when it parses as one.
+	const colon = resolved.lastIndexOf(":");
+	const level = colon >= 0 ? parseThinkingLevel(resolved.slice(colon + 1)) : undefined;
+	const selector = level !== undefined ? resolved.slice(0, colon) : resolved;
+	return formatModelBadge(selector.slice(selector.indexOf("/") + 1), level);
+}
+
 /**
  * Active model + reasoning level for a hub row: live session state when the
  * agent is attached, else the executor-reported `resolvedModel` selector
- * (`provider/id`, optionally `:<level>`). Undefined when neither is known
- * (e.g. a parked historical agent restored from disk).
+ * (`provider/id`, optionally `:<level>`), else the model recorded on the ref at
+ * registration. Undefined only when none is known.
  */
 function modelBadge(ref: AgentRef, observed: ObservableSession | undefined): string | undefined {
 	const model = ref.session?.model;
@@ -78,13 +88,9 @@ function modelBadge(ref: AgentRef, observed: ObservableSession | undefined): str
 		return formatModelBadge(model.id, level);
 	}
 	const resolved = observed?.progress?.resolvedModel;
-	if (!resolved) return undefined;
-	// Model ids may themselves contain colons (`qwen3:14b`), so only treat the
-	// suffix as a thinking level when it parses as one.
-	const colon = resolved.lastIndexOf(":");
-	const level = colon >= 0 ? parseThinkingLevel(resolved.slice(colon + 1)) : undefined;
-	const selector = level !== undefined ? resolved.slice(0, colon) : resolved;
-	return formatModelBadge(selector.slice(selector.indexOf("/") + 1), level);
+	if (resolved) return badgeFromSelector(resolved);
+	if (ref.model) return badgeFromSelector(ref.model);
+	return undefined;
 }
 
 async function registerPersistedSubagents(

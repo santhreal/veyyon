@@ -343,7 +343,7 @@ export const TASKS_SETTINGS = {
 
 	"task.showResolvedModelBadge": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "appearance",
 			group: "Display",

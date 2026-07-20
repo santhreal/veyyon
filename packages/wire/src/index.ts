@@ -245,6 +245,8 @@ export interface AgentSnapshot {
 	hasSessionFile: boolean;
 	createdAt: number;
 	lastActivity: number;
+	/** Model the agent runs on, as a `provider/id` string. Display-only; omitted when the host does not know it. */
+	model?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -100,7 +100,9 @@ export function AgentDrawer(props: {
 	};
 
 	const p = progress?.progress;
-	const model = p?.resolvedModel;
+	// Live resolved model when the agent is running, else the model recorded on
+	// the snapshot at launch so parked/idle agents still show what they ran on.
+	const model = p?.resolvedModel ?? agent.model;
 	const ctxPct =
 		p?.contextTokens !== undefined && p.contextWindow
 			? Math.min(100, (p.contextTokens / p.contextWindow) * 100)
