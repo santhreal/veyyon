@@ -371,7 +371,9 @@ describe("FilterPlugin details", () => {
 		plugin.onRemember({ id: "c" });
 		const blocked = plugin.getBlocked();
 		expect(blocked).toHaveLength(2);
-		expect((blocked[0]?.item as Record<string, unknown>).id).toBe("b");
+		const first = blocked[0];
+		expect(first).toBeDefined();
+		expect((first!.item as Record<string, unknown>).id).toBe("b");
 	});
 });
 
