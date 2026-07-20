@@ -29,6 +29,7 @@ function makeSession() {
 		isAutoThinking: false,
 		autoResolvedThinkingLevel: () => undefined,
 		isFastModeActive: () => false,
+		isApprovalBypassed: () => false,
 		isFastModeEnabled: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
