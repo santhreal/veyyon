@@ -283,6 +283,29 @@ describe("findCutPoint", () => {
 		expect(result.firstKeptEntryIndex).toBe(1);
 	});
 
+	test("branch_summary and custom_message tokens count toward keepRecentTokens", () => {
+		const big = "word ".repeat(4000);
+		const entries: SessionEntry[] = [
+			messageEntry(userMessage("older turn")),
+			messageEntry(assistant([{ type: "text", text: "older answer" }])),
+			{
+				type: "custom_message",
+				id: "cm",
+				parentId: null,
+				timestamp: "t",
+				customType: "note",
+				content: [{ type: "text", text: big }],
+				display: true,
+			},
+			messageEntry(assistant([{ type: "text", text: "recent" }])),
+		];
+		// Budget is met by the custom_message alone (it stays in the retained
+		// tail, so its tokens must count). The cut must land on the
+		// custom_message (index 2) or later, not before it.
+		const result = findCutPoint(entries, 0, entries.length, 1000);
+		expect(result.firstKeptEntryIndex).toBe(2);
+	});
+
 	test("scans backwards over non-message entries to include them with the kept tail", () => {
 		const big = "word ".repeat(4000);
 		const entries: SessionEntry[] = [

@@ -370,7 +370,9 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 		}
 
 		candidates.push({ entry: entry as SessionMessageEntry, tokens, superseded, useless });
-		accumulatedTokens += tokens;
+		// Dead weight being pruned away (superseded/useless) must not consume
+		// the protectTokens window of the real results retained behind it.
+		if (!superseded && !useless) accumulatedTokens += tokens;
 	}
 
 	for (const candidate of candidates) {
