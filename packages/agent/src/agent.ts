@@ -748,6 +748,17 @@ export class Agent {
 		this.#onResponse = fn;
 	}
 
+	/**
+	 * Replace the provider-context transform (e.g. AgentSession wrapping for
+	 * session-local tool-call ID canonicalization). Must be installed after
+	 * construction when the session owns state the transform closes over.
+	 */
+	setTransformProviderContext(
+		fn: ((context: Context, model: Model) => Context | Promise<Context>) | undefined,
+	): void {
+		this.#transformProviderContext = fn;
+	}
+
 	setRawSseEventInterceptor(fn: SimpleStreamOptions["onSseEvent"] | undefined): void {
 		this.#onSseEvent = fn;
 	}
