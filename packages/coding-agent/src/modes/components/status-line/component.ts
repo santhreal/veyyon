@@ -338,7 +338,7 @@ export class StatusLineComponent implements Component {
 	}
 
 	#resolveActiveRepoCache(): ActiveRepoCache {
-		const projectDir = getProjectDir();
+		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();
 		if (this.#activeRepoCache?.projectDir === projectDir) {
 			return this.#activeRepoCache;
 		}
@@ -1050,7 +1050,7 @@ export class StatusLineComponent implements Component {
 		}
 
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
-		const projectDir = getProjectDir();
+		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();
 		const activeRepoCache = shouldResolveActiveRepo
 			? this.#resolveActiveRepoCache()
 			: { projectDir, activeRepo: null, effectiveGitCwd: projectDir, worktree: null };

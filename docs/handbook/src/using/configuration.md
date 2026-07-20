@@ -128,6 +128,39 @@ bash:
 Plan mode and agent definitions can narrow the tool set further. Enforcement removes the tool from both
 the model-visible set and the dispatch registry.
 
+## Set the default working directory
+
+Each profile can pin a default session working directory so launches from `$HOME`
+(or any other directory) still root tools at the right project:
+
+| Goal | What to set |
+| --- | --- |
+| Per-profile default cwd | `session.workdir` (absolute or `~`-relative path) |
+| One-shot override for this launch | `--cwd <path>` |
+
+Launch precedence for the session cwd, highest first:
+
+```text
+explicit --cwd  >  session.workdir  >  process cwd
+```
+
+```yaml
+# ~/.veyyon/profiles/work/agent/config.yml
+session:
+  workdir: ~/src/veyyon
+```
+
+```console
+$ veyyon config set session.workdir ~/src/veyyon
+$ veyyon --cwd /tmp/scratch          # wins over session.workdir for this run
+```
+
+`session.workdir` must resolve to an existing directory; a relative path or a
+missing directory fails launch rather than falling back silently. Mid-session
+overrides via the agent `set_cwd` tool or `/cwd` are session-scoped only: they
+re-root the live session and never write `session.workdir`. Persist a new
+default with `veyyon config set` or `/settings`.
+
 ## Profiles
 
 Each profile is `~/.veyyon/profiles/<name>/agent/` (including `default`). Activate with `--profile <name>` (`-p` is `--print`, not profile), `VEYYON_PROFILE`, or TUI `/profile` (relaunch).

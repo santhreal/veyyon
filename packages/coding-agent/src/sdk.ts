@@ -23,6 +23,7 @@ import {
 	getAgentDir,
 	getProjectDir,
 	logger,
+	setProjectDir,
 	postmortem,
 	prompt,
 	Snowflake,
@@ -1578,6 +1579,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			get cwd() {
 				return sessionManager.getCwd();
 			},
+			setCwd: async (resolvedPath, options) => {
+				if (session) {
+					return session.setCwd(resolvedPath, options);
+				}
+				const previous = sessionManager.getCwd();
+				const cwd = await sessionManager.setCwd(resolvedPath, options);
+				if (cwd !== previous) {
+					setProjectDir(cwd);
+					const note = `Session working directory changed: ${previous} → ${cwd}`;
+					sessionManager.appendCustomMessageEntry(
+						"cwd_changed",
+						note,
+						true,
+						{ previous, cwd },
+						"agent",
+					);
+				}
+				return cwd;
+			},
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
 			hasUI: options.hasUI ?? false,
@@ -2900,6 +2920,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			...toolSession,
 			get cwd() {
 				return sessionManager.getCwd();
+			},
+			setCwd: async (resolvedPath, options) => {
+				if (session) {
+					return session.setCwd(resolvedPath, options);
+				}
+				const previous = sessionManager.getCwd();
+				const cwd = await sessionManager.setCwd(resolvedPath, options);
+				if (cwd !== previous) {
+					setProjectDir(cwd);
+					const note = `Session working directory changed: ${previous} → ${cwd}`;
+					sessionManager.appendCustomMessageEntry(
+						"cwd_changed",
+						note,
+						true,
+						{ previous, cwd },
+						"agent",
+					);
+				}
+				return cwd;
 			},
 			hasEditTool: true,
 			requireYieldTool: false,

@@ -313,7 +313,7 @@ const pathSegment: StatusLineSegment = {
 			return { content: theme.fg("statusLinePath", content), visible: true };
 		}
 
-		const projectDir = ctx.activeRepo?.cwd ?? getProjectDir();
+		const projectDir = ctx.session.sessionManager?.getCwd?.() ?? ctx.activeRepo?.cwd ?? getProjectDir();
 		const { scratch, relative } = classifyProjectDir(projectDir);
 		let pwd = projectDir;
 
