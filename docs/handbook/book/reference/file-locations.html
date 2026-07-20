@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-533805a5.js";
+            window.path_to_searchindex_js = "../searchindex-b47278ea.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -208,6 +208,7 @@ on Linux/macOS the XDG layout is available after <code>veyyon config init-xdg</c
 </thead>
 <tbody>
 <tr><td><code>config.yml</code></td><td><strong>Global</strong> settings that apply across profiles, today <code>defaultProfile</code> (which profile a bare <code>vey</code> launches). Not to be confused with a profile’s own <code>config.yml</code> (below).</td></tr>
+<tr><td><code>AGENTS.md</code></td><td><strong>Global</strong> instructions loaded into every profile’s session. Veyyon creates it on first run with a stripped-before-load guidance header. Keep profile-specific rules in the profile’s own <code>AGENTS.md</code> (below). See <a href="../features/skills.html#instruction-layers">Instruction layers</a>.</td></tr>
 <tr><td><code>install-id</code></td><td>Persistent per-install UUID. Shared by every profile.</td></tr>
 <tr><td><code>profiles/</code></td><td>One directory per profile, including <code>profiles/default/</code>, see below.</td></tr>
 </tbody>

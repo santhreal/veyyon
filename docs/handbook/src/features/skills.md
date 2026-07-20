@@ -34,19 +34,55 @@ disk, and copies the ones you pick into the active profile's `skills` directory.
 The copy is profile-owned from then on, so it loads like any other profile skill
 and is not affected by the original tool.
 
-A separate setting, `discovery.importForeignConfig`, governs whether Veyyon reads
-other tools' context files (`CLAUDE.md`, standalone `AGENTS.md`), rules, and MCP
-servers, and whether it offers the import scan at all. Turn it off to run Veyyon
-on its own config only:
+A separate setting, `discovery.importForeignConfig`, governs whether Veyyon
+ambiently reads other tools' context files (`CLAUDE.md`, standalone `AGENTS.md`),
+rules, and MCP servers. It ships **off**, so by default Veyyon never picks up a
+foreign `CLAUDE.md` or `GEMINI.md` from disk. Turn it on to load them as a
+machine-wide base layer:
 
 ```yaml
 discovery:
-  importForeignConfig: false
+  importForeignConfig: true
 ```
 
-It does not change skill loading: foreign skills are never loaded ambiently
-whether it is on or off. Veyyon's own `AGENTS.md` lives in `.veyyon/` (project)
-and the profile's agent dir (user), and is always read.
+The setting does not change skill loading: foreign skills are never loaded
+ambiently whether it is on or off. It also does not gate the import scan. The
+onboarding scan always finds and offers foreign files for import, because
+importing copies a file into your profile, which is how foreign config comes in
+by default now that ambient loading is off.
+
+Veyyon's own instructions load in three layers, and only these three:
+
+1. The compiled system prompt.
+2. The global `~/.veyyon/AGENTS.md`, which applies to every profile.
+3. The active profile's `AGENTS.md`
+   (`~/.veyyon/profiles/<name>/agent/AGENTS.md`).
+
+A project's `.veyyon/AGENTS.md` is read too when you work inside that project.
+The layers run least specific to most specific, so the global file is the
+baseline and the profile file wins where they overlap. See
+[instruction layers](#instruction-layers) below for how to split rules between
+the global and per-profile files.
+
+## Instruction layers
+
+Veyyon reads two `AGENTS.md` files that you own, plus the project file:
+
+- `~/.veyyon/AGENTS.md` is the **global** file. Put rules here that should hold
+  in every profile.
+- `~/.veyyon/profiles/<name>/agent/AGENTS.md` is the **profile** file. Put rules
+  here that apply only to that profile.
+
+Keep each rule in one place. A rule that belongs to every profile goes in the
+global file; a rule that is specific to one profile goes in that profile's file.
+Splitting them this way avoids duplicating the same guidance across profiles.
+
+Veyyon creates the global file for you on first run with a short note at the top
+explaining this split. The note is an HTML comment wrapped in Veyyon markers,
+and Veyyon strips it before sending the file to the model, so it never spends any
+of your instruction budget. It is there for you when you open the file to edit
+it, not for the agent. A new profile's `AGENTS.md` gets the same kind of note.
+Delete the note if you like; Veyyon does not add it back.
 
 ## Profiles isolate skills
 

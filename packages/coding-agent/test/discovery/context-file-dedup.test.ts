@@ -5,7 +5,14 @@ function makeContextFile(overrides: Partial<ContextFile> & Pick<ContextFile, "pa
 	return {
 		content: `content of ${overrides.path}`,
 		depth: undefined,
-		_source: { provider: "test", providerName: "Test", path: overrides.path, level: overrides.level },
+		// SourceMeta.level is provenance ("native"|"user"|"project"); the "global"
+		// dedup level records as "user" provenance, mirroring the native loader.
+		_source: {
+			provider: "test",
+			providerName: "Test",
+			path: overrides.path,
+			level: overrides.level === "global" ? "user" : overrides.level,
+		},
 		...overrides,
 	};
 }

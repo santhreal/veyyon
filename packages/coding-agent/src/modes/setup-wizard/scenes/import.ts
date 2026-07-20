@@ -10,8 +10,10 @@ const MAX_VISIBLE = 10;
 /**
  * Import scan scene: offers every user-level foreign skill and CLAUDE.md/
  * AGENTS.md file found on the machine for per-item import into the active
- * profile. Everything starts selected; importing copies — the originals keep
- * loading ambiently as the base layer (discovery.importForeignConfig).
+ * profile. Everything starts selected; importing copies the file into the
+ * profile so it loads as veyyon-native content. Ambient loading of the
+ * originals stays off unless the user turns on `discovery.importForeignConfig`,
+ * so importing here is the way foreign config comes in by default.
  */
 class ImportSceneController implements SetupSceneController {
 	title = "Import existing config";

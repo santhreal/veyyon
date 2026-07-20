@@ -58,6 +58,11 @@ describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 		);
 
 		const settings = await Settings.init({ inMemory: true, cwd: projectDir });
+		// The opencode.json parity case reads a foreign (tool-owned) MCP source;
+		// ambient foreign-config loading is off by default, so enable it here. The
+		// native `.veyyon/mcp.json` cases are unaffected — their temp dirs hold no
+		// foreign files, so the gate being open changes nothing for them.
+		settings.set("discovery.importForeignConfig", true as never);
 		initializeWithSettings(settings);
 	});
 

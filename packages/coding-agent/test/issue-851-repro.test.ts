@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@veyyon/coding-agent/capability";
+import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery/claude-plugins";
@@ -14,6 +15,9 @@ describe("issue-851: claude-plugins loads flat .mcp.json shape", () => {
 	let originalHome: string | undefined;
 
 	beforeEach(async () => {
+		// Claude-plugin `.mcp.json` is foreign config; ambient loading is off by
+		// default, so turn on discovery.importForeignConfig for these repros.
+		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
 		clearClaudePluginRootsCache();
 		clearFsCache();
 		originalHome = process.env.HOME;
@@ -23,6 +27,7 @@ describe("issue-851: claude-plugins loads flat .mcp.json shape", () => {
 	});
 
 	afterEach(async () => {
+		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false }));
 		clearClaudePluginRootsCache();
 		clearFsCache();
 		vi.restoreAllMocks();

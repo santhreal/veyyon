@@ -12,6 +12,7 @@ import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
 import type { SkillsSettings } from "./config/settings";
 import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
+import { ensureGlobalAgentsFile } from "./discovery/agents-guidance";
 import { expandAtImports } from "./discovery/at-imports";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { hasObsidian } from "./internal-urls/vault-protocol";
@@ -365,19 +366,27 @@ export async function loadProjectContextFiles(
 				path: contextFile.path,
 				content: await expandAtImports(contextFile.content, contextFile.path),
 				depth: contextFile.depth,
+				level: contextFile.level,
 			};
 		}),
 	);
 
-	// Sort by depth (descending): higher depth (farther from cwd) comes first,
-	// so files closer to cwd appear later and are more prominent
+	// Order by prominence, least prominent first (earliest in the prompt), most
+	// prominent last: global (the cross-profile baseline) → project (farther from
+	// cwd first) → user (the active profile's own file, the most specific). This
+	// keeps the previous behavior for project/user files (user depth is undefined
+	// → -1, so it already sorted last) and slots the global baseline ahead of both.
+	const levelRank = (level: ContextFile["level"]): number => (level === "global" ? 0 : level === "project" ? 1 : 2);
 	files.sort((a, b) => {
+		const rankDelta = levelRank(a.level) - levelRank(b.level);
+		if (rankDelta !== 0) return rankDelta;
+		// Within the project level, higher depth (farther from cwd) comes first.
 		const depthA = a.depth ?? -1;
 		const depthB = b.depth ?? -1;
 		return depthB - depthA;
 	});
 
-	return dedupeExactContextFiles(files);
+	return dedupeExactContextFiles(files.map(({ path, content, depth }) => ({ path, content, depth })));
 }
 
 /**
@@ -632,7 +641,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		: logger.time("loadSystemPromptFiles", loadSystemPromptFiles, { cwd: resolvedCwd });
 	const contextFilesPromise = providedContextFiles
 		? Promise.resolve(providedContextFiles)
-		: logger.time("loadProjectContextFiles", loadProjectContextFiles, { cwd: resolvedCwd });
+		: // Seed the global ~/.veyyon/AGENTS.md with its guidance header on first
+			// run (idempotent once it exists), then load the context layers.
+			ensureGlobalAgentsFile().then(() =>
+				logger.time("loadProjectContextFiles", loadProjectContextFiles, { cwd: resolvedCwd }),
+			);
 	const workspaceTreePromise =
 		providedWorkspaceTree !== undefined
 			? Promise.resolve(providedWorkspaceTree)
