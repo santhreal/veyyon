@@ -93,7 +93,7 @@
   },
   "optionalDependencies": {
     "@huggingface/transformers": "catalog:",
-    "sherpa-onnx-node": "1.13.2"
+    "sherpa-onnx-node": "1.13.4"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
