@@ -1750,6 +1750,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a7763b98ba8a24f59e698bf9ab197e7676c640d6455d1580b4ce7dc560f0f0d"
 
 [[package]]
+name = "hifijson"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "242402749acf71e6f32f5857598b7002c4058a4e3c3b22b4c7d51cab9aea754e"
+
+[[package]]
 name = "hostname"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2287,7 +2293,7 @@ name = "jaq"
 version = "2.3.0"
 dependencies = [
  "codesnake",
- "hifijson",
+ "hifijson 0.5.0",
  "jaq-core",
  "jaq-json",
  "jaq-std",
@@ -2317,7 +2323,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01dbdbd07b076e8403abac68ce7744d93e2ecd953bbc44bf77bf00e1e81172bc"
 dependencies = [
  "foldhash 0.1.5",
- "hifijson",
+ "hifijson 0.2.3",
  "indexmap",
  "jaq-core",
  "jaq-std",
