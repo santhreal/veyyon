@@ -1,6 +1,14 @@
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+// Leaf subpaths, not the `@veyyon/utils` barrel: cli.ts statically imports this
+// module (for the profile-alias bootstrap), and the barrel re-exports ./env,
+// which eagerly parses the agent-directory .env at import time. Pulling that in
+// here would load .env before `setProfile` runs (see profile-cli.test.ts). Both
+// atomic-write.ts and file-lock.ts are env-free, so importing them eagerly is safe.
+import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { normalizeProfileName } from "@veyyon/utils/dirs";
+import { withFileLock } from "@veyyon/utils/file-lock";
 
 export type ProfileAliasShell = "bash" | "zsh" | "fish" | "powershell" | "pwsh";
 
@@ -347,15 +355,33 @@ export async function installProfileAlias(options: ProfileAliasInstallOptions): 
 	const aliasName = validateAliasName(options.aliasName, shell);
 	const configPath = resolveShellConfigPath(shell, homeDir, platform, env);
 	const { block, command } = renderAliasBlock(shell, aliasName, profile, options.command ?? DEFAULT_ALIAS_COMMAND);
-	const readFile = options.readFile ?? readProfileAliasConfigFile;
-	const writeFile =
-		options.writeFile ??
-		(async (filePath, content) => {
-			await Bun.write(filePath, content);
-		});
 
-	const current = await readFile(configPath);
-	await writeFile(configPath, upsertBlock(current, aliasName, block));
+	// When the caller injects its own I/O (tests, virtual paths) it owns
+	// concurrency and durability, so we run the read-modify-write bare. The
+	// default path touches the user's real shell rc (~/.bashrc, ~/.zshrc, fish
+	// conf.d): serialize it under a cross-process lock so two concurrent
+	// `--alias` installs can't both read the same rc and drop one managed block,
+	// and write atomically (temp + fsync + rename) so a crash never tears the
+	// user's shell startup file. Shell rc files are conventionally group/world
+	// readable, so use 0o644 rather than the token-config default of 0o600.
+	const usingDefaultIO = options.readFile === undefined && options.writeFile === undefined;
+	const readFile = options.readFile ?? readProfileAliasConfigFile;
+	const writeFile = options.writeFile ?? ((filePath, content) => atomicWriteFile(filePath, content, { mode: 0o644 }));
+
+	const applyBlock = async () => {
+		const current = await readFile(configPath);
+		await writeFile(configPath, upsertBlock(current, aliasName, block));
+	};
+
+	if (usingDefaultIO) {
+		// The lock directory lands beside configPath, so its parent (e.g. fish's
+		// conf.d) must exist before we acquire it — matching Bun.write's implicit
+		// parent creation on the old path.
+		await fs.mkdir(path.dirname(configPath), { recursive: true });
+		await withFileLock(configPath, applyBlock);
+	} else {
+		await applyBlock();
+	}
 
 	return {
 		shell,

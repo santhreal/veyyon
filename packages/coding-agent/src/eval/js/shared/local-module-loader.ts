@@ -3,7 +3,10 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as vm from "node:vm";
-import { hasUriScheme } from "@veyyon/utils";
+// Subpath import, not the `@veyyon/utils` barrel: the barrel eagerly loads
+// dotenv at import time, which must not happen inside the eval worker's import
+// graph before profile bootstrap (see eval/__tests__/process-entry-import.test.ts).
+import { hasUriScheme } from "@veyyon/utils/url";
 import { collectModuleSourceSpecifiers, stripTypeScriptSyntax } from "./rewrite-imports";
 
 interface LocalModuleEntry {
