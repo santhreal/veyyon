@@ -576,6 +576,15 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 // Inline byte cap — final defense at the tool-result boundary
 // =============================================================================
 
+/**
+ * Footer appended to a spilled tool result, pointing at the artifact that holds
+ * the full (un-elided) output. One definition so every tool that spills — bash,
+ * grep, fetch — emits the identical `artifact://<id>` marker the reader parses.
+ */
+export function artifactFooter(id: string): string {
+	return `[raw output: artifact://${id}]`;
+}
+
 /** Options for {@link enforceInlineByteCap}. */
 export interface InlineByteCapOptions {
 	/** Inline byte budget. Defaults to {@link DEFAULT_MAX_BYTES}. */
@@ -625,7 +634,7 @@ export async function enforceInlineByteCap(text: string, options: InlineByteCapO
 	const artifactId = await options.saveArtifact?.(text);
 	if (artifactId) {
 		const sep = composed.endsWith(NL) ? "" : NL;
-		composed += `${sep}[raw output: artifact://${artifactId}]`;
+		composed += `${sep}${artifactFooter(artifactId)}`;
 	}
 	return composed;
 }

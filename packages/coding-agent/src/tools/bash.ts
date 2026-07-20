@@ -35,6 +35,7 @@ import {
 	stripOutputNotice,
 	stripRawOutputArtifactNotice,
 } from "./output-meta";
+import { saveOutputArtifact } from "./output-artifact";
 import { resolveToCwd } from "./path-utils";
 import {
 	capPreviewLines,
@@ -127,15 +128,8 @@ export const CRITICAL_BASH_PATTERNS = [
 	/\bnc\b[^|;]*\s-[a-zA-Z]*[ec][a-zA-Z]*\s/i, // `nc -e` / `nc -c`.
 ] as const;
 
-async function saveBashOriginalArtifact(session: ToolSession, originalText: string): Promise<string | undefined> {
-	try {
-		const alloc = await session.allocateOutputArtifact?.("bash-original");
-		if (!alloc?.path || !alloc.id) return undefined;
-		await Bun.write(alloc.path, originalText);
-		return alloc.id;
-	} catch {
-		return undefined;
-	}
+function saveBashOriginalArtifact(session: ToolSession, originalText: string): Promise<string | undefined> {
+	return saveOutputArtifact(session, "bash-original", originalText);
 }
 
 const BASH_TIMEOUT_DESCRIPTION = `timeout in seconds; 0 disables the command deadline; nonzero values are clamped to ${TOOL_TIMEOUTS.bash.min}-${TOOL_TIMEOUTS.bash.max}`;
