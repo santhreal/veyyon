@@ -21,6 +21,7 @@ import {
 } from "@veyyon/utils";
 import chalk from "chalk";
 import { seedKeybindingsFromAgentDir } from "../config/keybindings";
+import { ensureProfileAgentsFileAt } from "../discovery/agents-guidance";
 
 export type ProfileAction = "list" | "new" | "rm" | "default";
 
@@ -161,6 +162,10 @@ async function seedProfileAgentFrom(
 			seedKeybindingsFromAgentDir(targetAgentDir, sourceAgentDir);
 		}
 	}
+	// Seed the per-profile guidance header when the new profile has no AGENTS.md
+	// of its own (nothing copied one in), so a fresh profile explains the
+	// global/profile split. Never clobbers a copied AGENTS.md.
+	await ensureProfileAgentsFileAt(targetAgentDir);
 }
 
 /**
