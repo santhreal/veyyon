@@ -2659,6 +2659,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			session: null,
 			sessionFile: sessionManager.getSessionFile() ?? null,
 			status: "running",
+			model: getActiveModelString(),
 		});
 		hasRegistered = true;
 

@@ -582,6 +582,7 @@ export class CollabGuestLink {
 					parentId: snap.parentId,
 					session: null,
 					status: snap.status,
+					model: snap.model,
 				});
 			}
 			// Refs are returned by reference: patch host timestamps directly so

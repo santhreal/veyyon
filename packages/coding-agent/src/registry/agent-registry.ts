@@ -43,6 +43,8 @@ export interface AgentRef {
 	lastActivity: number;
 	/** Short gist of what the agent is currently doing (latest intent or tool), for the work-aware roster. Display-only. */
 	activity?: string;
+	/** Model the agent runs on, as a `provider/id` string. Display-only; undefined when not known at registration. */
+	model?: string;
 }
 
 export type RegistryEvent =
@@ -60,6 +62,8 @@ export interface RegisterInput {
 	session: AgentSession | null;
 	sessionFile?: string | null;
 	status?: AgentStatus;
+	/** Model the agent runs on, as a `provider/id` string. */
+	model?: string;
 }
 
 export class AgentRegistry {
@@ -92,6 +96,7 @@ export class AgentRegistry {
 			sessionFile: input.sessionFile ?? null,
 			createdAt: now,
 			lastActivity: now,
+			model: input.model,
 		};
 		this.#refs.set(ref.id, ref);
 		this.#emit({ type: "registered", ref });
