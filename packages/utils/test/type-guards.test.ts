@@ -201,6 +201,12 @@ const INLINE_ISRECORD = [
 ];
 
 function hasInlineIsRecord(text: string): boolean {
+	// Every spelling ends in `!Array.isArray(\1)`, so a file without that literal
+	// cannot match. This substring gate skips the dotted-identifier backtracking
+	// regex on the ~86% of source files that never mention Array.isArray, keeping
+	// the whole-repo scan well under the per-test timeout. Necessary-condition
+	// short-circuit: it changes speed, not which files are flagged.
+	if (!text.includes("Array.isArray")) return false;
 	for (const re of INLINE_ISRECORD) {
 		re.lastIndex = 0;
 		if (re.test(text)) return true;
@@ -230,6 +236,9 @@ const NEGATED_ISRECORD_INLINE_GRANDFATHERED = new Set([
 ]);
 
 function hasNegatedInlineIsRecord(text: string): boolean {
+	// Same gate as hasInlineIsRecord: every negated spelling ends in
+	// `Array.isArray(\1)`, so files without that literal cannot match.
+	if (!text.includes("Array.isArray")) return false;
 	for (const re of NEGATED_INLINE_ISRECORD) {
 		re.lastIndex = 0;
 		if (re.test(text)) return true;
@@ -268,12 +277,35 @@ async function collectFiles(dirs: readonly string[], includeTests: boolean): Pro
 	return files;
 }
 
-function sourceFiles(): Promise<string[]> {
-	return collectFiles(["src"], false);
+// One file's path (repo-relative, forward-slashed) plus its contents. Every
+// lock test below needs the same (rel, text) pairs, so the walk and the reads
+// happen exactly once per tree and are memoized: re-walking + re-reading the
+// whole monorepo per test made each `it` a ~5s full scan that timed out under
+// CI's parallel load. Reading once turns six scans into one.
+type SourceFile = { rel: string; text: string };
+
+async function readAll(files: string[]): Promise<SourceFile[]> {
+	const out: SourceFile[] = [];
+	for (const file of files) {
+		out.push({
+			rel: path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/"),
+			text: await readFile(file, "utf8"),
+		});
+	}
+	return out;
 }
 
-function testFiles(): Promise<string[]> {
-	return collectFiles(["test"], true);
+let sourceCache: Promise<SourceFile[]> | undefined;
+let testCache: Promise<SourceFile[]> | undefined;
+
+function sourceFiles(): Promise<SourceFile[]> {
+	sourceCache ??= collectFiles(["src"], false).then(readAll);
+	return sourceCache;
+}
+
+function testFiles(): Promise<SourceFile[]> {
+	testCache ??= collectFiles(["test"], true).then(readAll);
+	return testCache;
 }
 
 describe("type-guards source locks", () => {
@@ -284,10 +316,8 @@ describe("type-guards source locks", () => {
 		const errorMessageSeen = new Set<string>();
 		const inlineOffenders: string[] = [];
 		const inlineSeen = new Set<string>();
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await sourceFiles()) {
 			if (rel === OWNER) continue;
-			const text = await readFile(file, "utf8");
 			if (ISRECORD_DEF.test(text)) {
 				isRecordSeen.add(rel);
 				if (!ISRECORD_ALLOWED.has(rel)) isRecordOffenders.push(rel);
@@ -320,10 +350,9 @@ describe("type-guards source locks", () => {
 
 	it("no production source defines a local asString/asNumber/asRecord coercer — the name is banned", async () => {
 		const offenders: string[] = [];
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await sourceFiles()) {
 			if (rel === OWNER) continue;
-			if (ASCOERCE_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+			if (ASCOERCE_DEF.test(text)) offenders.push(rel);
 		}
 		expect(
 			offenders,
@@ -349,10 +378,12 @@ describe("type-guards source locks", () => {
 		).toBe(false);
 
 		const offenders: string[] = [];
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await sourceFiles()) {
 			if (rel === OWNER || ISRECORD_ALLOWED.has(rel)) continue;
-			const text = await readFile(file, "utf8");
+			// A clone body carries `!Array.isArray(id)`; skip the function-body
+			// matchAll on files that cannot contain one (same short-circuit as the
+			// inline gates).
+			if (!text.includes("Array.isArray")) continue;
 			for (const match of text.matchAll(GUARD_FN)) {
 				if (isIsRecordCloneBody(match[1])) offenders.push(rel);
 			}
@@ -374,10 +405,9 @@ describe("type-guards source locks", () => {
 
 		const offenders: string[] = [];
 		const seen = new Set<string>();
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await sourceFiles()) {
 			if (rel === OWNER || ISRECORD_ALLOWED.has(rel)) continue;
-			if (!hasInlineIsRecord(await readFile(file, "utf8"))) continue;
+			if (!hasInlineIsRecord(text)) continue;
 			seen.add(rel);
 			if (!ISRECORD_INLINE_GRANDFATHERED.has(rel)) offenders.push(rel);
 		}
@@ -396,10 +426,9 @@ describe("type-guards source locks", () => {
 
 		const offenders: string[] = [];
 		const seen = new Set<string>();
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await sourceFiles()) {
 			if (rel === OWNER || ISRECORD_ALLOWED.has(rel)) continue;
-			if (!hasNegatedInlineIsRecord(await readFile(file, "utf8"))) continue;
+			if (!hasNegatedInlineIsRecord(text)) continue;
 			seen.add(rel);
 			if (!NEGATED_ISRECORD_INLINE_GRANDFATHERED.has(rel)) offenders.push(rel);
 		}
@@ -410,9 +439,8 @@ describe("type-guards source locks", () => {
 
 	it("no test file defines a local isRecord — tests must dogfood the owner too", async () => {
 		const offenders: string[] = [];
-		for (const file of await testFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-			if (ISRECORD_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+		for (const { rel, text } of await testFiles()) {
+			if (ISRECORD_DEF.test(text)) offenders.push(rel);
 		}
 		expect(offenders, "test-local isRecord copies — import it from @veyyon/utils instead").toEqual([]);
 	});
