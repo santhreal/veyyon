@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { mkdirSync } from "node:fs";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import {
 	convertAnthropicMessages,
@@ -503,5 +504,62 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 			{ callId: "tc_1", resultId: "tc_1" },
 			{ callId: "tc_2", resultId: "tc_2" },
 		]);
+	});
+
+	it("outbound context relativizes paths under the session cwd; history keeps absolute", async () => {
+		const cwd = tempDir.path();
+		const abs = `${cwd}/src/foo.ts`;
+		const seed: Message[] = [
+			{ role: "user", content: `read ${abs}`, timestamp: 1 },
+			assistantWithCalls([LONG_A], {
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+			}),
+			toolResult(LONG_A, `error: ${abs}:12:3 boom\n(${abs})`),
+		];
+		const { session, observedContexts, agent } = await createHarness(seed);
+
+		await session.prompt("continue");
+
+		expect(observedContexts.length).toBeGreaterThanOrEqual(1);
+		const wire = JSON.stringify(observedContexts[0]!.messages);
+		expect(wire).toContain("src/foo.ts:12:3");
+		expect(wire).toContain("(src/foo.ts)");
+		expect(wire).not.toContain(cwd);
+		expect(session.wirePathBytesSaved).toBeGreaterThan(0);
+
+		// Persisted state keeps the absolute bytes.
+		expect(JSON.stringify(agent.state.messages)).toContain(abs);
+	});
+
+	it("a mid-session setCwd leaves earlier history byte-identical (accumulated roots)", async () => {
+		const cwd = tempDir.path();
+		const abs = `${cwd}/src/foo.ts`;
+		const seed: Message[] = [
+			{ role: "user", content: "first", timestamp: 1 },
+			assistantWithCalls([LONG_A], {
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+			}),
+			toolResult(LONG_A, `error: ${abs}:1:1`),
+		];
+		const { session, observedContexts } = await createHarness(seed);
+
+		await session.prompt("turn-a");
+		const nested = path.join(cwd, "packages");
+		mkdirSync(nested, { recursive: true });
+		await session.setCwd(nested, { validate: false });
+		await session.prompt("turn-b");
+
+		expect(observedContexts.length).toBeGreaterThanOrEqual(2);
+		const firstToolText = (observedContexts[0]!.messages.find(m => m.role === "toolResult") as ToolResultMessage)
+			.content[0] as { text: string };
+		const secondToolText = (observedContexts[1]!.messages.find(m => m.role === "toolResult") as ToolResultMessage)
+			.content[0] as { text: string };
+		// The old root stays registered, so the pre-setCwd bytes render identically.
+		expect(secondToolText.text).toBe(firstToolText.text);
+		expect(firstToolText.text).toBe("error: src/foo.ts:1:1");
 	});
 });

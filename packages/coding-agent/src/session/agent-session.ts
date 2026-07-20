@@ -369,6 +369,7 @@ import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
 import type { AuthStorage } from "./auth-storage";
 import { canonicalizeToolCallIds } from "./canonicalize-tool-call-ids";
+import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
 import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
@@ -1968,6 +1969,10 @@ export class AgentSession {
 	/** Session-local provider-ID → `tc_<n>` map; rebuilt from history on resume. */
 	#toolCallIdMap = new Map<string, string>();
 	#toolCallIdCounter = 0;
+	/** Session cwd roots accumulated over setCwd calls; rebuilt from history on resume. */
+	#wirePathRoots: string[] = [];
+	/** Cumulative outbound bytes elided by path relativization this session. */
+	#wirePathBytesSaved = 0;
 	#sideStreamFn: StreamFn;
 	#advisorStreamFn: StreamFn | undefined;
 	#preferWebsockets: boolean | undefined;
@@ -2593,11 +2598,25 @@ export class AgentSession {
 		// byte-identically (prompt cache preserved). On resume the map rebuilds from
 		// stored history by walking messages in order (no schema change).
 		const upstreamTransformProviderContext = config.transformProviderContext;
+		// Roots accumulate: initial cwd plus every cwd_changed target replayed from
+		// stored history, so a resumed session renders old bytes identically and a
+		// mid-session setCwd never rewrites them (prompt-cache prefix survives).
+		this.#wirePathRoots = normalizeRoots([
+			this.sessionManager.getCwd(),
+			...this.sessionManager.getEntries().flatMap(entry => {
+				if (entry.type !== "custom_message" || entry.customType !== "cwd_changed") return [];
+				if (!isRecord(entry.details) || typeof entry.details.cwd !== "string") return [];
+				return [entry.details.cwd];
+			}),
+		]);
 		const canonicalizeProviderContext = (context: Context, model: Model): Context | Promise<Context> => {
-			const messages = canonicalizeToolCallIds(context.messages, this.#toolCallIdMap, () => {
+			const canonical = canonicalizeToolCallIds(context.messages, this.#toolCallIdMap, () => {
 				this.#toolCallIdCounter += 1;
 				return `tc_${this.#toolCallIdCounter}`;
 			});
+			const relativized = relativizePathsUnderRoots(canonical, this.#wirePathRoots);
+			this.#wirePathBytesSaved += relativized.bytesSaved;
+			const messages = relativized.messages;
 			const next = messages === context.messages ? context : { ...context, messages };
 			return upstreamTransformProviderContext ? upstreamTransformProviderContext(next, model) : next;
 		};
@@ -6150,6 +6169,7 @@ export class AgentSession {
 		if (cwd === previous) {
 			return cwd;
 		}
+		this.#wirePathRoots = normalizeRoots([...this.#wirePathRoots, cwd]);
 
 		// Align process project dir so status-line / discovery readers that still
 		// consult getProjectDir() stay consistent with the live session root.
@@ -6169,6 +6189,11 @@ export class AgentSession {
 		this.sessionManager.appendCustomMessageEntry("cwd_changed", note, true, details, "agent");
 		this.#emit({ type: "cwd_changed", previous, cwd });
 		return cwd;
+	}
+
+	/** Cumulative outbound bytes elided by wire path relativization (TW-10). */
+	get wirePathBytesSaved(): number {
+		return this.#wirePathBytesSaved;
 	}
 
 	subscribe(listener: AgentSessionEventListener): () => void {
