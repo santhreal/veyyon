@@ -32,7 +32,7 @@ Resolution order for every `veyyon` / `vey` invocation:
 2. `VEYYON_PROFILE`. An explicitly **empty**
    `VEYYON_PROFILE=` forces `default`, bypassing step 3.
 3. `defaultProfile` in the global `~/.veyyon/config.yml`: set or show it with
-   `veyyon profile default [name]`.
+   `veyyon profile default [name]`, or edit it on the **Global** tab of `/settings`.
 4. `default`.
 
 ## What a profile owns (shipped)
@@ -44,6 +44,8 @@ When a profile `<name>` is active, native Veyyon paths resolve under:
 ```
 
 That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (`SYSTEM.md`, `RULES.md`, `AGENTS.md`) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root `~/.veyyon/profiles/<name>/` the same way. A profile never reads another profile's tree at runtime.
+
+**Provider credentials are the one exception:** by default they live in a machine-wide store (`~/.veyyon/shared-auth/agent.db`) that every profile reads, so you sign in once. Set `profileSharing: false` in the global `~/.veyyon/config.yml` (or toggle it on the **Global** tab of `/settings`) to give each profile its own private credential store instead. See [Signing in › Credentials are shared across profiles](../using/authentication.md#credentials-are-shared-across-profiles).
 
 **Keybindings:** each profile owns `agent/keybindings.*`. New profiles seeded with `veyyon profile new --from default` copy the default profile's keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.
 

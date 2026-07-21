@@ -1,32 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as path from "node:path";
 import { mkdirSync } from "node:fs";
+import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import {
-	convertAnthropicMessages,
-} from "@veyyon/ai/providers/anthropic";
+import { convertAnthropicMessages } from "@veyyon/ai/providers/anthropic";
 import { convertMessages } from "@veyyon/ai/providers/openai-completions";
 import { transformMessages } from "@veyyon/ai/providers/transform-messages";
-import type {
-	AssistantMessage,
-	Context,
-	Message,
-	Model,
-	ToolResultMessage,
-} from "@veyyon/ai/types";
-import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
-import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import type { AssistantMessage, Context, Message, ToolResultMessage } from "@veyyon/ai/types";
 import { normalizeResponsesToolCallId } from "@veyyon/ai/utils";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
+import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	allocateCanonicalToolCallId,
 	canonicalizeToolCallIds,
 } from "@veyyon/coding-agent/session/canonicalize-tool-call-ids";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
@@ -156,9 +148,7 @@ describe("canonicalizeToolCallIds (unit)", () => {
 
 		const resumeMap = new Map<string, string>();
 		const resumeCounter = { value: 0 };
-		const resumed = canonicalizeToolCallIds(stored, resumeMap, () =>
-			allocateCanonicalToolCallId(resumeCounter),
-		);
+		const resumed = canonicalizeToolCallIds(stored, resumeMap, () => allocateCanonicalToolCallId(resumeCounter));
 
 		expect([...resumeMap.entries()]).toEqual([...liveMap.entries()]);
 		expect(extractPairs(resumed)).toEqual([
@@ -171,10 +161,8 @@ describe("canonicalizeToolCallIds (unit)", () => {
 	it("remaps provider IDs that already look like tc_N so the namespace stays unambiguous", () => {
 		const map = new Map<string, string>();
 		const counter = { value: 0 };
-		const out = canonicalizeToolCallIds(
-			[assistantWithCalls(["tc_1"]), toolResult("tc_1", "x")],
-			map,
-			() => allocateCanonicalToolCallId(counter),
+		const out = canonicalizeToolCallIds([assistantWithCalls(["tc_1"]), toolResult("tc_1", "x")], map, () =>
+			allocateCanonicalToolCallId(counter),
 		);
 		expect(extractPairs(out)).toEqual([{ callId: "tc_1", resultId: "tc_1" }]);
 		// Provider-emitted "tc_1" was remapped through the map (same handle by coincidence
@@ -224,7 +212,8 @@ describe("canonicalizeToolCallIds provider paths", () => {
 
 		const wire = convertAnthropicMessages(transformed, model, false);
 		const assistant = wire.find(m => m.role === "assistant");
-		const toolUseIds = (assistant?.content as Array<{ type: string; id?: string }>)
+		expect(assistant).toBeDefined();
+		const toolUseIds = (assistant!.content as Array<{ type: string; id?: string }>)
 			.filter(b => b.type === "tool_use")
 			.map(b => b.id);
 		expect(toolUseIds).toEqual(["tc_1", "tc_2"]);
@@ -235,7 +224,8 @@ describe("canonicalizeToolCallIds provider paths", () => {
 				Array.isArray(m.content) &&
 				(m.content as Array<{ type: string }>).some(b => b.type === "tool_result"),
 		);
-		const resultIds = (userTool?.content as Array<{ type: string; tool_use_id?: string }>)
+		expect(userTool).toBeDefined();
+		const resultIds = (userTool!.content as Array<{ type: string; tool_use_id?: string }>)
 			.filter(b => b.type === "tool_result")
 			.map(b => b.tool_use_id);
 		expect(resultIds).toEqual(["tc_1", "tc_2"]);
@@ -332,9 +322,17 @@ describe("canonicalizeToolCallIds provider paths", () => {
 
 describe("AgentSession transformProviderContext canonicalization", () => {
 	let tempDir: TempDir;
+	// AgentSession.setCwd() calls setProjectDir() → process.chdir(), a global
+	// mutation. The mid-session-setCwd test below chdir's into a temp subdir, so
+	// we snapshot the real cwd and restore it in afterEach BEFORE removing the
+	// temp tree. Without this, process.cwd() is left pointing at a deleted dir
+	// and any sibling test that reads it (e.g. bash-timeout-spill's fake session
+	// cwd) fails with ENOENT — a cross-file isolation leak.
+	let originalCwd = "";
 	const cleanups: Array<() => Promise<void>> = [];
 
 	beforeEach(() => {
+		originalCwd = process.cwd();
 		tempDir = TempDir.createSync("@pi-agent-tw8-canonicalize-");
 		cleanups.length = 0;
 	});
@@ -342,6 +340,7 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 	afterEach(async () => {
 		for (const cleanup of cleanups) await cleanup();
 		cleanups.length = 0;
+		process.chdir(originalCwd);
 		tempDir.removeSync();
 	});
 

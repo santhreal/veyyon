@@ -32,7 +32,7 @@ export function normalizeRoots(roots: readonly string[]): string[] {
 	return [...seen].sort((a, b) => b.length - a.length);
 }
 
-const BOUNDARY_CHARS = new Set([" ", "\t", "\n", "\r", "(", "[", "{", "<", "\"", "'", "`", "=", ":", ";", ","]);
+const BOUNDARY_CHARS = new Set([" ", "\t", "\n", "\r", "(", "[", "{", "<", '"', "'", "`", "=", ":", ";", ","]);
 
 interface CompiledRoot {
 	root: string;

@@ -29,8 +29,8 @@ import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "./m
 import { readToolRenderer } from "./read";
 import { resolveToolRenderer } from "./resolve";
 import { searchToolBm25Renderer } from "./search-tool-bm25";
-import { sshToolRenderer } from "./ssh";
 import { setCwdToolRenderer } from "./set-cwd";
+import { sshToolRenderer } from "./ssh";
 import { todoToolRenderer } from "./todo";
 import { createVibeToolRenderer } from "./vibe";
 import { writeToolRenderer } from "./write";

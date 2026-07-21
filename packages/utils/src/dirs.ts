@@ -212,6 +212,41 @@ function getProfileConfigRoot(profile: string | undefined): string {
  * profile name so the CLI can surface a clean error naming the file.
  */
 export function resolveGlobalDefaultProfile(): string | undefined {
+	const { record, filePath } = readGlobalConfigRecord();
+	const value = record.defaultProfile;
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "string") {
+		throw new Error(`Global config ${filePath}: defaultProfile must be a string profile name.`);
+	}
+	try {
+		return normalizeProfileName(value);
+	} catch (error) {
+		throw new Error(`Global config ${filePath}: ${errorMessage(error)}`);
+	}
+}
+
+/**
+ * Set or clear `defaultProfile` in the GLOBAL config file, preserving every
+ * other key. Pass a profile name to set (validated; "default" clears, since
+ * the default profile needs no override) or `undefined` to clear. Returns the
+ * file written.
+ */
+export function writeGlobalDefaultProfile(profile: string | undefined): string {
+	const normalized = normalizeProfileName(profile);
+	// `normalizeProfileName` collapses the default profile to `undefined`, which
+	// clears the key — the default needs no override.
+	return mutateGlobalConfigKey("defaultProfile", () => normalized);
+}
+
+/**
+ * Read the whole GLOBAL config file as a parsed record plus the file it came
+ * from (or `{}` and the canonical path when no file exists / it is not a YAML
+ * mapping). Throws on unreadable YAML naming the file. One reader for every
+ * global key so callers do not each re-implement the filename precedence; the
+ * returned `filePath` lets each caller name the offending file in its own
+ * value-validation errors.
+ */
+function readGlobalConfigRecord(): { record: Record<string, unknown>; filePath: string } {
 	const root = getBaseConfigRoot();
 	for (const filename of MAIN_CONFIG_FILENAMES) {
 		const filePath = path.join(root, filename);
@@ -230,42 +265,26 @@ export function resolveGlobalDefaultProfile(): string | undefined {
 					`Fix or remove the file (it holds only cross-profile keys like defaultProfile).`,
 			);
 		}
-		if (!isRecord(parsed)) return undefined;
-		const value = (parsed as Record<string, unknown>).defaultProfile;
-		if (value === undefined || value === null) return undefined;
-		if (typeof value !== "string") {
-			throw new Error(`Global config ${filePath}: defaultProfile must be a string profile name.`);
-		}
-		try {
-			return normalizeProfileName(value);
-		} catch (error) {
-			throw new Error(`Global config ${filePath}: ${errorMessage(error)}`);
-		}
+		return { record: isRecord(parsed) ? (parsed as Record<string, unknown>) : {}, filePath };
 	}
-	return undefined;
+	return { record: {}, filePath: path.join(root, MAIN_CONFIG_FILENAMES[0]) };
 }
 
 /**
- * Set or clear `defaultProfile` in the GLOBAL config file, preserving every
- * other key. Pass a profile name to set (validated; "default" clears, since
- * the default profile needs no override) or `undefined` to clear. Returns the
- * file written.
+ * Serialized read-modify-write of a single GLOBAL config key, preserving every
+ * other key. `mutate` receives the current record and returns the value to
+ * store, or `undefined` to delete the key. Returns the file written. One writer
+ * for every global key so the lock target, atomicity, and empty-file cleanup
+ * live in exactly one place (see {@link writeGlobalDefaultProfile}, which is a
+ * thin wrapper over this).
  */
-export function writeGlobalDefaultProfile(profile: string | undefined): string {
-	const normalized = normalizeProfileName(profile);
+function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unknown>) => unknown): string {
 	const root = getBaseConfigRoot();
 	fs.mkdirSync(root, { recursive: true });
 	// The canonical config path is the stable lock target regardless of which
 	// filename actually exists on disk, so every writer serializes on one lock.
 	const canonicalPath = path.join(root, MAIN_CONFIG_FILENAMES[0]);
-	// Serialize the whole read-modify-write across processes. Without this a
-	// concurrent writeGlobalDefaultProfile (or an in-flight edit to a
-	// cross-profile key) would read a stale snapshot and clobber the other
-	// writer's change. The lock directory contends with #saveNow's async lock
-	// too, but that guards a different per-profile file, so they never collide.
 	return withFileLockSync(canonicalPath, () => {
-		// Reuse an existing global config file (either accepted name); default to
-		// the canonical filename for a fresh write.
 		let filePath = canonicalPath;
 		let existing: Record<string, unknown> = {};
 		for (const filename of MAIN_CONFIG_FILENAMES) {
@@ -282,7 +301,7 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 			} catch (error) {
 				throw new Error(
 					`Global config ${candidate} is not valid YAML: ${errorMessage(error)}. ` +
-						`Fix or remove the file before changing defaultProfile.`,
+						`Fix or remove the file before changing ${key}.`,
 				);
 			}
 			if (isRecord(parsed)) {
@@ -291,8 +310,9 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 			filePath = candidate;
 			break;
 		}
-		if (normalized === undefined) delete existing.defaultProfile;
-		else existing.defaultProfile = normalized;
+		const next = mutate(existing);
+		if (next === undefined) delete existing[key];
+		else existing[key] = next;
 		if (Object.keys(existing).length === 0) {
 			// Nothing left — remove the file rather than leaving an empty stub.
 			try {
@@ -300,15 +320,74 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 			} catch {}
 			return filePath;
 		}
-		// Atomic: an interrupted write here would corrupt the pointer to the
-		// active profile (defaultProfile) plus any cross-profile keys.
+		// Atomic: an interrupted write here would corrupt cross-profile keys
+		// (the pointer to the active profile, credential-sharing posture).
 		atomicWriteFileSync(filePath, YAML.stringify(existing, null, 2));
 		return filePath;
 	});
 }
 
+/**
+ * The global-config key controlling whether provider credentials are shared
+ * across profiles. Absent or `true` means shared (the default posture); `false`
+ * isolates each profile to its own credential store. One owner for the literal
+ * so the reader, writer, and any settings-domain binding agree.
+ */
+export const PROFILE_SHARING_CONFIG_KEY = "profileSharing";
+
+/**
+ * Whether provider credentials are shared across profiles (the "shared by
+ * default" posture). Reads `profileSharing` from the GLOBAL config: absent →
+ * shared (`true`); an explicit boolean is honored. A non-boolean value throws
+ * naming the file, matching {@link resolveGlobalDefaultProfile}'s strictness so
+ * a typo cannot silently flip the credential posture.
+ */
+export function resolveGlobalProfileSharing(): boolean {
+	const { record, filePath } = readGlobalConfigRecord();
+	const value = record[PROFILE_SHARING_CONFIG_KEY];
+	if (value === undefined || value === null) return true;
+	if (typeof value !== "boolean") {
+		throw new Error(
+			`Global config ${filePath}: ${PROFILE_SHARING_CONFIG_KEY} must be a boolean ` +
+				`(true = share credentials across profiles, false = isolate). Got ${typeof value}.`,
+		);
+	}
+	return value;
+}
+
+/** Module-load-safe variant of {@link resolveGlobalProfileSharing}: a broken/invalid global config must never crash a bare import; the CLI re-validates loudly. Defaults to shared. */
+export function readGlobalProfileSharingSafe(): boolean {
+	try {
+		return resolveGlobalProfileSharing();
+	} catch {
+		return true;
+	}
+}
+
+/**
+ * Set the credential-sharing posture in the GLOBAL config, preserving every
+ * other key. `true` shares credentials across profiles (deletes the key, since
+ * shared is the default); `false` writes the explicit isolate flag. Returns the
+ * file written.
+ */
+export function writeGlobalProfileSharing(shared: boolean): string {
+	return mutateGlobalConfigKey(PROFILE_SHARING_CONFIG_KEY, () => (shared ? undefined : false));
+}
+
+/**
+ * Directory whose `agent.db` holds the machine-wide SHARED credential store read
+ * by every profile when {@link resolveGlobalProfileSharing} is on. Lives beside
+ * the global `config.yml` at the base config root, under a dedicated name so it
+ * never collides with the legacy `~/.veyyon/agent` layout (which triggers the
+ * legacy-migration path) or with `profiles/`. Not XDG-redirected: the shared
+ * store is intentionally one fixed machine-wide location.
+ */
+export function getSharedAuthDir(): string {
+	return path.join(getBaseConfigRoot(), "shared-auth");
+}
+
 /** Module-load-safe variant of {@link resolveGlobalDefaultProfile}: a broken global config must not crash a bare import; the CLI re-validates loudly. */
-function readGlobalDefaultProfileSafe(): string | undefined {
+export function readGlobalDefaultProfileSafe(): string | undefined {
 	try {
 		return resolveGlobalDefaultProfile();
 	} catch {
@@ -1061,6 +1140,16 @@ export function getFastembedRuntimeDir(): string {
 /** Get the natives directory (~/.veyyon/natives). */
 export function getNativesDir(): string {
 	return dirs.rootSubdir("natives", "cache");
+}
+
+/**
+ * Get the argot shorthand cache directory (profile `cache/argot`). Each project
+ * keeps its generated `AGENTS.dict` in a per-id subdirectory here; the cache is
+ * a local decode aid that never enters the repository, so it lives under the
+ * config root, not the working tree.
+ */
+export function getArgotCacheDir(): string {
+	return dirs.rootSubdir(path.join("cache", "argot"), "cache");
 }
 
 /** Get the stats database path (~/.veyyon/stats.db). */

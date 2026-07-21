@@ -15,7 +15,7 @@
 <title>Install | Veyyon</title>
 <meta property="og:title" content="Install | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/install.html" />
-<meta name="description" content="Install Veyyon: curl installer, bun/npm package @veyyon/coding-agent, or GitHub release binary." />
+<meta name="description" content="Install Veyyon: one-line curl installer (Linux/macOS), PowerShell installer (Windows), or a GitHub release binary." />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -28,6 +28,7 @@
       <a href="./features.html">Features</a>
       <a href="./install.html" aria-current="page">Install</a>
       <a href="./changelog.html">Changelog</a>
+      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
       <a href="./install.html" class="btn">Get started</a>
@@ -38,6 +39,7 @@
         <a href="./features.html">Features</a>
         <a href="./install.html">Install</a>
         <a href="./changelog.html">Changelog</a>
+        <a href="./blog/">Blog</a>
         <a href="./docs/">Docs</a>
         <a href="https://github.com/santhreal/veyyon">GitHub</a>
         <a href="./install.html" class="btn">Get started</a>
@@ -52,7 +54,7 @@
   <div class="page-head">
     <span class="kicker">Install</span>
     <h1>Install</h1>
-    <p>Installer script, npm/Bun package, or GitHub release. Binary names: <span class="inline">veyyon</span>, <span class="inline">vey</span>.</p>
+    <p>One-line installer script or a GitHub release binary. Binary names: <span class="inline">veyyon</span>, <span class="inline">vey</span>.</p>
     <div class="install" style="margin:0 0 8px">
       <span class="p">$</span>
       <code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code>
@@ -62,7 +64,7 @@
 
   <section class="plain">
     <div class="steps">
-      <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> · or <span class="inline">bun install -g @veyyon/coding-agent</span> · or a release asset from GitHub.</p></div>
+      <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> · or <span class="inline">irm https://veyyon.dev/install.ps1 | iex</span> on Windows · or a release asset from GitHub.</p></div>
       <div class="step"><h3>Auth</h3><p><span class="inline">/login &lt;provider&gt;</span>, provider env key, or OpenAI-compatible <span class="inline">models.yml</span> entry under the profile agent dir.</p></div>
       <div class="step"><h3>Run</h3><p><span class="inline">veyyon</span> in a repo; <span class="inline">/model</span> selects the interactive model. Config: <span class="inline">~/.veyyon/profiles/default/agent/</span>.</p></div>
     </div>
@@ -70,7 +72,7 @@
 
   <section>
     <div class="lead"><span class="kicker">Platforms</span><h2>macOS, Linux, Windows</h2>
-      <p class="sub">Prebuilt binaries where the installer provides them. Completions: <span class="inline">veyyon completions bash|zsh|fish</span>. Health: <span class="inline">veyyon plugin doctor</span>.</p></div>
+      <p class="sub">Prebuilt binaries where the installer provides them. The installer wires up shell completions when your shell supports them. Health: <span class="inline">veyyon plugin doctor</span>.</p></div>
     <div class="grid">
       <div class="card"><h3>macOS</h3><p>Apple Silicon and Intel. <span class="inline">curl … | sh</span> or release archive.</p></div>
       <div class="card"><h3>Linux</h3><p>x64 and arm64. Optional XDG layout: <span class="inline">veyyon config init-xdg</span>.</p></div>
@@ -111,6 +113,7 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
+      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
     </nav>

@@ -35,13 +35,13 @@ import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { expandInternalUrls, type InternalUrlExpansionOptions } from "./bash-skill-urls";
 import { resolveEvalBackends } from "./eval-backends";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
+import { saveOutputArtifact } from "./output-artifact";
 import {
 	formatStyledTruncationWarning,
 	type OutputMeta,
 	stripOutputNotice,
 	stripRawOutputArtifactNotice,
 } from "./output-meta";
-import { saveOutputArtifact } from "./output-artifact";
 import { resolveToCwd } from "./path-utils";
 import {
 	capPreviewLines,
@@ -58,6 +58,7 @@ export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
 
 const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS = 60_000;
+const DEFAULT_STALL_DETECTION_MS = 30_000;
 
 /**
  * Shape a shell command line for an ACP-conformant `terminal/create` request.
@@ -182,8 +183,17 @@ export interface BashToolDetails {
 		state: "running" | "completed" | "failed";
 		jobId: string;
 		type: "bash";
+		/**
+		 * Why a still-running call was backgrounded: `threshold` (wall-clock
+		 * auto-background) or `stall` (no output for the stall window, possibly
+		 * stuck). Drives the operator notice; absent for non-background states.
+		 */
+		reason?: BackgroundReason;
 	};
 }
+
+/** Why a still-running bash call was moved to the background. */
+type BackgroundReason = "threshold" | "stall";
 
 export interface BashToolOptions {}
 
@@ -201,6 +211,8 @@ interface ManagedBashJobHandle {
 	jobId: string;
 	completion: Promise<ManagedBashJobCompletion>;
 	getLatestText: () => string;
+	/** `performance.now()` timestamp of the most recent output chunk (job start if none yet). */
+	getLastOutputAt: () => number;
 	stopUpdates: () => void;
 }
 
@@ -332,7 +344,14 @@ function formatExitCodeNotice(exitCode: number): string {
 	return `Command exited with code ${exitCode}`;
 }
 
-function formatBackgroundNotice(jobId: string): string {
+function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {
+	if (reason === "stall") {
+		return (
+			`No new output for a while, so this command may be stuck. Backgrounded as job ${jobId}; ` +
+			`its result will still be delivered automatically if it finishes. If you believe it is hung, ` +
+			`cancel it with the job tool (cancel: ["${jobId}"]).`
+		);
+	}
 	return `Backgrounded as job ${jobId}; result will be delivered automatically.`;
 }
 
@@ -366,7 +385,7 @@ function stripExitCodeNotice(text: string, exitCode: number | undefined): string
 
 function stripBackgroundNotice(text: string, async: BashToolDetails["async"] | undefined): string {
 	if (async?.state !== "running") return text;
-	return stripTrailingNotice(text, formatBackgroundNotice(async.jobId));
+	return stripTrailingNotice(text, formatBackgroundNotice(async.jobId, async.reason));
 }
 
 /**
@@ -398,6 +417,8 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			asyncEnabled: this.#asyncEnabled,
 			autoBackgroundEnabled: this.#autoBackgroundEnabled,
 			autoBackgroundThresholdSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),
+			stallDetectionEnabled: this.#stallDetectionEnabled,
+			stallSeconds: Math.max(0, Math.floor(this.#stallMs / 1000)),
 			hasAstGrep: isToolActive("ast_grep", this.session.settings.get("astGrep.enabled")),
 			hasAstEdit: isToolActive("ast_edit", this.session.settings.get("astEdit.enabled")),
 			hasGrep: isToolActive("grep", this.session.settings.get("grep.enabled")),
@@ -420,6 +441,8 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	readonly #asyncEnabled: boolean;
 	readonly #autoBackgroundEnabled: boolean;
 	readonly #autoBackgroundThresholdMs: number;
+	readonly #stallDetectionEnabled: boolean;
+	readonly #stallMs: number;
 
 	constructor(private readonly session: ToolSession) {
 		this.#asyncEnabled = this.session.settings.get("async.enabled");
@@ -429,6 +452,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			Math.floor(
 				this.session.settings.get("bash.autoBackground.thresholdMs") ?? DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS,
 			),
+		);
+		this.#stallDetectionEnabled = this.session.settings.get("bash.stallDetection.enabled");
+		this.#stallMs = Math.max(
+			0,
+			Math.floor(this.session.settings.get("bash.stallDetection.stallMs") ?? DEFAULT_STALL_DETECTION_MS),
 		);
 		this.parameters = this.#asyncEnabled ? bashSchemaWithAsync : bashSchemaBase;
 	}
@@ -570,10 +598,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		jobId: string,
 		previewText: string,
 		timeoutSec: number | undefined,
-		options: { requestedTimeoutSec?: number; notices?: readonly string[] } = {},
+		options: { requestedTimeoutSec?: number; notices?: readonly string[]; reason?: BackgroundReason } = {},
 	): AgentToolResult<BashToolDetails> {
+		const reason: BackgroundReason = options.reason ?? "threshold";
 		const details: BashToolDetails = {
-			async: { state: "running", jobId, type: "bash" },
+			async: { state: "running", jobId, type: "bash", reason },
 		};
 		if (timeoutSec === undefined) {
 			details.timeoutDisabled = true;
@@ -591,7 +620,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		if (options.notices?.length) {
 			lines.push(...options.notices, "");
 		}
-		lines.push(formatBackgroundNotice(jobId));
+		lines.push(formatBackgroundNotice(jobId, reason));
 		return {
 			content: [{ type: "text", text: lines.join("\n") }],
 			details,
@@ -621,6 +650,10 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 
 		const label = options.command.length > 120 ? `${options.command.slice(0, 117)}...` : options.command;
 		let latestText = "";
+		// Stall detection measures idle time as (now - lastOutputAt). Start the
+		// clock at registration so a command that never emits still counts as
+		// quiet from the moment it begins.
+		let lastOutputAt = performance.now();
 		let forwardUpdates = options.forwardUpdates;
 		const completion = Promise.withResolvers<ManagedBashJobCompletion>();
 
@@ -641,6 +674,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 						artifactPath,
 						artifactId,
 						onChunk: chunk => {
+							lastOutputAt = performance.now();
 							tailBuffer.append(chunk);
 							latestText = tailBuffer.text();
 							void reportProgress(latestText, { async: { state: "running", jobId, type: "bash" } });
@@ -692,46 +726,110 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			jobId,
 			completion: completion.promise,
 			getLatestText: () => latestText,
+			getLastOutputAt: () => lastOutputAt,
 			stopUpdates: () => {
 				forwardUpdates = false;
 			},
 		};
 	}
 
+	/**
+	 * Foreground-wait on a managed job until one of: it completes/fails, the
+	 * wall-clock threshold elapses (auto-background), the output goes quiet for
+	 * the stall window (stall detection), or the caller aborts.
+	 *
+	 * A `thresholdMs` of `0` disables the wall-clock timer (stall-only mode); a
+	 * `stallMs` of `0` disables stall detection (threshold-only mode). At least
+	 * one is positive whenever this is reached. The `background` result carries
+	 * the reason so the operator notice can name it.
+	 */
 	async #waitForManagedBashJob(
 		job: ManagedBashJobHandle,
-		thresholdMs: number,
-		signal?: AbortSignal,
-	): Promise<ManagedBashJobCompletion | { kind: "running" } | { kind: "aborted" }> {
+		opts: { thresholdMs: number; stallMs: number; signal?: AbortSignal },
+	): Promise<ManagedBashJobCompletion | { kind: "background"; reason: BackgroundReason } | { kind: "aborted" }> {
+		const { thresholdMs, stallMs, signal } = opts;
 		if (signal?.aborted) {
 			return { kind: "aborted" };
 		}
 
-		const waiters: Array<Promise<ManagedBashJobCompletion | { kind: "running" } | { kind: "aborted" }>> = [
-			job.completion,
-			Bun.sleep(thresholdMs).then(() => ({ kind: "running" as const })),
-		];
-
-		if (!signal) {
-			return await Promise.race(waiters);
+		// Cancels the stall watcher once the race settles so its poll loop does
+		// not spin after a winner is chosen.
+		const internal = new AbortController();
+		const waiters: Array<
+			Promise<ManagedBashJobCompletion | { kind: "background"; reason: BackgroundReason } | { kind: "aborted" }>
+		> = [job.completion];
+		if (thresholdMs > 0) {
+			waiters.push(
+				Bun.sleep(thresholdMs).then(() => ({ kind: "background" as const, reason: "threshold" as const })),
+			);
+		}
+		if (stallMs > 0) {
+			waiters.push(this.#watchStall(job, stallMs, internal.signal));
 		}
 
-		const { promise: abortedPromise, resolve: resolveAborted } = Promise.withResolvers<{ kind: "aborted" }>();
-		const onAbort = () => resolveAborted({ kind: "aborted" });
-		signal.addEventListener("abort", onAbort, { once: true });
-		waiters.push(abortedPromise);
+		let onAbort: (() => void) | undefined;
+		if (signal) {
+			const { promise: abortedPromise, resolve: resolveAborted } = Promise.withResolvers<{ kind: "aborted" }>();
+			onAbort = () => resolveAborted({ kind: "aborted" });
+			signal.addEventListener("abort", onAbort, { once: true });
+			waiters.push(abortedPromise);
+		}
+
 		try {
 			return await Promise.race(waiters);
 		} finally {
-			signal.removeEventListener("abort", onAbort);
+			internal.abort();
+			if (signal && onAbort) {
+				signal.removeEventListener("abort", onAbort);
+			}
 		}
 	}
 
-	#resolveAutoBackgroundWaitMs(timeoutMs: number | undefined): number {
-		if (this.#autoBackgroundThresholdMs <= 0) return 0;
-		if (timeoutMs === undefined) return this.#autoBackgroundThresholdMs;
+	/**
+	 * Resolve to a `stall` background result once the job has produced no new
+	 * output for `stallMs`. Every output chunk pushes `getLastOutputAt()`
+	 * forward, resetting the idle window, so a command that keeps printing never
+	 * stalls. The poll is capped so the loop exits promptly after `signal`
+	 * fires (the race already having a winner).
+	 */
+	async #watchStall(
+		job: ManagedBashJobHandle,
+		stallMs: number,
+		signal: AbortSignal,
+	): Promise<{ kind: "background"; reason: BackgroundReason }> {
+		const POLL_CAP_MS = 500;
+		while (!signal.aborted) {
+			const idleMs = performance.now() - job.getLastOutputAt();
+			const remainingMs = stallMs - idleMs;
+			if (remainingMs <= 0) {
+				return { kind: "background", reason: "stall" };
+			}
+			await Bun.sleep(Math.min(remainingMs, POLL_CAP_MS));
+		}
+		// The race is already settled; never resolve so this loser is discarded.
+		return await new Promise<never>(() => {});
+	}
+
+	/**
+	 * The foreground wait for a `baseMs` timer, capped just under the hard
+	 * timeout: there is no point backgrounding (or flagging a stall) a second
+	 * before the command would time out anyway. `baseMs <= 0` disables the
+	 * timer (returns `0`). Shared by the auto-background and stall timers so the
+	 * clamp lives in ONE place.
+	 */
+	#resolveWaitMs(baseMs: number, timeoutMs: number | undefined): number {
+		if (baseMs <= 0) return 0;
+		if (timeoutMs === undefined) return baseMs;
 		const timeoutBufferMs = 1_000;
-		return clampLow(timeoutMs - timeoutBufferMs, 0, this.#autoBackgroundThresholdMs);
+		return clampLow(timeoutMs - timeoutBufferMs, 0, baseMs);
+	}
+
+	#resolveAutoBackgroundWaitMs(timeoutMs: number | undefined): number {
+		return this.#resolveWaitMs(this.#autoBackgroundThresholdMs, timeoutMs);
+	}
+
+	#resolveStallWaitMs(timeoutMs: number | undefined): number {
+		return this.#resolveWaitMs(this.#stallMs, timeoutMs);
 	}
 
 	async execute(
@@ -876,17 +974,26 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		);
 
 		const autoBgManager = this.session.asyncJobManager;
-		// At the running-job cap, fall through to direct foreground execution
-		// instead of failing every bash call until a slot frees up.
+		// Either lever routes a bash call through the managed-job machinery:
+		// auto-background (wall-clock) or stall detection (idle output). At the
+		// running-job cap, fall through to direct foreground execution instead of
+		// failing every bash call until a slot frees up.
 		if (
-			this.#autoBackgroundEnabled &&
+			(this.#autoBackgroundEnabled || this.#stallDetectionEnabled) &&
 			!pty &&
 			!bridgeTerminalAvailable &&
 			autoBgManager &&
 			!autoBgManager.atCapacity
 		) {
-			const autoBackgroundWaitMs = this.#resolveAutoBackgroundWaitMs(timeoutMs);
-			const startBackgrounded = autoBackgroundWaitMs === 0;
+			// Wall-clock timer only when auto-background is on; stall timer only
+			// when stall detection is on. A stall-only session has no wall-clock
+			// timer, so it foregrounds until the output goes quiet (or it finishes).
+			const wallThresholdMs = this.#autoBackgroundEnabled ? this.#resolveAutoBackgroundWaitMs(timeoutMs) : 0;
+			const stallMs = this.#stallDetectionEnabled ? this.#resolveStallWaitMs(timeoutMs) : 0;
+			// Background up front only when auto-background is on with a zero
+			// threshold ("Immediately"). Stall-only never starts backgrounded: it
+			// must foreground-watch output to detect the stall.
+			const startBackgrounded = this.#autoBackgroundEnabled && wallThresholdMs === 0;
 			const job = this.#startManagedBashJob({
 				command,
 				commandCwd,
@@ -903,13 +1010,14 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
 					requestedTimeoutSec,
 					notices: pendingNotices,
+					reason: "threshold",
 				});
 			}
 			// Suppress the completion delivery up front so a job finishing while we
 			// foreground-wait cannot also be injected by the delivery loop. Lifted
 			// via resumeDeliveries() if we end up backgrounding after all.
 			autoBgManager.acknowledgeDeliveries([job.jobId]);
-			const waitResult = await this.#waitForManagedBashJob(job, autoBackgroundWaitMs, signal);
+			const waitResult = await this.#waitForManagedBashJob(job, { thresholdMs: wallThresholdMs, stallMs, signal });
 			if (waitResult.kind === "completed") {
 				return waitResult.result;
 			}
@@ -925,6 +1033,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			return this.#buildBackgroundStartResult(job.jobId, job.getLatestText(), timeoutSec, {
 				requestedTimeoutSec,
 				notices: pendingNotices,
+				reason: waitResult.reason,
 			});
 		}
 

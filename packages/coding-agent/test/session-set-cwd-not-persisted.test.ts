@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { YAML } from "bun";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
+import { YAML } from "bun";
 
 const tempDirs: TempDir[] = [];
 

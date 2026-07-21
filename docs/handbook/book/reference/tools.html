@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b47278ea.js";
+            window.path_to_searchindex_js = "../searchindex-f1f200b3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -253,6 +253,10 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </tbody>
 </table>
 </div>
+<h3 id="long-running-and-stuck-commands"><a class="header" href="#long-running-and-stuck-commands">Long-running and stuck commands</a></h3>
+<p>Two opt-in settings decide when a foreground <code>bash</code> call is moved to a background job. Both are off by default, and both hand the command to the <code>job</code> tool so its result still arrives later. You set them per profile in <code>/settings</code>, under Shell.</p>
+<p>Turn on <strong>Bash Auto-Background</strong> to cap how long a command holds the model in the foreground. Once a call runs longer than “Auto-Background After” (<code>bash.autoBackground.thresholdMs</code>, default 1 minute), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to “Immediately” to background every command up front.</p>
+<p>Turn on <strong>Bash Stall Detection</strong> to catch a command that has gone quiet. When a call produces no new output for “Stall After” (<code>bash.stallDetection.stallMs</code>, default 30 seconds), it is backgrounded and the model is told it may be stuck, along with the exact <code>job</code> cancel to run. This measures idle output, not total run time, so a command that keeps printing never trips it. The model decides: if the quiet was expected (a slow compile, a network wait), it lets the job finish; if the command is genuinely hung, it cancels it. The setting recommends, it never force-kills.</p>
 <h2 id="agent-coordination"><a class="header" href="#agent-coordination">Agent coordination</a></h2>
 <div class="table-wrapper">
 <table>

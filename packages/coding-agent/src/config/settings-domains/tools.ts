@@ -512,6 +512,38 @@ export const TOOLS_SETTINGS = {
 	"bash.autoBackground.thresholdMs": {
 		type: "number",
 		default: 60_000,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Auto-Background After",
+			description:
+				"Max wall-clock time a bash call runs in the foreground before it is moved to a background job (result delivered later). Frees the model to keep working and protects the prompt cache, which a long foreground command would otherwise blow past. Fires on elapsed time even while output is streaming. 0 backgrounds immediately.",
+			options: [
+				{ value: "0", label: "Immediately" },
+				{ value: "30000", label: "30 seconds" },
+				{ value: "60000", label: "1 minute" },
+				{ value: "120000", label: "2 minutes" },
+				{ value: "300000", label: "5 minutes" },
+			],
+		},
+	},
+
+	"bash.stallDetection.stallMs": {
+		type: "number",
+		default: 30_000,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Stall After",
+			description:
+				"When stall detection is on, how long a bash call may produce no new output before it is treated as possibly stuck, backgrounded, and flagged so the model can cancel it if it is truly hung. Measures idle time (quiet output), not total run time.",
+			options: [
+				{ value: "15000", label: "15 seconds" },
+				{ value: "30000", label: "30 seconds" },
+				{ value: "60000", label: "1 minute" },
+				{ value: "120000", label: "2 minutes" },
+			],
+		},
 	},
 
 	// Tool Discovery

@@ -225,26 +225,37 @@ export function deobfuscateSessionContext(
 }
 
 export function deobfuscateAgentMessages(obfuscator: SecretObfuscator, messages: AgentMessage[]): AgentMessage[] {
+	return mapAgentMessageStrings(messages, s => obfuscator.deobfuscate(s));
+}
+
+/**
+ * Map every model-authored string in a persisted transcript through `fn`:
+ * assistant content, and the LLM-written branch/compaction summaries (and their
+ * text blocks). User, developer, and tool-result messages are persisted with
+ * literal text and are never walked, so an operator's literal `#ABCD#` survives.
+ * Shared by the secret codec (deobfuscation for display) and the argot expander
+ * so both walk the transcript shape exactly one way.
+ */
+export function mapAgentMessageStrings(messages: AgentMessage[], fn: (s: string) => string): AgentMessage[] {
 	let changed = false;
 	const result = messages.map((message): AgentMessage => {
 		switch (message.role) {
 			case "assistant": {
-				const content = deobfuscateAssistantContent(obfuscator, message.content);
+				const content = mapAssistantContentStrings(message.content, fn);
 				if (content === message.content) return message;
 				changed = true;
 				return { ...message, content };
 			}
 			case "branchSummary": {
-				const summary = obfuscator.deobfuscate(message.summary);
+				const summary = fn(message.summary);
 				if (summary === message.summary) return message;
 				changed = true;
 				return { ...message, summary };
 			}
 			case "compactionSummary": {
-				const summary = obfuscator.deobfuscate(message.summary);
-				const shortSummary =
-					message.shortSummary === undefined ? undefined : obfuscator.deobfuscate(message.shortSummary);
-				const blocks = message.blocks === undefined ? undefined : deobfuscateTextBlocks(obfuscator, message.blocks);
+				const summary = fn(message.summary);
+				const shortSummary = message.shortSummary === undefined ? undefined : fn(message.shortSummary);
+				const blocks = message.blocks === undefined ? undefined : mapTextBlockStrings(message.blocks, fn);
 				if (summary === message.summary && shortSummary === message.shortSummary && blocks === message.blocks) {
 					return message;
 				}
@@ -268,18 +279,32 @@ export function deobfuscateAssistantContent(
 	content: AssistantMessage["content"],
 ): AssistantMessage["content"] {
 	if (!obfuscator.hasSecrets()) return content;
+	return mapAssistantContentStrings(content, s => obfuscator.deobfuscate(s));
+}
+
+/**
+ * Map every model-authored string in assistant content through `fn`: visible
+ * text and tool-call arguments/intent/rawBlock. Thinking and signatures are
+ * opaque provider-replay/hidden-reasoning data and pass through byte-identical.
+ * Shared by the secret codec (deobfuscation) and the argot expander so both walk
+ * the assistant-content shape exactly one way.
+ */
+export function mapAssistantContentStrings(
+	content: AssistantMessage["content"],
+	fn: (s: string) => string,
+): AssistantMessage["content"] {
 	let changed = false;
 	const result = content.map((block): AssistantMessage["content"][number] => {
 		if (block.type === "text") {
-			const text = obfuscator.deobfuscate(block.text);
+			const text = fn(block.text);
 			if (text === block.text) return block;
 			changed = true;
 			return { ...block, text };
 		}
 		if (block.type === "toolCall") {
-			const args = deobfuscateToolArguments(obfuscator, block.arguments);
-			const intent = block.intent === undefined ? undefined : obfuscator.deobfuscate(block.intent);
-			const rawBlock = block.rawBlock === undefined ? undefined : obfuscator.deobfuscate(block.rawBlock);
+			const args = mapJsonStrings(block.arguments as JsonValue, fn) as Record<string, unknown>;
+			const intent = block.intent === undefined ? undefined : fn(block.intent);
+			const rawBlock = block.rawBlock === undefined ? undefined : fn(block.rawBlock);
 			if (args === block.arguments && intent === block.intent && rawBlock === block.rawBlock) return block;
 			changed = true;
 			return { ...block, arguments: args, intent, rawBlock };
@@ -334,14 +359,15 @@ function obfuscateTextBlocks(
 }
 
 /** Restore placeholders in `text` blocks of a content array; image and other blocks pass through. */
-function deobfuscateTextBlocks(
-	obfuscator: SecretObfuscator,
+/** Map `text` blocks through `fn`; image and other blocks pass through byte-identical. */
+export function mapTextBlockStrings(
 	content: (TextContent | ImageContent)[],
+	fn: (s: string) => string,
 ): (TextContent | ImageContent)[] {
 	let changed = false;
 	const result = content.map((block): TextContent | ImageContent => {
 		if (block.type !== "text") return block;
-		const text = obfuscator.deobfuscate(block.text);
+		const text = fn(block.text);
 		if (text === block.text) return block;
 		changed = true;
 		return { ...block, text };
@@ -414,7 +440,7 @@ function replaceAll(text: string, search: string, replacement: string): string {
  * shape is model-authored and not known ahead of time. No other caller may walk
  * untyped data: every message/content path is handled by a typed transformer.
  */
-function mapJsonStrings(value: JsonValue, fn: (s: string) => string): JsonValue {
+export function mapJsonStrings(value: JsonValue, fn: (s: string) => string): JsonValue {
 	if (typeof value === "string") return fn(value);
 	if (Array.isArray(value)) {
 		let changed = false;

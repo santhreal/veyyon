@@ -40,9 +40,9 @@ The tool returns a single `text` content block plus optional `details`.
   - `details.exitCode`: present when the command completed with a non-zero exit code.
   - `details.meta.truncation`: present when output was truncated in memory; includes `artifactId` when full output spilled to an artifact.
   - non-zero exits return a tool result marked `isError` with output plus `Command exited with code <n>`; they are not thrown.
-- Success, background start (`async: true` or auto-background):
-  - `content[0].text`: optional preview tail, timeout notice if any, then `Background job <id> started: <label>` with follow-up instructions.
-  - `details.async`: `{ state: "running", jobId, type: "bash" }`.
+- Success, background start (`async: true`, auto-background, or stall):
+  - `content[0].text`: optional preview tail, timeout notice if any, then a background notice. Auto-background/explicit uses the plain "delivered automatically" line; a stall uses a "may be stuck" line naming the job id and the `job` tool `cancel: ["<jobId>"]` path.
+  - `details.async`: `{ state: "running", jobId, type: "bash", reason?: "threshold" | "stall" }`. `reason` is set only when a still-running call was backgrounded by a timer.
 - Background progress / completion:
   - delivered through `onUpdate` / async job manager, not the initial return.
   - running updates contain tail text and `details.async.state: "running"` only after the job is considered backgrounded.
@@ -62,7 +62,7 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
 7. `clampTimeout("bash", requestedTimeoutSec)` enforces `TOOL_TIMEOUTS.bash` (`default: 300`, `min: 1`, `max: 3600`). When clamped, `#buildCompletedResult()` / `#buildBackgroundStartResult()` append a notice line.
 8. Execution path splits:
    1. `async: true` -> `#startManagedBashJob()` registers a session async job and returns immediately.
-   2. Non-PTY with `bash.autoBackground.enabled`, an async job manager below its running-job cap, and no client-terminal bridge available (the bridge wins when both apply) -> starts a managed job, waits up to `min(thresholdMs, timeoutMs - 1000)`, and either returns the completed result or converts the run into a background job.
+   2. Non-PTY with `bash.autoBackground.enabled` or `bash.stallDetection.enabled`, an async job manager below its running-job cap, and no client-terminal bridge available (the bridge wins when both apply) -> starts a managed job and foreground-waits until it completes, the wall-clock threshold elapses (`min(thresholdMs, timeoutMs - 1000)`), or the output goes quiet for the stall window (`min(stallMs, timeoutMs - 1000)`). Whichever timer fires first converts the run into a background job, tagging `details.async.reason` `threshold` or `stall`. The threshold fires on elapsed time even while output streams; the stall fires only on idle output. A stall-only session (auto-background off) has no wall-clock timer and backgrounds solely on a stall.
    3. Non-PTY client-terminal bridge, when the session advertises terminal capability and `pty` is false -> creates a remote terminal, streams/polls current output, and releases the terminal after completion.
    4. Otherwise runs foreground execution.
 9. Foreground non-PTY without client terminal calls `executeBash()` from `packages/coding-agent/src/exec/bash-executor.ts`.
@@ -92,8 +92,11 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
    - Registers a job with `session.asyncJobManager` and returns `{ state: "running", jobId }` immediately.
 5. Auto-backgrounded non-PTY job
    - Requires `bash.autoBackground.enabled`, no PTY, and an async job manager.
-   - Starts like a foreground managed job, then backgrounds it when it outlives the wait window.
-6. Intercepted command
+   - Starts like a foreground managed job, then backgrounds it (reason `threshold`) when it outlives the wall-clock wait window, even while it is still producing output. The notice tells the model the result is delivered automatically.
+6. Stall-flagged non-PTY job
+   - Requires `bash.stallDetection.enabled`, no PTY, and an async job manager. Independent of auto-background.
+   - Starts like a foreground managed job. Each output chunk resets an idle timer; if the command produces no new output for `stallMs`, it is backgrounded (reason `stall`) with a distinct "may be stuck" notice that names the job id and the `job` tool `cancel: ["<jobId>"]` path. It recommends cancellation; it never force-kills. A command that keeps printing never stalls.
+7. Intercepted command
    - No subprocess created.
    - Returns a `ToolError` pointing the model at `read`, `grep`, `glob`, `edit`, or `write`.
 
@@ -123,6 +126,7 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
 - Default timeout: `300s` (`TOOL_TIMEOUTS.bash.default` in `packages/coding-agent/src/tools/tool-timeouts.ts`).
 - Timeout clamp: `1..3600s` (`TOOL_TIMEOUTS.bash.min/max`).
 - Auto-background default threshold: `60_000ms` (`DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS` in `packages/coding-agent/src/tools/bash.ts`), further capped to `timeoutMs - 1000` by `#resolveAutoBackgroundWaitMs()`.
+- Stall-detection default window: `30_000ms` (`DEFAULT_STALL_DETECTION_MS` in `packages/coding-agent/src/tools/bash.ts`), capped to `timeoutMs - 1000` by `#resolveStallWaitMs()`. Both timers share the `#resolveWaitMs()` clamp. The stall watcher polls idle time on a `500ms` cap.
 - Non-PTY executor timeout: `executeBash()` arms a host-side timer at `max(1_000, timeoutMs)` that aborts the run and quarantines the persistent shell session; the same timeout is also passed to the native run as `timeoutMs` (`packages/coding-agent/src/exec/bash-executor.ts`).
 - In-memory output tail cap: `50 * 1024` bytes (`DEFAULT_MAX_BYTES` in `packages/coding-agent/src/session/streaming-output.ts`). Once exceeded, the sink keeps only the tail window in memory.
 - Streaming callback throttle in `executeBash()`: `50ms` between `onChunk` calls when streaming is enabled.

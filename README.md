@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@veyyon/coding-agent"><img src="https://img.shields.io/npm/v/@veyyon/coding-agent?style=flat&colorA=222222&colorB=CB3837" alt="npm version"></a>
+  <a href="https://github.com/santhreal/veyyon/releases/latest"><img src="https://img.shields.io/github/v/release/santhreal/veyyon?style=flat&colorA=222222&colorB=E05735&label=release" alt="Latest release"></a>
   <a href="https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
   <a href="https://github.com/santhreal/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhreal/veyyon/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
   <a href="https://github.com/santhreal/veyyon/blob/main/LICENSE"><img src="https://img.shields.io/github/license/santhreal/veyyon?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
@@ -30,17 +30,24 @@ Multi-provider catalog · 31 registered built-in tools (plus optional/gated tool
 
 ## Install
 
-**npm / Bun (recommended)**
+**Linux / macOS**
 
 ```sh
-bun install -g @veyyon/coding-agent
+curl -fsSL https://get.veyyon.dev | sh
 ```
 
-First interactive `veyyon` opens the first-run setup (providers, glyphs, theme). Re-run with `veyyon setup`.
+**Windows**
 
-**From source**
+```powershell
+irm https://veyyon.dev/install.ps1 | iex
+```
+
+This installs a single self-contained binary and links a short `vey` command. First interactive `vey` opens the first-run setup (providers, glyphs, theme); re-run with `veyyon setup`. To pin a version or build from a checkout: `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.12` or `--source`.
+
+**From source (contributing)**
 
 ```sh
+git clone https://github.com/santhreal/veyyon.git && cd veyyon
 bun setup
 bun dev
 ```
@@ -491,5 +498,5 @@ Veyyon is a fork of oh-my-pi (MIT) and Pi, created by Mario Zechner and Can Böl
 
 - [GitHub](https://github.com/santhreal/veyyon)
 - [Changelog](https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md)
-- [npm](https://www.npmjs.com/package/@veyyon/coding-agent)
+- [Releases](https://github.com/santhreal/veyyon/releases) (the `curl` installer pulls these signed binaries)
 - [MIT](https://github.com/santhreal/veyyon/blob/main/LICENSE)

@@ -103,9 +103,7 @@ export const setCwdToolRenderer = {
 	): Component | undefined {
 		const details = result.details;
 		const line =
-			details && details.previous !== details.cwd
-				? `${details.previous} → ${details.cwd}`
-				: (details?.cwd ?? "cwd");
+			details && details.previous !== details.cwd ? `${details.previous} → ${details.cwd}` : (details?.cwd ?? "cwd");
 		return framedBlock(theme, width => ({
 			header: renderStatusLine({ icon: "success", title: "cwd", meta: [line] }, theme),
 			width,

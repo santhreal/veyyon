@@ -39,6 +39,7 @@ import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
+import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 import {
 	type BashInterceptorRule,
 	type GroupPrefix,
@@ -352,6 +353,23 @@ export class Settings {
 	 * Returns the merged value from global + project + overrides, or the default.
 	 */
 	get<P extends SettingPath>(path: P): SettingValue<P> {
+		// Global-scoped settings live in ~/.veyyon/config.yml, not the profile
+		// store. Read them live through their binding (never cached) so the UI
+		// always reflects the current global config, and fall back to the schema
+		// default if the read fails. A runtime override wins (used by non-persisting
+		// instances so they never touch the real global config).
+		const globalBinding = GLOBAL_SETTING_BINDINGS[path];
+		if (globalBinding) {
+			const override = getByPath(this.#overrides, path.split("."));
+			if (override !== undefined) return override as SettingValue<P>;
+			try {
+				return globalBinding.read() as SettingValue<P>;
+			} catch (error) {
+				logger.warn("Settings: global read failed; using default", { path, error: String(error) });
+				return getDefault(path);
+			}
+		}
+
 		if (this.#resolvedCache.has(path)) {
 			return this.#resolvedCache.get(path) as SettingValue<P>;
 		}
@@ -379,6 +397,11 @@ export class Settings {
 	 * config, or runtime override) rather than falling back to the schema default.
 	 */
 	isConfigured(path: SettingPath): boolean {
+		// Global-scoped paths are not in the profile-merged tree; treat a value that
+		// differs from the schema default as explicitly configured.
+		if (GLOBAL_SETTING_BINDINGS[path]) {
+			return !Object.is(this.get(path), getDefault(path));
+		}
 		return getByPath(this.#merged, SETTING_PATH_SEGMENTS[path] ?? path.split(".")) !== undefined;
 	}
 
@@ -389,6 +412,32 @@ export class Settings {
 	 */
 	set<P extends SettingPath>(path: P, value: SettingValue<P>): void {
 		const prev = this.get(path);
+
+		// Global-scoped settings persist to ~/.veyyon/config.yml through their
+		// binding, never the profile store. Write synchronously (the binding does
+		// its own file lock) so a subsequent get() reflects it immediately. A
+		// non-persisting instance (in-memory / read-only) keeps the change as a
+		// runtime override instead, so it never mutates the real global config.
+		const globalBinding = GLOBAL_SETTING_BINDINGS[path];
+		if (globalBinding) {
+			if (this.#persist) {
+				try {
+					globalBinding.write(value);
+				} catch (error) {
+					logger.warn("Settings: global write rejected; value not saved", { path, error: String(error) });
+					return;
+				}
+			} else {
+				setByPath(this.#overrides, path.split("."), value);
+				this.#rebuildMerged();
+			}
+			const next = this.get(path);
+			const hook = SETTING_HOOKS[path];
+			if (hook) hook(next, prev);
+			this.#fireEffectiveSettingChanged(path, next, prev);
+			return;
+		}
+
 		const segments = path.split(".");
 		setByPath(this.#global, segments, value);
 		this.#modified.add(path);

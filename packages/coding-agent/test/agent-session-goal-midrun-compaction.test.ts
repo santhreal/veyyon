@@ -252,8 +252,12 @@ describe("AgentSession mid-run threshold compaction", () => {
 		);
 		expect(toolUseAssistantIndex).toBeGreaterThanOrEqual(0);
 		expect(toolResultIndex).toBeGreaterThan(toolUseAssistantIndex);
-		expect(nextProviderContext.filter(serialized => serialized.includes(`"id":"${outboundToolCallId}"`))).toHaveLength(1);
-		expect(nextProviderContext.filter(serialized => serialized.includes(`"toolCallId":"${outboundToolCallId}"`))).toHaveLength(1);
+		expect(
+			nextProviderContext.filter(serialized => serialized.includes(`"id":"${outboundToolCallId}"`)),
+		).toHaveLength(1);
+		expect(
+			nextProviderContext.filter(serialized => serialized.includes(`"toolCallId":"${outboundToolCallId}"`)),
+		).toHaveLength(1);
 		expect(nextProviderContext.join("\n")).toContain("MID-RUN-COMPACTED-WITH-PENDING-HOOK");
 		expect(nextProviderContext.join("\n")).toContain("tool output");
 

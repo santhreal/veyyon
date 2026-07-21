@@ -50,6 +50,11 @@ function createDelayedSession(finalMessage: AssistantMessage): DelayedSession {
 			return true;
 		},
 		dispose: async () => {},
+		// The display seam (agent-session.ts) resolves obfuscated secret
+		// placeholders and argot handles to real values before print-mode writes
+		// them. This test drives cwd-independent literal content, so an identity
+		// double exercises the print path without the full seam.
+		displayAssistantContent: (content: AssistantMessage["content"]) => content,
 	} as unknown as AgentSession;
 
 	return { session, promptStarted, resolvePrompt };

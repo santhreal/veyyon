@@ -61,7 +61,7 @@ describe("relativizePathsUnderRoots", () => {
 		const result = relativizePathsUnderRoots(messages, [ROOT]);
 		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
 		expect(text.text).toBe("error: src/foo.ts:12:3 cannot find x\n(src/bar.ts) done");
-		expect(result.bytesSaved).toBe((ROOT + "/").length * 2);
+		expect(result.bytesSaved).toBe(`${ROOT}/`.length * 2);
 		// Original message is untouched: outbound copy only.
 		const original = messages[0] as ToolResultMessage;
 		expect((original.content[0] as { text: string }).text).toContain(ROOT);
@@ -135,9 +135,7 @@ describe("relativizePathsUnderRoots", () => {
 	});
 
 	test("user string content is relativized", () => {
-		const messages: Message[] = [
-			{ role: "user", content: `look at ${ROOT}/src/foo.ts please`, timestamp: 1 },
-		];
+		const messages: Message[] = [{ role: "user", content: `look at ${ROOT}/src/foo.ts please`, timestamp: 1 }];
 		const result = relativizePathsUnderRoots(messages, [ROOT]);
 		expect(result.messages[0]).toMatchObject({ content: "look at src/foo.ts please" });
 	});

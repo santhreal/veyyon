@@ -33,9 +33,7 @@ describe("task cwd input via resolveSpawnCwd", () => {
 
 	it("rejects relative paths loudly", async () => {
 		const parent = makeTempDir("@pi-task-cwd-parent-");
-		await expect(resolveSpawnCwd("relative/path", parent)).rejects.toThrow(
-			/task cwd must be absolute or "inherit"/,
-		);
+		await expect(resolveSpawnCwd("relative/path", parent)).rejects.toThrow(/task cwd must be absolute or "inherit"/);
 	});
 
 	it("rejects nonexistent and non-directory paths loudly", async () => {
