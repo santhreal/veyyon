@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f1f200b3.js";
+            window.path_to_searchindex_js = "searchindex-9bf3cc39.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -445,7 +445,8 @@ $ rm -rf "$VEYYON_CODING_AGENT_DIR"
 <p>Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
 you supply. Optional OpenTelemetry export runs only when <code>OTEL_EXPORTER_OTLP_*</code> is configured. Logins
 are <strong>provider-scoped</strong>: authenticating <code>anthropic</code> does not authenticate <code>openai</code>, and each provider
-tracks its own credentials.</p>
+tracks its own credentials. Those credentials are shared across profiles by default (see
+<a href="#credentials-are-shared-across-profiles">Credentials are shared across profiles</a>).</p>
 <h2 id="sign-in-from-the-tui"><a class="header" href="#sign-in-from-the-tui">Sign in from the TUI</a></h2>
 <p>Use the interactive slash commands inside a session:</p>
 <ul>
@@ -497,9 +498,21 @@ from <code>&lt;cwd&gt;/.env</code>, <code>~/.veyyon/profiles/default/agent/.env<
 <li>A stored OAuth credential (refreshed as needed).</li>
 <li>The provider’s environment variable (including <code>.env</code>).</li>
 </ol>
-<p>Stored credentials live in the auth store at <code>~/.veyyon/profiles/default/agent/agent.db</code> (or the configured auth-broker
-snapshot in broker mode). <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, and the auth store moves with
-it.</p>
+<p>Stored credentials live in a machine-wide auth store at <code>~/.veyyon/shared-auth/agent.db</code> (or the configured
+auth-broker snapshot in broker mode). <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base for a profile’s own
+files, but the shared auth store stays at the global config root so every profile reads the same logins.</p>
+<h3 id="credentials-are-shared-across-profiles"><a class="header" href="#credentials-are-shared-across-profiles">Credentials are shared across profiles</a></h3>
+<p>By default every profile reads one machine-wide set of provider logins, so signing in once works everywhere.
+The first time a profile opens the shared store, any login already saved in that profile is promoted into it,
+so turning sharing on never signs you out.</p>
+<p>To give a profile its own private credentials instead, turn sharing off in the global config
+<code>~/.veyyon/config.yml</code>:</p>
+<pre><code class="language-yaml">profileSharing: false
+</code></pre>
+<p>or toggle <strong>Share Credentials Across Profiles</strong> on the <strong>Global</strong> tab of <code>/settings</code>. With sharing off, each
+profile keeps its logins in its own <code>~/.veyyon/profiles/&lt;name&gt;/agent/agent.db</code> and never reads another
+profile’s credentials. The auth broker (above) is a separate cross-host mechanism and is unaffected by this
+setting.</p>
 <h2 id="provider-data-is-data-driven"><a class="header" href="#provider-data-is-data-driven">Provider data is data-driven</a></h2>
 <p>Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your <code>~/.veyyon/profiles/default/agent/models.yml</code>. A new BYOK provider becomes
@@ -3021,7 +3034,7 @@ one-time migration from the legacy bare-root layout.</p>
 <li><code>VEYYON_PROFILE</code>. An explicitly <strong>empty</strong>
 <code>VEYYON_PROFILE=</code> forces <code>default</code>, bypassing step 3.</li>
 <li><code>defaultProfile</code> in the global <code>~/.veyyon/config.yml</code>: set or show it with
-<code>veyyon profile default [name]</code>.</li>
+<code>veyyon profile default [name]</code>, or edit it on the <strong>Global</strong> tab of <code>/settings</code>.</li>
 <li><code>default</code>.</li>
 </ol>
 <h2 id="what-a-profile-owns-shipped"><a class="header" href="#what-a-profile-owns-shipped">What a profile owns (shipped)</a></h2>
@@ -3029,6 +3042,7 @@ one-time migration from the legacy bare-root layout.</p>
 <pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/
 </code></pre>
 <p>That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root <code>~/.veyyon/profiles/&lt;name&gt;/</code> the same way. A profile never reads another profile’s tree at runtime.</p>
+<p><strong>Provider credentials are the one exception:</strong> by default they live in a machine-wide store (<code>~/.veyyon/shared-auth/agent.db</code>) that every profile reads, so you sign in once. Set <code>profileSharing: false</code> in the global <code>~/.veyyon/config.yml</code> (or toggle it on the <strong>Global</strong> tab of <code>/settings</code>) to give each profile its own private credential store instead. See <a href="#credentials-are-shared-across-profiles">Signing in › Credentials are shared across profiles</a>.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
 <p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>

@@ -48,7 +48,16 @@ async function walk(dir: string, out: string[], includeTests = false): Promise<v
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
+			// `argot` is vendored standalone SDK code (src/argot/constants.ts): kept
+			// byte-for-byte in sync with santhsecurity/argot, it cannot import
+			// @veyyon/utils, so it carries its own util copies by design — skip like vendor.
+			if (
+				entry.name === "node_modules" ||
+				entry.name === "dist" ||
+				entry.name === "vendor" ||
+				entry.name === "argot"
+			)
+				continue;
 			await walk(full, out, includeTests);
 		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
 			out.push(full);

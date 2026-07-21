@@ -237,4 +237,4 @@ During the timer window, state can change (user interruption, mode actions, addi
 - Tool-source non-interrupting buckets are cleared when the parent assistant message ends with `stopReason === "aborted"` or `"error"`, so rules whose target tool never produced a result remain eligible to re-trigger.
 - Repeat-after-gap depends on turn count increments at `turn_end`; mid-turn chunks do not advance gap counters.
 
-*Verified against `7ca44d3` on 2026-07-17.*
+*Verified against `7ca44d3` on 2026-07-21.*

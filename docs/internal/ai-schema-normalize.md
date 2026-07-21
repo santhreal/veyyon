@@ -184,4 +184,4 @@ and the full merge re-runs.
 - `packages/ai/src/utils/schema/CONSTRAINTS.md`: operational contract for
   every normalization rule.
 
-*Verified against `7ca44d3` on 2026-07-17.*
+*Verified against `7ca44d3` on 2026-07-21.*

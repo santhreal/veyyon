@@ -107,7 +107,11 @@ describe("InteractiveMode MCP connection status", () => {
 			serverNames: ["sequential", "critic"],
 		} satisfies McpConnectionStatusEvent);
 
-		expect(locationText(mode)).not.toContain("mcp");
+		// Assert the absence of the boot-health *status token* (`mcp 0/2`), not the
+		// bare substring "mcp": the tempDir prefix above ("…-mcp-connecting-…") puts
+		// "mcp" into the cwd the location line always renders, so `not.toContain("mcp")`
+		// can never hold. The status token is what quiet mode must suppress.
+		expect(locationText(mode)).not.toContain("mcp 0/2");
 	});
 
 	it("updates the zone as servers connect and fail, ending on a failure count", () => {

@@ -286,4 +286,4 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 - [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts): RPC `bash` and `abort_bash` command surface.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
-*Verified against `a49ff74` on 2026-07-17.*
+*Verified against `a49ff74` on 2026-07-21.*

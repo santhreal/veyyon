@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f1f200b3.js";
+            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -220,7 +220,7 @@ one-time migration from the legacy bare-root layout.</p>
 <li><code>VEYYON_PROFILE</code>. An explicitly <strong>empty</strong>
 <code>VEYYON_PROFILE=</code> forces <code>default</code>, bypassing step 3.</li>
 <li><code>defaultProfile</code> in the global <code>~/.veyyon/config.yml</code>: set or show it with
-<code>veyyon profile default [name]</code>.</li>
+<code>veyyon profile default [name]</code>, or edit it on the <strong>Global</strong> tab of <code>/settings</code>.</li>
 <li><code>default</code>.</li>
 </ol>
 <h2 id="what-a-profile-owns-shipped"><a class="header" href="#what-a-profile-owns-shipped">What a profile owns (shipped)</a></h2>
@@ -228,6 +228,7 @@ one-time migration from the legacy bare-root layout.</p>
 <pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/
 </code></pre>
 <p>That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root <code>~/.veyyon/profiles/&lt;name&gt;/</code> the same way. A profile never reads another profile’s tree at runtime.</p>
+<p><strong>Provider credentials are the one exception:</strong> by default they live in a machine-wide store (<code>~/.veyyon/shared-auth/agent.db</code>) that every profile reads, so you sign in once. Set <code>profileSharing: false</code> in the global <code>~/.veyyon/config.yml</code> (or toggle it on the <strong>Global</strong> tab of <code>/settings</code>) to give each profile its own private credential store instead. See <a href="../using/authentication.html#credentials-are-shared-across-profiles">Signing in › Credentials are shared across profiles</a>.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
 <p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="./skills.html#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>

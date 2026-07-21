@@ -116,7 +116,11 @@ describe("AgentSession skill prompt keyword steering", () => {
 		expect(observedTurns).toHaveLength(1);
 		const observedTurn = observedTurns[0];
 		if (!observedTurn) throw new Error("Expected prompt context to be captured");
-		expect(observedTurn.texts).toContain(`Skill body\n\n---\n\nSkill: ${skillPath}\nUser: ${details.args}`);
+		// Outbound wire-path canonicalization (relativize-paths.ts, TW-10) rewrites
+		// any absolute path under a session root to its session-relative form before
+		// it reaches the model, so the skill path arrives relativized, not absolute.
+		const wireSkillPath = path.relative(tempDir.path(), skillPath);
+		expect(observedTurn.texts).toContain(`Skill body\n\n---\n\nSkill: ${wireSkillPath}\nUser: ${details.args}`);
 		expect(observedTurn.texts).toContain(WORKFLOW_NOTICE);
 		expect(session.sessionManager.getTurnBudget()).toEqual({ total: 500_000, spent: 0, hard: true });
 	});

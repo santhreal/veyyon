@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f1f200b3.js";
+            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -199,7 +199,8 @@
 <p>Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
 you supply. Optional OpenTelemetry export runs only when <code>OTEL_EXPORTER_OTLP_*</code> is configured. Logins
 are <strong>provider-scoped</strong>: authenticating <code>anthropic</code> does not authenticate <code>openai</code>, and each provider
-tracks its own credentials.</p>
+tracks its own credentials. Those credentials are shared across profiles by default (see
+<a href="#credentials-are-shared-across-profiles">Credentials are shared across profiles</a>).</p>
 <h2 id="sign-in-from-the-tui"><a class="header" href="#sign-in-from-the-tui">Sign in from the TUI</a></h2>
 <p>Use the interactive slash commands inside a session:</p>
 <ul>
@@ -251,9 +252,21 @@ from <code>&lt;cwd&gt;/.env</code>, <code>~/.veyyon/profiles/default/agent/.env<
 <li>A stored OAuth credential (refreshed as needed).</li>
 <li>The provider’s environment variable (including <code>.env</code>).</li>
 </ol>
-<p>Stored credentials live in the auth store at <code>~/.veyyon/profiles/default/agent/agent.db</code> (or the configured auth-broker
-snapshot in broker mode). <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, and the auth store moves with
-it.</p>
+<p>Stored credentials live in a machine-wide auth store at <code>~/.veyyon/shared-auth/agent.db</code> (or the configured
+auth-broker snapshot in broker mode). <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base for a profile’s own
+files, but the shared auth store stays at the global config root so every profile reads the same logins.</p>
+<h3 id="credentials-are-shared-across-profiles"><a class="header" href="#credentials-are-shared-across-profiles">Credentials are shared across profiles</a></h3>
+<p>By default every profile reads one machine-wide set of provider logins, so signing in once works everywhere.
+The first time a profile opens the shared store, any login already saved in that profile is promoted into it,
+so turning sharing on never signs you out.</p>
+<p>To give a profile its own private credentials instead, turn sharing off in the global config
+<code>~/.veyyon/config.yml</code>:</p>
+<pre><code class="language-yaml">profileSharing: false
+</code></pre>
+<p>or toggle <strong>Share Credentials Across Profiles</strong> on the <strong>Global</strong> tab of <code>/settings</code>. With sharing off, each
+profile keeps its logins in its own <code>~/.veyyon/profiles/&lt;name&gt;/agent/agent.db</code> and never reads another
+profile’s credentials. The auth broker (above) is a separate cross-host mechanism and is unaffected by this
+setting.</p>
 <h2 id="provider-data-is-data-driven"><a class="header" href="#provider-data-is-data-driven">Provider data is data-driven</a></h2>
 <p>Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your <code>~/.veyyon/profiles/default/agent/models.yml</code>. A new BYOK provider becomes
