@@ -124,4 +124,4 @@ APPLE_API_KEY_ID=… APPLE_API_ISSUER_ID=… APPLE_API_KEY=… \
   bash scripts/ci-macos-sign.sh packages/coding-agent/binaries/veyyon-darwin-arm64
 ```
 
-*Verified against `a49ff74` on 2026-07-17.*
+*Verified against `a49ff74` on 2026-07-21.*

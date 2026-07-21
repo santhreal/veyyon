@@ -364,4 +364,4 @@ replay/reduce tooling).
 - [ ] New width path? Routed through the shared native engine, clamped (never
       thrown) in the hot path.
 
-*Verified against `7ca44d3` on 2026-07-17.*
+*Verified against `7ca44d3` on 2026-07-21.*

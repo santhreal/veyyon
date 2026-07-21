@@ -40,4 +40,4 @@ New consumers MUST treat the value as opaque and MUST NOT derive PII from it; th
 - [environment-variables.md](../environment-variables.md): `VEYYON_CONFIG_DIR` controls where `install-id` lives.
 - [config-usage.md](../config-usage.md): broader config-root layout.
 
-*Verified against `a49ff74` on 2026-07-17.*
+*Verified against `a49ff74` on 2026-07-21.*

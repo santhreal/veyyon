@@ -59,6 +59,12 @@ jobs:
           bun-version: "1.3.14"
       - name: Install workspace
         run: bun install --frozen-lockfile
+      # docs-examples imports the HTML-export entrypoint, which statically pulls
+      # in the gitignored build artifact src/export/html/tool-views.generated.js.
+      # A fresh checkout does not have it, so generate it (the binary build does
+      # the same) before the test can load that module.
+      - name: Generate tool views
+        run: bun --cwd=packages/coding-agent run gen:tool-views
       - name: Docs examples match the real CLI
         run: bun test packages/coding-agent/test/docs-examples.test.ts
 

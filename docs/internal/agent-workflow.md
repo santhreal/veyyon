@@ -121,4 +121,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `a49ff74` on 2026-07-17.*
+*Verified against `a49ff74` on 2026-07-21.*
