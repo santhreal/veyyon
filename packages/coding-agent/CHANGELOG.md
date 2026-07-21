@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-07-21
+
 ### Added
 
 - Shared provider credentials across profiles. You sign in to a provider once and every profile reuses that login, so switching profiles no longer means re-authenticating. A machine-wide `profileSharing` toggle (default on) controls it; turn it off to keep each profile's credentials private.
