@@ -4,11 +4,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	getGlobalConfigRootDir,
+	getSharedAuthDir,
 	migrateLegacyDefaultProfileLayout,
 	profileEnvIsSet,
+	readGlobalProfileSharingSafe,
 	resolveGlobalDefaultProfile,
+	resolveGlobalProfileSharing,
 	resolveStartupProfile,
 	writeGlobalDefaultProfile,
+	writeGlobalProfileSharing,
 } from "@veyyon/utils/dirs";
 import { Snowflake } from "@veyyon/utils/snowflake";
 
@@ -119,6 +123,67 @@ describe("global defaultProfile config", () => {
 		writeGlobalDefaultProfile("work");
 		expect(resolveGlobalDefaultProfile()).toBe("work");
 		expect(fs.existsSync(lockPath)).toBe(false);
+	});
+});
+
+describe("global profileSharing config (credential scope)", () => {
+	it("defaults to shared (true) when no global config exists", () => {
+		expect(resolveGlobalProfileSharing()).toBe(true);
+	});
+
+	it("defaults to shared when the key is absent from an existing config", () => {
+		fs.mkdirSync(getGlobalConfigRootDir(), { recursive: true });
+		fs.writeFileSync(path.join(getGlobalConfigRootDir(), "config.yml"), "defaultProfile: work\n");
+		expect(resolveGlobalProfileSharing()).toBe(true);
+	});
+
+	it("writes false to isolate, reads it back, and re-sharing clears the key", () => {
+		const file = writeGlobalProfileSharing(false);
+		expect(file).toBe(path.join(getGlobalConfigRootDir(), "config.yml"));
+		expect(fs.readFileSync(file, "utf8")).toContain("profileSharing: false");
+		expect(resolveGlobalProfileSharing()).toBe(false);
+
+		// Re-enabling sharing is the default posture, so the key is removed rather
+		// than written as an explicit `true`.
+		writeGlobalProfileSharing(true);
+		expect(resolveGlobalProfileSharing()).toBe(true);
+		expect(fs.existsSync(file)).toBe(false);
+	});
+
+	it("preserves unrelated keys when isolating and re-sharing", () => {
+		writeGlobalDefaultProfile("work");
+		writeGlobalProfileSharing(false);
+		const file = path.join(getGlobalConfigRootDir(), "config.yml");
+		let text = fs.readFileSync(file, "utf8");
+		expect(text).toContain("defaultProfile: work");
+		expect(text).toContain("profileSharing: false");
+
+		writeGlobalProfileSharing(true);
+		text = fs.readFileSync(file, "utf8");
+		expect(text).toContain("defaultProfile: work");
+		expect(text).not.toContain("profileSharing");
+	});
+
+	it("throws naming the posture when the value is not a boolean", () => {
+		fs.mkdirSync(getGlobalConfigRootDir(), { recursive: true });
+		fs.writeFileSync(path.join(getGlobalConfigRootDir(), "config.yml"), "profileSharing: sometimes\n");
+		expect(() => resolveGlobalProfileSharing()).toThrow("must be a boolean");
+	});
+
+	it("safe reader falls back to shared on invalid YAML instead of throwing", () => {
+		fs.mkdirSync(getGlobalConfigRootDir(), { recursive: true });
+		fs.writeFileSync(path.join(getGlobalConfigRootDir(), "config.yml"), "profileSharing: [unclosed\n");
+		expect(() => resolveGlobalProfileSharing()).toThrow();
+		expect(readGlobalProfileSharingSafe()).toBe(true);
+	});
+
+	it("locates the shared auth store under the global config root, clear of legacy agent/", () => {
+		const dir = getSharedAuthDir();
+		expect(dir).toBe(path.join(getGlobalConfigRootDir(), "shared-auth"));
+		// Must not collide with the legacy `~/.veyyon/agent` layout (which triggers
+		// the legacy-migration path) or with profiles/.
+		expect(path.basename(dir)).not.toBe("agent");
+		expect(dir).not.toContain(`${path.sep}profiles${path.sep}`);
 	});
 });
 

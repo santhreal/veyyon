@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { resolveApproval } from "@veyyon/coding-agent/tools/approval";
 import { SetCwdTool } from "@veyyon/coding-agent/tools/set-cwd";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { Settings } from "@veyyon/coding-agent/config/settings";
 
 function session(cwd: string): ToolSession {
 	return {
@@ -28,9 +28,7 @@ describe("set_cwd write-tier approval", () => {
 			policy: "allow",
 			tier: "write",
 		});
-		expect(
-			resolveApproval(tool, { path: "/tmp/new" }, "yolo", { set_cwd: "deny" }),
-		).toMatchObject({
+		expect(resolveApproval(tool, { path: "/tmp/new" }, "yolo", { set_cwd: "deny" })).toMatchObject({
 			policy: "deny",
 			tier: "write",
 		});

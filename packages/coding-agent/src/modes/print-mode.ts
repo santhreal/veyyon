@@ -164,8 +164,11 @@ export async function runPrintMode(session: AgentSession, options: PrintModeOpti
 				process.stderr.write(`${sanitizeText(assistantMsg.errorMessage)}\n`);
 			}
 
-			// Output text content
-			for (const content of assistantMsg.content) {
+			// Output text content. The stored message keeps obfuscated secret
+			// placeholders and cheap argot handles; route it through the session's
+			// display seam so headless output shows real values, never a `#HASH#`
+			// token or a bare `§handle`.
+			for (const content of session.displayAssistantContent(assistantMsg.content)) {
 				if (content.type === "text") {
 					process.stdout.write(`${sanitizeText(content.text)}\n`);
 				} else if (printThoughts && content.type === "thinking" && content.thinking.trim().length > 0) {

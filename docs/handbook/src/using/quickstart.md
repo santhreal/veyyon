@@ -17,7 +17,7 @@ If it is missing, the one-command installer wires up your PATH, shell completion
 curl -fsSL https://get.veyyon.dev | sh
 ```
 
-You can also install from the npm registry with `bun install -g @veyyon/coding-agent`, or build from source with `bun setup && bun dev` in the repository root. See [Install](./install.md).
+You can also pin a version with `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11`, or build from source with `bun setup && bun dev` in the repository root. See [Install](./install.md).
 
 ## Check the environment
 

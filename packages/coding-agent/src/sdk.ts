@@ -23,10 +23,10 @@ import {
 	getAgentDir,
 	getProjectDir,
 	logger,
-	setProjectDir,
 	postmortem,
 	prompt,
 	Snowflake,
+	setProjectDir,
 } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import {
@@ -60,6 +60,9 @@ import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import "./discovery";
+import { type ArgotGate, ArgotSession, shouldEncode } from "./argot";
+import { armArgotFromCache } from "./argot-cache";
+import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { initializeWithSettings } from "./discovery";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
 import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
@@ -1279,6 +1282,34 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	}
 	const secretsEnabled = obfuscator?.hasSecrets() === true;
 
+	// Argot per-project shorthand codec (experimental). The dictionary is a local
+	// cache, generated from the repository under the config root and armed at
+	// session start (armArgotFromCache); the handles are taught to the model
+	// through the system prompt (see promptFragment below), not by reading a
+	// committed file. Expansion runs at the same two seams as secret
+	// deobfuscation — tool-call arguments before execution and assistant content
+	// before display — so the cheap handle stays in history (the token win) while
+	// everything outside history sees full text.
+	const argotEnabled = settings.get("argot.enabled") === true;
+	const argot = argotEnabled ? new ArgotSession() : undefined;
+	if (argot) {
+		await armArgotFromCache(argot, cwd);
+	}
+	// Encode gate: which models may WRITE shorthand and an optional context-size
+	// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
+	// unconditional and lossless whatever this holds; the gate governs only
+	// whether the notation preamble is taught this turn. The policy itself lives
+	// in the argot SDK (shouldEncode) so every harness gates the same way.
+	const argotGate: ArgotGate = buildArgotGate(
+		argotEnabled,
+		settings.get("argot.models") ?? [],
+		settings.get("argot.disableAboveTokens"),
+	);
+	// Live context size (prompt tokens the model last saw), refreshed each turn
+	// from usage so the cutoff tracks the growing context. 0 until the first
+	// response, which keeps encoding on for a small starting context.
+	let argotContextTokens = 0;
+
 	// An abnormal process exit after a non-terminal message tail is durable
 	// evidence that the old process can no longer finish that turn. Preserve the
 	// partial transcript and append one terminal aborted assistant record before
@@ -1588,13 +1619,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				if (cwd !== previous) {
 					setProjectDir(cwd);
 					const note = `Session working directory changed: ${previous} → ${cwd}`;
-					sessionManager.appendCustomMessageEntry(
-						"cwd_changed",
-						note,
-						true,
-						{ previous, cwd },
-						"agent",
-					);
+					sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
 				}
 				return cwd;
 			},
@@ -2505,6 +2530,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					? `${appendPrompt}\n\n${options.appendSystemPrompt}`
 					: options.appendSystemPrompt;
 			}
+			// Gate teaching the handle table by the encode policy: the active model
+			// must be on the allowlist and the context under the cutoff, and the cache
+			// must actually hold handles. Decoding is unaffected — handles already in
+			// history still expand at the seams whatever this holds.
+			const argotActiveModel = getActiveModelString();
+			const injectArgotPreamble =
+				argotEnabled &&
+				argot?.loaded === true &&
+				argotActiveModel !== undefined &&
+				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
 			const defaultPrompt = await buildSystemPromptInternal({
 				cwd,
 				resolvedCustomPrompt: options.customSystemPrompt,
@@ -2527,6 +2562,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				taskMaxConcurrency: settings.get("task.maxConcurrency"),
 				taskIrcEnabled: isIrcEnabled(settings, options.taskDepth ?? 0),
 				secretsEnabled,
+				injectArgotPreamble,
+				argotHandles: injectArgotPreamble && argot ? argot.promptFragment() : undefined,
 				workspaceTree: workspaceTreePromise,
 				includeWorkspaceTree,
 				memoryRootEnabled: memoryBackend.id === "local",
@@ -2855,6 +2892,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				if (obfuscator?.hasSecrets()) {
 					result = deobfuscateToolArguments(obfuscator, result);
 				}
+				if (argot?.loaded) {
+					result = expandToolArguments(argot, result);
+				}
 				return result;
 			},
 			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
@@ -2890,6 +2930,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		});
 
 		cursorEventEmitter = event => agent.emitExternalEvent(event);
+
+		// Track the live context size for the argot encode cutoff. The prompt the
+		// model saw this turn is its input plus cached-prompt tokens; output is
+		// excluded. Read from the assistant message's usage so no re-estimation is
+		// needed. Next turn's system-prompt rebuild reads this to decide whether to
+		// keep teaching shorthand (see argotGate / shouldEncode below).
+		if (argotEnabled && argotGate.disableAboveTokens > 0) {
+			agent.subscribe(event => {
+				if (event.type !== "turn_end") return;
+				const usage = (event.message as { usage?: { input?: number; cacheRead?: number; cacheWrite?: number } })
+					.usage;
+				if (usage) {
+					argotContextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+				}
+			});
+		}
 
 		// Restore messages if session has existing data
 		if (hasExistingSession) {
@@ -2930,13 +2986,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				if (cwd !== previous) {
 					setProjectDir(cwd);
 					const note = `Session working directory changed: ${previous} → ${cwd}`;
-					sessionManager.appendCustomMessageEntry(
-						"cwd_changed",
-						note,
-						true,
-						{ previous, cwd },
-						"agent",
-					);
+					sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
 				}
 				return cwd;
 			},
@@ -3039,6 +3089,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			defaultSelectedMCPServerNames: [...discoveryDefaultServers],
 			ttsrManager,
 			obfuscator,
+			argot,
 			agentId: resolvedAgentId,
 			agentKind,
 			providerSessionId: options.providerSessionId,

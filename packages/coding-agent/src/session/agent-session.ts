@@ -147,8 +147,8 @@ import {
 	postmortem,
 	prompt,
 	relativePathWithinRoot,
-	setProjectDir,
 	Snowflake,
+	setProjectDir,
 	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
@@ -176,6 +176,8 @@ import {
 	resolveAdvisorDeliveryChannel,
 	slugifyAdvisorName,
 } from "../advisor";
+import type { ArgotSession } from "../argot";
+import { expandAssistantContent, expandSessionContext } from "../argot-wire";
 import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";
@@ -369,7 +371,6 @@ import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
 import type { AuthStorage } from "./auth-storage";
 import { canonicalizeToolCallIds } from "./canonicalize-tool-call-ids";
-import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
 import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
@@ -409,6 +410,7 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import { normalizeRoots, relativizePathsUnderRoots } from "./relativize-paths";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
@@ -937,6 +939,8 @@ export interface AgentSessionConfig {
 	ttsrManager?: TtsrManager;
 	/** Secret obfuscator for deobfuscating streaming edit content */
 	obfuscator?: SecretObfuscator;
+	/** Argot shorthand codec (experimental); expands handles before display/tools. */
+	argot?: ArgotSession;
 	/** Inherited eval executor session id from a parent agent. */
 	parentEvalSessionId?: string;
 	/** Logical owner for retained eval kernels created by this session. */
@@ -2081,6 +2085,7 @@ export class AgentSession {
 	// unchanged — otherwise a mid-turn estimate would survive into idle.
 	#contextUsageRevision = 0;
 	#obfuscator: SecretObfuscator | undefined;
+	#argot: ArgotSession | undefined;
 	/** Session-start value of `inlineToolDescriptors`; drives handoff tool pruning. */
 	#pruneToolDescriptions = false;
 	#checkpointState: CheckpointState | undefined = undefined;
@@ -2748,6 +2753,7 @@ export class AgentSession {
 		);
 		this.#ttsrManager = config.ttsrManager;
 		this.#obfuscator = config.obfuscator;
+		this.#argot = config.argot;
 		this.#agentId = config.agentId;
 		this.#agentKind = config.agentKind ?? "main";
 		this.#providerSessionId = config.providerSessionId;
@@ -4147,6 +4153,27 @@ export class AgentSession {
 		return true;
 	}
 
+	/**
+	 * Assistant message content in display form: secrets deobfuscated and argot
+	 * handles expanded, composed in that order. Stored messages keep the
+	 * obfuscated placeholders and cheap handles (the token win and the persistence
+	 * contract); any surface that shows content to a person — the streamed
+	 * `message_end` display event, and headless `--print`, which reads the stored
+	 * message directly — must route it through here first so operators never see a
+	 * raw `#HASH#` secret token or a bare `§handle`. Returns the same content
+	 * reference when neither transform applies.
+	 */
+	displayAssistantContent(content: AssistantMessage["content"]): AssistantMessage["content"] {
+		let out = content;
+		if (this.#obfuscator) {
+			out = deobfuscateAssistantContent(this.#obfuscator, out);
+		}
+		if (this.#argot?.loaded) {
+			out = expandAssistantContent(this.#argot, out);
+		}
+		return out;
+	}
+
 	#processAgentEvent = async (event: AgentEvent): Promise<void> => {
 		// Step the mid-run todo counter synchronously, BEFORE any await in this
 		// handler. The agent loop's next-turn `getAsideMessages` poll can run
@@ -4212,13 +4239,16 @@ export class AgentSession {
 		// values. The original event.message stays obfuscated so the persistence path below
 		// writes `#HASH#` tokens to the session file; convertToLlm re-obfuscates outbound
 		// traffic on the next turn. Walks text, thinking, and toolCall arguments/intent.
+		// Argot expansion composes on top of secret deobfuscation on the same
+		// display copy: the model echoes cheap handles in history, listeners must
+		// see full text. The original event.message keeps the handles so the
+		// persistence path and next-turn context stay cheap (the token win).
 		let displayEvent: AgentEvent = event;
-		const obfuscator = this.#obfuscator;
-		if (obfuscator && event.type === "message_end" && event.message.role === "assistant") {
+		if (event.type === "message_end" && event.message.role === "assistant") {
 			const message = event.message;
-			const deobfuscatedContent = deobfuscateAssistantContent(obfuscator, message.content);
-			if (deobfuscatedContent !== message.content) {
-				displayEvent = { ...event, message: { ...message, content: deobfuscatedContent } };
+			const content = this.displayAssistantContent(message.content);
+			if (content !== message.content) {
+				displayEvent = { ...event, message: { ...message, content } };
 			}
 		}
 
@@ -7514,7 +7544,16 @@ export class AgentSession {
 	}
 
 	buildDisplaySessionContext(): SessionContext {
-		return deobfuscateSessionContext(this.sessionManager.buildSessionContext(), this.#obfuscator);
+		return this.#expandArgot(deobfuscateSessionContext(this.sessionManager.buildSessionContext(), this.#obfuscator));
+	}
+
+	/**
+	 * Expand argot handles across a rebuilt transcript so display/export/resume
+	 * matches the live message seam. No-op unless a dictionary was read this
+	 * session. Composes after secret deobfuscation.
+	 */
+	#expandArgot(context: SessionContext): SessionContext {
+		return this.#argot?.loaded ? expandSessionContext(this.#argot, context) : context;
 	}
 
 	/**
@@ -7526,13 +7565,15 @@ export class AgentSession {
 	buildTranscriptSessionContext(
 		options?: Pick<BuildSessionContextOptions, "collapseCompactedHistory" | "keepDanglingToolCalls">,
 	): SessionContext {
-		return deobfuscateSessionContext(
-			this.sessionManager.buildSessionContext({
-				transcript: true,
-				collapseCompactedHistory: options?.collapseCompactedHistory,
-				keepDanglingToolCalls: options?.keepDanglingToolCalls,
-			}),
-			this.#obfuscator,
+		return this.#expandArgot(
+			deobfuscateSessionContext(
+				this.sessionManager.buildSessionContext({
+					transcript: true,
+					collapseCompactedHistory: options?.collapseCompactedHistory,
+					keepDanglingToolCalls: options?.keepDanglingToolCalls,
+				}),
+				this.#obfuscator,
+			),
 		);
 	}
 

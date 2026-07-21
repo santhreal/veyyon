@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b47278ea.js";
+            window.path_to_searchindex_js = "searchindex-f1f200b3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -218,7 +218,7 @@
 <p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, PTY, and hashline patch application, are Rust natives in <code>@veyyon/natives</code>.</p>
 <p>A few facts you will reach for often:</p>
 <ul>
-<li>Install with <code>bun install -g @veyyon/coding-agent</code>, or run <code>bun setup &amp;&amp; bun dev</code> from a source checkout.</li>
+<li>Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>irm https://veyyon.dev/install.ps1 | iex</code> on Windows), or run <code>bun setup &amp;&amp; bun dev</code> from a source checkout.</li>
 <li>The binary is <code>veyyon</code>, with the shorter alias <code>vey</code>.</li>
 <li>Configuration lives under <code>~/.veyyon</code>. The default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>, and other profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</li>
 </ul>
@@ -388,69 +388,58 @@
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon ships as the npm package <code>@veyyon/coding-agent</code>, and installing it gives you the <code>veyyon</code> executable. Under the hood it is a TypeScript and Bun agent loop, with Rust natives in <code>@veyyon/natives</code> handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. After you install, run <code>veyyon plugin doctor</code> to confirm everything is wired up.</p>
-<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
-<p>You need two things:</p>
-<ul>
-<li><strong>Bun</strong>, which is the recommended runtime, or a recent Node.js.</li>
-<li><strong>Git</strong>, because most workflows expect to run inside a repository.</li>
-</ul>
-<h2 id="install-with-npm-or-bun"><a class="header" href="#install-with-npm-or-bun">Install with npm or Bun</a></h2>
-<pre><code class="language-console">$ bun install -g @veyyon/coding-agent
-$ veyyon --version
+<p>Veyyon installs as a single self-contained binary. The installer downloads it, links a short <code>vey</code> launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
+<h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>npm works too:</p>
-<pre><code class="language-console">$ npm install -g @veyyon/coding-agent
-$ veyyon --version
+<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and prints a <code>doctor:</code> line confirming the binary runs. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
+<h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
+<pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
-<p>The install step also builds <code>@veyyon/natives</code>. Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
-<p>The first interactive <code>veyyon</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
-<h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
+<pre><code class="language-console">$ vey --version
+</code></pre>
+<p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
+<p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
+<p>The installer takes a few options. Pass them after <code>-- </code> when you pipe the script:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific release
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
+</code></pre>
+<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, and <code>-Uninstall</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>).</p>
+<p>If you would rather clone and drive the workspace yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 </code></pre>
 <p><code>bun dev</code> runs the in-repo build. Use it while you are evaluating Veyyon or contributing to it.</p>
-<h2 id="shell-completions"><a class="header" href="#shell-completions">Shell completions</a></h2>
-<pre><code class="language-console">$ veyyon completions bash|zsh|fish
-</code></pre>
 <h2 id="verify-the-install"><a class="header" href="#verify-the-install">Verify the install</a></h2>
-<pre><code class="language-console">$ veyyon --version
-$ veyyon plugin doctor
-$ veyyon plugin doctor --fix
+<pre><code class="language-console">$ vey --version
+$ vey plugin doctor
+$ vey plugin doctor --fix
 </code></pre>
-<p><code>veyyon plugin doctor</code> checks plugin health and warns you when an optional external binary (<code>sd</code>, <code>sg</code>, or <code>git</code>) or a common API key is missing. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="#diagnostics-and-health">Diagnostics</a>.</p>
+<p><code>vey plugin doctor</code> checks plugin health and warns you when an optional external binary (<code>sd</code>, <code>sg</code>, or <code>git</code>) or a common API key is missing. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="#diagnostics-and-health">Diagnostics</a>.</p>
 <h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
 <p>On Unix, Veyyon uses <code>~/.veyyon</code> by default. Two environment variables let you move it. <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, which holds <code>config.yml</code>, <code>agent.db</code>, your sessions, and more.</p>
 <pre><code class="language-console">$ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
-$ veyyon plugin doctor
+$ vey plugin doctor
 </code></pre>
 <p>The <a href="#file-locations-1">File locations</a> chapter shows the full layout.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
 <p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>Remove the global package:</p>
-<pre><code class="language-console">$ bun remove -g @veyyon/coding-agent
-$ # or: npm uninstall -g @veyyon/coding-agent
+<p>The installer removes everything it added, including the <code>vey</code> alias, any shell completions, and a source checkout if you made one:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
+</code></pre>
+<p>On Windows:</p>
+<pre><code class="language-powershell">&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
 </code></pre>
 <p>Then remove your state if you want a clean machine:</p>
 <pre><code class="language-console">$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
 $ # if you relocated the agent base:
 $ rm -rf "$VEYYON_CODING_AGENT_DIR"
 </code></pre>
-<p>Deleting the home directory does not remove project-local files such as a repository’s <code>AGENTS.md</code> or its <code>.veyyon/</code> directory. Clean those per repository if you want to.</p>
-<p>To keep your projects but wipe only sessions:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon/profiles/default/agent/sessions
-</code></pre>
-<h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
-<ul>
-<li><a href="#getting-started">Getting started</a> walks through a first interactive edit, with sample terminal output.</li>
-<li><a href="#model-contract">Model contract</a> helps you choose credentials with the harness boundary in mind.</li>
-<li><a href="#safety-1">Safety</a> covers approvals and fail-closed behavior.</li>
-<li><a href="#troubleshooting">Troubleshooting</a> and the <a href="#frequently-asked-questions">FAQ</a> are there for when the doctor is not enough.</li>
-</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="signing-in"><a class="header" href="#signing-in">Signing in</a></h1>
 <p>Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
@@ -528,7 +517,7 @@ vey --version
 <p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>You can also install from the npm registry with <code>bun install -g @veyyon/coding-agent</code>, or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="#install">Install</a>.</p>
+<p>You can also pin a version with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11</code>, or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="#install">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>
@@ -564,10 +553,11 @@ vey
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
 <p>This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
-<p>The quickest path uses Bun to install the published package.</p>
-<pre><code class="language-console">$ bun install -g @veyyon/coding-agent
-$ veyyon --version
+<p>The quickest path is the one-line installer, which downloads a self-contained binary and links a short <code>vey</code> command.</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh    # Linux or macOS
+$ vey --version
 </code></pre>
+<p>On Windows, run <code>irm https://veyyon.dev/install.ps1 | iex</code> instead.</p>
 <p>If you would rather build from a source checkout, clone the repository and run the setup script.</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -575,7 +565,7 @@ $ bun setup
 $ bun dev --version
 </code></pre>
 <p><code>bun setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<p>To add shell completion, run <code>veyyon completions bash</code>, <code>veyyon completions zsh</code>, or <code>veyyon completions fish</code>. The <a href="#install">Install</a> chapter has the full details.</p>
+<p>The installer sets up shell completions for you when your shell supports them. The <a href="#install">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
 <p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
 <ol>
@@ -1092,7 +1082,7 @@ under <code>modelRoles</code>:</p>
 <li>Edit verification, approvals, and context handling are harness behavior.</li>
 <li>Provider is configuration: endpoint, credentials, and model id.</li>
 </ul>
-<h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
+<h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
 <ul>
 <li><a href="#configuring-providers">Configuring providers</a>: Ollama, LM Studio, Anthropic, and custom
 OpenAI-compatible endpoints.</li>
@@ -1669,7 +1659,7 @@ followUpMode: all
 <p>Programmatic clients use <code>turn/followUp</code> to queue a follow-up on an active thread and
 <code>thread/followUps/recall</code> to take every queued follow-up back off the queue (the response returns
 the recalled messages). Queueing an empty message is refused with an error.</p>
-<h2 id="next-3"><a class="header" href="#next-3">Next</a></h2>
+<h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
 <p>Read <a href="#examples">Examples</a> for concrete prompts and workflows.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
@@ -1708,6 +1698,7 @@ the recalled messages). Queueing an empty message is refused with an error.</p>
 </tbody>
 </table>
 </div>
+<p>The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off <code>task.showResolvedModelBadge</code> (Appearance settings).</p>
 <p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="#sessions">Sessions</a>.</p>
 <h2 id="inter-agent-messaging"><a class="header" href="#inter-agent-messaging">Inter-agent messaging</a></h2>
 <p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. <code>/btw</code> is an ephemeral side question; <code>/tan</code> and <code>/omfg</code> spawn background agents for tangential work.</p>
@@ -3611,6 +3602,59 @@ memory:
 </code></pre>
 <p>See <a href="#compaction-and-project-memory">Compaction and project memory</a> and
 <a href="#memory">Memory</a>.</p>
+<h2 id="save-tokens-with-project-shorthand-argot-experimental"><a class="header" href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand (Argot, experimental)</a></h2>
+<p>A project accumulates long strings that recur in its work: file paths, import
+roots, canonical build commands. Argot lets the model write a short handle in
+their place. The handle is <code>§</code> followed by a name, for example <code>§dbconn</code>. veyyon
+expands every handle back to its full text before anything outside the model’s
+own history sees it, so tools receive the real string and the display shows the
+real string. The short handle is what stays in the conversation, which is where
+the token saving comes from.</p>
+<p>Turn it on with one setting:</p>
+<pre><code class="language-yaml">argot:
+  enabled: true
+</code></pre>
+<p>The default is <code>false</code>. You do not write or commit any dictionary. When Argot is
+on, veyyon builds the shorthand for you: it reads the project’s files (the ones
+git tracks, or a walk of the tree for a project with no git that carries a
+<code>.argot</code> marker), proposes handles for the strings that would save the most
+tokens, and keeps the result in a local cache under its own config directory.
+Nothing is written to the working tree, so there is no file for a pull request
+to pick up. The cache regenerates as the project moves (keyed on the git commit),
+and it grows monotonically: a handle the model has already been taught keeps its
+exact meaning, so text that used a handle always expands. At the start of a
+session veyyon teaches the model the handles it generated by listing them in the
+system prompt.</p>
+<h3 id="choose-which-models-write-shorthand"><a class="header" href="#choose-which-models-write-shorthand">Choose which models write shorthand</a></h3>
+<p>Enabling Argot alone does not make any model write handles. You also list the
+models allowed to do so:</p>
+<pre><code class="language-yaml">argot:
+  enabled: true
+  models:
+    - anthropic/claude-opus-4
+</code></pre>
+<p>A model on this list is taught the notation; a model left off never is. The list
+is empty by default, so turning Argot on without naming a model stays inert. This
+lets you keep shorthand on for a model you trust to recall the dictionary and off
+for one you are still measuring. Expansion never depends on this list: a handle
+already written expands whatever model is active, so switching models never
+leaves a raw handle behind.</p>
+<h3 id="stop-shorthand-in-a-large-context"><a class="header" href="#stop-shorthand-in-a-large-context">Stop shorthand in a large context</a></h3>
+<p>Recall of the dictionary degrades as a conversation grows. To bound that risk,
+stop teaching shorthand once the context passes a token threshold:</p>
+<pre><code class="language-yaml">argot:
+  enabled: true
+  models:
+    - anthropic/claude-opus-4
+  disableAboveTokens: 400000
+</code></pre>
+<p>Past the threshold the model writes in full instead of risking a garbled handle.
+Handles written earlier still expand losslessly, because the cutoff stops only
+the teaching, never the expansion. The default is <code>-1</code>, which never stops on
+size.</p>
+<p>The generated cache is per project and local to your machine. To rebuild it from
+scratch, delete the project’s cache directory under veyyon’s config root; the
+next session regenerates it.</p>
 <h2 id="restrict-tools-for-a-repo-or-role"><a class="header" href="#restrict-tools-for-a-repo-or-role">Restrict tools for a repo or role</a></h2>
 <p>Deny a tool with per-tool policy, or disable a built-in tool entirely:</p>
 <pre><code class="language-yaml">tools:
@@ -3623,6 +3667,35 @@ bash:
 </code></pre>
 <p>Plan mode and agent definitions can narrow the tool set further. Enforcement removes the tool from both
 the model-visible set and the dispatch registry.</p>
+<h2 id="set-the-default-working-directory"><a class="header" href="#set-the-default-working-directory">Set the default working directory</a></h2>
+<p>Each profile can pin a default session working directory so launches from <code>$HOME</code>
+(or any other directory) still root tools at the right project:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Goal</th><th>What to set</th></tr>
+</thead>
+<tbody>
+<tr><td>Per-profile default cwd</td><td><code>session.workdir</code> (absolute or <code>~</code>-relative path)</td></tr>
+<tr><td>One-shot override for this launch</td><td><code>--cwd &lt;path&gt;</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Launch precedence for the session cwd, highest first:</p>
+<pre><code class="language-text">explicit --cwd  &gt;  session.workdir  &gt;  process cwd
+</code></pre>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/work/agent/config.yml
+session:
+  workdir: ~/src/veyyon
+</code></pre>
+<pre><code class="language-console">$ veyyon config set session.workdir ~/src/veyyon
+$ veyyon --cwd /tmp/scratch          # wins over session.workdir for this run
+</code></pre>
+<p><code>session.workdir</code> must resolve to an existing directory; a relative path or a
+missing directory fails launch rather than falling back silently. Mid-session
+overrides via the agent <code>set_cwd</code> tool or <code>/cwd</code> are session-scoped only: they
+re-root the live session and never write <code>session.workdir</code>. Persist a new
+default with <code>veyyon config set</code> or <code>/settings</code>.</p>
 <h2 id="profiles-3"><a class="header" href="#profiles-3">Profiles</a></h2>
 <p>Each profile is <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> (including <code>default</code>). Activate with <code>--profile &lt;name&gt;</code> (<code>-p</code> is <code>--print</code>, not profile), <code>VEYYON_PROFILE</code>, or TUI <code>/profile</code> (relaunch).</p>
 <pre><code class="language-console">$ veyyon --profile work
@@ -3893,6 +3966,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/fork</code>, <code>/branch</code>, <code>/tree</code></td><td>Branching and session tree UI</td></tr>
 <tr><td><code>/rename &lt;title&gt;</code></td><td>Rename session</td></tr>
 <tr><td><code>/move &lt;dir&gt;</code></td><td>Move session to another working directory</td></tr>
+<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the session after validating the directory exists (session-scoped only; does not write profile <code>session.workdir</code>)</td></tr>
 <tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
@@ -4054,6 +4128,10 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 </tbody>
 </table>
 </div>
+<h3 id="long-running-and-stuck-commands"><a class="header" href="#long-running-and-stuck-commands">Long-running and stuck commands</a></h3>
+<p>Two opt-in settings decide when a foreground <code>bash</code> call is moved to a background job. Both are off by default, and both hand the command to the <code>job</code> tool so its result still arrives later. You set them per profile in <code>/settings</code>, under Shell.</p>
+<p>Turn on <strong>Bash Auto-Background</strong> to cap how long a command holds the model in the foreground. Once a call runs longer than “Auto-Background After” (<code>bash.autoBackground.thresholdMs</code>, default 1 minute), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to “Immediately” to background every command up front.</p>
+<p>Turn on <strong>Bash Stall Detection</strong> to catch a command that has gone quiet. When a call produces no new output for “Stall After” (<code>bash.stallDetection.stallMs</code>, default 30 seconds), it is backgrounded and the model is told it may be stuck, along with the exact <code>job</code> cancel to run. This measures idle output, not total run time, so a command that keeps printing never trips it. The model decides: if the quiet was expected (a slow compile, a network wait), it lets the job finish; if the command is genuinely hung, it cancels it. The setting recommends, it never force-kills.</p>
 <h2 id="agent-coordination"><a class="header" href="#agent-coordination">Agent coordination</a></h2>
 <div class="table-wrapper">
 <table>

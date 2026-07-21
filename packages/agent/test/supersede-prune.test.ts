@@ -333,7 +333,8 @@ describe("pruneToolOutputs — supersede priority fold", () => {
 		// protectTokens covers exactly the two retained (non-superseded)
 		// results. The superseded middle result is pruned away, so its tokens
 		// must not push the oldest result out of the protected window.
-		const retainedTokens = estimateTokens(oldResult.message as AgentMessage) + estimateTokens(result2.message as AgentMessage);
+		const retainedTokens =
+			estimateTokens(oldResult.message as AgentMessage) + estimateTokens(result2.message as AgentMessage);
 		const result = pruneToolOutputs(entries, {
 			protectTokens: retainedTokens,
 			minimumSavings: 0,

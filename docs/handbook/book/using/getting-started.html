@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b47278ea.js";
+            window.path_to_searchindex_js = "../searchindex-f1f200b3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -198,10 +198,11 @@
                         <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
 <p>This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
-<p>The quickest path uses Bun to install the published package.</p>
-<pre><code class="language-console">$ bun install -g @veyyon/coding-agent
-$ veyyon --version
+<p>The quickest path is the one-line installer, which downloads a self-contained binary and links a short <code>vey</code> command.</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh    # Linux or macOS
+$ vey --version
 </code></pre>
+<p>On Windows, run <code>irm https://veyyon.dev/install.ps1 | iex</code> instead.</p>
 <p>If you would rather build from a source checkout, clone the repository and run the setup script.</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -209,7 +210,7 @@ $ bun setup
 $ bun dev --version
 </code></pre>
 <p><code>bun setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<p>To add shell completion, run <code>veyyon completions bash</code>, <code>veyyon completions zsh</code>, or <code>veyyon completions fish</code>. The <a href="./install.html">Install</a> chapter has the full details.</p>
+<p>The installer sets up shell completions for you when your shell supports them. The <a href="./install.html">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
 <p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
 <ol>

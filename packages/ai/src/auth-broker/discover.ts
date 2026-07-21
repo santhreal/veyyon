@@ -5,6 +5,7 @@
  * credentials as the TUI.
  */
 
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import {
 	$pickenv,
@@ -18,7 +19,8 @@ import {
 	MAIN_CONFIG_FILENAMES,
 } from "@veyyon/utils";
 import { YAML } from "bun";
-import { AuthStorage } from "../auth-storage";
+import type { AuthCredential } from "../auth-storage";
+import { AuthStorage, SqliteAuthCredentialStore } from "../auth-storage";
 import * as AIError from "../error";
 import { AuthBrokerClient } from "./client";
 import { RemoteAuthCredentialStore } from "./remote-store";
@@ -37,6 +39,16 @@ export interface ResolveAuthBrokerConfigOptions {
 
 export interface DiscoverAuthStorageOptions {
 	agentDir?: string;
+	/**
+	 * Directory whose `agent.db` backs the LOCAL SQLite credential store, when no
+	 * broker is configured. Defaults to `agentDir`. Split out so a caller can keep
+	 * broker resolution keyed on the per-profile `agentDir` (a profile may define
+	 * its own broker) while pointing the local credential store at a shared,
+	 * cross-profile location — the mechanism behind machine-wide "shared by
+	 * default" credentials. When a broker IS configured it wins regardless, so
+	 * this only affects the local-store fallback.
+	 */
+	storeAgentDir?: string;
 	configValueResolver?: (config: string) => Promise<string | undefined>;
 	cachePath?: string;
 	sourceLabel?: string;
@@ -240,11 +252,66 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 		return storage;
 	}
 
-	const dbPath = getAgentDbPath(agentDir);
+	const storeAgentDir = options.storeAgentDir ?? agentDir;
+	const dbPath = getAgentDbPath(storeAgentDir);
+	// Shared-store first run: the machine-wide store is empty, but the per-profile
+	// store may already hold a valid login. Promote it once so enabling "shared by
+	// default" never silently logs the user out. No-op when the store dir is the
+	// per-profile dir (sharing off) or the shared store already has credentials.
+	if (options.storeAgentDir && options.storeAgentDir !== agentDir) {
+		await seedSharedCredentialStore(getAgentDbPath(agentDir), dbPath);
+	}
 	const storage = await AuthStorage.create(dbPath, {
 		configValueResolver: options.configValueResolver,
 		sourceLabel: options.sourceLabel ?? `local ${dbPath}`,
 	});
 	await storage.reload();
 	return storage;
+}
+
+/**
+ * One-time promotion of a per-profile credential store into the shared,
+ * machine-wide store. Copies only when the shared store has no credentials yet,
+ * so it seeds on first activation of "shared by default" and never clobbers a
+ * shared store the user has already populated. Copies the full credential
+ * (including refresh tokens) at the store level — never the redacted snapshot —
+ * so no re-login is forced. Disabled credentials are skipped: a known-bad login
+ * is not worth promoting. Idempotent under concurrency because
+ * `replaceAuthCredentialsForProvider` is a per-provider replace with identical
+ * data, so a racing second process writes the same rows.
+ */
+async function seedSharedCredentialStore(sourceDbPath: string, sharedDbPath: string): Promise<void> {
+	if (sourceDbPath === sharedDbPath) return;
+	if (!existsSync(sourceDbPath)) return;
+	const shared = await SqliteAuthCredentialStore.open(sharedDbPath);
+	try {
+		if (shared.listAuthCredentials().length > 0) return;
+		const source = await SqliteAuthCredentialStore.open(sourceDbPath);
+		try {
+			// `listAuthCredentials` already returns only active rows; the explicit
+			// disabled guard keeps the promotion correct even if that ever changes,
+			// so a known-bad login is never carried into the shared store.
+			const rows = source.listAuthCredentials().filter(row => row.disabledCause === null);
+			if (rows.length === 0) return;
+			const byProvider = new Map<string, AuthCredential[]>();
+			for (const row of rows) {
+				const list = byProvider.get(row.provider);
+				if (list) list.push(row.credential);
+				else byProvider.set(row.provider, [row.credential]);
+			}
+			for (const [provider, credentials] of byProvider) {
+				shared.replaceAuthCredentialsForProvider(provider, credentials);
+			}
+			logger.info("Promoted per-profile credentials to the shared store", {
+				source: sourceDbPath,
+				shared: sharedDbPath,
+				providers: [...byProvider.keys()],
+				count: rows.length,
+			});
+		} finally {
+			source.close();
+		}
+	} finally {
+		shared.close();
+	}
 }

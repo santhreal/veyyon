@@ -375,3 +375,51 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   .cue{display:none}
   #sun{display:none}
 }
+
+/* ---- blog ---------------------------------------------------------------
+   A reading column for design essays. Mono headings (the brand voice), Inter
+   body, ember links, bordered inset code blocks. Matches the near-black ground
+   and hairline structure of the rest of the site. */
+.post{max-width:none;padding:0}
+.post-head{padding:88px 0 44px;border-bottom:1px solid var(--line)}
+.post-head .kicker{margin-bottom:20px}
+.post-head .pill{display:inline-block;margin-left:14px;font-family:var(--mono);font-weight:600;font-size:10px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line-2);
+  border-radius:2px;padding:3px 8px;vertical-align:middle;translate:0 -2px}
+.post-head h1{font-family:var(--mono);font-weight:700;font-size:clamp(30px,4.4vw,46px);letter-spacing:-.036em;
+  margin:14px 0 18px;max-width:22ch;line-height:1.08;text-wrap:balance}
+.post-meta{font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.01em}
+
+.post-body{max-width:66ch;padding:52px 0 40px;font-size:17px;line-height:1.72;color:var(--fg-2)}
+.post-body>*:first-child{margin-top:0}
+.post-body h2{font-family:var(--mono);font-weight:700;color:var(--fg);font-size:clamp(22px,2.6vw,27px);
+  letter-spacing:-.02em;line-height:1.2;margin:60px 0 20px;text-wrap:balance}
+.post-body h3{font-family:var(--mono);font-weight:600;color:var(--fg);font-size:19px;
+  margin:44px 0 14px;letter-spacing:-.01em}
+.post-body p{margin:0 0 22px;text-wrap:pretty}
+.post-body strong{color:var(--fg);font-weight:600}
+.post-body a{color:var(--sun-hi)}
+.post-body a:hover{color:var(--silver-hi)}
+.post-body ul,.post-body ol{margin:0 0 22px;padding-left:26px}
+.post-body li{margin:0 0 10px;padding-left:4px}
+.post-body li::marker{color:var(--dim)}
+.post-body code.inline{font-family:var(--mono);font-size:.87em;color:var(--silver-hi);
+  background:color-mix(in srgb,var(--silver) 9%,transparent);border:1px solid var(--line);
+  border-radius:3px;padding:.08em .34em}
+.post-body pre.code{margin:0 0 26px;padding:20px 22px;background:#050506;border:1px solid var(--line-2);
+  border-radius:2px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.75;
+  color:var(--fg-2);tab-size:2}
+.post-body pre.code code{font-family:inherit;color:inherit;background:none;border:0;padding:0}
+.post-foot{padding:20px 0 8px;border-top:1px solid var(--line);font-family:var(--mono);font-size:13px}
+
+/* blog index */
+.post-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
+  border-top:1px solid var(--line)}
+.post-card{border-bottom:1px solid var(--line)}
+.post-card a{display:block;padding:34px 0;color:inherit;transition:opacity .16s}
+.post-card a:hover{opacity:.82}
+.post-card-meta{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-bottom:12px;letter-spacing:.02em}
+.post-card h2{font-family:var(--mono);font-weight:700;color:var(--fg);font-size:clamp(20px,2.4vw,26px);
+  letter-spacing:-.024em;margin:0 0 12px;line-height:1.16;text-wrap:balance}
+.post-card p{margin:0;color:var(--fg-2);max-width:62ch;font-size:16px;line-height:1.55;text-wrap:pretty}
+.post-empty{color:var(--muted);font-family:var(--mono);font-size:15px}

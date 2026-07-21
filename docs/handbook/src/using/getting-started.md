@@ -4,12 +4,14 @@ This chapter takes you from nothing installed to a first real change in your own
 
 ## 1. Install
 
-The quickest path uses Bun to install the published package.
+The quickest path is the one-line installer, which downloads a self-contained binary and links a short `vey` command.
 
 ```console
-$ bun install -g @veyyon/coding-agent
-$ veyyon --version
+$ curl -fsSL https://get.veyyon.dev | sh    # Linux or macOS
+$ vey --version
 ```
+
+On Windows, run `irm https://veyyon.dev/install.ps1 | iex` instead.
 
 If you would rather build from a source checkout, clone the repository and run the setup script.
 
@@ -22,7 +24,7 @@ $ bun dev --version
 
 `bun setup` installs the workspace dependencies and builds `@veyyon/natives`, the Rust addon. Your configuration lives under `~/.veyyon`, and the default profile keeps its agent state in `~/.veyyon/profiles/default/agent/`.
 
-To add shell completion, run `veyyon completions bash`, `veyyon completions zsh`, or `veyyon completions fish`. The [Install](./install.md) chapter has the full details.
+The installer sets up shell completions for you when your shell supports them. The [Install](./install.md) chapter has the full details.
 
 ## 2. First launch
 

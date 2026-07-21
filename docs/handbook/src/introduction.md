@@ -27,7 +27,7 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). The CLI, th
 
 A few facts you will reach for often:
 
-- Install with `bun install -g @veyyon/coding-agent`, or run `bun setup && bun dev` from a source checkout.
+- Install with `curl -fsSL https://get.veyyon.dev | sh` (or `irm https://veyyon.dev/install.ps1 | iex` on Windows), or run `bun setup && bun dev` from a source checkout.
 - The binary is `veyyon`, with the shorter alias `vey`.
 - Configuration lives under `~/.veyyon`. The default profile keeps its agent state in `~/.veyyon/profiles/default/agent/`, and other profiles use `~/.veyyon/profiles/<name>/agent/`.
 

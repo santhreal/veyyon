@@ -28,7 +28,7 @@ import {
 	getAuthBrokerTokenFilePath,
 	resolveAuthBrokerConfig as resolveAuthBrokerConfigShared,
 } from "@veyyon/ai/auth-broker/discover";
-import { getAgentDir } from "@veyyon/utils";
+import { getAgentDir, getSharedAuthDir, readGlobalProfileSharingSafe } from "@veyyon/utils";
 import { resolveConfigValue } from "../config/resolve-config-value";
 import type { AuthStorage } from "./auth-storage";
 
@@ -78,15 +78,25 @@ export function resolveAuthBrokerConfig(): Promise<AuthBrokerClientConfig | null
  * pi-ai so the CLI, subagents, and the catalog generator all see the same
  * credentials.
  *
+ * When the global `profileSharing` posture is on (the default), the LOCAL
+ * credential store is redirected to the machine-wide shared store
+ * ({@link getSharedAuthDir}) so every profile reads one set of logins; broker
+ * resolution still keys on the per-profile `agentDir`. Setting `profileSharing:
+ * false` in the global config isolates each profile to its own store. The first
+ * shared read promotes any existing per-profile login into the shared store, so
+ * turning sharing on never logs the user out.
+ *
  * Default `agentDir` is the current configured agent directory.
  */
 export function discoverAuthStorage(
 	agentDir: string = getAgentDir(),
-	options?: Omit<DiscoverAuthStorageOptions, "agentDir" | "configValueResolver">,
+	options?: Omit<DiscoverAuthStorageOptions, "agentDir" | "configValueResolver" | "storeAgentDir">,
 ): Promise<AuthStorage> {
+	const storeAgentDir = readGlobalProfileSharingSafe() ? getSharedAuthDir() : undefined;
 	return discoverAuthStorageShared({
 		...options,
 		agentDir,
+		storeAgentDir,
 		configValueResolver: resolveConfigValue,
 	});
 }

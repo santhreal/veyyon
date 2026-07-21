@@ -5,12 +5,16 @@ set -e
 # Usage: curl -fsSL https://get.veyyon.dev | sh
 #   or:  curl -fsSL https://raw.githubusercontent.com/santhreal/veyyon/main/scripts/install.sh | sh
 #
+# By default this installs the prebuilt self-contained binary: one download, no
+# toolchain, nothing from a package registry. Pass --source to build from a
+# local checkout with bun instead (needed only to run an unreleased ref).
+#
 # Options:
-#   --source        Install from source via bun (installs bun if needed)
-#   --binary        Always install the prebuilt binary
+#   --source        Build and run from a git checkout with bun (installs bun if needed)
+#   --binary        Install the prebuilt binary (the default)
 #   --ref <ref>     Install a specific tag/commit/branch (implies --source)
 #   -r <ref>        Shorthand for --ref
-#   --uninstall     Remove veyyon, the `vey` alias, and completions
+#   --uninstall     Remove veyyon, the `vey` alias, completions, and any source checkout
 #   --no-verify     Skip binary checksum verification (NOT recommended)
 #
 # After install, launch with `vey` in any repo.
@@ -171,6 +175,8 @@ do_uninstall() {
         done
     done
     if has bun; then bun remove -g "$PACKAGE" >/dev/null 2>&1 && ok "removed global $PACKAGE" || true; fi
+    src="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
+    if [ -d "$src" ]; then rm -rf "$src" && { ok "removed source checkout $src"; removed=1; }; fi
     for sh in bash zsh fish; do
         out=$(completions_dir_for "$sh")
         for name in "$BIN_NAME" "_$BIN_NAME" "$BIN_NAME.fish"; do
@@ -204,31 +210,60 @@ install_bun() {
     require_bun_version
 }
 
-bun_global_bin() {
-    # where bun links global binaries
-    if b=$(bun pm bin -g 2>/dev/null) && [ -n "$b" ]; then echo "$b"; else echo "$HOME/.bun/bin"; fi
+# Veyyon's packages resolve one another through Bun workspace and catalog
+# protocols, which only work inside a full checkout. A source install therefore
+# keeps a real clone under $VEYYON_SRC_DIR, installs the workspace once, and
+# links the launcher (packages/coding-agent/scripts/veyyon) onto PATH. The
+# launcher runs straight from TypeScript, so there is no build step; --ref pins
+# a tag, branch, or commit.
+VEYYON_SRC_DIR="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
+REPO_URL="https://github.com/${REPO}.git"
+
+fetch_source_tree() {
+    if [ -d "$VEYYON_SRC_DIR/.git" ]; then
+        say "updating veyyon source in $VEYYON_SRC_DIR..."
+        ( cd "$VEYYON_SRC_DIR" && git fetch --tags --force origin ) || die "failed to update $VEYYON_SRC_DIR"
+        ref="$REF"
+        if [ -z "$ref" ]; then
+            ref=$( cd "$VEYYON_SRC_DIR" && git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' )
+            [ -z "$ref" ] && ref="main"
+        fi
+        ( cd "$VEYYON_SRC_DIR" && git checkout --force "$ref" && { git reset --hard "origin/$ref" 2>/dev/null || git reset --hard "$ref"; } ) \
+            || die "failed to check out '$ref' in $VEYYON_SRC_DIR"
+    else
+        say "cloning veyyon source into $VEYYON_SRC_DIR..."
+        mkdir -p "$(dirname "$VEYYON_SRC_DIR")"
+        rm -rf "$VEYYON_SRC_DIR"
+        if [ -n "$REF" ]; then
+            if git clone --depth 1 --branch "$REF" "$REPO_URL" "$VEYYON_SRC_DIR" >/dev/null 2>&1; then :; else
+                git clone "$REPO_URL" "$VEYYON_SRC_DIR" || die "failed to clone $REPO_URL"
+                ( cd "$VEYYON_SRC_DIR" && git checkout "$REF" ) || die "ref not found: $REF"
+            fi
+        else
+            git clone --depth 1 "$REPO_URL" "$VEYYON_SRC_DIR" >/dev/null 2>&1 \
+                || git clone "$REPO_URL" "$VEYYON_SRC_DIR" \
+                || die "failed to clone $REPO_URL"
+        fi
+    fi
+    has git-lfs && ( cd "$VEYYON_SRC_DIR" && git lfs pull ) || true
 }
 
 install_via_bun() {
+    has git || die "git is required to install veyyon from source"
     say "installing veyyon from source (bun)..."
-    if [ -n "$REF" ]; then
-        has git || die "git is required for --ref source installs"
-        TMP_DIR="$(mktemp -d)"; trap 'rm -rf "$TMP_DIR"' EXIT
-        if git clone --depth 1 --branch "$REF" "https://github.com/${REPO}.git" "$TMP_DIR" >/dev/null 2>&1; then :; else
-            git clone "https://github.com/${REPO}.git" "$TMP_DIR"; ( cd "$TMP_DIR" && git checkout "$REF" )
-        fi
-        has git-lfs && ( cd "$TMP_DIR" && git lfs pull ) || true
-        [ -d "$TMP_DIR/packages/coding-agent" ] || die "expected package at $TMP_DIR/packages/coding-agent"
-        bun install -g "$TMP_DIR/packages/coding-agent" || die "failed to install veyyon from source"
-    else
-        bun install -g "$PACKAGE" || die "failed to install $PACKAGE"
-    fi
-    gbin=$(bun_global_bin)
-    ok "installed veyyon via bun ($gbin)"
-    link_alias "$gbin"
-    install_completions "$gbin/$BIN_NAME"
-    ensure_on_path "$gbin"
-    doctor "$gbin/$BIN_NAME"
+    fetch_source_tree
+    [ -d "$VEYYON_SRC_DIR/packages/coding-agent" ] || die "expected package at $VEYYON_SRC_DIR/packages/coding-agent"
+    launcher="$VEYYON_SRC_DIR/packages/coding-agent/scripts/$BIN_NAME"
+    [ -x "$launcher" ] || die "source launcher not found or not executable: $launcher"
+    say "installing workspace dependencies (bun install)..."
+    ( cd "$VEYYON_SRC_DIR" && bun install ) || die "failed to install workspace dependencies"
+    mkdir -p "$INSTALL_DIR"
+    ln -sfn "$launcher" "$INSTALL_DIR/$BIN_NAME" || die "failed to link $BIN_NAME into $INSTALL_DIR"
+    ok "installed $BIN_NAME (source) -> $launcher"
+    link_alias "$INSTALL_DIR"
+    install_completions "$INSTALL_DIR/$BIN_NAME"
+    ensure_on_path "$INSTALL_DIR"
+    doctor "$INSTALL_DIR/$BIN_NAME"
     say ""
     say "done. run '$ALIAS_NAME' in any repo to launch."
 }
@@ -291,7 +326,7 @@ if [ "${VEYYON_INSTALL_SOURCED:-0}" != "1" ]; then
         case "$MODE" in
             source) has bun || install_bun; require_bun_version; install_via_bun ;;
             binary) install_binary ;;
-            *) if has bun; then require_bun_version; install_via_bun; else install_binary; fi ;;
+            *) install_binary ;;
         esac
     fi
 fi

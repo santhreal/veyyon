@@ -65,6 +65,13 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 - A long-running foreground call may convert to a background job; the final result arrives as a follow-up tool call. NOT a failure — don't retry or wait synchronously.
 - Need the result inline (e.g. piping into another command)? Raise `timeout` above expected duration{{#if asyncEnabled}}, or set `async: true` up front{{/if}}.
 {{/if}}
+{{#if stallDetectionEnabled}}
+
+## Stall detection
+
+- A call that produces no new output for {{stallSeconds}}s is backgrounded and flagged as possibly stuck. The notice names the job id. This is a heuristic, NOT proof it is hung.
+- Decide: if the command was expected to be quiet (a long compile, a sleep, a slow network wait), let it run — its result still arrives as a follow-up. If you believe it is genuinely hung, cancel it with the `job` tool (`cancel: ["<jobId>"]`).
+{{/if}}
 
 # Output minimizer
 

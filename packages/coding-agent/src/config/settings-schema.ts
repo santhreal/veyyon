@@ -2,6 +2,7 @@ import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";
 import { EDITING_SETTINGS } from "./settings-domains/editing";
 import { GENERAL_SETTINGS } from "./settings-domains/general";
+import { GLOBAL_SETTINGS } from "./settings-domains/global";
 import { INTERACTION_SETTINGS } from "./settings-domains/interaction";
 import { MODEL_SETTINGS } from "./settings-domains/model";
 import { PROVIDERS_SETTINGS } from "./settings-domains/providers";
@@ -31,6 +32,7 @@ export { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "./bash
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type SettingTab =
+	| "global"
 	| "appearance"
 	| "model"
 	| "interaction"
@@ -45,7 +47,12 @@ export type SettingTab =
 /** Tab display metadata - icon is resolved via theme.symbol() */
 export type TabMetadata = { label: string; icon: `tab.${string}` };
 
-/** Ordered list of tabs for UI rendering */
+/**
+ * Ordered list of tabs for UI rendering. The everyday per-profile tabs come
+ * first (Appearance is the landing category); "global" is the machine-wide,
+ * cross-profile scope and sits last, the conventional place for an advanced /
+ * scope tab, so opening `/settings` still lands on the common per-profile view.
+ */
 export const SETTING_TABS: SettingTab[] = [
 	"appearance",
 	"model",
@@ -57,10 +64,12 @@ export const SETTING_TABS: SettingTab[] = [
 	"tools",
 	"tasks",
 	"providers",
+	"global",
 ];
 
 /** Tab display metadata - icon is a symbol key from theme.ts (tab.*) */
 export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${string}` }> = {
+	global: { label: "Global", icon: "tab.global" },
 	appearance: { label: "Appearance", icon: "tab.appearance" },
 	model: { label: "Model", icon: "tab.model" },
 	interaction: { label: "Interaction", icon: "tab.interaction" },
@@ -79,6 +88,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
  * Ungrouped settings render first, before any section heading.
  */
 export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
+	global: ["Profiles", "Credentials", "Auth Broker"],
 	appearance: ["Theme", "Status Line", "Display"],
 	model: [
 		"Models",
@@ -167,6 +177,15 @@ interface UiBase {
 	condition?: string;
 	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
 	advanced?: boolean;
+	/**
+	 * Persistence scope. Omitted or "profile": the value lives in the active
+	 * profile's `agent/config.yml`. "global": the value is cross-profile and lives
+	 * in `~/.veyyon/config.yml`; reads and writes route through a matching entry in
+	 * GLOBAL_SETTING_BINDINGS (settings-domains/global.ts) rather than the profile
+	 * store, so there is exactly one owner for the value. The settings UI shows a
+	 * "Global" badge for these.
+	 */
+	scope?: "global";
 }
 
 interface UiBoolean extends UiBase {}
@@ -257,6 +276,7 @@ export interface ModelTagsSettings {
 }
 
 export const SETTINGS_SCHEMA = {
+	...GLOBAL_SETTINGS,
 	...GENERAL_SETTINGS,
 	...APPEARANCE_SETTINGS,
 	...MODEL_SETTINGS,

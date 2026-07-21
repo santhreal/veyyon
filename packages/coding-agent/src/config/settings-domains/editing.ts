@@ -280,6 +280,18 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	"bash.stallDetection.enabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Bash Stall Detection",
+			description:
+				"Watch for a bash command that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills.",
+		},
+	},
+
 	// Bash interceptor
 	"bashInterceptor.enabled": {
 		type: "boolean",

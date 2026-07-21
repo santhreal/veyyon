@@ -1,5 +1,5 @@
 import { SHAPE_VARIANT_NAMES } from "@veyyon/snapcompact";
-import { HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
+import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
 
 /** Context domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const CONTEXT_SETTINGS = {
@@ -241,6 +241,63 @@ export const CONTEXT_SETTINGS = {
 			label: "Snapcompact Tool Results",
 			description:
 				"Experimental: render large historical tool results as dense PNG image(s) instead of text (vision models only). Saves tokens on accumulated read/search output.",
+		},
+	},
+
+	// Argot: per-project shorthand codec. The dictionary is generated from the
+	// repository and kept in a local cache (never committed), regenerated as the
+	// project moves. The model writes short handles like `§dbconn`; the harness
+	// expands them to their full text before anything runs or is shown, so tools
+	// and the display always see real values while the cheap handle stays in the
+	// model's history. Off by default.
+	"argot.enabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "context",
+			group: "Experimental",
+			label: "Argot Shorthand",
+			description:
+				"Experimental: generate token-saving shorthand for the current project and keep it in a local cache (nothing is written to the repository). The model writes short handles; the harness expands them to full text before any tool runs or the display shows them.",
+		},
+	},
+
+	// Which models may WRITE shorthand. Expansion (decode) is unconditional once a
+	// dictionary loads and stays lossless whatever this list holds; this gates only
+	// the encode side — whether the notation preamble is taught. Empty means no
+	// model encodes, so enabling Argot alone stays inert until a model is added.
+	"argot.models": {
+		type: "array",
+		default: EMPTY_STRING_ARRAY,
+		ui: {
+			tab: "context",
+			group: "Experimental",
+			label: "Argot Models",
+			description:
+				"Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand.",
+		},
+	},
+
+	// Stop teaching shorthand once context passes this many tokens, so a large,
+	// recall-degraded context writes in full and cannot garble a handle. Handles
+	// already in history still expand losslessly. -1 disables the cutoff.
+	"argot.disableAboveTokens": {
+		type: "number",
+		default: -1,
+		ui: {
+			tab: "context",
+			group: "Experimental",
+			label: "Argot Context Cutoff",
+			description:
+				"Stop teaching Argot shorthand once context passes this many tokens (the model then writes in full). Handles already written still expand losslessly. -1 disables the cutoff.",
+			options: [
+				{ value: "-1", label: "Off", description: "Never stop encoding on context size" },
+				{ value: "100000", label: "100k", description: "Stop teaching shorthand past 100,000 tokens" },
+				{ value: "200000", label: "200k", description: "Stop teaching shorthand past 200,000 tokens" },
+				{ value: "400000", label: "400k", description: "Stop teaching shorthand past 400,000 tokens" },
+				{ value: "600000", label: "600k", description: "Stop teaching shorthand past 600,000 tokens" },
+				{ value: "800000", label: "800k", description: "Stop teaching shorthand past 800,000 tokens" },
+			],
 		},
 	},
 

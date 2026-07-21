@@ -2,25 +2,33 @@
 # Usage: irm https://veyyon.dev/install.ps1 | iex
 #   or:  irm https://raw.githubusercontent.com/santhreal/veyyon/main/scripts/install.ps1 | iex
 #
-# Or with options:
+# By default this installs the prebuilt self-contained binary
+# (veyyon-windows-x64.exe): one download, no toolchain, nothing from a package
+# registry. Pass -Source to build and run from a git checkout with bun instead
+# (needed only to run an unreleased ref).
+#
+# With options:
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref v16.5.2
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref main
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v16.5.2
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref v1.0.11
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
 
 param(
     [switch]$Source,
     [switch]$Binary,
     [string]$Ref,
-    [switch]$NoVerify
+    [switch]$NoVerify,
+    [switch]$Uninstall
 )
 
 $ErrorActionPreference = "Stop"
 
 $Repo = "santhreal/veyyon"
+$RepoUrl = "https://github.com/$Repo.git"
 $Package = "@veyyon/coding-agent"
 $InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }
+$SrcDir = if ($env:VEYYON_SRC_DIR) { $env:VEYYON_SRC_DIR } else { "$env:USERPROFILE\.veyyon\src" }
 $BinName = "veyyon"
 $AliasName = "vey"
 $BinaryAsset = "veyyon-windows-x64.exe"
@@ -185,71 +193,139 @@ function Install-Alias {
     }
 }
 
-function Install-ViaBun {
-    Write-Host "Installing via bun..."
-    if ($Ref) {
-        if (-not (Test-GitInstalled)) {
-            throw "git is required for -Ref when installing from source"
-        }
+# Add the install dir to the user PATH if it is not already there. Returns $true
+# when a new entry was added (so the caller can tell the user to restart).
+function Add-ToPath {
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($UserPath -notlike "*$InstallDir*") {
+        Write-Host "Adding $InstallDir to PATH..."
+        [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", "User")
+        $env:Path = "$env:Path;$InstallDir"
+        return $true
+    }
+    return $false
+}
 
-        $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-install-" + [System.Guid]::NewGuid().ToString("N"))
-        New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
+# Post-install self-check: prove the thing actually runs. Fails loud (throws) if
+# the installed command cannot report its version.
+function Invoke-Doctor {
+    param([string]$Command)
+    Write-Host ""
+    Write-Host "doctor:"
+    $ver = $null
+    try {
+        $ver = & $Command --version 2>$null
+    } catch {
+        $ver = $null
+    }
+    if ($LASTEXITCODE -eq 0 -and $ver) {
+        Write-Host "OK  $BinName runs - $ver" -ForegroundColor Green
+    } else {
+        throw "$BinName did not run after install ('$Command --version' failed)"
+    }
+}
 
+# Veyyon's packages resolve one another through Bun workspace and catalog
+# protocols, which only work inside a full checkout. A source install therefore
+# keeps a real clone under $SrcDir, installs the workspace once, and points a
+# veyyon.cmd shim at the committed launcher (packages\coding-agent\scripts\veyyon.cmd).
+# The launcher runs straight from TypeScript, so there is no build step; -Ref
+# pins a tag, branch, or commit.
+function Fetch-SourceTree {
+    if (Test-Path (Join-Path $SrcDir ".git")) {
+        Write-Host "Updating veyyon source in $SrcDir..."
+        Push-Location $SrcDir
         try {
-            $repoUrl = "https://github.com/$Repo.git"
-            $cloneOk = $false
-            try {
-                git clone --depth 1 --branch $Ref $repoUrl $tmpRoot | Out-Null
-                $cloneOk = $true
-            } catch {
-                $cloneOk = $false
+            git fetch --tags --force origin
+            if ($LASTEXITCODE -ne 0) { throw "failed to update $SrcDir" }
+            $ref = $Ref
+            if (-not $ref) {
+                $remoteHead = (git remote show origin 2>$null | Select-String 'HEAD branch:')
+                if ($remoteHead) { $ref = ($remoteHead -replace '.*HEAD branch:\s*', '').Trim() }
+                if (-not $ref) { $ref = "main" }
             }
-
-            if (-not $cloneOk) {
-                git clone $repoUrl $tmpRoot | Out-Null
-                Push-Location $tmpRoot
-                try {
-                    git checkout $Ref | Out-Null
-                } finally {
-                    Pop-Location
-                }
-            }
-
-            # Pull LFS files
-            if (Test-GitLfsInstalled) {
-                Push-Location $tmpRoot
-                try {
-                    git lfs pull | Out-Null
-                } finally {
-                    Pop-Location
-                }
-            }
-
-            $packagePath = Join-Path $tmpRoot "packages\coding-agent"
-            if (-not (Test-Path $packagePath)) {
-                throw "Expected package at $packagePath"
-            }
-
-            bun install -g $packagePath
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to install from $packagePath via bun"
-            }
+            git checkout --force $ref
+            if ($LASTEXITCODE -ne 0) { throw "failed to check out '$ref' in $SrcDir" }
+            git reset --hard "origin/$ref" 2>$null
+            if ($LASTEXITCODE -ne 0) { git reset --hard $ref | Out-Null }
         } finally {
-            Remove-Item -Recurse -Force $tmpRoot -ErrorAction SilentlyContinue
+            Pop-Location
         }
     } else {
-        bun install -g $Package
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install $Package via bun"
+        Write-Host "Cloning veyyon source into $SrcDir..."
+        $parent = Split-Path -Parent $SrcDir
+        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+        if (Test-Path $SrcDir) { Remove-Item -Recurse -Force $SrcDir }
+        if ($Ref) {
+            git clone --depth 1 --branch $Ref $RepoUrl $SrcDir 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                git clone $RepoUrl $SrcDir
+                if ($LASTEXITCODE -ne 0) { throw "failed to clone $RepoUrl" }
+                Push-Location $SrcDir
+                try {
+                    git checkout $Ref
+                    if ($LASTEXITCODE -ne 0) { throw "ref not found: $Ref" }
+                } finally { Pop-Location }
+            }
+        } else {
+            git clone --depth 1 $RepoUrl $SrcDir 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                git clone $RepoUrl $SrcDir
+                if ($LASTEXITCODE -ne 0) { throw "failed to clone $RepoUrl" }
+            }
         }
     }
 
-    Write-Host ""
-    Write-Host "OK  Installed veyyon via bun" -ForegroundColor Green
+    if (Test-GitLfsInstalled) {
+        Push-Location $SrcDir
+        try { git lfs pull | Out-Null } finally { Pop-Location }
+    }
+}
 
+function Install-FromSource {
+    if (-not (Test-GitInstalled)) {
+        throw "git is required to install veyyon from source"
+    }
+    Write-Host "Installing veyyon from source (bun)..."
+    Fetch-SourceTree
+
+    $pkgDir = Join-Path $SrcDir "packages\coding-agent"
+    if (-not (Test-Path $pkgDir)) {
+        throw "expected package at $pkgDir"
+    }
+    $launcher = Join-Path $pkgDir "scripts\veyyon.cmd"
+    if (-not (Test-Path $launcher)) {
+        throw "source launcher not found: $launcher"
+    }
+
+    Write-Host "Installing workspace dependencies (bun install)..."
+    Push-Location $SrcDir
+    try {
+        bun install
+        if ($LASTEXITCODE -ne 0) { throw "failed to install workspace dependencies" }
+    } finally {
+        Pop-Location
+    }
+
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+
+    # Shim in the install dir that forwards to the committed launcher (the
+    # Windows analogue of the Unix symlink into the source tree).
+    $shim = Join-Path $InstallDir "$BinName.cmd"
+    Set-Content -Path $shim -Value "@echo off`r`n`"$launcher`" %*" -Encoding ASCII
+    Write-Host "OK  installed $BinName (source) -> $launcher" -ForegroundColor Green
+
+    Install-Alias -Target $shim
+    $needsRestart = Add-ToPath
     Configure-BashShell
+    Invoke-Doctor -Command $shim
 
-    Write-Host "Run '$BinName' (or '$AliasName') to get started!"
+    Write-Host ""
+    if ($needsRestart) {
+        Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
+    } else {
+        Write-Host "Run '$BinName' (or '$AliasName') to get started!"
+    }
 }
 
 function Install-Binary {
@@ -309,16 +385,11 @@ function Install-Binary {
     Write-Host ""
     Write-Host "OK  Installed veyyon to $OutPath" -ForegroundColor Green
 
-    # Add to PATH if not already there
-    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $needsRestart = $UserPath -notlike "*$InstallDir*"
-    if ($needsRestart) {
-        Write-Host "Adding $InstallDir to PATH..."
-        [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", "User")
-    }
-
+    $needsRestart = Add-ToPath
     Configure-BashShell
+    Invoke-Doctor -Command $OutPath
 
+    Write-Host ""
     if ($needsRestart) {
         Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
     } else {
@@ -326,7 +397,38 @@ function Install-Binary {
     }
 }
 
+function Uninstall-Veyyon {
+    $removed = $false
+    foreach ($f in @("$BinName.exe", "$BinName.cmd", "$AliasName.cmd")) {
+        $p = Join-Path $InstallDir $f
+        if (Test-Path $p) {
+            Remove-Item -Force $p
+            Write-Host "OK  removed $p" -ForegroundColor Green
+            $removed = $true
+        }
+    }
+    if (Test-BunInstalled) {
+        bun remove -g $Package 2>$null | Out-Null
+    }
+    if (Test-Path $SrcDir) {
+        Remove-Item -Recurse -Force $SrcDir
+        Write-Host "OK  removed source checkout $SrcDir" -ForegroundColor Green
+        $removed = $true
+    }
+    if ($removed) {
+        Write-Host "veyyon uninstalled."
+    } else {
+        Write-Host "nothing to uninstall."
+    }
+}
+
 # Main logic
+if ($Uninstall) {
+    Uninstall-Veyyon
+    return
+}
+
+# Default to source when a ref is pinned.
 if ($Ref -and -not $Source -and -not $Binary) {
     $Source = $true
 }
@@ -338,15 +440,7 @@ if ($Source) {
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     }
     Assert-BunVersion $MinimumBunVersion
-    Install-ViaBun
-} elseif ($Binary) {
-    Install-Binary
+    Install-FromSource
 } else {
-    # Default: use bun if available, otherwise binary
-    if (Test-BunInstalled) {
-        Assert-BunVersion $MinimumBunVersion
-        Install-ViaBun
-    } else {
-        Install-Binary
-    }
+    Install-Binary
 }

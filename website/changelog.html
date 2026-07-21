@@ -28,6 +28,7 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html" aria-current="page">Changelog</a>
+      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
       <a href="./install.html" class="btn">Get started</a>
@@ -38,6 +39,7 @@
         <a href="./features.html">Features</a>
         <a href="./install.html">Install</a>
         <a href="./changelog.html">Changelog</a>
+        <a href="./blog/">Blog</a>
         <a href="./docs/">Docs</a>
         <a href="https://github.com/santhreal/veyyon">GitHub</a>
         <a href="./install.html" class="btn">Get started</a>
@@ -67,12 +69,42 @@
 			<div class="sec">
 				<span class="tag add">Added</span>
 				<ul class="notes">
-				<li>Added a <span class="inline">tui.paintGround</span> setting (Settings › Appearance › Display) that paints the terminal background (OSC 11) with the theme's ground color while Veyyon runs and restores it on exit, including crash exits. <span class="inline">auto</span> (default) paints only when the terminal's reported background already matches the theme so no seam appears; <span class="inline">always</span> and <span class="inline">never</span> override.</li>
+				<li>Shared provider credentials across profiles. You sign in to a provider once and every profile reuses that login, so switching profiles no longer means re-authenticating. A machine-wide <span class="inline">profileSharing</span> toggle (default on) controls it; turn it off to keep each profile's credentials private.</li>
+				<li>A Global tab in <span class="inline">/settings</span> for machine-wide options (the default profile and credential sharing), backed by <span class="inline">~/.veyyon/config.yml</span>. Every configuration value is now visible and editable in the interactive settings UI and stays in sync with the config files, with no restart needed after an external edit.</li>
+				<li>Per-profile working directory. Each profile remembers its own working directory, the agent can change it with <span class="inline">setCwd</span>, and tasks accept a <span class="inline">cwd</span> input.</li>
+				<li><span class="inline">/yolo</span> command and a <span class="inline">--dangerously-skip-permissions</span> launch flag for a full-session permission bypass.</li>
+				<li><span class="inline">/thinking</span> command (with a <span class="inline">/effort</span> alias) and an interactive effort picker, plus per-model thinking effort on the compaction and subagent model roles.</li>
+				<li>An interactive <span class="inline">/profile</span> picker with the full verb set. New profiles seed an <span class="inline">AGENTS.md</span>, and skills load only from the active profile.</li>
+				<li class="more"><details><summary>2 more</summary><ul>
+				<li>Argot wire compression for tool traffic, gated by a model allowlist and a context-size cutoff so it only engages where it helps.</li>
+				<li>Every launched subagent's model is shown across all agent surfaces.</li>
+				</ul></details></li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li>The install and update channel is the <span class="inline">curl</span> script, which pulls the signed GitHub release binaries. npm publishing is now opt-in and off by default.</li>
+				<li>By default the agent loads exactly three instruction layers.</li>
+				<li>The compaction threshold is an absolute token amount, independent of the active model.</li>
+				<li>Compaction runs a lossless dedup pass on every strategy, and oversized or redundant tool results spill to a recoverable artifact instead of riding along in context on every later turn.</li>
+				<li>Config files (<span class="inline">config.yml</span>, <span class="inline">keybindings.yml</span>, <span class="inline">ssh.json</span>, <span class="inline">mcp.json</span>) are written atomically and serialized across processes, so an interrupted save can no longer corrupt them.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li>Oversized or timed-out Bash and grep output is bounded inline and offloaded to an artifact, instead of carrying the full buffer in every later turn.</li>
+				<li>Outbound tool-call ids are canonicalized per provider for compatibility, and wire paths are relativized under session roots.</li>
+				<li>Compaction now counts retained custom and branch tokens in the keepRecent budget, and cuts past the crossing entry when keeping everything would dead-end.</li>
+				<li>Settings values cycle with click-then-choose rather than Left/Right.</li>
+				<li>Many fail-closed hardening fixes: grep on an unreadable directory, malformed plugin and marketplace manifests, unreadable context files, and project-settings discovery warnings now surface loudly instead of being swallowed, and CLI usage errors exit with the correct code.</li>
+				<li>The sign-in success page text sits below the sun mark, not over it.</li>
 				</ul>
 			</div>
 		</article>
 		<div class="upstream-note">
-			<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> 16.5.2 (MIT, by Can Boluk). Everything before the fork is upstream history, not a veyyon release. See <a href="https://github.com/can1357/oh-my-pi/releases">oh-my-pi's releases</a> for it.</p>
+			<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> 16.5.2 (MIT, by Can Boluk). Everything before the fork is upstream history, not a veyyon release — see <a href="https://github.com/can1357/oh-my-pi/releases">oh-my-pi's releases</a> for it.</p>
 		</div>
 		<!--CHANGELOG:END-->
   </section>
@@ -99,6 +131,7 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
+      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
     </nav>

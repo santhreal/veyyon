@@ -23,7 +23,11 @@ function makeArtifactSession(artifactDir: string): {
 	const idToPath = new Map<string, string>();
 	let counter = 0;
 	const session = {
-		cwd: process.cwd(),
+		// Use the test-owned artifact dir, not the ambient process.cwd(): the
+		// commands here are cwd-independent (printf/yes/sleep), and pinning a dir
+		// we control makes the suite immune to cwd mutations leaked by sibling
+		// tests (AgentSession.setCwd → process.chdir).
+		cwd: artifactDir,
 		hasUI: false,
 		skills: [],
 		getSessionFile: () => null,
@@ -118,17 +122,12 @@ describe("BashTool timeout/cancel output spill (TW-7)", () => {
 		// after the stream has landed (mirrors the cancelled-path hole).
 		const command = `printf '${HEAD_SENTINEL}\\n'; yes PADPADPADPADPADPAD | head -c 65536; printf '\\n${TAIL_SENTINEL}\\n'; sleep 30`;
 
-		const pending = tool.execute(
-			"call-cancel",
-			{ command, timeout: 60 },
-			controller.signal,
-			update => {
-				const text = update.content?.find(c => c.type === "text")?.text ?? "";
-				if (text.includes(TAIL_SENTINEL) || Buffer.byteLength(text, "utf-8") > DEFAULT_MAX_BYTES) {
-					sawTail.resolve();
-				}
-			},
-		);
+		const pending = tool.execute("call-cancel", { command, timeout: 60 }, controller.signal, update => {
+			const text = update.content?.find(c => c.type === "text")?.text ?? "";
+			if (text.includes(TAIL_SENTINEL) || Buffer.byteLength(text, "utf-8") > DEFAULT_MAX_BYTES) {
+				sawTail.resolve();
+			}
+		});
 
 		await Promise.race([
 			sawTail.promise,

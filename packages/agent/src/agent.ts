@@ -753,9 +753,7 @@ export class Agent {
 	 * session-local tool-call ID canonicalization). Must be installed after
 	 * construction when the session owns state the transform closes over.
 	 */
-	setTransformProviderContext(
-		fn: ((context: Context, model: Model) => Context | Promise<Context>) | undefined,
-	): void {
+	setTransformProviderContext(fn: ((context: Context, model: Model) => Context | Promise<Context>) | undefined): void {
 		this.#transformProviderContext = fn;
 	}
 

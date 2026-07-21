@@ -499,6 +499,22 @@ export interface BuildSystemPromptOptions {
 	alwaysApplyRules?: AlwaysApplyRule[];
 	/** Whether secret obfuscation is active. When true, explains the redaction format in the prompt. */
 	secretsEnabled?: boolean;
+	/**
+	 * Whether to teach argot shorthand this turn. This is the encode decision
+	 * (model allowlist + context cutoff), resolved by the caller via the argot
+	 * SDK's `shouldEncode`. It gates only teaching; decoding (expansion) is
+	 * unconditional and handled at the seams. When true, {@link argotHandles} is
+	 * injected into the system prompt.
+	 */
+	injectArgotPreamble?: boolean;
+	/**
+	 * The argot handle table to teach the model: a self-contained block listing
+	 * each `§handle → expansion` for this project, produced by the SDK's
+	 * `ArgotSession.promptFragment`. Injected only when {@link injectArgotPreamble}
+	 * is true and this is non-empty. The dictionary lives in a local cache outside
+	 * the repository, so this block is how the model learns the handles at all.
+	 */
+	argotHandles?: string;
 	/** Pre-loaded workspace tree (skips discovery if provided). May be a Promise to allow early kick-off. */
 	workspaceTree?: WorkspaceTree | Promise<WorkspaceTree>;
 	/** Whether the local memory://root summary is active. */
@@ -564,6 +580,8 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskMaxConcurrency = 0,
 		taskIrcEnabled = false,
 		secretsEnabled = false,
+		injectArgotPreamble = false,
+		argotHandles,
 		workspaceTree: providedWorkspaceTree,
 		memoryRootEnabled = false,
 		model,
@@ -856,6 +874,15 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	}
 	if (activeRepoContextPrompt) {
 		systemPrompt.push(activeRepoContextPrompt);
+	}
+	// Argot: teach the concrete handle table this project defines. The dictionary
+	// is a local cache outside the repository, so the model learns the handles
+	// from this block, not by reading a file. The caller decides per turn whether
+	// to teach it (model allowlist + context cutoff, via the argot SDK's
+	// shouldEncode) and supplies the self-contained table (promptFragment);
+	// decoding is unconditional and runs at the seams.
+	if (injectArgotPreamble && argotHandles) {
+		systemPrompt.push(argotHandles);
 	}
 
 	return { systemPrompt };

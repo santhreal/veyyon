@@ -46,6 +46,14 @@ Hashline flow: `read`/`grep` mint `[path#TAG]` anchors → model copies tags int
 | `browser` | Browser automation |
 | `job` | Background job control |
 
+### Long-running and stuck commands
+
+Two opt-in settings decide when a foreground `bash` call is moved to a background job. Both are off by default, and both hand the command to the `job` tool so its result still arrives later. You set them per profile in `/settings`, under Shell.
+
+Turn on **Bash Auto-Background** to cap how long a command holds the model in the foreground. Once a call runs longer than "Auto-Background After" (`bash.autoBackground.thresholdMs`, default 1 minute), it moves to the background and the model keeps working. This fires on elapsed time even while the command is still printing: a test suite that takes forty minutes should not hold the model, and a long foreground command would otherwise outlast the prompt cache. Set the value to "Immediately" to background every command up front.
+
+Turn on **Bash Stall Detection** to catch a command that has gone quiet. When a call produces no new output for "Stall After" (`bash.stallDetection.stallMs`, default 30 seconds), it is backgrounded and the model is told it may be stuck, along with the exact `job` cancel to run. This measures idle output, not total run time, so a command that keeps printing never trips it. The model decides: if the quiet was expected (a slow compile, a network wait), it lets the job finish; if the command is genuinely hung, it cancels it. The setting recommends, it never force-kills.
+
 ## Agent coordination
 
 | Tool | Purpose |

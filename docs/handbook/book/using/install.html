@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b47278ea.js";
+            window.path_to_searchindex_js = "../searchindex-f1f200b3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,69 +196,58 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon ships as the npm package <code>@veyyon/coding-agent</code>, and installing it gives you the <code>veyyon</code> executable. Under the hood it is a TypeScript and Bun agent loop, with Rust natives in <code>@veyyon/natives</code> handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. After you install, run <code>veyyon plugin doctor</code> to confirm everything is wired up.</p>
-<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
-<p>You need two things:</p>
-<ul>
-<li><strong>Bun</strong>, which is the recommended runtime, or a recent Node.js.</li>
-<li><strong>Git</strong>, because most workflows expect to run inside a repository.</li>
-</ul>
-<h2 id="install-with-npm-or-bun"><a class="header" href="#install-with-npm-or-bun">Install with npm or Bun</a></h2>
-<pre><code class="language-console">$ bun install -g @veyyon/coding-agent
-$ veyyon --version
+<p>Veyyon installs as a single self-contained binary. The installer downloads it, links a short <code>vey</code> launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
+<h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>npm works too:</p>
-<pre><code class="language-console">$ npm install -g @veyyon/coding-agent
-$ veyyon --version
+<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and prints a <code>doctor:</code> line confirming the binary runs. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
+<h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
+<pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
-<p>The install step also builds <code>@veyyon/natives</code>. Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
-<p>The first interactive <code>veyyon</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
-<h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
+<pre><code class="language-console">$ vey --version
+</code></pre>
+<p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
+<p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
+<p>The installer takes a few options. Pass them after <code>-- </code> when you pipe the script:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific release
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
+</code></pre>
+<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, and <code>-Uninstall</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>).</p>
+<p>If you would rather clone and drive the workspace yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 </code></pre>
 <p><code>bun dev</code> runs the in-repo build. Use it while you are evaluating Veyyon or contributing to it.</p>
-<h2 id="shell-completions"><a class="header" href="#shell-completions">Shell completions</a></h2>
-<pre><code class="language-console">$ veyyon completions bash|zsh|fish
-</code></pre>
 <h2 id="verify-the-install"><a class="header" href="#verify-the-install">Verify the install</a></h2>
-<pre><code class="language-console">$ veyyon --version
-$ veyyon plugin doctor
-$ veyyon plugin doctor --fix
+<pre><code class="language-console">$ vey --version
+$ vey plugin doctor
+$ vey plugin doctor --fix
 </code></pre>
-<p><code>veyyon plugin doctor</code> checks plugin health and warns you when an optional external binary (<code>sd</code>, <code>sg</code>, or <code>git</code>) or a common API key is missing. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="../features/doctor.html">Diagnostics</a>.</p>
+<p><code>vey plugin doctor</code> checks plugin health and warns you when an optional external binary (<code>sd</code>, <code>sg</code>, or <code>git</code>) or a common API key is missing. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="../features/doctor.html">Diagnostics</a>.</p>
 <h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
 <p>On Unix, Veyyon uses <code>~/.veyyon</code> by default. Two environment variables let you move it. <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, which holds <code>config.yml</code>, <code>agent.db</code>, your sessions, and more.</p>
 <pre><code class="language-console">$ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
-$ veyyon plugin doctor
+$ vey plugin doctor
 </code></pre>
 <p>The <a href="../reference/file-locations.html">File locations</a> chapter shows the full layout.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
 <p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>Remove the global package:</p>
-<pre><code class="language-console">$ bun remove -g @veyyon/coding-agent
-$ # or: npm uninstall -g @veyyon/coding-agent
+<p>The installer removes everything it added, including the <code>vey</code> alias, any shell completions, and a source checkout if you made one:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
+</code></pre>
+<p>On Windows:</p>
+<pre><code class="language-powershell">&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
 </code></pre>
 <p>Then remove your state if you want a clean machine:</p>
 <pre><code class="language-console">$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
 $ # if you relocated the agent base:
 $ rm -rf "$VEYYON_CODING_AGENT_DIR"
 </code></pre>
-<p>Deleting the home directory does not remove project-local files such as a repository’s <code>AGENTS.md</code> or its <code>.veyyon/</code> directory. Clean those per repository if you want to.</p>
-<p>To keep your projects but wipe only sessions:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon/profiles/default/agent/sessions
-</code></pre>
-<h2 id="next"><a class="header" href="#next">Next</a></h2>
-<ul>
-<li><a href="./getting-started.html">Getting started</a> walks through a first interactive edit, with sample terminal output.</li>
-<li><a href="../concepts/model-contract.html">Model contract</a> helps you choose credentials with the harness boundary in mind.</li>
-<li><a href="./safety.html">Safety</a> covers approvals and fail-closed behavior.</li>
-<li><a href="./troubleshooting.html">Troubleshooting</a> and the <a href="./faq.html">FAQ</a> are there for when the doctor is not enough.</li>
-</ul>
 
                     </main>
 

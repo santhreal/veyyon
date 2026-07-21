@@ -3,7 +3,8 @@
 Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
 you supply. Optional OpenTelemetry export runs only when `OTEL_EXPORTER_OTLP_*` is configured. Logins
 are **provider-scoped**: authenticating `anthropic` does not authenticate `openai`, and each provider
-tracks its own credentials.
+tracks its own credentials. Those credentials are shared across profiles by default (see
+[Credentials are shared across profiles](#credentials-are-shared-across-profiles)).
 
 ## Sign in from the TUI
 
@@ -61,9 +62,27 @@ When a provider needs a key, Veyyon resolves it in order (first match wins):
 4. A stored OAuth credential (refreshed as needed).
 5. The provider's environment variable (including `.env`).
 
-Stored credentials live in the auth store at `~/.veyyon/profiles/default/agent/agent.db` (or the configured auth-broker
-snapshot in broker mode). `VEYYON_CODING_AGENT_DIR` relocates the agent base, and the auth store moves with
-it.
+Stored credentials live in a machine-wide auth store at `~/.veyyon/shared-auth/agent.db` (or the configured
+auth-broker snapshot in broker mode). `VEYYON_CODING_AGENT_DIR` relocates the agent base for a profile's own
+files, but the shared auth store stays at the global config root so every profile reads the same logins.
+
+### Credentials are shared across profiles
+
+By default every profile reads one machine-wide set of provider logins, so signing in once works everywhere.
+The first time a profile opens the shared store, any login already saved in that profile is promoted into it,
+so turning sharing on never signs you out.
+
+To give a profile its own private credentials instead, turn sharing off in the global config
+`~/.veyyon/config.yml`:
+
+```yaml
+profileSharing: false
+```
+
+or toggle **Share Credentials Across Profiles** on the **Global** tab of `/settings`. With sharing off, each
+profile keeps its logins in its own `~/.veyyon/profiles/<name>/agent/agent.db` and never reads another
+profile's credentials. The auth broker (above) is a separate cross-host mechanism and is unaffected by this
+setting.
 
 ## Provider data is data-driven
 

@@ -1,5 +1,5 @@
 /**
- * SETTINGS_SCHEMA is composed by spreading the nine settings-domains slices.
+ * SETTINGS_SCHEMA is composed by spreading the settings-domains slices.
  * Unlike the former single object literal (where TypeScript hard-errors on a
  * duplicate key), a key defined in two domain files would silently last-write
  * win in the spread. This guard makes that collision a loud test failure.
@@ -9,6 +9,7 @@ import { APPEARANCE_SETTINGS } from "@veyyon/coding-agent/config/settings-domain
 import { CONTEXT_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/context";
 import { EDITING_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/editing";
 import { GENERAL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/general";
+import { GLOBAL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/global";
 import { INTERACTION_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/interaction";
 import { MODEL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/model";
 import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
@@ -17,6 +18,7 @@ import { TOOLS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/too
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 
 const DOMAINS: Record<string, Record<string, unknown>> = {
+	global: GLOBAL_SETTINGS,
 	general: GENERAL_SETTINGS,
 	appearance: APPEARANCE_SETTINGS,
 	model: MODEL_SETTINGS,

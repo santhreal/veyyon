@@ -13,8 +13,9 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 
 | Scope | Path | Read behavior | Write behavior |
 |---|---|---|---|
-| Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent settings file. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
+| Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent settings file for the active profile. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
 | Global legacy | `~/.veyyon/profiles/default/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
+| Machine-global (all profiles) | `~/.veyyon/config.yml` | A small set of values shared by every profile: `defaultProfile` (which profile a bare `vey` launches) and `profileSharing` (whether provider credentials are shared across profiles). Read live. | The **Global** tab of `/settings`, or `veyyon profile default` for `defaultProfile`. These keys never land in a profile's own `config.yml`. |
 | Project | `<cwd>/.veyyon/config.yml` (plus `.veyyon/settings.json`) | Loaded when the process working directory has a non-empty `.veyyon/`. | Read-only from settings commands; edit the file by hand. |
 | Project legacy | `<cwd>/.veyyon/settings.json` | Still read; project `config.yml` is merged on top of it. | Not written by settings commands. |
 | CLI overlay | Any file passed with `--config <file>` | Loaded after global and project settings, for that one process. Repeatable. | Never persisted. |
@@ -34,7 +35,7 @@ The global `config.yml` is always YAML. The generic config loader used for other
 
 ## Reading and writing settings
 
-Use the interactive `/settings` panel inside a session, or the `veyyon config` command from a shell. Both operate on the merged effective settings, but every persistent write lands in the **global** file only.
+Use the interactive `/settings` panel inside a session, or the `veyyon config` command from a shell. Both operate on the merged effective settings, and every persistent write lands in the **global** profile file, with one exception: the machine-global values on the **Global** tab (`defaultProfile`, `profileSharing`) write to `~/.veyyon/config.yml` so they apply to every profile.
 
 ```bash
 veyyon config list                 # all settings with current effective values
@@ -84,7 +85,7 @@ Keys must match a real schema path exactly. There is no shorthand, set `theme.da
 
 ### Where writes go
 
-`veyyon config set`, `veyyon config reset`, `/settings`, and any runtime settings change all write to the global `config.yml` under the active agent directory. They never write to `<cwd>/.veyyon/config.yml`. To create a project-local override, edit that file directly (see [Project-local config](#project-local-config)). Saves are debounced and re-read the file under a lock, so external edits made while a session is open are preserved.
+`veyyon config set`, `veyyon config reset`, `/settings`, and any runtime settings change all write to the global `config.yml` under the active agent directory. They never write to `<cwd>/.veyyon/config.yml`. To create a project-local override, edit that file directly (see [Project-local config](#project-local-config)). Saves are debounced and re-read the file under a lock, so external edits made while a session is open are preserved. The machine-global keys on the **Global** tab (`defaultProfile`, `profileSharing`) are the exception: they write to `~/.veyyon/config.yml` instead of the active agent directory, and are read live so an external edit to that file is reflected without a restart.
 
 ## Precedence
 
@@ -473,6 +474,9 @@ bash:
   autoBackground:
     enabled: false
     thresholdMs: 60000
+  stallDetection:
+    enabled: false
+    stallMs: 30000
 
 eval:
   py: true
@@ -495,7 +499,9 @@ lsp:
 | `bash.enabled` | boolean | `true` | Enable the bash tool. |
 | `launch.enabled` | boolean | `true` | Enable the launch tool for shared long-running project processes. |
 | `bash.autoBackground.enabled` | boolean | `false` | Auto-background long-running commands. |
-| `bash.autoBackground.thresholdMs` | number | `60000` | Threshold before auto-backgrounding. |
+| `bash.autoBackground.thresholdMs` | number | `60000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. `0` backgrounds immediately. |
+| `bash.stallDetection.enabled` | boolean | `false` | Watch for a bash call that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills. |
+| `bash.stallDetection.stallMs` | number | `30000` | Idle time (no new output) before a bash call is treated as possibly stuck. Measures quiet output, not total run time. |
 | `eval.py` | boolean | `true` | Python eval backend. `VEYYON_PY=0` disables for the process. |
 | `eval.js` | boolean | `true` | JavaScript eval backend. `VEYYON_JS=0` disables for the process. |
 | `python.kernelMode` | enum | `session` | `session` (persistent kernel) or `per-call`. |
@@ -680,6 +686,15 @@ searxng:
 | `auth.broker.token` | string | _(unset)_ | Auth-broker token. Overridden by `VEYYON_AUTH_BROKER_TOKEN`. |
 
 Provider credentials and custom model definitions are configured separately, see [Providers](./providers.md) and [Models](./models.md).
+
+### Global (all profiles)
+
+These keys live in the machine-wide `~/.veyyon/config.yml`, not a profile's own config, and are edited on the **Global** tab of `/settings`. They are read live, so an external edit to that file takes effect without a restart.
+
+| Key | Type | Default | Values / notes |
+|---|---|---|---|
+| `defaultProfile` | string | `default` | Which profile a bare `vey` launches when `--profile` and `VEYYON_PROFILE` are unset. Also settable with `veyyon profile default [name]`; setting it back to `default` clears the override. |
+| `profileSharing` | boolean | `true` | When `true`, every profile reads one machine-wide provider credential store (`~/.veyyon/shared-auth/agent.db`). Set `false` to give each profile its own private credentials. See [Providers](./providers.md). |
 
 ### Other groups
 
