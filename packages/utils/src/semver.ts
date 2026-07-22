@@ -116,18 +116,26 @@ export function tryCompareSemver(a: string, b: string): number | undefined {
  * components, no prerelease grammar, no build metadata.
  *
  * A missing component reads as zero, so `1.2` and `1.2.0` rank equal. A
- * component that is not a number is compared as text against the other side
- * rather than being turned into zero. That distinction is the whole point: the
- * hand-rolled copies this replaces wrote `Number.parseInt(part, 10) || 0`, which
- * silently ranks `1.x.3` equal to `1.0.3`, or omitted the guard entirely and
- * returned `NaN` from a sort comparator, which leaves the order up to the engine.
+ * component that is not a pure run of digits is compared as text against the
+ * other side rather than being turned into a number. That distinction is the
+ * whole point: the hand-rolled copies this replaces wrote
+ * `Number.parseInt(part, 10) || 0`, which silently ranks `1.x.3` equal to
+ * `1.0.3`, or omitted the guard entirely and returned `NaN` from a sort
+ * comparator, which leaves the order up to the engine.
+ *
+ * "Pure run of digits" is checked directly, not via `Number.parseInt`, because
+ * `parseInt` is lenient: it reads `"0rc1"` as `0`, which would rank `1.0rc1`
+ * equal to `1.0`. A suffixed component is text, so it text-compares.
  *
  * ```ts
  * compareDottedNumeric("1.2.10", "1.2.9"); // positive
  * compareDottedNumeric("1.2", "1.2.0"); // 0
  * compareDottedNumeric("1.2.3.4", "1.2.3"); // positive: extra components count
+ * compareDottedNumeric("1.0rc1", "1.0"); // non-zero: a suffixed part is not 0
  * ```
  */
+const INTEGER_COMPONENT_RE = /^\d+$/;
+
 export function compareDottedNumeric(a: string, b: string): number {
 	const left = a.split(".");
 	const right = b.split(".");
@@ -136,13 +144,14 @@ export function compareDottedNumeric(a: string, b: string): number {
 		const lp = left[index] ?? "0";
 		const rp = right[index] ?? "0";
 		if (lp === rp) continue;
-		const ln = Number.parseInt(lp, 10);
-		const rn = Number.parseInt(rp, 10);
-		if (Number.isNaN(ln) || Number.isNaN(rn)) {
-			// At least one side is not a number. Compare as text so the result is
-			// deterministic and a non-numeric part never silently reads as zero.
+		if (!INTEGER_COMPONENT_RE.test(lp) || !INTEGER_COMPONENT_RE.test(rp)) {
+			// At least one side is not a pure integer. Compare as text so the result
+			// is deterministic and a suffixed part like "0rc1" never silently reads
+			// as its leading number (which would rank "1.0rc1" equal to "1.0").
 			return lp < rp ? -1 : 1;
 		}
+		const ln = Number.parseInt(lp, 10);
+		const rn = Number.parseInt(rp, 10);
 		if (ln !== rn) return ln - rn;
 	}
 	return 0;
