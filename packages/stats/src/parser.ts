@@ -50,14 +50,15 @@ export function classifyAgentType(sessionPath: string): AgentType {
 
 /**
  * Extract folder name from session filename.
- * Session files are named like: --work--veyyon--/timestamp_uuid.jsonl
- * The folder part uses -- as path separator.
+ * Session files are named like: --work--veyyon/timestamp_uuid.jsonl
+ * The folder part encodes each `/` of the original path as `--`, so there is
+ * no trailing separator (a trailing `--` would decode to a stray trailing `/`).
  */
 function extractFolderFromPath(sessionPath: string): string {
 	const sessionsDir = getSessionsDir();
 	const rel = path.relative(sessionsDir, sessionPath);
 	const projectDir = rel.split(path.sep)[0];
-	// Convert --work--veyyon-- to /work/veyyon
+	// Convert --work--veyyon to /work/veyyon
 	return projectDir.replace(/^--/, "/").replace(/--/g, "/");
 }
 
