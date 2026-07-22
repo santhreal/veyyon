@@ -52,6 +52,17 @@ export const FORK_POINT_VERSION = "16.5.2";
 /** Default repo the published-release reconciliation queries. */
 export const DEFAULT_REPO = "santhreal/veyyon";
 
+/**
+ * The upstream project's identifying facts, in ONE place. Both provenance notes
+ * (the HTML {@link upstreamNote} on the website and the markdown
+ * {@link upstreamNoteMarkdown} on the repo-root CHANGELOG) read from these, so
+ * the credit line can never drift between the two surfaces.
+ */
+export const UPSTREAM_REPO_URL = "https://github.com/can1357/oh-my-pi";
+export const UPSTREAM_RELEASES_URL = `${UPSTREAM_REPO_URL}/releases`;
+export const UPSTREAM_AUTHOR = "Can Boluk";
+export const UPSTREAM_LICENSE = "MIT";
+
 /** Map a changelog section heading to a tag class + short label. */
 export function tagFor(section) {
 	const s = section.toLowerCase();
@@ -325,9 +336,51 @@ export function renderUnreleased(unreleased) {
 export function upstreamNote(forkPointVersion = FORK_POINT_VERSION) {
 	return [
 		`\t\t<div class="upstream-note">`,
-		`\t\t\t<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> ${forkPointVersion} (MIT, by Can Boluk). Everything before the fork is upstream history, not a veyyon release — see <a href="https://github.com/can1357/oh-my-pi/releases">oh-my-pi's releases</a> for it.</p>`,
+		`\t\t\t<p>Veyyon is a fork of <a href="${UPSTREAM_REPO_URL}">oh-my-pi</a> ${forkPointVersion} (${UPSTREAM_LICENSE}, by ${UPSTREAM_AUTHOR}). Everything before the fork is upstream history, not a veyyon release. See <a href="${UPSTREAM_RELEASES_URL}">oh-my-pi's releases</a> for it.</p>`,
 		`\t\t</div>`,
 	].join("\n");
+}
+
+/**
+ * The same provenance credit as {@link upstreamNote}, rendered as a Markdown
+ * section for the repo-root CHANGELOG. Same wording, same fork facts; the HTML
+ * page and the GitHub-rendered markdown therefore say exactly the same thing
+ * about what is upstream and where to read it.
+ */
+export function upstreamNoteMarkdown(forkPointVersion = FORK_POINT_VERSION) {
+	return [
+		`## Upstream history`,
+		``,
+		`Veyyon is a fork of [oh-my-pi](${UPSTREAM_REPO_URL}) ${forkPointVersion} (${UPSTREAM_LICENSE}, by ${UPSTREAM_AUTHOR}). Everything before the fork is upstream history, not a veyyon release. See [oh-my-pi's releases](${UPSTREAM_RELEASES_URL}) for it.`,
+	].join("\n");
+}
+
+/**
+ * Render the repo-root `CHANGELOG.md` from the canonical source
+ * (`packages/coding-agent/CHANGELOG.md`), so GitHub's repo page shows the same
+ * changelog the website does, in Veyyon's voice.
+ *
+ * The rule matches the website exactly: keep only veyyon's own entries (the file
+ * head above the first `## [<forkPointVersion>]` heading — `Unreleased` plus
+ * every cut veyyon release), rebrand them, and collapse all pre-fork upstream
+ * history into one {@link upstreamNoteMarkdown} credit rather than replaying it.
+ * Everything flows through {@link rebrand}, so there is exactly one definition of
+ * the omp→veyyon transform for both the HTML page and this file.
+ *
+ * Pure: a function of the source text only. The writer
+ * (`scripts/sync-root-changelog.ts`) and the drift guard both call it, so the
+ * on-disk file can be checked against a regenerated copy with a byte comparison.
+ */
+export function renderRootChangelog(sourceMd, { forkPointVersion = FORK_POINT_VERSION } = {}) {
+	const escaped = forkPointVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const forkHeading = new RegExp(`^## \\[${escaped}\\]`, "m");
+	const match = forkHeading.exec(sourceMd);
+	// The head is every veyyon entry (title + Unreleased + cut releases). With no
+	// fork heading present, the whole file predates any upstream merge and is all
+	// veyyon's — keep it entire rather than silently dropping content.
+	const head = (match ? sourceMd.slice(0, match.index) : sourceMd).trimEnd();
+	const note = upstreamNoteMarkdown(forkPointVersion);
+	return `${rebrand(head)}\n\n${note}\n`;
 }
 
 /**

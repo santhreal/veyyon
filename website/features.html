@@ -15,7 +15,7 @@
 <title>Features | Veyyon</title>
 <meta property="og:title" content="Features | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/features.html" />
-<meta name="description" content="Hashline edits, approval modes, models and roles, sessions, MCP, skills, hooks, plan mode. Terminal coding agent." />
+<meta name="description" content="Argot per-project shorthand, hashline edits, approval modes, models and roles, sessions, MCP, skills, hooks, plan mode. Terminal coding agent." />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -59,6 +59,33 @@
   </div>
 
   <section class="plain">
+    <div class="lead"><span class="kicker">Experimental in Veyyon</span><h2>Argot: a shorthand the model writes in</h2>
+      <p class="sub">The largest thing the fork adds over <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The agent loads the
+        project it is working in with <span class="inline">argot_load</span>; Veyyon generates a dictionary mapping short
+        handles to the long strings that project repeats. The model writes
+        <span class="inline">§dbconn</span>; Veyyon restores the full text before anything runs or is shown. The round trip
+        is lossless.</p></div>
+    <div class="panel">
+      <div class="copy">
+        <ul>
+          <li><b>Lossless</b>: no tool, file, or transcript ever sees an unexpanded handle.</li>
+          <li><b>Gated</b>: encoding is per model and by context size; decoding always runs, so a handle can never leak.</li>
+          <li><b>Generated</b>: veyyon builds the dictionary from the strings the project repeats, when the agent loads it. You do not write or commit it.</li>
+          <li><b>Monotonic</b>: the per-project cache only grows, so a handle already taught always expands.</li>
+          <li><b>Enable</b>: <span class="inline">argot.enabled: true</span>, then list the models allowed to write handles. Experimental: off by default while the live benches prove the savings.</li>
+        </ul>
+      </div>
+      <pre class="demo" aria-hidden="true"><span class="c"># dictionary (generated on argot_load, cached, never committed)</span>
+<span class="k">sigil</span> = <span class="s">"§"</span>
+
+[<span class="k">handles</span>]
+<span class="k">dbconn</span> = <span class="s">"src/server/db/connection.ts"</span>
+<span class="k">build</span>  = <span class="s">"bunx tsgo -p packages/coding-agent/tsconfig.json --noEmit"</span></pre>
+    </div>
+    <a class="section-link" href="./docs/why/argot.html">How Argot works</a>
+  </section>
+
+  <section>
     <div class="lead"><span class="kicker">Editing</span><h2>Hashline and plan mode</h2>
       <p class="sub"><span class="inline">edit</span> / <span class="inline">write</span> use content-hash anchors;
         verification runs before disk write. Schema repair may rewrite tool JSON before validation.
@@ -141,6 +168,7 @@ edit routes/upload.ts
   </div>
 </footer>
 
+<script src="./sun-field.js" defer></script>
 <script src="./motion.js" defer></script>
 <script src="./sunmark.js" defer></script>
 </body>
