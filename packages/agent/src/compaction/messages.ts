@@ -50,11 +50,11 @@ export interface CompactionSummaryMessage {
 	shortSummary?: string;
 	tokensBefore: number;
 	providerPayload?: ProviderPayload;
-	/** Runtime-only ordered archive blocks for snapcompact: old text region,
-	 *  imaged middle, then new text region. When present, `summary` is already
-	 *  the final lead-in text (no legacy wrapper applied). */
+	/** Legacy runtime-only archive blocks from the removed image-archive engine:
+	 *  old text region, imaged middle, then new text region. Never written by new
+	 *  sessions; retained so old persisted summaries still deserialize and count. */
 	blocks?: (TextContent | ImageContent)[];
-	/** Snapcompact image blocks, kept for display counts / legacy consumers. */
+	/** Legacy image-archive blocks, kept for display counts / old-session consumers. */
 	images?: ImageContent[];
 	/** Post-pass dead-end warning attached to this compaction (progress guard). */
 	warning?: string;
@@ -161,7 +161,7 @@ function isCoreCompactionMessage(message: AgentMessage): message is AgentMessage
  * toolResult) and the compaction messages owned by this package. Embedders
  * with their own app messages (e.g. the coding agent) handle their custom
  * roles and delegate every core role here — duplicating these cases is how
- * snapcompact frames once silently fell off the provider request.
+ * compaction-summary image blocks once silently fell off the provider request.
  */
 export function convertMessageToLlm(message: AgentMessage): Message | undefined {
 	if (isCoreCompactionMessage(message)) {

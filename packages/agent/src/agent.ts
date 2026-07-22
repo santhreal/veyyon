@@ -11,6 +11,7 @@ import {
 	type CursorToolResultHandler,
 	type Effort,
 	type ImageContent,
+	type InstrumentationLevel,
 	type Message,
 	type Model,
 	type ProviderSessionState,
@@ -246,6 +247,11 @@ export interface AgentOptions {
 	/** Enable intent tracing schema injection/stripping in the harness. */
 	intentTracing?: boolean;
 	/**
+	 * How densely each tool call records a study record on its result message.
+	 * Forwarded verbatim to the loop config (see {@link AgentLoopConfig.instrumentation}).
+	 */
+	instrumentation?: InstrumentationLevel;
+	/**
 	 * Strip tool descriptions from provider-bound tool specs (top-level + nested
 	 * schema annotations). Use when the full catalog is rendered into the system
 	 * prompt so descriptions are not duplicated on the wire. Native tool calling only.
@@ -388,6 +394,7 @@ export class Agent {
 	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
 	#repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
 	#intentTracing: boolean;
+	#instrumentation: InstrumentationLevel;
 	#pruneToolDescriptions: boolean;
 	#dialect?: ConfiguredDialect;
 	#abortOnFabricatedToolResult?: boolean;
@@ -468,6 +475,7 @@ export class Agent {
 		this.#transformToolCallArguments = opts.transformToolCallArguments;
 		this.#repairToolCallArguments = opts.repairToolCallArguments;
 		this.#intentTracing = opts.intentTracing === true;
+		this.#instrumentation = opts.instrumentation ?? "off";
 		this.#pruneToolDescriptions = opts.pruneToolDescriptions === true;
 		this.#dialect = opts.dialect;
 		this.#abortOnFabricatedToolResult = opts.abortOnFabricatedToolResult;
@@ -1182,6 +1190,7 @@ export class Agent {
 			transformToolCallArguments: this.#transformToolCallArguments,
 			repairToolCallArguments: this.#repairToolCallArguments,
 			intentTracing: this.#intentTracing,
+			instrumentation: this.#instrumentation,
 			pruneToolDescriptions: this.#pruneToolDescriptions,
 			dialect: this.#dialect,
 			abortOnFabricatedToolResult: this.#abortOnFabricatedToolResult,

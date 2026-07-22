@@ -3355,3 +3355,211 @@ describe("agentLoop kCursorExecResolved (issue #4348)", () => {
 		expect(executionStarts[0].toolName).toBe("echo");
 	});
 });
+
+describe("tool-call instrumentation", () => {
+	const toolSchema = type({ value: "string" });
+	const echoTool: AgentTool<typeof toolSchema, { value: string }> = {
+		name: "echo",
+		label: "Echo",
+		description: "Echo tool",
+		parameters: toolSchema,
+		async execute(_toolCallId, params) {
+			return {
+				content: [{ type: "text", text: `echoed: ${params.value}` }],
+				details: { value: params.value },
+			};
+		},
+	};
+
+	function runOnce(instrumentation?: AgentLoopConfig["instrumentation"]) {
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [echoTool] };
+		const mock = createMockModel({
+			responses: [
+				{ content: [{ type: "toolCall", id: "tool-1", name: "echo", arguments: { value: "hello world" } }] },
+				{ content: ["done"] },
+			],
+		});
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter, instrumentation };
+		return agentLoop([createUserMessage("run echo")], context, config, undefined, mock.stream).result();
+	}
+
+	it("attaches no metrics when instrumentation is off (or unset)", async () => {
+		for (const level of [undefined, "off"] as const) {
+			const messages = await runOnce(level);
+			const toolResult = messages.find(m => m.role === "toolResult") as ToolResultMessage;
+			expect(toolResult).toBeDefined();
+			expect(toolResult.metrics).toBeUndefined();
+		}
+	});
+
+	it("basic records a real, non-negative duration and ok status", async () => {
+		const messages = await runOnce("basic");
+		const toolResult = messages.find(m => m.role === "toolResult") as ToolResultMessage;
+		const metrics = toolResult.metrics;
+		if (!metrics) throw new Error("expected metrics");
+		expect(metrics.level).toBe("basic");
+		expect(metrics.status).toBe("ok");
+		expect(metrics.endedAt).toBe(toolResult.timestamp);
+		expect(metrics.startedAt).toBeLessThanOrEqual(metrics.endedAt);
+		expect(metrics.durationMs).toBe(metrics.endedAt - metrics.startedAt);
+		expect(metrics.durationMs).toBeGreaterThanOrEqual(0);
+		// basic tier stops before scheduling and weight
+		expect(metrics.resultBytes).toBeUndefined();
+		expect(metrics.resultTokens).toBeUndefined();
+	});
+
+	it("rich records the result's byte and token weight and the batch shape", async () => {
+		const messages = await runOnce("rich");
+		const toolResult = messages.find(m => m.role === "toolResult") as ToolResultMessage;
+		const metrics = toolResult.metrics;
+		if (!metrics) throw new Error("expected metrics");
+		expect(metrics.level).toBe("rich");
+		expect(metrics.resultBlocks).toBe(1);
+		expect(metrics.resultImages).toBe(0);
+		expect(metrics.resultBytes).toBe("echoed: hello world".length);
+		expect(metrics.resultTokens).toBeGreaterThan(0);
+		expect(metrics.batchSize).toBe(1);
+		expect(metrics.batchIndex).toBe(0);
+		expect(metrics.concurrency).toBe("shared");
+		// rich tier stops before the args fingerprint
+		expect(metrics.argsHash).toBeUndefined();
+	});
+
+	it("ultra records the args fingerprint and signal state", async () => {
+		const messages = await runOnce("ultra");
+		const toolResult = messages.find(m => m.role === "toolResult") as ToolResultMessage;
+		const metrics = toolResult.metrics;
+		if (!metrics) throw new Error("expected metrics");
+		expect(metrics.level).toBe("ultra");
+		expect(metrics.argsHash).toMatch(/^[0-9a-f]{8}$/);
+		expect(metrics.argsBytes).toBe(JSON.stringify({ value: "hello world" }).length);
+		expect(metrics.interruptible).toBe(false);
+		expect(metrics.signalAborted).toBe(false);
+	});
+});
+
+/**
+ * GRAN-5: the loop attaches per-turn metrics to the finalized assistant message,
+ * gated by the SAME `instrumentation` knob the tool-call metrics use. This proves
+ * the wiring end to end (loop stamps request-start, reads usage, hands to
+ * captureAssistantTurnMetrics) — the pure field/throughput math is locked
+ * separately in @veyyon/ai's instrumentation.test.ts.
+ */
+describe("assistant-turn instrumentation", () => {
+	function runOnce(instrumentation?: AgentLoopConfig["instrumentation"]) {
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [] };
+		const mock = createMockModel({
+			responses: [
+				{
+					content: ["all done"],
+					usage: { input: 100, output: 300, cacheRead: 20, cacheWrite: 10 },
+				},
+			],
+		});
+		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter, instrumentation };
+		return agentLoop([createUserMessage("say something")], context, config, undefined, mock.stream).result();
+	}
+
+	function finalAssistant(messages: AgentMessage[]): AssistantMessage {
+		const assistants = messages.filter(m => m.role === "assistant") as AssistantMessage[];
+		const last = assistants[assistants.length - 1];
+		if (!last) throw new Error("expected an assistant message");
+		return last;
+	}
+
+	it("attaches no turnMetrics when instrumentation is off (or unset)", async () => {
+		for (const level of [undefined, "off"] as const) {
+			const assistant = finalAssistant(await runOnce(level));
+			expect(assistant.turnMetrics).toBeUndefined();
+		}
+	});
+
+	it("basic records a real, non-negative, monotonic turn with ok status", async () => {
+		const assistant = finalAssistant(await runOnce("basic"));
+		const m = assistant.turnMetrics;
+		if (!m) throw new Error("expected turnMetrics");
+		expect(m.level).toBe("basic");
+		expect(m.status).toBe("ok");
+		expect(m.endedAt).toBe(assistant.timestamp);
+		expect(m.startedAt).toBeLessThanOrEqual(m.endedAt);
+		expect(m.durationMs).toBe(m.endedAt - m.startedAt);
+		expect(m.durationMs).toBeGreaterThanOrEqual(0);
+		// basic tier stops before throughput.
+		expect(m.outputTokens).toBeUndefined();
+		expect(m.outputTokensPerSec).toBeUndefined();
+	});
+
+	it("rich records token counts consistent with the turn's own usage", async () => {
+		const assistant = finalAssistant(await runOnce("rich"));
+		const m = assistant.turnMetrics;
+		if (!m) throw new Error("expected turnMetrics");
+		expect(m.level).toBe("rich");
+		expect(m.outputTokens).toBe(300);
+		expect(m.inputTokens).toBe(100);
+		expect(m.totalTokens).toBe(assistant.usage.totalTokens);
+		expect(m.generationMs).toBeGreaterThanOrEqual(0);
+		// ultra-only detail stays out of the rich record.
+		expect(m.cacheReadTokens).toBeUndefined();
+	});
+
+	it("ultra records cache detail from the turn's usage", async () => {
+		const assistant = finalAssistant(await runOnce("ultra"));
+		const m = assistant.turnMetrics;
+		if (!m) throw new Error("expected turnMetrics");
+		expect(m.level).toBe("ultra");
+		expect(m.cacheReadTokens).toBe(20);
+		expect(m.cacheWriteTokens).toBe(10);
+	});
+});
+
+/**
+ * GRAN-6: the loop attaches the exact request params it sent to the finalized
+ * assistant message, gated by the same `instrumentation` knob. Proves the wiring
+ * end to end (loop passes effective sampling/tool-choice/service-tier through to
+ * captureAssistantTurnRequest); the field-selection/drop-undefined logic is locked
+ * in @veyyon/ai's instrumentation.test.ts.
+ */
+describe("assistant-turn request params", () => {
+	function finalAssistant(messages: AgentMessage[]): AssistantMessage {
+		const assistants = messages.filter(m => m.role === "assistant") as AssistantMessage[];
+		const last = assistants[assistants.length - 1];
+		if (!last) throw new Error("expected an assistant message");
+		return last;
+	}
+
+	function runOnce(instrumentation?: AgentLoopConfig["instrumentation"]) {
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [] };
+		const mock = createMockModel({ responses: [{ content: ["ok"] }] });
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			instrumentation,
+			temperature: 0.5,
+			topP: 0.9,
+			topK: 32,
+			maxTokens: 8192,
+			presencePenalty: 0.2,
+			toolChoice: "auto",
+			serviceTier: "priority",
+		};
+		return agentLoop([createUserMessage("go")], context, config, undefined, mock.stream).result();
+	}
+
+	it("attaches no request record when instrumentation is off", async () => {
+		const assistant = finalAssistant(await runOnce("off"));
+		expect(assistant.request).toBeUndefined();
+	});
+
+	it("records the exact sampling, tool-choice, and service-tier params as sent", async () => {
+		const assistant = finalAssistant(await runOnce("basic"));
+		const r = assistant.request;
+		if (!r) throw new Error("expected request params");
+		expect(r.temperature).toBe(0.5);
+		expect(r.topP).toBe(0.9);
+		expect(r.topK).toBe(32);
+		expect(r.maxTokens).toBe(8192);
+		expect(r.presencePenalty).toBe(0.2);
+		expect(r.toolChoice).toBe("auto");
+		expect(r.serviceTier).toBe("priority");
+	});
+});

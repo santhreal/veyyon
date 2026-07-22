@@ -11,7 +11,7 @@ import {
 import type { AgentMessage } from "../src/types";
 
 // The core-role transformer is the single source of truth for how compaction
-// messages reach the provider. snapcompact-frames.test.ts pins the
+// messages reach the provider. session-messages.test.ts pins the
 // compactionSummary+images path; this file pins every other role and the two
 // message constructors so an in-place edit to any branch is caught.
 

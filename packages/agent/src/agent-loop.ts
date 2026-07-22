@@ -6,7 +6,11 @@
 import {
 	type AssistantMessage,
 	type AssistantMessageEvent,
+	type AssistantTurnStatus,
 	type Context,
+	captureAssistantTurnMetrics,
+	captureAssistantTurnRequest,
+	captureToolCallMetrics,
 	EventStream,
 	isApiKeyResolver,
 	type Model,
@@ -14,6 +18,7 @@ import {
 	seedApiKeyResolver,
 	streamSimple,
 	stripSchemaDescriptions,
+	type ToolCallStatus,
 	type ToolChoice,
 	type ToolResultMessage,
 	type TSchema,
@@ -41,7 +46,15 @@ import {
 } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, formatCount, isRecord, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
+import {
+	errorMessage,
+	estimateTokensFromText,
+	formatCount,
+	isRecord,
+	logger,
+	sanitizeText,
+	structuredCloneJSON,
+} from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
@@ -670,11 +683,17 @@ export function normalizeTools(
 	pruneDescriptions = false,
 ): Context["tools"] {
 	if (!tools) return tools;
+	// Drop null/undefined/non-object slots so a bad registry entry cannot
+	// TypeError mid-map (adversarial / partial tool lists).
+	const valid = tools.filter(
+		(t): t is NonNullable<(typeof tools)[number]> =>
+			t !== null && t !== undefined && typeof t === "object" && typeof (t as { name?: unknown }).name === "string",
+	);
 	injectIntent = injectIntent && Bun.env.VEYYON_NO_INTENT !== "1";
 	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
 	const cached = normalizedToolsCache.get(tools);
 	if (cached && cached.key === cacheKey) return cached.result;
-	const result = tools.map(t => {
+	const result = valid.map(t => {
 		const intentMode = resolveIntentMode(t.intent);
 		const doInjectIntent = injectIntent && intentMode !== "omit";
 		// When the full catalog is rendered into the system prompt, ship the tool
@@ -1402,6 +1421,12 @@ async function streamAssistantResponse(
 
 	try {
 		return await runInActiveSpan(chatSpan, async () => {
+			// Per-turn instrumentation: stamp the request-start wall-clock at the loop
+			// boundary (same discipline as tool `startedAt`), so the turn's metrics
+			// carry an authoritative request-start the provider's relative ttft/duration
+			// cannot supply. `off` skips the clock read entirely.
+			const turnInstrumentation = config.instrumentation ?? "off";
+			const requestStartedAt = turnInstrumentation === "off" ? 0 : Date.now();
 			let response = await streamFunction(model, llmContext, {
 				...config,
 				apiKey,
@@ -1451,6 +1476,31 @@ async function streamAssistantResponse(
 					stream,
 					requestSignal,
 				);
+				if (turnInstrumentation !== "off") {
+					// The returned object IS the context/persisted message, so metrics set
+					// here reach the durable record even though the stream events already flushed.
+					aborted.turnMetrics = captureAssistantTurnMetrics({
+						level: turnInstrumentation,
+						startedAt: requestStartedAt,
+						endedAt: aborted.timestamp ?? Date.now(),
+						status: "aborted",
+						ttftMs: aborted.ttft,
+						usage: aborted.usage,
+						upstreamProvider: aborted.upstreamProvider,
+					});
+					aborted.request = captureAssistantTurnRequest({
+						level: turnInstrumentation,
+						temperature: effectiveTemperature,
+						topP: config.topP,
+						topK: config.topK,
+						maxTokens: config.maxTokens,
+						presencePenalty: config.presencePenalty,
+						reasoningEffort: effectiveReasoning,
+						disableReasoning: effectiveDisableReasoning,
+						toolChoice: effectiveToolChoice,
+						serviceTier: effectiveServiceTier,
+					});
+				}
 				await finishChat(aborted);
 				return aborted;
 			};
@@ -1509,6 +1559,31 @@ async function streamAssistantResponse(
 							}
 						}
 						finalMessage = snapshotAssistantMessage(finalMessage);
+						if (turnInstrumentation !== "off") {
+							const status: AssistantTurnStatus =
+								event.type === "error" || finalMessage.errorMessage ? "error" : "ok";
+							finalMessage.turnMetrics = captureAssistantTurnMetrics({
+								level: turnInstrumentation,
+								startedAt: requestStartedAt,
+								endedAt: finalMessage.timestamp ?? Date.now(),
+								status,
+								ttftMs: finalMessage.ttft,
+								usage: finalMessage.usage,
+								upstreamProvider: finalMessage.upstreamProvider,
+							});
+							finalMessage.request = captureAssistantTurnRequest({
+								level: turnInstrumentation,
+								temperature: effectiveTemperature,
+								topP: config.topP,
+								topK: config.topK,
+								maxTokens: config.maxTokens,
+								presencePenalty: config.presencePenalty,
+								reasoningEffort: effectiveReasoning,
+								disableReasoning: effectiveDisableReasoning,
+								toolChoice: effectiveToolChoice,
+								serviceTier: effectiveServiceTier,
+							});
+						}
 						// Expand inline macros (and any other registered rewrite) on the
 						// finalized message before it reaches the context, the UI, or tool
 						// dispatch — so a single mutation is the source of truth for all three.
@@ -1813,9 +1888,11 @@ async function executeToolCalls(
 		getToolContext,
 		transformToolCallArguments,
 		intentTracing,
+		instrumentation,
 		beforeToolCall,
 		afterToolCall,
 	} = config;
+	const instrumentationLevel = instrumentation ?? "off";
 	type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
 	// Defensive: the outer loop already filters exec-resolved blocks before
 	// deciding to invoke `executeToolCalls`, but skip them here too so the
@@ -1842,7 +1919,10 @@ async function executeToolCalls(
 		: AbortSignal.any([steeringAbortController.signal, ircAbortController.signal]);
 	const interruptState: { triggered: boolean; source?: SteeringInterruptSource | "irc" } = { triggered: false };
 
-	const records = toolCalls.map(toolCall => {
+	// Dispatch instant: instrumentation measures a call's queue wait as the gap
+	// between this and its execution start, so stamp it once, before scheduling.
+	const dispatchedAt = instrumentationLevel === "off" ? 0 : Date.now();
+	const records = toolCalls.map((toolCall, batchIndex) => {
 		// Tools emitted via OpenAI's custom-tool path (e.g. `apply_patch` on GPT-5)
 		// come back under their wire-level name, which may differ from the
 		// harness-internal `name`. Match on either, preferring `name` for
@@ -1853,9 +1933,16 @@ async function executeToolCalls(
 		return {
 			toolCall,
 			tool,
+			batchIndex,
 			args: toolCall.arguments as Record<string, unknown>,
 			signal: tool?.interruptible ? interruptibleSignal : nonInterruptibleSignal,
 			started: false,
+			// Instrumentation timing (see captureToolCallMetrics). `startedAt` stays
+			// undefined until `tool.execute()` is about to run, so a call that erred
+			// or was skipped before execution records a zero-duration, never-started
+			// span rather than a fabricated one.
+			startedAt: undefined as number | undefined,
+			concurrency: undefined as "shared" | "exclusive" | undefined,
 			result: undefined as AgentToolResult<any> | undefined,
 			isError: false,
 			skipped: false,
@@ -1930,6 +2017,30 @@ async function executeToolCalls(
 			isError,
 		});
 
+		const endedAt = Date.now();
+		const status: ToolCallStatus = record.skipped ? "skipped" : isError ? "error" : "ok";
+		const metrics =
+			instrumentationLevel === "off"
+				? undefined
+				: captureToolCallMetrics({
+						level: instrumentationLevel,
+						// A call that emitted a result without ever starting execution
+						// (early error / skip) has no real start; treat the end instant as
+						// the start so its duration reads as 0, not a negative span.
+						startedAt: record.startedAt ?? endedAt,
+						endedAt,
+						queuedAt: dispatchedAt,
+						concurrency: record.concurrency,
+						batchId,
+						batchIndex: record.batchIndex,
+						batchSize: toolCalls.length,
+						status,
+						interruptible: record.tool?.interruptible === true,
+						signalAborted: record.signal.aborted,
+						resultContent: result.content,
+						args: record.args,
+						countTokens: estimateTokensFromText,
+					});
 		const toolResultMessage: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: toolCall.id,
@@ -1938,7 +2049,8 @@ async function executeToolCalls(
 			details: result.details,
 			isError,
 			...(result.useless && !isError ? { useless: true } : {}),
-			timestamp: Date.now(),
+			...(metrics ? { metrics } : {}),
+			timestamp: endedAt,
 		};
 		record.result = result;
 		record.isError = isError;
@@ -2133,6 +2245,10 @@ async function executeToolCalls(
 							toolCalls: toolCallInfos,
 						})
 					: undefined;
+				// Execution start instant for instrumentation: set immediately before
+				// the tool runs, so `durationMs` measures the tool body alone and
+				// `queuedMs` (start − dispatch) captures the scheduling wait.
+				if (instrumentationLevel !== "off") record.startedAt = Date.now();
 				const rawResult = await tool.execute(
 					toolCall.id,
 					executionArgs,
@@ -2265,6 +2381,7 @@ async function executeToolCalls(
 		} else {
 			concurrency = concurrencyMode ?? "shared";
 		}
+		record.concurrency = concurrency;
 		const start = concurrency === "exclusive" ? Promise.all([lastExclusive, ...sharedTasks]) : lastExclusive;
 		const task = start.then(() => runTool(record, index));
 		tasks.push(task);

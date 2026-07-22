@@ -6,6 +6,7 @@ import type {
 	Context,
 	Effort,
 	ImageContent,
+	InstrumentationLevel,
 	Message,
 	Model,
 	ServiceTier,
@@ -283,6 +284,14 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * then strips from arguments before executing tools.
 	 */
 	intentTracing?: boolean;
+	/**
+	 * How densely each tool call records a study record on its result message.
+	 * `undefined`/`"off"` attaches nothing (default); higher levels attach
+	 * progressively more (see {@link InstrumentationLevel}). The loop measures
+	 * the raw timings and delegates the level→fields decision to
+	 * {@link captureToolCallMetrics}.
+	 */
+	instrumentation?: InstrumentationLevel;
 	/**
 	 * Strip tool descriptions (top-level + nested schema annotations) from the
 	 * provider-bound tool specs. Use when the full catalog is rendered into the
