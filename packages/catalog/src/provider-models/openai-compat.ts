@@ -1158,14 +1158,12 @@ export const XAI_OAUTH_CURATED_MODELS: readonly XAICuratedModel[] = [
 		id: "grok-build",
 		contextWindow: 512_000,
 		name: "Grok Build",
-		supportsReasoningEffort: false,
 		input: ["text", "image"],
 	},
 	{
 		id: "grok-build-0.1",
 		contextWindow: 256_000,
 		name: "Grok Build 0.1",
-		supportsReasoningEffort: false,
 		input: ["text", "image"],
 	},
 	{ id: "grok-4.3", contextWindow: 1_000_000, name: "Grok 4.3", input: ["text", "image"] },
@@ -2244,10 +2242,14 @@ export function openrouterModelManagerOptions(
 						reasoning: params.includes("reasoning"),
 						input: modality.includes("image") ? ["text", "image"] : ["text"],
 						cost: {
-							input: parseFloat(String(pricing?.prompt ?? "0")) * 1_000_000,
-							output: parseFloat(String(pricing?.completion ?? "0")) * 1_000_000,
-							cacheRead: parseFloat(String(pricing?.input_cache_read ?? "0")) * 1_000_000,
-							cacheWrite: parseFloat(String(pricing?.input_cache_write ?? "0")) * 1_000_000,
+							// Parse OpenRouter's per-token price strings through the shared
+							// toPositiveNumber owner (as the sibling mapper below does), not a
+							// bare parseFloat: a missing or non-numeric field must fall back to
+							// 0, never a NaN cost that silently corrupts every budget/spend sum.
+							input: toPositiveNumber(pricing?.prompt, 0) * 1_000_000,
+							output: toPositiveNumber(pricing?.completion, 0) * 1_000_000,
+							cacheRead: toPositiveNumber(pricing?.input_cache_read, 0) * 1_000_000,
+							cacheWrite: toPositiveNumber(pricing?.input_cache_write, 0) * 1_000_000,
 						},
 						contextWindow:
 							typeof entry.context_length === "number" ? entry.context_length : baseModel.contextWindow,
