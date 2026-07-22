@@ -7,7 +7,12 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { disposeAllKernelSessions, executePythonWithKernel } from "@veyyon/coding-agent/eval/py/executor";
+import {
+	disposeAllKernelSessions,
+	disposeKernelSessionsByOwner,
+	executePython,
+	executePythonWithKernel,
+} from "@veyyon/coding-agent/eval/py/executor";
 import { PythonKernel } from "@veyyon/coding-agent/eval/py/kernel";
 import { filterEnv, resolvePythonRuntime } from "@veyyon/coding-agent/eval/py/runtime";
 import { TempDir } from "@veyyon/utils";
@@ -15,6 +20,15 @@ import { TempDir } from "@veyyon/utils";
 const SHOULD_RUN = Bun.env.VEYYON_PYTHON_INTEGRATION === "1";
 const MATPLOTLIB_TEST_CWD = process.cwd();
 
+function isAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+		return true;
+	}
+}
 async function hasMatplotlib(cwd: string): Promise<boolean> {
 	if (!SHOULD_RUN) return false;
 	try {
@@ -99,18 +113,6 @@ describe.skipIf(!SHOULD_RUN)("python runner subprocess", () => {
 			expect(Number.isInteger(pid)).toBe(true);
 			expect(pid).toBeGreaterThan(1);
 
-			// `process.kill(pid, 0)` sends no signal; it only probes existence: it
-			// succeeds while the pid is live and throws ESRCH once the pid is gone.
-			const isAlive = (p: number): boolean => {
-				try {
-					process.kill(p, 0);
-					return true;
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-					return true; // EPERM etc: the process exists, we just can't signal it
-				}
-			};
-
 			expect(isAlive(pid)).toBe(true);
 
 			// The reap CONTRACT: the detached child is actually gone after shutdown, and
@@ -126,6 +128,33 @@ describe.skipIf(!SHOULD_RUN)("python runner subprocess", () => {
 			const elapsedMs = Date.now() - startedAt;
 			expect(shutdown.confirmed).toBe(true);
 			expect(elapsedMs).toBeLessThan(2_000);
+
+			let stillAlive = isAlive(pid);
+			for (let i = 0; stillAlive && i < 100; i++) {
+				await new Promise(resolve => setTimeout(resolve, 20));
+				stillAlive = isAlive(pid);
+			}
+			expect(stillAlive).toBe(false);
+		},
+	);
+
+	it.skipIf(process.platform === "win32")(
+		"disposeKernelSessionsByOwner reaps the OS python runner (GRAN-11 session-end)",
+		async () => {
+			using tempDir = TempDir.createSync("@python-owner-reap-");
+			const ownerId = `owner-reap-${Date.now()}`;
+			const result = await executePython("import os; print(os.getpid())", {
+				cwd: tempDir.path(),
+				sessionId: `session-${ownerId}`,
+				kernelMode: "session",
+				kernelOwnerId: ownerId,
+			});
+			expect(result.exitCode).toBe(0);
+			const pid = Number(result.output.trim());
+			expect(Number.isInteger(pid)).toBe(true);
+			expect(isAlive(pid)).toBe(true);
+
+			await disposeKernelSessionsByOwner(ownerId);
 
 			let stillAlive = isAlive(pid);
 			for (let i = 0; stillAlive && i < 100; i++) {

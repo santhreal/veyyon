@@ -27,18 +27,5 @@
  * @property {EmbeddedAddonArchive=} archive
  */
 
-import archivePath from "../native/embedded-addons.linux-x64.tar.gz" with { type: "file" };
-
-export const embeddedAddon = {
-	platformTag: "linux-x64",
-	version: "1.0.12",
-	archive: {
-		format: "tar.gz",
-		filename: "embedded-addons.linux-x64.tar.gz",
-		filePath: archivePath,
-	},
-	files: [
-		{ variant: "modern", filename: "veyyon_natives.linux-x64-modern.node", size: 140720424 },
-		{ variant: "baseline", filename: "veyyon_natives.linux-x64-baseline.node", size: 140720424 },
-	],
-};
+/** @type {EmbeddedAddon|null} */
+export const embeddedAddon = null;

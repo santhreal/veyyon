@@ -7,7 +7,9 @@
 	},
 	"linter": {
 		"enabled": true,
-		"includes": ["**"],
+		"includes": [
+			"**"
+		],
 		"rules": {
 			"preset": "recommended",
 			"a11y": "off",
@@ -64,8 +66,18 @@
 			"!**/agent_pb.ts",
 			"!**/devin-gen/**/*",
 			"!.worktrees/**/*",
-			"!.wt/**/*"
+			"!.wt/**/*",
+			"!packages/deepswe-bench/repo-cache/**/*",
+			"!packages/deepswe-bench/runs/**/*",
+			"!packages/deepswe-bench/deep-swe/**/*",
+			"!packages/deepswe-bench/assets/**/*"
 		]
 	},
-	"assist": { "actions": { "source": { "organizeImports": "on" } } }
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	}
 }

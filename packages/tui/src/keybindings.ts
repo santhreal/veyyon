@@ -335,3 +335,13 @@ export function getKeybindings(): KeybindingsManager {
 	}
 	return globalKeybindings;
 }
+
+/**
+ * Clear the process-global keybindings singleton. Tests that call
+ * {@link setKeybindings} must restore via this (or setKeybindings again) in
+ * afterEach — otherwise a custom binding map leaks into later suites in the
+ * same `bun test` process (FINDING-FULL-SUITE-ORDER-DEPENDENT-POLLUTION).
+ */
+export function resetKeybindingsForTests(): void {
+	globalKeybindings = null;
+}
