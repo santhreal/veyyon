@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
@@ -286,7 +287,7 @@ export const handleOpenCorporates: SpecialHandler = async (
 		md += "---\n\n";
 		if (company.source?.publisher) {
 			md += `**Source:** ${company.source.publisher}`;
-			if (company.source.url) md += ` ([registry](${company.source.url}))`;
+			if (company.source.url) md += ` (${markdownLink("registry", company.source.url)})`;
 			md += "\n";
 		}
 		if (company.registry_url) {

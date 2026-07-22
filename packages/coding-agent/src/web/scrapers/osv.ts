@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -156,7 +157,7 @@ export const handleOsv: SpecialHandler = async (
 		if (vuln.references?.length) {
 			md += "## References\n\n";
 			for (const ref of vuln.references) {
-				md += `- [${ref.type}](${ref.url})\n`;
+				md += `- ${markdownLink(ref.type, ref.url)}\n`;
 			}
 			md += "\n";
 		}

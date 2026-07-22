@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -109,7 +110,7 @@ export const handleArtifactHub: SpecialHandler = async (
 		const repoDisplay =
 			pkg.repository.organization_display_name || pkg.repository.display_name || pkg.repository.name;
 		md += `**Repository:** ${repoDisplay}`;
-		if (pkg.repository.url) md += ` ([${pkg.repository.url}](${pkg.repository.url}))`;
+		if (pkg.repository.url) md += ` (${markdownLink(pkg.repository.url, pkg.repository.url)})`;
 		md += "\n";
 
 		if (pkg.home_url) md += `**Homepage:** ${pkg.home_url}\n`;
@@ -138,7 +139,7 @@ export const handleArtifactHub: SpecialHandler = async (
 		if (pkg.links?.length) {
 			md += `\n## Links\n\n`;
 			for (const link of pkg.links) {
-				md += `- [${link.name}](${link.url})\n`;
+				md += `- ${markdownLink(link.name, link.url)}\n`;
 			}
 		}
 

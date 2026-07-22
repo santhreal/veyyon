@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import {
 	buildResult,
@@ -143,7 +144,7 @@ async function formatStatus(status: MastodonStatus, isReblog = false): Promise<s
 		md += "**Attachments:**\n";
 		for (const media of status.media_attachments) {
 			const desc = media.description ? ` - ${media.description}` : "";
-			md += `- [${media.type}](${media.url})${desc}\n`;
+			md += `- ${markdownLink(media.type, media.url)}${desc}\n`;
 		}
 		md += "\n";
 	}

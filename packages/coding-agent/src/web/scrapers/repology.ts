@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import {
 	buildResult,
@@ -255,7 +256,7 @@ export const handleRepology: SpecialHandler = async (
 			md += `\n[…${packages.length - 15} repositories elided…]\n`;
 		}
 
-		md += `\n---\n\n[View on Repology](${url})\n`;
+		md += `\n---\n\n${markdownLink("View on Repology", url)}\n`;
 
 		return buildResult(md, { url, method: "repology", fetchedAt, notes: ["Fetched via Repology API"] });
 	} catch (error) {
