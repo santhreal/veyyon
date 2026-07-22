@@ -238,6 +238,26 @@ describe("compareDottedNumeric", () => {
 		it("still ranks identical non-numeric versions equal", () => {
 			expect(compareDottedNumeric("1.x.3", "1.x.3")).toBe(0);
 		});
+
+		// REGRESSION: numeric detection used Number.parseInt, which is lenient and
+		// reads "0rc1" as 0 and "3a" as 3. A suffixed component therefore ranked
+		// equal to its bare number, so "1.0rc1" compared equal to "1.0" and "1.2.3a"
+		// equal to "1.2.3". A suffixed part is not a pure integer, so it must
+		// text-compare. These assert the pair is ordered, not equal.
+		it("does not read a digit-prefixed suffix like '0rc1' as its leading number", () => {
+			expect(compareDottedNumeric("1.0rc1", "1.0")).not.toBe(0);
+			expect(compareDottedNumeric("1.2.3a", "1.2.3")).not.toBe(0);
+			// Antisymmetry holds across the mixed numeric/text boundary.
+			expect(sign(compareDottedNumeric("1.0rc1", "1.0"))).toBe(-sign(compareDottedNumeric("1.0", "1.0rc1")));
+			expect(sign(compareDottedNumeric("1.2.3a", "1.2.3"))).toBe(-sign(compareDottedNumeric("1.2.3", "1.2.3a")));
+		});
+
+		it("keeps purely numeric components numeric so 1.2.10 still beats 1.2.9", () => {
+			// Guards against an over-broad fix that would text-compare real integers
+			// ("10" < "9" as text), which would invert the numeric ordering.
+			expect(sign(compareDottedNumeric("1.2.10", "1.2.9"))).toBe(1);
+			expect(compareDottedNumeric("1.02", "1.2")).toBe(0);
+		});
 	});
 
 	describe("agreement with the comparators this replaced", () => {
