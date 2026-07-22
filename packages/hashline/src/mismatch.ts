@@ -103,7 +103,11 @@ export class MismatchError extends Error {
 
 	static formatMessage(details: MismatchDetails): string {
 		const lines = MismatchError.rejectionHeader(details);
-		const context = formatAnchoredContext(details.anchorLines ?? [], details.fileLines);
+		let anchorLines = details.anchorLines ?? [];
+		if (anchorLines.length === 0 && details.fileLines && details.fileLines.length > 0) {
+			anchorLines = [1];
+		}
+		const context = formatAnchoredContext(anchorLines, details.fileLines);
 		if (context.length === 0) return lines.join("\n");
 		lines.push("", ...context);
 		return lines.join("\n");
