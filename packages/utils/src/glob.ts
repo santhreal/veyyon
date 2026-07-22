@@ -157,6 +157,15 @@ export async function globPaths(patterns: string | string[], options: GlobPathsO
 
 	const base = cwd ?? getProjectDir();
 	const allResults: string[] = [];
+	// Dedup across patterns: two input patterns can match the same file (e.g.
+	// `**/*.ts` and `src/**`), and a path list must not report a file twice.
+	const seen = new Set<string>();
+
+	// Compile each exclude glob once, not once per matched entry. The exclude set
+	// is fixed for the whole walk, so rebuilding a `Glob` inside the per-entry loop
+	// did O(entries * excludes) compilations — with gitignore enabled the exclude
+	// list is large, so this was the dominant cost on big trees.
+	const excludeGlobs = effectiveExclude.map(pattern => new Glob(pattern));
 
 	// Combine timeout and abort signals; the scoped handle clears its backing
 	// timer once the walk settles instead of leaving it armed like a bare
@@ -181,17 +190,17 @@ export async function globPaths(patterns: string | string[], options: GlobPathsO
 					throw new DOMException("Aborted", "AbortError");
 				}
 
-				// Check exclusion patterns
 				const normalized = entry.replace(/\\/g, "/");
+				if (seen.has(normalized)) continue;
 				let excluded = false;
-				for (const excludePattern of effectiveExclude) {
-					const excludeGlob = new Glob(excludePattern);
+				for (const excludeGlob of excludeGlobs) {
 					if (excludeGlob.match(normalized)) {
 						excluded = true;
 						break;
 					}
 				}
 				if (!excluded) {
+					seen.add(normalized);
 					allResults.push(normalized);
 				}
 			}
