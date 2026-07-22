@@ -175,4 +175,55 @@ describe("extraction integration", () => {
 		expect(delays.slice(0, 3)).toEqual([1000, 2000, 4000]);
 		expect(delays.every(delay => delay >= 1000)).toBe(true);
 	});
+
+	// Regression: the extraction user prompt is built by substituting the raw
+	// conversation into EXTRACTION_USER_TEMPLATE. `String.prototype.replace` with a
+	// STRING replacement interprets `$$`, `$&`, `` $` ``, `$'`, and `$n` as special
+	// patterns, so conversation content containing `$` (shell snippets, regex,
+	// prices) was spliced or duplicated inside the prompt. The fix passes a
+	// replacement FUNCTION, which inserts the text verbatim. These assert the exact
+	// dangerous sequences reach the user message unchanged.
+	describe("prompt template substitutes conversation text verbatim", () => {
+		async function capturePrompt(content: string): Promise<string> {
+			let userContent = "";
+			const fetchMock: FetchImpl = async (_input, init) => {
+				const payload = JSON.parse(String(init?.body)) as { messages?: Array<{ role: string; content: string }> };
+				userContent = payload.messages?.find(m => m.role === "user")?.content ?? "";
+				return new Response(JSON.stringify({ choices: [{ message: { content: "[]" } }] }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			};
+			const client = new ExtractionClient({
+				apiKey: "sk-test",
+				baseUrl: "http://openrouter.test/api/v1",
+				fetch: fetchMock,
+			});
+			await client.extractFacts([{ role: "user", content }]);
+			return userContent;
+		}
+
+		it("preserves every `$`-replacement pattern without interpreting it", async () => {
+			// Each of these would corrupt the prompt under a string replacement:
+			// `$&` inserts the matched placeholder, `` $` `` the template prefix,
+			// `$'` the suffix, `$1` an empty group, `$$` a literal single `$`.
+			const content = "regex $& and $` and $' and group $1 and literal $$ and price $5";
+			const prompt = await capturePrompt(content);
+			expect(prompt).toContain(`[0] [user]: ${content}`);
+			// The placeholder token must be gone: substitution happened exactly once.
+			expect(prompt).not.toContain("{conversation_text}");
+			// `$&` must NOT have expanded to the placeholder literal.
+			expect(prompt).not.toContain("regex {conversation_text} and");
+		});
+
+		it("keeps a code snippet with `$'` from duplicating the template body", async () => {
+			// `` $` `` and `$'` splice the pre-/post-match text; a template that put
+			// instructions before the placeholder would otherwise repeat them here.
+			const content = "const s = `a${x}b`; // trailing $' quote";
+			const prompt = await capturePrompt(content);
+			expect(prompt).toContain(`[0] [user]: ${content}`);
+			// The instruction sentence appears once, not duplicated by a `` $` `` splice.
+			expect(prompt.split("Extract all structured facts").length).toBe(2);
+		});
+	});
 });
