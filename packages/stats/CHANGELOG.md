@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The Gain tab (`/#/gain`) and its snapcompact token-savings aggregator, following removal of the `snap` compaction strategy.
+
 ## [16.4.7] - 2026-07-12
 
 ### Fixed

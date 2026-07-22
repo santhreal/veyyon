@@ -218,6 +218,36 @@ export function renderDelimitedThinking(open: string, close: string, text: strin
 	return `${open}\n${unwrapDelimitedThinking(open, close, text)}\n${close}`;
 }
 
+/**
+ * The `<think>` envelope shared by every ChatML-style dialect (deepseek, glm,
+ * hermes, kimi, pi-native, qwen3). Gemini deliberately differs and keeps its own
+ * fenced ` ```thinking ` delimiters.
+ */
+export const THINK_OPEN = "<think>";
+export const THINK_CLOSE = "</think>";
+
+/**
+ * Render thinking text inside the shared `<think>` envelope. Collapses tags that
+ * are already present rather than nesting a second envelope around them.
+ */
+export function renderThinkTags(text: string): string {
+	return renderDelimitedThinking(THINK_OPEN, THINK_CLOSE, text);
+}
+
+/**
+ * The longer `<thinking>` envelope used by the XML-style dialects (anthropic,
+ * minimax, xml). Deliberately distinct from the `<think>` envelope above: the
+ * two tag families are not interchangeable, so they get separate owners rather
+ * than one flag-switched constant.
+ */
+export const XML_THINKING_OPEN = "<thinking>";
+export const XML_THINKING_CLOSE = "</thinking>";
+
+/** Render thinking text inside the shared `<thinking>` envelope. */
+export function renderXmlThinkingTags(text: string): string {
+	return renderDelimitedThinking(XML_THINKING_OPEN, XML_THINKING_CLOSE, text);
+}
+
 export function chatMlTurn(role: "assistant" | "system" | "tool" | "user", body: string): string {
 	return `<|im_start|>${role}\n${body}<|im_end|>\n`;
 }

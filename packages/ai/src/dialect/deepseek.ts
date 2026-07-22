@@ -2,7 +2,15 @@ import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./deepseek.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJson } from "./rendering";
+import {
+	assistantTranscriptParts,
+	collectToolResultRun,
+	messageContentText,
+	renderThinkTags,
+	stringifyJson,
+	THINK_CLOSE,
+	THINK_OPEN,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -24,8 +32,6 @@ const DEEPSEEK_USER = "<｜User｜>";
 const DEEPSEEK_ASSISTANT = "<｜Assistant｜>";
 const DEEPSEEK_EOS = "<｜end▁of▁sentence｜>";
 
-const THINK_OPEN = "<think>";
-const THINK_CLOSE = "</think>";
 const LEGACY_TOOL_TYPE = "function";
 const LEGACY_JSON_FENCE = "```json";
 const CODE_FENCE = "```";
@@ -567,8 +573,7 @@ function renderToolResults(results: readonly DialectToolResult[], _options: Dial
 }
 
 function renderThinking(text: string): string {
-	if (!text) return "";
-	return `${THINK_OPEN}\n${text}\n${THINK_CLOSE}`;
+	return renderThinkTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

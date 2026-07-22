@@ -13,8 +13,11 @@ import {
 	assistantTranscriptParts,
 	collectToolResultRun,
 	messageContentText,
+	renderThinkTags,
 	renderToolResponseResults,
 	stringifyJson,
+	THINK_CLOSE,
+	THINK_OPEN,
 } from "./rendering";
 import type {
 	DialectDefinition,
@@ -33,8 +36,6 @@ const ARG_VALUE_OPEN = "<arg_value>";
 const ARG_VALUE_CLOSE = "</arg_value>";
 const RESPONSE_OPEN = "<tool_response>";
 const RESPONSE_CLOSE = "</tool_response>";
-const THINK_OPEN = "<think>";
-const THINK_CLOSE = "</think>";
 
 const OUTSIDE_TAGS = [
 	TOOL_OPEN,
@@ -536,8 +537,7 @@ function renderToolResults(results: readonly DialectToolResult[]): string {
 }
 
 function renderThinking(text: string): string {
-	if (!text) return "";
-	return `${THINK_OPEN}\n${text}\n${THINK_CLOSE}`;
+	return renderThinkTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

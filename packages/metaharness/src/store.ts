@@ -10,6 +10,7 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isProcessAlive } from "@veyyon/utils";
 import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { readBenchmarkSnapshot } from "./benchmarks";
 import { readJobResult } from "./runner";
@@ -17,7 +18,7 @@ import { readJobResult } from "./runner";
 export type RunStatus = "running" | "complete" | "failed" | "cancelled";
 
 /** Benchmark implementation that produced a run. */
-export type BenchmarkKind = "harbor" | "edit" | "snapcompact";
+export type BenchmarkKind = "harbor" | "edit";
 
 /** How a run relates to its experiment's question. */
 export type RunRole = "baseline" | "variant" | "";
@@ -451,7 +452,7 @@ export class RunStore {
 			// the real status — the workload may have completed, or may still be
 			// running as an orphan.
 			const row = this.getRun(job_name);
-			if (row?.pid != null && !processAlive(row.pid)) {
+			if (row?.pid != null && !isProcessAlive(row.pid)) {
 				this.#db.query("UPDATE runs SET pid = NULL WHERE job_name = ?").run(job_name);
 			}
 			const synced = this.syncRun(job_name);
@@ -574,13 +575,4 @@ function jobDirMtime(dir: string): number {
 
 function jobDirFresh(dir: string): boolean {
 	return Date.now() - jobDirMtime(dir) < JOB_DIR_STALE_MS;
-}
-
-function processAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
-	}
 }

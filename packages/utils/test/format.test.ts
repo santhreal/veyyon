@@ -83,6 +83,17 @@ describe("formatNumber", () => {
 		expect(formatNumber(1_500_000_000)).toBe("1.5B");
 		expect(formatNumber(25_000_000_000)).toBe("25B");
 	});
+
+	// Regression lock: NaN/Infinity previously fell through every threshold to the
+	// billions branch and rendered "NaNB"/"InfinityB". They now return "0", matching
+	// formatCount/formatDuration's non-finite handling. Signed negatives keep their
+	// sign (a negative delta is a valid display value), unlike duration.
+	it("renders non-finite input as 0 and keeps signed negatives", () => {
+		expect(formatNumber(Number.NaN)).toBe("0");
+		expect(formatNumber(Number.POSITIVE_INFINITY)).toBe("0");
+		expect(formatNumber(Number.NEGATIVE_INFINITY)).toBe("0");
+		expect(formatNumber(-5)).toBe("-5");
+	});
 });
 
 describe("formatBytes", () => {
@@ -93,6 +104,16 @@ describe("formatBytes", () => {
 		expect(formatBytes(1536)).toBe("1.5KB");
 		expect(formatBytes(2.3 * 1024 * 1024)).toBe("2.3MB");
 		expect(formatBytes(1.2 * 1024 * 1024 * 1024)).toBe("1.2GB");
+	});
+
+	// Regression lock: NaN/Infinity previously fell through to the GB branch and
+	// rendered "NaNGB"/"InfinityGB". They now return "0B", matching the house
+	// non-finite convention. Signed negatives keep their sign.
+	it("renders non-finite input as 0B and keeps signed negatives", () => {
+		expect(formatBytes(Number.NaN)).toBe("0B");
+		expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("0B");
+		expect(formatBytes(Number.NEGATIVE_INFINITY)).toBe("0B");
+		expect(formatBytes(-512)).toBe("-512B");
 	});
 });
 
@@ -128,6 +149,18 @@ describe("formatAge", () => {
 		expect(formatAge(14 * 86_400)).toBe("2w ago");
 		expect(formatAge(90 * 86_400)).toBe("3mo ago");
 	});
+
+	// Regression lock: a negative age (a future timestamp from bad data or clock
+	// skew) previously fell through every `> 0` branch and returned "just now",
+	// mislabeling a future-dated item as freshly published. formatAge now treats
+	// a negative age as unknown ("") like its sibling renderers. If the `< 0`
+	// guard is removed, these fall back to "just now" and fail.
+	it("returns empty for a negative (future) age instead of 'just now'", () => {
+		expect(formatAge(-1)).toBe("");
+		expect(formatAge(-30)).toBe("");
+		expect(formatAge(-90 * 86_400)).toBe("");
+		expect(formatAge(Number.NEGATIVE_INFINITY)).toBe("");
+	});
 });
 
 describe("formatPercent", () => {
@@ -135,5 +168,18 @@ describe("formatPercent", () => {
 		expect(formatPercent(0)).toBe("0.0%");
 		expect(formatPercent(0.1234)).toBe("12.3%");
 		expect(formatPercent(1)).toBe("100.0%");
+	});
+
+	// A ratio above 1 is a legitimate above-100% value and must not be clamped.
+	it("renders above-100% ratios without clamping", () => {
+		expect(formatPercent(1.5)).toBe("150.0%");
+	});
+
+	// Regression lock: a 0/0 ratio is NaN and previously rendered "NaN%". It now
+	// returns "0.0%", matching the house non-finite convention.
+	it("renders non-finite input as 0.0%", () => {
+		expect(formatPercent(Number.NaN)).toBe("0.0%");
+		expect(formatPercent(Number.POSITIVE_INFINITY)).toBe("0.0%");
+		expect(formatPercent(0 / 0)).toBe("0.0%");
 	});
 });

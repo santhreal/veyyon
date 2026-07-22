@@ -6,6 +6,7 @@ import {
 	oscChannelTo8Bit,
 	PAINT_GROUND_AUTO_TOLERANCE,
 	parseHexColor,
+	planPaintGround,
 	resolvePaintGround,
 } from "../src/paint-ground";
 
@@ -111,6 +112,65 @@ describe("resolvePaintGround", () => {
 		expect(resolvePaintGround("auto", "#000000", boundary)).toBe(true);
 		const beyond = `#${(PAINT_GROUND_AUTO_TOLERANCE + 1).toString(16).padStart(2, "0")}0000`;
 		expect(resolvePaintGround("auto", "#000000", beyond)).toBe(false);
+	});
+});
+
+describe("planPaintGround", () => {
+	// The consumer-facing decision: what the interactive-mode wiring does with a
+	// theme's ground, the setting, and the terminal background. It exists so the
+	// "theme declares no ground" branch — the reason the whole setting was dead
+	// until it was wired — is tested without a TUI harness. It must compose
+	// resolvePaintGround, never re-derive the auto-seam rule.
+
+	describe("a theme with a declared ground", () => {
+		test("paints that exact color when the policy says to", () => {
+			// always → the ground is what gets painted, byte for byte.
+			expect(planPaintGround("always", "#282A36", "#FFFFFF")).toEqual({
+				paint: "#282A36",
+				unhonoredAlways: false,
+			});
+			// auto on a near-match paints the THEME ground, not the terminal's color.
+			expect(planPaintGround("auto", "#000000", "#0E0E10")).toEqual({
+				paint: "#000000",
+				unhonoredAlways: false,
+			});
+		});
+
+		test("inherits (paint null) when the policy declines, never flagging always", () => {
+			expect(planPaintGround("never", "#282A36", "#282A36")).toEqual({ paint: null, unhonoredAlways: false });
+			// auto with a visible seam declines: a real ground exists, so this is a
+			// policy choice, not an unhonored request.
+			expect(planPaintGround("auto", "#000000", "#282A36")).toEqual({ paint: null, unhonoredAlways: false });
+			expect(planPaintGround("auto", "#000000", undefined)).toEqual({ paint: null, unhonoredAlways: false });
+		});
+
+		test("decides identically to resolvePaintGround for every policy", () => {
+			// Locks the composition: plan.paint is non-null exactly when the shared
+			// rule says paint, so the auto-seam logic can never fork.
+			for (const setting of ["auto", "always", "never"] as const) {
+				for (const term of ["#000000", "#282A36", undefined]) {
+					const painted = planPaintGround(setting, "#000000", term).paint !== null;
+					expect(painted).toBe(resolvePaintGround(setting, "#000000", term));
+				}
+			}
+		});
+	});
+
+	describe("a theme with no declared ground", () => {
+		test("never paints, because painting would invent a color the theme never chose", () => {
+			expect(planPaintGround("auto", undefined, "#000000").paint).toBeNull();
+			expect(planPaintGround("never", undefined, "#000000").paint).toBeNull();
+			expect(planPaintGround("always", undefined, "#000000").paint).toBeNull();
+		});
+
+		test("flags only always as unhonored, so the user hears why nothing painted", () => {
+			// always is the one policy the user explicitly asked to paint; auto/never
+			// inheriting on a groundless theme is expected and stays quiet (Law 10:
+			// surface the surprising case, not the ordinary one).
+			expect(planPaintGround("always", undefined, "#000000").unhonoredAlways).toBe(true);
+			expect(planPaintGround("auto", undefined, "#000000").unhonoredAlways).toBe(false);
+			expect(planPaintGround("never", undefined, "#000000").unhonoredAlways).toBe(false);
+		});
 	});
 });
 

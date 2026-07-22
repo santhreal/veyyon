@@ -1,0 +1,14 @@
+# Argot pilot: the 10 DeepSWE tasks whose repos carry the most repeated-token
+# mass for the codec to compress, by the SDK's estimatedSavings over a
+# generated AGENTS.dict (dicts/report.md, 2026-07-22). Spans easy to hard
+# reference patches; overlaps the hard pilot-10 where the mass is.
+kgateway-consistent-hash-policy
+psd-tools-blend-range-api
+opa-rego-rule-profiling
+opa-template-string-reconstruction
+fastapi-deprecation-response-headers
+fastapi-implicit-head-options
+prometheus-transactional-reload-status
+prometheus-typed-label-sorting
+valibot-recursive-schema-composition
+effect-sse-httpapi-streaming

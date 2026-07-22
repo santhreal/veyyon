@@ -134,6 +134,69 @@ describe("builtin-defaults rule provider", () => {
 		});
 	});
 
+	// Regression for HUNT-rule-importtype-dynamic: the old condition was the bare
+	// `import\(`, a substring of every runtime `await import("./mod")`, so a valid
+	// dynamic value import matched AND (interruptMode defaulting to "always")
+	// aborted the stream. The condition now requires a member access on the import
+	// (`import(...).X`), which is the inline-type-import shape, and interruptMode is
+	// "never" so a residual match only advises, never aborts.
+	it("fires ts-import-type on inline type imports but not on runtime dynamic imports", async () => {
+		const rules = await loadBuiltinRules();
+		const rule = rules.find(r => r.name === "ts-import-type");
+		if (!rule) throw new Error("ts-import-type rule missing");
+		expect(rule.interruptMode).toBe("never");
+
+		const manager = new TtsrManager();
+		expect(manager.addRule(rule)).toBe(true);
+
+		// Inline type imports (member access on the import) DO fire.
+		for (const snippet of ['function f(c: import("some-sdk").Client) {}', 'type T = import("./types").Config;']) {
+			manager.resetBuffer();
+			expect(
+				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }).map(r => r.name),
+				snippet,
+			).toEqual(["ts-import-type"]);
+		}
+
+		// Runtime dynamic value imports must NOT fire (the false-positive/abort bug).
+		for (const snippet of ['const m = await import("./mod");', 'await import("node:fs");', 'return import("./lazy");']) {
+			manager.resetBuffer();
+			expect(
+				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }),
+				snippet,
+			).toEqual([]);
+		}
+	});
+
+	// Regression for HUNT-rule-noany-wordboundary: `: any|as any` lacked a trailing
+	// word boundary, so it matched inside longer identifiers (`: anyOf<T>`,
+	// `as anyMock`). The condition now ends each alternative with `\b`.
+	it("fires ts-no-any on real any annotations but not on identifiers that merely start with 'any'", async () => {
+		const rules = await loadBuiltinRules();
+		const rule = rules.find(r => r.name === "ts-no-any");
+		if (!rule) throw new Error("ts-no-any rule missing");
+
+		const manager = new TtsrManager();
+		expect(manager.addRule(rule)).toBe(true);
+
+		for (const snippet of ["const x: any = 1;", "return v as any;"]) {
+			manager.resetBuffer();
+			expect(
+				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }).map(r => r.name),
+				snippet,
+			).toEqual(["ts-no-any"]);
+		}
+
+		// `any` as the head of a longer identifier is not the `any` type.
+		for (const snippet of ["const x: anyOf<T> = f();", "const y = v as anyMockClient;"]) {
+			manager.resetBuffer();
+			expect(
+				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }),
+				snippet,
+			).toEqual([]);
+		}
+	});
+
 	it("fires the no-test-timers rule on real timers in *.test.ts but not plain *.ts", async () => {
 		const rules = await loadBuiltinRules();
 		const rule = rules.find(r => r.name === "ts-no-test-timers");

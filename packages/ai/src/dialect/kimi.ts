@@ -2,7 +2,15 @@ import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import { normalizeKimiFunctionName, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./kimi.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJson } from "./rendering";
+import {
+	assistantTranscriptParts,
+	collectToolResultRun,
+	messageContentText,
+	renderThinkTags,
+	stringifyJson,
+	THINK_CLOSE,
+	THINK_OPEN,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -19,8 +27,6 @@ export const KIMI_CALL_END = "<|tool_call_end|>";
 export const KIMI_ARG_BEGIN = "<|tool_call_argument_begin|>";
 
 const TOKENS = [KIMI_SECTION_BEGIN, KIMI_SECTION_END, KIMI_CALL_BEGIN, KIMI_CALL_END, KIMI_ARG_BEGIN] as const;
-const THINK_OPEN = "<think>";
-const THINK_CLOSE = "</think>";
 const TOKENS_THINK = [
 	KIMI_SECTION_BEGIN,
 	KIMI_SECTION_END,
@@ -285,8 +291,7 @@ function renderToolResults(results: readonly DialectToolResult[], _options?: Dia
 }
 
 function renderThinking(text: string): string {
-	if (!text) return "";
-	return `${THINK_OPEN}\n${text}\n${THINK_CLOSE}`;
+	return renderThinkTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], _options?: DialectRenderOptions): string {

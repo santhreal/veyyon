@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith } from "../src/atomic-write";
+import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith, atomicWriteJson } from "../src/atomic-write";
 import { TempDir } from "../src/temp";
 
 describe("atomicWriteFile", () => {
@@ -336,7 +336,7 @@ async function walkTsSources(dir: string, out: string[]): Promise<void> {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			// `argot` is vendored standalone SDK code (src/argot/constants.ts): kept
-			// byte-for-byte in sync with santhsecurity/argot, it cannot import
+			// byte-for-byte in sync with santhreal/argot, it cannot import
 			// @veyyon/utils, so it carries its own util copies by design — skip like vendor.
 			if (
 				entry.name === "node_modules" ||
@@ -380,5 +380,63 @@ describe("atomic-write source lock", () => {
 			"new hand-rolled temp+rename — call atomicWriteFile/atomicWriteFileWith from @veyyon/utils instead",
 		).toEqual([]);
 		expect(staleAllowed, "allow-listed file no longer hand-rolls temp+rename — remove it from the list").toEqual([]);
+	});
+});
+
+/**
+ * `atomicWriteJson` is the single owner of "serialize as pretty JSON + atomic
+ * write" used by every on-disk registry/config writer. Before it existed, the
+ * plugins installed-registry and marketplace-registry each hand-rolled
+ * `atomicWriteFile(path, JSON.stringify(data, null, 2) + "\n")`; these tests lock
+ * the exact serialization contract (2-space indent, single trailing newline,
+ * round-trippable) so no writer drifts on formatting.
+ */
+describe("atomicWriteJson", () => {
+	let dir: TempDir;
+
+	beforeEach(async () => {
+		dir = await TempDir.create("@pi-atomic-json-");
+	});
+
+	afterEach(async () => {
+		await dir.remove();
+	});
+
+	it("writes 2-space-indented JSON with exactly one trailing newline", async () => {
+		const target = path.join(dir.path(), "reg.json");
+		await atomicWriteJson(target, { version: 2, plugins: { "a@b": [] } });
+
+		expect(fs.readFileSync(target, "utf8")).toBe('{\n  "version": 2,\n  "plugins": {\n    "a@b": []\n  }\n}\n');
+	});
+
+	it("round-trips through JSON.parse", async () => {
+		const target = path.join(dir.path(), "reg.json");
+		const data = { version: 2, plugins: { "x@y": [{ scope: "user", installPath: "/p", enabled: true }] } };
+		await atomicWriteJson(target, data);
+
+		expect(JSON.parse(fs.readFileSync(target, "utf8"))).toEqual(data);
+	});
+
+	it("creates missing parent directories", async () => {
+		const target = path.join(dir.path(), "nested", "deep", "reg.json");
+		await atomicWriteJson(target, { ok: 1 });
+
+		expect(JSON.parse(fs.readFileSync(target, "utf8"))).toEqual({ ok: 1 });
+	});
+
+	it("fully replaces a larger prior file, never leaving a tail", async () => {
+		const target = path.join(dir.path(), "reg.json");
+		await atomicWriteJson(target, { big: "x".repeat(5000) });
+		await atomicWriteJson(target, { small: 1 });
+
+		expect(fs.readFileSync(target, "utf8")).toBe('{\n  "small": 1\n}\n');
+	});
+
+	it("defaults the created file to owner-only 0o600 permissions", async () => {
+		if (process.platform === "win32") return; // POSIX mode bits only
+		const target = path.join(dir.path(), "secret.json");
+		await atomicWriteJson(target, { token: "abc" });
+
+		expect(fs.statSync(target).mode & 0o777).toBe(0o600);
 	});
 });

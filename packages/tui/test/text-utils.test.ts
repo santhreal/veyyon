@@ -3,6 +3,7 @@ import {
 	clamp,
 	encodeTextSized,
 	extractSegments,
+	padLineToWidth,
 	sanitizeSingleLine,
 	sliceWithWidth,
 	truncateToWidth,
@@ -211,5 +212,55 @@ describe("clamp", () => {
 			if (/(?:function\s+clamp\b|(?:const|let)\s+clamp\s*=)/.test(src)) definitions.push(`tui/src/${rel}`);
 		}
 		expect(definitions).toEqual([]);
+	});
+});
+
+// padLineToWidth is the single owner of "fit a line to exactly `width` visible
+// columns" — three byte-identical `clampLine` copies (setup-wizard splash/outro/
+// wizard-overlay) plus a subtly-wrong `padLine` in the tiny-title progress box
+// collapsed into it. These tests lock its exact-width contract, most importantly
+// the wide-character boundary case the old `padLine` got wrong (it truncated on a
+// double-width cell and left `width - 1` columns, breaking box-border alignment).
+describe("padLineToWidth", () => {
+	it("pads a short line to exactly width with spaces", () => {
+		expect(padLineToWidth("hi", 5)).toBe("hi   ");
+		expect(visibleWidth(padLineToWidth("hi", 5))).toBe(5);
+	});
+
+	it("leaves an exactly-width line unchanged", () => {
+		expect(padLineToWidth("hello", 5)).toBe("hello");
+	});
+
+	it("truncates an overflowing line down to exactly width (default ellipsis)", () => {
+		// truncateToWidth's default ellipsis fills the boundary column, so an
+		// overflowing line becomes `width - 1` real columns plus the "…" glyph.
+		// This matches what the old clampLine copies produced (same default call).
+		const out = padLineToWidth("hello world", 5);
+		expect(visibleWidth(out)).toBe(5);
+		expect(out).toBe("hell…");
+	});
+
+	it("pads an empty line to a full row of spaces", () => {
+		expect(padLineToWidth("", 4)).toBe("    ");
+	});
+
+	it("re-pads to exactly width when truncation lands on a wide-character boundary", () => {
+		// "a你" is 1 + 2 = 3 visible columns. Fitting it to width 2 cannot keep the
+		// double-width "你" (it would overflow), so truncation yields the 1-column
+		// "a"; padLineToWidth must then add one trailing space to reach exactly 2.
+		// The old tiny-title `padLine` skipped this re-pad and returned width 1,
+		// which misaligned the surrounding box border.
+		const out = padLineToWidth("a你", 2);
+		expect(visibleWidth(out)).toBe(2);
+		expect(out.startsWith("a")).toBe(true);
+	});
+
+	it("always returns exactly width visible columns across mixed inputs", () => {
+		const samples = ["", "x", "ascii", "a你b", "你好世界", "\x1b[31mred\x1b[0m", "tab\tsep"];
+		for (const s of samples) {
+			for (const w of [1, 3, 6, 12]) {
+				expect(visibleWidth(padLineToWidth(s, w))).toBe(w);
+			}
+		}
 	});
 });

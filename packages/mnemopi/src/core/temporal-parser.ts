@@ -209,6 +209,20 @@ export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalD
 		return [d, "day", [isoDate(d), dayName(d)]];
 	}
 
+	// Compound phrases MUST be matched before the single words they contain:
+	// "day before yesterday" contains "yesterday" and "day after tomorrow"
+	// contains "tomorrow", so a bare yesterday/tomorrow check first would shadow
+	// them and resolve two days off. Order is the contract here.
+	if (/\bday\s+after\s+tomorrow\b/.test(textLower)) {
+		const d = addDays(ref, 2);
+		return [d, "day", [isoDate(d), dayName(d), "day after tomorrow"]];
+	}
+
+	if (/\bday\s+before\s+yesterday\b/.test(textLower)) {
+		const d = addDays(ref, -2);
+		return [d, "day", [isoDate(d), dayName(d), "day before yesterday"]];
+	}
+
 	if (/\byesterday\b/.test(textLower)) {
 		const d = addDays(ref, -1);
 		return [d, "day", [isoDate(d), dayName(d), "yesterday"]];
@@ -217,11 +231,6 @@ export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalD
 	if (/\btomorrow\b/.test(textLower)) {
 		const d = addDays(ref, 1);
 		return [d, "day", [isoDate(d), dayName(d), "tomorrow"]];
-	}
-
-	if (/\bday before yesterday\b/.test(textLower) || /\bday\s+before\s+yesterday\b/.test(textLower)) {
-		const d = addDays(ref, -2);
-		return [d, "day", [isoDate(d)]];
 	}
 
 	m =

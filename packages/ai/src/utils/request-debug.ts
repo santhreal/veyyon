@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
+import { logger } from "@veyyon/utils";
 import type { FetchImpl } from "../types";
 
 const REQUEST_DEBUG_ENV = "VEYYON_REQ_DEBUG";
@@ -134,13 +135,17 @@ class FileRequestDebugSession implements RequestDebugSession {
 
 	async openResponseLog(statusLine: string, headers?: RequestDebugHeaders): Promise<RequestDebugResponseLog> {
 		const handle = await fs.open(this.responsePath, this.#overwriteResponseLog ? "w" : "wx");
-		const headerBlock = formatResponseHeaderBlock(statusLine, headers);
-		await handle.write(textEncoder.encode(headerBlock));
-		return new FileRequestDebugResponseLog(handle);
+		const log = new FileRequestDebugResponseLog(handle, this.responsePath);
+		// Through the log's own write, not the raw handle: a failure here is the same
+		// kind of failure as one mid-body and has to be absorbed the same way. Writes
+		// are chained in order, so the header still lands ahead of the first chunk.
+		log.write(formatResponseHeaderBlock(statusLine, headers));
+		return log;
 	}
 
 	async wrapResponse(response: Response): Promise<Response> {
-		const log = await this.openResponseLog(`HTTP ${response.status} ${response.statusText}`.trim(), response.headers);
+		const log = await this.#openResponseLogOrNull(response);
+		if (!log) return response;
 		if (!response.body) {
 			await log.close();
 			return response;
@@ -180,23 +185,66 @@ class FileRequestDebugSession implements RequestDebugSession {
 		copyResponseMetadata(wrapped, response);
 		return wrapped;
 	}
+
+	/**
+	 * Opening the log can fail on its own: a read-only directory, a name already
+	 * taken, or no file descriptors left. That is a reason to stop recording, not
+	 * a reason to fail the request, so the caller gets the untouched response and
+	 * an error in the log saying why nothing was captured.
+	 */
+	async #openResponseLogOrNull(response: Response): Promise<RequestDebugResponseLog | undefined> {
+		try {
+			return await this.openResponseLog(`HTTP ${response.status} ${response.statusText}`.trim(), response.headers);
+		} catch (error) {
+			logger.error("Request debug log could not be opened; this response was not recorded", {
+				path: this.responsePath,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return undefined;
+		}
+	}
 }
 
+/**
+ * Writes the response body to the debug log without ever putting that log
+ * between the user and their response.
+ *
+ * `VEYYON_REQ_DEBUG` is an observability flag, so its failures are reported and
+ * survived rather than propagated. A rejected write used to travel out through
+ * `close()` into the stream `pull` that awaited it, which called
+ * `controller.error(...)` and killed the real model response. Turning on
+ * request logging and then running out of disk ended the session with an error
+ * about a file the user was not reading, in the middle of a request that had
+ * already succeeded.
+ *
+ * Dropping the write instead is only acceptable because it is loud: the first
+ * failure logs at error level naming the file and the cause, and every
+ * subsequent chunk for that log is discarded without repeating the message. The
+ * log is then knowingly incomplete rather than quietly truncated.
+ */
 class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 	#handle: fs.FileHandle | undefined;
 	#pending: Promise<void> = Promise.resolve();
 	#closed: Promise<void> | undefined;
+	#failed = false;
+	readonly #path: string;
 
-	constructor(handle: fs.FileHandle) {
+	constructor(handle: fs.FileHandle, path: string) {
 		this.#handle = handle;
+		this.#path = path;
 	}
 
 	write(chunk: Uint8Array | string): void {
 		const handle = this.#handle;
-		if (!handle) return;
+		if (!handle || this.#failed) return;
 		const bytes = typeof chunk === "string" ? textEncoder.encode(chunk) : chunk.slice();
 		this.#pending = this.#pending.then(async () => {
-			await handle.write(bytes);
+			if (this.#failed) return;
+			try {
+				await handle.write(bytes);
+			} catch (error) {
+				this.#reportFailure(error);
+			}
 		});
 	}
 
@@ -209,10 +257,23 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 			try {
 				await this.#pending;
 			} finally {
-				await handle.close();
+				try {
+					await handle.close();
+				} catch (error) {
+					this.#reportFailure(error);
+				}
 			}
 		})();
 		return this.#closed;
+	}
+
+	#reportFailure(error: unknown): void {
+		if (this.#failed) return;
+		this.#failed = true;
+		logger.error("Request debug log failed; the rest of this response was not recorded", {
+			path: this.#path,
+			error: error instanceof Error ? error.message : String(error),
+		});
 	}
 }
 

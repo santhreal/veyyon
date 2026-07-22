@@ -101,7 +101,7 @@ describe("hasUrlScheme / urlScheme (anchored scheme prefix)", () => {
 
 // `containsUrlScheme` / `URL_SCHEME_ANYWHERE_RE` is the unanchored sibling: the
 // ONE owner for "is this a URL rather than a file" in compaction file-summary
-// passes (snapcompact, agent/compaction). It matches a scheme anywhere so the
+// passes (agent/compaction). It matches a scheme anywhere so the
 // tolerated `file.ts:conflict://1` prefix form still counts as a URL.
 describe("containsUrlScheme (unanchored)", () => {
 	it("matches a scheme:// anywhere, not only at the start", () => {

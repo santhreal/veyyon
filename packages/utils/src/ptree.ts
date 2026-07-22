@@ -251,7 +251,13 @@ export class ChildProcess<In extends InMask = InMask> {
 		// stream emits more than one chunk (subprocess stdout chunks past ~128 KB).
 		// Normalize at the contract boundary so every caller — SSH read,
 		// `decodeUtf8Text`, callers slicing with `.subarray` — sees a `Uint8Array`.
-		const body = (await new Response(this.stdout).bytes()) as Uint8Array | ArrayBuffer;
+		// `Response.bytes()` exists at runtime (Bun) but is absent from the
+		// constructor's DOM-lib type here (unlike a `fetch()` result, which types
+		// it), so annotate the call. The union return is the Bun quirk the comment
+		// above describes; the cast carries no runtime effect.
+		const body = await (
+			new Response(this.stdout) as Response & { bytes(): Promise<Uint8Array | ArrayBuffer> }
+		).bytes();
 		return body instanceof Uint8Array ? body : new Uint8Array(body);
 	}
 

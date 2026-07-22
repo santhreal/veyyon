@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/santhsecurity/veyyon.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/stats"
   },
   "bugs": {
-    "url": "https://github.com/santhsecurity/veyyon/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "ai",

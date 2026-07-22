@@ -79,6 +79,87 @@ export function hostMatchesUrl(baseUrl: string | undefined, host: KnownHost): bo
 	return false;
 }
 
+/**
+ * True when `baseUrl` points at a machine on the local network.
+ *
+ * This is how a llama.cpp, vLLM or sglang server registered under a
+ * user-defined provider id in `models.yaml` is recognised as local, since it
+ * matches no known host and no built-in provider id. Two behaviours key off it:
+ * append-only context mode, which is what makes prefix KV-cache reuse possible,
+ * and the OpenAI chat-completions compat record.
+ *
+ * It answers "is this host on my network", so it covers loopback, the RFC1918
+ * private IPv4 ranges, and `.local` mDNS names, which is what a home-LAN box
+ * running llama.cpp is usually reachable as. The match is on the parsed
+ * hostname only, so ports and paths never affect it.
+ *
+ * There is exactly one copy of this on purpose: it decides whether a real
+ * performance feature engages, and two copies would eventually disagree about
+ * which hosts are local, giving the same server different behaviour depending
+ * on which code path reached it first.
+ */
+export function hasLocalLoopbackBaseUrl(baseUrl: string | undefined): boolean {
+	if (!baseUrl) return false;
+	let hostname: string;
+	try {
+		hostname = new URL(baseUrl).hostname.toLowerCase();
+	} catch {
+		// An unparseable baseUrl is not a local host, and it is not this
+		// predicate's business to report it: whatever tries to USE the URL fails
+		// loudly on its own, and warning here would fire on every model lookup.
+		return false;
+	}
+	if (
+		hostname === "localhost" ||
+		hostname === "127.0.0.1" ||
+		hostname === "0.0.0.0" ||
+		hostname === "::1" ||
+		hostname === "[::1]"
+	) {
+		return true;
+	}
+	if (/^10\./.test(hostname)) return true;
+	if (/^192\.168\./.test(hostname)) return true;
+	if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) return true;
+	if (hostname.endsWith(".local")) return true;
+	return false;
+}
+
+/**
+ * Explain why a `baseUrl` is not a usable model endpoint, or `null` when it is.
+ *
+ * A model `baseUrl` becomes a request URL through `new URL(baseUrl)`, and it
+ * flows through `hasLocalLoopbackBaseUrl`, which decides whether prefix
+ * KV-cache reuse can engage. Both need an absolute http(s) URL, and a
+ * scheme-less value is neither: `new URL("192.168.1.5:8080")` throws outright,
+ * and `new URL("localhost:11434")` is worse, parsing to an empty hostname with
+ * protocol `localhost:`, so the request goes nowhere and the loopback check
+ * silently returns false. `localhost:11434` and `192.168.1.5:8080` are exactly
+ * what a person hand-writing `models.yaml` types, so this is caught once at
+ * config load with a correction rather than left to surface as an unreproducible
+ * "it's slow" or an opaque request failure much later (Law 10).
+ *
+ * The check rejects rather than normalising: prepending `http://` to a public
+ * host a user meant over https would be a silent downgrade to plaintext, which
+ * is the kind of guess this must not make. The message hands back the two
+ * schemes so the user chooses.
+ */
+export function baseUrlSchemeError(baseUrl: string): string | null {
+	let parsed: URL | undefined;
+	try {
+		parsed = new URL(baseUrl);
+	} catch {
+		parsed = undefined;
+	}
+	if (parsed && (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0) {
+		return null;
+	}
+	if (!baseUrl.includes("://")) {
+		return `"${baseUrl}" is missing a scheme. Write it as "http://${baseUrl}" for a local server, or "https://${baseUrl}" for a remote one.`;
+	}
+	return `"${baseUrl}" is not a usable endpoint. A model baseUrl must be an absolute URL beginning with "http://" or "https://".`;
+}
+
 /** Provider-or-URL host check — the canonical `provider === id || baseUrl.includes(marker)` idiom. */
 export function modelMatchesHost(model: { provider: string; baseUrl: string }, host: KnownHost): boolean {
 	const spec: HostClassSpec = KNOWN_HOSTS[host];

@@ -34,12 +34,14 @@ export async function callHostLlm(prompt: string, opts: CompleteOptions = {}): P
 		return null;
 	}
 
-	try {
-		const result = await backend.complete(prompt, opts);
-		return typeof result === "string" ? result : null;
-	} catch {
-		return null;
-	}
+	// Do NOT swallow backend errors here. A throw (the backend crashed, an
+	// adapter bug, a timeout) must reach the caller so it can be classified: the
+	// extraction layer records it as a real failure (host_adapter_raised) and the
+	// summarization layer logs it and falls through to a local backend. A bare
+	// `catch { return null }` here would misreport a hard failure as "the model
+	// produced no output", losing the error entirely (a Law 10 silent fallback).
+	const result = await backend.complete(prompt, opts);
+	return typeof result === "string" ? result : null;
 }
 
 export class CallableLlmBackend implements LlmBackend {

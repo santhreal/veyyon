@@ -303,7 +303,9 @@ function normalizeCursorModel(
 		baseUrl: baseUrlOverride ?? CURSOR_DEFAULT_BASE_URL,
 		reasoning,
 		input: inferInputFromCursorId(id),
+		// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		pricing: "unknown",
 		contextWindow: DEFAULT_CONTEXT_WINDOW,
 		maxTokens: DEFAULT_MAX_TOKENS,
 		cursorMaxMode: details.maxMode,

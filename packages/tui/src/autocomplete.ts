@@ -131,6 +131,9 @@ export interface AutocompleteItem {
 	description?: string;
 	/** Dim hint text shown inline after cursor when this item is selected */
 	hint?: string;
+	/** Category header this item renders under (see SelectItem.group). Set on
+	 *  slash-command completions when the menu is browsed with no filter. */
+	group?: string;
 }
 
 type Awaitable<T> = T | Promise<T>;
@@ -140,6 +143,10 @@ export interface SlashCommand {
 	aliases?: string[];
 	description?: string;
 	argumentHint?: string;
+	/** Category shown as a group header when the / menu is browsed unfiltered
+	 *  (e.g. "session", "modes", "model"). Untagged commands render last under
+	 *  no header. */
+	category?: string;
 	/** Whether the command consumes argument text after the command name. False means the full input stays normal prompt text once args are present. */
 	allowArgs?: boolean;
 	/** Dynamic display-only description for slash-command autocomplete. Must be synchronous and side-effect free. */
@@ -245,11 +252,33 @@ export function scoreCommandTextMatch(lowerPrefix: string, lowerTarget: string):
 	return isSubsequenceMatch(lowerPrefix, lowerTarget) ? subsequenceScore(lowerPrefix, lowerTarget) : 0;
 }
 
-function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: string): AutocompleteItem[] {
-	return commands
+function buildSlashCommandCompletions(
+	commands: CommandEntry[],
+	lowerPrefix: string,
+	preferredCategoryOrder?: readonly string[],
+): AutocompleteItem[] {
+	// Group headers only exist in the browse view (no filter): a scored filter
+	// interleaves categories, and per-run headers over a scattered order would
+	// fragment into repeats. Category order: the caller's preferred order first
+	// (the app's deliberate browse sequence), then first appearance in the
+	// registry for anything unlisted. Only the BROWSE view reorders — filtered
+	// ranking and the Enter-applies-first-match contract stay untouched.
+	const browsing = lowerPrefix.length === 0;
+	const categoryOrder = new Map<string, number>();
+	if (browsing) {
+		for (const category of preferredCategoryOrder ?? []) {
+			if (!categoryOrder.has(category)) categoryOrder.set(category, categoryOrder.size);
+		}
+		for (const cmd of commands) {
+			const category = "category" in cmd ? cmd.category : undefined;
+			if (category && !categoryOrder.has(category)) categoryOrder.set(category, categoryOrder.size);
+		}
+	}
+	const ranked = commands
 		.flatMap(cmd => {
 			const name = getCommandName(cmd);
 			if (!name) return [];
+			const category = browsing && "category" in cmd ? cmd.category : undefined;
 			const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
 			const staticDesc = getStaticCommandDescription(cmd);
 			let fullDescMemo: string | undefined;
@@ -283,6 +312,7 @@ function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: str
 					label: "name" in cmd ? cmd.name : cmd.label,
 					score: primaryScore,
 					...(fullDesc && { description: fullDesc }),
+					...(category && { group: category }),
 				});
 			}
 
@@ -307,8 +337,15 @@ function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: str
 
 			return candidates;
 		})
-		.sort((a, b) => b.score - a.score)
-		.map(({ score: _, ...rest }) => rest);
+		.sort((a, b) => b.score - a.score);
+	if (browsing) {
+		// Stable partition into category-contiguous runs so SelectList renders one
+		// header per category. Score order is preserved inside each category, and
+		// untagged commands trail the tagged ones with no header of their own.
+		const rank = (g: string | undefined): number => (g === undefined ? Number.MAX_SAFE_INTEGER : (categoryOrder.get(g) ?? Number.MAX_SAFE_INTEGER));
+		ranked.sort((a, b) => rank(a.group) - rank(b.group) || b.score - a.score);
+	}
+	return ranked.map(({ score: _, ...rest }) => rest);
 }
 
 function hasPromptTextBeforeSlash(
@@ -362,18 +399,33 @@ function buildMidPromptSkillCompletions(commands: CommandEntry[], lowerPrefix: s
 }
 
 // Combined provider that handles both slash commands and file paths.
+export interface CombinedAutocompleteProviderOptions {
+	/**
+	 * Deliberate category sequence for the unfiltered / menu browse view (see
+	 * SlashCommand.category). Categories not listed follow in registry
+	 * first-appearance order. Has no effect on filtered ranking.
+	 */
+	categoryOrder?: readonly string[];
+}
+
 export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	#commands: CommandEntry[];
 	#basePath: string;
+	#categoryOrder: readonly string[] | undefined;
 	// Intentionally separate from veyyon-natives cache: this cache is a local,
 	// per-directory readdir fast-path for prefix completions. Global fuzzy
 	// discovery continues to use native fuzzyFind + shared scan cache.
 	#dirCache: Map<string, { entries: fs.Dirent[]; timestamp: number }> = new Map();
 	readonly #DIR_CACHE_TTL = 2000; // 2 seconds
 
-	constructor(commands: CommandEntry[] = [], basePath: string = getProjectDir()) {
+	constructor(
+		commands: CommandEntry[] = [],
+		basePath: string = getProjectDir(),
+		options: CombinedAutocompleteProviderOptions = {},
+	) {
 		this.#commands = commands;
 		this.#basePath = basePath;
+		this.#categoryOrder = options.categoryOrder;
 	}
 
 	async getSuggestions(
@@ -408,7 +460,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 				const matches = isMidPromptSkillLookup
 					? buildMidPromptSkillCompletions(this.#commands, lowerPrefix)
-					: buildSlashCommandCompletions(this.#commands, lowerPrefix);
+					: buildSlashCommandCompletions(this.#commands, lowerPrefix, this.#categoryOrder);
 
 				if (matches.length > 0) {
 					return {
@@ -1033,7 +1085,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		const prefix = commandText.slice(1);
 		const lowerPrefix = prefix.toLowerCase();
 
-		const matches = buildSlashCommandCompletions(this.#commands, lowerPrefix);
+		const matches = buildSlashCommandCompletions(this.#commands, lowerPrefix, this.#categoryOrder);
 
 		if (matches.length === 0) return null;
 		// Mirror `getSuggestions`: preserve leading whitespace so the editor's

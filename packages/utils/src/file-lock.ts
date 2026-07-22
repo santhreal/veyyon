@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import { isEnoent } from "./fs-error";
 import { tryParseJson } from "./json";
 import * as logger from "./logger";
+import { isProcessAlive } from "./process-liveness";
 import { sleepSync } from "./sleep";
 
 export interface FileLockOptions {
@@ -61,15 +62,6 @@ function readLockInfoSync(lockPath: string): LockInfo | null {
 		return tryParseJson<LockInfo>(content);
 	} catch {
 		return null;
-	}
-}
-
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
 	}
 }
 
@@ -263,6 +255,59 @@ export async function withFileLock<T>(
 	} finally {
 		await release();
 	}
+}
+
+/**
+ * What {@link tryWithFileLock} returns: either the lock was taken and `value`
+ * holds the result of `fn`, or another live process holds it and `fn` never ran.
+ */
+export type TryFileLockResult<T> = { acquired: true; value: T } | { acquired: false };
+
+/**
+ * Run `fn` under the lock if it is free right now, otherwise return without
+ * running it.
+ *
+ * {@link withFileLock} waits for the holder and eventually throws, which is what
+ * you want for a read-modify-write that must happen. This is for the other
+ * shape: work that only needs to happen once across concurrent processes, where
+ * a second process should get out of the way rather than queue up to redo it.
+ * Launching the same program in three terminals should not run its background
+ * update three times in a row.
+ *
+ * A lock whose owner is dead, or whose info is older than `staleMs`, is reaped
+ * and then taken, so a crashed holder does not block the work forever. Set
+ * `staleMs` to longer than `fn` can plausibly take: too short and a second
+ * process reaps a lock that is still legitimately held.
+ *
+ * ```ts
+ * const result = await tryWithFileLock(statePath, () => install(), { staleMs: 600_000 });
+ * if (!result.acquired) logger.debug("another process is already installing");
+ * ```
+ */
+export async function tryWithFileLock<T>(
+	filePath: string,
+	fn: () => Promise<T>,
+	options: FileLockOptions = {},
+): Promise<TryFileLockResult<T>> {
+	const opts = { ...DEFAULT_OPTIONS, ...options };
+	const lockPath = getLockPath(filePath);
+
+	// Two attempts at most: the second exists only so a stale lock reaped on the
+	// first attempt can be taken. Anything beyond that is waiting, which is what
+	// this function exists not to do.
+	for (let attempt = 0; attempt < 2; attempt++) {
+		const token = await tryAcquireLock(lockPath);
+		if (token !== null) {
+			try {
+				return { acquired: true, value: await fn() };
+			} finally {
+				await releaseLock(lockPath, token);
+			}
+		}
+		if (!(await isLockStale(lockPath, opts.staleMs))) break;
+		await releaseLock(lockPath);
+	}
+	return { acquired: false };
 }
 
 /**

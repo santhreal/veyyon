@@ -223,14 +223,6 @@ function factExpandedTokenGroups(query: string, content: string): string[][] {
 	return groups;
 }
 
-function tokensFromGroups(groups: readonly (readonly string[])[]): string[] {
-	const seen = new Set<string>();
-	for (const group of groups) {
-		for (const token of group) seen.add(token);
-	}
-	return [...seen];
-}
-
 function contentMatchesToken(contentLower: string, contentTokens: ReadonlySet<string>, token: string): boolean {
 	if (contentTokens.has(token) || contentLower.includes(token)) return true;
 	for (const contentToken of contentTokens) {
@@ -254,36 +246,24 @@ function lexicalGroupRelevance(
 	const contentLower = content.toLowerCase();
 	if (queryGroups.length > 1 && normalizedQuery.length > 0 && contentLower.includes(normalizedQuery)) return 1;
 	const contentTokens = new Set(tokenize(contentLower));
+	// One predicate owns "does any token in this group match the content":
+	// contentMatchesToken already covers exact-token, substring, AND the >=4-char
+	// bidirectional partial-substring case. A group counts once if any of its
+	// tokens matches. There is deliberately no second, weaker "partial" tier: the
+	// earlier revision had one, but it re-ran the identical >=4 predicate that
+	// contentMatchesToken had just rejected, so it could never fire (dead code and
+	// a duplicated predicate). Keep the single owner.
 	let exact = 0;
-	let partial = 0;
 	for (const group of queryGroups) {
-		let matched = false;
 		for (const token of group) {
 			if (contentMatchesToken(contentLower, contentTokens, token)) {
-				matched = true;
+				exact += 1;
 				break;
-			}
-		}
-		if (matched) exact += 1;
-		else {
-			for (const token of group) {
-				for (const contentToken of contentTokens) {
-					if (
-						contentToken.length >= 4 &&
-						token.length >= 4 &&
-						(contentToken.includes(token) || token.includes(contentToken))
-					) {
-						partial += 1;
-						matched = true;
-						break;
-					}
-				}
-				if (matched) break;
 			}
 		}
 	}
 	if (queryGroups.length === 1) {
-		if (exact === 0 && partial === 0) return 0;
+		if (exact === 0) return 0;
 		const token = queryGroups[0]?.[0] ?? "";
 		let count = 0;
 		let offset = 0;
@@ -295,7 +275,7 @@ function lexicalGroupRelevance(
 		}
 		return clamp01(0.7 + clamp(count - 1, 0, 3) * 0.1);
 	}
-	return clamp01((exact + partial * 0.5) / queryGroups.length);
+	return clamp01(exact / queryGroups.length);
 }
 
 function queryAsksCurrent(query: string): boolean {
@@ -316,45 +296,6 @@ function minimumRelevance(tokens: readonly string[]): number {
 	if (tokens.length === 2) return 0.18;
 	if (tokens.length === 3) return 0.34;
 	return 0.22;
-}
-
-function lexicalRelevance(queryTokens: readonly string[], content: string, normalizedQuery: string): number {
-	if (queryTokens.length === 0) return 0;
-	const contentLower = content.toLowerCase();
-	if (queryTokens.length > 1 && normalizedQuery.length > 0 && contentLower.includes(normalizedQuery)) return 1;
-	if (queryTokens.length === 1) {
-		const token = queryTokens[0] ?? "";
-		if (token.length === 0 || !contentLower.includes(token)) return 0;
-		let count = 0;
-		let offset = 0;
-		while (true) {
-			const idx = contentLower.indexOf(token, offset);
-			if (idx < 0) break;
-			count += 1;
-			offset = idx + token.length;
-		}
-		return clamp01(0.7 + clamp(count - 1, 0, 3) * 0.1);
-	}
-	const contentTokens = new Set(tokenize(contentLower));
-	let exact = 0;
-	let partial = 0;
-	for (const token of queryTokens) {
-		if (contentTokens.has(token) || contentLower.includes(token)) {
-			exact += 1;
-			continue;
-		}
-		for (const contentToken of contentTokens) {
-			if (
-				contentToken.length >= 4 &&
-				token.length >= 4 &&
-				(contentToken.includes(token) || token.includes(contentToken))
-			) {
-				partial += 1;
-				break;
-			}
-		}
-	}
-	return clamp01((exact + partial * 0.5) / queryTokens.length);
 }
 
 function inferTemporalOptions(query: string, options: RecallOptionsInternal): RecallOptionsInternal {
@@ -623,10 +564,13 @@ function scoreCandidate(
 ): RecallResult | null {
 	const content = stringOrEmpty(candidate.row.content);
 	const searchableContent = stringOrEmpty(candidate.row.embed_text) || content;
+	// lexicalGroupRelevance is the single lexical scorer. When queryGroups is
+	// empty the query produced no lexical tokens at all (expandedTokens and
+	// expandedTokenGroups share one token/synonym loop, so a token joins both or
+	// neither), which means there is no lexical signal to score: the contribution
+	// is 0 and scoring falls to the dense/importance terms.
 	const lexical =
-		queryGroups.length > 0
-			? lexicalGroupRelevance(queryGroups, searchableContent, normalizedQueryLower)
-			: lexicalRelevance(queryTokens, searchableContent, normalizedQueryLower);
+		queryGroups.length > 0 ? lexicalGroupRelevance(queryGroups, searchableContent, normalizedQueryLower) : 0;
 	const minRel = minimumRelevance(queryTokens);
 	if (lexical < minRel && candidate.signals.dense < 0.65) return null;
 	const [vecWeight, ftsWeight, importanceWeight] = weights;
@@ -1097,11 +1041,9 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 			const content = object.length > 0 ? object : `${subject} ${predicate}`.trim();
 			const searchable = factSearchableText(subject, predicate, object);
 			const queryGroups = factExpandedTokenGroups(query, searchable);
-			const queryTokens = tokensFromGroups(queryGroups);
-			const lexical =
-				queryGroups.length > 0
-					? lexicalGroupRelevance(queryGroups, searchable, normalized)
-					: lexicalRelevance(queryTokens, searchable, normalized);
+			// Empty queryGroups means no lexical tokens survived filtering, so the
+			// lexical contribution is 0 (see scoreCandidate for the same invariant).
+			const lexical = queryGroups.length > 0 ? lexicalGroupRelevance(queryGroups, searchable, normalized) : 0;
 			const rank = ranks.get(numberOrDefault(row.rowid)) ?? 0;
 			const result: FactRecallResult = {
 				id: stringOrEmpty(row.fact_id),

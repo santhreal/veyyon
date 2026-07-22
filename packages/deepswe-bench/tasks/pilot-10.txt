@@ -1,0 +1,13 @@
+# DeepSWE pilot: the 10 hardest tasks by reference-solution patch size
+# (lines of solution/*.patch; all tasks share the same 90-min agent timeout,
+# so patch size is the difficulty differentiator). Selected 2026-07-21.
+etree-xml-diff-patch
+valibot-recursive-schema-composition
+fastapi-implicit-head-options
+scriggo-method-declarations
+koota-deferred-mutation-buffer
+koota-query-predicates
+koota-composite-trait-aspects
+prometheus-transactional-reload-status
+kgateway-consistent-hash-policy
+ytt-jsonpath-query-api

@@ -2,7 +2,14 @@ import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./qwen3.md" with { type: "text" };
-import { renderChatMlTranscript, renderToolResponseResults, stringifyJson } from "./rendering";
+import {
+	renderChatMlTranscript,
+	renderThinkTags,
+	renderToolResponseResults,
+	stringifyJson,
+	THINK_CLOSE,
+	THINK_OPEN,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -14,8 +21,6 @@ import type {
 
 const TOOL_OPEN = "<tool_call>";
 const TOOL_CLOSE = "</tool_call>";
-const THINK_OPEN = "<think>";
-const THINK_CLOSE = "</think>";
 
 const TOOL_START_TAGS = [TOOL_OPEN] as const;
 const START_TAGS = [TOOL_OPEN, THINK_OPEN] as const;
@@ -213,8 +218,7 @@ function renderToolResults(results: readonly DialectToolResult[], _options: Dial
 }
 
 function renderThinking(text: string): string {
-	if (!text) return "";
-	return `${THINK_OPEN}\n${text}\n${THINK_CLOSE}`;
+	return renderThinkTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

@@ -1,0 +1,8 @@
+# Full arm (encode + decode): the model is taught the notation preamble, loads
+# the project itself with argot_load, writes handles, and the harness expands
+# them at every seam.
+argot:
+  enabled: true
+  models:
+    - gemini-2.5-flash
+  subagents: off

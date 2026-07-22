@@ -1,5 +1,5 @@
 import { popLoopPhase, pushLoopPhase } from "@veyyon/utils";
-import { fuzzyFilter } from "../fuzzy";
+import { fuzzyFilter, matchPositions } from "../fuzzy";
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";
 import { type MouseRoutable, routeSelectListMouse, type SgrMouseEvent } from "../mouse";
@@ -28,6 +28,14 @@ export interface SelectItem {
 	description?: string;
 	/** Dim hint text shown inline after cursor when this item is selected */
 	hint?: string;
+	/**
+	 * Category this item belongs to. When any visible item carries a group and
+	 * the theme provides `groupHeader`, a non-selectable header row renders
+	 * above each run of same-group items — the list becomes a map instead of a
+	 * wall. Groups collapse automatically under filtering: a header only
+	 * renders when at least one of its items survived the query.
+	 */
+	group?: string;
 }
 
 export interface SelectListTheme {
@@ -39,6 +47,20 @@ export interface SelectListTheme {
 	symbols: SymbolTheme;
 	/** Hover band applied to the full row under the mouse pointer. */
 	hovered?: (text: string) => string;
+	/**
+	 * Paint applied to the label characters the active filter query matched
+	 * (see fuzzy `matchPositions`). Unselected rows only: the selected row's
+	 * own style stays intact so nested resets can't bleach it. Omit for no
+	 * hit highlighting.
+	 */
+	matchHighlight?: (text: string) => string;
+	/**
+	 * Paint for group header rows (see {@link SelectItem.group}). Receives the
+	 * group name; returns the full styled header line content. Omit to render
+	 * grouped lists flat (headers only exist when both the data and the theme
+	 * opt in).
+	 */
+	groupHeader?: (text: string) => string;
 }
 
 export interface SelectListTruncatePrimaryContext {
@@ -188,6 +210,9 @@ export class SelectList implements Component, MouseRoutable {
 				continue;
 			}
 			rowCounts[i] = wrapEnabled ? this.#computeItemRowCount(item, conservativeRowWidth, primaryColumnWidth) : 1;
+			// A group header rides on its group's first surviving item, so the
+			// window/scroll math counts it as part of that item's rows.
+			if (this.#headerBefore(i)) rowCounts[i] = (rowCounts[i] ?? 1) + 1;
 			visualTotal += rowCounts[i];
 		}
 
@@ -207,6 +232,11 @@ export class SelectList implements Component, MouseRoutable {
 		for (let i = startIndex; i < endIndex && rows.length < visualBudget; i++) {
 			const item = this.#filteredItems[i];
 			if (!item) continue;
+			if (this.#headerBefore(i) && rows.length < visualBudget) {
+				// Header rows are chrome: not selectable, not hoverable — the
+				// hitRows slot stays undefined so mouse routing skips them.
+				rows.push(this.theme.groupHeader!(item.group!));
+			}
 			const hovered = this.theme.hovered !== undefined && i === this.#hoveredIndex && i !== this.#selectedIndex;
 			const itemRows = this.#renderItem(item, i === this.#selectedIndex, rowWidth, primaryColumnWidth);
 			for (const row of itemRows) {
@@ -277,6 +307,16 @@ export class SelectList implements Component, MouseRoutable {
 		}
 	}
 
+	/**
+	 * Selected-row painter: the cursor glyph routes through `selectedPrefix`
+	 * (the design's molten selection cursor) while the row body keeps
+	 * `selectedText`. Painting the whole row with selectedText — the previous
+	 * behavior — silently discarded the theme's cursor treatment.
+	 */
+	#paintSelectedRow(prefix: string, body: string): string {
+		return this.theme.selectedPrefix(prefix) + this.theme.selectedText(body);
+	}
+
 	#renderItem(item: SelectItem, isSelected: boolean, width: number, primaryColumnWidth: number): string[] {
 		const layout = this.#computeItemLayout(item, isSelected, width, primaryColumnWidth);
 		const { prefix, truncatedValue, spacing } = layout;
@@ -289,7 +329,7 @@ export class SelectList implements Component, MouseRoutable {
 				const indent = padding(descriptionStart);
 				const first = wrapped[0] ?? "";
 				if (isSelected) {
-					const rows = [this.theme.selectedText(`${prefix}${truncatedValue}${spacing}${first}`)];
+					const rows = [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${first}`)];
 					for (let i = 1; i < wrapped.length; i++) {
 						rows.push(this.theme.selectedText(`${indent}${wrapped[i]}`));
 					}
@@ -304,15 +344,45 @@ export class SelectList implements Component, MouseRoutable {
 
 			const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, Ellipsis.Omit);
 			if (isSelected) {
-				return [this.theme.selectedText(`${prefix}${truncatedValue}${spacing}${truncatedDesc}`)];
+				return [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${truncatedDesc}`)];
 			}
-			return [prefix + truncatedValue + this.theme.description(spacing + truncatedDesc)];
+			return [prefix + this.#paintHits(truncatedValue, item.label) + this.theme.description(spacing + truncatedDesc)];
 		}
 
 		if (isSelected) {
-			return [this.theme.selectedText(`${prefix}${truncatedValue}`)];
+			return [this.#paintSelectedRow(prefix, truncatedValue)];
 		}
-		return [prefix + truncatedValue];
+		return [prefix + this.#paintHits(truncatedValue, item.label)];
+	}
+
+	/**
+	 * Whether a group header renders above filtered item `i`: the theme must
+	 * provide the paint, the item must carry a group, and it must start a new
+	 * run (first item, or a different group than the previous survivor).
+	 */
+	#headerBefore(i: number): boolean {
+		if (!this.theme.groupHeader) return false;
+		const item = this.#filteredItems[i];
+		if (!item?.group) return false;
+		return i === 0 || this.#filteredItems[i - 1]?.group !== item.group;
+	}
+
+	/**
+	 * Paint the filter query's hit characters inside a truncated label. The
+	 * label is plain text at this point (styling wraps rows later), so index
+	 * math is safe; positions past the truncation point simply drop.
+	 */
+	#paintHits(truncatedValue: string, label: string): string {
+		const paint = this.theme.matchHighlight;
+		if (!paint || this.#filterQuery.length === 0) return truncatedValue;
+		const positions = matchPositions(this.#filterQuery, label);
+		if (positions.length === 0) return truncatedValue;
+		const hitSet = new Set(positions);
+		let out = "";
+		for (let i = 0; i < truncatedValue.length; i++) {
+			out += hitSet.has(i) ? paint(truncatedValue[i]!) : truncatedValue[i];
+		}
+		return out;
 	}
 
 	#computeItemRowCount(item: SelectItem, width: number, primaryColumnWidth: number): number {

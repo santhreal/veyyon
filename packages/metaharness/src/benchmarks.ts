@@ -34,14 +34,6 @@ export const BENCHMARK_DEFINITIONS: BenchmarkDefinition[] = [
 			{ key: "edit_success_rate", label: "Edit success", format: "percent", higherIsBetter: true },
 		],
 	},
-	{
-		kind: "snapcompact",
-		label: "SnapCompact",
-		metrics: [
-			{ key: "f1", label: "F1", format: "percent", higherIsBetter: true },
-			{ key: "exact_match", label: "Exact match", format: "percent", higherIsBetter: true },
-		],
-	},
 ];
 
 /** A normalized trace emitted by any benchmark adapter. */
@@ -97,32 +89,6 @@ interface EditResult {
 		editSuccessRate: number;
 		totalTokens: { input: number; output: number };
 	};
-}
-
-interface SnapRecord {
-	cond: string;
-	chunk: number;
-	pos_rel: number;
-	q: string;
-	answer: string;
-	golds: string[];
-	em: number;
-	f1: number;
-}
-
-interface SnapSummaryRow {
-	n: number;
-	f1: number;
-	em: number;
-	cost_usd: number;
-	tokens_in: number;
-	tokens_out: number;
-	cache_w: number;
-	cache_r: number;
-}
-
-interface SnapSummary {
-	rows: SnapSummaryRow[];
 }
 
 function emptySnapshot(): BenchmarkSnapshot {
@@ -189,60 +155,9 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 	};
 }
 
-function readSnapcompactSnapshot(jobDir: string): BenchmarkSnapshot {
-	const recordsFile = path.join(jobDir, "records.jsonl");
-	const summaryFile = path.join(jobDir, "summary.json");
-	if (!fs.existsSync(recordsFile)) return emptySnapshot();
-	const records = fs
-		.readFileSync(recordsFile, "utf8")
-		.split("\n")
-		.filter(Boolean)
-		.map(line => JSON.parse(line) as SnapRecord);
-	const traces = records.map(
-		(record, index): BenchmarkTrace => ({
-			name: `${record.cond}__${record.chunk}__${index + 1}`,
-			task: `${record.cond}:${record.chunk}`,
-			status: record.f1 > 0 ? "pass" : "fail",
-			reward: record.f1,
-			costUsd: 0,
-			durationMs: 0,
-			detail: JSON.stringify({ question: record.q, answer: record.answer, golds: record.golds, em: record.em }),
-			tracePath: `record:${index + 1}`,
-		}),
-	);
-	let rows: SnapSummaryRow[] = [];
-	if (fs.existsSync(summaryFile)) {
-		const summary: SnapSummary = JSON.parse(fs.readFileSync(summaryFile, "utf8"));
-		rows = summary.rows;
-	}
-	const samples = rows.reduce((sum, row) => sum + row.n, 0);
-	const weightedF1 = rows.reduce((sum, row) => sum + row.f1 * row.n, 0);
-	const weightedEm = rows.reduce((sum, row) => sum + row.em * row.n, 0);
-	const pass = traces.filter(trace => trace.status === "pass").length;
-	return {
-		traces,
-		total: traces.length,
-		done: traces.length,
-		pass,
-		fail: traces.length - pass,
-		error: 0,
-		running: 0,
-		costUsd: rows.reduce((sum, row) => sum + row.cost_usd, 0),
-		tokIn: rows.reduce((sum, row) => sum + row.tokens_in, 0),
-		tokOut: rows.reduce((sum, row) => sum + row.tokens_out, 0),
-		tokCache: rows.reduce((sum, row) => sum + row.cache_w + row.cache_r, 0),
-		score: samples > 0 ? weightedF1 / samples : null,
-		metrics: {
-			f1: samples > 0 ? weightedF1 / samples : null,
-			exact_match: samples > 0 ? weightedEm / samples : null,
-		},
-	};
-}
-
 /** Read and normalize the latest artifacts for a benchmark run. */
 export function readBenchmarkSnapshot(benchmark: BenchmarkKind, jobDir: string): BenchmarkSnapshot {
 	if (benchmark === "edit") return readEditSnapshot(jobDir);
-	if (benchmark === "snapcompact") return readSnapcompactSnapshot(jobDir);
 	const trials = readTrials(jobDir);
 	const job = readJobResult(jobDir);
 	const totals = aggregate(trials, job, job?.nTotal ?? trials.length);

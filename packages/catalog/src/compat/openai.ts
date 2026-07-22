@@ -8,7 +8,7 @@
  * never detect, resolve, or allocate.
  */
 import { isFireworksFastModelId } from "../fireworks-model-id";
-import { hostMatchesUrl, modelMatchesHost } from "../hosts";
+import { hasLocalLoopbackBaseUrl, hostMatchesUrl, modelMatchesHost } from "../hosts";
 import {
 	isAnthropicNamespacedModelId,
 	isClaudeModelId,
@@ -204,30 +204,6 @@ const LOCAL_OPENAI_COMPAT_PROVIDERS = new Set(["llama.cpp", "lm-studio", "vllm",
  * override.
  */
 const PROXY_OPENAI_COMPAT_PROVIDERS = new Set(["litellm"]);
-
-function hasLocalLoopbackBaseUrl(baseUrl: string | undefined): boolean {
-	if (!baseUrl) return false;
-	let hostname: string;
-	try {
-		hostname = new URL(baseUrl).hostname.toLowerCase();
-	} catch {
-		return false;
-	}
-	if (
-		hostname === "localhost" ||
-		hostname === "127.0.0.1" ||
-		hostname === "0.0.0.0" ||
-		hostname === "::1" ||
-		hostname === "[::1]"
-	) {
-		return true;
-	}
-	if (/^10\./.test(hostname)) return true;
-	if (/^192\.168\./.test(hostname)) return true;
-	if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) return true;
-	if (hostname.endsWith(".local")) return true;
-	return false;
-}
 
 /**
  * Build the resolved chat-completions compat record for a model spec.
@@ -608,8 +584,8 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		// to strictly match prior tool calls when building Responses inputs.
 		strictResponsesPairing: isAzure || spec.provider === "github-copilot",
 		// GitHub Copilot and xAI OAuth reject `detail: "original"` (400 / 422).
-		// Every other host preserves native-resolution frames (snapcompact relies
-		// on `original`). Detect Copilot by provider id or base-URL host so a
+		// Every other host preserves native-resolution images (the `original`
+		// detail hint). Detect Copilot by provider id or base-URL host so a
 		// model pointed at the Copilot host under a different provider id still
 		// clamps; xai-oauth is provider-id only (same host family as paid `xai`).
 		supportsImageDetailOriginal:

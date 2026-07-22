@@ -70,10 +70,36 @@ describe("temporal parser", () => {
 		expect(result.temporal_tags).toEqual(["2026-05-21", "thursday", "tomorrow"]);
 	});
 
-	it("preserves Python's match order for day before yesterday", () => {
+	// Regression: "day before yesterday" means two days ago, not one. The compound
+	// phrase used to be shadowed by the plain `yesterday` branch (it contains the
+	// substring "yesterday"), so it resolved to REF-1 and even tagged "yesterday".
+	// The compound checks now run before the words they contain. REF is a
+	// Wednesday (2026-05-20): two days before is Monday 2026-05-18.
+	it("resolves 'day before yesterday' to two days before, not one", () => {
 		const result = extractTemporal("day before yesterday", REF);
-		expect(result.event_date).toBe("2026-05-19");
-		expect(result.temporal_tags).toContain("yesterday");
+		expect(result.event_date).toBe("2026-05-18");
+		expect(result.event_date_precision).toBe("day");
+		expect(result.temporal_tags).toEqual(["2026-05-18", "monday", "day before yesterday"]);
+		expect(result.temporal_tags).not.toContain("yesterday");
+	});
+
+	// Symmetric twin: "day after tomorrow" means two days ahead and must not be
+	// shadowed by the plain `tomorrow` branch. Two days after Wednesday 2026-05-20
+	// is Friday 2026-05-22.
+	it("resolves 'day after tomorrow' to two days ahead, not one", () => {
+		const result = extractTemporal("let's meet the day after tomorrow", REF);
+		expect(result.event_date).toBe("2026-05-22");
+		expect(result.event_date_precision).toBe("day");
+		expect(result.temporal_tags).toEqual(["2026-05-22", "friday", "day after tomorrow"]);
+		expect(result.temporal_tags).not.toContain("tomorrow");
+	});
+
+	// The plain single-word branches still resolve to one day off, unshadowed.
+	it("keeps plain 'yesterday' and 'tomorrow' at one day", () => {
+		expect(extractTemporal("yesterday", REF).event_date).toBe("2026-05-19");
+		expect(extractTemporal("yesterday", REF).temporal_tags).toContain("yesterday");
+		expect(extractTemporal("tomorrow", REF).event_date).toBe("2026-05-21");
+		expect(extractTemporal("tomorrow", REF).temporal_tags).toContain("tomorrow");
 	});
 
 	it("extracts qualified day references", () => {

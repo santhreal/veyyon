@@ -139,4 +139,73 @@ describe("dialect transcript rendering", () => {
 		expect(out).toContain("Assistant: <thinking>\nfirst\nsecond\n</thinking>");
 		expect(out).not.toContain("first\n</thinking>\n<thinking>\nsecond");
 	});
+
+	// The <think> dialects each used to hand-roll `${OPEN}\n${text}\n${CLOSE}`, so a
+	// thinking block that already carried its own tags came out doubly wrapped on
+	// four of them and collapsed on the other two. They now share one owner
+	// (renderThinkTags), so every one of them collapses.
+	const THINK_DIALECTS = ["deepseek", "glm", "hermes", "kimi", "pi-native", "qwen3"] satisfies readonly Dialect[];
+	for (const dialect of THINK_DIALECTS) {
+		it(`collapses an already-tagged <think> envelope instead of nesting one (${dialect})`, () => {
+			const preTagged: Message[] = [
+				{
+					role: "assistant",
+					content: [{ type: "thinking", thinking: "<think>\nCheck logs first.\n</think>" }],
+					api: "mock",
+					provider: "mock",
+					model: "mock",
+					usage: usage(),
+					stopReason: "stop",
+					timestamp: 1,
+				},
+			];
+
+			const out = getDialectDefinition(dialect).renderTranscript(preTagged);
+			expect(out).toContain("<think>\nCheck logs first.\n</think>");
+			expect(out).not.toContain("<think>\n<think>");
+			expect(out).not.toContain("</think>\n</think>");
+		});
+	}
+
+	// Same contract for the longer <thinking> envelope shared by the XML-style dialects.
+	const XML_THINKING_DIALECTS = ["anthropic", "minimax", "xml"] satisfies readonly Dialect[];
+	for (const dialect of XML_THINKING_DIALECTS) {
+		it(`collapses an already-tagged <thinking> envelope instead of nesting one (${dialect})`, () => {
+			const preTagged: Message[] = [
+				{
+					role: "assistant",
+					content: [{ type: "thinking", thinking: "<thinking>\nCheck logs first.\n</thinking>" }],
+					api: "mock",
+					provider: "mock",
+					model: "mock",
+					usage: usage(),
+					stopReason: "stop",
+					timestamp: 1,
+				},
+			];
+
+			const out = getDialectDefinition(dialect).renderTranscript(preTagged);
+			expect(out).toContain("<thinking>\nCheck logs first.\n</thinking>");
+			expect(out).not.toContain("<thinking>\n<thinking>");
+		});
+	}
+
+	it("keeps gemini on its own fenced thinking delimiters, not the shared <think> envelope", () => {
+		const plain: Message[] = [
+			{
+				role: "assistant",
+				content: [{ type: "thinking", thinking: "Check logs first." }],
+				api: "mock",
+				provider: "mock",
+				model: "mock",
+				usage: usage(),
+				stopReason: "stop",
+				timestamp: 1,
+			},
+		];
+
+		const out = getDialectDefinition("gemini").renderTranscript(plain);
+		expect(out).toContain("```thinking");
+		expect(out).not.toContain("<think>");
+	});
 });

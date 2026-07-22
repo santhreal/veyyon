@@ -5,8 +5,8 @@ import { buildArgShapes, buildStringArgsResolver, mintToolCallId, type ToolArgSh
 import {
 	escapeXmlAttr,
 	escapeXmlText,
-	renderDelimitedThinking,
 	renderLegacyTextTranscript,
+	renderXmlThinkingTags,
 	stringifyJson,
 } from "./rendering";
 import type {
@@ -567,7 +567,7 @@ function renderToolResults(results: readonly DialectToolResult[]): string {
 }
 
 function renderThinking(text: string): string {
-	return renderDelimitedThinking("<thinking>", "</thinking>", text);
+	return renderXmlThinkingTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

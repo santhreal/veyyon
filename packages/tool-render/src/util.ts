@@ -5,6 +5,8 @@
  * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
  * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
+
+import { stringifyJsonSafe } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { truncate as truncateChars } from "@veyyon/utils/format";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -29,11 +31,9 @@ export function display(value: unknown): string {
 	if (value == null) return "";
 	if (typeof value === "string") return value;
 	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	try {
-		return JSON.stringify(value) ?? "";
-	} catch {
-		return String(value);
-	}
+	// The shared owner, so a cyclic or bigint value renders its contents rather
+	// than the literal text "[object Object]".
+	return stringifyJsonSafe(value);
 }
 
 /**

@@ -36,7 +36,6 @@ pub mod html;
 pub mod iofs;
 pub mod keys;
 pub mod sixel;
-pub mod snapcompact;
 pub use veyyon_ast::language;
 
 pub mod power;

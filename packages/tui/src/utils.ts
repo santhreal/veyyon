@@ -232,6 +232,17 @@ export function padding(n: number): string {
 	return " ".repeat(n > MAX_PADDING ? MAX_PADDING : n);
 }
 
+/**
+ * Fit a line to exactly `width` visible columns: truncate what overflows, then
+ * pad the remainder with spaces. Truncation on a wide-character boundary can
+ * leave `width - 1` visible columns, so the trailing pad is computed from the
+ * truncated line's real width to guarantee the result is always exactly `width`.
+ */
+export function padLineToWidth(line: string, width: number): string {
+	const truncated = truncateToWidth(line, width);
+	return truncated + padding(width - visibleWidth(truncated));
+}
+
 // Grapheme segmenter (shared instance)
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 

@@ -1,0 +1,9 @@
+# Decode-only arm: the codec is enabled and the agent may load a project's
+# dictionary (argot_load is registered), but NO model is allowed to encode, so
+# the notation preamble is never taught and the model is never shown handles.
+# Expansion (decode) stays armed, as it always is. This arm isolates the cost of
+# the feature being enabled and loadable without any teaching in the prompt.
+argot:
+  enabled: true
+  models: []
+  subagents: off

@@ -1,0 +1,793 @@
+[
+  {
+    "task": "kgateway-consistent-hash-policy",
+    "handles": 15,
+    "dictTokens": 1000,
+    "estimatedSavings": 79385,
+    "error": null
+  },
+  {
+    "task": "psd-tools-blend-range-api",
+    "handles": 3,
+    "dictTokens": 994,
+    "estimatedSavings": 64993,
+    "error": null
+  },
+  {
+    "task": "opa-rego-rule-profiling",
+    "handles": 10,
+    "dictTokens": 999,
+    "estimatedSavings": 51826,
+    "error": null
+  },
+  {
+    "task": "opa-template-string-reconstruction",
+    "handles": 10,
+    "dictTokens": 999,
+    "estimatedSavings": 51826,
+    "error": null
+  },
+  {
+    "task": "fastapi-deprecation-response-headers",
+    "handles": 20,
+    "dictTokens": 999,
+    "estimatedSavings": 46933,
+    "error": null
+  },
+  {
+    "task": "fastapi-implicit-head-options",
+    "handles": 20,
+    "dictTokens": 999,
+    "estimatedSavings": 46933,
+    "error": null
+  },
+  {
+    "task": "prometheus-transactional-reload-status",
+    "handles": 20,
+    "dictTokens": 1000,
+    "estimatedSavings": 37335,
+    "error": null
+  },
+  {
+    "task": "prometheus-typed-label-sorting",
+    "handles": 20,
+    "dictTokens": 1000,
+    "estimatedSavings": 37335,
+    "error": null
+  },
+  {
+    "task": "valibot-recursive-schema-composition",
+    "handles": 22,
+    "dictTokens": 997,
+    "estimatedSavings": 33368,
+    "error": null
+  },
+  {
+    "task": "effect-sse-httpapi-streaming",
+    "handles": 68,
+    "dictTokens": 998,
+    "estimatedSavings": 32999,
+    "error": null
+  },
+  {
+    "task": "pebble-durability-wait-apis",
+    "handles": 27,
+    "dictTokens": 998,
+    "estimatedSavings": 31169,
+    "error": null
+  },
+  {
+    "task": "go-git-worktree-merge-conflicts",
+    "handles": 40,
+    "dictTokens": 999,
+    "estimatedSavings": 26443,
+    "error": null
+  },
+  {
+    "task": "helm-array-merge-strategies",
+    "handles": 27,
+    "dictTokens": 997,
+    "estimatedSavings": 25566,
+    "error": null
+  },
+  {
+    "task": "helm-unified-manifest-stream",
+    "handles": 27,
+    "dictTokens": 997,
+    "estimatedSavings": 25566,
+    "error": null
+  },
+  {
+    "task": "goreleaser-retry-publish-auditing",
+    "handles": 25,
+    "dictTokens": 999,
+    "estimatedSavings": 24194,
+    "error": null
+  },
+  {
+    "task": "textual-richlog-follow-state",
+    "handles": 27,
+    "dictTokens": 1000,
+    "estimatedSavings": 21911,
+    "error": null
+  },
+  {
+    "task": "textual-kitty-key-phases",
+    "handles": 27,
+    "dictTokens": 1000,
+    "estimatedSavings": 21892,
+    "error": null
+  },
+  {
+    "task": "pwntools-tube-multiplexing",
+    "handles": 13,
+    "dictTokens": 1000,
+    "estimatedSavings": 20313,
+    "error": null
+  },
+  {
+    "task": "happy-dom-abort-pending-body-reads",
+    "handles": 30,
+    "dictTokens": 995,
+    "estimatedSavings": 19731,
+    "error": null
+  },
+  {
+    "task": "happy-dom-deterministic-intersectionobserver",
+    "handles": 30,
+    "dictTokens": 995,
+    "estimatedSavings": 19731,
+    "error": null
+  },
+  {
+    "task": "arcane-drift-detection-baselines",
+    "handles": 33,
+    "dictTokens": 999,
+    "estimatedSavings": 16189,
+    "error": null
+  },
+  {
+    "task": "drizzle-orm-window-function-builders",
+    "handles": 41,
+    "dictTokens": 1000,
+    "estimatedSavings": 15689,
+    "error": null
+  },
+  {
+    "task": "query-persist-restored-query-state",
+    "handles": 8,
+    "dictTokens": 1000,
+    "estimatedSavings": 13838,
+    "error": null
+  },
+  {
+    "task": "oxvg-structural-selector-preservation",
+    "handles": 30,
+    "dictTokens": 995,
+    "estimatedSavings": 10407,
+    "error": null
+  },
+  {
+    "task": "ytt-jsonpath-query-api",
+    "handles": 33,
+    "dictTokens": 995,
+    "estimatedSavings": 10295,
+    "error": null
+  },
+  {
+    "task": "narwhals-rolling-window-suite",
+    "handles": 43,
+    "dictTokens": 999,
+    "estimatedSavings": 10263,
+    "error": null
+  },
+  {
+    "task": "dynamodb-toolbox-conditional-attribute-requirements",
+    "handles": 20,
+    "dictTokens": 999,
+    "estimatedSavings": 9939,
+    "error": null
+  },
+  {
+    "task": "dynamodb-toolbox-lazy-recursive-schemas",
+    "handles": 20,
+    "dictTokens": 999,
+    "estimatedSavings": 9939,
+    "error": null
+  },
+  {
+    "task": "numba-stencil-boundary-modes",
+    "handles": 40,
+    "dictTokens": 998,
+    "estimatedSavings": 9555,
+    "error": null
+  },
+  {
+    "task": "python-statemachine-state-data-scoping",
+    "handles": 11,
+    "dictTokens": 997,
+    "estimatedSavings": 9549,
+    "error": null
+  },
+  {
+    "task": "kysely-window-grouping-helpers",
+    "handles": 12,
+    "dictTokens": 1000,
+    "estimatedSavings": 8090,
+    "error": null
+  },
+  {
+    "task": "optique-conditional-option-dependencies",
+    "handles": 34,
+    "dictTokens": 1000,
+    "estimatedSavings": 7565,
+    "error": null
+  },
+  {
+    "task": "pest-character-class-coalescing",
+    "handles": 25,
+    "dictTokens": 999,
+    "estimatedSavings": 7420,
+    "error": null
+  },
+  {
+    "task": "wazero-multi-module-snapshots",
+    "handles": 4,
+    "dictTokens": 998,
+    "estimatedSavings": 7074,
+    "error": null
+  },
+  {
+    "task": "returns-validated-error-accumulation",
+    "handles": 19,
+    "dictTokens": 993,
+    "estimatedSavings": 6845,
+    "error": null
+  },
+  {
+    "task": "scriggo-method-declarations",
+    "handles": 30,
+    "dictTokens": 999,
+    "estimatedSavings": 6643,
+    "error": null
+  },
+  {
+    "task": "go-critic-doc-link-checker",
+    "handles": 35,
+    "dictTokens": 998,
+    "estimatedSavings": 6094,
+    "error": null
+  },
+  {
+    "task": "scc-bounded-memory-spilling",
+    "handles": 19,
+    "dictTokens": 998,
+    "estimatedSavings": 6052,
+    "error": null
+  },
+  {
+    "task": "expr-try-catch-errors",
+    "handles": 36,
+    "dictTokens": 1000,
+    "estimatedSavings": 5708,
+    "error": null
+  },
+  {
+    "task": "bandit-incremental-cache-control",
+    "handles": 41,
+    "dictTokens": 1000,
+    "estimatedSavings": 5669,
+    "error": null
+  },
+  {
+    "task": "bandit-interprocedural-taint-checks",
+    "handles": 41,
+    "dictTokens": 1000,
+    "estimatedSavings": 5669,
+    "error": null
+  },
+  {
+    "task": "bandit-structured-nosec-directives",
+    "handles": 41,
+    "dictTokens": 1000,
+    "estimatedSavings": 5669,
+    "error": null
+  },
+  {
+    "task": "actionlint-action-pinning-lint",
+    "handles": 11,
+    "dictTokens": 997,
+    "estimatedSavings": 5514,
+    "error": null
+  },
+  {
+    "task": "meriyah-explicit-resource-declarations",
+    "handles": 16,
+    "dictTokens": 1000,
+    "estimatedSavings": 5068,
+    "error": null
+  },
+  {
+    "task": "ink-grid-box-layout",
+    "handles": 10,
+    "dictTokens": 1000,
+    "estimatedSavings": 5063,
+    "error": null
+  },
+  {
+    "task": "geo-shapeindex-serialization",
+    "handles": 25,
+    "dictTokens": 1000,
+    "estimatedSavings": 4964,
+    "error": null
+  },
+  {
+    "task": "sql-formatter-bigquery-pipe-formatting",
+    "handles": 42,
+    "dictTokens": 1000,
+    "estimatedSavings": 4937,
+    "error": null
+  },
+  {
+    "task": "vitest-duration-sharding",
+    "handles": 7,
+    "dictTokens": 999,
+    "estimatedSavings": 4917,
+    "error": null
+  },
+  {
+    "task": "cliffy-config-file-parsing",
+    "handles": 15,
+    "dictTokens": 1000,
+    "estimatedSavings": 4713,
+    "error": null
+  },
+  {
+    "task": "dasel-html-document-format",
+    "handles": 16,
+    "dictTokens": 999,
+    "estimatedSavings": 4578,
+    "error": null
+  },
+  {
+    "task": "mobly-grouped-test-barriers",
+    "handles": 31,
+    "dictTokens": 1000,
+    "estimatedSavings": 4573,
+    "error": null
+  },
+  {
+    "task": "task-task-graph-export",
+    "handles": 20,
+    "dictTokens": 999,
+    "estimatedSavings": 4179,
+    "error": null
+  },
+  {
+    "task": "yaegi-go-embed-directives",
+    "handles": 15,
+    "dictTokens": 1000,
+    "estimatedSavings": 3956,
+    "error": null
+  },
+  {
+    "task": "go-genai-streamed-function-args",
+    "handles": 18,
+    "dictTokens": 999,
+    "estimatedSavings": 3822,
+    "error": null
+  },
+  {
+    "task": "testem-bail-on-test-failure",
+    "handles": 14,
+    "dictTokens": 996,
+    "estimatedSavings": 3506,
+    "error": null
+  },
+  {
+    "task": "testem-per-launcher-reports",
+    "handles": 14,
+    "dictTokens": 996,
+    "estimatedSavings": 3506,
+    "error": null
+  },
+  {
+    "task": "participle-grammar-conflict-analysis",
+    "handles": 11,
+    "dictTokens": 999,
+    "estimatedSavings": 3425,
+    "error": null
+  },
+  {
+    "task": "skrub-duration-encoding",
+    "handles": 8,
+    "dictTokens": 995,
+    "estimatedSavings": 3050,
+    "error": null
+  },
+  {
+    "task": "clack-async-autocomplete-options",
+    "handles": 27,
+    "dictTokens": 999,
+    "estimatedSavings": 3048,
+    "error": null
+  },
+  {
+    "task": "mashumaro-flattened-dataclass-fields",
+    "handles": 26,
+    "dictTokens": 995,
+    "estimatedSavings": 2945,
+    "error": null
+  },
+  {
+    "task": "updo-policy-alerting",
+    "handles": 34,
+    "dictTokens": 999,
+    "estimatedSavings": 2697,
+    "error": null
+  },
+  {
+    "task": "wasmi-trap-coredumps",
+    "handles": 5,
+    "dictTokens": 999,
+    "estimatedSavings": 2647,
+    "error": null
+  },
+  {
+    "task": "arktype-json-schema-refs-dependencies",
+    "handles": 6,
+    "dictTokens": 995,
+    "estimatedSavings": 2529,
+    "error": null
+  },
+  {
+    "task": "tengo-callable-instance-isolation",
+    "handles": 31,
+    "dictTokens": 996,
+    "estimatedSavings": 2408,
+    "error": null
+  },
+  {
+    "task": "tengo-destructuring-bindings",
+    "handles": 31,
+    "dictTokens": 996,
+    "estimatedSavings": 2408,
+    "error": null
+  },
+  {
+    "task": "sqlfmt-create-table-ddl-formatting",
+    "handles": 16,
+    "dictTokens": 998,
+    "estimatedSavings": 2377,
+    "error": null
+  },
+  {
+    "task": "obsidian-linter-auto-table-of-contents",
+    "handles": 10,
+    "dictTokens": 994,
+    "estimatedSavings": 2339,
+    "error": null
+  },
+  {
+    "task": "obsidian-linter-link-format-conversion",
+    "handles": 10,
+    "dictTokens": 994,
+    "estimatedSavings": 2339,
+    "error": null
+  },
+  {
+    "task": "obsidian-linter-scoped-ignore-markers",
+    "handles": 10,
+    "dictTokens": 994,
+    "estimatedSavings": 2339,
+    "error": null
+  },
+  {
+    "task": "sqlite-utils-safe-import-checkpoints",
+    "handles": 26,
+    "dictTokens": 993,
+    "estimatedSavings": 2301,
+    "error": null
+  },
+  {
+    "task": "boa-hierarchical-evaluation-cancellation",
+    "handles": 4,
+    "dictTokens": 996,
+    "estimatedSavings": 2275,
+    "error": null
+  },
+  {
+    "task": "onedump-dump-encryption-pipeline",
+    "handles": 20,
+    "dictTokens": 999,
+    "estimatedSavings": 2141,
+    "error": null
+  },
+  {
+    "task": "kombu-single-active-consumer-priority",
+    "handles": 9,
+    "dictTokens": 1000,
+    "estimatedSavings": 2069,
+    "error": null
+  },
+  {
+    "task": "kombu-virtual-queue-dead-lettering",
+    "handles": 9,
+    "dictTokens": 1000,
+    "estimatedSavings": 2069,
+    "error": null
+  },
+  {
+    "task": "csstree-shorthand-expansion-compression",
+    "handles": 7,
+    "dictTokens": 995,
+    "estimatedSavings": 2039,
+    "error": null
+  },
+  {
+    "task": "adaptix-name-mapping-aliases",
+    "handles": 1,
+    "dictTokens": 995,
+    "estimatedSavings": 1960,
+    "error": null
+  },
+  {
+    "task": "anko-default-function-arguments",
+    "handles": 26,
+    "dictTokens": 996,
+    "estimatedSavings": 1818,
+    "error": null
+  },
+  {
+    "task": "anko-typed-variable-bindings",
+    "handles": 26,
+    "dictTokens": 996,
+    "estimatedSavings": 1818,
+    "error": null
+  },
+  {
+    "task": "aiomonitor-task-snapshots-diff",
+    "handles": 18,
+    "dictTokens": 1000,
+    "estimatedSavings": 1617,
+    "error": null
+  },
+  {
+    "task": "igel-persist-feature-schema",
+    "handles": 8,
+    "dictTokens": 998,
+    "estimatedSavings": 1588,
+    "error": null
+  },
+  {
+    "task": "ts-pattern-match-each",
+    "handles": 19,
+    "dictTokens": 999,
+    "estimatedSavings": 1508,
+    "error": null
+  },
+  {
+    "task": "true-myth-iterable-collection-combinators",
+    "handles": 14,
+    "dictTokens": 994,
+    "estimatedSavings": 1465,
+    "error": null
+  },
+  {
+    "task": "koota-composite-trait-aspects",
+    "handles": 4,
+    "dictTokens": 999,
+    "estimatedSavings": 1444,
+    "error": null
+  },
+  {
+    "task": "koota-pair-relation-tracking",
+    "handles": 4,
+    "dictTokens": 999,
+    "estimatedSavings": 1444,
+    "error": null
+  },
+  {
+    "task": "koota-query-predicates",
+    "handles": 4,
+    "dictTokens": 999,
+    "estimatedSavings": 1444,
+    "error": null
+  },
+  {
+    "task": "fd-deterministic-multi-key-sorting",
+    "handles": 15,
+    "dictTokens": 994,
+    "estimatedSavings": 1436,
+    "error": null
+  },
+  {
+    "task": "katex-multicolumn-array-spans",
+    "handles": 3,
+    "dictTokens": 998,
+    "estimatedSavings": 1362,
+    "error": null
+  },
+  {
+    "task": "dateutil-rfc5545-timezone-interop",
+    "handles": 21,
+    "dictTokens": 1000,
+    "estimatedSavings": 1351,
+    "error": null
+  },
+  {
+    "task": "yjs-map-conflict-detection",
+    "handles": 15,
+    "dictTokens": 999,
+    "estimatedSavings": 1338,
+    "error": null
+  },
+  {
+    "task": "httpx-deterministic-cookie-store",
+    "handles": 6,
+    "dictTokens": 1000,
+    "estimatedSavings": 1337,
+    "error": null
+  },
+  {
+    "task": "httpx-multipart-response-parsing",
+    "handles": 6,
+    "dictTokens": 1000,
+    "estimatedSavings": 1337,
+    "error": null
+  },
+  {
+    "task": "httpx-streaming-json-iteration",
+    "handles": 6,
+    "dictTokens": 1000,
+    "estimatedSavings": 1337,
+    "error": null
+  },
+  {
+    "task": "gql-incremental-graphql-delivery",
+    "handles": 3,
+    "dictTokens": 1000,
+    "estimatedSavings": 1309,
+    "error": null
+  },
+  {
+    "task": "abs-module-cache-flags",
+    "handles": 5,
+    "dictTokens": 996,
+    "estimatedSavings": 1296,
+    "error": null
+  },
+  {
+    "task": "abs-stepped-slices",
+    "handles": 5,
+    "dictTokens": 996,
+    "estimatedSavings": 1296,
+    "error": null
+  },
+  {
+    "task": "ofetch-per-origin-circuit-breaker",
+    "handles": 25,
+    "dictTokens": 996,
+    "estimatedSavings": 1290,
+    "error": null
+  },
+  {
+    "task": "quill-shared-toolbar-focus",
+    "handles": 4,
+    "dictTokens": 998,
+    "estimatedSavings": 1251,
+    "error": null
+  },
+  {
+    "task": "kea-atomic-signal-selectors",
+    "handles": 19,
+    "dictTokens": 997,
+    "estimatedSavings": 1239,
+    "error": null
+  },
+  {
+    "task": "termenv-preserve-ansi-resets",
+    "handles": 18,
+    "dictTokens": 999,
+    "estimatedSavings": 1220,
+    "error": null
+  },
+  {
+    "task": "koota-deferred-mutation-buffer",
+    "handles": 4,
+    "dictTokens": 999,
+    "estimatedSavings": 1199,
+    "error": null
+  },
+  {
+    "task": "ipython-session-bundle-replay",
+    "handles": 3,
+    "dictTokens": 999,
+    "estimatedSavings": 1165,
+    "error": null
+  },
+  {
+    "task": "cattrs-partial-structuring-recovery",
+    "handles": 6,
+    "dictTokens": 999,
+    "estimatedSavings": 1137,
+    "error": null
+  },
+  {
+    "task": "vulture-persistent-analysis-cache",
+    "handles": 28,
+    "dictTokens": 1000,
+    "estimatedSavings": 1119,
+    "error": null
+  },
+  {
+    "task": "claude-code-by-agents-recursive-delegation",
+    "handles": 5,
+    "dictTokens": 1000,
+    "estimatedSavings": 1094,
+    "error": null
+  },
+  {
+    "task": "tomlkit-toml-table-converters",
+    "handles": 12,
+    "dictTokens": 999,
+    "estimatedSavings": 1071,
+    "error": null
+  },
+  {
+    "task": "etree-xml-diff-patch",
+    "handles": 35,
+    "dictTokens": 998,
+    "estimatedSavings": 1027,
+    "error": null
+  },
+  {
+    "task": "mnamer-daemon-watch-lifecycle",
+    "handles": 9,
+    "dictTokens": 998,
+    "estimatedSavings": 1018,
+    "error": null
+  },
+  {
+    "task": "awilix-async-container-initialization",
+    "handles": 20,
+    "dictTokens": 1000,
+    "estimatedSavings": 981,
+    "error": null
+  },
+  {
+    "task": "kcp-go-multiplexed-kcp-streams",
+    "handles": 6,
+    "dictTokens": 1000,
+    "estimatedSavings": 948,
+    "error": null
+  },
+  {
+    "task": "superjson-error-stack-serialization",
+    "handles": 45,
+    "dictTokens": 998,
+    "estimatedSavings": 876,
+    "error": null
+  },
+  {
+    "task": "eicrud-keyset-pagination-cursor",
+    "handles": 0,
+    "dictTokens": 0,
+    "estimatedSavings": 0,
+    "error": "Error: git fetch failed for eicrud-keyset-pagination-cursor: fatal: couldn't find remote ref 68dafce\n"
+  },
+  {
+    "task": "koota-entity-snapshot-rollback",
+    "handles": 0,
+    "dictTokens": 0,
+    "estimatedSavings": 0,
+    "error": "Error: git fetch failed for koota-entity-snapshot-rollback: fatal: couldn't find remote ref 72ebef44b8e024d877250f055eea60cdfaa4506\n"
+  },
+  {
+    "task": "langchain-request-coalescing",
+    "handles": 0,
+    "dictTokens": 0,
+    "estimatedSavings": 0,
+    "error": "Error: git fetch failed for langchain-request-coalescing: fatal: couldn't find remote ref 7cef35b\n"
+  }
+]

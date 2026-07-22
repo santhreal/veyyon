@@ -397,7 +397,9 @@ export class Editor implements Component, Focusable {
 	 *  to the content width rather than reflowed. Cursor glyphs and inline hints are excluded. */
 	decorateText: ((text: string) => string) | undefined;
 	#promptGutter: string | undefined;
+	#promptGutterContinuation: string | undefined;
 	#placeholder: string | undefined;
+	#rowBackground: string | undefined;
 
 	// Store last layout width for cursor navigation
 	#lastLayoutWidth: number = 80;
@@ -526,6 +528,27 @@ export class Editor implements Component, Focusable {
 
 	setPromptGutter(promptGutter: string | undefined): void {
 		this.#promptGutter = promptGutter;
+	}
+
+	/**
+	 * Styled gutter text for wrapped/subsequent input rows (the multiline `┆`
+	 * continuation whisper). Sliced and space-padded to the prompt gutter's
+	 * width so content columns stay aligned. Undefined restores the blank
+	 * alignment padding.
+	 */
+	setPromptGutterContinuation(text: string | undefined): void {
+		this.#promptGutterContinuation = text;
+	}
+
+	/**
+	 * Tonal ground painted under every input row (the composer "quiet card").
+	 * `open` is a raw SGR background-open sequence (e.g. `\x1b[48;2;12;14;18m`);
+	 * pass undefined or "" to clear. Applies only in gutter mode — the framed
+	 * (borderVisible) variant draws its own chrome. Inner `\x1b[0m` resets are
+	 * re-opened so a reverse-video cursor cannot punch a hole in the card.
+	 */
+	setRowBackground(open: string | undefined): void {
+		this.#rowBackground = open === "" ? undefined : open;
 	}
 
 	/** Ghost text shown when the composer is empty (the resting prompt hint). */
@@ -679,9 +702,18 @@ export class Editor implements Component, Focusable {
 		if (this.#borderVisible || !this.#promptGutter) return undefined;
 		const gutterWidth = this.#getPromptGutterWidth(width, paddingX);
 		if (gutterWidth === 0) return undefined;
+		// Continuation rows show the whisper glyph when one is configured (the
+		// multiline `┆` of the composer design); otherwise blank alignment
+		// padding, exactly as before the feature.
+		const continuationSource = this.#promptGutterContinuation;
+		let continuation = padding(gutterWidth);
+		if (continuationSource !== undefined) {
+			const sliced = sliceByColumn(continuationSource, 0, gutterWidth, true);
+			continuation = sliced + padding(Math.max(0, gutterWidth - visibleWidth(sliced)));
+		}
 		return {
 			firstLine: sliceByColumn(this.#promptGutter, 0, gutterWidth, true),
-			continuation: padding(gutterWidth),
+			continuation,
 			width: gutterWidth,
 		};
 	}
@@ -1045,6 +1077,17 @@ export class Editor implements Component, Focusable {
 				const leftBorder = this.borderColor(`${box.vertical}${padding(paddingX)}`);
 				const rightBorder = this.borderColor(`${padding(Math.max(0, rightChromeCells - 1))}${box.vertical}`);
 				result.push(leftBorder + displayText + linePad + rightBorder);
+			}
+		}
+
+		// The quiet card: paint the tonal ground under every input row (gutter
+		// mode only). Inner full resets (`\x1b[0m` — the reverse-video cursor)
+		// re-open the ground so the card stays continuous; `\x1b[49m` closes it
+		// at the row edge without disturbing foreground state.
+		if (!borderVisible && this.#rowBackground) {
+			const ground = this.#rowBackground;
+			for (let i = 0; i < result.length; i++) {
+				result[i] = `${ground}${result[i]!.replaceAll("\x1b[0m", `\x1b[0m${ground}`)}\x1b[49m`;
 			}
 		}
 
@@ -3046,7 +3089,7 @@ export class Editor implements Component, Focusable {
 	}
 	#createAutocompleteList(
 		prefix: string,
-		items: Array<{ value: string; label: string; description?: string }>,
+		items: Array<{ value: string; label: string; description?: string; group?: string }>,
 	): SelectList {
 		const layout = prefix.startsWith("/") ? SLASH_COMMAND_SELECT_LIST_LAYOUT : AUTOCOMPLETE_SELECT_LIST_LAYOUT;
 		return new SelectList(items, this.#autocompleteMaxVisible, this.#theme.selectList, layout);

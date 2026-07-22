@@ -147,6 +147,21 @@ export async function atomicWriteFile(
 }
 
 /**
+ * Serialize `data` as pretty-printed JSON (2-space indent, trailing newline)
+ * and write it to `filePath` atomically via {@link atomicWriteFile}. The
+ * trailing newline keeps the file POSIX-clean and diff-friendly. Use this for
+ * any on-disk JSON registry or config so every writer produces byte-identical
+ * formatting instead of each caller hand-rolling `JSON.stringify(...) + "\n"`.
+ */
+export async function atomicWriteJson(
+	filePath: string,
+	data: unknown,
+	options: AtomicWriteOptions = {},
+): Promise<void> {
+	await atomicWriteFile(filePath, `${JSON.stringify(data, null, 2)}\n`, options);
+}
+
+/**
  * The producer form of {@link atomicWriteFile}: instead of handing over bytes,
  * you get the temp path and write to it however you like (a streaming writer, a
  * third-party encoder that only takes a path). The same crash-safety holds — the

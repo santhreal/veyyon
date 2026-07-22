@@ -128,6 +128,59 @@ describe("shared credential store (PROF-1)", () => {
 		}
 	});
 
+	// PROF-1 regression (the "lost all my creds after an update" bug): the shared
+	// store moved to a new location, so on first read the CURRENT profile store is
+	// empty and the only surviving login sits in an OLD per-profile `shared-auth`
+	// dir. `seedSourceDbPaths` lists newest-to-oldest candidates; the first
+	// non-empty one seeds the shared store, so the update recovers the login
+	// instead of leaving the user logged out.
+	it("seeds from a legacy source when the current profile store is empty", async () => {
+		const legacyDir = path.join(path.dirname(path.dirname(profileDir)), "work", "shared-auth");
+		await fs.mkdir(legacyDir, { recursive: true });
+		await writeCredential(getAgentDbPath(legacyDir), "google-antigravity", oauth("legacy"));
+		// Current profile store is intentionally empty (the update moved things).
+
+		const storage = await discoverAuthStorage({
+			agentDir: profileDir,
+			storeAgentDir: sharedDir,
+			seedSourceDbPaths: [getAgentDbPath(profileDir), getAgentDbPath(legacyDir)],
+		});
+		expect(storage.hasAuth("google-antigravity")).toBe(true);
+
+		const shared = await SqliteAuthCredentialStore.open(getAgentDbPath(sharedDir));
+		try {
+			const rows = shared.listAuthCredentials("google-antigravity");
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.credential).toMatchObject({ type: "oauth", refresh: "refresh-legacy" });
+		} finally {
+			shared.close();
+		}
+	});
+
+	// First non-empty source wins: a live current-profile login is not overwritten
+	// by an older legacy store listed after it (no merge, no stale-token clobber).
+	it("prefers the first non-empty seed source over later legacy ones", async () => {
+		const legacyDir = path.join(path.dirname(path.dirname(profileDir)), "work", "shared-auth");
+		await fs.mkdir(legacyDir, { recursive: true });
+		await writeCredential(getAgentDbPath(profileDir), "google-antigravity", oauth("current"));
+		await writeCredential(getAgentDbPath(legacyDir), "google-antigravity", oauth("legacy"));
+
+		await discoverAuthStorage({
+			agentDir: profileDir,
+			storeAgentDir: sharedDir,
+			seedSourceDbPaths: [getAgentDbPath(profileDir), getAgentDbPath(legacyDir)],
+		});
+
+		const shared = await SqliteAuthCredentialStore.open(getAgentDbPath(sharedDir));
+		try {
+			const rows = shared.listAuthCredentials("google-antigravity");
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.credential).toMatchObject({ refresh: "refresh-current" });
+		} finally {
+			shared.close();
+		}
+	});
+
 	it("isolation (no storeAgentDir) reads the per-profile store, not the shared one", async () => {
 		await writeCredential(getAgentDbPath(profileDir), "google-antigravity", oauth("profile"));
 

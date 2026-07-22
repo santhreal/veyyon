@@ -242,9 +242,6 @@ export class BinaryVectorStore {
 		return results.slice(0, Math.max(0, Math.trunc(topK)));
 	}
 
-	searchBatch(queryEmbeddings: readonly (readonly number[])[], topK = 10): BinaryVectorSearchResult[][] {
-		return queryEmbeddings.map(embedding => this.search(embedding, topK));
-	}
 	deleteVector(memoryId: string): void {
 		this.conn.query(`DELETE FROM ${this.tableName} WHERE memory_id = ?`).run(memoryId);
 	}

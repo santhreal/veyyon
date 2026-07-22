@@ -21,8 +21,6 @@ export interface LaunchRequest {
 	/** Explicit task names (passed as repeated --include). */
 	include?: string[];
 	concurrency?: number;
-	/** SnapCompact conditions; ignored by other benchmarks. */
-	conditions?: string[];
 	timeoutMultiplier?: number;
 	attempts?: number;
 	agent?: string;

@@ -22,6 +22,7 @@ import {
 	errorMessage,
 	getConfigRootDir,
 	isEnoent,
+	isProcessAlive,
 	logger,
 	trimTrailingSlashes,
 	withExtraCaFetch,
@@ -208,18 +209,6 @@ function providerInFlightSignalPath(provider: string): string {
 
 function providerInFlightLockDir(provider: string): string {
 	return `${providerInFlightDir(provider)}.lock`;
-}
-
-// `process.kill(pid, 0)` may throw for permission/sandbox reasons even when a
-// process exists. Treat non-ESRCH failures as alive; timestamp expiry still
-// reaps leases whose heartbeat stopped.
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code !== "ESRCH";
-	}
 }
 
 async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFlightLeaseInfo | null> {

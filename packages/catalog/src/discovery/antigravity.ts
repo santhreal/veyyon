@@ -219,12 +219,14 @@ export async function fetchAntigravityDiscoveryModels(
 				baseUrl: endpoint,
 				reasoning: model.supportsThinking === true,
 				input: supportsImages ? ["text", "image"] : ["text"],
+				// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 				cost: {
 					input: 0,
 					output: 0,
 					cacheRead: 0,
 					cacheWrite: 0,
 				},
+				pricing: "unknown",
 				contextWindow: toPositiveNumber(model.maxTokens, DEFAULT_CONTEXT_WINDOW),
 				maxTokens: toPositiveNumber(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
 			});
