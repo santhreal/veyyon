@@ -270,12 +270,10 @@ async function main(): Promise<void> {
 	}
 	const tasksRoot = path.resolve(BENCH_DIR, tasksRootArg);
 	const armsArg = args.arms ?? "none,full";
-	const arms = armsArg.split(",").map(a => a.trim()).filter(Boolean);
-	const model = args.model ?? "google-antigravity/gemini-2.5-flash";
+	const model = args.model ?? "google-antigravity/gemini-3.6-flash";
 	const jobParallel = Number(args.jobs ?? "2");
 	const limit = args.limit ? Number(args.limit) : undefined;
 	const outRoot = path.resolve(args.out ?? path.join(BENCH_DIR, "runs", new Date().toISOString().replace(/[:.]/g, "-")));
-
 	const taskListFile = args.tasks ? path.resolve(BENCH_DIR, args.tasks) : undefined;
 	let tasks: string[];
 	if (taskListFile) {
