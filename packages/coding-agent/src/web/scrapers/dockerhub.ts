@@ -1,5 +1,6 @@
 import { tryParseJson } from "@veyyon/utils";
 import { formatBytes } from "../../tools/render-utils";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -121,13 +122,16 @@ export const handleDockerHub: SpecialHandler = async (
 
 			for (const tag of tags) {
 				const size = tag.full_size ? formatBytes(tag.full_size) : "-";
-				const archs =
+				const archs = escapeMarkdownTableCell(
 					tag.images
 						?.map(img => img.architecture)
 						.filter(Boolean)
-						.join(", ") || "-";
+						.join(", ") || "-",
+				);
 				const updated = tag.last_updated ? formatIsoDate(tag.last_updated) : "-";
-				md += `| \`${tag.name}\` | ${size} | ${archs} | ${updated} |\n`;
+				// Tag name and arch list come from the API; a `|` in either would split
+				// the GFM row (backticks do not shield a cell from row-level parsing).
+				md += `| \`${escapeMarkdownTableCell(tag.name)}\` | ${size} | ${archs} | ${updated} |\n`;
 			}
 			md += "\n";
 		}
