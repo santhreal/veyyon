@@ -90,3 +90,6 @@ adv-debug-*/
 
 # Review-only local task ledger (fleet rule)
 BACKLOG.md
+
+# Local keyhog baseline (credential hashes + absolute host paths; keep on disk)
+.keyhog-baseline.json
