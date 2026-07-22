@@ -73,11 +73,12 @@ class VeyyonAgent(BaseInstalledAgent):
         )
 
     def network_allowlist(self):
-        # The google-antigravity OAuth flow refreshes via oauth2.googleapis.com
-        # and calls daily-cloudcode-pa.googleapis.com; both sit under
-        # .googleapis.com. accounts.google.com covers the SSO endpoints.
+        # Allow Google OAuth/CloudCode, Anthropic, OpenAI, and OpenRouter endpoints
         return allowlist_from_urls(
-            [], default_domains=[".googleapis.com", ".google.com"]
+            [], default_domains=[
+                ".googleapis.com", ".google.com",
+                ".anthropic.com", ".openai.com", ".openrouter.ai"
+            ]
         )
 
     async def run(
