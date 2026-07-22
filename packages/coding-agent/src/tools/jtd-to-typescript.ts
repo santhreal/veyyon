@@ -116,7 +116,10 @@ function convertToTypeScript(
 	}
 
 	if (isJTDEnum(schema)) {
-		return schema.enum.map(v => `"${v}"`).join(" | ");
+		// JSON.stringify, not raw `"${v}"`: an enum value containing a double quote,
+		// backslash, or control character must be escaped or the emitted union is
+		// invalid TypeScript. A JSON string literal is a valid TS string literal.
+		return schema.enum.map(v => JSON.stringify(v)).join(" | ");
 	}
 
 	if (isJTDElements(schema)) {

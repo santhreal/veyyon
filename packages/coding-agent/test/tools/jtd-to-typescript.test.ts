@@ -106,6 +106,29 @@ describe("jtdToTypeScript", () => {
 			expect(jtdToTypeScript({ enum: ["open", "closed"] })).toBe('"open" | "closed"');
 		});
 
+		// Locks FINDING-JTD-ENUM-LITERAL-UNESCAPED. Raw `"${v}"` interpolation
+		// produced invalid TypeScript for any enum value carrying a quote,
+		// backslash, or control character; this output goes straight into a system
+		// prompt, so a malformed literal is a broken type the model cannot satisfy.
+		// JSON.stringify escapes each value into a valid TS string literal.
+		it("escapes a double quote inside an enum value", () => {
+			// Raw interpolation emitted `"a"b"` — three tokens, invalid syntax.
+			expect(jtdToTypeScript({ enum: ['a"b'] })).toBe('"a\\"b"');
+		});
+
+		it("escapes a backslash inside an enum value", () => {
+			expect(jtdToTypeScript({ enum: ["a\\b"] })).toBe('"a\\\\b"');
+		});
+
+		it("escapes a newline inside an enum value", () => {
+			// A raw newline would split the union across lines and break the literal.
+			expect(jtdToTypeScript({ enum: ["a\nb"] })).toBe('"a\\nb"');
+		});
+
+		it("escapes each member of a multi-value enum with special characters", () => {
+			expect(jtdToTypeScript({ enum: ['say "hi"', "back\\slash"] })).toBe('"say \\"hi\\"" | "back\\\\slash"');
+		});
+
 		it("folds the discriminator into each variant", () => {
 			// The model has to see that the tag and the variant fields travel
 			// together, or it emits the tag beside a mismatched body.
