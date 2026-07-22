@@ -79,6 +79,19 @@ describe("globPaths", () => {
 		const signal = AbortSignal.abort(new Error("caller cancelled"));
 		await expect(globPaths("**/*.ts", { cwd: base, signal })).rejects.toThrow("caller cancelled");
 	});
+
+	it("returns each path once when two patterns overlap on the same file", async () => {
+		// `**/*.ts` and `sub/**` both match `sub/c.ts`; the result must list it a
+		// single time. REGRESSION: results were pushed per pattern with no dedup, so
+		// a file matched by more than one input pattern appeared as many times as it
+		// matched, silently inflating counts and any downstream `find`/`read` loop.
+		const found = (await globPaths(["**/*.ts", "sub/**"], { cwd: base })).sort();
+		const subMatches = found.filter(p => p === "sub/c.ts");
+		expect(subMatches).toEqual(["sub/c.ts"]);
+		// a.ts and keep.ts come only from the first pattern; sub/c.ts and
+		// build/out.ts are matched by both but appear once each.
+		expect(found).toEqual(["a.ts", "build/out.ts", "keep.ts", "sub/c.ts"]);
+	});
 });
 
 describe("loadGitignorePatterns", () => {
