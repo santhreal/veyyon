@@ -15,14 +15,17 @@ import { type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule"
 import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 // Importing discovery registers all providers as a side effect.
 import { loadCapability } from "@veyyon/coding-agent/discovery";
-import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
+import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../helpers/settings-test-state";
 
+let settingsState: SettingsTestState | undefined;
 let tempDir: string;
 let home: string;
 let project: string;
-
-const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 function writeFile(filePath: string, content: string): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -44,6 +47,7 @@ async function loadRulesCapability(cwd: string): Promise<Rule[]> {
 }
 
 beforeEach(() => {
+	settingsState = beginSettingsTest();
 	clearCache();
 	tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-rules-md-"));
 	home = path.join(tempDir, "home");
@@ -56,12 +60,8 @@ beforeEach(() => {
 
 afterEach(() => {
 	clearCache();
-	if (originalAgentDirEnv) {
-		setAgentDir(originalAgentDirEnv);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 	removeSyncWithRetries(tempDir);
 });
 

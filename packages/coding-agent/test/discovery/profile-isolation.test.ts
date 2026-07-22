@@ -21,10 +21,12 @@ import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { type Skill, skillCapability } from "@veyyon/coding-agent/capability/skill";
 import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
-import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
-
-const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+import { removeWithRetries, setAgentDir } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../helpers/settings-test-state";
 
 async function writeFile(filePath: string, content: string): Promise<void> {
 	await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -39,13 +41,13 @@ async function writeSkill(skillsDir: string, name: string): Promise<void> {
 }
 
 describe("native user-level config discovery follows the active profile", () => {
+	let settingsState: SettingsTestState | undefined;
 	let tempHome = "";
 	let projectDir = "";
 	let profileAgentDir = "";
-	let originalHome: string | undefined;
 
 	beforeEach(async () => {
-		originalHome = process.env.HOME;
+		settingsState = beginSettingsTest();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-iso-home-"));
 		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-iso-project-"));
 		profileAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-iso-agent-"));
@@ -64,16 +66,9 @@ describe("native user-level config discovery follows the active profile", () => 
 	});
 
 	afterEach(async () => {
-		vi.restoreAllMocks();
 		clearFsCache();
-		if (originalAgentDirEnv) {
-			setAgentDir(originalAgentDirEnv);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
-		if (originalHome === undefined) delete process.env.HOME;
-		else process.env.HOME = originalHome;
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 		await removeWithRetries(tempHome);
 		await removeWithRetries(projectDir);
 		await removeWithRetries(profileAgentDir);

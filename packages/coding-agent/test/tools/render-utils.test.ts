@@ -23,7 +23,7 @@ import {
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/render-utils";
-import { getKeybindings, setKeybindings, type KeybindingsManager as TuiKeybindingsManager } from "@veyyon/tui";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
 
 describe("parse error formatting", () => {
 	it("deduplicates parse errors while preserving order", () => {
@@ -333,12 +333,8 @@ describe("formatExpandHint / expandKeyHint", () => {
 		format: { bracketLeft: "[", bracketRight: "]" },
 	} as unknown as Theme;
 
-	let previous: TuiKeybindingsManager;
-	beforeEach(() => {
-		previous = getKeybindings();
-	});
 	afterEach(() => {
-		setKeybindings(previous);
+		resetKeybindingsForTests();
 	});
 
 	it("reports the default tool-output expand key with fold glyph", () => {

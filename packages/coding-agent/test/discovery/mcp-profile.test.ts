@@ -19,10 +19,12 @@ import * as path from "node:path";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
-import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
-
-const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+import { removeWithRetries, setAgentDir } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../helpers/settings-test-state";
 
 async function writeMcpJson(dir: string, servers: Record<string, unknown>): Promise<void> {
 	await fs.mkdir(dir, { recursive: true });
@@ -36,12 +38,12 @@ async function loadNativeUserServers(cwd: string): Promise<MCPServer[]> {
 }
 
 describe("native user-level MCP discovery follows the active profile", () => {
+	let settingsState: SettingsTestState | undefined;
 	let tempHome = "";
 	let projectDir = "";
-	let originalHome: string | undefined;
 
 	beforeEach(async () => {
-		originalHome = process.env.HOME;
+		settingsState = beginSettingsTest();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-profile-home-"));
 		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-profile-project-"));
 		process.env.HOME = tempHome;
@@ -50,16 +52,9 @@ describe("native user-level MCP discovery follows the active profile", () => {
 	});
 
 	afterEach(async () => {
-		vi.restoreAllMocks();
 		clearFsCache();
-		if (originalAgentDirEnv) {
-			setAgentDir(originalAgentDirEnv);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
-		if (originalHome === undefined) delete process.env.HOME;
-		else process.env.HOME = originalHome;
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 		await removeWithRetries(tempHome);
 		await removeWithRetries(projectDir);
 	});
