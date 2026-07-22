@@ -515,6 +515,32 @@ function codePointLength(value: string): number {
 	return count;
 }
 
+/**
+ * Compile a JSON Schema `pattern` once and memoize it. Validating an array of N
+ * strings against a shared `{ items: { pattern } }` schema reaches
+ * `validateStringKeywords` N times with the identical pattern string, so a bare
+ * `new RegExp(schema.pattern)` recompiled the same regex once per element -
+ * O(elements) redundant compilation on the hot path that validates model tool
+ * output. The cache keys on the raw pattern source and stores `null` for a
+ * pattern that fails to compile, so an invalid pattern is diagnosed once and
+ * never re-throws on subsequent elements. This is the single owner of pattern
+ * compilation for the validator.
+ */
+const compiledPatternCache = new Map<string, RegExp | null>();
+
+function compiledPattern(pattern: string): RegExp | null {
+	const cached = compiledPatternCache.get(pattern);
+	if (cached !== undefined) return cached;
+	let regex: RegExp | null;
+	try {
+		regex = new RegExp(pattern);
+	} catch {
+		regex = null;
+	}
+	compiledPatternCache.set(pattern, regex);
+	return regex;
+}
+
 /** Apply string-shaped keywords: `min/maxLength`, `pattern`. Invalid regexes flag the schema itself rather than the value. */
 function validateStringKeywords(
 	schema: Record<string, unknown>,
@@ -534,13 +560,12 @@ function validateStringKeywords(
 		valid = false;
 	}
 	if (typeof schema.pattern === "string") {
-		try {
-			if (!new RegExp(schema.pattern).test(value)) {
-				pushIssue(issues, path, "must match pattern", { keyword: "pattern" });
-				valid = false;
-			}
-		} catch {
+		const regex = compiledPattern(schema.pattern);
+		if (regex === null) {
 			pushIssue(issues, path, "schema pattern is invalid", { keyword: "pattern" });
+			valid = false;
+		} else if (!regex.test(value)) {
+			pushIssue(issues, path, "must match pattern", { keyword: "pattern" });
 			valid = false;
 		}
 	}
