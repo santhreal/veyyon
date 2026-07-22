@@ -1,6 +1,6 @@
 ---
 name: ship-feature
-description: Turn a merged Veyyon feature into a tracked, shippable change in one short pass, with its changelog, screenshots, and demo. Use right after a feature or fix lands, when preparing a release, or whenever someone asks why the repo is hard to track. Names the fixed release ritual and points at the docs, screenshots, and record-demo skills for each step.
+description: Turn a merged Veyyon feature into a tracked, shippable change in one short pass, with its changelog, screenshots, and demo. Use right after a feature or fix lands, when preparing a release, or whenever someone asks why the repo is hard to track. Names the fixed release ritual and points at docs, screenshots, record-demo, and prove-feature for each step.
 ---
 
 # Shipping a feature
@@ -19,6 +19,7 @@ Run these in order. Each row says when it applies and which skill owns the detai
 | 2. Docs sync | You changed a flag, command, setting, default, exit code, or behavior | [docs](../docs/SKILL.md) |
 | 3. Settings differential | You added or changed a setting or a gated feature | [screenshots](../screenshots/SKILL.md) |
 | 4. Demo | You changed a user-facing flow worth watching | [record-demo](../record-demo/SKILL.md) |
+| 4b. Proof demo | The flow is a Veyyon differentiator (Argot, hashline, …) | [prove-feature](../prove-feature/SKILL.md) |
 | 5. Gates | Always | below |
 
 ### 1. Changelog
@@ -41,7 +42,7 @@ If the feature adds or changes a setting, capture the settings screen off and on
 
 ### 4. Demo
 
-If the change is a user-facing flow, record or refresh its demo. A demo submits a real prompt and ends on the finished result, driven by the fast standing model so the recording stays short. The [record-demo](../record-demo/SKILL.md) skill owns the real-task rule, seeding, and the shared capture block. Refresh any existing demo whose flow your change altered, or its gif now lies about the product.
+If the change is a user-facing flow, record or refresh its demo. A demo submits a real prompt and ends on the finished result, driven by `scripts/demos/launch.sh` (work profile, Gemini 3.6 Flash with thinking high). The [record-demo](../record-demo/SKILL.md) skill owns the real-task rule, seeding, and the shared capture block. If the flow is a Veyyon differentiator, raise the bar with [prove-feature](../prove-feature/SKILL.md) so the gif shows something upstream cannot. Refresh any existing demo whose flow your change altered, or its gif now lies about the product.
 
 ### 5. Gates
 
@@ -60,6 +61,7 @@ Not every change needs all four artifacts. Decide by what the change touches, an
 - Pure internal refactor, no observable effect: changelog may use a justified `[skip changelog]` marker; no screenshot, no demo.
 - New or changed setting: changelog, docs, and a settings differential.
 - New or changed user-facing flow: changelog, docs, and a demo.
+- Veyyon-unique capability (Argot, hashline landing, compaction, …): changelog, docs, and a [prove-feature](../prove-feature/SKILL.md) demo, not a generic ask/edit toy.
 - New flag, command, default, or exit code: changelog and docs; a demo only if the flow is worth watching.
 
 When in doubt, produce the artifact. A missing proof is the exact drift this skill exists to prevent.

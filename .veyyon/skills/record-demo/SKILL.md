@@ -61,7 +61,7 @@ $ bash scripts/demos/record.sh hero edit       # only the named tapes
 $ bash scripts/demos/record-argot-settings.sh  # the argot off-vs-on differential
 ```
 
-Outputs land in `assets/` (`assets/demo-<name>.gif`, screenshots beside them). Tapes live in `assets/tapes/*.tape`; shared launch config is `scripts/demos/launch.sh`.
+Outputs land in `assets/` (`assets/demo-<name>.gif`, screenshots beside them). Tapes live in `assets/tapes/*.tape`; shared launch config is `scripts/demos/launch.sh`. For a demo that must prove a Veyyon-unique capability (not a generic coding-agent task), follow [prove-feature](../prove-feature/SKILL.md) before you commit the tape.
 
 ## Before you commit the demo
 
