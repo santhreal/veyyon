@@ -309,8 +309,11 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 			case "time": {
 				// The fractional-seconds separator is a literal dot, so it must be
 				// escaped: an unescaped `.` matched any character, wrongly accepting a
-				// value like "12:00:00X123".
-				const timeRegex = /^\d{2}:\d{2}:\d{2}(\.\d{3})?([+-]\d{2}:\d{2}|Z)?$/;
+				// value like "12:00:00X123". RFC 3339 defines `time-secfrac` as a dot
+				// followed by ONE OR MORE digits, so match `\d+`, not a fixed `\d{3}`
+				// (which rejected valid times such as "12:00:00.5" and
+				// "12:00:00.123456"). A lone dot with no digits still fails.
+				const timeRegex = /^\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}
 			case "ipv4": {
