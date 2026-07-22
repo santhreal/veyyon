@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 472 504" width="472" height="504" role="img" aria-label="Veyyon sun">
   <!-- Entrance ASCII sun — website/sun.js material (sun-field.js COLORS + GLYPH).
-       Stepped ember bands, glyph ramp · : ░ ▒ ▓ █, ordered dither. Static frame. -->
-  <rect width="100%" height="100%" fill="#000000"/>
+       Transparent ground: just the glyph disc, no black fill. -->
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace"
      font-size="11" text-anchor="middle" dominant-baseline="central">
     <text x="184.0" y="30.0" fill="#6e3418">·</text>
