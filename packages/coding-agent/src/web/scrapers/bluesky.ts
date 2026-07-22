@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -105,7 +106,7 @@ function formatPost(post: BlueskyPost, isQuote = false): string {
 	if (embed) {
 		if (embed.$type === "app.bsky.embed.external#view" && embed.external) {
 			const ext = embed.external;
-			md += `\n📎 [${ext.title || ext.uri}](${ext.uri})`;
+			md += `\n📎 ${markdownLink(ext.title || ext.uri, ext.uri)}`;
 			if (ext.description) md += `\n*${ext.description}*`;
 			md += "\n";
 		} else if (embed.$type === "app.bsky.embed.images#view" && embed.images) {

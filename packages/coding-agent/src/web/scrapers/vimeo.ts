@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { SpecialHandler } from "./types";
 import { buildResult, formatMediaDuration, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -92,7 +93,7 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 		if (!oembed) return scraperDegrade("vimeo", "unexpected response shape");
 
 		let md = `# ${oembed.title}\n\n`;
-		md += `**Author:** [${oembed.author_name}](${oembed.author_url})\n`;
+		md += `**Author:** ${markdownLink(oembed.author_name, oembed.author_url)}\n`;
 		md += `**Duration:** ${formatMediaDuration(oembed.duration)}\n`;
 
 		if (oembed.upload_date) {

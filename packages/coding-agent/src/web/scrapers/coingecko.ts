@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -137,13 +138,13 @@ export const handleCoinGecko: SpecialHandler = async (
 		// Links
 		const links: string[] = [];
 		if (coin.links?.homepage?.[0]) {
-			links.push(`[Website](${coin.links.homepage[0]})`);
+			links.push(markdownLink("Website", coin.links.homepage[0]));
 		}
 		if (coin.links?.blockchain_site?.[0]) {
-			links.push(`[Explorer](${coin.links.blockchain_site[0]})`);
+			links.push(markdownLink("Explorer", coin.links.blockchain_site[0]));
 		}
 		if (coin.links?.repos_url?.github?.[0]) {
-			links.push(`[GitHub](${coin.links.repos_url.github[0]})`);
+			links.push(markdownLink("GitHub", coin.links.repos_url.github[0]));
 		}
 		if (links.length) {
 			md += `**Links:** ${links.join(" · ")}\n`;

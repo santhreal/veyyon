@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadPage } from "./types";
 
@@ -146,7 +147,7 @@ export const handleSemanticScholar: SpecialHandler = async (url: string, timeout
 
 	const links: string[] = [];
 	if (paper.openAccessPdf?.url) {
-		links.push(`[PDF](${paper.openAccessPdf.url})`);
+		links.push(markdownLink("PDF", paper.openAccessPdf.url));
 	}
 	if (paper.externalIds?.ArXiv) {
 		links.push(`[arXiv](https://arxiv.org/abs/${paper.externalIds.ArXiv})`);
