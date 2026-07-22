@@ -117,6 +117,18 @@ describe("formatBytes", () => {
 		expect(formatBytes(1.2 * 1024 * 1024 * 1024)).toBe("1.2GB");
 	});
 
+	// Regression lock: a value just below a unit boundary whose 1-decimal render
+	// rounds up to a full 1024 must promote to the next unit, not emit the
+	// malformed "1024.0KB" / "1024.0MB". 1_048_575 is one byte under 1 MiB
+	// (1023.999 KB) and 1_073_741_823 is one byte under 1 GiB (1023.999 MB); both
+	// used to overflow their own unit. GB stays the cap, so 1 TiB is unchanged.
+	it("promotes a boundary value that would round up to a full 1024 unit", () => {
+		expect(formatBytes(1_048_575)).toBe("1.0MB");
+		expect(formatBytes(1_073_741_823)).toBe("1.0GB");
+		expect(formatBytes(1023 * 1024)).toBe("1023.0KB");
+		expect(formatBytes(1024 * 1024 * 1024 * 1024)).toBe("1024.0GB");
+	});
+
 	// Regression lock: NaN/Infinity previously fell through to the GB branch and
 	// rendered "NaNGB"/"InfinityGB". They now return "0B", matching the house
 	// non-finite convention. Signed negatives keep their sign.
