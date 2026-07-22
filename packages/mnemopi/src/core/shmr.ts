@@ -1,17 +1,24 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { batched, clampLow, logger } from "@veyyon/utils";
+import { envFloat, envInt } from "../util/env";
 import { SQLITE_IN_CLAUSE_BATCH, sqlPlaceholders, tableExists } from "../util/sqlite";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity, decodeEmbeddingJson } from "./vector-math";
 
 export { cosineSimilarity };
 
-export const SHMR_BATCH_SIZE = Number.parseInt(process.env.MNEMOPI_SHMR_BATCH_SIZE ?? "50", 10);
-export const SHMR_MAX_ITERATIONS = Number.parseInt(process.env.MNEMOPI_SHMR_MAX_ITERATIONS ?? "3", 10);
-export const SHMR_SIMILARITY_THRESHOLD = Number.parseFloat(process.env.MNEMOPI_SHMR_SIMILARITY_THRESHOLD ?? "0.70");
-export const SHMR_HARMONY_THRESHOLD = Number.parseFloat(process.env.MNEMOPI_SHMR_HARMONY_THRESHOLD ?? "0.60");
-export const SHMR_MIN_CLUSTER_SIZE = Number.parseInt(process.env.MNEMOPI_SHMR_MIN_CLUSTER_SIZE ?? "2", 10);
+// Route every tunable through the shared envInt/envFloat parsers (their sole
+// owner) so a non-numeric or empty override falls back to the default instead
+// of silently seeding NaN. A NaN threshold makes every `>= threshold`
+// comparison false, so clustering/harmonization would quietly produce nothing;
+// a NaN limit/size corrupts the SQLite `LIMIT` bind. Fail back to the default,
+// never to NaN.
+export const SHMR_BATCH_SIZE = envInt("MNEMOPI_SHMR_BATCH_SIZE", 50);
+export const SHMR_MAX_ITERATIONS = envInt("MNEMOPI_SHMR_MAX_ITERATIONS", 3);
+export const SHMR_SIMILARITY_THRESHOLD = envFloat("MNEMOPI_SHMR_SIMILARITY_THRESHOLD", 0.7);
+export const SHMR_HARMONY_THRESHOLD = envFloat("MNEMOPI_SHMR_HARMONY_THRESHOLD", 0.6);
+export const SHMR_MIN_CLUSTER_SIZE = envInt("MNEMOPI_SHMR_MIN_CLUSTER_SIZE", 2);
 export const EMBEDDING_DIM = 384;
 
 export type Vector = Float32Array;
