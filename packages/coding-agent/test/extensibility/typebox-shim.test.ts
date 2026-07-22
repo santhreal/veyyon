@@ -111,6 +111,36 @@ describe("pi.typebox compatibility shim", () => {
 		});
 	});
 
+	describe("string format: date-time", () => {
+		const schema = Type.String({ format: "date-time" });
+
+		it("accepts an RFC 3339 date-time with an offset, Z, or bare local time", () => {
+			expect(safeParse(schema, "2024-01-01T12:00:00Z").success).toBe(true);
+			expect(safeParse(schema, "2024-01-01T12:00:00").success).toBe(true);
+			expect(safeParse(schema, "2024-01-01T12:00:00.123Z").success).toBe(true);
+			expect(safeParse(schema, "2024-01-01T12:00:00.5+05:30").success).toBe(true);
+		});
+
+		it("rejects a value that is not a full date-time", () => {
+			// REGRESSION: date-time validated through a bare `new Date(data)`, which
+			// accepted a bare year, an English phrase, and a date with no time. A
+			// `date-time` must carry both a date and a time separated by `T`.
+			expect(safeParse(schema, "2024").success).toBe(false);
+			expect(safeParse(schema, "January 1, 2024").success).toBe(false);
+			expect(safeParse(schema, "2024-01-01").success).toBe(false);
+			expect(safeParse(schema, "12:00:00").success).toBe(false);
+			expect(safeParse(schema, "not a date").success).toBe(false);
+		});
+
+		it("rejects a shaped date-time with an out-of-range month", () => {
+			// The shape passes but month 13 does not exist, so Date yields NaN and the
+			// value is rejected. (Day overflow such as Feb 31 is rolled over by the JS
+			// Date parser rather than flagged, matching the existing `date` case, so
+			// this only pins the month bound that Date does reject.)
+			expect(safeParse(schema, "2024-13-01T00:00:00Z").success).toBe(false);
+		});
+	});
+
 	describe("string format: ipv6", () => {
 		const schema = Type.String({ format: "ipv6" });
 

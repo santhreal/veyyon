@@ -303,8 +303,16 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return Number.isNaN(date.getTime()) ? validationFailure("Invalid date") : data;
 			}
 			case "date-time": {
+				// RFC 3339 date-time is a full-date, a `T` separator, and a full-time
+				// with an optional fraction and offset. `new Date()` alone was far too
+				// lenient: it accepted a bare year ("2024"), an English phrase
+				// ("January 1, 2024"), and a date with no time ("2024-01-01", which is
+				// a `date`, not a `date-time`). Gate on the RFC 3339 shape first, then
+				// use Date to reject impossible calendar values (month 13, day 32).
+				const dateTimeShape = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
+				if (!dateTimeShape.test(data)) return validationFailure("Invalid date-time format");
 				const dateTime = new Date(data);
-				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time format") : data;
+				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time") : data;
 			}
 			case "time": {
 				// The fractional-seconds separator is a literal dot, so it must be
