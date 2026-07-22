@@ -25,6 +25,7 @@ import { ensureTool } from "../utils/tools-manager";
 import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../utils/zip";
 import { extractWithParallel, findParallelApiKey, getParallelExtractContent } from "../web/parallel";
 import {
+	decodeHtmlEntities,
 	finalizeOutput,
 	isScraperDegrade,
 	loadPage,
@@ -583,17 +584,21 @@ export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 }
 
 /**
- * Strip CDATA wrapper and clean text
+ * Strip the CDATA wrapper, decode HTML entities, then strip HTML tags from a
+ * feed text node.
+ *
+ * Entity-decode runs before tag-strip on purpose: a feed that encodes markup as
+ * `&lt;script&gt;` decodes to a real `<script>` tag which the tag-strip then
+ * removes, so encoded markup does not leak into the output. Decoding goes
+ * through the shared {@link decodeHtmlEntities} owner (single pass, `&amp;`-safe,
+ * decimal/hex/named) instead of the four hand-rolled entity replacements this
+ * carried, which decoded `&amp;` before the others and so double-decoded a
+ * literal like `&amp;quot;`.
  */
 function cleanFeedText(text: string): string {
-	return text
-		.replace(/<!\[CDATA\[/g, "")
-		.replace(/\]\]>/g, "")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&amp;/g, "&")
-		.replace(/&quot;/g, '"')
-		.replace(/<[^>]+>/g, "") // Strip HTML tags
+	const withoutCdata = text.replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "");
+	return decodeHtmlEntities(withoutCdata)
+		.replace(/<[^>]+>/g, "")
 		.trim();
 }
 

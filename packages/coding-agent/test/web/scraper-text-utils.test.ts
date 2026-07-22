@@ -12,9 +12,10 @@ import {
  * Pure text helpers shared by the web-fetch scrapers. Several had no test. These
  * shape what the agent actually sees from a scraped page, so their edge behavior
  * is pinned here:
- *   - decodeHtmlEntities decodes the common named/numeric entities and, crucially,
- *     replaces &amp; AFTER the others so an encoded literal like `&amp;quot;` decodes
- *     to `&quot;` (one level) instead of being double-decoded to `"`;
+ *   - decodeHtmlEntities decodes the common named/numeric entities in a single
+ *     left-to-right pass, so an encoded literal like `&amp;quot;` (or the numeric
+ *     `&#38;lt;`) decodes to one level instead of being double-decoded, and an
+ *     astral ref like `&#128512;` resolves via fromCodePoint, not fromCharCode;
  *   - formatIsoDate returns the leading YYYY-MM-DD of an ISO-ish string verbatim,
  *     converts numbers/Dates through UTC, and returns "" for nullish or unparseable
  *     input rather than throwing on Invalid Date;
@@ -36,13 +37,12 @@ describe("decodeHtmlEntities", () => {
 		);
 	});
 
-	it("replaces &amp; last so an encoded literal entity is not double-decoded", () => {
+	it("decodes each entity exactly one level so an encoded literal is not double-decoded", () => {
 		// `&amp;X;` is the encoding of the literal text `&X;`; each must decode
-		// exactly one level. REGRESSION: `&amp;` used to run third, before &quot;,
-		// &#39;, &#x27;, &#x2F;, and &nbsp;, so those five double-decoded (e.g.
-		// `&amp;quot;` became `"` instead of `&quot;`). `&amp;lt;`/`&amp;gt;` were
-		// accidentally safe because &lt;/&gt; already ran before &amp;. Now &amp;
-		// runs last, so every doubly-encoded entity stops at one level.
+		// exactly one level. REGRESSION: a multi-pass decoder ran `&amp;` before the
+		// other entities, so `&amp;quot;` became `"` instead of `&quot;`. The
+		// single-pass decoder replaces each `&...;` from the original text and never
+		// re-scans its own output, so every doubly-encoded entity stops at one level.
 		expect(decodeHtmlEntities("&amp;lt;")).toBe("&lt;");
 		expect(decodeHtmlEntities("&amp;gt;")).toBe("&gt;");
 		expect(decodeHtmlEntities("&amp;quot;")).toBe("&quot;");
@@ -54,6 +54,35 @@ describe("decodeHtmlEntities", () => {
 		// ampersand `&amp;amp;` decodes one level to `&amp;`.
 		expect(decodeHtmlEntities("a &amp; b")).toBe("a & b");
 		expect(decodeHtmlEntities("&amp;amp;")).toBe("&amp;");
+		// The numeric encoding of `&` is `&#38;`/`&#x26;`; it is `&` just like
+		// `&amp;`, so `&#38;lt;` must also stop at one level. A multi-pass decoder
+		// that expanded numeric refs and then re-scanned would double-decode this.
+		expect(decodeHtmlEntities("&#38;lt;")).toBe("&lt;");
+		expect(decodeHtmlEntities("&#x26;quot;")).toBe("&quot;");
+	});
+
+	it("decodes arbitrary decimal and hex character references, including astral code points", () => {
+		// The named set is tiny; real pages carry arbitrary numeric refs. A decimal
+		// (`&#233;` = é) and a hex ref (`&#xE9;`) both resolve, case-insensitively on
+		// the `x`. REGRESSION: an astral ref like the emoji `&#128512;` must use
+		// fromCodePoint, not fromCharCode; fromCharCode would emit a broken surrogate.
+		expect(decodeHtmlEntities("caf&#233;")).toBe("café");
+		expect(decodeHtmlEntities("caf&#xE9;")).toBe("café");
+		expect(decodeHtmlEntities("caf&#Xe9;")).toBe("café");
+		expect(decodeHtmlEntities("&#128512;")).toBe("😀");
+		expect(decodeHtmlEntities("&#x1F600;")).toBe("😀");
+	});
+
+	it("leaves an unknown entity, a lone surrogate, and a bare ampersand untouched", () => {
+		// Only the known named set decodes; `&copy;` is not in it, so it stays. A
+		// numeric ref outside the Unicode scalar range (a lone surrogate `&#xD800;`
+		// or beyond `&#x110000;`) is not a character, so the original text is kept
+		// rather than emitting replacement junk. A bare `&` is not an entity.
+		expect(decodeHtmlEntities("A &copy; B")).toBe("A &copy; B");
+		expect(decodeHtmlEntities("&apos;quoted&apos;")).toBe("'quoted'");
+		expect(decodeHtmlEntities("&#xD800;")).toBe("&#xD800;");
+		expect(decodeHtmlEntities("&#1114112;")).toBe("&#1114112;");
+		expect(decodeHtmlEntities("Tom & Jerry")).toBe("Tom & Jerry");
 	});
 });
 

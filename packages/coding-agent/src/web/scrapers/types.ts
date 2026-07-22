@@ -351,26 +351,64 @@ export function formatIsoDate(value?: string | number | Date): string {
 	}
 }
 
+/** The named HTML entities this decoder understands, mapped to their text. */
+const NAMED_ENTITIES: Record<string, string> = {
+	amp: "&",
+	lt: "<",
+	gt: ">",
+	quot: '"',
+	apos: "'",
+	nbsp: " ",
+};
+
 /**
- * Decode common HTML entities.
+ * A single entity in the grammar {@link decodeHtmlEntities} recognizes: a
+ * decimal char ref (`&#39;`), a hex char ref (`&#x2F;`, `&#X1F600;`), or a named
+ * ref (`&amp;`). The whole set is decoded in ONE left-to-right pass, never
+ * re-scanning produced output.
+ */
+const HTML_ENTITY_RE = /&(#\d+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+/** Turn a Unicode code point into its character, or return `fallback` when it is not a valid scalar. */
+function codePointToChar(code: number, fallback: string): string {
+	// Reject out-of-range and lone-surrogate code points rather than emitting
+	// replacement junk. fromCodePoint (not fromCharCode) so an astral entity like
+	// `&#128512;` becomes one emoji, not a broken surrogate pair.
+	if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) return fallback;
+	if (code >= 0xd800 && code <= 0xdfff) return fallback;
+	try {
+		return String.fromCodePoint(code);
+	} catch {
+		return fallback;
+	}
+}
+
+/**
+ * Decode the common HTML entities in a single left-to-right pass.
  *
- * `&amp;` is decoded LAST, after every other entity. Order matters because a
- * doubly-encoded literal like `&amp;quot;` (the encoding of the text `&quot;`)
- * must decode exactly one level, to `&quot;`, not two levels to `"`. If `&amp;`
- * ran first it would turn `&amp;quot;` into `&quot;`, which the later `&quot;`
- * pass would then wrongly decode to `"`. Decoding `&amp;` last means the `&`
- * it produces is never seen by another entity pass.
+ * One pass is the whole point: each `&...;` is replaced from the ORIGINAL text
+ * and the replacement is never re-scanned, so a doubly-encoded literal decodes
+ * exactly one level. `&amp;quot;` (the encoding of the text `&quot;`) becomes
+ * `&quot;`, not `"`; `&#38;lt;` becomes `&lt;`, not `<`. A multi-pass decoder
+ * that ran `&amp;` (or the numeric `&#38;`, which is also `&`) before the other
+ * entities would wrongly decode both levels.
+ *
+ * Handles decimal (`&#39;`) and hex (`&#x2F;`) character references for any
+ * scalar value, the named set in {@link NAMED_ENTITIES}, and leaves an unknown
+ * entity (`&copy;`) or a bare `&` untouched.
  */
 export function decodeHtmlEntities(text: string): string {
-	return text
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#0?39;/g, "'")
-		.replace(/&#x27;/g, "'")
-		.replace(/&#x2F;/g, "/")
-		.replace(/&nbsp;/g, " ")
-		.replace(/&amp;/g, "&");
+	return text.replace(HTML_ENTITY_RE, (match, body: string) => {
+		if (body[0] === "#") {
+			const code =
+				body[1] === "x" || body[1] === "X"
+					? Number.parseInt(body.slice(2), 16)
+					: Number.parseInt(body.slice(1), 10);
+			return codePointToChar(code, match);
+		}
+		const named = NAMED_ENTITIES[body];
+		return named !== undefined ? named : match;
+	});
 }
 
 /**
