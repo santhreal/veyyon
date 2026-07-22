@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
@@ -231,7 +232,9 @@ export const handleSecEdgar: SpecialHandler = async (
 			for (const filing of keyFilings) {
 				const filingUrl = buildFilingUrl(cik, filing.accessionNumber, filing.primaryDocument);
 				const desc = filing.primaryDocDescription || filing.form;
-				md += `| ${filing.filingDate} | [${filing.form}](${filingUrl}) | ${escapeMarkdownTableCell(desc)} |\n`;
+				// primaryDocument is an external filename that can carry parens; route the
+				// link through markdownLink so a `(` in the URL does not truncate it.
+				md += `| ${filing.filingDate} | ${markdownLink(filing.form, filingUrl)} | ${escapeMarkdownTableCell(desc)} |\n`;
 			}
 			md += "\n";
 		}
@@ -246,15 +249,19 @@ export const handleSecEdgar: SpecialHandler = async (
 			for (const filing of allFilings) {
 				const filingUrl = buildFilingUrl(cik, filing.accessionNumber, filing.primaryDocument);
 				const desc = filing.primaryDocDescription || filing.form;
-				md += `| ${filing.filingDate} | [${filing.form}](${filingUrl}) | ${escapeMarkdownTableCell(desc)} |\n`;
+				// primaryDocument is an external filename that can carry parens; route the
+				// link through markdownLink so a `(` in the URL does not truncate it.
+				md += `| ${filing.filingDate} | ${markdownLink(filing.form, filingUrl)} | ${escapeMarkdownTableCell(desc)} |\n`;
 			}
 			md += "\n";
 		}
 
 		// Links
 		md += `## Links\n\n`;
-		md += `- [SEC EDGAR Filings](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=&dateb=&owner=include&count=40)\n`;
-		md += `- [Company Search](https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(company.name)}&CIK=&type=&owner=include&count=40&action=getcompany)\n`;
+		md += `- ${markdownLink("SEC EDGAR Filings", `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=&dateb=&owner=include&count=40`)}\n`;
+		// encodeURIComponent leaves ( ) unencoded, so a company name like
+		// "Alphabet Inc. (Class A)" would truncate a bare link at the first `(`.
+		md += `- ${markdownLink("Company Search", `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(company.name)}&CIK=&type=&owner=include&count=40&action=getcompany`)}\n`;
 
 		return buildResult(md, { url, method: "sec-edgar", fetchedAt, notes: ["Fetched via SEC EDGAR API"] });
 	} catch (error) {
