@@ -234,6 +234,20 @@ function createStringValidator(
 	baseValidator: (data: unknown) => unknown,
 	opts?: StringOpts,
 ): (data: unknown) => unknown {
+	// Compile the pattern ONCE per schema, not on every validation call, and do
+	// it here rather than inside the returned closure. A pattern that fails to
+	// compile yields a null regex so the validator reports the schema (not the
+	// value) as at fault, instead of throwing uncaught mid-validation the way a
+	// bare `new RegExp(opts.pattern)` in the hot path did. The regex carries no
+	// flags, so its `.test()` stays stateless across reuse.
+	let patternRegex: RegExp | null = null;
+	if (opts?.pattern !== undefined) {
+		try {
+			patternRegex = new RegExp(opts.pattern);
+		} catch {
+			patternRegex = null;
+		}
+	}
 	return (data: unknown) => {
 		const result = baseValidator(data);
 		if (isValidationFailure(result)) return result;
@@ -250,8 +264,8 @@ function createStringValidator(
 			return validationFailure(`String must have at most ${opts.maxLength} characters`);
 		}
 		if (opts?.pattern !== undefined) {
-			const regex = new RegExp(opts.pattern);
-			if (!regex.test(result)) return validationFailure(`String must match pattern ${opts.pattern}`);
+			if (patternRegex === null) return validationFailure(`Invalid pattern ${opts.pattern}`);
+			if (!patternRegex.test(result)) return validationFailure(`String must match pattern ${opts.pattern}`);
 		}
 		return result;
 	};

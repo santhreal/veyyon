@@ -177,6 +177,31 @@ describe("pi.typebox compatibility shim", () => {
 		});
 	});
 
+	describe("string pattern compiles once and fails invalid regexes gracefully", () => {
+		it("accepts and rejects against a valid pattern", () => {
+			const schema = Type.String({ pattern: "^[a-f0-9]{6}$" });
+			expect(safeParse(schema, "9f3a2c").success).toBe(true);
+			expect(safeParse(schema, "zzz").success).toBe(false);
+		});
+
+		it("treats an uncompilable pattern as a schema fault, never throwing", () => {
+			// REGRESSION: the pattern was `new RegExp(opts.pattern)` inside the hot
+			// path, so an invalid pattern threw uncaught during validation instead of
+			// returning a clean failure. safeParse must report failure, not throw.
+			const schema = Type.String({ pattern: "(" });
+			expect(() => safeParse(schema, "anything")).not.toThrow();
+			expect(safeParse(schema, "anything").success).toBe(false);
+		});
+
+		it("gives the same verdict on repeated validations of one schema", () => {
+			// The compiled regex is reused across calls; with no flags it is stateless,
+			// so a fixed input yields a fixed result every time.
+			const schema = Type.String({ pattern: "^x+$" });
+			for (let i = 0; i < 5; i++) expect(safeParse(schema, "xxx").success).toBe(true);
+			for (let i = 0; i < 5; i++) expect(safeParse(schema, "xxy").success).toBe(false);
+		});
+	});
+
 	describe("string min/maxLength counts code points, not UTF-16 units", () => {
 		it("counts a two-unit emoji as one character at both bounds", () => {
 			// REGRESSION: the shim measured `result.length` (UTF-16 units), so "😀😀😀"
