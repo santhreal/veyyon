@@ -2854,7 +2854,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			.map(name => toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool !== undefined);
 
-		const openaiWebsocketSetting = settings.get("providers.openaiWebsockets") ?? "off";
+		// Fall back to the schema default ("auto"), matching command-controller.ts.
+		// The old "off" fallback disagreed with both the schema and that sibling, so
+		// a resolved-undefined value would have silently disabled websockets here
+		// while the command controller kept them on.
+		const openaiWebsocketSetting = settings.get("providers.openaiWebsockets") ?? "auto";
 		const preferOpenAICodexWebsockets =
 			openaiWebsocketSetting === "on" ? true : openaiWebsocketSetting === "off" ? false : undefined;
 		const initialServiceTierByFamily = hasServiceTierEntry
