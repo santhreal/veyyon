@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
+import { escapeMarkdownTableCell, renderMarkdownTable } from "@veyyon/coding-agent/utils/markdown-table";
 
 /**
  * escapeMarkdownTableCell is the single owner of Markdown-table cell escaping,
@@ -47,5 +47,57 @@ describe("escapeMarkdownTableCell", () => {
 
 	it("returns an empty string for an empty value", () => {
 		expect(escapeMarkdownTableCell("")).toBe("");
+	});
+});
+
+/**
+ * renderMarkdownTable is the single owner of table *layout* (the
+ * header/delimiter/body shape and column normalization) shared by the XLSX and
+ * PPTX converters and the MDN scraper. It was extracted after those call sites
+ * built the identical structure inline and had drifted: the XLSX converter
+ * normalized ragged rows to the widest row while the PPTX converter and the MDN
+ * builder keyed the table width off the header alone. A body row wider than the
+ * header therefore overflowed the delimiter row, and every GFM renderer silently
+ * drops the surplus cells, losing that data with no trace. These lock the shape,
+ * the escaping delegation, and the ragged-row normalization in both directions.
+ */
+describe("renderMarkdownTable", () => {
+	it("emits header, delimiter, and body rows with each cell escaped", () => {
+		expect(
+			renderMarkdownTable([
+				["Name", "Expr"],
+				["bitwise or", "a | b"],
+			]),
+		).toBe("| Name | Expr |\n| --- | --- |\n| bitwise or | a \\| b |");
+	});
+
+	it("pads the header when a body row is WIDER, so the surplus cell is not dropped", () => {
+		// The body row's third cell "z" would overflow a two-column header and be
+		// silently discarded by GFM renderers; padding the header to three columns
+		// keeps it in a real (empty-header) third column.
+		expect(
+			renderMarkdownTable([
+				["A", "B"],
+				["x", "y", "z"],
+			]),
+		).toBe("| A | B |  |\n| --- | --- | --- |\n| x | y | z |");
+	});
+
+	it("pads a body row that is NARROWER than the header with empty cells", () => {
+		expect(
+			renderMarkdownTable([
+				["A", "B", "C"],
+				["x", "y"],
+			]),
+		).toBe("| A | B | C |\n| --- | --- | --- |\n| x | y |  |");
+	});
+
+	it("renders a header-only grid as just the header and delimiter", () => {
+		expect(renderMarkdownTable([["One", "Two"]])).toBe("| One | Two |\n| --- | --- |");
+	});
+
+	it("returns an empty string for an empty grid or one whose rows hold no cells", () => {
+		expect(renderMarkdownTable([])).toBe("");
+		expect(renderMarkdownTable([[], []])).toBe("");
 	});
 });

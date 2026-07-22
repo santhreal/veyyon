@@ -40,4 +40,20 @@ describe("buildMarkdownTableFromHtmlRows", () => {
 		const lines = await buildMarkdownTableFromHtmlRows([["One", "Two"]]);
 		expect(lines).toEqual(["| One | Two |", "| --- | --- |"]);
 	});
+
+	// A body row with more cells than the header (a rowspan/colspan artifact in
+	// MDN source tables) used to overflow the delimiter row, and GFM renderers
+	// silently drop the surplus cell. The builder now squares the grid off to the
+	// widest row so the extra cell survives in a real column.
+	it("keeps a body cell that is wider than the header instead of dropping it", async () => {
+		const lines = await buildMarkdownTableFromHtmlRows([
+			["Name", "Value"],
+			["extra", "b", "c"],
+		]);
+		expect(lines).toEqual(["| Name | Value |  |", "| --- | --- | --- |", "| extra | b | c |"]);
+	});
+
+	it("returns no lines for an empty table", async () => {
+		expect(await buildMarkdownTableFromHtmlRows([])).toEqual([]);
+	});
 });

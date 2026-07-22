@@ -1,6 +1,6 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import { XMLParser } from "fast-xml-parser";
-import { escapeMarkdownTableCell } from "../../utils/markdown-table";
+import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
@@ -107,20 +107,10 @@ export class XlsxConverter implements Converter {
 				tableRows.push(positionRowValues(cells));
 			}
 			if (tableRows.length === 0) continue;
-			// Normalize column count
-			const maxCols = Math.max(...tableRows.map(r => r.length));
-			for (const row of tableRows) {
-				while (row.length < maxCols) row.push("");
-			}
+			const table = renderMarkdownTable(tableRows);
+			if (!table) continue;
 			sections.push(`## ${sheetName}`);
-			const [header, ...body] = tableRows;
-			const lines: string[] = [];
-			lines.push(`| ${header.map(escapeMarkdownTableCell).join(" | ")} |`);
-			lines.push(`| ${header.map(() => "---").join(" | ")} |`);
-			for (const row of body) {
-				lines.push(`| ${row.map(escapeMarkdownTableCell).join(" | ")} |`);
-			}
-			sections.push(lines.join("\n"));
+			sections.push(table);
 		}
 		return { markdown: sections.join("\n\n") };
 	}

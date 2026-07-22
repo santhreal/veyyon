@@ -1,7 +1,7 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import * as path from "node:path";
 import { XMLParser } from "fast-xml-parser";
-import { escapeMarkdownTableCell } from "../../utils/markdown-table";
+import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
@@ -272,15 +272,7 @@ export class PptxConverter implements Converter {
 			mdRows.push(cellTexts);
 		}
 		if (mdRows.length === 0) return null;
-		const [header, ...body] = mdRows;
-		const lines: string[] = [];
-		lines.push(`| ${header.map(escapeMarkdownTableCell).join(" | ")} |`);
-		lines.push(`| ${header.map(() => "---").join(" | ")} |`);
-		for (const row of body) {
-			while (row.length < header.length) row.push("");
-			lines.push(`| ${row.map(escapeMarkdownTableCell).join(" | ")} |`);
-		}
-		return lines.join("\n");
+		return renderMarkdownTable(mdRows) || null;
 	}
 }
 

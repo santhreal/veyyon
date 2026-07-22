@@ -44,6 +44,43 @@ describe("PptxConverter table cell escaping", () => {
 });
 
 /**
+ * Locks the PPTX side of the shared renderMarkdownTable column normalization.
+ * extractTable used to key the table width off the header row and only pad
+ * SHORTER body rows up to it, so a body row with MORE cells than the header
+ * overflowed the delimiter row and GFM renderers silently dropped the surplus
+ * cell. Both converters now route through renderMarkdownTable, which squares the
+ * grid off to the widest row, so the extra cell survives in a real column.
+ */
+describe("PptxConverter table column normalization", () => {
+	const cell = (text: string): string => `<a:tc><a:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></a:txBody></a:tc>`;
+	const row = (...cells: string[]): string => `<a:tr>${cells.join("")}</a:tr>`;
+
+	it("keeps a body cell wider than the header instead of dropping it", async () => {
+		const pptx = zip({
+			"ppt/presentation.xml": enc(
+				`<?xml version="1.0"?><p:presentation xmlns:p="p" xmlns:r="r"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>`,
+			),
+			"ppt/_rels/presentation.xml.rels": enc(
+				`<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="slides/slide1.xml"/></Relationships>`,
+			),
+			"ppt/slides/slide1.xml": enc(
+				`<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree>` +
+					`<p:graphicFrame><a:graphic><a:graphicData><a:tbl>` +
+					row(cell("Name"), cell("Value")) +
+					row(cell("extra"), cell("b"), cell("c")) +
+					`</a:tbl></a:graphicData></a:graphic></p:graphicFrame>` +
+					`</p:spTree></p:cSld></p:sld>`,
+			),
+		});
+		const result = await convertBufferWithMarkit(pptx, ".pptx");
+		expect(result.ok).toBe(true);
+		expect(result.content).toContain("| Name | Value |  |");
+		expect(result.content).toContain("| --- | --- | --- |");
+		expect(result.content).toContain("| extra | b | c |");
+	});
+});
+
+/**
  * Locks FINDING-PPTX-TABLE-CELL-RUN-JOIN-SPACES. A DrawingML `<a:r>` run boundary
  * marks a formatting change (bold, color, language), not a word break, so a word
  * split across a boundary — "Hello" stored as run "Hel" + run "lo" — must render

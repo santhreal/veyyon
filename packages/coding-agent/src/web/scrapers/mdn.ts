@@ -1,5 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
-import { escapeMarkdownTableCell } from "../../utils/markdown-table";
+import { renderMarkdownTable } from "../../utils/markdown-table";
 import type { SpecialHandler } from "./types";
 import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -98,21 +98,19 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 
 /**
  * Convert a table's rows (each cell a fragment of HTML) into the lines of a
- * GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown and
- * then routed through the canonical escapeMarkdownTableCell, so a `|` (common in
- * MDN code samples like `a | b`) or a newline (a multi-paragraph cell) cannot
- * break out of its cell and shift every later column. The first row is the
- * header. Returns the header line, the `---` separator, and one line per body
- * row, ready to push into the section list.
+ * GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown, then
+ * the grid is laid out by the shared {@link renderMarkdownTable} owner, which
+ * escapes every cell (so a `|` from an MDN code sample like `a | b`, or a
+ * newline from a multi-paragraph cell, cannot break out of its cell) and squares
+ * ragged rows off to the widest row (so a body row with more cells than the
+ * header cannot overflow the delimiter row and have its surplus cells silently
+ * dropped). The first row is the header. Returns one line per table row, ready
+ * to push into the section list, and `[]` when there are no rows.
  */
 export async function buildMarkdownTableFromHtmlRows(rows: string[][]): Promise<string[]> {
-	const renderRow = async (row: string[]): Promise<string> =>
-		(await Promise.all(row.map(async cell => escapeMarkdownTableCell(await htmlToBasicMarkdown(cell))))).join(" | ");
-	const headerCells = rows[0] ?? [];
-	const header = await renderRow(headerCells);
-	const separator = headerCells.map(() => "---").join(" | ");
-	const body = await Promise.all(rows.slice(1).map(renderRow));
-	return [`| ${header} |`, `| ${separator} |`, ...body.map(row => `| ${row} |`)];
+	const rendered = await Promise.all(rows.map(row => Promise.all(row.map(cell => htmlToBasicMarkdown(cell)))));
+	const table = renderMarkdownTable(rendered);
+	return table ? table.split("\n") : [];
 }
 
 export const handleMDN: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
