@@ -369,8 +369,10 @@ function removePageNumbers(blocks: ContentBlock[]): ContentBlock[] {
  * Detects: a plain-text header line with (N+1) tokens above an N-column
  * markdown table, plus short label lines whose count matches the table's
  * logical row count. Reconstructs into a proper (N+1)-column table.
+ *
+ * @internal Exported for regression testing of the cell-escaping contract.
  */
-function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): ContentBlock[] {
+export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): ContentBlock[] {
 	const HEADING_RE = /^#{1,6}\s/;
 	const isTableBlock = (text: string) => text.trimStart().startsWith("|");
 	const isPlainBlock = (text: string) => !HEADING_RE.test(text) && !isTableBlock(text);
@@ -439,12 +441,16 @@ function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): ContentBloc
 		}
 		const labels = [...aboveLabels, ...belowLabels];
 		if (labels.length !== logicalRows.length) continue;
-		// Reconstruct the full table
+		// Reconstruct the full table. The header tokens and first-column labels are
+		// raw PDF text (splitTokens/block content), so a literal `|` in one would end
+		// its cell early and shift the whole row; escape them the same way the table
+		// cells were escaped. The logicalRows cells already carry parsePipeRow's
+		// preserved `\|` escaping, so they are joined as-is.
 		const normalizedLines: string[] = [];
-		normalizedLines.push(`| ${headerTokens.join(" | ")} |`);
+		normalizedLines.push(`| ${headerTokens.map(escapePipes).join(" | ")} |`);
 		normalizedLines.push(`| ${Array.from({ length: cols + 1 }, () => "---").join(" | ")} |`);
 		for (let r = 0; r < logicalRows.length; r++) {
-			normalizedLines.push(`| ${labels[r].text} | ${logicalRows[r].join(" | ")} |`);
+			normalizedLines.push(`| ${escapePipes(labels[r].text)} | ${logicalRows[r].join(" | ")} |`);
 		}
 		replacements.set(tableIdx, normalizedLines.join("\n"));
 		remove.add(headerIdx);
