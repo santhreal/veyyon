@@ -48,8 +48,6 @@ export type TableGrid = {
 	warnings: string[];
 	/** Top Y coordinate (PDF space: larger = higher on page). */
 	topY: number;
-	/** True for tables detected without vector borders. */
-	isBorderless: boolean;
 };
 
 /** An image/diagram region detected on a page. */

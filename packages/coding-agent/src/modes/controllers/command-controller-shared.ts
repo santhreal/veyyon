@@ -100,7 +100,11 @@ export function* groupBySource<T>(
  * Render a message block (DynamicBorder / Text / DynamicBorder) into the chat
  * container and request a render.
  */
-export function showCommandMessage(ctx: InteractiveModeContext, text: string): void {
+/**
+ * Present a bordered message block. Reads one member, so it asks for one:
+ * controllers that have been narrowed to their own slice can still call it.
+ */
+export function showCommandMessage(ctx: Pick<InteractiveModeContext, "present">, text: string): void {
 	const block = new TranscriptBlock();
 	block.addChild(new DynamicBorder());
 	block.addChild(new Text(text, 1, 1));

@@ -9,7 +9,15 @@ import {
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@veyyon/tui";
-import { atomicWriteFileSync, getActiveProfile, getAgentDir, getProfileRootDir, isEnoent, logger } from "@veyyon/utils";
+import {
+	atomicWriteFileSync,
+	getActiveProfile,
+	getAgentDir,
+	getProfileRootDir,
+	isEnoent,
+	logger,
+	quarantineUnparseableFileSync,
+} from "@veyyon/utils";
 import { JSONC, YAML } from "bun";
 
 /**
@@ -388,8 +396,16 @@ export interface KeybindingsCreateOptions {
  * Returns parsed JSON/YAML or null if file doesn't exist or is invalid.
  */
 function loadRawConfig(filePath: string): unknown {
+	let content: string;
 	try {
-		const content = fs.readFileSync(filePath, "utf-8");
+		content = fs.readFileSync(filePath, "utf-8");
+	} catch (error) {
+		if (isEnoent(error)) return null;
+		logger.warn("Failed to read keybindings config", { path: filePath, error: String(error) });
+		return null;
+	}
+
+	try {
 		if (filePath.endsWith(".json")) {
 			return JSONC.parse(content);
 		}
@@ -398,10 +414,11 @@ function loadRawConfig(filePath: string): unknown {
 		}
 		throw new Error(`Unsupported keybindings config extension: ${filePath}`);
 	} catch (error) {
-		if (isEnoent(error)) {
-			return null;
-		}
-		logger.warn("Failed to parse keybindings config", { path: filePath, error: String(error) });
+		// Preserve the bytes before anything writes over them. A parse failure
+		// drops the user's whole custom map, and the migration writer would then
+		// put defaults on disk in its place, so the file they were about to fix by
+		// hand would be gone.
+		quarantineUnparseableFileSync(filePath, content, error);
 		return null;
 	}
 }

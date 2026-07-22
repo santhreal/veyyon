@@ -62,8 +62,23 @@ export function StringEnum<T extends string | number>(
 		...options,
 	};
 	const schema: TSchema = Array.isArray(values) && values.length === 0 ? Type.Never(opts) : Type.Enum(values, opts);
+	const wire = stringEnumWireSchema(values, options);
+	// The typebox shim serializes a schema through its ENUMERABLE JSON Schema keywords,
+	// and Bun's JSON.stringify (unlike Node's) ignores a non-enumerable `toJSON`. Relying
+	// on `toJSON` alone silently drops the legacy `{ type: "string", enum: [...] }` wire
+	// form under Bun (the runtime veyyon ships on), so a pi-ai extension's enum parameter
+	// would serialize as the bare TypeBox form (no `type`, and `const`/`not` for the
+	// single-value and empty cases). Rewrite the schema's own enumerable keywords to the
+	// legacy form directly, keeping the hidden arktype validator (safeParse/__validator)
+	// intact so runtime validation is unchanged.
+	for (const key of Object.keys(schema)) {
+		delete (schema as Record<string, unknown>)[key];
+	}
+	Object.assign(schema, wire);
+	// Keep a matching (hidden) toJSON so an explicit `schema.toJSON()` and JSON.stringify
+	// agree on every runtime, Node included.
 	Object.defineProperty(schema, "toJSON", {
-		value: () => stringEnumWireSchema(values, options),
+		value: () => ({ ...wire }),
 		enumerable: false,
 		writable: true,
 		configurable: true,

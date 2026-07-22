@@ -8,11 +8,31 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { $which, APP_NAME, errorMessage, isEnoent, VERSION } from "@veyyon/utils";
+import {
+	$which,
+	APP_NAME,
+	compareSemver,
+	errorMessage,
+	getAutoUpdateStatePath,
+	isEnoent,
+	isNewerVersion,
+	isValidSemver,
+	logger,
+	tryWithFileLock,
+	VERSION,
+} from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
+import {
+	AUTO_UPDATE_FAILURE_COOLDOWN_MS,
+	AUTO_UPDATE_LOCK_STALE_MS,
+	clearAutoUpdateFailure,
+	readAutoUpdateState,
+	recordAutoUpdateFailure,
+	shouldAttemptAutoUpdate,
+} from "./auto-update-state";
 
 const REPO = "santhreal/veyyon";
 const PACKAGE = "@veyyon/coding-agent";
@@ -60,7 +80,7 @@ function currentNativeTag(): string {
 	return `${process.platform}-${process.arch}`;
 }
 
-interface ReleaseInfo {
+export interface ReleaseInfo {
 	tag: string;
 	version: string;
 }
@@ -255,15 +275,26 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
  * Get the latest release info from the npm registry.
  * Uses npm instead of GitHub API to avoid unauthenticated rate limiting.
  */
-async function getLatestRelease(): Promise<ReleaseInfo> {
+/**
+ * Look up the latest published release.
+ *
+ * The one place the registry is asked what the newest version is. Startup and
+ * `veyyon update` both come through here, so they can never disagree about
+ * which registry to ask or how to read the answer.
+ *
+ * `timeoutMs` exists because the two callers want different patience: a
+ * startup check runs while you are waiting to type and gives up quickly, while
+ * an explicit `veyyon update` is worth waiting on.
+ */
+export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIMEOUT_MS): Promise<ReleaseInfo> {
 	let response: Response;
 	try {
 		response = await fetch(`${NPM_REGISTRY}${PACKAGE}/latest`, {
-			signal: withTimeoutSignal(RELEASE_METADATA_TIMEOUT_MS),
+			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
 		if (isTimeoutError(err)) {
-			throw new Error("Timed out fetching release info after 30s", { cause: err });
+			throw new Error(`Timed out fetching release info after ${Math.round(timeoutMs / 1000)}s`, { cause: err });
 		}
 		throw err;
 	}
@@ -289,24 +320,6 @@ async function getLatestRelease(): Promise<ReleaseInfo> {
 	};
 }
 
-/**
- * Compare semver versions. Returns:
- * - negative if a < b
- * - 0 if a == b
- * - positive if a > b
- */
-function compareVersions(a: string, b: string): number {
-	const pa = a.split(".").map(Number);
-	const pb = b.split(".").map(Number);
-
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const na = pa[i] || 0;
-		const nb = pb[i] || 0;
-		if (na !== nb) return na - nb;
-	}
-	return 0;
-}
-
 interface BunInstallCachePruneResult {
 	scannedPackages: number;
 	removedEntries: number;
@@ -330,42 +343,6 @@ interface BunCachePackageGroup {
 function stripBunCacheVersionSuffix(name: string): string {
 	const metadataIndex = name.indexOf("@@");
 	return metadataIndex === -1 ? name : name.slice(0, metadataIndex);
-}
-
-function compareSemverIdentifier(a: string, b: string): number {
-	const aNumber = /^\d+$/.test(a);
-	const bNumber = /^\d+$/.test(b);
-	if (aNumber && bNumber) return Number(a) - Number(b);
-	if (aNumber) return -1;
-	if (bNumber) return 1;
-	return a.localeCompare(b);
-}
-
-function compareSemverLikeVersions(a: string, b: string): number {
-	const [aCoreWithPrerelease] = a.split("+", 1);
-	const [bCoreWithPrerelease] = b.split("+", 1);
-	const [aCore, aPrerelease] = aCoreWithPrerelease.split("-", 2);
-	const [bCore, bPrerelease] = bCoreWithPrerelease.split("-", 2);
-	const aParts = aCore.split(".");
-	const bParts = bCore.split(".");
-	for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-		const diff = Number(aParts[i] ?? 0) - Number(bParts[i] ?? 0);
-		if (diff !== 0 && Number.isFinite(diff)) return diff;
-	}
-	if (!aPrerelease && !bPrerelease) return 0;
-	if (!aPrerelease) return 1;
-	if (!bPrerelease) return -1;
-	const aPrereleaseParts = aPrerelease.split(".");
-	const bPrereleaseParts = bPrerelease.split(".");
-	for (let i = 0; i < Math.max(aPrereleaseParts.length, bPrereleaseParts.length); i++) {
-		const aPart = aPrereleaseParts[i];
-		const bPart = bPrereleaseParts[i];
-		if (aPart === undefined) return -1;
-		if (bPart === undefined) return 1;
-		const diff = compareSemverIdentifier(aPart, bPart);
-		if (diff !== 0) return diff;
-	}
-	return 0;
 }
 
 async function readdirIfExists(dir: string): Promise<fs.Dirent[]> {
@@ -499,16 +476,36 @@ export async function pruneBunInstallCache(
 		// on-disk stem, so rebranded caches (stem != name) still match.
 		if (packageNames && (group.packageName === undefined || !packageNames.has(group.packageName))) continue;
 		scannedPackages++;
+		// Only entries whose directory name is an orderable version take part.
+		// This loop decides what gets DELETED, and the previous comparator
+		// returned 0 for anything it could not parse: a stray directory name seen
+		// first therefore became "latest" and every genuine cached version was
+		// removed instead of it. Unparseable names are now left untouched and
+		// reported rather than ranked, because deleting on an ordering that could
+		// not be computed is exactly the wrong move.
+		const unorderable: string[] = [];
 		let latestVersion: string | undefined;
 		for (const version of group.actualDirs.keys()) {
-			if (!latestVersion || compareSemverLikeVersions(version, latestVersion) > 0) latestVersion = version;
+			if (!isValidSemver(version)) {
+				unorderable.push(version);
+				continue;
+			}
+			if (!latestVersion || isNewerVersion(version, latestVersion)) latestVersion = version;
+		}
+		if (unorderable.length > 0) {
+			logger.warn("Bun cache prune: skipping entries whose version could not be parsed", {
+				package: group.packageName,
+				entries: unorderable,
+			});
 		}
 		if (!latestVersion) continue;
+		const keep = latestVersion;
+		const prunable = (version: string): boolean => version !== keep && isValidSemver(version);
 		for (const [version, paths] of group.actualDirs) {
-			if (version !== latestVersion) removedEntries += await removeCacheEntries(paths);
+			if (prunable(version)) removedEntries += await removeCacheEntries(paths);
 		}
 		for (const [version, paths] of group.markerEntries) {
-			if (version !== latestVersion) removedEntries += await removeCacheEntries(paths);
+			if (prunable(version)) removedEntries += await removeCacheEntries(paths);
 		}
 	}
 	return { scannedPackages, removedEntries };
@@ -642,8 +639,24 @@ async function verifyInstalledVersion(expectedVersion: string): Promise<Installe
 	}
 }
 
-function printVerifiedVersion(expectedVersion: string): void {
-	console.log(chalk.green(`\n${theme.status.success} Updated to ${expectedVersion}`));
+/**
+ * Where an in-progress update reports what it is doing.
+ *
+ * `veyyon update` is a plain CLI run and prints to the console. An automatic
+ * update runs underneath a live TUI, where any stray write lands in the middle
+ * of the rendered frame and corrupts it, so that caller passes
+ * {@link SILENT_UPDATE_REPORTER} and reports the outcome through its own UI.
+ */
+export type UpdateReporter = (line: string) => void;
+
+export const CONSOLE_UPDATE_REPORTER: UpdateReporter = line => {
+	console.log(line);
+};
+
+export const SILENT_UPDATE_REPORTER: UpdateReporter = () => {};
+
+function printVerifiedVersion(expectedVersion: string, report: UpdateReporter): void {
+	report(chalk.green(`\n${theme.status.success} Updated to ${expectedVersion}`));
 }
 
 function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
@@ -656,14 +669,14 @@ function formatVerificationFailure(result: InstalledVersionVerification, expecte
 /**
  * Print post-update verification result.
  */
-async function printVerification(expectedVersion: string): Promise<void> {
+async function printVerification(expectedVersion: string, report: UpdateReporter): Promise<void> {
 	const result = await verifyInstalledVersion(expectedVersion);
 	if (result.ok) {
-		printVerifiedVersion(expectedVersion);
+		printVerifiedVersion(expectedVersion, report);
 		return;
 	}
-	console.log(chalk.yellow(`\nWarning: ${formatVerificationFailure(result, expectedVersion)}`));
-	console.log(chalk.yellow(`You may need to reinstall: bun install -g @veyyon/coding-agent`));
+	report(chalk.yellow(`\nWarning: ${formatVerificationFailure(result, expectedVersion)}`));
+	report(chalk.yellow(`You may need to reinstall: bun install -g @veyyon/coding-agent`));
 }
 
 async function unlinkIfExists(filePath: string): Promise<void> {
@@ -728,6 +741,23 @@ export async function sweepStaleBackups(targetPath: string): Promise<void> {
 export async function replaceBinaryForUpdate(options: BinaryReplacementOptions): Promise<InstalledVersionVerification> {
 	let backupReady = false;
 	try {
+		// Refuse an empty or missing download BEFORE disturbing the live binary.
+		// A truncated-but-HTTP-200 body would otherwise be renamed over the running
+		// binary and only caught afterwards by the `--version` check, leaving the
+		// user with a broken binary for the duration of the rollback. This mirrors
+		// install.sh's `finalize_binary` guard (`[ -s "$tmp" ]`), which fails
+		// before ever touching the destination. `backupReady` is still false, so
+		// the catch cleans the junk temp and never runs a needless restore.
+		let tempSize: number;
+		try {
+			tempSize = (await fs.promises.stat(options.tempPath)).size;
+		} catch (err) {
+			if (isEnoent(err)) throw new Error("Downloaded update is missing; not replacing the installed binary");
+			throw err;
+		}
+		if (tempSize === 0) {
+			throw new Error("Downloaded update is empty; not replacing the installed binary");
+		}
 		// `backupPath` is unique per attempt (see updateViaBinaryAt), so this rename
 		// never has to overwrite — or unlink — a possibly-locked leftover from an
 		// earlier run. Renaming the running executable itself is permitted on
@@ -833,55 +863,55 @@ export function buildMiseForceInstallArgs(expectedVersion: string): string[] {
 /**
  * Update via package manager.
  */
-async function updateViaBun(expectedVersion: string): Promise<void> {
-	console.log(chalk.dim("Updating via bun..."));
+async function updateViaBun(expectedVersion: string, report: UpdateReporter): Promise<void> {
+	report(chalk.dim("Updating via bun..."));
 	const args = buildBunInstallArgs(expectedVersion);
 	const result = await $`bun ${args}`.nothrow();
 	if (result.exitCode !== 0) {
 		throw new Error(`bun install failed with exit code ${result.exitCode}`);
 	}
 
-	await printVerification(expectedVersion);
+	await printVerification(expectedVersion, report);
 	try {
 		const pruneResult = await pruneBunCacheAfterGlobalInstall();
 		if (pruneResult && pruneResult.removedEntries > 0) {
-			console.log(chalk.dim(`Pruned ${pruneResult.removedEntries} stale Bun cache entries`));
+			report(chalk.dim(`Pruned ${pruneResult.removedEntries} stale Bun cache entries`));
 		}
 	} catch (err) {
-		console.log(chalk.yellow(`Warning: could not prune stale Bun cache entries: ${err}`));
+		report(chalk.yellow(`Warning: could not prune stale Bun cache entries: ${err}`));
 	}
 }
 
-async function updateViaNpm(expectedVersion: string): Promise<void> {
-	console.log(chalk.dim("Updating via npm..."));
+async function updateViaNpm(expectedVersion: string, report: UpdateReporter): Promise<void> {
+	report(chalk.dim("Updating via npm..."));
 	const args = buildNpmInstallArgs(expectedVersion);
 	const result = await $`npm ${args}`.nothrow();
 	if (result.exitCode !== 0) {
 		throw new Error(`npm install failed with exit code ${result.exitCode}`);
 	}
 
-	await printVerification(expectedVersion);
+	await printVerification(expectedVersion, report);
 }
 
-async function updateViaHomebrew(expectedVersion: string, force: boolean): Promise<void> {
-	console.log(chalk.dim("Updating Homebrew formulae..."));
+async function updateViaHomebrew(expectedVersion: string, force: boolean, report: UpdateReporter): Promise<void> {
+	report(chalk.dim("Updating Homebrew formulae..."));
 	const update = await $`brew update`.nothrow();
 	if (update.exitCode !== 0) {
 		throw new Error(`brew update failed with exit code ${update.exitCode}`);
 	}
 
-	console.log(chalk.dim("Updating via Homebrew..."));
+	report(chalk.dim("Updating via Homebrew..."));
 	const args = buildHomebrewUpdateArgs(force);
 	const result = await $`brew ${args}`.nothrow();
 	if (result.exitCode !== 0) {
 		throw new Error(`brew ${args[0]} failed with exit code ${result.exitCode}`);
 	}
 
-	await printVerification(expectedVersion);
+	await printVerification(expectedVersion, report);
 }
 
-async function updateViaMise(expectedVersion: string, force: boolean): Promise<void> {
-	console.log(chalk.dim("Updating via mise..."));
+async function updateViaMise(expectedVersion: string, force: boolean, report: UpdateReporter): Promise<void> {
+	report(chalk.dim("Updating via mise..."));
 	const args = buildMiseUpgradeArgs();
 	const result = await $`mise ${args}`.nothrow();
 	if (result.exitCode !== 0) {
@@ -896,13 +926,13 @@ async function updateViaMise(expectedVersion: string, force: boolean): Promise<v
 		}
 	}
 
-	await printVerification(expectedVersion);
+	await printVerification(expectedVersion, report);
 }
 
 /**
  * Download a release binary to a target path, replacing an existing file.
  */
-async function updateViaBinaryAt(targetPath: string, expectedVersion: string): Promise<void> {
+async function updateViaBinaryAt(targetPath: string, expectedVersion: string, report: UpdateReporter): Promise<void> {
 	const binaryName = getBinaryName();
 	const tag = `v${expectedVersion}`;
 	const url = `https://github.com/${REPO}/releases/download/${tag}/${binaryName}`;
@@ -913,7 +943,7 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string): P
 	// would force the move-aside rename to overwrite it. pid + timestamp keeps
 	// two forced updates in the same millisecond from colliding.
 	const backupPath = `${targetPath}.${Date.now()}.${process.pid}.bak`;
-	console.log(chalk.dim(`Downloading ${binaryName}…`));
+	report(chalk.dim(`Downloading ${binaryName}…`));
 
 	let response: Response;
 	try {
@@ -931,9 +961,18 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string): P
 		throw new Error(`Download failed: ${response.statusText}`);
 	}
 	const fileStream = fs.createWriteStream(tempPath, { mode: 0o755 });
-	await pipeline(response.body, fileStream);
+	try {
+		await pipeline(response.body, fileStream);
+	} catch (err) {
+		// A mid-download failure (network drop) leaves a partial `<binary>.new`
+		// behind: we throw here before reaching replaceBinaryForUpdate, whose catch
+		// would otherwise clean it up. Remove it so a failed update never litters
+		// the install dir, matching install.sh's EXIT/INT/TERM trap on its tmpbin.
+		await unlinkIfExists(tempPath);
+		throw err;
+	}
 
-	console.log(chalk.dim("Installing update..."));
+	report(chalk.dim("Installing update..."));
 	await replaceBinaryForUpdate({
 		targetPath,
 		tempPath,
@@ -943,8 +982,134 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string): P
 	});
 	// Reclaim backups from earlier updates whose owning process has since exited.
 	await sweepStaleBackups(targetPath);
-	printVerifiedVersion(expectedVersion);
-	console.log(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+	printVerifiedVersion(expectedVersion, report);
+	report(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+}
+
+/**
+ * Install a specific release through whichever mechanism owns the veyyon binary
+ * currently first in PATH (Homebrew, mise, bun, npm, or a bare binary swap).
+ *
+ * This is the single owner of that dispatch: both `veyyon update` and the
+ * automatic startup update go through it, so they can never drift into
+ * updating by different rules.
+ */
+export async function installRelease(
+	version: string,
+	force: boolean,
+	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
+): Promise<void> {
+	const target = await resolveUpdateTarget();
+	if (target.method === "brew") {
+		await updateViaHomebrew(version, force, report);
+	} else if (target.method === "mise") {
+		await updateViaMise(version, force, report);
+	} else if (target.method === "bun") {
+		await updateViaBun(version, report);
+	} else if (target.method === "npm") {
+		await updateViaNpm(version, report);
+	} else {
+		await updateViaBinaryAt(target.path, version, report);
+	}
+}
+
+/**
+ * Outcome of an automatic update attempt.
+ *
+ * `updated` means the new version is on disk and takes effect on the next
+ * launch, not in the running process. `failed` carries the reason so the caller
+ * can show it: an update that quietly does nothing would leave you pinned to an
+ * old version with no way to notice (Law 10).
+ */
+export type AutoUpdateOutcome =
+	| { status: "up-to-date" }
+	| { status: "updated"; version: string }
+	| { status: "failed"; version?: string; error: string }
+	| { status: "skipped"; version: string; reason: AutoUpdateSkipReason };
+
+/**
+ * Why a background update did not attempt an install.
+ *
+ * `another-process` means a concurrently launched session is already installing
+ * that version. `recent-failure` means installing this same version failed
+ * recently enough that retrying now would only reproduce it; see
+ * {@link AUTO_UPDATE_FAILURE_COOLDOWN_MS}.
+ */
+export type AutoUpdateSkipReason = "another-process" | "recent-failure";
+
+/**
+ * Update to the latest release without printing anything or exiting.
+ *
+ * {@link runUpdateCommand} is the interactive front end for the same work; this
+ * is the form a running session can call, where `console.log` would corrupt the
+ * TUI and `process.exit` would kill the user's session.
+ *
+ * Two things make this safe to run on every launch rather than only on demand.
+ * The install runs under a cross-process lock, so opening several terminals at
+ * once installs once instead of racing several package-manager writes at the
+ * same binary. And a failure is recorded, so a machine that cannot install at
+ * all reports the reason and then backs off instead of failing loudly on every
+ * launch forever.
+ *
+ * `statePath` names the file holding that failure record and acting as the lock
+ * target. It defaults to the per-user state file and exists as a parameter so a
+ * test can point the whole mechanism at a temporary directory instead of the
+ * real one.
+ */
+export async function runAutoUpdate(
+	currentVersion: string = VERSION,
+	knownRelease?: ReleaseInfo,
+	statePath: string = getAutoUpdateStatePath(),
+): Promise<AutoUpdateOutcome> {
+	let release: ReleaseInfo;
+	if (knownRelease) {
+		// The startup check already asked the registry. Reusing its answer keeps a
+		// launch to one round trip instead of two.
+		release = knownRelease;
+	} else {
+		try {
+			release = await getLatestRelease();
+		} catch (err) {
+			return { status: "failed", error: errorMessage(err) };
+		}
+	}
+	if (!isNewerVersion(release.version, currentVersion)) {
+		return { status: "up-to-date" };
+	}
+
+	const state = await readAutoUpdateState(statePath);
+	if (!shouldAttemptAutoUpdate(state, release.version, Date.now())) {
+		logger.warn("Skipping automatic update: installing this version failed recently", {
+			version: release.version,
+			error: state.failedError,
+			retryAfterMs: AUTO_UPDATE_FAILURE_COOLDOWN_MS,
+		});
+		return { status: "skipped", version: release.version, reason: "recent-failure" };
+	}
+
+	const attempt = await tryWithFileLock(
+		statePath,
+		async (): Promise<AutoUpdateOutcome> => {
+			try {
+				// Silent: this runs under a live TUI, where any console write corrupts the frame.
+				await installRelease(release.version, false, SILENT_UPDATE_REPORTER);
+			} catch (err) {
+				const error = errorMessage(err);
+				await recordAutoUpdateFailure(release.version, error, statePath);
+				return { status: "failed", version: release.version, error };
+			}
+			await clearAutoUpdateFailure(statePath);
+			return { status: "updated", version: release.version };
+		},
+		{ staleMs: AUTO_UPDATE_LOCK_STALE_MS },
+	);
+	if (!attempt.acquired) {
+		logger.info("Skipping automatic update: another session is already installing it", {
+			version: release.version,
+		});
+		return { status: "skipped", version: release.version, reason: "another-process" };
+	}
+	return attempt.value;
 }
 
 /**
@@ -964,7 +1129,7 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 		process.exit(1);
 	}
 
-	const comparison = compareVersions(release.version, VERSION);
+	const comparison = compareSemver(release.version, VERSION);
 
 	if (comparison <= 0 && !opts.force) {
 		console.log(chalk.green(`${theme.status.success} Already up to date`));
@@ -984,18 +1149,7 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 
 	// Choose update method based on the prioritized veyyon binary in PATH
 	try {
-		const target = await resolveUpdateTarget();
-		if (target.method === "brew") {
-			await updateViaHomebrew(release.version, opts.force);
-		} else if (target.method === "mise") {
-			await updateViaMise(release.version, opts.force);
-		} else if (target.method === "bun") {
-			await updateViaBun(release.version);
-		} else if (target.method === "npm") {
-			await updateViaNpm(release.version);
-		} else {
-			await updateViaBinaryAt(target.path, release.version);
-		}
+		await installRelease(release.version, opts.force);
 	} catch (err) {
 		console.error(chalk.red(`Update failed: ${err}`));
 		process.exit(1);

@@ -1,3 +1,8 @@
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
+
+// The two Argot tool names come from the SDK constants (ONE PLACE): the tool
+// classes name themselves from the same constants, so the registry key, the
+// class `name`, and the preamble that teaches them can never drift.
 export const BUILTIN_TOOL_NAMES = [
 	"read",
 	"bash",
@@ -31,6 +36,8 @@ export const BUILTIN_TOOL_NAMES = [
 	"reflect",
 	"learn",
 	"manage_skill",
+	ARGOT_LOAD_TOOL,
+	ARGOT_UNLOAD_TOOL,
 ] as const;
 
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];

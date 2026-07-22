@@ -13,7 +13,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { errorMessage, formatBytes } from "@veyyon/utils";
+import { clampLow, errorMessage, formatBytes } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionInfo, SessionStatus } from "../../session/session-listing";
@@ -510,7 +510,7 @@ class SessionList implements Component {
 	handleWheel(delta: -1 | 1): void {
 		if (this.#filteredSessions.length === 0) return;
 		this.#selectionMoved = true;
-		this.#selectedIndex = Math.max(0, Math.min(this.#filteredSessions.length - 1, this.#selectedIndex + delta));
+		this.#selectedIndex = clampLow(this.#selectedIndex + delta, 0, this.#filteredSessions.length - 1);
 	}
 
 	/** Mouse click: select the session under the pointer and resume it. */

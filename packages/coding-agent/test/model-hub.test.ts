@@ -176,11 +176,13 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			const rendered = normalize(hub.render(220));
-			expect(rendered).not.toContain("●default");
-			expect(rendered).toContain("●custom-fast");
+			expect(rendered).not.toContain("▪default");
+			expect(rendered).toContain("▪custom-fast");
 			// Explicit :low suffix surfaces as the low thinking glyph on the chip.
-			expect(rendered).toContain("◔");
-			expect(rendered).toContain("●smol");
+			// Under the house block style the low level is the `▂` gauge bar, not a
+			// quadrant circle (docs/internal/tui-design-language.md "Blockiness").
+			expect(rendered).toContain("▂");
+			expect(rendered).toContain("▪smol");
 		});
 
 		test("list rows carry no role chips; only the selected model's detail line is tagged", () => {
@@ -194,9 +196,9 @@ describe("ModelHub", () => {
 			// Auto-selection tags smol → haiku and slow → codex, but only the
 			// selected model's chips render (in the detail line). With row
 			// chips both would appear at once.
-			const hollow = ["○smol", "○slow"].filter(chip => rendered.includes(chip));
+			const hollow = ["▫smol", "▫slow"].filter(chip => rendered.includes(chip));
 			expect(hollow).toHaveLength(1);
-			expect(rendered).not.toContain("●smol");
+			expect(rendered).not.toContain("▪smol");
 		});
 
 		test("roles view reflects auto thinking from defaultThinkingLevel and :auto suffixes", () => {

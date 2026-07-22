@@ -14,6 +14,7 @@ import astGrepDescription from "../prompts/tools/ast-grep.md" with { type: "text
 import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
+import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
@@ -148,6 +149,9 @@ export interface AstGrepToolDetails {
 export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolDetails> {
 	readonly name = "ast_grep";
 	readonly approval = "read" as const;
+	// ast_grep reads file contents under its search path, so an out-of-cwd search
+	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
 	readonly label = "AST Grep";
 	readonly summary = "Search code with AST patterns (structural grep)";
 	readonly description: string;
@@ -274,9 +278,19 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			};
 
 			if (result.matches.length === 0) {
+				const searched = result.filesSearched;
+				const where = scopePath ?? resolvedSearchPath;
+				// A bare "No matches found" hid WHY it was empty. The most common
+				// cause of a surprising zero is that ast_grep selects files by
+				// language, so a language mismatch (or a path with no files of that
+				// language) searches ZERO files and still says "no matches" — a
+				// silent recall hole (Law 10). Surface the file-search count so a
+				// zero-file search reads as a scoping problem, not proven absence.
 				const noMatchMessage = cappedParseErrors.length
 					? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
-					: "No matches found";
+					: searched === 0
+						? `No matches found because NO FILES were searched (0 files under ${where}). ast_grep selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
+						: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
 				const parseMessage = cappedParseErrors.length
 					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
 					: "";

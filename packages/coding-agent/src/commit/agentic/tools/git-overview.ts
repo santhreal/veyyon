@@ -1,14 +1,14 @@
 import { type } from "arktype";
 import type { CommitAgentState, GitOverviewSnapshot } from "../../../commit/agentic/state";
 import { extractScopeCandidates } from "../../../commit/analysis/scope";
+// Use the canonical machine-generated-file predicate so git_overview hides exactly the
+// files the rest of commit analysis (scope, map-reduce) hides. A private copy here once
+// keyed on the narrower manifest-only EXCLUDED_LOCK_FILES set with a case-sensitive
+// match, so it leaked generated lock files (deno.lock, npm-shrinkwrap.json, uppercase
+// CARGO.LOCK, ...) into the model's overview.
+import { isExcludedFile } from "../../../commit/utils/exclusions";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
-import { EXCLUDED_LOCK_FILES } from "../lock-files";
-
-function isExcludedFile(path: string): boolean {
-	const basename = path.split("/").pop() ?? path;
-	return EXCLUDED_LOCK_FILES.has(basename);
-}
 
 function filterExcludedFiles(files: string[]): { filtered: string[]; excluded: string[] } {
 	const filtered: string[] = [];

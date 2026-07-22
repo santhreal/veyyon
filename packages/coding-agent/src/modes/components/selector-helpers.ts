@@ -5,7 +5,7 @@
  * padding. Behaviour is identical to the per-component copies these helpers
  * replace.
  */
-import { extractPrintableText, matchesKey, ScrollView } from "@veyyon/tui";
+import { clampLow, extractPrintableText, matchesKey, ScrollView } from "@veyyon/tui";
 import { theme } from "../theme/theme";
 
 /**
@@ -37,7 +37,7 @@ export function centeredWindow(
 	total: number,
 	maxVisible: number,
 ): { startIndex: number; endIndex: number } {
-	const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(maxVisible / 2), total - maxVisible));
+	const startIndex = clampLow(selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 	const endIndex = Math.min(startIndex + maxVisible, total);
 	return { startIndex, endIndex };
 }
@@ -66,7 +66,7 @@ export function clampSelection(
 		return { selectedIndex: 0, scrollOffset: 0 };
 	}
 
-	const selected = Math.max(0, Math.min(selectedIndex, total - 1));
+	const selected = clampLow(selectedIndex, 0, total - 1);
 
 	let scroll = scrollOffset;
 	if (selected < scroll) {

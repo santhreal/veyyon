@@ -656,7 +656,7 @@ export class ClaudeMessagesProxy {
 				responseQueue.push({ target: target.display, request: toCapturedRequest(message) });
 			}
 		});
-		upstreamTls.on("data", chunk => {
+		upstreamTls.on("data", (chunk: unknown) => {
 			if (!Buffer.isBuffer(chunk)) return;
 			const data = Buffer.from(chunk);
 			clientTls.write(data);

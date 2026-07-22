@@ -2,7 +2,7 @@ Debugger access.
 
 <instruction>
 - You SHOULD prefer this over bash for program state, breakpoints, stepping, thread inspection, or interrupting a running process.
-- `action: "launch"` starts a session; `program` required, `adapter` optional. Python: `program` = target `.py`, interpreter/script flags in `args`. Go: `program` = package directory, `.go` file, or compiled binary.
+- `action: "launch"` starts a session; `program` required, `adapter` optional. `program` is the thing to RUN, not `file` (which only names a breakpoint's source line). Python: `program` = target `.py`, interpreter/script flags in `args`. Go: `program` = package directory, `.go` file, or compiled binary.
 - `action: "attach"` connects to a running process: `pid` (local), `port` (remote), `adapter` forces a specific debugger.
 - **Breakpoints**: `set_breakpoint`/`remove_breakpoint` with source (`file`+`line`) or function (`function`); optional `condition`.
 - **Flow control**: `continue` (resume), `step_over`/`step_in`/`step_out` (single-step), `pause` (interrupt a running program).

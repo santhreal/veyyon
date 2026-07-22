@@ -1,5 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { clampLow } from "@veyyon/utils";
+import { clampLow, stringifyJsonSafe } from "@veyyon/utils";
 import { sqlPlaceholders, tableExists } from "@veyyon/utils/sqlite";
 import { formatBytes, replaceTabs, truncateToWidth } from "./render-utils";
 import { ToolError } from "./tool-errors";
@@ -139,12 +139,7 @@ function stringifySqliteValue(value: unknown): string {
 		return `<BLOB ${formatBytes(value.byteLength)}>`;
 	}
 
-	try {
-		const json = JSON.stringify(value);
-		return json ?? String(value);
-	} catch {
-		return String(value);
-	}
+	return stringifyJsonSafe(value);
 }
 
 function padCell(value: string, width: number): string {

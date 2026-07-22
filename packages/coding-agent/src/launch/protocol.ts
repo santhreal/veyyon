@@ -59,6 +59,8 @@ export interface DaemonSnapshot {
 	readyAt?: number;
 	exitedAt?: number;
 	exitCode?: number;
+	/** Signal name that terminated the process (e.g. "SIGTERM"), when killed by a signal rather than exiting with a code. */
+	signal?: string;
 	exitReason?: string;
 	restartCount: number;
 	outputBytes: number;
@@ -254,6 +256,7 @@ export function parseDaemonSnapshot(value: unknown): DaemonSnapshot {
 		readyAt: optionalNumber(source.readyAt, "daemon.readyAt"),
 		exitedAt: optionalNumber(source.exitedAt, "daemon.exitedAt"),
 		exitCode: optionalNumber(source.exitCode, "daemon.exitCode"),
+		signal: optionalString(source.signal, "daemon.signal"),
 		exitReason: optionalString(source.exitReason, "daemon.exitReason"),
 		restartCount: numberValue(source.restartCount, "daemon.restartCount"),
 		outputBytes: numberValue(source.outputBytes, "daemon.outputBytes"),

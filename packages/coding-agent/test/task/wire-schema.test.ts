@@ -3,8 +3,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { TaskTool, taskSchema } from "@veyyon/coding-agent/task";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import { getTaskSchema, oneLineLabel } from "@veyyon/coding-agent/task/types";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { type } from "arktype";
+import { makeToolSession } from "../helpers/tool-session";
 
 // Contract: the task tool's wire shape is flat `{ name?, agent?, task, isolated? }`
 // (batch: `{ context, tasks[] }` of the same items). `agent` defaults to the
@@ -109,13 +109,15 @@ describe("task approval details surface the dispatch", () => {
 
 	async function makeTool(): Promise<TaskTool> {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [], projectAgentsDir: null });
-		return TaskTool.create({
-			cwd: "/tmp",
-			hasUI: false,
-			settings: Settings.isolated({ "task.isolation.mode": "none", "task.batch": false }),
-			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
-		} as unknown as ToolSession);
+		return TaskTool.create(
+			makeToolSession({
+				cwd: "/tmp",
+				hasUI: false,
+				settings: Settings.isolated({ "task.isolation.mode": "none", "task.batch": false }),
+				getSessionFile: () => null,
+				getSessionSpawns: () => "*",
+			}),
+		);
 	}
 
 	it("surfaces agent, name, and task for a flat spawn", async () => {

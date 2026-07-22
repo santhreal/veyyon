@@ -88,6 +88,32 @@ describe("profile lifecycle CLI", () => {
 		expect(profileExists("work")).toBe(false);
 	});
 
+	it("seeds the dev preset with ultra instrumentation and argot on", async () => {
+		await createProfile("dev", "dev");
+
+		const config = YAML.parse(await Bun.file(path.join(getProfileRootDir("dev"), "agent", "config.yml")).text()) as {
+			session?: { instrumentation?: string };
+			argot?: { enabled?: boolean };
+			profile?: { displayName?: string };
+		};
+		// The preset writes real settings-schema keys through the Settings
+		// singleton, so they land as nested YAML, not dotted strings.
+		expect(config.session?.instrumentation).toBe("ultra");
+		expect(config.argot?.enabled).toBe(true);
+		expect(config.profile?.displayName).toBe("Dev (study)");
+	});
+
+	it("dev preset settings load back through Settings at their preset values", async () => {
+		const { Settings } = await import("../src/config/settings");
+		await createProfile("dev", "dev");
+
+		const settings = await Settings.loadReadOnly({
+			agentDir: path.join(getProfileRootDir("dev"), "agent"),
+		});
+		expect(settings.get("session.instrumentation")).toBe("ultra");
+		expect(settings.get("argot.enabled")).toBe(true);
+	});
+
 	it("leaves no profile directory behind when seeding fails partway", async () => {
 		// Seed from a source whose config.yml is invalid YAML: files copy into the
 		// staging dir, then clearCopiedDisplayName throws while parsing it. The

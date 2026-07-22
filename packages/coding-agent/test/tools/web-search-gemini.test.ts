@@ -1,10 +1,23 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
 import type { FetchImpl } from "@veyyon/ai/types";
-import { GeminiProvider, searchGemini } from "@veyyon/coding-agent/web/search/providers/gemini";
+import {
+	buildGeminiRequestTools,
+	GeminiProvider,
+	geminiPerformedSearch,
+	searchGemini,
+} from "@veyyon/coding-agent/web/search/providers/gemini";
 
+// A realistic grounded Cloud Code response: text PLUS groundingMetadata (a real
+// Google Search grounding always carries chunks/queries). The request-shaping
+// tests below only assert on the outgoing request, but `searchGemini` now rejects
+// an answer that arrives with NO grounding (see the greeting test), so the shared
+// fixture must look like an actual search, not a bare chat reply.
 const SSE_RESPONSE =
-	'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"Gemini answer"}]}}],"modelVersion":"gemini-2.5-flash"}}\n\n';
+	'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"Gemini answer"}]},"groundingMetadata":{"webSearchQueries":["latest Bun version"],"groundingChunks":[{"web":{"uri":"https://bun.sh","title":"Bun"}}],"groundingSupports":[{"segment":{"text":"Gemini answer"},"groundingChunkIndices":[0]}]}}],"modelVersion":"gemini-2.5-flash"}}\n\n';
+// The bug fixture: the model answered CONVERSATIONALLY with no grounding at all.
+const GREETING_SSE_RESPONSE =
+	'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello! How can I help you today?"}]}}],"modelVersion":"gemini-2.5-flash"}}\n\n';
 const DEVELOPER_SSE_RESPONSE =
 	'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Developer answer"}]},"groundingMetadata":{"webSearchQueries":["latest Bun version"],"groundingChunks":[{"web":{"uri":"https://bun.sh","title":"Bun"}}],"groundingSupports":[{"segment":{"text":"Developer answer"},"groundingChunkIndices":[0]}]}}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":4,"totalTokenCount":7},"modelVersion":"gemini-2.5-flash"}\n\n';
 const DEVELOPER_SSE_RESPONSE_WITHOUT_MODEL =
@@ -192,5 +205,141 @@ describe("searchGemini tools serialization", () => {
 		expect(capturedRequest?.body?.request).toMatchObject({
 			tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: { allowedDomains: ["example.com"] } }],
 		});
+	});
+
+	// BACKLOG DOG-R2-3: a `web_search test` that came back as an Antigravity chat
+	// greeting was surfaced as a "search result". The model answered without running
+	// Google Search (no grounding), and the answer text alone passed the shared
+	// renderable-content gate. searchGemini must instead fail loud so the provider
+	// chain moves on rather than presenting ungrounded chatter as a search.
+	it("fails loud when the model answers without searching, instead of surfacing the greeting", async () => {
+		const fetchMock = mockGeminiFetch(GREETING_SSE_RESPONSE);
+		await expect(searchGemini({ ...makeParams("test"), fetch: fetchMock })).rejects.toThrow(
+			/without performing a web search/,
+		);
+	});
+});
+
+// A grounded response carrying THREE distinct sources, so a result-limit slice
+// has something to trim (or wrongly drop). searchGemini caps sources only when a
+// real positive `num_results` is given.
+const THREE_SOURCE_SSE_RESPONSE =
+	'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"Gemini answer"}]},"groundingMetadata":{"webSearchQueries":["q"],"groundingChunks":[{"web":{"uri":"https://a.example","title":"A"}},{"web":{"uri":"https://b.example","title":"B"}},{"web":{"uri":"https://c.example","title":"C"}}],"groundingSupports":[{"segment":{"text":"Gemini answer"},"groundingChunkIndices":[0,1,2]}]}}],"modelVersion":"gemini-2.5-flash"}}\n\n';
+
+describe("searchGemini result-limit handling", () => {
+	const oauthAuthStorage = {
+		async getOAuthAccess() {
+			return { accessToken: "test-access-token", projectId: "test-project" };
+		},
+		hasOAuth() {
+			return true;
+		},
+	} as unknown as AuthStorage;
+
+	function threeSourceFetch(): FetchImpl {
+		return () =>
+			Promise.resolve(
+				new Response(THREE_SOURCE_SSE_RESPONSE, {
+					status: 200,
+					headers: { "Content-Type": "text/event-stream" },
+				}),
+			);
+	}
+
+	function run(numResults: number | undefined) {
+		return searchGemini({
+			query: "limit test",
+			authStorage: oauthAuthStorage,
+			systemPrompt: "prompt",
+			num_results: numResults,
+			fetch: threeSourceFetch(),
+		} as Parameters<typeof searchGemini>[0]);
+	}
+
+	it("returns every grounded source when no limit is given", async () => {
+		const response = await run(undefined);
+		expect(response.sources.map(s => s.url)).toEqual(["https://a.example", "https://b.example", "https://c.example"]);
+	});
+
+	it("caps to the front of the list for a valid positive limit", async () => {
+		const response = await run(2);
+		expect(response.sources.map(s => s.url)).toEqual(["https://a.example", "https://b.example"]);
+	});
+
+	// Regression: a negative num_results used to hit `sources.slice(0, -1)`, which
+	// counts from the END and silently dropped the LAST grounded source (returning
+	// A + B and losing C). It must instead be treated as "no limit" and return all
+	// three, never a truncated tail.
+	it("does not drop trailing sources when the limit is negative", async () => {
+		const response = await run(-1);
+		expect(response.sources.map(s => s.url)).toEqual(["https://a.example", "https://b.example", "https://c.example"]);
+	});
+});
+
+describe("geminiPerformedSearch grounding discriminator", () => {
+	it("is true when any single grounding signal is present", () => {
+		expect(
+			geminiPerformedSearch({
+				sources: [{ title: "Bun", url: "https://bun.sh" }],
+				citations: [],
+				searchQueries: [],
+			}),
+		).toBe(true);
+		expect(
+			geminiPerformedSearch({
+				sources: [],
+				citations: [{ url: "https://bun.sh", title: "Bun" }],
+				searchQueries: [],
+			}),
+		).toBe(true);
+		expect(geminiPerformedSearch({ sources: [], citations: [], searchQueries: ["latest Bun version"] })).toBe(true);
+	});
+
+	it("is false only when the model produced NO grounding at all (the greeting case)", () => {
+		expect(geminiPerformedSearch({ sources: [], citations: [], searchQueries: [] })).toBe(false);
+	});
+});
+
+/**
+ * buildGeminiRequestTools shapes the `tools` array sent to the Gemini grounding API. It had no direct
+ * test. The contract the request builder relies on:
+ *   - googleSearch is ALWAYS the first tool (grounding is the whole point of this provider), defaulting
+ *     to an empty config object when no google_search config is supplied, or carrying the given config;
+ *   - codeExecution and urlContext are OPT-IN: each is appended only when its param is defined, in the
+ *     fixed order googleSearch -> codeExecution -> urlContext.
+ * A regression that dropped googleSearch would disable grounding entirely; one that always appended the
+ * optional tools would send capabilities the caller did not request.
+ */
+describe("buildGeminiRequestTools", () => {
+	it("always emits googleSearch first, defaulting to an empty config", () => {
+		expect(buildGeminiRequestTools({})).toEqual([{ googleSearch: {} }]);
+	});
+
+	it("carries a provided google_search config instead of the default", () => {
+		expect(buildGeminiRequestTools({ google_search: { dynamicThreshold: 0.5 } })).toEqual([
+			{ googleSearch: { dynamicThreshold: 0.5 } },
+		]);
+	});
+
+	it("appends codeExecution only when defined", () => {
+		expect(buildGeminiRequestTools({ code_execution: { a: 1 } })).toEqual([
+			{ googleSearch: {} },
+			{ codeExecution: { a: 1 } },
+		]);
+	});
+
+	it("appends urlContext only when defined", () => {
+		expect(buildGeminiRequestTools({ url_context: { u: "z" } })).toEqual([
+			{ googleSearch: {} },
+			{ urlContext: { u: "z" } },
+		]);
+	});
+
+	it("emits all three in the fixed order googleSearch -> codeExecution -> urlContext", () => {
+		expect(buildGeminiRequestTools({ google_search: {}, code_execution: {}, url_context: {} })).toEqual([
+			{ googleSearch: {} },
+			{ codeExecution: {} },
+			{ urlContext: {} },
+		]);
 	});
 });

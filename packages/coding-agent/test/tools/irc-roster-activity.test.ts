@@ -5,13 +5,14 @@ import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifec
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { IrcTool } from "@veyyon/coding-agent/tools/irc";
+import { makeToolSession } from "../helpers/tool-session";
 
 // Contract: the work-aware roster (`irc list`) surfaces each peer's role
 // (via displayName) and current activity gist, and a peer with no activity
 // renders cleanly without a dangling empty clause.
 
-function makeToolSession(registry: AgentRegistry, agentId: string): ToolSession {
-	return {
+function sessionForAgent(registry: AgentRegistry, agentId: string): ToolSession {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		getSessionFile: () => null,
@@ -19,11 +20,11 @@ function makeToolSession(registry: AgentRegistry, agentId: string): ToolSession 
 		settings: Settings.isolated(),
 		agentRegistry: registry,
 		getAgentId: () => agentId,
-	} as unknown as ToolSession;
+	});
 }
 
 async function listText(registry: AgentRegistry, selfId: string): Promise<string> {
-	const tool = new IrcTool(makeToolSession(registry, selfId));
+	const tool = new IrcTool(sessionForAgent(registry, selfId));
 	const result = await tool.execute("call", { op: "list" });
 	return result.content.find(part => part.type === "text")?.text ?? "";
 }

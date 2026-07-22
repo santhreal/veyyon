@@ -1,10 +1,23 @@
 import type { Component, SgrMouseEvent } from "@veyyon/tui";
 import type { InteractiveModeContext } from "../../types";
 
+/**
+ * The slice of the interactive context the setup wizard and its scenes use.
+ *
+ * Declared once here and shared by the wizard entry point, its lazy loader, the
+ * overlay, and every scene, so all of them agree on what the wizard is allowed
+ * to touch. Six members of 215; see `CollabHostContext` for why the full
+ * interface is not usable as a parameter type.
+ */
+export type SetupWizardContext = Pick<
+	InteractiveModeContext,
+	"openInBrowser" | "playWelcomeIntro" | "session" | "settings" | "showError" | "ui"
+>;
+
 export type SetupSceneResult = "done" | "skipped";
 
 export interface SetupSceneHost {
-	ctx: InteractiveModeContext;
+	ctx: SetupWizardContext;
 	requestRender(): void;
 	finish(result: SetupSceneResult): void;
 	setFocus(component: Component | null): void;
@@ -51,7 +64,13 @@ export interface SetupTab {
 export interface SetupScene {
 	id: string;
 	title: string;
+	/**
+	 * The app MAJOR version this scene was introduced in. It is a floor, not a
+	 * per-scene trigger: onboarding re-runs once per major release (see
+	 * `selectSetupScenes`), and a scene runs whenever its floor is at or below the
+	 * current major. Stage a scene for a future major by setting this ahead.
+	 */
 	minVersion: number;
-	shouldRun?(ctx: InteractiveModeContext): boolean | Promise<boolean>;
+	shouldRun?(ctx: SetupWizardContext): boolean | Promise<boolean>;
 	mount(host: SetupSceneHost): SetupSceneController;
 }

@@ -1,0 +1,45 @@
+{
+	"cases": [
+		{
+			"id": "rpc-parse-null-id-undefined",
+			"contract": "Malformed null frames emit parse error with id undefined",
+			"surface": "rpc-parse-frame",
+			"tags": ["adversarial", "regression"],
+			"input": { "frame": null },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "parse",
+				"success": false,
+				"errorContains": "Failed to parse command:"
+			}
+		},
+		{
+			"id": "rpc-unknown-command-drops-id",
+			"contract": "Unknown command responses drop request id even when the client sent one",
+			"surface": "rpc-unknown-command",
+			"tags": ["adversarial", "regression"],
+			"input": { "id": "req-1", "type": "definitely_not_a_command" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "definitely_not_a_command",
+				"success": false,
+				"errorContains": "Unknown command:"
+			}
+		},
+		{
+			"id": "rpc-known-command-echoes-id",
+			"contract": "Known command success responses echo the request id",
+			"surface": "rpc-known-get-state",
+			"tags": ["positive"],
+			"input": { "id": "state-1", "type": "get_state" },
+			"expect": {
+				"id": "state-1",
+				"type": "response",
+				"command": "get_state",
+				"success": true
+			}
+		}
+	]
+}

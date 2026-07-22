@@ -24,7 +24,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { getMCPConfigPath, logger } from "@veyyon/utils";
+import { clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";
@@ -498,7 +498,7 @@ class TwoColumnBody implements Component {
 	/** Wheel notch over the inspector pane: scroll its content, clamped. */
 	scrollInspector(delta: -1 | 1): void {
 		const max = Math.max(0, this.#rightTotal - this.#maxHeight);
-		this.#rightScroll = Math.max(0, Math.min(this.#rightScroll + delta, max));
+		this.#rightScroll = clampLow(this.#rightScroll + delta, 0, max);
 	}
 
 	render(width: number): readonly string[] {

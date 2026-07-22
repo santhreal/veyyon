@@ -34,7 +34,7 @@ import {
 	applyViewport,
 	BROWSER_PROTOCOL_TIMEOUT_MS,
 	DEFAULT_VIEWPORT,
-	loadPuppeteerInWorker,
+	loadPuppeteer,
 } from "./launch";
 import { extractReadableFromHtml, type ReadableFormat } from "./readable";
 import {
@@ -485,6 +485,9 @@ async function isClickActionable(handle: ElementHandle): Promise<ActionabilityRe
 		if (Number(style.opacity) === 0) return { ok: false as const, reason: "opacity:0" };
 		const r = element.getBoundingClientRect();
 		if (r.width < 1 || r.height < 1) return { ok: false as const, reason: "zero-size" };
+		// Inline clamp (not @veyyon/utils clampLow): this function is serialized and
+		// injected into the page's own JS context, which has no access to workspace
+		// modules — an import here would throw at evaluation time in the browser.
 		const left = Math.max(0, Math.min(globalThis.innerWidth, r.left));
 		const right = Math.max(0, Math.min(globalThis.innerWidth, r.right));
 		const top = Math.max(0, Math.min(globalThis.innerHeight, r.top));
@@ -662,7 +665,7 @@ export class WorkerCore {
 	async #init(payload: WorkerInitPayload): Promise<void> {
 		try {
 			this.#mode = payload.mode;
-			const puppeteer = await loadPuppeteerInWorker(payload.safeDir);
+			const puppeteer = await loadPuppeteer();
 			this.#browser = await puppeteer.connect({
 				browserWSEndpoint: payload.browserWSEndpoint,
 				defaultViewport: null,

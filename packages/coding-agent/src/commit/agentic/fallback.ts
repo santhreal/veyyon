@@ -1,8 +1,8 @@
 import * as path from "node:path";
 import type { CommitType, ConventionalAnalysis, NumstatEntry } from "../../commit/types";
+import { isTestFilePath } from "../../commit/utils/test-paths";
 import type { CommitProposal } from "./state";
 
-const TEST_PATTERNS = ["/test/", "/tests/", "/__tests__/", "_test.", ".test.", ".spec.", "_spec."];
 const DOC_EXTENSIONS = new Set([".md", ".txt", ".rst", ".adoc"]);
 const CONFIG_EXTENSIONS = new Set([".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".cfg"]);
 const STYLE_EXTENSIONS = new Set([".css", ".scss", ".less", ".sass"]);
@@ -17,10 +17,9 @@ function inferTypeFromFiles(numstat: NumstatEntry[]): CommitType {
 	let hasSource = false;
 
 	for (const entry of numstat) {
-		const lowerPath = entry.path.toLowerCase();
 		const ext = getExtension(entry.path);
 
-		if (TEST_PATTERNS.some(pattern => lowerPath.includes(pattern))) {
+		if (isTestFilePath(entry.path)) {
 			hasTests = true;
 		} else if (DOC_EXTENSIONS.has(ext)) {
 			hasDocs = true;
@@ -78,7 +77,9 @@ export function generateFallbackSummary(type: CommitType, numstat: NumstatEntry[
 	const verb = verbMap[type] ?? "updated";
 	const file = path.basename(numstat[0]?.path ?? "files");
 
-	if (numstat.length === 1) {
+	// `<= 1` covers the empty changeset too: without it the else branch renders
+	// "and -1 others" (0 - 1). One or zero files get the bare "<verb> <file>".
+	if (numstat.length <= 1) {
 		return `${verb} ${file}`;
 	}
 	return `${verb} ${file} and ${numstat.length - 1} other${numstat.length === 2 ? "" : "s"}`;

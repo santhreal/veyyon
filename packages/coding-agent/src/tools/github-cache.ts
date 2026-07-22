@@ -461,27 +461,60 @@ export interface CacheLookupResult<T> {
 	fetchedAt: number;
 }
 
-function readNumberSetting(settings: Settings | undefined, key: string, fallback: number): number {
+/**
+ * Read one cache setting.
+ *
+ * Both failure paths are reported. They used to be silent: an exception was
+ * swallowed by a bare `catch` (justified in a comment as "settings may be a
+ * stripped test stub"), and a value of the wrong type or out of range fell
+ * through to the default with nothing said. The second is the one that bites a
+ * user: they set `github.cache.softTtlSec: "10m"` or a negative TTL, the cache
+ * quietly keeps its default, and there is nothing anywhere to explain why the
+ * setting had no effect (Law 10). Falling back to the default is still the right
+ * behaviour, so the fallback stays; it is just no longer quiet.
+ */
+function readCacheSetting<T extends number | boolean>(
+	settings: Settings | undefined,
+	key: string,
+	fallback: T,
+	accept: (value: unknown) => value is T,
+	expected: string,
+): T {
 	if (!settings) return fallback;
+	let value: unknown;
 	try {
-		const value = (settings as unknown as { get(k: string): unknown }).get(key);
-		if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
-	} catch {
-		// Unknown setting paths fall through to default; settings may be a
-		// stripped test stub that doesn't expose every key.
+		value = (settings as unknown as { get(k: string): unknown }).get(key);
+	} catch (error) {
+		logger.warn("Could not read a GitHub cache setting; using its default", {
+			key,
+			default: fallback,
+			error: String(error),
+			fix: `Check that ${key} is spelled correctly in your config.`,
+		});
+		return fallback;
 	}
+	if (value === undefined || value === null) return fallback;
+	if (accept(value)) return value;
+	logger.warn("A GitHub cache setting has an unusable value and is being ignored", {
+		key,
+		value,
+		expected,
+		usingInstead: fallback,
+		fix: `Set ${key} to ${expected}, or remove it to use the default.`,
+	});
 	return fallback;
 }
 
+const isUsableNumber = (value: unknown): value is number =>
+	typeof value === "number" && Number.isFinite(value) && value >= 0;
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+
+function readNumberSetting(settings: Settings | undefined, key: string, fallback: number): number {
+	return readCacheSetting(settings, key, fallback, isUsableNumber, "a number of zero or more");
+}
+
 function readBooleanSetting(settings: Settings | undefined, key: string, fallback: boolean): boolean {
-	if (!settings) return fallback;
-	try {
-		const value = (settings as unknown as { get(k: string): unknown }).get(key);
-		if (typeof value === "boolean") return value;
-	} catch {
-		// Same fallback rationale as readNumberSetting.
-	}
-	return fallback;
+	return readCacheSetting(settings, key, fallback, isBoolean, "true or false");
 }
 
 export interface CacheTtl {

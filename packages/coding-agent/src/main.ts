@@ -12,8 +12,10 @@ import type { ImageContent } from "@veyyon/ai";
 import {
 	$env,
 	directoryExists,
+	errorMessage,
 	getLogPath,
 	getProjectDir,
+	isNewerVersion,
 	isUuid,
 	logger,
 	normalizePathForComparison,
@@ -29,6 +31,7 @@ import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
 import { applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
+import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
 import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import {
@@ -43,10 +46,16 @@ import {
 import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
-import { clearPluginRootsAndCaches, injectPluginDirRoots, preloadPluginRoots } from "./discovery/helpers";
+import {
+	clearPluginRootsAndCaches,
+	injectPluginDirRoots,
+	preloadPluginRoots,
+	resolveActiveProjectRegistryPath,
+} from "./discovery/helpers";
 import { injectVeyyonExtensionCliRoots } from "./discovery/veyyon-extension-roots";
 import { ExtensionRunner } from "./extensibility/extensions/runner";
 import type { ExtensionUIContext } from "./extensibility/extensions/types";
+import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
 import type { InteractiveMode } from "./modes/interactive-mode";
@@ -74,8 +83,8 @@ import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { concreteThinkingLevel, parseConfiguredThinkingLevel } from "./thinking";
 import type { LspStartupServerInfo } from "./tools";
+import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
 import { EventBus } from "./utils/event-bus";
-import { withTimeoutSignal } from "./utils/fetch-timeout";
 
 type RunAcpMode = (createSession: AcpSessionFactory) => Promise<never>;
 type RunPrintMode = (session: AgentSession, options: PrintModeOptions) => Promise<void>;
@@ -89,25 +98,33 @@ export function writeStartupNotice(parsedArgs: Pick<Args, "mode">, text: string)
 	(parsedArgs.mode === "json" ? process.stderr : process.stdout).write(text);
 }
 
-async function checkForNewVersion(currentVersion: string): Promise<string | undefined> {
+/**
+ * How long the startup version check waits on the registry.
+ *
+ * Short on purpose: this runs while you are waiting to type, so a slow or
+ * captive network must not hold up a launch. An explicit `veyyon update` uses
+ * the longer default instead.
+ */
+const STARTUP_VERSION_CHECK_TIMEOUT_MS = 5_000;
+
+async function checkForNewVersion(currentVersion: string): Promise<ReleaseInfo | undefined> {
 	if (!settings.get("startup.checkUpdate")) {
-		return;
-	}
-	try {
-		const response = await fetch("https://registry.npmjs.org/@veyyon/coding-agent/latest", {
-			signal: withTimeoutSignal(5_000),
-		});
-		if (!response.ok) return undefined;
-
-		const data = (await response.json()) as { version?: string };
-		const latestVersion = data.version;
-
-		if (latestVersion && Bun.semver.order(latestVersion, currentVersion) > 0) {
-			return latestVersion;
-		}
-
 		return undefined;
-	} catch {
+	}
+	// Delegates to the single registry lookup and the single version comparator.
+	// This used to hand-roll both, which meant a launch made two round trips for
+	// the same answer, and the two comparisons could disagree: the check used
+	// `Bun.semver.order` while the update path used a split/Number comparator
+	// that mis-ranked prereleases, so a prerelease could be announced here and
+	// then judged "already up to date" by the installer.
+	try {
+		const release = await getLatestRelease(STARTUP_VERSION_CHECK_TIMEOUT_MS);
+		return isNewerVersion(release.version, currentVersion) ? release : undefined;
+	} catch (error) {
+		// Not reachable, rate-limited, offline, or a version string we cannot
+		// order. None of that should interrupt a launch, but none of it is
+		// allowed to vanish either (Law 10).
+		logger.debug("Startup version check did not complete", { error: errorMessage(error) });
 		return undefined;
 	}
 }
@@ -389,7 +406,7 @@ async function runInteractiveMode(
 	session: AgentSession,
 	version: string,
 	notifs: (InteractiveModeNotify | null)[],
-	versionCheckPromise: Promise<string | undefined>,
+	versionCheckPromise: Promise<ReleaseInfo | undefined>,
 	initialMessages: string[],
 	setExtensionUIContext: (uiContext: ExtensionUIContext, hasUI: boolean) => void,
 	lspServers: LspStartupServerInfo[] | undefined,
@@ -438,16 +455,72 @@ async function runInteractiveMode(
 		await setupWizard.runSetupWizard(mode, setupScenes);
 	}
 
+	// A settings file that could not be parsed is not a log-only event: the
+	// session is running on defaults for it, and the user has to be told before
+	// they spend the session wondering why their configuration stopped applying.
+	if (settings.quarantinedFiles.length > 0) {
+		mode.showUnparseableSettingsNotification(settings.quarantinedFiles);
+	}
+
+	// First launch after an update: one line naming the version, pointing at
+	// `/changelog` for the notes. Driven by the marker the previous run wrote,
+	// so it fires exactly once per upgrade.
+	if (settings.get("startup.updateNotice")) {
+		const marker = await readLastChangelogVersion();
+		const decision = decideUpdateNotice(marker, VERSION);
+		if (decision.installedVersion) {
+			mode.showUpdateInstalledNotification(decision.installedVersion);
+		}
+		if (decision.persistCurrentVersion) {
+			await writeLastChangelogVersion(VERSION);
+		}
+	}
+
+	// Installed plugins go stale the same way the binary does, and
+	// `marketplace.autoUpdate` defaults to `notify`. Fire and forget: the check
+	// talks to every configured marketplace, so it must never gate the first paint.
+	scheduleMarketplaceAutoUpdate({
+		autoUpdate: settings.get("marketplace.autoUpdate"),
+		resolveActiveProjectRegistryPath,
+		clearPluginRootsCache: clearPluginRootsAndCaches,
+		onResult: result => {
+			if (result.kind === "available") mode.showPluginUpdatesNotification(result.count);
+			else if (result.kind === "installed") mode.showPluginUpdatesInstalledNotification(result.count);
+			// `none`, `disabled`, and `failed` say nothing here; `failed` already logged.
+		},
+	});
+
 	versionCheckPromise
-		.then(newVersion => {
-			if (!settings.get("startup.checkUpdate")) {
+		.then(async release => {
+			if (!release) return;
+			// With automatic updates off, all we do is say a version exists and let
+			// the user run `veyyon update` themselves.
+			if (!settings.get("startup.autoUpdate")) {
+				mode.showNewVersionNotification(release.version);
 				return;
 			}
-			if (newVersion) {
-				mode.showNewVersionNotification(newVersion);
+			// Install in the background, reusing the release the check already
+			// resolved so the launch makes one registry round trip, not two. The
+			// running process keeps the old version either way, so both outcomes
+			// tell the user what to do next.
+			const outcome = await runAutoUpdate(VERSION, release);
+			if (outcome.status === "updated") {
+				mode.showUpdateReadyNotification(outcome.version);
+			} else if (outcome.status === "failed") {
+				mode.showUpdateFailedNotification(outcome.version ?? release.version, outcome.error);
+			} else if (outcome.status === "skipped") {
+				// No install happened, but nothing is wrong that this session can act
+				// on: either a sibling session is installing the same version, or the
+				// failure was already reported and is inside its backoff window.
+				// `runAutoUpdate` logs which, so say a version exists and stop there.
+				mode.showNewVersionNotification(release.version);
 			}
 		})
-		.catch(() => {});
+		.catch(error => {
+			// Nothing above is allowed to fail silently: a swallowed rejection here
+			// would leave a stale install with no signal at all (Law 10).
+			logger.warn("Startup update check failed", { error: errorMessage(error) });
+		});
 
 	// Cold-launch cleanup: the first paint already clears native history, and this
 	// replay replaces the welcome/startup frame with the resumed/new transcript.
@@ -1546,7 +1619,11 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			stopStartupWatchdog();
 			await runRpcMode(session, mode === "rpc-ui" ? setToolUIContext : undefined, eventBus);
 		} else if (isInteractive) {
-			const versionCheckPromise = checkForNewVersion(VERSION).catch(() => undefined);
+			// Gate the check itself, not just its display: with the setting off the
+			// user has opted out of the network round-trip, not merely its output.
+			const versionCheckPromise = settingsInstance.get("startup.checkUpdate")
+				? checkForNewVersion(VERSION).catch(() => undefined)
+				: Promise.resolve(undefined);
 
 			const modelScopeNotification = buildModelScopeNotification(
 				scopedModels,

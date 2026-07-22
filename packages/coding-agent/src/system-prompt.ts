@@ -500,19 +500,22 @@ export interface BuildSystemPromptOptions {
 	/** Whether secret obfuscation is active. When true, explains the redaction format in the prompt. */
 	secretsEnabled?: boolean;
 	/**
-	 * Whether to teach argot shorthand this turn. This is the encode decision
-	 * (model allowlist + context cutoff), resolved by the caller via the argot
-	 * SDK's `shouldEncode`. It gates only teaching; decoding (expansion) is
-	 * unconditional and handled at the seams. When true, {@link argotHandles} is
-	 * injected into the system prompt.
+	 * The fixed argot notation block (the SDK's `renderPreamble({ tools: true })`),
+	 * injected when the encode gate lets this model write shorthand: the active
+	 * model is on the allowlist and the context is under the cutoff, resolved by
+	 * the caller via the argot SDK's `shouldEncode`. It teaches the notation and
+	 * tells the model to load its project itself through the argot_load tool.
+	 * It gates only teaching; decoding (expansion) is unconditional and handled
+	 * at the seams.
 	 */
-	injectArgotPreamble?: boolean;
+	argotPreamble?: string;
 	/**
 	 * The argot handle table to teach the model: a self-contained block listing
-	 * each `§handle → expansion` for this project, produced by the SDK's
-	 * `ArgotSession.promptFragment`. Injected only when {@link injectArgotPreamble}
-	 * is true and this is non-empty. The dictionary lives in a local cache outside
-	 * the repository, so this block is how the model learns the handles at all.
+	 * each `§handle → expansion` for the loaded projects, produced by the SDK's
+	 * `ArgotSession.promptFragment`. Present only when the encode gate is on and
+	 * the model has loaded a project's shorthand; the dictionary lives in a local
+	 * cache outside the repository, so this block is how the model learns the
+	 * handles at all.
 	 */
 	argotHandles?: string;
 	/** Pre-loaded workspace tree (skips discovery if provided). May be a Promise to allow early kick-off. */
@@ -580,7 +583,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskMaxConcurrency = 0,
 		taskIrcEnabled = false,
 		secretsEnabled = false,
-		injectArgotPreamble = false,
+		argotPreamble,
 		argotHandles,
 		workspaceTree: providedWorkspaceTree,
 		memoryRootEnabled = false,
@@ -875,13 +878,17 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	if (activeRepoContextPrompt) {
 		systemPrompt.push(activeRepoContextPrompt);
 	}
-	// Argot: teach the concrete handle table this project defines. The dictionary
-	// is a local cache outside the repository, so the model learns the handles
-	// from this block, not by reading a file. The caller decides per turn whether
-	// to teach it (model allowlist + context cutoff, via the argot SDK's
-	// shouldEncode) and supplies the self-contained table (promptFragment);
-	// decoding is unconditional and runs at the seams.
-	if (injectArgotPreamble && argotHandles) {
+	// Argot: teach the notation (and the load-yourself instruction) whenever the
+	// encode gate is on, plus the concrete handle table once the model has loaded
+	// a project. Dictionaries live in a local cache outside the repository, so
+	// the model learns handles from these blocks, not by reading a file. The
+	// caller decides per turn whether to teach (model allowlist + context cutoff,
+	// via the argot SDK's shouldEncode); decoding is unconditional and runs at
+	// the seams.
+	if (argotPreamble) {
+		systemPrompt.push(argotPreamble);
+	}
+	if (argotHandles) {
 		systemPrompt.push(argotHandles);
 	}
 

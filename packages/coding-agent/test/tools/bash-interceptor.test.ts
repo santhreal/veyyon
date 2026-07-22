@@ -2,12 +2,12 @@ import { describe, expect, it } from "bun:test";
 import type { AgentToolContext } from "@veyyon/agent-core";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "@veyyon/coding-agent/config/settings-schema";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool, type BashToolInput } from "@veyyon/coding-agent/tools/bash";
 import { checkBashInterception } from "@veyyon/coding-agent/tools/bash-interceptor";
+import { makeToolSession } from "../helpers/tool-session";
 
 function createBashTool(rules: BashInterceptorRule[]): BashTool {
-	const session = {
+	const session = makeToolSession({
 		settings: {
 			get(key: string) {
 				if (key === "bashInterceptor.enabled") return true;
@@ -20,7 +20,7 @@ function createBashTool(rules: BashInterceptorRule[]): BashTool {
 				return rules;
 			},
 		},
-	} as unknown as ToolSession;
+	});
 
 	return new BashTool(session);
 }

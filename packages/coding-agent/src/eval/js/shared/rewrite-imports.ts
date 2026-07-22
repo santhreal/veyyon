@@ -161,20 +161,27 @@ function rewriteImportNode(node: BabelImportDeclaration): string {
 
 	let defaultName: string | undefined;
 	let namespaceName: string | undefined;
-	const namedPairs: Array<[string, string]> = [];
+	// The third field records whether the imported name came from a string literal
+	// (`import { "a-b" as c }`, valid ESM for exotic export names). Such a key is not a
+	// valid identifier, so it must be quoted when it becomes a destructuring key or the
+	// generated `const { a-b: c } = ...` is a syntax error.
+	const namedPairs: Array<[imported: string, local: string, fromString: boolean]> = [];
 	for (const spec of node.specifiers) {
 		if (spec.type === "ImportDefaultSpecifier") {
 			defaultName = spec.local.name;
 		} else if (spec.type === "ImportNamespaceSpecifier") {
 			namespaceName = spec.local.name;
 		} else if (spec.type === "ImportSpecifier" && spec.imported) {
-			const imported = spec.imported.type === "Identifier" ? spec.imported.name : spec.imported.value;
-			namedPairs.push([imported, spec.local.name]);
+			const fromString = spec.imported.type === "StringLiteral";
+			const imported = spec.imported.type === "StringLiteral" ? spec.imported.value : spec.imported.name;
+			namedPairs.push([imported, spec.local.name, fromString]);
 		}
 	}
 
 	if (namedPairs.length > 0) {
-		const inner = namedPairs.map(([imp, loc]) => (imp === loc ? imp : `${imp}: ${loc}`)).join(", ");
+		const inner = namedPairs
+			.map(([imp, loc, fromString]) => (imp === loc ? imp : `${fromString ? JSON.stringify(imp) : imp}: ${loc}`))
+			.join(", ");
 		const props = defaultName ? `default: ${defaultName}, ${inner}` : inner;
 		return `const { ${props} } = await ${importCall};`;
 	}

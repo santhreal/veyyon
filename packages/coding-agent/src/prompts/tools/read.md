@@ -21,6 +21,8 @@ Read files, directories, archives, SQLite, images, documents, internal resources
 - `:2-4:raw` / `:raw:2-4` — range AND verbatim; either order.
 - `:conflicts` — one line per unresolved git merge conflict block.
 
+A bounded range shows a few surrounding context lines so you can see where it sits: up to 1 line before (when you constrain the start) and 3 lines after. So `:1-5` returns lines 1 through 8, not 5 lines. The extra lines keep their own line numbers, so they read as context, not as part of what you asked for. Use `:raw` (for example `:raw:1-5`) when you need exactly the requested lines and nothing else.
+
 # Files
 
 - Directory → depth-limited dirent listing.

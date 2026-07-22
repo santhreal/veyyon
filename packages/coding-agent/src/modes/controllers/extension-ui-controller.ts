@@ -1,6 +1,6 @@
 import type { Component, OverlayHandle, TUI } from "@veyyon/tui";
 import { Container, Spacer, Text } from "@veyyon/tui";
-import { errorMessage } from "@veyyon/utils";
+import { clampLow, errorMessage } from "@veyyon/utils";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { KeybindingsManager } from "../../config/keybindings";
 import type {
@@ -31,6 +31,47 @@ import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, them
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../../modes/types";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-generator";
+
+/**
+ * The slice of the interactive context this uses: 31 members of the 215
+ * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
+ * test construct one without the `as unknown as InteractiveModeContext` cast the
+ * full interface forces (see `CollabHostContext`).
+ */
+export type ExtensionUiControllerContext = Pick<
+	InteractiveModeContext,
+	| "addAutocompleteProvider"
+	| "clearTransientSessionUi"
+	| "collabHost"
+	| "editor"
+	| "editorContainer"
+	| "executeCompaction"
+	| "focusActiveEditorArea"
+	| "hookEditor"
+	| "hookInput"
+	| "hookSelector"
+	| "hookWidgetContainerAbove"
+	| "hookWidgetContainerBelow"
+	| "initialChatRendered"
+	| "present"
+	| "rebuildChatFromMessages"
+	| "reloadTodos"
+	| "renderInitialMessages"
+	| "resetTranscript"
+	| "session"
+	| "sessionManager"
+	| "setEditorComponent"
+	| "setToolUIContext"
+	| "setToolsExpanded"
+	| "setWorkingMessage"
+	| "showError"
+	| "showStatus"
+	| "showWarning"
+	| "shutdownRequested"
+	| "statusLine"
+	| "toolOutputExpanded"
+	| "ui"
+>;
 
 const MAX_WIDGET_LINES = 10;
 const ASK_OTHER_OPTION = "Other (type your own)";
@@ -72,7 +113,7 @@ export class ExtensionUiController {
 	// the rest queue. See `#presentDialog`.
 	#dialogActive = false;
 	#dialogQueue: Array<() => void> = [];
-	constructor(private ctx: InteractiveModeContext) {}
+	constructor(private ctx: ExtensionUiControllerContext) {}
 
 	/**
 	 * Initialize the hook system with TUI-based UI context.
@@ -805,7 +846,7 @@ export class ExtensionUiController {
 				typeof question.recommended === "number" && Number.isInteger(question.recommended)
 					? question.recommended
 					: 0;
-			const initialIndex = Math.max(0, Math.min(recommended, Math.max(0, question.options.length - 1)));
+			const initialIndex = clampLow(recommended, 0, Math.max(0, question.options.length - 1));
 			while (true) {
 				const choice = await this.#requestGuestUiString(
 					{
@@ -868,7 +909,7 @@ export class ExtensionUiController {
 		extra?: { slider?: HookSelectorSlider },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
-			const maxVisible = Math.max(4, Math.min(15, this.ctx.ui.terminal.rows - 12));
+			const maxVisible = clampLow(this.ctx.ui.terminal.rows - 12, 4, 15);
 			this.ctx.hookSelector = new HookSelectorComponent(
 				title,
 				options,

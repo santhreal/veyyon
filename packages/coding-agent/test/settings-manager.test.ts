@@ -73,6 +73,135 @@ describe("Settings", () => {
 		await tempDir?.remove();
 	});
 
+	describe("unparseable settings file", () => {
+		// A settings file can become unparseable in ordinary use: a hand-edited
+		// value containing an unquoted colon, a bad indent, or a truncated write
+		// from a crash or a full disk. What must never happen is that veyyon
+		// destroys the file the user is about to fix.
+		const corruptYaml = ["startup:", "  quiet: true", "model: gpt: 4"].join("\n");
+
+		it("quarantines the file instead of overwriting it on the next save", async () => {
+			// REGRESSION, data loss. Loading a corrupt file used to yield an empty
+			// config with only a debug log. The next `set` then re-read that same
+			// empty config, applied the one changed path, and wrote the result over
+			// the file, permanently erasing every other setting the user had.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), corruptYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+
+			const quarantined = `${getConfigPath()}.corrupt`;
+			expect(fs.existsSync(quarantined)).toBe(true);
+			expect(fs.readFileSync(quarantined, "utf-8")).toBe(corruptYaml);
+		});
+
+		it("still lets the session save, so the user does not silently lose their change", async () => {
+			// Refusing to write would trade one silent failure for another: the user
+			// changes a setting, sees it take effect, and finds it gone next launch.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), corruptYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+
+			expect((await readSettings()).setupVersion).toBe(2);
+		});
+
+		it("quarantines once, so a second save does not clobber the preserved copy", async () => {
+			// The rescued content is the only copy of the user's settings. A later
+			// save must not overwrite it with the now-valid file.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), corruptYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+			settings.set("setupVersion", 3);
+			await settings.flush();
+
+			expect(fs.readFileSync(`${getConfigPath()}.corrupt`, "utf-8")).toBe(corruptYaml);
+		});
+
+		it("reports the file through quarantinedFiles, so a caller can tell the user", async () => {
+			// The log is not somewhere anyone looks. The session exposes what it
+			// could not read so the UI can say it out loud at startup.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), corruptYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(settings.quarantinedFiles).toEqual([
+				{ path: getConfigPath(), quarantinePath: `${getConfigPath()}.corrupt` },
+			]);
+		});
+
+		it("does not report the same file twice when a save re-reads it", async () => {
+			// #saveNow re-reads through the same loader, so a naive push would grow
+			// the list on every save and the notification would repeat itself.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), corruptYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+
+			expect(settings.quarantinedFiles).toHaveLength(1);
+		});
+
+		it("leaves a valid file alone, so nothing is quarantined in the normal case", async () => {
+			fs.mkdirSync(agentDir, { recursive: true });
+			await writeSettings({ startup: { quiet: true } });
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+
+			expect(fs.existsSync(`${getConfigPath()}.corrupt`)).toBe(false);
+			expect(settings.quarantinedFiles).toEqual([]);
+			expect((await readSettings()).startup).toEqual({ quiet: true });
+		});
+	});
+
+	describe("collapseChangelog migration", () => {
+		it("strips the obsolete key on load instead of leaving a dead toggle", async () => {
+			// collapseChangelog gated how much of the changelog startup dumped into
+			// the terminal. Startup no longer prints release notes at all, so the key
+			// controls nothing; leaving it in a user's config would keep offering a
+			// toggle with no behavior behind it.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await writeSettings({ collapseChangelog: true, startup: { quiet: true } });
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(settings.isConfigured("collapseChangelog" as SettingPath)).toBe(false);
+			// An unrelated key in the same file still applies.
+			expect(settings.get("startup.quiet")).toBe(true);
+		});
+
+		it("drops the obsolete key from disk on the next save", async () => {
+			// Loading migrates in memory; the file itself is only rewritten when
+			// something saves. #saveNow re-reads through the same migration, so the
+			// first save after an upgrade is what physically removes the key.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await writeSettings({ collapseChangelog: true, startup: { quiet: true } });
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+
+			const saved = await readSettings();
+			expect(saved).not.toHaveProperty("collapseChangelog");
+			expect((saved.startup as { quiet?: boolean }).quiet).toBe(true);
+		});
+
+		it("exposes the update notice setting that replaced it, defaulting to on", () => {
+			expect(getDefault("startup.updateNotice")).toBe(true);
+		});
+	});
+
 	describe("malformed project settings surfacing (Law 10)", () => {
 		it("warns instead of silently ignoring a malformed foreign project settings file", async () => {
 			// A foreign settings provider (gemini) flags a broken .gemini/settings.json
@@ -327,12 +456,6 @@ describe("Settings", () => {
 
 			expect(settings.get("enabledModels")).toEqual(["always-model", "other-model"]);
 			expect(settings.get("disabledProviders")).toEqual(["always-provider", "other-provider"]);
-		});
-
-		it("migrates legacy snapcompact system prompt booleans to scoped modes", () => {
-			expect(Settings.isolated({ "snapcompact.systemPrompt": true }).get("snapcompact.systemPrompt")).toBe("all");
-			const nestedLegacy = { snapcompact: { systemPrompt: false } } as Partial<Record<SettingPath, unknown>>;
-			expect(Settings.isolated(nestedLegacy).get("snapcompact.systemPrompt")).toBe("none");
 		});
 
 		it("migrates legacy inlineToolDescriptors booleans to the on/off enum", () => {

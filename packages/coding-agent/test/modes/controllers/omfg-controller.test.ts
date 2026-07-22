@@ -145,6 +145,12 @@ async function createHarness(options: HarnessOptions): Promise<Harness> {
 		showHookInput,
 		showHookSelector,
 		showHookConfirm,
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 	return { ctx, container, projectDir, agentDir, ttsrAddRule, showHookSelector, showHookConfirm, showHookInput };
 }

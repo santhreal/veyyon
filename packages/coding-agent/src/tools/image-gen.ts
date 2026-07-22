@@ -1,5 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentToolResult } from "@veyyon/agent-core";
 import { type ApiKey, type FetchImpl, getEnvApiKey, type Model, withAuth } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import {
@@ -390,7 +391,9 @@ async function loadImageFromUrl(
 	if (!contentType?.startsWith("image/")) {
 		throw new Error(`Unsupported image type from URL: ${imageUrl}`);
 	}
-	const buffer = await response.bytes();
+	// Bun's `Response.bytes()` returns a Uint8Array but is absent from the Response
+	// type here (same lib-types gap handled in @veyyon/utils ptree.ts).
+	const buffer = await (response as Response & { bytes(): Promise<Uint8Array> }).bytes();
 	return { data: buffer.toBase64(), mimeType: contentType };
 }
 
@@ -674,6 +677,56 @@ function buildResponseSummary(
 		lines.push("", responseText.trim());
 	}
 	return lines.join("\n");
+}
+
+/**
+ * The one owner of "the request came back carrying no image".
+ *
+ * Every provider branch used to return this as an ordinary success result: plain
+ * text reading `No image data returned.`, no `isError`, and `imageCount: 0` in
+ * the details. A caller that asked for an image and got a non-error result back
+ * has been told the call worked, so it either retries the identical prompt or
+ * carries on as though a file exists. Neither is what happened. This is a
+ * failure, it is marked as one, and it says what to do next instead of leaving
+ * the model to guess.
+ *
+ * `reason` carries whatever the provider told us, most usefully Gemini's
+ * `promptFeedback.blockReason`, because "your prompt was blocked" and "the
+ * provider returned an empty response" call for opposite next moves.
+ */
+export function buildNoImageResult(args: {
+	provider: ImageProvider;
+	model: string;
+	reason?: string;
+	responseText?: string;
+	details?: Partial<ImageGenToolDetails>;
+}): AgentToolResult<ImageGenToolDetails> {
+	const { provider, model, reason, responseText } = args;
+	const lines = [
+		reason
+			? `Image generation failed: ${reason}`
+			: `Image generation failed: ${provider} (${model}) returned a response with no image in it.`,
+	];
+	if (responseText?.trim()) lines.push("", responseText.trim());
+	lines.push(
+		"",
+		reason
+			? "Retrying the same prompt will fail the same way. Change the prompt, or pick a different provider or model."
+			: "This can be transient. Retry once; if it happens again, change the prompt or pick a different provider or model.",
+	);
+	return {
+		isError: true,
+		content: [{ type: "text", text: lines.join("\n") }],
+		details: {
+			provider,
+			model,
+			imageCount: 0,
+			imagePaths: [],
+			images: [],
+			...(responseText != null ? { responseText } : {}),
+			...args.details,
+		},
+	};
 }
 
 function collectResponseText(parts: GeminiPart[]): string | undefined {
@@ -1102,20 +1155,12 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					);
 
 					if (parsed.images.length === 0) {
-						const messageText = parsed.responseText ? `\n\n${parsed.responseText}` : "";
-						return {
-							content: [{ type: "text", text: `No image data returned.${messageText}` }],
-							details: {
-								provider,
-								model,
-								imageCount: 0,
-								imagePaths: [],
-								images: [],
-								responseText: parsed.responseText,
-								revisedPrompt: parsed.revisedPrompt,
-								usage: parsed.usage,
-							},
-						};
+						return buildNoImageResult({
+							provider,
+							model,
+							responseText: parsed.responseText,
+							details: { revisedPrompt: parsed.revisedPrompt, usage: parsed.usage },
+						});
 					}
 
 					const imagePaths = await saveImagesToTemp(parsed.images);
@@ -1243,19 +1288,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					const responseText = parsed.text.length > 0 ? parsed.text.join(" ") : undefined;
 
 					if (parsed.images.length === 0) {
-						const messageText = responseText ? `\n\n${responseText}` : "";
-						return {
-							content: [{ type: "text", text: `No image data returned.${messageText}` }],
-							details: {
-								provider,
-								model,
-								imageCount: 0,
-								imagePaths: [],
-								images: [],
-								responseText,
-								usage: parsed.usage,
-							},
-						};
+						return buildNoImageResult({ provider, model, responseText, details: { usage: parsed.usage } });
 					}
 
 					const imagePaths = await saveImagesToTemp(parsed.images);
@@ -1364,16 +1397,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					}
 
 					if (xaiInlineImages.length === 0) {
-						return {
-							content: [{ type: "text", text: "No image data returned." }],
-							details: {
-								provider,
-								model: resolvedModel,
-								imageCount: 0,
-								imagePaths: [],
-								images: [],
-							},
-						};
+						return buildNoImageResult({ provider, model: resolvedModel });
 					}
 
 					const xaiImagePaths = await saveImagesToTemp(xaiInlineImages);
@@ -1449,18 +1473,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					}
 
 					if (inlineImages.length === 0) {
-						const messageText = responseText ? `\n\n${responseText}` : "";
-						return {
-							content: [{ type: "text", text: `No image data returned.${messageText}` }],
-							details: {
-								provider,
-								model: resolvedModel,
-								imageCount: 0,
-								imagePaths: [],
-								images: [],
-								responseText,
-							},
-						};
+						return buildNoImageResult({ provider, model: resolvedModel, responseText });
 					}
 
 					const imagePaths = await saveImagesToTemp(inlineImages);
@@ -1548,22 +1561,14 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 				const inlineImages = collectInlineImages(responseParts);
 
 				if (inlineImages.length === 0) {
-					const blocked = data.promptFeedback?.blockReason
-						? `Blocked: ${data.promptFeedback.blockReason}`
-						: "No image data returned.";
-					return {
-						content: [{ type: "text", text: `${blocked}${responseText ? `\n\n${responseText}` : ""}` }],
-						details: {
-							provider,
-							model,
-							imageCount: 0,
-							imagePaths: [],
-							images: [],
-							responseText,
-							promptFeedback: data.promptFeedback,
-							usage: data.usageMetadata,
-						},
-					};
+					const blockReason = data.promptFeedback?.blockReason;
+					return buildNoImageResult({
+						provider,
+						model,
+						reason: blockReason ? `the prompt was blocked (${blockReason})` : undefined,
+						responseText,
+						details: { promptFeedback: data.promptFeedback, usage: data.usageMetadata },
+					});
 				}
 
 				const imagePaths = await saveImagesToTemp(inlineImages);

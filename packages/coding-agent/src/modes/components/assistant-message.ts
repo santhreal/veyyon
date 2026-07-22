@@ -8,6 +8,7 @@ import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../to
 import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
+import { paintHotTail, SmoothReveal } from "./follow";
 
 /**
  * Max lines of a turn-ending provider error rendered inline in the transcript.
@@ -222,6 +223,20 @@ export class AssistantMessageComponent extends Container {
 	#thinkingDots: Text | undefined;
 	#thinkingDotsTimer: NodeJS.Timeout | undefined;
 	#thinkingDotsFrame = 0;
+	/** The follow's pacing governor for the actively streaming block (thinking
+	 *  OR response text): provider deltas land in bursts, so the shown text
+	 *  trails the received text at a smoothed rate (see follow.ts). Undefined
+	 *  when nothing is streaming. */
+	#streamReveal: SmoothReveal | undefined;
+	/** Full received text of the streaming block the reveal paces. */
+	#streamRevealFull = "";
+	/** The Markdown child the reveal writes its paced slice into. */
+	#streamRevealMd: Markdown | undefined;
+	/** Character count last written to the child — ticks whose floored reveal
+	 *  hasn't moved skip the Markdown re-parse and repaint entirely. */
+	#streamRevealShown = -1;
+	/** ~30fps ticker advancing the reveal between provider deltas. */
+	#streamRevealTimer: NodeJS.Timeout | undefined;
 	/** Previous cumulative provider token count + timestamp, for deriving this
 	 *  block's instantaneous streaming rate fed into {@link sharedSpeedTracker}.
 	 *  Undefined until the first thinking update of this block. */
@@ -291,7 +306,22 @@ export class AssistantMessageComponent extends Container {
 
 	override render(width: number): readonly string[] {
 		this.#lastRenderWidth = width;
-		return super.render(width);
+		const rows = super.render(width);
+		// The follow's lava-like trail: while a thinking reveal is live, the last
+		// non-empty row's trailing characters grade up to gold at the newest edge
+		// (see follow.ts). Text only, truecolor only, gone the frame the stream
+		// settles — the frame itself never animates.
+		if (this.#streamReveal?.behind && this.#streamRevealMd) {
+			for (let i = rows.length - 1; i >= 0; i--) {
+				const row = rows[i]!;
+				if (row.replace(/\x1b\[[0-9;]*m/g, "").trim().length > 0) {
+					const painted = [...rows];
+					painted[i] = paintHotTail(row, theme, TERMINAL.trueColor);
+					return painted;
+				}
+			}
+		}
+		return rows;
 	}
 
 	setHideThinkingBlock(hide: boolean): void {
@@ -692,7 +722,15 @@ export class AssistantMessageComponent extends Container {
 					this.#fastPathItems = undefined;
 					return false;
 				}
-				item.md.setText(newText);
+				if (transient) {
+					// The follow: pace the visible reveal instead of dumping the
+					// whole provider burst in one frame — reasoning AND response
+					// text both pour smoothly (see follow.ts).
+					this.#pushStreamReveal(item.md, newText);
+				} else {
+					this.#stopStreamReveal();
+					item.md.setText(newText);
+				}
 				item.lastText = newText;
 			}
 		}
@@ -702,6 +740,67 @@ export class AssistantMessageComponent extends Container {
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Feed the follow's pacing governor with the latest received thinking text
+	 * and (re)start the ~30fps reveal ticker. The Markdown child only ever sees
+	 * the paced slice; `item.lastText` keeps the FULL text so the fast-path
+	 * dirty checks stay correct.
+	 */
+	#pushStreamReveal(md: Markdown, fullText: string): void {
+		const now = performance.now();
+		if (!this.#streamReveal || this.#streamRevealMd !== md) {
+			this.#streamReveal = new SmoothReveal();
+			this.#streamRevealMd = md;
+			this.#streamRevealShown = -1;
+		}
+		this.#streamRevealFull = fullText;
+		this.#streamReveal.push(fullText.length, now);
+		this.#applyStreamReveal(now);
+		if (!this.#streamRevealTimer && this.#streamReveal.behind) {
+			this.#streamRevealTimer = setInterval(() => {
+				if (!this.#streamReveal) return;
+				this.#applyStreamReveal(performance.now());
+				if (!this.#streamReveal.behind) {
+					clearInterval(this.#streamRevealTimer);
+					this.#streamRevealTimer = undefined;
+				}
+			}, 33);
+			this.#streamRevealTimer.unref?.();
+		}
+	}
+
+	/** Advance the reveal and write the paced slice into the Markdown child.
+	 * Skips the (whole-block) Markdown re-parse when the floored reveal count
+	 * has not moved since the last tick — at trickle rates most ticks advance
+	 * by a fraction of a character, and re-parsing for zero visible change is
+	 * pure waste on the hottest streaming path. */
+	#applyStreamReveal(now: number): void {
+		if (!this.#streamReveal || !this.#streamRevealMd) return;
+		this.#streamReveal.advance(now);
+		const shown = this.#streamReveal.revealed;
+		if (shown === this.#streamRevealShown) return;
+		this.#streamRevealShown = shown;
+		this.#streamRevealMd.setText(this.#streamRevealFull.slice(0, shown));
+		this.#blockVersion++;
+		this.onImageUpdate?.();
+	}
+
+	/** Stop pacing: snap the block to its full text (stream finalized, shape
+	 * changed, or the component tore down its children). */
+	#stopStreamReveal(): void {
+		if (this.#streamRevealTimer) {
+			clearInterval(this.#streamRevealTimer);
+			this.#streamRevealTimer = undefined;
+		}
+		if (this.#streamReveal && this.#streamRevealMd) {
+			this.#streamReveal.finish();
+			this.#streamRevealMd.setText(this.#streamRevealFull);
+		}
+		this.#streamReveal = undefined;
+		this.#streamRevealMd = undefined;
+		this.#streamRevealShown = -1;
 	}
 
 	updateContent(message: AssistantMessage, opts?: { transient?: boolean }): void {
@@ -763,6 +862,9 @@ export class AssistantMessageComponent extends Container {
 		if (this.#tryFastPathUpdate(message, opts)) return;
 
 		// Clear content container
+		// The rebuild discards the reveal's Markdown child, so the follow's
+		// pacing stops with it (its ticker must never write to a detached child).
+		this.#stopStreamReveal();
 		this.#contentContainer.clear();
 		this.#thinkingDots = undefined;
 

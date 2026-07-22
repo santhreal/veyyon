@@ -170,6 +170,10 @@ describe("SessionManager atomic rewrite race", () => {
 		sessionManager.appendCompaction("older summary", "older", firstKeptEntryId, 100);
 		await sessionManager.flush();
 		sessionManager.appendCompaction("newer summary", "newer", firstKeptEntryId, 80);
+		await sessionManager.flush();
+		// Compaction now retains every summary and no longer auto-triggers a full-file
+		// rewrite, so drive one explicitly to exercise the in-flight atomic-rewrite race.
+		const rewrite = sessionManager.rewriteEntries();
 		await storage.rewriteStarted.promise;
 
 		sessionManager.appendMessage({ role: "user", content: "during rewrite prompt", timestamp: Date.now() });
@@ -179,6 +183,7 @@ describe("SessionManager atomic rewrite race", () => {
 
 		storage.allowRewrite.resolve();
 		await titlePersisted;
+		await rewrite;
 		await sessionManager.flush();
 		sessionManager.appendMessage({
 			role: "toolResult",
@@ -281,9 +286,12 @@ describe("SessionManager atomic rewrite race", () => {
 		if (!firstKeptEntryId) throw new Error("Expected seeded branch entry");
 		sessionManager.appendCompaction("older summary", "older", firstKeptEntryId, 100);
 		await sessionManager.flush();
-		// Second compaction elides the first, scheduling a full-file rewrite that
-		// parks inside the fake storage until we release it.
 		sessionManager.appendCompaction("newer summary", "newer", firstKeptEntryId, 80);
+		await sessionManager.flush();
+		// Compaction retains every summary and no longer triggers a rewrite itself, so
+		// drive a full-file atomic rewrite explicitly. It parks inside the fake storage
+		// until we release it, reproducing the flushSync-during-rewrite race.
+		const rewrite = sessionManager.rewriteEntries();
 		await storage.rewriteStarted.promise;
 
 		// Simulate a Ctrl+C teardown: append a session_exit custom entry (fenced
@@ -301,8 +309,7 @@ describe("SessionManager atomic rewrite race", () => {
 		// stale body serialized before flushSync bumped the disk epoch; otherwise
 		// the async publish would overwrite the durable exit record.
 		storage.allowRewrite.resolve();
-		await Promise.resolve();
-		await Promise.resolve();
+		await rewrite;
 
 		const afterRelease = await storage.readText(sessionFile);
 		expect(afterRelease).toContain('"customType":"session_exit"');

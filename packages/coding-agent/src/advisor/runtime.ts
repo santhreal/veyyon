@@ -420,7 +420,18 @@ export class AdvisorRuntime {
 			}
 			messages.length = snapshot;
 		} catch (err) {
-			logger.debug("advisor rollback failed", { err: String(err) });
+			// Unlike a failed advisor TURN, which retries and escalates after three
+			// in a row, a failed rollback is not transient: the messages from the
+			// turn that just failed stay in the advisor's history, and every later
+			// turn reasons over a partial exchange that was supposed to be discarded.
+			// Nothing downstream re-checks this, so at debug level the corruption was
+			// invisible and permanent for the session (Law 10).
+			logger.warn("Advisor could not roll back a failed turn; its context may include the failed exchange", {
+				error: String(err),
+				snapshot,
+				messageCount: messages.length,
+				fix: "If the advisor starts referring to work that did not happen, toggle advisor.enabled off and on in /settings to rebuild its context.",
+			});
 		}
 	}
 

@@ -86,6 +86,17 @@ function buildThemeJsonSchema() {
 		statusLineOutput: "string | number",
 		statusLineCost: "string | number",
 		statusLineSubagents: "string | number",
+		// Identity/state accent tokens (the design system's cool arc) plus the
+		// match highlight (warm arc). Optional: themes that predate them get the
+		// documented load-time defaults (see QUIET_TOKEN_DEFAULTS in theme.ts).
+		"sessionAccent?": "string | number",
+		"modeAccent?": "string | number",
+		"shareAccent?": "string | number",
+		"infoAccent?": "string | number",
+		"matchHighlight?": "string | number",
+		// Composer quiet-card ground (DS-6 layer 0). Optional: themes that omit
+		// it inherit statusLineBg (see QUIET_TOKEN_DEFAULTS in theme.ts).
+		"composerBg?": "string | number",
 	});
 	const spinnerFramesSchema = type("unknown").narrow((value): value is SpinnerFramesOverride => {
 		if (Array.isArray(value)) {
@@ -194,7 +205,12 @@ export type ThemeColor =
 	| "statusLineUntracked"
 	| "statusLineOutput"
 	| "statusLineCost"
-	| "statusLineSubagents";
+	| "statusLineSubagents"
+	| "sessionAccent"
+	| "modeAccent"
+	| "shareAccent"
+	| "infoAccent"
+	| "matchHighlight";
 
 /** Set of all valid ThemeColor string values for runtime validation */
 const THEME_COLOR_RECORD = {
@@ -259,6 +275,11 @@ const THEME_COLOR_RECORD = {
 	statusLineOutput: true,
 	statusLineCost: true,
 	statusLineSubagents: true,
+	sessionAccent: true,
+	modeAccent: true,
+	shareAccent: true,
+	infoAccent: true,
+	matchHighlight: true,
 } satisfies Record<ThemeColor, true>;
 
 const VALID_THEME_COLORS: ReadonlySet<string> = new Set(Object.keys(THEME_COLOR_RECORD));
@@ -275,7 +296,8 @@ export type ThemeBg =
 	| "toolPendingBg"
 	| "toolSuccessBg"
 	| "toolErrorBg"
-	| "statusLineBg";
+	| "statusLineBg"
+	| "composerBg";
 
 export type ColorMode = "truecolor" | "256color";
 

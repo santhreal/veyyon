@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import { HttpTransport } from "@veyyon/coding-agent/mcp/transports/http";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { HttpTransport, resolveSSEConnectTimeoutMs } from "@veyyon/coding-agent/mcp/transports/http";
 
 const encoder = new TextEncoder();
 const REQUEST_TIMEOUT_MS = 50;
@@ -99,5 +99,48 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 		await expect(withPendingGuard(transport.request<ToolList>("tools/list"), "request")).resolves.toEqual({
 			tools: [{ name: "fast", inputSchema: { type: "object" } }],
 		});
+	});
+});
+
+/**
+ * resolveSSEConnectTimeoutMs derives how long to wait for the initial SSE connect from the server's
+ * request timeout. It had no direct test. The contract: a disabled request timeout (<= 0) disables
+ * the connect timeout too (returns 0, meaning "wait indefinitely"); otherwise it is a quarter of the
+ * request timeout, HARD-CAPPED at HTTP_SSE_CONNECT_TIMEOUT_MS (1000ms) so a huge request timeout does
+ * not leave a hung connect for minutes, and floored to at least 1ms so a tiny positive timeout never
+ * collapses to the "disabled" sentinel of 0. A regression here either hangs a dead SSE connect or
+ * aborts a healthy one too eagerly.
+ */
+describe("resolveSSEConnectTimeoutMs", () => {
+	// The resolver consults VEYYON_MCP_TIMEOUT_MS; isolate the test from the host env.
+	let savedEnv: string | undefined;
+	beforeEach(() => {
+		savedEnv = process.env.VEYYON_MCP_TIMEOUT_MS;
+		delete process.env.VEYYON_MCP_TIMEOUT_MS;
+	});
+	afterEach(() => {
+		if (savedEnv === undefined) delete process.env.VEYYON_MCP_TIMEOUT_MS;
+		else process.env.VEYYON_MCP_TIMEOUT_MS = savedEnv;
+	});
+
+	it("caps the connect timeout at 1000ms for the default (30s) request timeout", () => {
+		// 30_000 / 4 = 7_500, capped to 1_000.
+		expect(resolveSSEConnectTimeoutMs(undefined)).toBe(1_000);
+		expect(resolveSSEConnectTimeoutMs(100_000)).toBe(1_000);
+	});
+
+	it("uses a quarter of the request timeout when that is below the cap", () => {
+		expect(resolveSSEConnectTimeoutMs(2_000)).toBe(500);
+		expect(resolveSSEConnectTimeoutMs(40)).toBe(10);
+	});
+
+	it("returns 0 (disabled) when the request timeout is disabled", () => {
+		expect(resolveSSEConnectTimeoutMs(0)).toBe(0);
+	});
+
+	it("floors a tiny positive timeout to at least 1ms so it never collapses to the disabled sentinel", () => {
+		// 1 / 4 = 0.25 -> floor 0 -> clamped up to 1.
+		expect(resolveSSEConnectTimeoutMs(1)).toBe(1);
+		expect(resolveSSEConnectTimeoutMs(4)).toBe(1);
 	});
 });

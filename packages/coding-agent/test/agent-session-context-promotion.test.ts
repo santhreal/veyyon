@@ -450,14 +450,14 @@ describe("AgentSession context promotion", () => {
 		expect(session.model?.id).toBe(sparkModel.id);
 	});
 
-	it("falls back to LLM compaction when snapcompact cannot run during overflow recovery", async () => {
+	it("runs LLM compaction during overflow recovery under the summary strategy", async () => {
 		const model = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
 		if (!model) {
 			throw new Error("Expected codex spark model to exist");
 		}
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
-			"compaction.strategy": "snapcompact",
+			"compaction.strategy": "summary",
 			"compaction.keepRecentTokens": 1,
 			"compaction.thresholdPercent": -1,
 			"contextPromotion.enabled": false,

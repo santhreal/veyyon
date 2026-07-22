@@ -29,7 +29,7 @@ import {
 	type TUI,
 	truncateToWidth,
 } from "@veyyon/tui";
-import { errorMessage } from "@veyyon/utils";
+import { clampLow, errorMessage } from "@veyyon/utils";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	type AdvisorConfig,
@@ -166,11 +166,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 	render(width: number): readonly string[] {
 		const height = Math.max(14, process.stdout.rows || 40);
 		const bodyRows = Math.max(3, height - 4);
-		const title = `Advisor configuration · ${this.#scope}${this.#dirty ? "  ● unsaved" : ""}`;
+		const title = `Advisor configuration · ${this.#scope}${this.#dirty ? `  ${theme.status.active} unsaved` : ""}`;
 		const out: string[] = [];
 
 		if (this.#screen === "list") {
-			const sidebarWidth = Math.max(22, Math.min(42, Math.floor(width * 0.34)));
+			const sidebarWidth = clampLow(Math.floor(width * 0.34), 22, 42);
 			this.#dividerCol = sidebarWidth + 3;
 			const bodyWidth = splitBodyWidth(width, sidebarWidth);
 			const sidebar = this.#active.render(sidebarWidth);

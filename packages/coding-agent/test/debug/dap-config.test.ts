@@ -5,8 +5,11 @@ import * as path from "node:path";
 import * as piUtils from "@veyyon/utils";
 import {
 	getAdapterConfigs,
+	getAvailableAdapters,
 	type LaunchAdapterSelection,
 	resolveAdapter,
+	resolveLaunchOverrides,
+	selectAttachAdapter,
 	selectLaunchAdapter,
 } from "../../src/dap/config";
 import type { DapResolvedAdapter } from "../../src/dap/types";
@@ -322,5 +325,107 @@ describe("DAP adapter configuration", () => {
 		await writeExecutable(command);
 		const selected = requireSelectedAdapter(selectLaunchAdapter(program, cwd));
 		expect(selected.resolvedCommand).toBe(command);
+	});
+});
+
+/**
+ * resolveLaunchOverrides is the Delve (dlv)-specific rule that decides the Go debugger's `mode`
+ * from the program kind and extension. It had no direct test. Getting it wrong makes Go debugging
+ * fail silently: "debug" compiles source/a package, "exec" runs a prebuilt binary, so a swapped
+ * value tries to compile a binary or exec source. Pinned: a directory or a .go file (any case) =>
+ * debug; any other file => exec; and a non-dlv adapter contributes no overrides.
+ */
+describe("resolveLaunchOverrides", () => {
+	const dlv: DapResolvedAdapter = { name: "dlv" } as DapResolvedAdapter;
+
+	it("selects debug mode for a Go directory or a .go source file (case-insensitive extension)", () => {
+		expect(resolveLaunchOverrides(dlv, "/proj", "directory")).toEqual({ mode: "debug" });
+		expect(resolveLaunchOverrides(dlv, "/proj/main.go", "file")).toEqual({ mode: "debug" });
+		expect(resolveLaunchOverrides(dlv, "/proj/main.GO", "file")).toEqual({ mode: "debug" });
+	});
+
+	it("selects exec mode for a non-.go file and contributes nothing for a non-dlv adapter", () => {
+		expect(resolveLaunchOverrides(dlv, "/proj/bin", "file")).toEqual({ mode: "exec" });
+		expect(resolveLaunchOverrides({ name: "debugpy" } as DapResolvedAdapter, "/proj/x.py", "file")).toEqual({});
+	});
+});
+
+/**
+ * getAvailableAdapters resolves every configured adapter for a cwd and returns only those whose command
+ * is actually resolvable on the system, dropping the rest. It had no direct test. The map-resolve-filter
+ * contract is what a debugger-listing regression would break:
+ *   - an adapter whose command resolves (an executable that exists) is INCLUDED, carrying its
+ *     resolvedCommand so the caller can spawn it;
+ *   - an adapter whose command does not resolve is silently FILTERED OUT (never surfaced as a broken
+ *     option the user could pick);
+ *   - every returned adapter has a non-empty resolvedCommand (the null entries were filtered).
+ * Custom absolute-path commands are used so the assertions do not depend on which debuggers happen to be
+ * installed on the test host.
+ */
+describe("getAvailableAdapters", () => {
+	it("includes adapters whose command resolves and drops those whose command does not", async () => {
+		const cwd = await makeTempDir("veyyon-dap-available-");
+		const presentBin = path.join(cwd, "tools", "present-adapter");
+		await writeExecutable(presentBin);
+		await fs.writeFile(
+			path.join(cwd, "dap.json"),
+			JSON.stringify({
+				adapters: {
+					"zz-present": { command: presentBin, fileTypes: [".zz"] },
+					"zz-absent": { command: path.join(cwd, "tools", "does-not-exist"), fileTypes: [".aa"] },
+				},
+			}),
+		);
+
+		const adapters = getAvailableAdapters(cwd);
+		const names = adapters.map(adapter => adapter.name);
+		expect(names).toContain("zz-present");
+		expect(names).not.toContain("zz-absent");
+
+		const present = adapters.find(adapter => adapter.name === "zz-present");
+		expect(present?.command).toBe(presentBin);
+		expect(present?.resolvedCommand).toBeTruthy();
+		// The filter guarantees no resolved-null entries leak through.
+		expect(adapters.every(adapter => Boolean(adapter.resolvedCommand))).toBe(true);
+	});
+});
+
+/**
+ * selectAttachAdapter chooses which debug adapter to attach with. It had no direct test. The selection
+ * precedence is the contract:
+ *   - an explicit adapterName short-circuits to resolveAdapter (that adapter, or null if it is not
+ *     configured) — the user's choice is honored verbatim, never silently swapped;
+ *   - with no explicit name but a port supplied, debugpy is preferred when available (port attach is the
+ *     Python remote-debug path);
+ * Custom absolute-path commands keep the assertions independent of the host's installed debuggers.
+ */
+describe("selectAttachAdapter", () => {
+	const writeAttachProject = async (): Promise<string> => {
+		const cwd = await makeTempDir("veyyon-dap-attach-");
+		const debugpyBin = path.join(cwd, "tools", "debugpy-bin");
+		const otherBin = path.join(cwd, "tools", "other-bin");
+		await writeExecutable(debugpyBin);
+		await writeExecutable(otherBin);
+		await fs.writeFile(
+			path.join(cwd, "dap.json"),
+			JSON.stringify({
+				adapters: {
+					debugpy: { command: debugpyBin },
+					"zz-other": { command: otherBin, fileTypes: [".zz"] },
+				},
+			}),
+		);
+		return cwd;
+	};
+
+	it("honors an explicitly named adapter and returns null when the name is not configured", async () => {
+		const cwd = await writeAttachProject();
+		expect(selectAttachAdapter(cwd, "zz-other")?.name).toBe("zz-other");
+		expect(selectAttachAdapter(cwd, "no-such-adapter")).toBeNull();
+	});
+
+	it("prefers debugpy when a port is supplied and no adapter is named", async () => {
+		const cwd = await writeAttachProject();
+		expect(selectAttachAdapter(cwd, undefined, 5678)?.name).toBe("debugpy");
 	});
 });

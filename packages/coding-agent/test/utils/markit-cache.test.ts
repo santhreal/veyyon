@@ -12,7 +12,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Markit } from "@veyyon/coding-agent/markit";
 import { convertBufferWithMarkit, convertFileWithMarkit } from "@veyyon/coding-agent/utils/markit";
-import { pruneMarkitConversionCache } from "@veyyon/coding-agent/utils/markit-cache";
+import {
+	MARKIT_CONVERSION_CACHE_VERSION,
+	markitConversionCacheKey,
+	pruneMarkitConversionCache,
+} from "@veyyon/coding-agent/utils/markit-cache";
 import { __resetDirsFromEnvForTests, getAgentDir, Snowflake, setAgentDir } from "@veyyon/utils";
 
 function restoreEnv(key: string, value: string | undefined): void {
@@ -22,6 +26,50 @@ function restoreEnv(key: string, value: string | undefined): void {
 		process.env[key] = value;
 	}
 }
+
+/**
+ * markitConversionCacheKey derives the on-disk cache filename for a converted document. It had no
+ * direct test. The key must be deterministic for identical (bytes, extension) input, change when the
+ * bytes change (it embeds a sha256 of the content), fold the package version and cache-schema version
+ * in (so a new release cannot read a stale conversion), and sanitize the extension to a safe token
+ * (lowercased, dots stripped, non-alphanumerics collapsed, defaulting to "bin"). A regression that
+ * dropped the content digest would serve a wrong cached conversion for different bytes; one that
+ * skipped the version fold would read a stale format across an upgrade.
+ */
+describe("markitConversionCacheKey", () => {
+	// sha256 of the three bytes 01 02 03, the digest suffix the key must carry verbatim.
+	const digestOf123 = "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81";
+
+	it("is deterministic and ends with the sha256 of the content bytes", () => {
+		const bytes = new Uint8Array([1, 2, 3]);
+		const key = markitConversionCacheKey(bytes, "pdf");
+		expect(key).toBe(markitConversionCacheKey(new Uint8Array([1, 2, 3]), "pdf"));
+		expect(key.endsWith(digestOf123)).toBe(true);
+		expect(key.startsWith(`v${MARKIT_CONVERSION_CACHE_VERSION}-`)).toBe(true);
+	});
+
+	it("changes the key when the content bytes change", () => {
+		expect(markitConversionCacheKey(new Uint8Array([1, 2, 3]), "pdf")).not.toBe(
+			markitConversionCacheKey(new Uint8Array([1, 2, 4]), "pdf"),
+		);
+	});
+
+	it("normalizes the extension: lowercased, leading dots stripped, so .PDF and pdf share a key", () => {
+		const bytes = new Uint8Array([1, 2, 3]);
+		expect(markitConversionCacheKey(bytes, ".PDF")).toBe(markitConversionCacheKey(bytes, "pdf"));
+	});
+
+	it("sanitizes non-alphanumeric extension characters into underscores", () => {
+		const key = markitConversionCacheKey(new Uint8Array([1, 2, 3]), "  ta r!!");
+		expect(key).toContain("-ta_r_-");
+	});
+
+	it("falls back to the 'bin' token for an empty or dots-only extension", () => {
+		const bytes = new Uint8Array([1, 2, 3]);
+		expect(markitConversionCacheKey(bytes, "")).toContain("-bin-");
+		expect(markitConversionCacheKey(bytes, "...")).toContain("-bin-");
+	});
+});
 
 describe("document conversion cache", () => {
 	let testDir: string;

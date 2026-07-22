@@ -321,7 +321,7 @@ describe("deobfuscateAgentMessages (display restore)", () => {
 		expect(restored[0]).toBe(userMsg);
 	});
 
-	it("restores compactionSummary block text while leaving snapcompact image bytes intact", () => {
+	it("restores compactionSummary block text while leaving legacy image bytes intact", () => {
 		const secret = "BLOCKS_SECRET_TOKEN_456";
 		const obfuscator = new SecretObfuscator([{ type: "plain", content: secret }]);
 		const placeholder = obfuscator.obfuscate(secret);
@@ -343,7 +343,7 @@ describe("deobfuscateAgentMessages (display restore)", () => {
 		const image = blocks[1];
 		// Archived text is restored to the real secret...
 		expect(text.type === "text" && text.text).toBe(`archived ${secret}`);
-		// ...while the snapcompact image bytes pass through untouched.
+		// ...while the opaque image bytes pass through untouched.
 		expect(image.type === "image" && image.data).toBe(imageData);
 	});
 });

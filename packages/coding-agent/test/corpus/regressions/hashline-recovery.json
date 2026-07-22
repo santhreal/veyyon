@@ -1,0 +1,125 @@
+{
+	"cases": [
+		{
+			"id": "recovery-unknown-tag-null",
+			"contract": "Recovery returns null when the snapshot tag is unknown",
+			"surface": "hashline-recovery",
+			"tags": ["negative", "adversarial"],
+			"input": {
+				"path": "src/a.ts",
+				"seed": { "a.ts": "a\nb\nc\n" },
+				"fileHash": "dead",
+				"patch": "SWAP 1.=1:\n|A",
+				"current": "a\nb\nc\n"
+			},
+			"expect": { "recovered": false }
+		},
+		{
+			"id": "recovery-diverged-anchor-null",
+			"contract": "Recovery returns null when the anchor line content diverged since the snapshot",
+			"surface": "hashline-recovery",
+			"tags": ["adversarial", "regression"],
+			"input": {
+				"path": "src/a.ts",
+				"seedVersions": [
+					["L1", "L2", "L3", "L4", "L5"],
+					["L1", "L2", "L3", "L4", "L5-CHANGED"]
+				],
+				"useHash": 0,
+				"currentVersion": 1,
+				"patch": "SWAP 5.=5:\n|L5-MODEL"
+			},
+			"expect": { "recovered": false }
+		},
+		{
+			"id": "recovery-unchanged-anchor-replays",
+			"contract": "Recovery replays when anchors are unchanged and preserves later in-session edits",
+			"surface": "hashline-recovery",
+			"tags": ["positive"],
+			"input": {
+				"path": "src/a.ts",
+				"seedVersions": [
+					["L1", "L2", "L3", "L4", "L5"],
+					["L1", "L2", "L3", "L4", "L5-CHANGED"]
+				],
+				"useHash": 0,
+				"currentVersion": 1,
+				"patch": "SWAP 2.=2:\n|L2-MODEL"
+			},
+			"expect": {
+				"recovered": true,
+				"contains": ["L2-MODEL", "L5-CHANGED"]
+			}
+		},
+		{
+			"id": "recovery-prefix-insert-remaps-del",
+			"contract": "Recovery remaps DEL after a prefix insert on the live file",
+			"surface": "hashline-recovery",
+			"tags": ["positive"],
+			"input": {
+				"path": "src/a.ts",
+				"seedVersions": [
+					["a", "UNIQUE", "b"],
+					["PRE", "a", "UNIQUE", "b"]
+				],
+				"useHash": 0,
+				"currentVersion": 1,
+				"patch": "DEL 2"
+			},
+			"expect": {
+				"recovered": true,
+				"contains": ["PRE", "a", "b"]
+			}
+		},
+		{
+			"id": "recovery-missing-path-null",
+			"contract": "Recovery returns null when no snapshot history exists for the path",
+			"surface": "hashline-recovery",
+			"tags": ["negative"],
+			"input": {
+				"path": "ghost.ts",
+				"fileHash": "aaaa",
+				"patch": "DEL 1",
+				"current": "x\n"
+			},
+			"expect": { "recovered": false }
+		},
+		{
+			"id": "recovery-suffix-append-swap-first",
+			"contract": "Recovery remaps SWAP of first line after a suffix was appended",
+			"surface": "hashline-recovery",
+			"tags": ["positive"],
+			"input": {
+				"path": "src/a.ts",
+				"seedVersions": [
+					["HEAD", "body"],
+					["HEAD", "body", "TAIL"]
+				],
+				"useHash": 0,
+				"currentVersion": 1,
+				"patch": "SWAP 1.=1:\n|HEAD2"
+			},
+			"expect": {
+				"recovered": true,
+				"contains": ["HEAD2", "body", "TAIL"]
+			}
+		},
+		{
+			"id": "recovery-deleted-target-null",
+			"contract": "Recovery returns null when the target line was removed from live content",
+			"surface": "hashline-recovery",
+			"tags": ["negative", "adversarial"],
+			"input": {
+				"path": "src/a.ts",
+				"seedVersions": [
+					["a", "ONLY", "b"],
+					["a", "b"]
+				],
+				"useHash": 0,
+				"currentVersion": 1,
+				"patch": "SWAP 2.=2:\n|NEW"
+			},
+			"expect": { "recovered": false }
+		}
+	]
+}

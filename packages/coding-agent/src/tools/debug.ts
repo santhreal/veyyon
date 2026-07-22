@@ -57,8 +57,8 @@ import {
 	truncateToWidth,
 } from "./render-utils";
 import { ToolError } from "./tool-errors";
-import { toolResult } from "./tool-result";
-import { clampTimeout } from "./tool-timeouts";
+import { prependResultNotice, toolResult } from "./tool-result";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
 /**
  * DAP debug actions that only read program state (no mutation, no execution).
@@ -145,7 +145,7 @@ const debugSchema = type({
 	allow_partial: "boolean?",
 	start_module: "number?",
 	module_count: "number?",
-	"timeout?": type("number").describe("per-request timeout seconds"),
+	"timeout?": type("number").describe(describeTimeoutParam("debug")),
 });
 
 export type DebugParams = typeof debugSchema.infer;
@@ -728,9 +728,14 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<DebugToolDetails>> {
 		const timeoutSec = clampTimeout("debug", params.timeout);
+		// A clamp changes the budget the agent asked for; surface it on the result
+		// rather than applying it silently (Law 10). Debug actions each build their
+		// own result, so prepend the notice here in the one shared wrapper.
+		const clampNotice = formatTimeoutClampNotice("debug", params.timeout, timeoutSec);
 		const timeout = scopedTimeoutSignal(timeoutSec * 1000, signal);
 		try {
-			return await this.executeWithSignal(params, timeout.signal, timeoutSec);
+			const result = await this.executeWithSignal(params, timeout.signal, timeoutSec);
+			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} finally {
 			timeout.cancel();
 		}
@@ -746,7 +751,14 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		switch (params.action) {
 			case "launch": {
 				if (!params.program) {
-					throw new ToolError("program is required for launch");
+					// `program` is the thing to RUN; `file` is only a breakpoint's source
+					// location. A caller that supplied `file` (thinking it names the target
+					// to debug) hit a dead-end "program is required" and looped. Name the
+					// field, distinguish it from `file`, and show a minimal valid call.
+					const hint = params.file
+						? ` You passed file: ${JSON.stringify(params.file)}. "file" only sets a breakpoint's source; it does not launch anything. To debug that path, pass it as "program": {"action":"launch","program":${JSON.stringify(params.file)}}.`
+						: ` "program" is the executable, script, or package to run under the debugger, e.g. {"action":"launch","program":"src/main.py"}. "file"/"cwd" alone do not launch anything.`;
+					throw new ToolError(`launch requires "program" (the target to debug).${hint}`);
 				}
 				const commandCwd = params.cwd ? resolveToCwd(params.cwd, this.session.cwd) : this.session.cwd;
 				const program = resolveToCwd(params.program, commandCwd);

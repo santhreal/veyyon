@@ -6,11 +6,11 @@ import fileObserverSystemPrompt from "../../commit/prompts/file-observer-system.
 import fileObserverUserPrompt from "../../commit/prompts/file-observer-user.md" with { type: "text" };
 import type { FileDiff, FileObservation } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
+import { mapWithConcurrencyLimit } from "../../task/parallel";
 import { toReasoningEffort } from "../../thinking";
 import { withScopedTimeoutSignal } from "../../utils/fetch-timeout";
-import { truncateToTokenLimit } from "./utils";
+import { MAX_FILE_TOKENS, truncateToTokenLimit } from "./utils";
 
-const MAX_FILE_TOKENS = 50_000;
 const MAX_CONTEXT_FILES = 20;
 const MAX_CONCURRENCY = 5;
 const MAP_PHASE_TIMEOUT_MS = 120_000;
@@ -45,7 +45,11 @@ export async function runMapPhase({
 	const timeoutMs = config?.timeoutMs ?? MAP_PHASE_TIMEOUT_MS;
 	const maxRetries = config?.maxRetries ?? MAX_RETRIES;
 	const retryBackoffMs = config?.retryBackoffMs ?? RETRY_BACKOFF_MS;
-	return runWithConcurrency(filtered, maxConcurrency, async file => {
+	// Bounded worker pool is owned by task/parallel.ts. It normalizes
+	// `maxConcurrency <= 0`/non-finite to "run all at once" (veyyon's shared
+	// `task.maxConcurrency = 0` = Unlimited convention) and fails fast, cancelling
+	// in-flight siblings, if any file errors after its retries are exhausted.
+	const { results } = await mapWithConcurrencyLimit(filtered, maxConcurrency, async file => {
 		if (file.isBinary) {
 			return {
 				file: file.filename,
@@ -89,6 +93,9 @@ export async function runMapPhase({
 			deletions: file.deletions,
 		};
 	});
+	// The pool only resolves (rather than throwing) once every worker has filled
+	// its slot, so on this path there are no undefined holes.
+	return results as FileObservation[];
 }
 
 function parseObservations(message: AssistantMessage): string[] {
@@ -161,33 +168,19 @@ function inferFileDescription(file: FileDiff): string {
 	return "source code";
 }
 
-async function runWithConcurrency<T, R>(
-	items: T[],
-	limit: number,
-	worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-	const results = new Array<R>(items.length);
-	let nextIndex = 0;
-	const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-		while (true) {
-			const current = nextIndex;
-			nextIndex += 1;
-			if (current >= items.length) return;
-			results[current] = await worker(items[current] as T, current);
-		}
-	});
-	await Promise.all(runners);
-	return results;
-}
-
 async function withRetry<T>(fn: () => Promise<T>, attempts: number, backoffMs: number): Promise<T> {
+	// Always make at least one attempt. A zero/negative/non-finite `attempts`
+	// would otherwise skip the loop body entirely and throw an undefined
+	// `lastError` — a non-Error that reports no cause and is nearly impossible to
+	// diagnose downstream.
+	const total = Number.isFinite(attempts) ? Math.max(1, Math.floor(attempts)) : 1;
 	let lastError: unknown;
-	for (let attempt = 0; attempt < attempts; attempt += 1) {
+	for (let attempt = 0; attempt < total; attempt += 1) {
 		try {
 			return await fn();
 		} catch (error) {
 			lastError = error;
-			if (attempt < attempts - 1) {
+			if (attempt < total - 1) {
 				await Bun.sleep(backoffMs * (attempt + 1));
 			}
 		}

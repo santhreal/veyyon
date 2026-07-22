@@ -96,6 +96,16 @@ export interface TruncationResult {
 	elidedBytes?: number;
 	/** Lines elided from the middle (truncateMiddle only). */
 	elidedLines?: number;
+	/**
+	 * Kept head-window line count (truncateMiddle only). The head and tail windows
+	 * are sized by independent byte and line budgets, so this is NOT half of the
+	 * kept lines — a byte-limited head can keep far fewer lines than the tail.
+	 * Consumers must use this instead of re-deriving an even split, or the reported
+	 * head/tail line ranges will be wrong.
+	 */
+	headLines?: number;
+	/** Kept tail-window line count (truncateMiddle only). See {@link headLines}. */
+	tailLines?: number;
 	lastLinePartial?: boolean;
 	firstLineExceedsLimit?: boolean;
 }
@@ -567,6 +577,8 @@ export function truncateMiddle(content: string, options: TruncationOptions = {})
 		outputBytes: headBytesKept + tailBytesKept + markerBytes + 2,
 		elidedLines,
 		elidedBytes,
+		headLines: headLinesKept,
+		tailLines: tailLinesKept,
 		lastLinePartial: tail.lastLinePartial,
 		firstLineExceedsLimit: false,
 	};

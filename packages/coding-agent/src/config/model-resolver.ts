@@ -347,11 +347,23 @@ const UPSTREAM_ROUTING_SLUG = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 /**
  * Split a trailing `@<upstream>` provider-routing selector off a model pattern.
  *
- * `openrouter/z-ai/glm-4.7@cerebras` -> base `openrouter/z-ai/glm-4.7`, upstream
- * `cerebras`. A `:thinking` suffix after the slug is kept on the base
- * (`...@cerebras:high` -> base `...:high`). Returns undefined when there is no
- * `@` or the suffix is not a bare provider slug, so model ids that legitimately
- * contain `@` (`claude-opus-4-8@default`, `workers-ai/@cf/...`) are never split.
+ * This is a purely SYNTACTIC split: `openrouter/z-ai/glm-4.7@cerebras` -> base
+ * `openrouter/z-ai/glm-4.7`, upstream `cerebras`. A `:thinking` suffix after the
+ * slug is kept on the base (`...@cerebras:high` -> base `...:high`). Returns
+ * undefined only when there is no `@`, the `@` is at position 0, or the suffix
+ * after `@` is not a bare provider slug (so `workers-ai/@cf/meta/llama` is not
+ * split because `cf/meta/llama` contains a slash).
+ *
+ * It does NOT know which ids legitimately end in `@<slug>`: a Vertex id like
+ * `anthropic/claude-opus-4-8@default` IS split here (into base
+ * `anthropic/claude-opus-4-8`, upstream `default`) because `default` is a valid
+ * slug. Honoring that split is the CALLER's decision: both call sites only apply
+ * the routing when the base resolves to an aggregator model that supports
+ * per-request upstream routing (OpenRouter / Vercel Gateway, see
+ * {@link supportsUpstreamRouting}). For every other provider the split result is
+ * discarded and the `@` stays part of the id. Keep this function syntactic; do
+ * not special-case slugs like `default` here, or aggregator routing to an
+ * upstream named `default` would break.
  */
 export function splitUpstreamRouting(pattern: string): { base: string; upstream: string } | undefined {
 	const at = pattern.lastIndexOf("@");

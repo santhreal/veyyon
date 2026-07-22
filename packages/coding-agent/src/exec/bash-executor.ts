@@ -9,8 +9,15 @@ import { isExecutable, type ShellConfig } from "@veyyon/utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
+import { TOOL_TIMEOUTS } from "../tools/tool-timeouts";
 import { getOrCreateSnapshot } from "../utils/shell-snapshot";
 import { buildNonInteractiveEnv } from "./non-interactive-env";
+
+// The executor's fallback deadline for a caller that passes no timeout (e.g. the
+// RPC `executeBash(command)` path) is the same concept as the bash tool default,
+// so it reads from the single owner (TOOL_TIMEOUTS, in seconds) rather than
+// hardcoding a second copy of 300s that could silently diverge.
+const DEFAULT_BASH_TIMEOUT_MS = TOOL_TIMEOUTS.bash.default * 1000;
 
 export interface BashExecutorOptions {
 	cwd?: string;
@@ -302,7 +309,8 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	let timeoutTimer: NodeJS.Timeout | undefined;
 	const timeoutDeferred = Promise.withResolvers<"timeout">();
 	const requestedTimeoutMs = options?.timeout;
-	const deadlineTimeoutMs = requestedTimeoutMs === 0 ? undefined : Math.max(1_000, requestedTimeoutMs ?? 300_000);
+	const deadlineTimeoutMs =
+		requestedTimeoutMs === 0 ? undefined : Math.max(1_000, requestedTimeoutMs ?? DEFAULT_BASH_TIMEOUT_MS);
 	const nativeTimeoutMs = requestedTimeoutMs !== undefined && requestedTimeoutMs > 0 ? requestedTimeoutMs : undefined;
 	const nativeOwnsTimeout = nativeTimeoutMs !== undefined;
 	if (deadlineTimeoutMs !== undefined) {

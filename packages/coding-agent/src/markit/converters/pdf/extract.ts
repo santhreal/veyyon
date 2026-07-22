@@ -303,8 +303,11 @@ function ctmApply(m: number[], x: number, y: number): [number, number] {
  * Parse a PDF content stream and extract line segments from thin filled
  * rectangles (re+f), stroked rectangles (re+S), and explicit lines (m/l+S).
  * Tracks the CTM via q/Q/cm operators so coordinates are in page space.
+ *
+ * @internal Exported for testing. Operates purely on a content-stream string,
+ * so stroke-width and CTM handling can be verified without a full PDF.
  */
-function extractSegmentsFromContentStream(raw: string, pageNumber: number): Segment[] {
+export function extractSegmentsFromContentStream(raw: string, pageNumber: number): Segment[] {
 	const segments: Segment[] = [];
 	const tokens = tokenizeContentStream(raw);
 	let idx = 0;
@@ -381,7 +384,12 @@ function extractSegmentsFromContentStream(raw: string, pageNumber: number): Segm
 			const f = Number(tokens[idx - 1]);
 			ctm = ctmConcat(ctm, [a, b, c, d, e, f]);
 		} else if (t === "w" && idx >= 1) {
-			strokeWidth = Number(tokens[idx - 1]) || strokeWidth;
+			// `0 w` is a valid hairline (rendered as the thinnest device line) and is
+			// common for table rules, so it must set strokeWidth to 0, not be treated
+			// as falsy and dropped. Assign only for a finite number, discarding a
+			// garbage operand — the same guard the `re` operator below uses.
+			const width = Number(tokens[idx - 1]);
+			if (Number.isFinite(width)) strokeWidth = width;
 		} else if (t === "re" && idx >= 4) {
 			const x = Number(tokens[idx - 4]);
 			const y = Number(tokens[idx - 3]);

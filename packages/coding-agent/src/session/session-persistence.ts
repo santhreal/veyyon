@@ -2,28 +2,22 @@ import {
 	type BlobStore,
 	externalizeImageDataSync,
 	externalizeImageDataUrlSync,
+	externalizeTextSync,
 	isBlobRef,
 	isImageDataUrl,
+	isTextBlobRef,
 } from "./blob-store";
 import type { FileEntry } from "./session-entries";
 
+/**
+ * Strings longer than this are externalized to the blob store on persist (never
+ * truncated) so the on-disk session record stays lossless. The full content is
+ * restored on load; only the JSONL line is kept small.
+ */
 const MAX_PERSIST_CHARS = 500_000;
-const TRUNCATION_NOTICE = "\n\n[Session persistence truncated large content]";
 /** Minimum base64 length to externalize to blob store (skip tiny inline images) */
 const BLOB_EXTERNALIZE_THRESHOLD = 1024;
 const TEXT_CONTENT_KEY = "content";
-
-function truncateString(value: string, maxLength: number): string {
-	if (value.length <= maxLength) return value;
-	let truncated = value.slice(0, maxLength);
-	if (truncated.length > 0) {
-		const last = truncated.charCodeAt(truncated.length - 1);
-		if (last >= 0xd800 && last <= 0xdbff) {
-			truncated = truncated.slice(0, -1);
-		}
-	}
-	return truncated;
-}
 
 export function isImageBlock(value: unknown): value is { type: "image"; data: string; mimeType?: string } {
 	return (
@@ -105,16 +99,18 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 		if (key === "image_url" && isImageDataUrl(obj)) {
 			return externalizeImageDataUrlSync(blobStore, obj);
 		}
-		if (obj.length > MAX_PERSIST_CHARS) {
+		if (obj.length > MAX_PERSIST_CHARS && !isTextBlobRef(obj)) {
 			// Defensive: signature keys normally sit on blocks the guard above returns
 			// verbatim, but if one is reached here (unknown carrier shape), preserve it —
-			// truncation produces an invalid signature the API rejects, and clearing
-			// drops reasoning context the provider needs on replay.
+			// externalizing a signature would break the exact-bytes binding the API needs
+			// on replay.
 			if (key === "thinkingSignature" || key === "thoughtSignature" || key === "textSignature") {
 				return obj;
 			}
-			const limit = Math.max(0, MAX_PERSIST_CHARS - TRUNCATION_NOTICE.length);
-			return `${truncateString(obj, limit)}${TRUNCATION_NOTICE}`;
+			// Externalize (never truncate) oversized text to the blob store. The session
+			// file is the study record; truncating here permanently destroyed large tool
+			// results. The full content round-trips losslessly on load.
+			return externalizeTextSync(blobStore, obj);
 		}
 		return obj;
 	}
@@ -136,7 +132,13 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 		const entries: Array<readonly [string, unknown]> = [];
 		for (const [childKey, value] of Object.entries(obj)) {
 			// Strip transient/redundant properties that shouldn't be persisted.
-			// - jsonlEvents: raw subprocess streaming events (already saved to artifact files)
+			// - jsonlEvents: a legacy/foreign field of raw per-chunk subprocess stream
+			//   events. No current code path produces it, so this is a defensive drop:
+			//   should such a field ever reappear on a message it must never bloat the
+			//   durable record. The finest-grained streaming detail we DO keep lives in
+			//   the durable message itself (AssistantMessage.turnMetrics/request timing
+			//   and throughput) and in child subagent transcripts plus externalized
+			//   blobs, whose GC retention is proven in gc-cli.test.ts (GRAN-7).
 			if (childKey === "jsonlEvents") {
 				changed = true;
 				continue;
@@ -152,6 +154,7 @@ function truncateForPersistence(obj: unknown, blobStore: BlobStore, key?: string
 		if (
 			contentEntry &&
 			typeof contentEntry[1] === "string" &&
+			!isTextBlobRef(contentEntry[1]) &&
 			lineCountEntry &&
 			typeof lineCountEntry[1] === "number"
 		) {

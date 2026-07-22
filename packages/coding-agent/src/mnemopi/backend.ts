@@ -21,6 +21,7 @@ import type { AgentSession } from "../session/agent-session";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 import { shortenPath } from "../tools/render-utils";
+import { escapeMarkdownTableCell } from "../utils/markdown-table";
 import {
 	loadMnemopiConfig,
 	type MnemopiBackendConfig,
@@ -221,7 +222,7 @@ export const mnemopiBackend: MemoryBackend = {
 		if (options?.signal?.aborted) {
 			return { backend: "mnemopi", query, count: 0, items: [], message: "Search aborted." };
 		}
-		const limit = clampLimit(options?.limit);
+		const limit = clampRecallLimit(options?.limit);
 		const results = (await primary.recallResultsScoped(query)).slice(0, limit);
 		if (options?.signal?.aborted) {
 			return { backend: "mnemopi", query, count: 0, items: [], message: "Search aborted." };
@@ -389,7 +390,7 @@ function summarizeMnemopiStatus(
 	};
 }
 
-function clampLimit(limit: number | undefined): number {
+function clampRecallLimit(limit: number | undefined): number {
 	if (!Number.isFinite(limit)) return 10;
 	return clampLow(Math.trunc(limit ?? 10), 1, 50);
 }
@@ -426,10 +427,6 @@ function statCount(value: unknown): number {
 	if (typeof record.total === "number") return record.total;
 	if (typeof record.count === "number") return record.count;
 	return 0;
-}
-
-function escapeMarkdownTableCell(value: string): string {
-	return value.replaceAll("|", "\\|").replaceAll("\n", " ");
 }
 
 async function loadMnemopiConfigWithProviders(

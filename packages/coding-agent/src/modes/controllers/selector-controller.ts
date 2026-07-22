@@ -6,12 +6,14 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
 import { errorMessage, getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import type { KeyId } from "../../config/keybindings";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
 import { disableProvider, enableProvider } from "../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import {
+	FALLBACK_THEME_NAME,
 	getAvailableThemes,
 	getSymbolTheme,
 	previewTheme,
@@ -19,6 +21,7 @@ import {
 	setMarkdownMermaidRendering,
 	setSymbolPreset,
 	setTheme,
+	type ThemeLoadResult,
 	theme,
 } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
@@ -59,6 +62,7 @@ import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
+import { SubagentInboxComponent } from "../components/subagent-inbox";
 import { ThinkingSelectorComponent } from "../components/thinking-selector";
 import { ToolExecutionComponent } from "../components/tool-execution";
 import { TranscriptBlock } from "../components/transcript-container";
@@ -67,10 +71,57 @@ import { UserMessageSelectorComponent } from "../components/user-message-selecto
 import type { SessionObserverRegistry } from "../session-observer-registry";
 import { buildCopyTargets } from "../utils/copy-targets";
 
+/**
+ * The slice of the interactive context this uses: 33 members of the 215
+ * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
+ * test construct one without the `as unknown as InteractiveModeContext` cast the
+ * full interface forces (see `CollabHostContext`).
+ */
+export type SelectorControllerContext = Pick<
+	InteractiveModeContext,
+	| "applyCwdChange"
+	| "chatContainer"
+	| "clearTransientSessionUi"
+	| "collabGuest"
+	| "editor"
+	| "editorContainer"
+	| "effectiveHideThinkingBlock"
+	| "focusAgentSession"
+	| "handleDebugTranscriptCommand"
+	| "hideThinkingBlock"
+	| "historyStorage"
+	| "keybindings"
+	| "mcpManager"
+	| "oauthManualInput"
+	| "planModeEnabled"
+	| "present"
+	| "proseOnlyThinking"
+	| "rebuildChatFromMessages"
+	| "refreshSlashCommandState"
+	| "reloadTodos"
+	| "renderInitialMessages"
+	| "session"
+	| "sessionManager"
+	| "settings"
+	| "showDebugSelector"
+	| "showError"
+	| "showHookConfirm"
+	| "showHookEditor"
+	| "showHookSelector"
+	| "showStatus"
+	| "showWarning"
+	| "shutdown"
+	| "statusContainer"
+	| "statusLine"
+	| "toolOutputExpanded"
+	| "ui"
+	| "updateEditorBorderColor"
+>;
+
 const MANUAL_LOGIN_TIP = "Tip: You can complete pairing with /login <redirect URL>.";
 
 export class SelectorController {
-	constructor(private ctx: InteractiveModeContext) {}
+	constructor(private ctx: SelectorControllerContext) {}
 
 	async #refreshOAuthProviderAuthState(): Promise<void> {
 		const oauthProviders = getOAuthProviders();
@@ -499,23 +550,23 @@ export class SelectorController {
 					this.ctx.statusLine.invalidate();
 					this.ctx.ui.requestRender();
 					this.ctx.ui.invalidate();
-					if (!result.success) {
-						this.ctx.showError(`Failed to load theme "${value}": ${result.error}\nFell back to dark theme.`);
-					}
+					this.#surfaceThemeResult(result, `load theme "${value}"`);
 				});
 				break;
 			}
 			case "symbolPreset": {
-				setSymbolPreset(value as "unicode" | "nerd" | "ascii").then(() => {
+				setSymbolPreset(value as "unicode" | "nerd" | "ascii").then(result => {
 					this.ctx.statusLine.invalidate();
 					this.ctx.ui.requestRender();
 					this.ctx.ui.invalidate();
+					this.#surfaceThemeResult(result, "apply symbol preset");
 				});
 				break;
 			}
 			case "colorBlindMode": {
-				setColorBlindMode(value === "true" || value === true).then(() => {
+				setColorBlindMode(value === "true" || value === true).then(result => {
 					this.ctx.ui.invalidate();
+					this.#surfaceThemeResult(result, "apply color-blind mode");
 				});
 				break;
 			}
@@ -615,6 +666,21 @@ export class SelectorController {
 
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {
 		this.#showModelPicker(options?.temporaryOnly === true);
+	}
+
+	/**
+	 * Report a theme reload that did not do what was asked. `fellBack` means the
+	 * user is now looking at a theme they did not pick, so it always gets said
+	 * out loud; anything else failed without changing what is on screen.
+	 */
+	#surfaceThemeResult(result: ThemeLoadResult, attempted: string): void {
+		if (result.success) return;
+		const detail = result.error ? `: ${result.error}` : "";
+		this.ctx.showError(
+			result.fellBack
+				? `Failed to ${attempted}${detail}\nFell back to the ${FALLBACK_THEME_NAME} theme.`
+				: `Failed to ${attempted}${detail}`,
+		);
 	}
 
 	/**
@@ -1479,6 +1545,14 @@ export class SelectorController {
 			...this.ctx.keybindings.getKeys("app.agents.hub"),
 			...this.ctx.keybindings.getKeys("app.session.observe"),
 		];
+
+		// Experimental: the same open gesture raises the opencode-style split
+		// inbox instead of the modal table when `display.subagentInbox` is on. The
+		// flag is off by default, so the shipped hub path below is unchanged.
+		if (settings.get("display.subagentInbox")) {
+			this.#showSubagentInbox(hubKeys, options);
+			return;
+		}
 		let hub: AgentHubOverlayComponent | undefined;
 
 		// Render the hub inline in the editor slot — the same anchored region
@@ -1542,5 +1616,44 @@ export class SelectorController {
 		}
 
 		showReadyHub();
+	}
+
+	/**
+	 * Mount the experimental subagent inbox split in the editor slot, matching the
+	 * hub's open/close/focus contract. It reads only the LIVE registry (not the
+	 * hub's persisted rows), so the `requireContent` double-← gesture gates
+	 * synchronously on live emptiness — a documented limitation while the surface
+	 * is behind `display.subagentInbox`.
+	 */
+	#showSubagentInbox(hubKeys: KeyId[], options?: { requireContent?: boolean; armCloseTap?: boolean }): void {
+		let inbox: SubagentInboxComponent | undefined;
+		const done = () => {
+			inbox?.dispose();
+			this.ctx.editorContainer.clear();
+			this.ctx.editorContainer.addChild(this.ctx.editor);
+			this.ctx.ui.setFocus(this.ctx.editor);
+			this.ctx.ui.requestRender();
+		};
+
+		inbox = new SubagentInboxComponent({
+			hubKeys,
+			onDone: done,
+			requestRender: () => this.ctx.ui.requestRender(),
+			registry: this.ctx.collabGuest?.agentRegistry,
+			ui: this.ctx.ui,
+			onOpenAgent: id => this.ctx.focusAgentSession(id),
+		});
+
+		// The double-← gesture stays inert when there are no live subagents.
+		if (options?.requireContent && inbox.isEmpty) {
+			inbox.dispose();
+			return;
+		}
+
+		this.ctx.editorContainer.clear();
+		this.ctx.editorContainer.addChild(inbox);
+		this.ctx.ui.setFocus(inbox);
+		if (options?.armCloseTap) inbox.armCloseTap();
+		this.ctx.ui.requestRender();
 	}
 }

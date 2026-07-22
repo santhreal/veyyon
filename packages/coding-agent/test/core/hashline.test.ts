@@ -20,6 +20,7 @@ import {
 } from "@veyyon/hashline";
 import { removeWithRetries } from "@veyyon/utils";
 import { type Type, type } from "arktype";
+import { makeToolSession } from "../helpers/tool-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -529,13 +530,13 @@ describe("hashline — filename+tag path recovery", () => {
 			const artifactsDir = await fs.mkdtemp(path.join(os.tmpdir(), "hashline-plan-art-"));
 			try {
 				const localOptions = { getArtifactsDir: () => artifactsDir, getSessionId: () => "plan-sess" };
-				const session = {
+				const session = makeToolSession({
 					cwd: tempDir,
 					settings: Settings.isolated(),
 					getArtifactsDir: localOptions.getArtifactsDir,
 					getSessionId: localOptions.getSessionId,
 					getPlanModeState: () => ({ enabled: true, planFilePath: "local://cfg-module-hygiene-plan.md" }),
-				} as unknown as ToolSession;
+				});
 
 				// Simulate `write local://cfg-module-hygiene-plan.md`: the artifact
 				// lives in the session sandbox and its snapshot tag is recorded there.
@@ -565,13 +566,13 @@ describe("hashline — filename+tag path recovery", () => {
 		await withTempDir(async tempDir => {
 			const artifactsDir = await fs.mkdtemp(path.join(os.tmpdir(), "hashline-plan-art-"));
 			try {
-				const session = {
+				const session = makeToolSession({
 					cwd: tempDir,
 					settings: Settings.isolated(),
 					getArtifactsDir: () => artifactsDir,
 					getSessionId: () => "plan-sess",
 					getPlanModeState: () => ({ enabled: true, planFilePath: "local://x-plan.md" }),
-				} as unknown as ToolSession;
+				});
 
 				// An existing working-tree file with a recorded tag: no recovery is
 				// needed, so the (reordered) write gate must still reject it.

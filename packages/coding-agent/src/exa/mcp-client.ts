@@ -250,33 +250,6 @@ export function isSearchResponse(data: unknown): data is ExaSearchResponse {
 	);
 }
 
-/** Cache for MCP tool schemas (keyed by MCP tool name) */
-const mcpSchemaCache = new Map<string, MCPTool>();
-
-/** Fetch and cache MCP tool schema */
-export async function fetchMCPToolSchema(
-	apiKey: string,
-	mcpToolName: string,
-	isWebsetsTool = false,
-): Promise<MCPTool | null> {
-	const cacheKey = `${isWebsetsTool ? "websets" : "exa"}:${mcpToolName}`;
-	if (mcpSchemaCache.has(cacheKey)) {
-		return mcpSchemaCache.get(cacheKey)!;
-	}
-
-	try {
-		const tools = isWebsetsTool ? await fetchWebsetsTools(apiKey) : await fetchExaTools(apiKey, [mcpToolName]);
-		const tool = tools.find(t => t.name === mcpToolName);
-		if (tool) {
-			mcpSchemaCache.set(cacheKey, tool);
-			return tool;
-		}
-	} catch (error) {
-		logger.warn("Failed to fetch MCP tool schema", { mcpToolName, isWebsetsTool, error: String(error) });
-	}
-	return null;
-}
-
 /**
  * CustomTool dynamically created from MCP tool metadata.
  *
@@ -337,21 +310,4 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 			};
 		}
 	}
-}
-
-/**
- * Create a CustomTool by fetching schema from MCP server.
- *
- * Falls back to provided fallback schema if MCP fetch fails.
- */
-export async function createMCPToolFromServer(
-	apiKey: string,
-	config: MCPToolWrapperConfig,
-	fallbackSchema: TSchema,
-	fallbackDescription: string,
-): Promise<MCPWrappedTool> {
-	const mcpTool = await fetchMCPToolSchema(apiKey, config.mcpToolName, config.isWebsetsTool);
-	const schema = mcpTool?.inputSchema ?? fallbackSchema;
-	const description = mcpTool?.description ?? fallbackDescription;
-	return new MCPWrappedTool(config, schema, description);
 }

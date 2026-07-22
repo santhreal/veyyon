@@ -14,7 +14,7 @@ import {
 	Text,
 	type TUI,
 } from "@veyyon/tui";
-import { getProjectDir, logger, sanitizeText } from "@veyyon/utils";
+import { clampLow, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
@@ -1159,7 +1159,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const context: Record<string, unknown> = {};
 		const normalizeTimeoutSeconds = (value: unknown, maxSeconds: number): number | undefined => {
 			if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-			return Math.max(1, Math.min(maxSeconds, value));
+			return clampLow(value, 1, maxSeconds);
 		};
 
 		if (this.#toolName === "bash") {

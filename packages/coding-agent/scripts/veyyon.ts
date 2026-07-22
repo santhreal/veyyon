@@ -15,5 +15,19 @@ if (launchCwd) {
 	delete process.env.VEYYON_LAUNCH_CWD;
 	try {
 		process.chdir(launchCwd);
-	} catch {}
+	} catch (error) {
+		// Swallowing this used to leave the CLI running from the empty, bunfig-free
+		// directory the launcher started it in. Every project-relative behaviour then
+		// pointed at that empty directory: no project settings, no AGENTS.md, no git
+		// repo, and file tools resolving relative paths against nothing. It looked
+		// like veyyon could not see the user's files, with no hint as to why. There
+		// is no safe way to continue, so say what happened and stop.
+		process.stderr.write(
+			`veyyon: cannot enter the directory it was launched from\n` +
+				`  directory: ${launchCwd}\n` +
+				`  error: ${error instanceof Error ? error.message : String(error)}\n` +
+				`Run veyyon from a directory that still exists and that you can read.\n`,
+		);
+		process.exit(1);
+	}
 }

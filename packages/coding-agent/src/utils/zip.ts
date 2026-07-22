@@ -7,7 +7,7 @@
 // build ZIP/tar, or call `Bun.Archive`, anywhere else.
 import * as path from "node:path";
 import * as zlib from "node:zlib";
-import { errorMessage, formatBytes } from "@veyyon/utils";
+import { errorMessage, formatBytes, logger } from "@veyyon/utils";
 import { ToolError } from "../tools/tool-errors";
 
 /** A ZIP archive decoded to a `path → bytes` map of its file members. */
@@ -25,6 +25,45 @@ const LEGACY_NAME_DECODER = new TextDecoder("windows-1252");
 export function unzipText(entries: Unzipped, entryPath: string): string | undefined {
 	const data = entries[entryPath];
 	return data ? UTF8_DECODER.decode(data) : undefined;
+}
+
+/**
+ * Resolve a container-relative reference (an EPUB manifest href, or an OPC
+ * relationship `Target`) to the exact {@link Unzipped} key it names, relative to
+ * `baseDir` (the directory of the part that owns the reference; `""` for the zip
+ * root).
+ *
+ * These references are URIs, not bare keys: they may be percent-encoded
+ * (`ch%201.xhtml`, a media part with a space), carry a `#fragment`, and use `.` /
+ * `..` segments when the owning part lives in a subdirectory. The zip index is
+ * keyed by exact, decoded, normalized paths, so a naive `${baseDir}/${ref}` join
+ * silently fails to match and the referenced part (a chapter, a sheet, an image)
+ * is dropped from the output. This is the ONE owner of that resolution for every
+ * archive converter: it strips the fragment, percent-decodes (leaving a malformed
+ * escape as-is rather than throwing), and collapses `.` / `..` against `baseDir`.
+ * An absolute ref (leading `/`) resolves from the zip root ignoring `baseDir`, and
+ * a `..` that would escape the root is clamped rather than left to mismatch.
+ */
+export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
+	const withoutFragment = ref.split("#", 1)[0] ?? ref;
+	let decoded = withoutFragment;
+	try {
+		decoded = decodeURIComponent(withoutFragment);
+	} catch {
+		decoded = withoutFragment;
+	}
+	const absolute = decoded.startsWith("/");
+	const baseSegments = absolute || !baseDir ? [] : baseDir.split("/");
+	const out: string[] = [];
+	for (const segment of [...baseSegments, ...decoded.split("/")]) {
+		if (segment === "" || segment === ".") continue;
+		if (segment === "..") {
+			out.pop();
+			continue;
+		}
+		out.push(segment);
+	}
+	return out.join("/");
 }
 
 /**
@@ -162,9 +201,27 @@ interface ArchiveIndexEntry extends ArchiveNode {
 	storage?: EntryStorage;
 }
 
-function normalizeArchiveLookupPath(rawPath?: string): string | undefined {
-	if (!rawPath) return "";
-
+/**
+ * Reduce an archive-internal path to a safe, canonical form, or reject it.
+ *
+ * This is the archive boundary's containment check, so it is deliberately the
+ * ONE place the rule lives. A member path comes from the archive itself, which
+ * means it is attacker-controlled whenever the archive is: a `..` segment is
+ * the classic zip-slip, aimed at making an extraction write outside the
+ * directory it was pointed at. Rejecting rather than clamping is the fail-closed
+ * choice, since an archive that needs to escape is not an archive worth reading.
+ *
+ * Backslashes are folded to `/` first because ZIP entries written on Windows use
+ * them, and a `..\..\` that is not folded would sail straight through a check
+ * that only looks for `../`. Leading slashes and `.` segments are dropped, which
+ * is what turns an absolute member path into a relative one.
+ *
+ * Returns `undefined` for a path that escapes. The empty result is meaningful
+ * and differs by caller, so `allowEmpty` distinguishes them: a LOOKUP of `""`
+ * or `/` means the archive root and is valid, while an ENTRY with no path at
+ * all is not a real member.
+ */
+function normalizeArchivePath(rawPath: string, options: { allowEmpty: boolean }): string | undefined {
 	const parts = rawPath.replace(/\\/g, "/").split("/");
 	const normalizedParts: string[] = [];
 	for (const part of parts) {
@@ -173,20 +230,38 @@ function normalizeArchiveLookupPath(rawPath?: string): string | undefined {
 		normalizedParts.push(part);
 	}
 
+	if (normalizedParts.length === 0 && !options.allowEmpty) return undefined;
 	return normalizedParts.join("/");
 }
 
-function normalizeArchiveEntryPath(rawPath: string): string | undefined {
-	const parts = rawPath.replace(/\\/g, "/").split("/");
-	const normalizedParts: string[] = [];
-	for (const part of parts) {
-		if (!part || part === ".") continue;
-		if (part === "..") return undefined;
-		normalizedParts.push(part);
-	}
+/** Normalize a caller-supplied path used to look something up inside an archive. */
+function normalizeArchiveLookupPath(rawPath?: string): string | undefined {
+	if (!rawPath) return "";
+	return normalizeArchivePath(rawPath, { allowEmpty: true });
+}
 
-	if (normalizedParts.length === 0) return undefined;
-	return normalizedParts.join("/");
+/** Normalize a path read from the archive's own index. */
+function normalizeArchiveEntryPath(rawPath: string): string | undefined {
+	return normalizeArchivePath(rawPath, { allowEmpty: false });
+}
+
+/**
+ * Report members skipped because their paths escape the archive.
+ *
+ * Dropping them is correct and stays. Dropping them SILENTLY is not: the
+ * operator gets a listing that omits files they know are in the archive, with
+ * nothing saying why, and an archive built to escape its own directory is
+ * exactly the thing worth telling someone about (Law 10). Reported once per
+ * archive with a count and one example, rather than per entry, because a hostile
+ * archive can contain any number of them.
+ */
+function reportSkippedUnsafeEntries(skipped: readonly string[]): void {
+	if (skipped.length === 0) return;
+	logger.warn("Skipped archive members whose paths point outside the archive", {
+		skipped: skipped.length,
+		example: skipped[0],
+		fix: "These entries were not read, which is why they are missing from the listing. A path containing `..` would escape the directory it extracts into, so the archive may be hostile or simply built incorrectly.",
+	});
 }
 
 function isArchiveDirectoryName(rawPath: string): boolean {
@@ -482,6 +557,7 @@ function parseZipCentralDirectory(
 	expectedEntries: number,
 ): ArchiveIndexEntry[] {
 	const entries: ArchiveIndexEntry[] = [];
+	const skipped: string[] = [];
 	let offset = 0;
 
 	for (let index = 0; index < expectedEntries; index++) {
@@ -513,6 +589,7 @@ function parseZipCentralDirectory(
 			centralDirectory.subarray(nameStart, extraStart),
 		);
 		const normalizedPath = normalizeArchiveEntryPath(rawPath);
+		if (!normalizedPath) skipped.push(rawPath);
 		if (normalizedPath) {
 			const values = readZip64EntryValues(
 				centralDirectory.subarray(extraStart, extraStart + extraLength),
@@ -554,6 +631,7 @@ function parseZipCentralDirectory(
 		offset = entryEnd;
 	}
 
+	reportSkippedUnsafeEntries(skipped);
 	return entries;
 }
 
@@ -605,9 +683,13 @@ async function readTarEntries(bytes: Uint8Array): Promise<ArchiveIndexEntry[]> {
 	}
 
 	const entries: ArchiveIndexEntry[] = [];
+	const skipped: string[] = [];
 	for (const [rawPath, file] of files) {
 		const normalizedPath = normalizeArchiveEntryPath(rawPath);
-		if (!normalizedPath) continue;
+		if (!normalizedPath) {
+			skipped.push(rawPath);
+			continue;
+		}
 		const mtimeMs = file.lastModified > 0 ? file.lastModified : undefined;
 		entries.push({
 			path: normalizedPath,
@@ -618,6 +700,7 @@ async function readTarEntries(bytes: Uint8Array): Promise<ArchiveIndexEntry[]> {
 		});
 	}
 
+	reportSkippedUnsafeEntries(skipped);
 	return entries;
 }
 

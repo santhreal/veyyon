@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentState } from "@veyyon/agent-core";
-import { APP_NAME, isEnoent } from "@veyyon/utils";
+import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { loadEntriesFromFile } from "../../session/session-loader";
@@ -12,7 +12,7 @@ import templateJs from "./template.js" with { type: "text" };
 // Pre-built React tool renderers: built by `gen:tool-views` (`bun run gen:tool-views`),
 // run automatically by root `prepare` on install and by `prepack` at publish.
 import toolViewsJs from "./tool-views.generated.js" with { type: "text" };
-import { webExportThemeVars } from "./web-palette";
+import { EXPORT_FALLBACK_BASE_BG, webExportThemeVars } from "./web-palette";
 
 let cachedTemplate: string | undefined;
 
@@ -95,22 +95,32 @@ function adjustBrightness(color: string, factor: number): string {
 
 /** Derive export background colors from a base color. */
 function deriveExportColors(baseColor: string): { pageBg: string; cardBg: string; infoBg: string } {
-	const parsed = parseColor(baseColor);
+	let base = baseColor;
+	let parsed = parseColor(base);
 	if (!parsed) {
-		return { pageBg: "rgb(24, 24, 30)", cardBg: "rgb(30, 30, 36)", infoBg: "rgb(60, 55, 40)" };
+		// An unparseable base means a malformed theme value, not a design choice.
+		// Derive from the brand ground instead of inventing a tint, and say so.
+		logger.warn("Theme userMessageBg is not a parseable color; deriving export surfaces from the brand ground", {
+			userMessageBg: baseColor,
+			fallback: EXPORT_FALLBACK_BASE_BG,
+		});
+		base = EXPORT_FALLBACK_BASE_BG;
+		parsed = parseColor(base);
+		// The brand ground is a literal hex owned in this repo, so it always parses.
+		if (!parsed) throw new Error(`EXPORT_FALLBACK_BASE_BG is not a parseable color: ${EXPORT_FALLBACK_BASE_BG}`);
 	}
 
 	const luminance = getLuminance(parsed.r, parsed.g, parsed.b);
 	if (luminance > 0.5) {
 		return {
-			pageBg: adjustBrightness(baseColor, 0.96),
-			cardBg: baseColor,
+			pageBg: adjustBrightness(base, 0.96),
+			cardBg: base,
 			infoBg: `rgb(${Math.min(255, parsed.r + 10)}, ${Math.min(255, parsed.g + 5)}, ${Math.max(0, parsed.b - 20)})`,
 		};
 	}
 	return {
-		pageBg: adjustBrightness(baseColor, 0.7),
-		cardBg: adjustBrightness(baseColor, 0.85),
+		pageBg: adjustBrightness(base, 0.7),
+		cardBg: adjustBrightness(base, 0.85),
 		infoBg: `rgb(${Math.min(255, parsed.r + 20)}, ${Math.min(255, parsed.g + 15)}, ${parsed.b})`,
 	};
 }
@@ -150,7 +160,7 @@ export async function generateThemeVars(
 	}
 
 	const themeExport = await getThemeExportColors(themeName);
-	const userMessageBg = colors.userMessageBg || "#343541";
+	const userMessageBg = colors.userMessageBg || EXPORT_FALLBACK_BASE_BG;
 	const derived = deriveExportColors(userMessageBg);
 
 	lines.push(`--body-bg: ${themeExport.pageBg ?? derived.pageBg};`);

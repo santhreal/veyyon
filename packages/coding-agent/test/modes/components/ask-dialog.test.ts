@@ -3,6 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import type { ExtensionAskDialogQuestion } from "@veyyon/coding-agent/extensibility/extensions/types";
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
+import { activityColorToken, getShimmerActivity, setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { setKeybindings } from "@veyyon/tui";
 
@@ -1205,5 +1206,70 @@ describe("AskDialogComponent", () => {
 		component.handleInput(ENTER);
 		expect(onSubmit).toHaveBeenCalledTimes(1);
 		expect(onSubmit.mock.calls[0][0].results[0].customInput).toBeUndefined();
+	});
+});
+
+/**
+ * The living-status contract for the ask surface. When the agent asks the user
+ * a question the whole terminal should read as "your turn": the shimmer flips to
+ * the `ask` state on open and back to rest on dispose, and the question text is
+ * painted with the same theme token the living `ask` breath uses (not a second
+ * hardcoded hue), so a rebrand still owns the one color. These lock the wiring
+ * the user asked for — "it has a question that it asks, the terminal shimmers
+ * green" — so it can never silently regress to a bland static prompt.
+ */
+describe("AskDialogComponent living-status wiring", () => {
+	beforeEach(() => {
+		setThemeInstance(darkTheme!);
+		setShimmerActivity("idle");
+	});
+	afterEach(() => {
+		setShimmerActivity("idle");
+		vi.restoreAllMocks();
+	});
+
+	const oneQuestion: ExtensionAskDialogQuestion[] = [
+		{ id: "q1", question: "Ship it?", options: [{ label: "Yes" }, { label: "No" }] },
+	];
+
+	it("flips the living shimmer to `ask` the moment the dialog is constructed", () => {
+		expect(getShimmerActivity()).toBe("idle");
+		const component = new AskDialogComponent(oneQuestion, {
+			onSubmit: vi.fn(),
+			onCancel: vi.fn(),
+			onPrompt: vi.fn(),
+		});
+		expect(getShimmerActivity()).toBe("ask");
+		component.dispose();
+	});
+
+	it("returns the shimmer to rest on dispose so the next turn opens from `thinking`", () => {
+		const component = new AskDialogComponent(oneQuestion, {
+			onSubmit: vi.fn(),
+			onCancel: vi.fn(),
+			onPrompt: vi.fn(),
+		});
+		expect(getShimmerActivity()).toBe("ask");
+		component.dispose();
+		expect(getShimmerActivity()).toBe("idle");
+	});
+
+	it("paints the question with the exact ANSI the `ask` token emits — the green your-turn signal", () => {
+		const component = new AskDialogComponent(oneQuestion, {
+			onSubmit: vi.fn(),
+			onCancel: vi.fn(),
+			onPrompt: vi.fn(),
+		});
+		// The token the living ask breath uses, resolved through the SAME theme the
+		// dialog renders with: this is the one source of the your-turn hue.
+		const askToken = activityColorToken("ask");
+		const expectedOpen = darkTheme!.fg(askToken, "Ship it?");
+		const raw = component.render(80).join("\n");
+		// The question appears verbatim with the ask token's SGR wrapper, proving it
+		// is not rendered in the default "text" color.
+		expect(raw).toContain(expectedOpen);
+		// And the plain-text default coloring is absent for that string.
+		expect(raw).not.toContain(darkTheme!.fg("text", "Ship it?"));
+		component.dispose();
 	});
 });

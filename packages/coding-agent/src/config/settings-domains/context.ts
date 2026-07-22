@@ -1,4 +1,4 @@
-import { SHAPE_VARIANT_NAMES } from "@veyyon/snapcompact";
+import { DEFAULT_TOKEN_BUDGET } from "argot";
 import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
 
 /** Context domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
@@ -32,21 +32,21 @@ export const CONTEXT_SETTINGS = {
 
 	"compaction.strategy": {
 		type: "enum",
-		values: ["handoff", "snap"] as const,
-		default: "snap",
+		values: ["handoff", "summary"] as const,
+		default: "summary",
 		ui: {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Type",
 			description:
-				"Handoff generates a session transfer; Snap archives history as dense images (snapcompact engine).",
+				"Summary condenses history in place and continues the same session; Handoff generates a session transfer and continues in a new session.",
 			options: [
-				{ value: "handoff", label: "Handoff", description: "Generate handoff and continue in a new session" },
 				{
-					value: "snap",
-					label: "Snap",
-					description: "Archive history onto dense bitmap images the model reads back; no LLM call",
+					value: "summary",
+					label: "Summary",
+					description: "Summarize history in place and keep working in the same session",
 				},
+				{ value: "handoff", label: "Handoff", description: "Generate a handoff and continue in a new session" },
 			],
 		},
 	},
@@ -205,45 +205,6 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
-	// Experimental: snapcompact inline imaging (transient, per-request; never persisted)
-	"snapcompact.systemPrompt": {
-		type: "enum",
-		values: ["none", "agents-md", "all"] as const,
-		default: "none",
-		ui: {
-			tab: "context",
-			group: "Experimental",
-			label: "Snapcompact System Prompt",
-			description:
-				"Experimental: render selected system prompt text as dense PNG image(s) and attach to the first user message (vision models only). Saves tokens; loses prompt caching for imaged text.",
-			options: [
-				{ value: "none", label: "None", description: "Keep the system prompt as text." },
-				{
-					value: "agents-md",
-					label: "AGENTS.md",
-					description: "Only move loaded context-file instructions to images, when that saves tokens.",
-				},
-				{
-					value: "all",
-					label: "All",
-					description: "Move the full system prompt to images, when that saves tokens.",
-				},
-			],
-		},
-	},
-
-	"snapcompact.toolResults": {
-		type: "boolean",
-		default: false,
-		ui: {
-			tab: "context",
-			group: "Experimental",
-			label: "Snapcompact Tool Results",
-			description:
-				"Experimental: render large historical tool results as dense PNG image(s) instead of text (vision models only). Saves tokens on accumulated read/search output.",
-		},
-	},
-
 	// Argot: per-project shorthand codec. The dictionary is generated from the
 	// repository and kept in a local cache (never committed), regenerated as the
 	// project moves. The model writes short handles like `§dbconn`; the harness
@@ -258,7 +219,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Experimental",
 			label: "Argot Shorthand",
 			description:
-				"Experimental: generate token-saving shorthand for the current project and keep it in a local cache (nothing is written to the repository). The model writes short handles; the harness expands them to full text before any tool runs or the display shows them.",
+				"Experimental: let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The model loads a project with the argot_load tool, then writes its short handles; the harness expands them to full text before any tool runs or the display shows them.",
 		},
 	},
 
@@ -272,9 +233,35 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "context",
 			group: "Experimental",
+			condition: "argotEnabled",
 			label: "Argot Models",
 			description:
 				"Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand.",
+		},
+	},
+
+	// How many tokens the generated dictionary itself may spend. A larger budget
+	// teaches more handles (more chances to save tokens in the transcript) at the
+	// cost of a longer notation preamble every turn; a smaller budget keeps the
+	// preamble cheap but teaches only the most central strings. This shapes what
+	// the generator produces, so changing it keys a fresh cache entry (the old
+	// entry, generated under the previous budget, is left intact and untouched).
+	"argot.tokenBudget": {
+		type: "number",
+		default: DEFAULT_TOKEN_BUDGET,
+		ui: {
+			tab: "context",
+			group: "Experimental",
+			condition: "argotEnabled",
+			label: "Argot Dictionary Budget",
+			description:
+				"How many tokens the generated Argot dictionary may spend on its handle table. A larger budget teaches more handles (more transcript savings) but adds a longer preamble each turn; a smaller budget teaches only the most central strings. Changing it regenerates the dictionary.",
+			options: [
+				{ value: "500", label: "500", description: "Small dictionary; only the most central strings" },
+				{ value: "1000", label: "1000 (default)", description: "The default budget" },
+				{ value: "2000", label: "2000", description: "Larger dictionary; more handles, longer preamble" },
+				{ value: "4000", label: "4000", description: "Large dictionary for big projects" },
+			],
 		},
 	},
 
@@ -287,6 +274,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "context",
 			group: "Experimental",
+			condition: "argotEnabled",
 			label: "Argot Context Cutoff",
 			description:
 				"Stop teaching Argot shorthand once context passes this many tokens (the model then writes in full). Handles already written still expand losslessly. -1 disables the cutoff.",
@@ -297,6 +285,40 @@ export const CONTEXT_SETTINGS = {
 				{ value: "400000", label: "400k", description: "Stop teaching shorthand past 400,000 tokens" },
 				{ value: "600000", label: "600k", description: "Stop teaching shorthand past 600,000 tokens" },
 				{ value: "800000", label: "800k", description: "Stop teaching shorthand past 800,000 tokens" },
+			],
+		},
+	},
+
+	// How a subagent starts out with Argot shorthand. Correctness never depends on
+	// this: every agent expands its own output at every boundary (a spawned child's
+	// prompt, a returned result), so a handle never crosses the parent/child wire
+	// and a subagent that starts empty is already correct. This only trades tokens.
+	//   off     — the subagent gets no shorthand (cheapest; the parent's prompt to
+	//             it is already expanded, so it reads and writes full text).
+	//   fresh   — the subagent gets its own empty session and loads the project of
+	//             its task itself through argot_load, independent of the parent
+	//             (use when the child works a different project than the parent).
+	//   inherit — the subagent starts from a copy of the parent's loaded shorthand
+	//             (ArgotSession.fork), so it writes the same handles from turn one.
+	"argot.subagents": {
+		type: "enum",
+		values: ["off", "fresh", "inherit"] as const,
+		default: "off",
+		ui: {
+			tab: "context",
+			group: "Experimental",
+			condition: "argotEnabled",
+			label: "Argot in Subagents",
+			description:
+				"How a subagent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in subagents. fresh: the subagent loads its task's project itself through argot_load. inherit: the subagent starts from a copy of the parent's loaded shorthand.",
+			options: [
+				{ value: "off", label: "Off", description: "Subagents get no Argot shorthand" },
+				{ value: "fresh", label: "Fresh", description: "Subagent loads its task's project itself through argot_load" },
+				{
+					value: "inherit",
+					label: "Inherit",
+					description: "Subagent starts from a copy of the parent's loaded shorthand",
+				},
 			],
 		},
 	},
@@ -345,114 +367,6 @@ export const CONTEXT_SETTINGS = {
 				{ value: "gemma", label: "Gemma", description: "Use the Gemma owned dialect." },
 				{ value: "minimax", label: "MiniMax", description: "Use the MiniMax owned dialect." },
 				{ value: "pi-native", label: "pi-native", description: "Use the pi-native <call:NAME> owned dialect." },
-			],
-		},
-	},
-
-	"snapcompact.shape": {
-		type: "enum",
-		values: ["auto", ...SHAPE_VARIANT_NAMES] as const,
-		default: "auto",
-		ui: {
-			tab: "context",
-			group: "Experimental",
-			label: "Snapcompact Shape",
-			description:
-				"Frame shape snapcompact prints text with (compaction archive and inline imaging). Auto picks a shape tuned for the current model.",
-			options: [
-				{
-					value: "auto",
-					label: "Auto",
-					description: "Picks a shape tuned for the current model, falling back to its provider family.",
-				},
-				{
-					value: "8x8r-bw",
-					label: "8x8 repeated, black",
-					description:
-						"unscii square cell, black ink, every line printed twice with the copy on a pale highlight band.",
-				},
-				{
-					value: "8x8r-sent",
-					label: "8x8 repeated, sentence hues",
-					description: "Repeated grid with ink cycling six hues at sentence boundaries.",
-				},
-				{
-					value: "8x8u-bw",
-					label: "8x8, black",
-					description: "Plain unscii square cell, single-printed lines, black ink.",
-				},
-				{
-					value: "8x8u-sent",
-					label: "8x8, sentence hues",
-					description: "Plain unscii square cell with sentence-hue ink.",
-				},
-				{
-					value: "6x6u-bw",
-					label: "6x6 dense, black",
-					description: "unscii squeezed to 6x6 — densest readable cell, fewest frames — in black ink.",
-				},
-				{
-					value: "6x6u-sent",
-					label: "6x6 dense, sentence hues",
-					description: "Densest cell with sentence-hue ink.",
-				},
-				{
-					value: "5x8-bw",
-					label: "5x8 legacy, black",
-					description: "Original X.org 5x8 glyphs on the 2576px frame, black ink.",
-				},
-				{
-					value: "5x8-sent",
-					label: "5x8 legacy, sentence hues",
-					description: "The original snapcompact shape (pre-shape-table sessions rendered this).",
-				},
-				{
-					value: "6x12-dim",
-					label: "6x12, dimmed stopwords",
-					description: "X.org 6x12 glyphs, black ink, function words dimmed gray.",
-				},
-				{
-					value: "8x13-bw",
-					label: "8x13, black",
-					description: "X.org 8x13 glyphs, black ink.",
-				},
-				{
-					value: "8on16-bw",
-					label: "8x13 on 16px pitch, black",
-					description: "8x13 glyphs on an 8x16 cell (extra leading), black ink.",
-				},
-				{
-					value: "8on22-bw",
-					label: "8x13 on 22px pitch (leading), black",
-					description:
-						"8x13 glyphs on an 8x22 cell — extra line spacing so rows don't crowd. Default for OpenAI/Google.",
-				},
-				{
-					value: "11on16-bw",
-					label: "8x13 on 11px advance (tracking), black",
-					description:
-						"8x13 glyphs on an 11x16 cell — extra letter spacing so characters don't merge. Default for Anthropic.",
-				},
-				{
-					value: "silver16-bw",
-					label: "Silver 16, CJK",
-					description: "Embedded Silver TrueType font on a 16px grid for CJK and other non-Latin text.",
-				},
-				{
-					value: "doc-8on16-bw",
-					label: "Doc 8on16, black",
-					description: "Two word-wrapped newspaper columns of 8x13 glyphs on a 16px pitch, black ink.",
-				},
-				{
-					value: "doc-8on16-sent",
-					label: "Doc 8on16, sentence hues",
-					description: "Two-column doc layout with sentence-hue ink.",
-				},
-				{
-					value: "doc-8on16-sent-dim",
-					label: "Doc 8on16, sentence hues + dimmed stopwords",
-					description: "Two-column doc layout, sentence-hue ink, function words dimmed gray.",
-				},
 			],
 		},
 	},
@@ -530,6 +444,46 @@ export const CONTEXT_SETTINGS = {
 					value: "mnemopi",
 					label: "Mnemopi",
 					description: "Local SQLite recall/retain backend with optional embeddings",
+				},
+			],
+		},
+	},
+
+	// Session instrumentation: how densely a run records a study record on each
+	// tool result (timing, output weight, args fingerprint) AND each model turn
+	// (request-start, ttft, throughput, and the exact sampling/reasoning/tool-choice
+	// params sent). `off` changes nothing; higher levels add strictly more fields
+	// and cost. The `dev` profile preset turns this to `ultra`. See
+	// captureToolCallMetrics, captureAssistantTurnMetrics, captureAssistantTurnRequest.
+	"session.instrumentation": {
+		type: "enum",
+		values: ["off", "basic", "rich", "ultra"] as const,
+		default: "off",
+		ui: {
+			tab: "context",
+			group: "Session instrumentation",
+			label: "Session instrumentation",
+			description:
+				"Record study data on each tool result and each model turn: how long a tool ran and how much its output weighed, plus when a turn started, its time to first token, and its throughput. Off stores nothing extra. Each level adds more detail (and a little more cost) for studying where a session spent time.",
+			options: [
+				{ value: "off", label: "Off", description: "No study data recorded (default)." },
+				{
+					value: "basic",
+					label: "Basic",
+					description:
+						"Wall-clock only: start, end, and duration per tool call, and request-start, ttft, duration, and the exact params sent per model turn. Free.",
+				},
+				{
+					value: "rich",
+					label: "Rich",
+					description:
+						"Adds a tool call's queue wait, scheduling mode, and result byte/token weight (one tokenizer pass), and a turn's token counts and output tokens/sec.",
+				},
+				{
+					value: "ultra",
+					label: "Ultra",
+					description:
+						"Everything: also a tool call's arguments fingerprint/size, interruptibility, and abort state, and a turn's cache/reasoning token detail and upstream provider. For studying sessions in depth.",
 				},
 			],
 		},

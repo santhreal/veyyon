@@ -152,6 +152,51 @@ setInterval(() => {}, 1000);
 		}
 	}, 20_000);
 
+	// BACKLOG DOG-R2-5: `launch stop` on a PTY daemon reported `exit=1` because the
+	// DOG-2 fix read the signal from `record.process.signalCode` (a Bun.Subprocess
+	// field), but PTY-run daemons carry no such field. The stop path sets
+	// `stopRequested` and sends SIGTERM, so a stopped daemon must report
+	// `signal: "SIGTERM"` and suppress the shell's misleading numeric exit code.
+	// The prior DOG-2 suite only checked snapshot serialization, never a real PTY
+	// stop, which is why the operator-visible regression shipped. This drives the
+	// real broker stop path end to end.
+	it("reports SIGTERM (not a misleading exit code) when a PTY daemon is stopped", async () => {
+		const projectDir = await tempDir("veyyon-daemon-stopsig-project-");
+		const runtimeDir = await tempDir("veyyon-daemon-stopsig-runtime-");
+		const scriptPath = path.join(projectDir, "idle.ts");
+		// Prints READY, then idles forever so the only way out is our stop signal.
+		await Bun.write(scriptPath, `process.stdout.write("READY\\n");\nsetInterval(() => {}, 1000);\n`);
+		const client = await createDaemonBrokerClient(projectDir, { runtimeDir, idleGraceMs: 5_000 });
+		try {
+			const spec: DaemonSpec = {
+				name: "idler",
+				application: process.execPath,
+				args: [scriptPath],
+				env: {},
+				cwd: projectDir,
+				pty: true,
+				ready: { log: "READY", timeoutMs: 5_000 },
+				restart: "no",
+				persist: false,
+				detached: false,
+			};
+			const started = await client.request({ op: "start", spec, owner: "stopsig-client" });
+			expect(started.op).toBe("start");
+			if (started.op !== "start") throw new Error("unexpected start result");
+			expect(started.daemon.state).toBe("ready");
+
+			const stopped = await client.request({ op: "stop", name: "idler", timeoutMs: 2_000 });
+			expect(stopped.op).toBe("stop");
+			if (stopped.op !== "stop") throw new Error("unexpected stop result");
+			expect(stopped.daemon.state).toBe("exited");
+			// The fix: the operator sees the signal, not a shell's exit=1.
+			expect(stopped.daemon.signal).toBe("SIGTERM");
+			expect(stopped.daemon.exitCode).toBeUndefined();
+		} finally {
+			await shutdown(client);
+		}
+	}, 20_000);
+
 	it("stops non-persistent daemons after the last project veyyon exits", async () => {
 		const projectDir = await tempDir("veyyon-daemon-exit-project-");
 		const runtimeDir = await tempDir("veyyon-daemon-exit-runtime-");

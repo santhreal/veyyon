@@ -21,7 +21,7 @@ import { getProjectAgentDir, TempDir } from "@veyyon/utils";
  * When the most-recent kept turn alone exceeds the compaction threshold,
  * `prepareCompaction` keeps it verbatim (findCutPoint never cuts at tool
  * results), so a "successful" compaction leaves context still above threshold.
- * The snapcompact strategy makes this visible: it projects over budget, falls
+ * The summary strategy makes this visible: it projects over budget, falls
  * back to a context-full summary ("could not bring the context under the
  * limit"), and the success tail used to schedule the auto-continue regardless —
  * the next agent_end re-entered #checkCompaction over the same oversized tail and

@@ -6,6 +6,7 @@ import { Settings } from "../../config/settings";
 import type { ToolSession } from "../../tools";
 import {
 	disposeAllVmContexts,
+	disposeVmContextsByOwner,
 	setJsEvalWorkerThreadForTests,
 	setWorkerCloseTimeoutMsForTests,
 } from "../js/context-manager";
@@ -444,5 +445,90 @@ describe.skipIf(process.platform === "win32")("JavaScript eval process isolation
 		});
 		expect(reused.exitCode).toBe(0);
 		expect(reused.output.trim()).toBe("42");
+	});
+});
+
+// WHY THIS SUITE EXISTS (BACKLOG GRAN-11)
+// ---------------------------------------
+// The JS eval worker/subprocess used to have NO owner-scoped or process-exit
+// disposal: `disposeKernelSessionsByOwner` reaped python/ruby/julia on session end
+// and `postmortem.register` reaped them on process exit, but the ONLY JS dispose fn
+// (`disposeAllVmContexts`) had no runtime caller, so `__veyyon_worker_js_eval_process`
+// leaked across sessions for the whole life of the parent process (observed alive
+// >1 day on a running host). The fix makes JS contexts owner-scoped like the kernels:
+// `disposeVmContextsByOwner(ownerId)` reaps the contexts that owner owns, killing the
+// worker only when that owner is the LAST one, and it is wired into AgentSession.dispose
+// (per-session end) plus a postmortem cleanup (process exit). These tests lock that in.
+describe("JS eval context owner-scoped disposal (GRAN-11)", () => {
+	let restoreCloseTimeoutMs = 0;
+	let restoreWorkerThread = false;
+	beforeEach(() => {
+		restoreWorkerThread = setJsEvalWorkerThreadForTests(true);
+		restoreCloseTimeoutMs = setWorkerCloseTimeoutMsForTests(1);
+	});
+	afterEach(async () => {
+		await disposeAllVmContexts();
+		setWorkerCloseTimeoutMsForTests(restoreCloseTimeoutMs);
+		Object.defineProperty(globalThis, "Worker", {
+			configurable: true,
+			writable: true,
+			value: originalWorker,
+		});
+		setJsEvalWorkerThreadForTests(restoreWorkerThread);
+	});
+
+	it("reaps the context on its owning session's disposal, and leaves other owners' contexts alone", async () => {
+		using tempDir = TempDir.createSync("@veyyon-js-owner-dispose-");
+		const stats: FakeWorkerStats = { closeRequests: 0, terminateCalls: 0 };
+		installFakeWorker(stats, { exitOnClose: true, settleRuns: true });
+		const session = makeSession(tempDir.path());
+
+		// A cell runs under owner A: exactly one live context, nothing closed yet.
+		const result = await executeJs("undefined;", {
+			cwd: tempDir.path(),
+			sessionId: "owner-a-session",
+			kernelOwnerId: "owner-A",
+			session,
+		});
+		expect(result.exitCode).toBe(0);
+		expect(stats.closeRequests).toBe(0);
+
+		// Disposing a DIFFERENT owner must not touch owner A's context.
+		await disposeVmContextsByOwner("owner-B");
+		expect(stats.closeRequests).toBe(0);
+
+		// Disposing owner A (its last owner) gracefully closes the worker.
+		await disposeVmContextsByOwner("owner-A");
+		expect(stats.closeRequests).toBe(1);
+	});
+
+	it("keeps a context shared by two owners alive until the LAST owner detaches (ref-counted)", async () => {
+		using tempDir = TempDir.createSync("@veyyon-js-owner-refcount-");
+		const stats: FakeWorkerStats = { closeRequests: 0, terminateCalls: 0 };
+		installFakeWorker(stats, { exitOnClose: true, settleRuns: true });
+		const session = makeSession(tempDir.path());
+
+		// Two owners register against the SAME context (same sessionId/sessionKey).
+		await executeJs("undefined;", {
+			cwd: tempDir.path(),
+			sessionId: "shared-session",
+			kernelOwnerId: "owner-A",
+			session,
+		});
+		await executeJs("undefined;", {
+			cwd: tempDir.path(),
+			sessionId: "shared-session",
+			kernelOwnerId: "owner-B",
+			session,
+		});
+		expect(stats.closeRequests).toBe(0);
+
+		// First owner leaving only decrements the count; the worker stays up.
+		await disposeVmContextsByOwner("owner-A");
+		expect(stats.closeRequests).toBe(0);
+
+		// The last owner leaving closes it.
+		await disposeVmContextsByOwner("owner-B");
+		expect(stats.closeRequests).toBe(1);
 	});
 });

@@ -34,6 +34,7 @@ import { CmuxSocketClient } from "@veyyon/coding-agent/tools/browser/cmux/socket
 import { acquireBrowser } from "@veyyon/coding-agent/tools/browser/registry";
 import { acquireTab, getTabsMapForTest, releaseTab, runInTab } from "@veyyon/coding-agent/tools/browser/tab-supervisor";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
+import { makeToolSession } from "../helpers/tool-session";
 
 function makeKind(socketSuffix: string): CmuxKind {
 	return {
@@ -47,12 +48,12 @@ function makeSession(cwd: string): ToolSession {
 	// Minimal shape: `runInTab` only reads `cwd`, `settings.get("browser.screenshotDir")`,
 	// and `getActiveModel?.()`. Everything else on `ToolSession` is untouched by the
 	// tab-supervisor flow we exercise.
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		settings: { get: () => undefined },
 		getSessionFile: () => null,
-	} as unknown as ToolSession;
+	});
 }
 
 async function drainAllTabs(): Promise<void> {

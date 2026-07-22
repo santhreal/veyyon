@@ -714,9 +714,14 @@ async function spillLargeResultToArtifact(
 	if (truncated.truncatedBy === "middle") {
 		const elidedLines = truncated.elidedLines ?? Math.max(0, truncated.totalLines - outputLines);
 		const elidedBytes = truncated.elidedBytes ?? Math.max(0, truncated.totalBytes - outputBytes);
+		// Use the real kept head/tail split from truncateMiddle. The head and tail windows are
+		// sized by independent byte and line budgets, so a byte-limited head can keep far fewer
+		// lines than the tail; re-deriving an even ceil/floor split here reports wrong line ranges
+		// to the operator (and the LLM reading the notice). Fall back to an even split only when
+		// the source did not carry the counts.
 		const keptLines = Math.max(0, outputLines - 1); // -1 for marker line
-		const headLines = Math.ceil(keptLines / 2);
-		const tailLineCount = keptLines - headLines;
+		const headLines = truncated.headLines ?? Math.ceil(keptLines / 2);
+		const tailLineCount = truncated.tailLines ?? keptLines - headLines;
 		truncationMeta = {
 			direction: "middle",
 			truncatedBy: "middle",

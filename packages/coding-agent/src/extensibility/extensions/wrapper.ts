@@ -11,6 +11,7 @@ import {
 	requiresApproval,
 	resolveEffectiveApprovalMode,
 } from "../../tools/approval";
+import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/cwd-boundary";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
@@ -138,7 +139,27 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			bypassAllApprovals,
 		});
 
-		if (approvalCheck.required) {
+		// Filesystem cwd boundary: a read/write whose target escapes the session
+		// working directory requires explicit permission in every non-yolo mode.
+		// yolo (autonomy or the `/yolo` bypass) opts out of all permission, so it
+		// opts out of this too. The read/write *tier* auto-approves by tier alone
+		// and never inspects the path, so this is the only place out-of-cwd access
+		// is gated. See cwd-boundary.ts. A `deny` already threw above, so this only
+		// adds a prompt; it never downgrades a denial.
+		const boundaryTargets =
+			approvalMode === "yolo" || bypassAllApprovals
+				? []
+				: cwdEscapingTargets(this.tool, params, context?.sessionManager?.getCwd?.() ?? "");
+		const boundaryReason =
+			boundaryTargets.length > 0
+				? formatCwdBoundaryReason(context?.sessionManager?.getCwd?.() ?? "", boundaryTargets)
+				: undefined;
+		const approvalRequired = approvalCheck.required || boundaryReason !== undefined;
+		const approvalReason =
+			[approvalCheck.reason, boundaryReason].filter((part): part is string => part !== undefined).join(" ") ||
+			undefined;
+
+		if (approvalRequired) {
 			const hasApprovalHandlers =
 				this.runner.hasHandlers("tool_approval_requested") || this.runner.hasHandlers("tool_approval_resolved");
 			const sessionId = context?.sessionManager?.getSessionId() ?? "";
@@ -148,7 +169,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 					sessionId,
 					toolName: this.tool.name,
 					toolCallId,
-					...(approvalCheck.reason ? { reason: approvalCheck.reason } : {}),
+					...(approvalReason ? { reason: approvalReason } : {}),
 					approvalMode,
 				});
 			}
@@ -169,8 +190,12 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			if (!this.runner.hasUI()) {
 				const reason = "no interactive UI available";
 				await resolveApproval(false, reason);
+				// Lead with the specific reason (e.g. the cwd-boundary path) so a
+				// headless run reports WHY it was blocked, not only that a prompt was
+				// needed.
+				const detail = approvalReason ? `${approvalReason}\n` : "";
 				throw new Error(
-					`Tool "${this.tool.name}" requires approval but no interactive UI available.\n` +
+					`${detail}Tool "${this.tool.name}" requires approval but no interactive UI available.\n` +
 						`Options:\n` +
 						`  1. Set tools.approvalMode: yolo (or auto-edit / ask) in /settings\n` +
 						`  2. Add tools.approval.${this.tool.name}: allow to config\n` +
@@ -181,7 +206,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			const uiContext = this.runner.getUIContext();
 			let choice: string | undefined;
 			try {
-				choice = await uiContext.select(formatApprovalPrompt(this.tool, params, approvalCheck.reason), [
+				choice = await uiContext.select(formatApprovalPrompt(this.tool, params, approvalReason), [
 					"Approve",
 					"Deny",
 				]);

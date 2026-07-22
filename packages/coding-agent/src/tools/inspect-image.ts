@@ -42,6 +42,22 @@ function parseImageAttachmentReference(path: string): ImageAttachmentReference |
 	return { index: Number(rawIndex) };
 }
 
+/**
+ * Filesystem path this call would read, for the cwd boundary (cwd-boundary.ts).
+ * `inspect_image` reads an image FILE from `params.path` (relative to cwd or
+ * absolute) exactly like `read`, so it must be under the same boundary — without
+ * this, `inspect_image /etc/secret.png` would bypass the gate that `read`
+ * honors. An `Image #N` label or `attachment://N` / `image://N` URI loads from
+ * the turn's in-memory attachments, NOT the filesystem, so those return no
+ * target. Exported to mirror read/write's extraction and keep the arg-shape
+ * knowledge on the tool.
+ */
+export function inspectImageFilesystemTargets(args: unknown): string[] {
+	const raw = (args as { path?: unknown } | null)?.path;
+	if (typeof raw !== "string" || raw.trim().length === 0) return [];
+	return parseImageAttachmentReference(raw) ? [] : [raw];
+}
+
 function formatAvailableImageAttachments(attachments: readonly { label: string; uri: string }[]): string {
 	if (attachments.length === 0) return "none";
 	return attachments.map(attachment => `${attachment.label} -> ${attachment.uri}`).join(", ");
@@ -85,6 +101,9 @@ export interface InspectImageToolDetails {
 export class InspectImageTool implements AgentTool<typeof inspectImageSchema, InspectImageToolDetails> {
 	readonly name = "inspect_image";
 	readonly approval = "read" as const;
+	// `inspect_image` reads a file by path like `read`, so it joins the cwd
+	// boundary: an out-of-cwd image prompts in non-yolo modes. See cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => inspectImageFilesystemTargets(args);
 	readonly label = "InspectImage";
 	readonly loadMode = "discoverable";
 	readonly summary = "Describe or analyze an image file";

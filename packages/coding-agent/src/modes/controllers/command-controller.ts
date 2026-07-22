@@ -11,7 +11,7 @@ import {
 	type UsageReport,
 } from "@veyyon/ai";
 import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/tui";
-import { APP_NAME, CHANGELOG_URL, errorMessage, formatDuration, Snowflake, sanitizeText } from "@veyyon/utils";
+import { APP_NAME, CHANGELOG_URL, clamp01, errorMessage, formatDuration, Snowflake, sanitizeText } from "@veyyon/utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -51,7 +51,50 @@ import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
 
-function showMarkdownPanel(ctx: InteractiveModeContext, title: string, markdown: string): void {
+/**
+ * The slice of the interactive context this controller uses: 33 members of the
+ * 215 `InteractiveModeContext` requires. See `CollabHostContext` for why the
+ * full interface cannot be used as a parameter type: nothing but the real TUI
+ * can satisfy it, so every test has to cast a stub into place unchecked.
+ */
+export type CommandControllerContext = Pick<
+	InteractiveModeContext,
+	| "applyCwdChange"
+	| "bashComponent"
+	| "chatContainer"
+	| "clearTransientSessionUi"
+	| "clearWorkingLoader"
+	| "editor"
+	| "editorContainer"
+	| "flushCompactionQueue"
+	| "focusActiveEditorArea"
+	| "keybindings"
+	| "lspServers"
+	| "mcpManager"
+	| "pendingBashComponents"
+	| "pendingMessagesContainer"
+	| "pendingPythonComponents"
+	| "present"
+	| "pythonComponent"
+	| "rebuildChatFromMessages"
+	| "reloadTodos"
+	| "renderInitialMessages"
+	| "resetObserverRegistry"
+	| "resetTranscript"
+	| "session"
+	| "sessionManager"
+	| "settings"
+	| "showError"
+	| "showHookConfirm"
+	| "showStatus"
+	| "showWarning"
+	| "statusContainer"
+	| "statusLine"
+	| "ui"
+	| "updateEditorBorderColor"
+>;
+
+function showMarkdownPanel(ctx: CommandControllerContext, title: string, markdown: string): void {
 	const block = new TranscriptBlock();
 	block.addChild(new DynamicBorder());
 	block.addChild(new Text(theme.bold(theme.fg("accent", title)), 1, 0));
@@ -62,7 +105,7 @@ function showMarkdownPanel(ctx: InteractiveModeContext, title: string, markdown:
 }
 
 export class CommandController {
-	constructor(private readonly ctx: InteractiveModeContext) {}
+	constructor(private readonly ctx: CommandControllerContext) {}
 
 	openInBrowser(urlOrPath: string): void {
 		openPath(urlOrPath);
@@ -404,7 +447,7 @@ export class CommandController {
 		this.ctx.present([new Spacer(1), new Text(output, 1, 0)]);
 	}
 
-	async handleChangelogCommand(_showFull = false): Promise<void> {
+	async handleChangelogCommand(): Promise<void> {
 		// Release notes live on the website now, not in the terminal. Print the
 		// link and try to open it in the browser (best-effort; harmless if headless).
 		const block = new TranscriptBlock();
@@ -433,7 +476,7 @@ export class CommandController {
 	}
 
 	handleContextCommand(): void {
-		const breakdown = computeContextBreakdown(this.ctx.session, { snapcompactSavings: true });
+		const breakdown = computeContextBreakdown(this.ctx.session);
 		if (breakdown.contextWindow <= 0) {
 			this.ctx.showWarning("Context usage is unavailable: no model is selected for this session.");
 			return;
@@ -1372,7 +1415,7 @@ function formatAccountHeaderRow(
 		const active = report !== undefined && limitMatchesActiveAccount(report, limit, activeAccount);
 		const label = formatAccountLabel(limit, report, index);
 		return {
-			label: active ? `● ${label}` : label,
+			label: active ? `${theme.status.active} ${label}` : label,
 			suffix: reset ? `(${reset})` : "",
 			active,
 		};
@@ -1481,7 +1524,7 @@ function renderUsageBar(limit: UsageLimit, uiTheme: typeof theme, barWidth: numb
 	if (fraction === undefined) {
 		return uiTheme.fg("dim", "·".repeat(barWidth));
 	}
-	const clamped = Math.min(Math.max(fraction, 0), 1);
+	const clamped = clamp01(fraction);
 	const exact = clamped * barWidth;
 	const fullCells = Math.floor(exact);
 	const remainder = exact - fullCells;

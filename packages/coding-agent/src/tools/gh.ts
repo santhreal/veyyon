@@ -681,7 +681,8 @@ function resolveSearchLimit(value: number | undefined): number {
 	return Math.min(Math.floor(value), SEARCH_LIMIT_MAX);
 }
 
-function resolveTailLimit(value: number | undefined): number {
+/** @internal Exported for testing. */
+export function resolveTailLimit(value: number | undefined): number {
 	if (value === undefined) {
 		return RUN_WATCH_TAIL_DEFAULT;
 	}
@@ -690,7 +691,11 @@ function resolveTailLimit(value: number | undefined): number {
 		throw new ToolError("tail must be a positive number");
 	}
 
-	return Math.min(Math.floor(value), RUN_WATCH_TAIL_MAX);
+	// Floor to a whole line count but never below 1. A fractional request in
+	// (0, 1) floors to 0, and `tailLogLines` does `lines.slice(-tail)`, where
+	// `slice(-0)` is `slice(0)` — it would return the ENTIRE log where a tiny
+	// tail was asked for. Clamp up so any positive tail yields at least one line.
+	return Math.min(Math.max(1, Math.floor(value)), RUN_WATCH_TAIL_MAX);
 }
 
 function appendRepoFlag(args: string[], repo: string | undefined, identifier?: string): void {

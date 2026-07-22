@@ -7,7 +7,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { errorMessage } from "@veyyon/utils";
+import { clampLow, errorMessage } from "@veyyon/utils";
 import {
 	enableAutoTheme,
 	getAvailableThemes,
@@ -77,7 +77,7 @@ function renderMockEditor(width: number): string[] {
 }
 
 function renderThemePreview(width: number): string[] {
-	const previewWidth = Math.max(24, Math.min(width, 88));
+	const previewWidth = clampLow(width, 24, 88);
 	return [
 		theme.bold("Preview"),
 		`${theme.fg("success", `${theme.status.success} success`)}  ${theme.fg("warning", `${theme.status.warning} warning`)}  ${theme.fg("error", `${theme.status.error} error`)}  ${theme.fg("accent", "accent")}`,

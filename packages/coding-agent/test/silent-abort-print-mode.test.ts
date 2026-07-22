@@ -8,8 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-import { runPrintMode } from "@veyyon/coding-agent/modes/print-mode";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { type PrintModeSession, runPrintMode } from "@veyyon/coding-agent/modes/print-mode";
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
@@ -33,8 +32,17 @@ function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): Assist
 	};
 }
 
-/** Minimal mock of AgentSession for print-mode text output path */
-function createMockSession(messages: AssistantMessage[]): AgentSession {
+/**
+ * Minimal session for the print-mode text output path.
+ *
+ * Typed as {@link PrintModeSession} with no `as unknown as AgentSession` cast.
+ * That cast is what let this file rot: print mode grew a call to
+ * `displayAssistantContent`, the cast hid that the stub had no such method, and
+ * all four tests below died with `session.displayAssistantContent is not a
+ * function` at runtime. Without the cast, the same omission is a build error in
+ * the same change that introduces it.
+ */
+function createMockSession(messages: AssistantMessage[]): PrintModeSession {
 	return {
 		state: { messages },
 		sessionManager: {
@@ -42,9 +50,18 @@ function createMockSession(messages: AssistantMessage[]): AgentSession {
 		},
 		extensionRunner: undefined,
 		subscribe: () => () => {},
-		prompt: async () => {},
+		// Returns true: the real `prompt` reports whether the turn was accepted, and
+		// the cast used to let this stub return void. Print mode ignores the value
+		// today, but a stub that lies about the signature is how the next drift
+		// goes unnoticed.
+		prompt: async () => true,
 		dispose: async () => {},
-	} as unknown as AgentSession;
+		// Print mode routes stored content through the session's display seam to
+		// expand secret placeholders and argot handles. The real expansion is
+		// covered by print-mode-argot-display.test.ts; here it is identity so the
+		// tests observe exactly the content they supplied.
+		displayAssistantContent: content => content,
+	};
 }
 
 describe("Print-mode silent-abort regression", () => {

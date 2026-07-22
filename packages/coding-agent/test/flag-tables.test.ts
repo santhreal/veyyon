@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { parseArgs } from "../src/cli/args";
-import { OPTIONAL_VALUE_FLAGS, STRING_VALUE_FLAGS } from "../src/cli/flag-tables";
+import {
+	flagConsumesValue,
+	isUnknownLongValueCandidate,
+	OPTIONAL_VALUE_FLAGS,
+	STRING_VALUE_FLAGS,
+} from "../src/cli/flag-tables";
 import { CliUsageError } from "../src/cli/usage-error";
 
 /**
@@ -120,5 +125,68 @@ describe("parseArgs @file parsing with quotes", () => {
 	it("parses single-quoted @'file' arguments", () => {
 		const result = parseArgs(["@'foo bar.png'"]);
 		expect(result.fileArgs).toEqual(["foo bar.png"]);
+	});
+});
+
+/**
+ * isUnknownLongValueCandidate and flagConsumesValue are the pure predicates that decide, during
+ * the subcommand pre-scan (cli-commands.ts) and the launch parser, whether the next argv token is
+ * swallowed as a flag value. They had no direct test (only the parseArgs integration around them).
+ * These pin the exact value-consumption contract so a refactor of the flag tables cannot silently
+ * change how many tokens a flag eats.
+ */
+describe("isUnknownLongValueCandidate", () => {
+	it("flags only an unrecognized --long option with no inline value", () => {
+		expect(isUnknownLongValueCandidate("--unknown")).toBe(true);
+		expect(isUnknownLongValueCandidate("--k=v")).toBe(false); // inline value
+		expect(isUnknownLongValueCandidate("-x")).toBe(false); // short flag
+	});
+
+	it("excludes every known flag (string, optional, or valueless)", () => {
+		expect(isUnknownLongValueCandidate("--cwd")).toBe(false); // string-value flag
+		expect(isUnknownLongValueCandidate("--resume")).toBe(false); // optional-value flag
+		expect(isUnknownLongValueCandidate("--help")).toBe(false); // valueless flag
+	});
+});
+
+describe("flagConsumesValue", () => {
+	it("never consumes when the flag carries an inline value or there is no next token", () => {
+		expect(flagConsumesValue("--foo=bar", "next")).toBe(false);
+		expect(flagConsumesValue("--cwd", undefined)).toBe(false);
+	});
+
+	it("makes a known string-value flag consume any successor, even a flag-looking one", () => {
+		// `--cwd --foo` => cwd is literally "--foo".
+		expect(flagConsumesValue("--cwd", "--foo")).toBe(true);
+		expect(flagConsumesValue("--cwd", "")).toBe(true); // string flags accept an empty value
+	});
+
+	it("makes an unknown --long flag consume only a value-like successor", () => {
+		expect(flagConsumesValue("--unknown", "value")).toBe(true);
+		expect(flagConsumesValue("--unknown", "--x")).toBe(false);
+	});
+
+	it("makes an optional-value flag consume a value-like non-empty successor only", () => {
+		expect(flagConsumesValue("--resume", "sess-1")).toBe(true);
+		expect(flagConsumesValue("--resume", "--x")).toBe(false); // flag-like
+		expect(flagConsumesValue("--resume", "")).toBe(false); // rejectEmpty
+	});
+
+	it("never consumes for a valueless flag", () => {
+		expect(flagConsumesValue("--help", "value")).toBe(false);
+		expect(flagConsumesValue("--help", "--x")).toBe(false);
+	});
+
+	it("gates --plan (an extension-shadowable string flag) on a value-like successor only", () => {
+		// Locks the fix for FINDING-FLAGCONSUMESVALUE-SHADOWABLE-BRANCH-DEAD. --plan is both a
+		// STRING_SETTERS key and the sole EXTENSION_SHADOWABLE_STRING_FLAGS member; the shadowable
+		// branch is now checked BEFORE the broad STRING_VALUE_FLAGS branch so `--plan opus` consumes
+		// the plan name but `--plan --profile work` leaves `--profile` a fresh flag. This must match
+		// profile-bootstrap's needsBoundaryAfterGlobalStrip: if these two paths ever disagree on
+		// whether --plan swallows a flag-looking successor, subcommand detection and the launch parser
+		// carve argv differently and a profile silently stops being selected.
+		expect(flagConsumesValue("--plan", "myplan")).toBe(true);
+		expect(flagConsumesValue("--plan", "--x")).toBe(false);
+		expect(flagConsumesValue("--plan", "")).toBe(true); // empty is value-like (does not start with "-")
 	});
 });

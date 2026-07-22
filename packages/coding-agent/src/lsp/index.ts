@@ -15,7 +15,8 @@ import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
-import { clampTimeout } from "../tools/tool-timeouts";
+import { prependResultNotice } from "../tools/tool-result";
+import { clampTimeout, formatTimeoutClampNotice } from "../tools/tool-timeouts";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import {
 	ensureFileOpen,
@@ -78,6 +79,7 @@ import {
 	formatLocation,
 	formatSymbolInformation,
 	formatWorkspaceEdit,
+	rangeContainsPosition,
 	readLocationContext,
 	resolveDiagnosticTargets,
 	resolveSymbolColumn,
@@ -400,14 +402,6 @@ const REFERENCE_CONTEXT_LIMIT = 50;
 
 const REFERENCES_RETRY_COUNT = 2;
 const REFERENCES_RETRY_DELAY_MS = 250;
-
-function comparePosition(a: Position, b: Position): number {
-	return a.line === b.line ? a.character - b.character : a.line - b.line;
-}
-
-function rangeContainsPosition(range: Location["range"], position: Position): boolean {
-	return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
-}
 
 function isOnlyQueriedDeclaration(locations: Location[], uri: string, position: Position): boolean {
 	return locations.length === 1 && locations[0]?.uri === uri && rangeContainsPosition(locations[0].range, position);
@@ -1514,9 +1508,14 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LspToolDetails>> {
 		const timeoutSec = clampTimeout("lsp", params.timeout);
+		// A clamp changes the budget the agent asked for; surface it on the result
+		// rather than applying it silently (Law 10). LSP actions each build their
+		// own result, so we prepend the notice here in the one shared wrapper.
+		const clampNotice = formatTimeoutClampNotice("lsp", params.timeout, timeoutSec);
 		const operationTimeout = scopedTimeoutSignal(timeoutSec * 1000, signal);
 		try {
-			return await this.executeWithSignal(params, operationTimeout.signal, signal, timeoutSec);
+			const result = await this.executeWithSignal(params, operationTimeout.signal, signal, timeoutSec);
+			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} finally {
 			operationTimeout.cancel();
 		}

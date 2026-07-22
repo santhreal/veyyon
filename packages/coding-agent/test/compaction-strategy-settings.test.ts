@@ -9,22 +9,28 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
 
 describe("compaction strategy settings", () => {
-	it("normalizes legacy strategy tokens to handoff or snap only", () => {
-		expect(normalizeCompactionStrategy("snapcompact")).toBe("snap");
-		expect(normalizeCompactionStrategy("snap")).toBe("snap");
-		expect(normalizeCompactionStrategy("context-full")).toBe("handoff");
-		expect(normalizeCompactionStrategy("shake")).toBe("handoff");
+	// After the image-archive engine was removed, every in-session strategy
+	// (`snap`/`snapcompact`/`context-full`/`shake`) folds to the pure-LLM
+	// `summary` strategy; only `handoff` (session transfer) stays distinct.
+	it("normalizes legacy strategy tokens to handoff or summary only", () => {
+		expect(normalizeCompactionStrategy("snapcompact")).toBe("summary");
+		expect(normalizeCompactionStrategy("snap")).toBe("summary");
+		expect(normalizeCompactionStrategy("summary")).toBe("summary");
+		expect(normalizeCompactionStrategy("context-full")).toBe("summary");
+		expect(normalizeCompactionStrategy("shake")).toBe("summary");
 		expect(normalizeCompactionStrategy("handoff")).toBe("handoff");
-		expect(normalizeCompactionStrategy("off")).toBe("snap");
-		expect(migrateCompactionStrategyValue("snapcompact")).toBe("snap");
+		expect(normalizeCompactionStrategy("off")).toBe("summary");
+		expect(migrateCompactionStrategyValue("snapcompact")).toBe("summary");
 	});
 
 	it("migrates persisted compaction.strategy values on settings load", () => {
+		// A persisted `snap`/`snapcompact` strategy from before the removal now
+		// loads as `summary` (in-place LLM summarization).
 		const fromSnapcompact = Settings.isolated({ "compaction.strategy": "snapcompact" });
-		expect(fromSnapcompact.get("compaction.strategy")).toBe("snap");
+		expect(fromSnapcompact.get("compaction.strategy")).toBe("summary");
 
 		const fromContextFull = Settings.isolated({ "compaction.strategy": "context-full" });
-		expect(fromContextFull.get("compaction.strategy")).toBe("handoff");
+		expect(fromContextFull.get("compaction.strategy")).toBe("summary");
 
 		const fromOff = Settings.isolated({ "compaction.strategy": "off" });
 		expect(fromOff.get("compaction.strategy")).toBe("handoff");

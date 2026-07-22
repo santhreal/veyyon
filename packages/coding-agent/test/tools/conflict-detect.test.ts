@@ -2,8 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
 	type ConflictEntry,
 	ConflictHistory,
+	conflictRegionPresent,
+	conflictRegionsEqual,
 	expandContentTokens,
+	formatConflictSummary,
 	formatConflictWarning,
+	getConflictHistory,
 	parseConflictUri,
 	renderConflictRegion,
 	scanConflictLines,
@@ -181,6 +185,58 @@ describe("ConflictHistory", () => {
 		history.invalidatePath("/abs/a.ts");
 		expect(history.get(1)).toBeUndefined();
 		expect(history.get(2)).toBeDefined();
+	});
+});
+
+/**
+ * Three ConflictHistory surfaces the existing suite leaves unpinned, each load-bearing for the
+ * resolve flow after a `write({ path: "conflict://N" })`:
+ *   - entries() snapshots in insertion (id) order, which is the order the read footer lists conflicts;
+ *   - invalidate(id) drops exactly one entry (called after a single conflict resolves) and leaves the
+ *     rest registered, so an unrelated conflict is not silently forgotten;
+ *   - getConflictHistory lazily attaches ONE history to the session and returns that same instance on
+ *     every later call, so ids registered by one read are still resolvable by a later write.
+ * A regression here loses a registered conflict or hands back a fresh empty history, making a valid
+ * `conflict://N` write fail with "no longer present".
+ */
+describe("ConflictHistory snapshot, single-id invalidate, and session attach", () => {
+	const block = (absolutePath: string, startLine: number) => ({
+		absolutePath,
+		displayPath: absolutePath.replace(/^\/abs\//, ""),
+		startLine,
+		separatorLine: startLine + 2,
+		endLine: startLine + 4,
+		oursLines: ["o"],
+		theirsLines: ["t"],
+	});
+
+	it("entries() returns every registration in ascending id (insertion) order", () => {
+		const history = new ConflictHistory();
+		history.register(block("/abs/a.ts", 10));
+		history.register(block("/abs/b.ts", 20));
+		history.register(block("/abs/c.ts", 30));
+		expect(history.entries().map(e => e.id)).toEqual([1, 2, 3]);
+		expect(history.entries().map(e => e.absolutePath)).toEqual(["/abs/a.ts", "/abs/b.ts", "/abs/c.ts"]);
+	});
+
+	it("invalidate(id) drops only the named entry and keeps the rest", () => {
+		const history = new ConflictHistory();
+		history.register(block("/abs/a.ts", 10));
+		history.register(block("/abs/b.ts", 20));
+		history.invalidate(1);
+		expect(history.get(1)).toBeUndefined();
+		expect(history.get(2)?.absolutePath).toBe("/abs/b.ts");
+		expect(history.entries().map(e => e.id)).toEqual([2]);
+	});
+
+	it("getConflictHistory attaches once and returns the same instance across calls", () => {
+		const session = {} as { conflictHistory?: ConflictHistory };
+		const first = getConflictHistory(session as never);
+		const registered = first.register(block("/abs/a.ts", 10));
+		const second = getConflictHistory(session as never);
+		expect(second).toBe(first);
+		// The id registered through the first handle is visible through the second.
+		expect(second.get(registered.id)?.absolutePath).toBe("/abs/a.ts");
 	});
 });
 
@@ -697,5 +753,115 @@ describe("expandContentTokens", () => {
 
 	it("handles CRLF input lines", () => {
 		expect(expandContentTokens("@ours\r\n@theirs", entry)).toBe("o1\no2\nt1");
+	});
+});
+
+/**
+ * conflictRegionsEqual compares two registered blocks by their reconstructed
+ * marker-block CONTENT (labels and every side), never by id or line number. An
+ * out-of-band edit can shift a block's line numbers between reads, registering a
+ * fresh id while the stale twin persists; callers rely on content identity to
+ * treat a locate-miss for the stale twin as "already resolved" rather than a hard
+ * failure. The equality must therefore ignore startLine/id and catch any body or
+ * label difference, and must distinguish a 2-way from a 3-way block.
+ */
+describe("conflictRegionsEqual", () => {
+	it("treats blocks with identical content but different line numbers/ids as equal", () => {
+		const a = makeEntry({ id: 1, startLine: 2, endLine: 6, oursLabel: "HEAD", theirsLabel: "feat" });
+		const b = makeEntry({ id: 9, startLine: 40, endLine: 44, oursLabel: "HEAD", theirsLabel: "feat" });
+		expect(conflictRegionsEqual(a, b)).toBe(true);
+	});
+
+	it("returns false when a side body differs", () => {
+		const a = makeEntry({ oursLabel: "HEAD", theirsLabel: "feat", oursLines: ["o"] });
+		const b = makeEntry({ oursLabel: "HEAD", theirsLabel: "feat", oursLines: ["X"] });
+		expect(conflictRegionsEqual(a, b)).toBe(false);
+	});
+
+	it("returns false when a marker label differs", () => {
+		const a = makeEntry({ oursLabel: "HEAD", theirsLabel: "feat" });
+		const b = makeEntry({ oursLabel: "OTHER", theirsLabel: "feat" });
+		expect(conflictRegionsEqual(a, b)).toBe(false);
+	});
+
+	it("distinguishes a 2-way block from an otherwise-identical 3-way block", () => {
+		const twoWay = makeEntry({ oursLabel: "HEAD", theirsLabel: "feat" });
+		const threeWay = makeEntry({ oursLabel: "HEAD", theirsLabel: "feat", baseLines: ["b"], baseLabel: "anc" });
+		expect(conflictRegionsEqual(twoWay, threeWay)).toBe(false);
+	});
+
+	it("treats two 3-way blocks with equal content as equal regardless of position", () => {
+		const a = makeEntry({ id: 1, startLine: 2, baseLines: ["b"], baseLabel: "anc", oursLabel: "HEAD" });
+		const b = makeEntry({ id: 2, startLine: 99, baseLines: ["b"], baseLabel: "anc", oursLabel: "HEAD" });
+		expect(conflictRegionsEqual(a, b)).toBe(true);
+	});
+});
+
+/**
+ * conflictRegionPresent reports whether the entry's recorded marker block still
+ * occurs verbatim in the current file text, normalizing CRLF to LF first (recorded
+ * sections are stored LF). It distinguishes a stale re-registration of a
+ * just-resolved region (no longer present) from a distinct byte-identical block
+ * that still lives elsewhere in the file and must stay addressable.
+ */
+describe("conflictRegionPresent", () => {
+	const entry = makeEntry({ oursLabel: "HEAD", theirsLabel: "feat", oursLines: ["o"], theirsLines: ["t"] });
+	const region = ["<<<<<<< HEAD", "o", "=======", "t", ">>>>>>> feat"].join("\n");
+
+	it("finds the recorded region inside an LF file", () => {
+		expect(conflictRegionPresent(`prefix\n${region}\nsuffix\n`, entry)).toBe(true);
+	});
+
+	it("finds the recorded region inside a CRLF file by normalizing first", () => {
+		const crlf = `prefix\n${region}\nsuffix\n`.replace(/\n/g, "\r\n");
+		expect(conflictRegionPresent(crlf, entry)).toBe(true);
+	});
+
+	it("returns false when the region has been resolved away", () => {
+		expect(conflictRegionPresent("prefix\nresolved line\nsuffix\n", entry)).toBe(false);
+	});
+});
+
+/**
+ * formatConflictSummary renders the one-line-per-block index used by the
+ * `<path>:conflicts` read selector: a header with the count and aggregated
+ * ours/theirs/base labels, the NOTICE/shorthand guidance, then one right-padded
+ * `#<id>  L<range>` row per conflict (with a `(3-way)` tag when a base section was
+ * recorded). Pins the count pluralization, label aggregation, id-column padding,
+ * the single-vs-range line label, and the truncation note.
+ */
+describe("formatConflictSummary", () => {
+	it("headers with the pluralized count and display path, one row per conflict", () => {
+		const text = formatConflictSummary(
+			[
+				makeEntry({ id: 1, startLine: 5, endLine: 9, oursLabel: "HEAD", theirsLabel: "feat" }),
+				makeEntry({ id: 2, startLine: 20, endLine: 20, baseLines: ["b"], baseLabel: "anc", oursLabel: "HEAD" }),
+			],
+			{ displayPath: "src/x.ts" },
+		);
+		expect(text).toContain("warn 2 unresolved conflicts in src/x.ts");
+		expect(text).toContain("- ours = HEAD");
+		expect(text).toContain("- base = anc");
+		const rows = text.split("\n").filter(line => line.startsWith("#"));
+		expect(rows).toEqual(["#1  L5-9", "#2  L20  (3-way)"]);
+	});
+
+	it("uses the singular word, a placeholder path, and the truncation note", () => {
+		const text = formatConflictSummary([makeEntry({ id: 1, startLine: 3, endLine: 7 })], {
+			displayPath: "",
+			scanTruncated: true,
+		});
+		expect(text).toContain("warn 1 unresolved conflict in <file>");
+		expect(text).toContain("- note: file scan hit the byte cap");
+	});
+
+	it("right-pads the id column to the widest id so ranges stay aligned", () => {
+		const text = formatConflictSummary(
+			[makeEntry({ id: 2, startLine: 1, endLine: 1 }), makeEntry({ id: 10, startLine: 2, endLine: 2 })],
+			{ displayPath: "f" },
+		);
+		const rows = text.split("\n").filter(line => line.startsWith("#"));
+		// id 2 padded to width 2 with a leading space; id 10 fills the column.
+		expect(rows).toEqual(["# 2  L1", "#10  L2"]);
 	});
 });

@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { MismatchError as HashlineMismatchError } from "@veyyon/hashline";
+import { MismatchError as HashlineMismatchError, HL_MOVE_KEYWORD } from "@veyyon/hashline";
 import hashlineGrammar from "@veyyon/hashline/grammar.lark" with { type: "text" };
 import hashlineDescription from "@veyyon/hashline/prompt.md" with { type: "text" };
 import { errorMessage, prompt } from "@veyyon/utils";
@@ -360,6 +360,42 @@ function extractApprovalPath(args: unknown): string {
 	return typeof targetPath === "string" && targetPath.length > 0 ? targetPath : "(unknown)";
 }
 
+/**
+ * Every real filesystem path an edit call would touch, for the cwd boundary
+ * (see cwd-boundary.ts). Unlike {@link extractApprovalPath} (which returns a
+ * single display path), this collects ALL targets: the `path` arg plus every
+ * file named by an apply-patch body (`*** Add|Update|Delete File:`), since one
+ * apply-patch call can mutate several files. Hashline `[path#TAG]` wrappers are
+ * unwrapped so they cannot dodge the boundary. A move/rename DESTINATION is
+ * collected too (both formats can move: the apply-patch `*** Move to: <dest>`
+ * and the hashline `MV <dest>` line), because a move writes the file to a NEW
+ * path that may escape cwd even when the source file is inside it. Selector/
+ * scheme filtering is left to the boundary.
+ */
+export function editFilesystemTargets(args: unknown): string[] {
+	const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+	const targets: string[] = [];
+	if (typeof record.path === "string" && record.path.length > 0) targets.push(record.path);
+	const input = typeof record.input === "string" ? record.input : undefined;
+	if (input) {
+		for (const match of input.matchAll(/^\[([^#\r\n]+)(?:#[0-9a-fA-F]{4})?\]/gm)) {
+			if (match[1]) targets.push(match[1]);
+		}
+		for (const match of input.matchAll(/^\*\*\* (?:Add|Update|Delete) File:\s*(.+)$/gm)) {
+			if (match[1]) targets.push(match[1].trim());
+		}
+		// Move/rename destinations. Over-matching only over-prompts (fail-closed);
+		// missing one would let an out-of-cwd move dodge the boundary.
+		for (const match of input.matchAll(/^\*\*\* Move to:\s*(.+)$/gm)) {
+			if (match[1]) targets.push(match[1].trim());
+		}
+		for (const match of input.matchAll(new RegExp(String.raw`^\s*${HL_MOVE_KEYWORD}\s+(.+)$`, "gm"))) {
+			if (match[1]) targets.push(match[1].trim());
+		}
+	}
+	return targets;
+}
+
 export class EditTool implements AgentTool<TInput> {
 	readonly approval = (args: unknown) => {
 		const targetPath = extractApprovalPath(args);
@@ -368,6 +404,9 @@ export class EditTool implements AgentTool<TInput> {
 	readonly formatApprovalDetails = (args: unknown): string[] => [
 		`File: ${truncateForPrompt(extractApprovalPath(args))}`,
 	];
+	// The cwd boundary gates out-of-cwd edits in non-yolo modes; an apply-patch
+	// body can touch several files, so all are reported. See cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => editFilesystemTargets(args);
 	readonly name = "edit";
 	readonly label = "Edit";
 	readonly loadMode = "essential";

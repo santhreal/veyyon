@@ -30,7 +30,30 @@ export function parseQuery(query: string): Array<string | number> {
 			continue;
 		}
 		if (ch === "[") {
-			const closeIndex = input.indexOf("]", i + 1);
+			// A quoted key ends at its closing quote (honoring backslash escapes), so a
+			// "]" inside the quotes belongs to the key and must not terminate the bracket.
+			// Fall back to the first "]" only for unquoted (numeric or bareword) content.
+			let scan = i + 1;
+			while (scan < input.length && (input[scan] === " " || input[scan] === "\t")) scan++;
+			const quoteChar = input[scan];
+			let closeIndex: number;
+			if (quoteChar === '"' || quoteChar === "'") {
+				let j = scan + 1;
+				while (j < input.length) {
+					if (input[j] === "\\") {
+						j += 2;
+						continue;
+					}
+					if (input[j] === quoteChar) break;
+					j++;
+				}
+				if (j >= input.length) {
+					throw new Error(`Invalid query: unterminated quoted key in ${query}`);
+				}
+				closeIndex = input.indexOf("]", j + 1);
+			} else {
+				closeIndex = input.indexOf("]", i + 1);
+			}
 			if (closeIndex === -1) {
 				throw new Error(`Invalid query: missing ] in ${query}`);
 			}

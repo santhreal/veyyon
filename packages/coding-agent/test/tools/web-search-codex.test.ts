@@ -173,6 +173,27 @@ function makePlainUrlPunctuationSseResponse(model: string): string {
 	].join("\n");
 }
 
+/**
+ * Build an SSE response whose single output item carries `text` as answer prose
+ * with NO url_citation annotations, forcing searchCodex onto its extractTextSources
+ * fallback. One generic builder keeps the URL-extraction edge cases from each
+ * needing its own near-identical helper.
+ */
+function makeAnswerTextSseResponse(model: string, text: string, id: string): string {
+	return [
+		`data: ${JSON.stringify({
+			type: "response.output_item.done",
+			item: {
+				type: "message",
+				content: [{ type: "output_text", text, annotations: [] }],
+			},
+		})}`,
+		"",
+		`data: ${JSON.stringify({ type: "response.completed", response: { id, model } })}`,
+		"",
+	].join("\n");
+}
+
 describe("searchCodex model selection", () => {
 	const fakeAuthStorage = {
 		async getOAuthAccess() {
@@ -410,6 +431,74 @@ describe("searchCodex model selection", () => {
 				url: "https://en.wikipedia.org/wiki/Function_(mathematics)",
 			},
 		]);
+	});
+
+	// The url_citation-absent fallback (extractTextSources -> normalizeExtractedUrl)
+	// cleans links out of prose the model wrote. These pin the trimming rules that
+	// the earlier markdown/plain/parentheses/punctuation tests do not: unmatched
+	// closing brackets, the full trailing-punctuation set, non-http scheme
+	// rejection, and dedup of a URL cited both as a markdown link and bare.
+	it("strips unmatched closing brackets and trailing !/? from bare URLs", async () => {
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		// a] and b} have an unmatched ] / } (no opener), c! and d? trail punctuation.
+		const text =
+			"Grab https://example.com/a] then https://example.com/b} and https://example.com/c! plus https://example.com/d?";
+		const result = await searchCodex(
+			makeSearchParams(
+				"bracket trimming",
+				mockCodexFetch("gpt-5.4", makeAnswerTextSseResponse("gpt-5.4", text, "resp_brackets")),
+			),
+		);
+
+		expect(result.sources).toEqual([
+			{ title: "https://example.com/a", url: "https://example.com/a" },
+			{ title: "https://example.com/b", url: "https://example.com/b" },
+			{ title: "https://example.com/c", url: "https://example.com/c" },
+			{ title: "https://example.com/d", url: "https://example.com/d" },
+		]);
+	});
+
+	it("strips trailing semicolon, colon, and apostrophe from bare URLs", async () => {
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		const text = "Mixed https://example.com/x; and https://example.com/y: and https://example.com/z'";
+		const result = await searchCodex(
+			makeSearchParams(
+				"punct trimming",
+				mockCodexFetch("gpt-5.4", makeAnswerTextSseResponse("gpt-5.4", text, "resp_punct2")),
+			),
+		);
+
+		expect(result.sources).toEqual([
+			{ title: "https://example.com/x", url: "https://example.com/x" },
+			{ title: "https://example.com/y", url: "https://example.com/y" },
+			{ title: "https://example.com/z", url: "https://example.com/z" },
+		]);
+	});
+
+	it("drops markdown links whose URL is not http(s) and keeps the valid one", async () => {
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		// ftp:// and scheme-less www. links must not become sources; only Good survives.
+		const text =
+			"See [Good](https://example.com/keep) and [Bad](ftp://example.com/drop) and [None](www.example.com/nope).";
+		const result = await searchCodex(
+			makeSearchParams(
+				"scheme rejection",
+				mockCodexFetch("gpt-5.4", makeAnswerTextSseResponse("gpt-5.4", text, "resp_scheme")),
+			),
+		);
+
+		expect(result.sources).toEqual([{ title: "Good", url: "https://example.com/keep" }]);
+	});
+
+	it("dedups a URL cited as both a markdown link and a bare mention, keeping the link title", async () => {
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		const text = "Cite [Article](https://example.com/a) and again bare https://example.com/a here.";
+		const result = await searchCodex(
+			makeSearchParams("dedup", mockCodexFetch("gpt-5.4", makeAnswerTextSseResponse("gpt-5.4", text, "resp_dedup"))),
+		);
+
+		// The markdown pass runs first, so the "Article" title wins over the bare URL title.
+		expect(result.sources).toEqual([{ title: "Article", url: "https://example.com/a" }]);
 	});
 
 	it("prefers streamed text when the final item only contains an image placeholder", async () => {

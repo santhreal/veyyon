@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { ghostSunBar } from "../../../src/modes/components/composer-chrome";
-import { renderSunField, type SunFieldOptions, sunMark } from "../../../src/modes/components/sun";
+import {
+	EMBER,
+	emberBandEscape,
+	GLYPH,
+	renderEmberField,
+	renderSunField,
+	renderSunsetField,
+	type SunFieldOptions,
+	sunMark,
+} from "../../../src/modes/components/sun";
+
+/** The truecolor fg escape for an ember band, derived from the exported ramp so
+ *  these tests pin the band-SELECTION logic while brand-conformance pins the ramp
+ *  values themselves. */
+const fgTrue = (band: number) => `\x1b[38;2;${EMBER[band].join(";")}m`;
 
 /** Strip SGR escapes so we can assert on the glyph geometry. */
 function strip(s: string): string {
@@ -176,31 +189,124 @@ describe("sunMark (the launch-signature recipe)", () => {
 	});
 });
 
-describe("ghostSunBar (the resting mark on the composer horizon)", () => {
-	test("at rest it is a smooth symmetric dome, never a dither slice", () => {
-		const bar = ghostSunBar(true, 0);
-		expect(bar).not.toBeNull();
-		const glyphs = strip(bar as string);
-		expect(glyphs).toBe("▁▃▆█▆▃▁");
-		// The old implementation sliced the dithered sun field, which painted
-		// `·░▒▒▒░··` — one row of ordered dither reads as terminal corruption.
-		expect(glyphs).not.toMatch(/[·:░▒▓]/);
+// emberBandEscape maps a 0..1 heat ratio to a foreground escape on the ember
+// ramp. The contract that matters is the band-selection formula (band =
+// 2 + round(ratio * 5), clamped): the cold end starts at band 2 so text stays
+// legible, the hot end reaches band 7, and it never leaves the ramp. These lock
+// that formula so a refactor cannot quietly start text at band 0 (near-black,
+// illegible) or run off the end of the array.
+describe("emberBandEscape (heat ratio → ember fg)", () => {
+	test("ratio 0 is the cold coal band (band 2), not near-black band 0", () => {
+		expect(emberBandEscape(0, true)).toBe(fgTrue(2));
 	});
 
-	test("sinking shrinks the dome monotonically and ends in null", () => {
-		let prev = strip(ghostSunBar(true, 0) as string).replace(/ /g, "").length;
-		for (const sink of [0.25, 0.5, 0.75]) {
-			const bar = ghostSunBar(true, sink);
-			const cells = bar === null ? 0 : strip(bar).replace(/ /g, "").length;
-			expect(cells).toBeLessThan(prev);
-			prev = cells;
-		}
-		expect(ghostSunBar(true, 1)).toBeNull();
+	test("ratio 1 is white-hot (band 7)", () => {
+		expect(emberBandEscape(1, true)).toBe(fgTrue(7));
 	});
 
-	test("non-truecolor terminals get the 256-colour ember ramp, same silhouette", () => {
-		const bar = ghostSunBar(false, 0);
-		expect(strip(bar as string)).toBe("▁▃▆█▆▃▁");
-		expect(bar).toContain("\x1b[38;5;");
+	test("walks the ramp bands 2→7 in even steps as heat rises", () => {
+		// 2 + round(r*5) for r = 0, .2, .4, .6, .8, 1 → bands 2,3,4,5,6,7.
+		expect([0, 0.2, 0.4, 0.6, 0.8, 1].map(r => emberBandEscape(r, true))).toEqual([2, 3, 4, 5, 6, 7].map(fgTrue));
+	});
+
+	test("clamps out-of-range ratios to the ramp ends", () => {
+		expect(emberBandEscape(-5, true)).toBe(emberBandEscape(0, true));
+		expect(emberBandEscape(9, true)).toBe(emberBandEscape(1, true));
+	});
+
+	test("256-colour mode emits a 256 escape, distinct per end, never truecolor", () => {
+		const cold = emberBandEscape(0, false);
+		const hot = emberBandEscape(1, false);
+		expect(cold).toMatch(/^\x1b\[38;5;\d+m$/);
+		expect(hot).toMatch(/^\x1b\[38;5;\d+m$/);
+		expect(cold).not.toBe(hot);
+		expect(cold).not.toContain("38;2;");
+	});
+});
+
+// renderSunsetField is the ceremony's closing beat: a dithered sky painted as
+// background cells, an ember sun cap poking above a hot horizon rule, and sparks
+// drifting up. These pin the frame's structure — line count, the horizon rule,
+// the page-black ground below it, custom horizon placement, sky-as-background vs
+// sun-as-foreground, determinism, and the 256 fallback.
+describe("renderSunsetField (the sunset finale)", () => {
+	const BASE_SUNSET = { cols: 40, rows: 12, time: 0.3, trueColor: true } as const;
+	// horizonY defaults to round(rows * 0.78) → round(9.36) = 9.
+	const DEFAULT_HORIZON = 9;
+
+	test("returns exactly `rows` lines", () => {
+		expect(renderSunsetField(BASE_SUNSET).length).toBe(12);
+	});
+
+	test("the horizon is one solid rule of `cols` dashes", () => {
+		const out = renderSunsetField(BASE_SUNSET);
+		expect(strip(out[DEFAULT_HORIZON])).toBe("─".repeat(40));
+		expect(out[DEFAULT_HORIZON]).toContain("\x1b[38;2;251;192;109m"); // the hot horizon color
+	});
+
+	test("everything below the horizon is empty — the ground stays page-black", () => {
+		const out = renderSunsetField(BASE_SUNSET);
+		for (let y = DEFAULT_HORIZON + 1; y < 12; y++) expect(out[y]).toBe("");
+	});
+
+	test("a custom horizonY moves the rule and the empty ground with it", () => {
+		const out = renderSunsetField({ ...BASE_SUNSET, horizonY: 3 });
+		expect(strip(out[3])).toBe("─".repeat(40));
+		expect(out[4]).toBe("");
+	});
+
+	test("sky is painted as background cells, the sun cap as foreground glyphs", () => {
+		const above = renderSunsetField(BASE_SUNSET).slice(0, DEFAULT_HORIZON);
+		const joined = above.join("");
+		expect(joined).toContain("\x1b[48;2;"); // truecolor background = sky
+		expect(strip(joined)).toMatch(/[░▒▓█]/); // an ember glyph = the sun cap above the line
+	});
+
+	test("is deterministic for a fixed time", () => {
+		expect(renderSunsetField(BASE_SUNSET)).toEqual(renderSunsetField(BASE_SUNSET));
+	});
+
+	test("256-colour mode uses the 256 ramps, never truecolor", () => {
+		const joined = renderSunsetField({ ...BASE_SUNSET, trueColor: false }).join("");
+		expect(joined).toContain("\x1b[48;5;");
+		expect(joined).not.toContain("\x1b[48;2;");
+		expect(joined).not.toContain("\x1b[38;2;");
+	});
+});
+
+// renderEmberField is the churn texture with no disc — the material the pause
+// bars are cut from. These pin its rectangular shape, that every cell is a ramp
+// glyph, determinism per (time, seed), that the seed actually decorrelates two
+// fields, that base raises the heat, and the 256 fallback.
+describe("renderEmberField (the churn texture)", () => {
+	const BASE_EMBER = { cols: 24, rows: 4, time: 0.3, trueColor: true } as const;
+	const GLYPH_SET = new Set<string>(GLYPH);
+
+	test("returns a full `rows` × `cols` grid of ramp glyphs", () => {
+		const out = renderEmberField(BASE_EMBER);
+		expect(out.length).toBe(4);
+		for (const line of out) expect([...strip(line)].length).toBe(24);
+		expect([...strip(out.join(""))].every(c => GLYPH_SET.has(c))).toBe(true);
+	});
+
+	test("is deterministic for a fixed time and seed", () => {
+		expect(renderEmberField(BASE_EMBER)).toEqual(renderEmberField(BASE_EMBER));
+	});
+
+	test("the seed decorrelates two fields so they don't churn in lockstep", () => {
+		expect(renderEmberField({ ...BASE_EMBER, seed: 0 })).not.toEqual(renderEmberField({ ...BASE_EMBER, seed: 100 }));
+	});
+
+	test("a higher base raises the heat — more solid cells", () => {
+		const solids = (lines: string[]) => [...strip(lines.join(""))].filter(c => c === "█").length;
+		const cool = solids(renderEmberField({ ...BASE_EMBER, base: 0.1 }));
+		const hot = solids(renderEmberField({ ...BASE_EMBER, base: 0.95 }));
+		expect(hot).toBeGreaterThan(cool);
+	});
+
+	test("256-colour mode uses the 256 ramp, never truecolor", () => {
+		const joined = renderEmberField({ ...BASE_EMBER, trueColor: false }).join("");
+		expect(joined).toContain("\x1b[38;5;");
+		expect(joined).not.toContain("\x1b[38;2;");
 	});
 });

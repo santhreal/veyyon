@@ -4,7 +4,7 @@ import * as evalIndex from "@veyyon/coding-agent/eval";
 import * as pyKernel from "@veyyon/coding-agent/eval/py/kernel";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool } from "@veyyon/coding-agent/tools/eval";
-import { resolveEvalBackends } from "@veyyon/coding-agent/tools/eval-backends";
+import { readEvalBackendsAllowance, resolveEvalBackends } from "@veyyon/coding-agent/tools/eval-backends";
 
 let originalPiPy: string | undefined;
 let originalPiJs: string | undefined;
@@ -155,5 +155,61 @@ describe("EvalTool language dispatch", () => {
 				code: "const x = 1;",
 			}),
 		).rejects.toThrow(/VEYYON_JS=0/);
+	});
+});
+
+/**
+ * readEvalBackendsAllowance is the pure settings layer under resolveEvalBackends (which then applies
+ * the VEYYON_* env overrides). Its default matrix is a real product contract that had no direct test:
+ * Python and JavaScript are enabled by default, while Ruby and Julia are OFF by default (they need a
+ * deliberate opt-in). A regression flipping any default silently changes which languages the eval
+ * tool will run out of the box. The VEYYON_* env vars are cleared here so the defaults are deterministic
+ * regardless of the ambient environment (this reads settings only; the env overrides live one layer up).
+ */
+describe("readEvalBackendsAllowance defaults", () => {
+	let savedPy: string | undefined;
+	let savedJs: string | undefined;
+	let savedRb: string | undefined;
+	let savedJl: string | undefined;
+
+	beforeEach(() => {
+		savedPy = Bun.env.VEYYON_PY;
+		savedJs = Bun.env.VEYYON_JS;
+		savedRb = Bun.env.VEYYON_RB;
+		savedJl = Bun.env.VEYYON_JL;
+		delete Bun.env.VEYYON_PY;
+		delete Bun.env.VEYYON_JS;
+		delete Bun.env.VEYYON_RB;
+		delete Bun.env.VEYYON_JL;
+	});
+
+	afterEach(() => {
+		restoreEnv("VEYYON_PY", savedPy);
+		restoreEnv("VEYYON_JS", savedJs);
+		restoreEnv("VEYYON_RB", savedRb);
+		restoreEnv("VEYYON_JL", savedJl);
+	});
+
+	it("enables Python and JavaScript by default and leaves Ruby and Julia off", () => {
+		expect(readEvalBackendsAllowance(makeSession(Settings.isolated()))).toEqual({
+			python: true,
+			js: true,
+			ruby: false,
+			julia: false,
+		});
+	});
+
+	it("returns each backend's explicit setting when configured", () => {
+		const settings = Settings.isolated();
+		settings.set("eval.py", false);
+		settings.set("eval.js", false);
+		settings.set("eval.rb", true);
+		settings.set("eval.jl", true);
+		expect(readEvalBackendsAllowance(makeSession(settings))).toEqual({
+			python: false,
+			js: false,
+			ruby: true,
+			julia: true,
+		});
 	});
 });

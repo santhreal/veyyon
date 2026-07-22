@@ -12,6 +12,7 @@ import {
 	type WorkerHandle,
 	workerEnvFromParent,
 } from "../subprocess/worker-client";
+import { MNEMOPI_EMBED_WORKER_ARG } from "../worker-args";
 import type { MnemopiEmbedModelId, MnemopiEmbedWorkerInbound, MnemopiEmbedWorkerOutbound } from "./embed-protocol";
 
 /**
@@ -32,7 +33,6 @@ type PendingRequest =
  * Hidden subcommand on the main CLI that boots the mnemopi embeddings worker
  * in the spawned subprocess. Kept in sync with the dispatch in `cli.ts`.
  */
-export const MNEMOPI_EMBED_WORKER_ARG = "__veyyon_worker_mnemopi_embed";
 
 /**
  * Spawn the mnemopi embeddings worker as a subprocess. Exported for tests and

@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/utils";
+import { clampLow, logger } from "@veyyon/utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { MCPServerConfig } from "./types";
 
@@ -121,11 +121,12 @@ export class SmitheryRegistryError extends Error {
 	}
 }
 
-function clampLimit(limit: number | undefined): number {
+function clampRegistryLimit(limit: number | undefined): number {
+	// 0/undefined/NaN mean "unspecified" here, so they fall back to the page-size
+	// default (20) rather than clamping to the low bound; a real value is truncated
+	// and clamped into [1, 100] via the shared clampLow owner.
 	if (!limit || Number.isNaN(limit)) return 20;
-	if (limit < 1) return 1;
-	if (limit > 100) return 100;
-	return Math.trunc(limit);
+	return clampLow(Math.trunc(limit), 1, 100);
 }
 
 function matchesIdentityQuery(query: string, entry: SmitherySearchEntry): boolean {
@@ -403,7 +404,7 @@ export async function searchSmitheryRegistry(
 	const query = keyword.trim();
 	if (!query) return [];
 
-	const limit = clampLimit(options?.limit);
+	const limit = clampRegistryLimit(options?.limit);
 	const isSemantic = options?.includeSemantic === true;
 	const pageSize = Math.max(limit * 2, 20);
 	const headers = new Headers();

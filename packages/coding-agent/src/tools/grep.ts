@@ -42,6 +42,7 @@ import {
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../utils/zip";
 import type { ToolSession } from ".";
+import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
@@ -897,6 +898,9 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 		const a = args as { path?: string | string[]; paths?: string | string[] };
 		return toPathList(a.path ?? a.paths).some(pathTargetsSsh) ? "exec" : "read";
 	};
+	// grep reads file contents under its search path, so an out-of-cwd search
+	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
 	readonly label = "Grep";
 	readonly loadMode = "discoverable";
 	readonly summary = "Grep file contents using ripgrep (fast regex search)";

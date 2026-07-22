@@ -15,6 +15,7 @@ import {
 } from "@veyyon/coding-agent/edit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeSyncWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Test-local adapters over the production Codex envelope API.
@@ -807,7 +808,7 @@ describe("EditTool create-over-existing mode split", () => {
 	let tempDir: string;
 
 	function makeSession(cwd: string, editMode: "patch" | "apply_patch"): ToolSession {
-		return {
+		return makeToolSession({
 			cwd,
 			hasUI: false,
 			getSessionFile: () => null,
@@ -817,7 +818,7 @@ describe("EditTool create-over-existing mode split", () => {
 			getArtifactsDir: () => null,
 			getSessionId: () => null,
 			getPlanModeState: () => undefined,
-		} as unknown as ToolSession;
+		});
 	}
 
 	beforeEach(async () => {

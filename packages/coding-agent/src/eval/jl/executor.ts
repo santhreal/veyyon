@@ -1,8 +1,15 @@
 import * as path from "node:path";
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
-import { attachSessionOwner, createCancelledKernelResult, executeWithKernelBase } from "../executor-base";
-import { ensurePyToolBridge, type PyToolBridgeInfo } from "../py/tool-bridge";
+import {
+	attachSessionOwner,
+	createCancelledKernelResult,
+	executeWithKernelBase,
+	getRemainingTimeoutMs,
+	isCancellationError as isCancellationErrorBase,
+	isTimedOutCancellation as isTimedOutCancellationBase,
+} from "../executor-base";
+import { ensureKernelToolBridge, type KernelToolBridgeInfo } from "../kernel-tool-bridge";
 import type { EvalDisplayOutput, EvalStatusEvent } from "../types";
 import {
 	checkJuliaKernelAvailability,
@@ -30,7 +37,7 @@ export interface JuliaExecutorOptions {
 	kernelOwnerId?: string;
 	reset?: boolean;
 	toolSession?: ToolSession;
-	bridge?: PyToolBridgeInfo;
+	bridge?: KernelToolBridgeInfo;
 	bridgeSessionId?: string;
 	artifactId?: string;
 }
@@ -100,36 +107,31 @@ function buildSessionKey(sessionId: string, cwd: string, interpreter: string | u
 	return `${sessionId}::${normalizedCwd}::${normalizedInterpreter}`;
 }
 
+// Cancellation classification is owned by executor-base; these bind the Julia
+// cancelled-error class and delegate. The shared versions handle a DOMException
+// timeout/abort reason explicitly (on both the error and `signal.reason`),
+// which the previous local copies only caught because Bun happens to make
+// DOMException a subclass of Error — a runtime quirk, not a guarantee.
 function isCancellationError(error: unknown): boolean {
-	if (error instanceof JuliaExecutionCancelledError) return true;
-	if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return true;
-	if (
-		error &&
-		typeof error === "object" &&
-		"name" in error &&
-		(error.name === "AbortError" || error.name === "TimeoutError")
-	)
-		return true;
-	return false;
+	return isCancellationErrorBase(error, JuliaExecutionCancelledError);
 }
 
 function isTimedOutCancellation(error: unknown, signal?: AbortSignal): boolean {
-	if (error instanceof JuliaExecutionCancelledError) return error.timedOut;
-	if (error instanceof Error && error.name === "TimeoutError") return true;
-	if (error && typeof error === "object" && "name" in error && error.name === "TimeoutError") return true;
-	if (signal?.reason instanceof Error && signal.reason.name === "TimeoutError") return true;
-	return false;
+	return isTimedOutCancellationBase(error, JuliaExecutionCancelledError, signal);
 }
 
-function getExecutionDeadlineMs(options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">): number | undefined {
+// Kept local (not the shared executor-base owner) on purpose: unlike py/rb, jl
+// treats `timeoutMs === 0` as "no timeout" (returns undefined) rather than an
+// immediate deadline. The shared `getExecutionDeadlineMs` returns `Date.now()`
+// for a zero timeout; jl's kernel path would then reject a still-valid session
+// as already expired. The `> 0` guard is the intentional difference; see the
+// getExecutionDeadlineMs test in julia-cancellation-helpers.test.ts.
+export function getExecutionDeadlineMs(
+	options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">,
+): number | undefined {
 	if (options?.deadlineMs !== undefined) return options.deadlineMs;
 	if (options?.timeoutMs !== undefined && options.timeoutMs > 0) return Date.now() + options.timeoutMs;
 	return undefined;
-}
-
-function getRemainingTimeoutMs(deadlineMs?: number): number | undefined {
-	if (deadlineMs === undefined) return undefined;
-	return Math.max(0, deadlineMs - Date.now());
 }
 
 function requireRemainingTimeoutMs(deadlineMs?: number): number | undefined {
@@ -188,15 +190,22 @@ function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, kernelKill
 	return `[execution timed out after ${rounded}s${explanation}]`;
 }
 
-function createCancelledJuliaResult(_timedOut: boolean, timeoutMs?: number): JuliaResult {
-	const output = formatTimeoutAnnotation(timeoutMs) ?? "[execution cancelled]\n";
+export function createCancelledJuliaResult(timedOut: boolean, timeoutMs?: number): JuliaResult {
+	// Honor the `timedOut` flag so a timed-out cell is labeled as a timeout, not a
+	// generic cancellation. Previously this argument was ignored and the annotation
+	// keyed only on `timeoutMs`, which the outer catch never passes, so EVERY
+	// cancelled Julia cell (timeout or plain abort) rendered "[execution cancelled]"
+	// and the timeout signal was lost. Julia keeps its own bracketed wording (its
+	// kernel-recovery model differs from the python/ruby interrupt+reset flow), but
+	// now a timeout is distinguishable: "[cell timed out ...]" vs "[execution cancelled]".
+	const output = timedOut ? (formatTimeoutAnnotation(timeoutMs) ?? "[cell timed out]\n") : "[execution cancelled]\n";
 	return createCancelledKernelResult(output);
 }
 
 function buildKernelEnvPatch(options: {
 	sessionFile?: string;
 	artifactsDir?: string;
-	bridge?: PyToolBridgeInfo;
+	bridge?: KernelToolBridgeInfo;
 	bridgeSessionId?: string;
 	localRoots?: Record<string, string>;
 }): Record<string, string | undefined> {
@@ -217,7 +226,7 @@ function buildKernelEnvPatch(options: {
 function buildKernelEnv(options: {
 	sessionFile?: string;
 	artifactsDir?: string;
-	bridge?: PyToolBridgeInfo;
+	bridge?: KernelToolBridgeInfo;
 	bridgeSessionId?: string;
 	localRoots?: Record<string, string>;
 }): Record<string, string> | undefined {
@@ -441,7 +450,7 @@ async function ensureKernelAvailable(cwd: string, options: JuliaExecutorOptions)
 async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 	if (!options.toolSession || options.bridge) return;
 	try {
-		options.bridge = await ensurePyToolBridge();
+		options.bridge = await ensureKernelToolBridge();
 	} catch (err) {
 		logger.warn("Failed to start Julia tool bridge", {
 			error: errorMessage(err),

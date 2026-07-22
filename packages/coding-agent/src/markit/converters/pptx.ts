@@ -1,7 +1,8 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import * as path from "node:path";
 import { XMLParser } from "fast-xml-parser";
-import { unzip, unzipText } from "../../utils/zip";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
+import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
 const EXTENSIONS = [".pptx"];
@@ -188,17 +189,10 @@ export class PptxConverter implements Converter {
 				if (!rEmbed) continue;
 				const target = slideRelMap.get(rEmbed);
 				if (!target) continue;
-				// Resolve relative target against slide directory
-				const imagePath = target.startsWith("/") ? target.slice(1) : `ppt/slides/${target}`;
-				// Normalize path (e.g. ppt/slides/../media/image1.png → ppt/media/image1.png)
-				const normalizedPath = imagePath
-					.split("/")
-					.reduce<string[]>((parts, seg) => {
-						if (seg === "..") parts.pop();
-						else parts.push(seg);
-						return parts;
-					}, [])
-					.join("/");
+				// Resolve the rel Target against the slide directory (e.g.
+				// ../media/image1.png → ppt/media/image1.png), decoding and normalizing
+				// through the shared archive-member resolver.
+				const normalizedPath = resolveArchiveMemberPath("ppt/slides", target);
 				const buf = entries[normalizedPath];
 				if (!buf) continue;
 				imageCount++;
@@ -309,11 +303,11 @@ export class PptxConverter implements Converter {
 		if (mdRows.length === 0) return null;
 		const [header, ...body] = mdRows;
 		const lines: string[] = [];
-		lines.push(`| ${header.join(" | ")} |`);
+		lines.push(`| ${header.map(escapeMarkdownTableCell).join(" | ")} |`);
 		lines.push(`| ${header.map(() => "---").join(" | ")} |`);
 		for (const row of body) {
 			while (row.length < header.length) row.push("");
-			lines.push(`| ${row.join(" | ")} |`);
+			lines.push(`| ${row.map(escapeMarkdownTableCell).join(" | ")} |`);
 		}
 		return lines.join("\n");
 	}

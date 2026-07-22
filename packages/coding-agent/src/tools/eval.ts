@@ -20,7 +20,7 @@ import { upsertStatusEvent } from "./eval-render";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "./output-meta";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
-import { clampTimeout } from "./tool-timeouts";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
 
 export { EVAL_DEFAULT_PREVIEW_LINES, evalToolRenderer } from "./eval-render";
 
@@ -85,7 +85,7 @@ function enabledEvalLanguages(backends: EvalBackendsAllowance): EvalLanguageToke
 
 const evalCellCommonFields = {
 	"title?": type("string").describe('short label shown in transcript (e.g. "imports", "load config")'),
-	"timeout?": type("number").describe("timeout for this eval call in seconds; 0 disables the cell timeout"),
+	"timeout?": type("number").describe(describeTimeoutParam("eval", { zeroDisablesNoun: "cell timeout" })),
 	"reset?": type("boolean").describe("wipe this language's kernel before running. Other languages are untouched."),
 };
 
@@ -210,9 +210,24 @@ function uniqueEvalLanguages(cells: ResolvedEvalCell[]): EvalLanguage[] {
 	return [...new Set(cells.map(cell => cell.resolved.backend.id))];
 }
 
+/**
+ * The clamp notice for one cell, or `undefined` when its timeout was honored (or
+ * disabled). `timeoutMs === 0` disables the deadline entirely (see the run
+ * loop), so there is nothing to clamp or report. Surfacing this keeps eval from
+ * silently shrinking an over-ceiling request the way bash already reports it.
+ */
+function timeoutClampNotice(cell: ResolvedEvalCell): string | undefined {
+	if (cell.timeoutMs === 0) return undefined;
+	return formatTimeoutClampNotice("eval", cell.timeoutMs / 1000, timeoutSecondsFromMs(cell.timeoutMs));
+}
+
 function detailsNotice(cells: ResolvedEvalCell[]): string | undefined {
 	const notices = [
-		...new Set(cells.map(cell => cell.resolved.notice).filter((notice): notice is string => Boolean(notice))),
+		...new Set(
+			cells
+				.flatMap(cell => [cell.resolved.notice, timeoutClampNotice(cell)])
+				.filter((notice): notice is string => Boolean(notice)),
+		),
 	];
 	return notices.length > 0 ? notices.join(" ") : undefined;
 }
@@ -424,7 +439,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 				index: 0,
 				title: params.title,
 				code: params.code,
-				timeoutMs: (params.timeout ?? 30) * 1000,
+				timeoutMs: (params.timeout ?? TOOL_TIMEOUTS.eval.default) * 1000,
 				reset: params.reset ?? false,
 				resolved,
 			},

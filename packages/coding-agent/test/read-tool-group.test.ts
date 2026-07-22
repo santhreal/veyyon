@@ -1,13 +1,18 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	ReadToolGroupComponent,
 	readArgsTargetInternalUrl,
 } from "@veyyon/coding-agent/modes/components/read-tool-group";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./helpers/settings-test-state";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -20,8 +25,10 @@ function extractLinkTexts(text: string): string[] {
 }
 
 describe("ReadToolGroupComponent", () => {
+	let settingsState: SettingsTestState | undefined;
+
 	beforeAll(async () => {
-		resetSettingsForTest();
+		settingsState = beginSettingsTest();
 		await Settings.init({ inMemory: true });
 		await themeModule.initTheme(false, undefined, undefined, "dark", "light");
 	});
@@ -32,7 +39,8 @@ describe("ReadToolGroupComponent", () => {
 	});
 
 	afterAll(() => {
-		resetSettingsForTest();
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 	});
 
 	it("keeps inline read previews disabled by default", () => {

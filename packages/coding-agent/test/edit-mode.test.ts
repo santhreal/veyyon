@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type EditMode, type EditModeSessionLike, resolveEditMode } from "@veyyon/coding-agent/utils/edit-mode";
+import {
+	type EditMode,
+	type EditModeSessionLike,
+	normalizeEditMode,
+	resolveEditMode,
+} from "@veyyon/coding-agent/utils/edit-mode";
 
 const originalEditVariant = Bun.env.VEYYON_EDIT_VARIANT;
 const originalStrictEditMode = Bun.env.VEYYON_STRICT_EDIT_MODE;
@@ -30,6 +35,33 @@ function createSession(args: {
 		},
 	};
 }
+
+/**
+ * normalizeEditMode is a STRICT allowlist: it accepts only the four known edit-mode
+ * tokens and returns undefined for anything else, including nullish input. This is the
+ * gate resolveEditMode and the env/settings paths lean on to reject a garbage
+ * `edit.mode` value and fall back to the default instead of forwarding an unknown mode
+ * to the engine. It had no direct test.
+ */
+describe("normalizeEditMode", () => {
+	test("returns each of the four known modes unchanged", () => {
+		expect(normalizeEditMode("replace")).toBe("replace");
+		expect(normalizeEditMode("patch")).toBe("patch");
+		expect(normalizeEditMode("hashline")).toBe("hashline");
+		expect(normalizeEditMode("apply_patch")).toBe("apply_patch");
+	});
+
+	test("returns undefined for an unknown token", () => {
+		expect(normalizeEditMode("snap")).toBeUndefined();
+		expect(normalizeEditMode("HASHLINE")).toBeUndefined();
+		expect(normalizeEditMode("")).toBeUndefined();
+	});
+
+	test("returns undefined for nullish input", () => {
+		expect(normalizeEditMode(undefined)).toBeUndefined();
+		expect(normalizeEditMode(null)).toBeUndefined();
+	});
+});
 
 describe("resolveEditMode", () => {
 	beforeEach(() => {

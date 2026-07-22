@@ -499,43 +499,51 @@ function extractHeadHtml(html: string): string {
 /**
  * Parse alternate links from HTML head
  */
-function parseAlternateLinks(html: string, pageUrl: string): string[] {
+export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 	const links: string[] = [];
 
+	// Only the URL parse can throw here, and the sole reason it would is a page URL
+	// that is not a URL. Wrapping the whole loop instead meant any later fault
+	// returned however many links had been collected so far, and a truncated list
+	// is indistinguishable from a page that genuinely has no alternates.
+	let pagePath: string;
 	try {
-		const pagePath = new URL(pageUrl).pathname;
-		const headHtml = extractHeadHtml(html);
-		const linkTags = headHtml.match(/<link\b[^>]*>/gi) ?? [];
+		pagePath = new URL(pageUrl).pathname;
+	} catch {
+		return links;
+	}
 
-		for (const tag of linkTags) {
-			const rel = getHtmlAttribute(tag, "rel")?.toLowerCase() ?? "";
-			const relTokens = rel.split(/\s+/).filter(Boolean);
-			if (!relTokens.includes("alternate")) continue;
+	const headHtml = extractHeadHtml(html);
+	const linkTags = headHtml.match(/<link\b[^>]*>/gi) ?? [];
 
-			const href = getHtmlAttribute(tag, "href");
-			const type = getHtmlAttribute(tag, "type")?.toLowerCase() ?? "";
-			if (!href) continue;
+	for (const tag of linkTags) {
+		const rel = getHtmlAttribute(tag, "rel")?.toLowerCase() ?? "";
+		const relTokens = rel.split(/\s+/).filter(Boolean);
+		if (!relTokens.includes("alternate")) continue;
 
-			// Skip site-wide feeds
-			if (
-				href.includes("RecentChanges") ||
-				href.includes("Special:") ||
-				href.includes("/feed/") ||
-				href.includes("action=feed")
-			) {
-				continue;
-			}
+		const href = getHtmlAttribute(tag, "href");
+		const type = getHtmlAttribute(tag, "type")?.toLowerCase() ?? "";
+		if (!href) continue;
 
-			if (type.includes("markdown")) {
-				links.push(href);
-			} else if (
-				(type.includes("rss") || type.includes("atom") || type.includes("feed")) &&
-				(href.includes(pagePath) || href.includes("comments"))
-			) {
-				links.push(href);
-			}
+		// Skip site-wide feeds
+		if (
+			href.includes("RecentChanges") ||
+			href.includes("Special:") ||
+			href.includes("/feed/") ||
+			href.includes("action=feed")
+		) {
+			continue;
 		}
-	} catch {}
+
+		if (type.includes("markdown")) {
+			links.push(href);
+		} else if (
+			(type.includes("rss") || type.includes("atom") || type.includes("feed")) &&
+			(href.includes(pagePath) || href.includes("comments"))
+		) {
+			links.push(href);
+		}
+	}
 
 	return links;
 }
@@ -543,26 +551,33 @@ function parseAlternateLinks(html: string, pageUrl: string): string[] {
 /**
  * Extract document links from HTML (for PDF/DOCX wrapper pages)
  */
-function extractDocumentLinks(html: string, baseUrl: string): string[] {
+export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 	const links: string[] = [];
 	const seen = new Set<string>();
 
-	try {
-		const anchorTags = html.slice(0, 512 * 1024).match(/<a\b[^>]*>/gi) ?? [];
-		for (const tag of anchorTags) {
-			const href = getHtmlAttribute(tag, "href");
-			if (!href) continue;
+	const anchorTags = html.slice(0, 512 * 1024).match(/<a\b[^>]*>/gi) ?? [];
+	for (const tag of anchorTags) {
+		const href = getHtmlAttribute(tag, "href");
+		if (!href) continue;
 
-			const ext = path.extname(href).toLowerCase();
-			if (!CONVERTIBLE_EXTENSIONS.has(ext)) continue;
+		const ext = path.extname(href).toLowerCase();
+		if (!CONVERTIBLE_EXTENSIONS.has(ext)) continue;
 
-			const resolved = href.startsWith("http") ? href : new URL(href, baseUrl).href;
-			if (seen.has(resolved)) continue;
-			seen.add(resolved);
-			links.push(resolved);
-			if (links.length >= 20) break;
+		// Per href, not around the loop. Resolving a relative href throws when that
+		// one href is malformed, and catching it outside meant a single broken link
+		// anywhere on the page ended the scan and dropped every document link after
+		// it. On a page listing twenty PDFs, one bad anchor could hide nineteen.
+		let resolved: string;
+		try {
+			resolved = href.startsWith("http") ? href : new URL(href, baseUrl).href;
+		} catch {
+			continue;
 		}
-	} catch {}
+		if (seen.has(resolved)) continue;
+		seen.add(resolved);
+		links.push(resolved);
+		if (links.length >= 20) break;
+	}
 
 	return links;
 }
@@ -1784,7 +1799,11 @@ async function buildReadUrlCacheEntry(
 ): Promise<ReadUrlCacheEntry> {
 	const { path: url, raw = false } = params;
 
-	const effectiveTimeout = clampTimeout("fetch", 30);
+	// The read-url path exposes no per-call timeout, so the fetch tool's
+	// configured default is the single source of truth (TOOL_TIMEOUTS.fetch).
+	// Passing no override keeps the value in ONE place instead of a literal here
+	// that silently diverged from the config's `default`.
+	const effectiveTimeout = clampTimeout("fetch");
 
 	if (signal?.aborted) {
 		throw new ToolAbortError();

@@ -2,6 +2,7 @@ import type { AgentTelemetryConfig, AgentTool } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { Rule } from "../capability/rule";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -18,7 +19,7 @@ import type { AgentRegistry } from "../registry/agent-registry";
 import type { ArtifactManager } from "../session/artifacts";
 import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
-import type { UsageStatistics } from "../session/session-entries";
+import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import type { AgentOutputManager } from "../task/output-manager";
 import { canSpawnAtDepth } from "../task/types";
@@ -164,6 +165,8 @@ export interface ToolSession {
 	getSessionId?: () => string | null;
 	/** Get Hindsight runtime state for this agent session. */
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
+	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
+	getArgotSession?: () => ArgotSession | undefined;
 	/** Get Mnemopi runtime state for this agent session. */
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
@@ -178,6 +181,12 @@ export interface ToolSession {
 	agentRegistry?: AgentRegistry;
 	/** Get artifacts directory for artifact:// URLs */
 	getArtifactsDir?: () => string | null;
+	/**
+	 * Record a structured parent->child index entry for one subagent this session
+	 * spawned (the task tool calls this once per settled subagent). Absent on
+	 * sessions that do not persist; a no-op there.
+	 */
+	recordSubagentSpawn?: (record: SubagentSpawnRecord) => void;
 	/** Get the ArtifactManager backing this session (shared across parent + subagents). */
 	getArtifactManager?: () => ArtifactManager | null;
 	/** Allocate a new artifact path and ID for session-scoped truncated output. */
@@ -424,6 +433,17 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	reflect: async s => (await import("./memory-reflect")).MemoryReflectTool.createIf(s),
 	learn: async s => (await import("./learn")).LearnTool.createIf(s),
 	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
+	// The two Argot folder tools exist only when the session holds a codec; with
+	// the feature off, or for a subagent under `argot.subagents: off`, there is no
+	// session to load into, so the factory returns null and the tool is absent.
+	[ARGOT_LOAD_TOOL]: async s =>
+		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
+			? new (await import("./argot")).ArgotLoadTool(s)
+			: null,
+	[ARGOT_UNLOAD_TOOL]: async s =>
+		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
+			? new (await import("./argot")).ArgotUnloadTool(s)
+			: null,
 };
 
 export const HIDDEN_TOOLS: Record<string, ToolFactory> = {

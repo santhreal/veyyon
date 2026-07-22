@@ -10,7 +10,7 @@ import { Settings } from "../../config/settings";
 import type { ToolSession } from "../../tools";
 import { ToolError } from "../../tools/tool-errors";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../bridge-timeout";
-import { runEvalCompletion } from "../completion-bridge";
+import { EVAL_COMPLETION_BRIDGE_NAME, runEvalCompletion } from "../completion-bridge";
 import { IdleTimeout } from "../idle-timeout";
 import { disposeAllVmContexts } from "../js/context-manager";
 import { executeJs } from "../js/executor";
@@ -412,4 +412,79 @@ describe("completion() through eval runtimes", () => {
 			tempDir.removeSync();
 		}
 	}, 30_000);
+});
+
+/**
+ * The behavioral tests above assert only `instanceof ToolError` on the validation/resolution
+ * guards. These pin the exact operator-facing message strings those guards emit, so a wording
+ * or field-naming drift is caught at the boundary instead of surfacing as a confusing 400 (or a
+ * crash) deep inside the model call. They use a minimal fake session because every case fails
+ * before any completion call is made (no network is reached). Merged here from the former
+ * test/eval/completion-bridge.test.ts so this module has a single suite.
+ */
+type FakeSession = Parameters<typeof runEvalCompletion>[1]["session"];
+
+const sessionWith = (modelRegistry: unknown): FakeSession =>
+	({ settings: {}, modelRegistry }) as unknown as FakeSession;
+
+const messageOf = async (args: unknown, modelRegistry: unknown): Promise<string> => {
+	try {
+		await runEvalCompletion(args, { session: sessionWith(modelRegistry) });
+		return "__did_not_throw__";
+	} catch (err) {
+		return err instanceof Error ? err.message : String(err);
+	}
+};
+
+describe("EVAL_COMPLETION_BRIDGE_NAME", () => {
+	it("is the reserved synthetic name shared by both eval runtimes", () => {
+		expect(EVAL_COMPLETION_BRIDGE_NAME).toBe("__completion__");
+	});
+});
+
+describe("runEvalCompletion argument-validation messages", () => {
+	it("rejects a missing prompt", async () => {
+		expect(await messageOf({}, undefined)).toBe(
+			"completion() received invalid arguments: prompt must be a string (was missing)",
+		);
+	});
+
+	it("rejects an empty prompt", async () => {
+		expect(await messageOf({ prompt: "" }, undefined)).toBe(
+			"completion() received invalid arguments: prompt must be non-empty",
+		);
+	});
+
+	it("rejects an unknown model tier", async () => {
+		expect(await messageOf({ prompt: "hi", model: "turbo" }, undefined)).toBe(
+			'completion() received invalid arguments: model must be "default", "slow" or "smol" (was "turbo")',
+		);
+	});
+
+	it("rejects a non-object schema", async () => {
+		expect(await messageOf({ prompt: "hi", schema: "notobj" }, undefined)).toBe(
+			"completion() received invalid arguments: schema must be an object (was a string)",
+		);
+	});
+});
+
+describe("runEvalCompletion model-resolution messages", () => {
+	it("errors when there is no model registry, naming the default tier and config key", async () => {
+		expect(await messageOf({ prompt: "hi" }, undefined)).toBe(
+			'completion() could not resolve a model for the "default" tier. Configure modelRoles.default or ensure a provider is available.',
+		);
+	});
+
+	it("errors when the registry has no available models", async () => {
+		const registry = { getAvailable: () => [], getApiKey: async () => undefined };
+		expect(await messageOf({ prompt: "hi" }, registry)).toBe(
+			'completion() could not resolve a model for the "default" tier. Configure modelRoles.default or ensure a provider is available.',
+		);
+	});
+
+	it("names the requested tier in the resolution error", async () => {
+		expect(await messageOf({ prompt: "hi", model: "slow" }, undefined)).toBe(
+			'completion() could not resolve a model for the "slow" tier. Configure modelRoles.slow or ensure a provider is available.',
+		);
+	});
 });

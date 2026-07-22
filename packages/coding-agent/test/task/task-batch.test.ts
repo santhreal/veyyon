@@ -25,6 +25,7 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, SingleResult, TaskParams } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 const taskAgent: AgentDefinition = {
 	name: "task",
@@ -36,7 +37,7 @@ const taskAgent: AgentDefinition = {
 function createSession(
 	options: { manager?: AsyncJobManager; settings?: Record<string, unknown>; agentId?: string } = {},
 ): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? {}),
@@ -44,7 +45,7 @@ function createSession(
 		getSessionSpawns: () => "*",
 		getAgentId: () => options.agentId ?? null,
 		asyncJobManager: options.manager,
-	} as unknown as ToolSession;
+	});
 }
 
 function getSchemaProperties(tool: TaskTool): Record<string, unknown> {

@@ -25,7 +25,7 @@ export default class Profile extends Command {
 
 	static flags = {
 		from: Flags.string({
-			description: "Seed source for `new`: default, blank, or an existing profile name",
+			description: "Seed source for `new`: default, blank, a preset (dev), or an existing profile name",
 			default: "default",
 		}),
 		yes: Flags.boolean({ description: "Confirm profile removal", default: false }),
@@ -36,6 +36,7 @@ export default class Profile extends Command {
 	static examples = [
 		"veyyon profile list",
 		"veyyon profile new work",
+		"veyyon profile new dev --from dev",
 		"veyyon profile new bounty --from blank",
 		"veyyon profile rm work --yes",
 		"veyyon profile default work",

@@ -145,7 +145,9 @@ let scannedCandidates: ImportCandidate[] = [];
 export const importSetupScene: SetupScene = {
 	id: "import-config",
 	title: "Import existing config",
-	minVersion: 2,
+	// Introduced-at-major floor: ships in v1, so it is part of first-install
+	// onboarding. shouldRun still gates it on there being something to import.
+	minVersion: 1,
 	shouldRun: async () => {
 		scannedCandidates = await scanForeignConfig();
 		return scannedCandidates.length > 0;

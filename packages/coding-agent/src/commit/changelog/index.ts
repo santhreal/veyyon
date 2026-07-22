@@ -154,7 +154,8 @@ function formatExistingEntries(entries: Record<string, string[]>): string {
 	return lines.join("\n");
 }
 
-function applyChangelogEntries(
+/** @internal Exported for testing. */
+export function applyChangelogEntries(
 	content: string,
 	unreleased: { startLine: number; endLine: number; entries: Record<string, string[]> },
 	entries: Record<string, string[]>,
@@ -170,7 +171,12 @@ function applyChangelogEntries(
 	}
 	const merged = mergeEntries(base, entries);
 	const sectionLines = renderUnreleasedSections(merged);
-	return [...before, ...sectionLines, ...after].join("\n");
+	// `after` begins at the next `## [x.y.z]` release heading (parse's endLine points
+	// AT it, so there is no leading blank). Keep-a-Changelog requires a blank line
+	// before a heading, so insert exactly one separator when there is following
+	// content, and none at end-of-file so the changelog gains no trailing blank.
+	const separator = after.length > 0 ? [""] : [];
+	return [...before, ...sectionLines, ...separator, ...after].join("\n");
 }
 
 function applyDeletions(
@@ -206,6 +212,9 @@ function mergeEntries(
 	return merged;
 }
 
+// Render the Unreleased body: one leading blank line after the `## [Unreleased]`
+// header, then each non-empty category. It deliberately returns NO trailing blank
+// line; the caller (applyChangelogEntries) owns spacing to whatever follows.
 function renderUnreleasedSections(entries: Record<string, string[]>): string[] {
 	const lines: string[] = [""];
 	for (const section of CHANGELOG_SECTIONS) {

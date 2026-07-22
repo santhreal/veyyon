@@ -34,7 +34,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { errorMessage, isEnoent, prompt } from "@veyyon/utils";
+import { clampLow, errorMessage, isEnoent, prompt } from "@veyyon/utils";
 import { YAML } from "bun";
 import { getConfigDirs } from "../../config";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -664,7 +664,7 @@ export class AgentDashboard extends Container {
 		const editor = new Editor(getEditorTheme());
 		editor.setBorderVisible(false);
 		editor.setPromptGutter("> ");
-		editor.setMaxHeight(Math.max(3, Math.min(8, this.#modalHeight - 12)));
+		editor.setMaxHeight(clampLow(this.#modalHeight - 12, 3, 8));
 		editor.disableSubmit = true;
 		editor.onChange = value => {
 			this.#createDescription = value;
@@ -863,7 +863,7 @@ export class AgentDashboard extends Container {
 
 	#moveSelection(delta: -1 | 1): void {
 		if (this.#filteredAgents.length === 0) return;
-		this.#selectedIndex = Math.max(0, Math.min(this.#filteredAgents.length - 1, this.#selectedIndex + delta));
+		this.#selectedIndex = clampLow(this.#selectedIndex + delta, 0, this.#filteredAgents.length - 1);
 		this.#clampSelection();
 		this.#buildLayout();
 	}
@@ -922,7 +922,7 @@ export class AgentDashboard extends Container {
 		this.addChild(new Text(theme.fg("muted", "Describe what the new agent should do:"), 0, 0));
 		this.addChild(new Spacer(1));
 		if (this.#createInput) {
-			this.#createInput.setMaxHeight(Math.max(3, Math.min(8, this.#modalHeight - 12)));
+			this.#createInput.setMaxHeight(clampLow(this.#modalHeight - 12, 3, 8));
 			this.addChild(this.#createInput);
 		}
 		this.addChild(new Spacer(1));

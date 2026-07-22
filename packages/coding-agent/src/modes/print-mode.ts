@@ -78,10 +78,38 @@ export function printableEvent(event: AgentSessionEvent): unknown {
 }
 
 /**
+ * The session surface print mode actually uses.
+ *
+ * Spelled out so a caller can pass something narrower than a full
+ * {@link AgentSession} and still be type checked. The tests used to build a
+ * stub and force it through with `as unknown as AgentSession`, which switched
+ * the check off entirely: when print mode grew a call to
+ * `displayAssistantContent`, the stub kept compiling without it and every test
+ * in the file failed at runtime instead of at build time. A `Pick` cannot go
+ * stale that way, because adding a member here is what fails the stub.
+ *
+ * The second arm carries `extensionRunner?: undefined` on purpose. Extension
+ * setup needs the whole session, so the narrow form is only accepted when it
+ * has no extensions to set up, and the check below narrows to the full session
+ * before that call. That is the real contract, written down rather than cast
+ * away.
+ */
+export type PrintModeSession =
+	| AgentSession
+	| (Pick<AgentSession, "subscribe" | "prompt" | "dispose" | "displayAssistantContent"> & {
+			// Only the two members print mode reads, not the whole state object and
+			// the whole SessionManager class. A caller that has just these can drive
+			// print mode, and that is worth being able to say.
+			state: { messages: readonly AgentMessage[] };
+			sessionManager: { getHeader(): unknown };
+			extensionRunner?: undefined;
+	  });
+
+/**
  * Run in print (single-shot) mode.
  * Sends prompts to the agent and outputs the result.
  */
-export async function runPrintMode(session: AgentSession, options: PrintModeOptions): Promise<void> {
+export async function runPrintMode(session: PrintModeSession, options: PrintModeOptions): Promise<void> {
 	const { mode, messages = [], initialMessage, initialImages, printThoughts } = options;
 
 	// Emit session header for JSON mode
@@ -91,17 +119,21 @@ export async function runPrintMode(session: AgentSession, options: PrintModeOpti
 			process.stdout.write(`${JSON.stringify(header)}\n`);
 		}
 	}
-	// Set up extensions for print mode (no UI, no command context)
-	await initializeExtensions(session, {
-		reportSendError: (action, err) => {
-			process.stderr.write(
-				`Extension ${action === "extension_send" ? "sendMessage" : "sendUserMessage"} failed: ${err.message}\n`,
-			);
-		},
-		reportRuntimeError: err => {
-			process.stderr.write(`Extension error (${err.extensionPath}): ${err.error}\n`);
-		},
-	});
+	// Set up extensions for print mode (no UI, no command context). The guard is
+	// what narrows the session type; `initializeExtensions` returns immediately
+	// on a session with no runner anyway, so this is the same behavior.
+	if (session.extensionRunner !== undefined) {
+		await initializeExtensions(session, {
+			reportSendError: (action, err) => {
+				process.stderr.write(
+					`Extension ${action === "extension_send" ? "sendMessage" : "sendUserMessage"} failed: ${err.message}\n`,
+				);
+			},
+			reportRuntimeError: err => {
+				process.stderr.write(`Extension error (${err.extensionPath}): ${err.error}\n`);
+			},
+		});
+	}
 
 	// Always subscribe to enable session persistence via _handleAgentEvent
 	session.subscribe(event => {

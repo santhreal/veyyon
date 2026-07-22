@@ -3,6 +3,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { TaskTool } from "@veyyon/coding-agent/task";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 const TEST_AGENTS = [
 	{
@@ -14,13 +15,13 @@ const TEST_AGENTS = [
 ];
 
 function createSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		settings: Settings.isolated({}),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-	} as unknown as ToolSession;
+	});
 }
 
 describe("TaskTool.create discovery memo", () => {

@@ -27,6 +27,7 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, SingleResult, TaskParams, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 const taskAgent: AgentDefinition = {
 	name: "task",
@@ -44,7 +45,7 @@ const scoutAgent: AgentDefinition = {
 };
 
 function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> } = {}): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? { "async.enabled": true, "task.batch": true }),
@@ -52,7 +53,7 @@ function createSession(options: { manager?: AsyncJobManager; settings?: Record<s
 		getSessionSpawns: () => "*",
 		getAgentId: () => null,
 		asyncJobManager: options.manager,
-	} as unknown as ToolSession;
+	});
 }
 
 function makeResult(id: string, agent: string, overrides: Partial<SingleResult> = {}): SingleResult {

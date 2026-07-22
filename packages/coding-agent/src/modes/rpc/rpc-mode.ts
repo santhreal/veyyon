@@ -598,6 +598,38 @@ export function requestRpcEditor(
 	return promise;
 }
 /**
+ * Build a successful RPC response frame. One owner for id/command/success shape
+ * so hosts and tests share the same wire contract as `runRpcMode`.
+ */
+export function rpcSuccessResponse<T extends RpcCommand["type"]>(
+	id: string | undefined,
+	command: T,
+	data?: object | null,
+): RpcResponse {
+	if (data === undefined) {
+		return { id, type: "response", command, success: true } as RpcResponse;
+	}
+	return { id, type: "response", command, success: true, data } as RpcResponse;
+}
+
+/**
+ * Build a failed RPC response frame. Request id is caller-supplied; the unknown-
+ * command path deliberately passes `undefined` so a bad type never echoes id.
+ */
+export function rpcErrorResponse(id: string | undefined, command: string, message: string): RpcResponse {
+	return { id, type: "response", command, success: false, error: message };
+}
+
+/**
+ * Default arm for an unrecognized command discriminant: always drop request id
+ * and surface `Unknown command: <type>`. This is the single owner of that rule
+ * (also used by the regression corpus — do not re-implement in tests).
+ */
+export function rpcUnknownCommandResponse(commandType: string): RpcResponse {
+	return rpcErrorResponse(undefined, commandType, `Unknown command: ${commandType}`);
+}
+
+/**
  * Run in RPC mode.
  * Listens for JSON commands on stdin, outputs events and responses on stdout.
  */
@@ -619,20 +651,8 @@ export async function runRpcMode(
 	};
 	const emitRpcTitles = shouldEmitRpcTitles();
 
-	const success = <T extends RpcCommand["type"]>(
-		id: string | undefined,
-		command: T,
-		data?: object | null,
-	): RpcResponse => {
-		if (data === undefined) {
-			return { id, type: "response", command, success: true } as RpcResponse;
-		}
-		return { id, type: "response", command, success: true, data } as RpcResponse;
-	};
-
-	const error = (id: string | undefined, command: string, message: string): RpcResponse => {
-		return { id, type: "response", command, success: false, error: message };
-	};
+	const success = rpcSuccessResponse;
+	const error = rpcErrorResponse;
 
 	const extensionUserMessageTracker = new RpcExtensionUserMessageTracker();
 
@@ -1334,7 +1354,7 @@ export async function runRpcMode(
 
 			default: {
 				const unknownCommand = command as { type: string };
-				return error(undefined, unknownCommand.type, `Unknown command: ${unknownCommand.type}`);
+				return rpcUnknownCommandResponse(unknownCommand.type);
 			}
 		}
 	};

@@ -7,25 +7,19 @@ export interface ChangelogEntry {
 	content: string;
 }
 
-/** Number of changelog releases shown by automatic and default recent views. */
-export const RECENT_CHANGELOG_ENTRY_LIMIT = 3;
-/** Maximum Markdown source bytes allowed in automatic startup release notes. */
-export const STARTUP_CHANGELOG_MAX_BYTES = 64 * 1024;
-/** Hint appended when automatic startup release notes are truncated. */
-export const STARTUP_CHANGELOG_FULL_HINT = "Use `/changelog full` to view the complete changelog.";
-
-/** Markdown generated from selected changelog entries and whether it hit a size cap. */
-export interface RenderedChangelog {
-	markdown: string;
-	truncated: boolean;
-}
-
-/** Automatic startup changelog decision, including whether the marker should advance. */
-export interface StartupChangelogSelection {
-	markdown: string | undefined;
+/**
+ * What startup should say about the version it is running.
+ *
+ * Startup never prints release notes. It prints at most one line naming the
+ * version that landed and pointing at `/changelog`, which opens the release
+ * notes on the web. The notes themselves are published by the release workflow,
+ * so the terminal has nothing to render and nothing to keep in sync.
+ */
+export interface UpdateNoticeDecision {
+	/** Version to announce, or `undefined` when there is nothing to say. */
+	installedVersion: string | undefined;
+	/** Whether the marker should advance to the running version. */
 	persistCurrentVersion: boolean;
-	truncated: boolean;
-	selectedEntries: number;
 }
 
 /**
@@ -99,7 +93,10 @@ export async function parseChangelog(changelogPath: string | undefined): Promise
 }
 
 /**
- * Compare versions. Returns: -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
+ * Compare two versions by major, then minor, then patch. Returns a number whose
+ * sign is the ordering: negative when `v1 < v2`, zero when equal, positive when
+ * `v1 > v2`. The magnitude is the first differing component's difference (so it
+ * can exceed 1); callers should read the sign, not the value.
  */
 export function compareVersions(v1: ChangelogEntry, v2: ChangelogEntry): number {
 	if (v1.major !== v2.major) return v1.major - v2.major;
@@ -125,78 +122,39 @@ export function parseChangelogVersion(version: string | undefined): ChangelogEnt
 }
 
 /**
- * Get entries newer than lastVersion.
+ * Decide whether this launch should announce an update.
+ *
+ * `lastVersion` is the marker written by the previous run. Comparing it to the
+ * running version is what tells an update apart from an ordinary restart, so
+ * the notice fires exactly once per upgrade.
+ *
+ * A first run has no marker. That is a fresh install, not an update, so it
+ * records the version silently rather than greeting a new user with news about
+ * a release they never ran. A downgrade records the version silently too:
+ * there is no upgrade to announce, and re-announcing on every launch would be
+ * worse than saying nothing.
  */
-export function getNewEntries(entries: ChangelogEntry[], lastVersion: string): ChangelogEntry[] {
-	const parsedLastVersion = parseChangelogVersion(lastVersion);
-	if (!parsedLastVersion) {
-		return [];
+export function decideUpdateNotice(lastVersion: string | undefined, currentVersion: string): UpdateNoticeDecision {
+	const parsedLast = parseChangelogVersion(lastVersion);
+	if (!parsedLast) {
+		// No marker, or one we cannot read: treat as a fresh install.
+		return { installedVersion: undefined, persistCurrentVersion: true };
+	}
+	if (lastVersion === currentVersion) {
+		return { installedVersion: undefined, persistCurrentVersion: false };
 	}
 
-	return entries.filter(entry => compareVersions(entry, parsedLastVersion) > 0);
-}
-
-/**
- * Render changelog entries oldest-first by default and optionally cap the Markdown source size.
- */
-export function renderChangelogEntries(
-	entries: ChangelogEntry[],
-	options: { maxBytes?: number; truncationHint?: string; oldestFirst?: boolean } = {},
-): RenderedChangelog {
-	const orderedEntries = options.oldestFirst === false ? entries : [...entries].reverse();
-	const markdown = orderedEntries.map(entry => entry.content).join("\n\n");
-	if (options.maxBytes === undefined || Buffer.byteLength(markdown) <= options.maxBytes) {
-		return { markdown, truncated: false };
+	const parsedCurrent = parseChangelogVersion(currentVersion);
+	if (!parsedCurrent) {
+		// The running version is not a plain x.y.z (a dev or prerelease build).
+		// Nothing meaningful to announce, and advancing the marker to it would
+		// swallow the notice for the next real release.
+		return { installedVersion: undefined, persistCurrentVersion: false };
 	}
-
-	const suffix = `\n\n…\n\n${options.truncationHint ?? STARTUP_CHANGELOG_FULL_HINT}`;
-	let low = 0;
-	let high = markdown.length;
-	while (low < high) {
-		const middle = Math.floor((low + high + 1) / 2);
-		if (Buffer.byteLength(markdown.slice(0, middle) + suffix) <= options.maxBytes) {
-			low = middle;
-		} else {
-			high = middle - 1;
-		}
+	if (compareVersions(parsedCurrent, parsedLast) <= 0) {
+		return { installedVersion: undefined, persistCurrentVersion: true };
 	}
-
-	return { markdown: markdown.slice(0, low) + suffix, truncated: true };
-}
-
-/**
- * Select bounded release notes for interactive startup.
- */
-export function selectStartupChangelog(
-	entries: ChangelogEntry[],
-	lastVersion: string | undefined,
-	currentVersion: string,
-): StartupChangelogSelection {
-	const parsedLastVersion = parseChangelogVersion(lastVersion);
-	if (!parsedLastVersion) {
-		return { markdown: undefined, persistCurrentVersion: true, truncated: false, selectedEntries: 0 };
-	}
-	const markerVersion = lastVersion ?? "";
-	if (markerVersion === currentVersion) {
-		return { markdown: undefined, persistCurrentVersion: false, truncated: false, selectedEntries: 0 };
-	}
-
-	const newEntries = getNewEntries(entries, markerVersion).slice(0, RECENT_CHANGELOG_ENTRY_LIMIT);
-	if (newEntries.length === 0) {
-		return { markdown: undefined, persistCurrentVersion: false, truncated: false, selectedEntries: 0 };
-	}
-
-	const rendered = renderChangelogEntries(newEntries, {
-		maxBytes: STARTUP_CHANGELOG_MAX_BYTES,
-		truncationHint: STARTUP_CHANGELOG_FULL_HINT,
-		oldestFirst: false,
-	});
-	return {
-		markdown: rendered.markdown,
-		persistCurrentVersion: true,
-		truncated: rendered.truncated,
-		selectedEntries: newEntries.length,
-	};
+	return { installedVersion: currentVersion, persistCurrentVersion: true };
 }
 
 // Re-export getChangelogPath from paths.ts for convenience

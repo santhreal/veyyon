@@ -12,6 +12,7 @@ import {
 	getHistoryDbPath,
 	getModelDbPath,
 	getSessionsDir,
+	isProcessAlive,
 	MINUTE_MS,
 } from "@veyyon/utils";
 import { tableExists } from "@veyyon/utils/sqlite";
@@ -22,7 +23,11 @@ import { FileSessionStorage } from "../session/session-storage";
 
 const HASH_RE = /^[a-f0-9]{64}$/;
 const BLOB_FILE_RE = /^([a-f0-9]{64})(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})?$/;
-const BLOB_REF_RE = /\bblob:sha256:([a-f0-9]{64})\b/gi;
+// Matches BOTH blob-ref namespaces so GC never deletes a blob a live session
+// still points at: `blob:sha256:<hash>` (images) and `blobtext:sha256:<hash>`
+// (externalized large text). Both are content-addressed by the same hash and
+// stored in the same blob dir, so one referenced-hash set covers both.
+const BLOB_REF_RE = /\bblob(?:text)?:sha256:([a-f0-9]{64})\b/gi;
 const JSONL_GLOB = new Bun.Glob("**/*.jsonl");
 const JSONL_GZ_GLOB = new Bun.Glob("**/*.jsonl.gz");
 const JSONL_BACKUP_GLOB = new Bun.Glob("**/*.jsonl.*.bak");
@@ -725,17 +730,6 @@ function gcLockPid(lockText: string): number | undefined {
 	return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-function processExists(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		const code = codeOf(error);
-		if (code === "ESRCH" || code === "EINVAL") return false;
-		return true;
-	}
-}
-
 function gcLockStatSnapshot(stat: {
 	dev: number;
 	ino: number;
@@ -789,7 +783,7 @@ async function gcLockSnapshotStillCurrent(lockPath: string, snapshot: GcLockSnap
 
 function shouldBreakGcLock(snapshot: GcLockSnapshot): boolean {
 	const pid = gcLockPid(snapshot.text);
-	if (pid) return !processExists(pid);
+	if (pid) return !isProcessAlive(pid);
 
 	const createdAtMs = Date.parse(snapshot.text.split(/\r?\n/, 2)[1] ?? "");
 	const ageFromMs = Number.isFinite(createdAtMs) ? createdAtMs : snapshot.mtimeMs;

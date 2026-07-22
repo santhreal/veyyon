@@ -18,6 +18,7 @@ import type {
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
 import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
+import { reportUndeliveredServerResponse } from "./server-response-delivery";
 
 const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
 /**
@@ -357,7 +358,21 @@ export class HttpTransport implements MCPTransport {
 		}
 	}
 
-	/** POST a JSON-RPC response back to the server (for server-to-client requests received via SSE). */
+	/**
+	 * POST a JSON-RPC response back to the server (for server-to-client requests
+	 * received via SSE).
+	 *
+	 * A failure here used to be swallowed with the comment "best-effort response
+	 * delivery". It is not best-effort from the server's side: the server asked a
+	 * question (a sampling or elicitation request), we did the work to answer it,
+	 * and then dropped the answer on the floor. The server waits on a reply that
+	 * is never coming, and the operator sees an MCP tool that hangs with nothing
+	 * anywhere connecting the hang to the send that failed (Law 10).
+	 *
+	 * Delivery is still not retried beyond the existing auth retry, because a
+	 * dead connection cannot be talked into life from here. What changes is that
+	 * the undelivered reply is reported.
+	 */
 	async #sendServerResponse(id: string | number, result?: unknown, error?: JsonRpcError): Promise<void> {
 		if (!this.#connected) return;
 		const body = error
@@ -405,8 +420,13 @@ export class HttpTransport implements MCPTransport {
 				}
 			}
 			await resp.body?.cancel();
-		} catch {
-			// Best-effort response delivery — server may have disconnected
+		} catch (sendError) {
+			reportUndeliveredServerResponse({
+				url: this.config.url,
+				requestId: id,
+				kind: error ? "error" : "result",
+				cause: sendError,
+			});
 		} finally {
 			operation.clear();
 		}

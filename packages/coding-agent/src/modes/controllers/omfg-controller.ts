@@ -14,6 +14,27 @@ import {
 	validateParsedRuleAgainstAssistantHistory,
 } from "./omfg-rule";
 
+/**
+ * The slice of the interactive context this controller uses: 10 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type OmfgControllerContext = Pick<
+	InteractiveModeContext,
+	| "omfgContainer"
+	| "session"
+	| "sessionManager"
+	| "settings"
+	| "showError"
+	| "showHookConfirm"
+	| "showHookInput"
+	| "showHookSelector"
+	| "showStatus"
+	| "ui"
+>;
+
 interface OmfgRequest {
 	component: OmfgPanelComponent;
 	abortController: AbortController;
@@ -39,7 +60,7 @@ const AMEND_OPTION = "Amend with feedback…";
 export class OmfgController {
 	#activeRequest: OmfgRequest | undefined;
 
-	constructor(private readonly ctx: InteractiveModeContext) {}
+	constructor(private readonly ctx: OmfgControllerContext) {}
 
 	hasActiveRequest(): boolean {
 		return this.#activeRequest !== undefined;

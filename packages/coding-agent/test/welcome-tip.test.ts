@@ -23,6 +23,18 @@ describe("renderWelcomeTip", () => {
 		}
 	});
 
+	/**
+	 * Daybreak cool arc: the "Tip:" label paints with the infoAccent token
+	 * (rose on titanium), not the generic customMessageLabel. Locks the DS-3
+	 * wiring so a theme refactor cannot silently drop the info accent from the
+	 * one surface that uses it.
+	 */
+	it("paints the Tip: label with the infoAccent token", () => {
+		const lines = renderWelcomeTip("Plain old tip", 60);
+		const infoOpen = theme.fg("infoAccent", "Tip: ");
+		expect(lines[0]).toContain(infoOpen);
+	});
+
 	it("replaces a trailing [NEW] marker with a quiet silver 'new' tag", () => {
 		const lines = renderWelcomeTip("Try the shiny advisor [NEW]", 60);
 		const plain = lines.map(line => Bun.stripANSI(line)).join("\n");
@@ -64,12 +76,12 @@ describe("renderWelcomeTip", () => {
 
 	it("derives label and body colors from the active theme, with no manual dim layer", async () => {
 		await setTheme("dark");
-		const darkLabelAnsi = theme.getFgAnsi("customMessageLabel");
+		const darkLabelAnsi = theme.getFgAnsi("infoAccent");
 		const darkMutedAnsi = theme.getFgAnsi("muted");
 		const dark = renderWelcomeTip("Welcome aboard friend", 60).join("\n");
 
 		await setTheme("light");
-		const lightLabelAnsi = theme.getFgAnsi("customMessageLabel");
+		const lightLabelAnsi = theme.getFgAnsi("infoAccent");
 		const lightMutedAnsi = theme.getFgAnsi("muted");
 		const light = renderWelcomeTip("Welcome aboard friend", 60).join("\n");
 

@@ -36,6 +36,16 @@ import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/utils/worker
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
 import { extractProfileFlags } from "./cli/profile-bootstrap";
 import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
+import {
+	JS_EVAL_PROCESS_ARG,
+	JS_EVAL_WORKER_ARG,
+	MNEMOPI_EMBED_WORKER_ARG,
+	STATS_SYNC_WORKER_ARG,
+	STT_WORKER_ARG,
+	TAB_WORKER_ARG,
+	TINY_WORKER_ARG,
+	TTS_WORKER_ARG,
+} from "./worker-args";
 
 if (Bun.semver.order(Bun.version, MIN_BUN_VERSION) < 0) {
 	process.stderr.write(
@@ -110,15 +120,6 @@ async function runSmokeTest(): Promise<void> {
 	await smokeTestDaemonBroker();
 	process.stdout.write("smoke-test: ok\n");
 }
-
-const TINY_WORKER_ARG = "__veyyon_worker_tiny_inference";
-const TAB_WORKER_ARG = "__veyyon_worker_tab";
-const JS_EVAL_WORKER_ARG = "__veyyon_worker_js_eval";
-const JS_EVAL_PROCESS_ARG = "__veyyon_worker_js_eval_process";
-const STT_WORKER_ARG = "__veyyon_worker_stt";
-const TTS_WORKER_ARG = "__veyyon_worker_tts";
-const MNEMOPI_EMBED_WORKER_ARG = "__veyyon_worker_mnemopi_embed";
-const STATS_SYNC_WORKER_ARG = "__veyyon_worker_stats_sync";
 
 async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	if (arg === TINY_WORKER_ARG) {

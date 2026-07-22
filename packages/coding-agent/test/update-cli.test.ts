@@ -3,6 +3,11 @@ import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	clearAutoUpdateFailure,
+	readAutoUpdateState,
+	recordAutoUpdateFailure,
+} from "@veyyon/coding-agent/cli/auto-update-state";
 import * as pluginCli from "@veyyon/coding-agent/cli/plugin-cli";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
 import {
@@ -259,6 +264,85 @@ describe("update-cli bun cache pruning", () => {
 		expect(await Bun.file(path.join(dir, "chalk@4.1.2@@@1", "package.json")).exists()).toBe(true);
 	});
 
+	it("never deletes real cached versions because of an unparseable sibling directory", async () => {
+		// REGRESSION: the prune loop picked "latest" with a comparator that returned
+		// 0 for anything it could not parse. A directory name that is not a version
+		// therefore tied with everything, and if it was iterated first it became
+		// "latest" and every genuine cached version was deleted instead of it.
+		// Whether your cache survived depended on readdir order.
+		const dir = await makeTempDir();
+		// "0-not-a-version" sorts before the real versions, so it is the entry the
+		// old code would have latched onto as "latest".
+		await Bun.write(path.join(dir, "pkg", "0-not-a-version@@@1"), "");
+		await Bun.write(path.join(dir, "pkg", "1.0.0@@@1"), "");
+		await Bun.write(path.join(dir, "pkg", "2.0.0@@@1"), "");
+		await Bun.write(
+			path.join(dir, "pkg@0-not-a-version@@@1", "package.json"),
+			JSON.stringify({ name: "pkg", version: "0-not-a-version" }),
+		);
+		await Bun.write(
+			path.join(dir, "pkg@1.0.0@@@1", "package.json"),
+			JSON.stringify({ name: "pkg", version: "1.0.0" }),
+		);
+		await Bun.write(
+			path.join(dir, "pkg@2.0.0@@@1", "package.json"),
+			JSON.stringify({ name: "pkg", version: "2.0.0" }),
+		);
+
+		await pruneBunInstallCache(dir, new Set(["pkg"]));
+
+		// The newest orderable version survives.
+		expect(await Bun.file(path.join(dir, "pkg", "2.0.0@@@1")).exists()).toBe(true);
+		expect(await Bun.file(path.join(dir, "pkg@2.0.0@@@1", "package.json")).exists()).toBe(true);
+		// The older orderable version is pruned, which is the point of the sweep.
+		expect(await Bun.file(path.join(dir, "pkg", "1.0.0@@@1")).exists()).toBe(false);
+		// The entry we could not order is left exactly where it was: deleting on an
+		// ordering that could not be computed is what caused the bug.
+		expect(await Bun.file(path.join(dir, "pkg", "0-not-a-version@@@1")).exists()).toBe(true);
+		expect(await Bun.file(path.join(dir, "pkg@0-not-a-version@@@1", "package.json")).exists()).toBe(true);
+	});
+
+	it("prunes correctly regardless of which version is encountered first", async () => {
+		// The old comparator made the outcome depend on directory iteration order.
+		// Both layouts must reach the same answer.
+		for (const order of [
+			["1.0.0", "2.0.0"],
+			["2.0.0", "1.0.0"],
+		]) {
+			const dir = await makeTempDir();
+			for (const version of order) {
+				await Bun.write(path.join(dir, "pkg", `${version}@@@1`), "");
+				await Bun.write(
+					path.join(dir, `pkg@${version}@@@1`, "package.json"),
+					JSON.stringify({ name: "pkg", version }),
+				);
+			}
+
+			await pruneBunInstallCache(dir, new Set(["pkg"]));
+
+			expect(await Bun.file(path.join(dir, "pkg", "2.0.0@@@1")).exists()).toBe(true);
+			expect(await Bun.file(path.join(dir, "pkg", "1.0.0@@@1")).exists()).toBe(false);
+		}
+	});
+
+	it("keeps a prerelease from outranking the release it precedes", async () => {
+		// 2.0.0-rc.1 must not be treated as newer than 2.0.0. The comparator this
+		// path used to share mis-ranked prerelease identifiers.
+		const dir = await makeTempDir();
+		for (const version of ["2.0.0", "2.0.0-rc.1"]) {
+			await Bun.write(path.join(dir, "pkg", `${version}@@@1`), "");
+			await Bun.write(
+				path.join(dir, `pkg@${version}@@@1`, "package.json"),
+				JSON.stringify({ name: "pkg", version }),
+			);
+		}
+
+		await pruneBunInstallCache(dir, new Set(["pkg"]));
+
+		expect(await Bun.file(path.join(dir, "pkg", "2.0.0@@@1")).exists()).toBe(true);
+		expect(await Bun.file(path.join(dir, "pkg", "2.0.0-rc.1@@@1")).exists()).toBe(false);
+	});
+
 	it("keeps current registry-qualified marker entries with their materialized package", async () => {
 		const dir = await makeTempDir();
 		await Bun.write(path.join(dir, "pkg", "1.0.0@@registry.npmjs.org@@@1"), "");
@@ -431,5 +515,209 @@ describe("update-cli release-info errors", () => {
 		expect(combined).toContain("no published release");
 		// `${err}` used to stringify the Error and double the prefix.
 		expect(combined).not.toContain("Error: Failed to fetch");
+	});
+});
+
+describe("runUpdateCommand fetch cancellation", () => {
+	// The release-metadata check must never be able to hang forever: runUpdateCommand
+	// has to arm the fetch with a timeout AbortSignal so a stalled registry connection
+	// fails fast instead of freezing `veyyon update --check`. Merged from the former
+	// src/cli/update-cli.test.ts so this module has a single suite.
+	it("checks release metadata with a timeout signal", async () => {
+		let requestSignal: AbortSignal | undefined;
+		spyOn(console, "log").mockImplementation(() => {});
+		const fetchStub = Object.assign(
+			async (_input: string | URL | Request, init?: RequestInit | BunFetchRequestInit) => {
+				requestSignal = init?.signal ?? undefined;
+				return Response.json({ version: "999.0.0" });
+			},
+			{ preconnect: globalThis.fetch.preconnect },
+		);
+		spyOn(globalThis, "fetch").mockImplementation(fetchStub as never);
+
+		await updateCli.runUpdateCommand({ force: false, check: true });
+
+		expect(requestSignal).toBeInstanceOf(AbortSignal);
+	});
+});
+
+describe("runAutoUpdate", () => {
+	// runAutoUpdate is the form a running TUI session calls: unlike
+	// runUpdateCommand it must never write to stdout (that would corrupt the
+	// render) and never process.exit (that would kill the user's session). It
+	// reports every outcome through its return value instead.
+	const stubRegistry = (impl: () => Promise<Response>) => spyOn(globalThis, "fetch").mockImplementation(impl as never);
+
+	// Every call below points the failure record and the install lock at a
+	// throwaway file. Without this the suite would write a real backoff into the
+	// developer's own state directory, and the recorded failure from one test
+	// would suppress the install in the next one.
+	const statePath = async (): Promise<string> => path.join(await makeTempDir(), "auto-update-state.json");
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("reports up-to-date when the registry has nothing newer", async () => {
+		stubRegistry(async () => Response.json({ version: "1.2.3" }));
+
+		expect(await updateCli.runAutoUpdate("1.2.3", undefined, await statePath())).toEqual({ status: "up-to-date" });
+		// Strictly newer is required, so a registry that has fallen behind the
+		// installed build must not trigger a downgrade install.
+		expect(await updateCli.runAutoUpdate("2.0.0", undefined, await statePath())).toEqual({ status: "up-to-date" });
+	});
+
+	it("reports the registry failure instead of silently doing nothing", async () => {
+		stubRegistry(async () => new Response("nope", { status: 503, statusText: "Service Unavailable" }));
+
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+		expect(outcome.status).toBe("failed");
+		expect(outcome.status === "failed" && outcome.error).toContain("503");
+		// No version is known when the lookup itself failed.
+		expect(outcome.status === "failed" && outcome.version).toBeUndefined();
+	});
+
+	it("reports a transport error rather than throwing into the session", async () => {
+		stubRegistry(async () => {
+			throw new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
+		});
+
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+		expect(outcome).toEqual({ status: "failed", error: "getaddrinfo ENOTFOUND registry.npmjs.org" });
+	});
+
+	it("installs silently, so a live TUI frame is never corrupted", async () => {
+		// The install helpers print progress ("Downloading …", "Installing update…")
+		// through a reporter. Under a TUI those writes land in the middle of the
+		// rendered frame, so runAutoUpdate must pass the silent one. Asserting on
+		// the reporter rather than on stdout is what makes this test meaningful:
+		// an earlier version only exercised the up-to-date path, which never
+		// reaches an install and so could not have caught a console write.
+		stubRegistry(async () => Response.json({ version: "9.9.9" }));
+		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+
+		expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
+		expect(install).toHaveBeenCalledWith("9.9.9", false, updateCli.SILENT_UPDATE_REPORTER);
+	});
+
+	it("reports an install failure instead of claiming success", async () => {
+		stubRegistry(async () => Response.json({ version: "9.9.9" }));
+		spyOn(updateCli, "installRelease").mockRejectedValue(new Error("brew exited 1"));
+
+		expect(await updateCli.runAutoUpdate("1.0.0", undefined, await statePath())).toEqual({
+			status: "failed",
+			version: "9.9.9",
+			error: "brew exited 1",
+		});
+	});
+
+	it("does not write to stdout on the up-to-date path", async () => {
+		stubRegistry(async () => Response.json({ version: "1.0.0" }));
+		const write = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+		await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	describe("guards against repeating work on every launch", () => {
+		it("records the failed version so the next launch can see it", async () => {
+			// The record is what the backoff reads. If the failure path did not
+			// write it, every launch would retry an install that cannot succeed.
+			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			spyOn(updateCli, "installRelease").mockRejectedValue(new Error("EACCES: permission denied"));
+			const state = await statePath();
+
+			await updateCli.runAutoUpdate("1.0.0", undefined, state);
+
+			expect(await readAutoUpdateState(state)).toEqual({
+				failedVersion: "9.9.9",
+				failedAtMs: expect.any(Number),
+				failedError: "EACCES: permission denied",
+			});
+		});
+
+		it("skips the install when that same version failed recently", async () => {
+			// A machine that cannot install at all showed the same red error on
+			// every launch. It now reports once and backs off, and crucially does
+			// not spend a package-manager run reproducing the failure each time.
+			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			const state = await statePath();
+			await recordAutoUpdateFailure("9.9.9", "EACCES", state, Date.now());
+
+			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state);
+
+			expect(outcome).toEqual({ status: "skipped", version: "9.9.9", reason: "recent-failure" });
+			expect(install).not.toHaveBeenCalled();
+		});
+
+		it("still installs a different version while an older failure is in its window", async () => {
+			// A build that failed is not evidence the next build fails, so a new
+			// release must never be held back by the previous one's cooldown.
+			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			const state = await statePath();
+			await recordAutoUpdateFailure("9.9.8", "bad tarball", state, Date.now());
+
+			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state);
+
+			expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
+			expect(install).toHaveBeenCalledTimes(1);
+		});
+
+		it("clears the record after a successful install", async () => {
+			// Otherwise a machine that recovered keeps a failure on disk that
+			// nothing removes, and a later failure is judged against a stale one.
+			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			const state = await statePath();
+			await recordAutoUpdateFailure("9.9.9", "transient", state, 1_000);
+
+			await updateCli.runAutoUpdate("1.0.0", undefined, state);
+
+			expect(await readAutoUpdateState(state)).toEqual({});
+		});
+
+		it("installs once when several sessions launch at the same time", async () => {
+			// Opening three terminals at once used to run three concurrent
+			// package-manager writes at the same binary. The lock makes the
+			// losers stand down instead of racing.
+			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			const install = spyOn(updateCli, "installRelease").mockImplementation(async () => {
+				// Hold long enough that the siblings must contend for the lock.
+				await Bun.sleep(30);
+			});
+			const state = await statePath();
+
+			const outcomes = await Promise.all([
+				updateCli.runAutoUpdate("1.0.0", undefined, state),
+				updateCli.runAutoUpdate("1.0.0", undefined, state),
+				updateCli.runAutoUpdate("1.0.0", undefined, state),
+			]);
+
+			expect(install).toHaveBeenCalledTimes(1);
+			expect(outcomes.filter(o => o.status === "updated")).toHaveLength(1);
+			expect(outcomes.filter(o => o.status === "skipped")).toHaveLength(2);
+			for (const outcome of outcomes) {
+				if (outcome.status === "skipped") expect(outcome.reason).toBe("another-process");
+			}
+		});
+
+		it("releases the lock after an install, so the next launch is not blocked", async () => {
+			// A lock left behind by a finished install would stall updates until
+			// its staleness window elapsed, which is deliberately fifteen minutes.
+			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			const state = await statePath();
+
+			await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			await clearAutoUpdateFailure(state);
+			const second = await updateCli.runAutoUpdate("1.0.0", undefined, state);
+
+			expect(second).toEqual({ status: "updated", version: "9.9.9" });
+		});
 	});
 });

@@ -1,10 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import {
+	cleanTinyMessage,
 	formatTitleConversationContext,
 	formatTitleUserMessage,
+	isPreformattedChatContext,
 	MAX_TINY_MESSAGE_CHARS,
 	preprocessTinyMessage,
+	shortenHashes,
+	stripChatScaffolding,
 	stripCodeBlocks,
+	stripXmlBlocks,
+	truncateTinyMessage,
 } from "@veyyon/coding-agent/tiny/message-preproc";
 import { isLowSignalTitleInput, NO_TITLE_SENTINEL, normalizeGeneratedTitle } from "@veyyon/coding-agent/tiny/text";
 
@@ -44,6 +50,70 @@ describe("stripCodeBlocks", () => {
 
 	it("returns prose unchanged when there is no code block", () => {
 		expect(stripCodeBlocks("Investigate the resolver")).toBe("Investigate the resolver");
+	});
+});
+
+/**
+ * The individual cleanup stages that compose the tiny-model preprocessing pipeline had no
+ * direct test (only the composed preprocessTinyMessage / stripCodeBlocks did). Each stage is
+ * load-bearing: if stripXmlBlocks stops dropping a paired envelope, or shortenHashes stops
+ * collapsing a SHA, the title model sees literal noise again; if truncateTinyMessage
+ * miscounts, the omission marker lies about how much was dropped or the output exceeds the
+ * bound. These pin each stage in isolation so a regression is attributed to the exact stage.
+ */
+describe("stripXmlBlocks", () => {
+	it("drops fully paired blocks but leaves self-closing and lone opening tags in place", () => {
+		expect(stripXmlBlocks("a<user>hello</user>b")).toBe("a b");
+		expect(stripXmlBlocks("x<think>a<b>c</b>d</think>y")).toBe("x y");
+		expect(stripXmlBlocks("a<Header/>b")).toBe("a<Header/>b");
+		expect(stripXmlBlocks("a<div>b")).toBe("a<div>b");
+	});
+});
+
+describe("shortenHashes", () => {
+	it("truncates a 12+ char hex run to a 7-char short hash and leaves shorter runs intact", () => {
+		expect(shortenHashes("commit abcdef0123456 done")).toBe("commit abcdef0 done");
+		expect(shortenHashes("word abcdef01234 x")).toBe("word abcdef01234 x");
+	});
+});
+
+describe("truncateTinyMessage", () => {
+	it("returns a message at or under the bound unchanged", () => {
+		expect(truncateTinyMessage("short")).toBe("short");
+	});
+
+	it("middle-truncates an over-long message to the bound with an accurate omission marker", () => {
+		const truncated = truncateTinyMessage("H".repeat(3000));
+		expect(truncated.length).toBeLessThanOrEqual(MAX_TINY_MESSAGE_CHARS);
+		expect(truncated.startsWith("H")).toBe(true);
+		expect(truncated.endsWith("H")).toBe(true);
+		const marker = truncated.match(/\n\[… (\d+) chars omitted …\]\n/);
+		expect(marker).not.toBeNull();
+		const omitted = Number(marker![1]);
+		// The omitted count must exactly reconcile: kept text + marker + omitted == original.
+		expect(truncated.length - marker![0].length + omitted).toBe(3000);
+	});
+});
+
+describe("cleanTinyMessage", () => {
+	it("composes ANSI-strip, XML-strip, and hash-shorten before returning the prose", () => {
+		const esc = String.fromCharCode(27);
+		const message = `${esc}[31m<user>hi abcdef0123456789</user>${esc}[0m and some prose that is long enough`;
+		expect(cleanTinyMessage(message)).toBe("and some prose that is long enough");
+	});
+});
+
+describe("isPreformattedChatContext / stripChatScaffolding", () => {
+	it("recognizes only a fully anchored <chat>…</chat> envelope", () => {
+		expect(isPreformattedChatContext("  <chat>\nx\n</chat>  ")).toBe(true);
+		expect(isPreformattedChatContext("hi <chat>x</chat> there")).toBe(false);
+		expect(isPreformattedChatContext("<user>x</user>")).toBe(false);
+	});
+
+	it("replaces every chat-scaffold tag with a space", () => {
+		expect(stripChatScaffolding("<chat><user>a</user><assistant>b<think>c</think></assistant></chat>")).toBe(
+			"  a  b c   ",
+		);
 	});
 });
 

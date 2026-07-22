@@ -16,8 +16,12 @@
 
 import { clamp01 } from "@veyyon/utils";
 
-/** Intensity → glyph. Eight stops, dark core of the void to a solid disc. */
-const GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"] as const;
+/**
+ * Intensity → glyph. Eight stops, dark core of the void to a solid disc.
+ * Exported so brand-conformance can pin website/sun-field.js to this exact
+ * vocabulary: the web hero and the terminal splash must draw one glyph ramp.
+ */
+export const GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"] as const;
 
 /**
  * Ember band stops (dark rim → white-hot core), truecolor. Mirrors sun.js.

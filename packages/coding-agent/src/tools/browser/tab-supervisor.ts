@@ -1,8 +1,9 @@
-import { errorMessage, getPuppeteerDir, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+import { errorMessage, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import type { Page, Target } from "puppeteer-core";
 import { callSessionTool } from "../../eval/js/tool-bridge";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { webpExclusionForModel } from "../../utils/image-loading";
+import { TAB_WORKER_ARG } from "../../worker-args";
 import type { ToolSession } from "../index";
 import { expandPath } from "../path-utils";
 import { ToolAbortError, ToolError } from "../tool-errors";
@@ -610,14 +611,12 @@ function isLastSurfaceCloseError(err: unknown): boolean {
 }
 
 async function buildInitPayload(browser: PuppeteerBrowserHandle, opts: AcquireTabOptions): Promise<WorkerInitPayload> {
-	const safeDir = getPuppeteerDir();
 	const browserWSEndpoint = browser.browser.wsEndpoint();
 	if (!browserWSEndpoint) throw new ToolError("Browser websocket endpoint is unavailable");
 	if (browser.kind.kind === "headless") {
 		return {
 			mode: "headless",
 			browserWSEndpoint,
-			safeDir,
 			viewport: opts.viewport,
 			dialogs: opts.dialogs,
 			url: opts.url,
@@ -630,7 +629,6 @@ async function buildInitPayload(browser: PuppeteerBrowserHandle, opts: AcquireTa
 	return {
 		mode: "attach",
 		browserWSEndpoint,
-		safeDir,
 		targetId,
 		dialogs: opts.dialogs,
 	};
@@ -728,7 +726,6 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 	const payload: WorkerInitPayload = {
 		mode: "attach",
 		browserWSEndpoint,
-		safeDir: getPuppeteerDir(),
 		targetId: tab.targetId,
 		dialogs: tab.dialogPolicy,
 		// Unblock a wedged page (open JS dialog, hung navigation) before adopting it —
@@ -845,7 +842,7 @@ async function spawnTabWorker(): Promise<WorkerHandle> {
 	try {
 		const hostEntry = workerHostEntry();
 		const worker = hostEntry
-			? new Worker(hostEntry, { type: "module", argv: ["__veyyon_worker_tab"] })
+			? new Worker(hostEntry, { type: "module", argv: [TAB_WORKER_ARG] })
 			: new Worker(new URL("./tab-worker-entry.ts", import.meta.url).href, { type: "module" });
 		return wrapBunWorker(worker);
 	} catch (err) {

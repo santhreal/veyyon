@@ -1,0 +1,101 @@
+{
+	"cases": [
+		{
+			"id": "plan-enforce-off-allows-tree-write",
+			"contract": "When plan mode is disabled, enforcePlanModeWrite is a no-op for tree paths",
+			"surface": "plan-mode-enforce",
+			"tags": ["negative"],
+			"input": {
+				"planEnabled": false,
+				"target": "src/a.ts",
+				"op": "update"
+			},
+			"expect": { "throws": false }
+		},
+		{
+			"id": "plan-enforce-on-blocks-tree-write",
+			"contract": "When plan mode is on, working-tree writes are rejected with read-only message",
+			"surface": "plan-mode-enforce",
+			"tags": ["positive", "adversarial"],
+			"input": {
+				"planEnabled": true,
+				"target": "src/a.ts",
+				"op": "update"
+			},
+			"expect": { "throws": true, "errorContains": "working tree is read-only" }
+		},
+		{
+			"id": "plan-enforce-on-blocks-delete",
+			"contract": "Plan mode rejects deletes even for sandbox targets",
+			"surface": "plan-mode-enforce",
+			"tags": ["adversarial"],
+			"input": {
+				"planEnabled": true,
+				"target": "local://plan.md",
+				"op": "delete"
+			},
+			"expect": { "throws": true, "errorContains": "deleting files is not allowed" }
+		},
+		{
+			"id": "plan-enforce-on-blocks-rename",
+			"contract": "Plan mode rejects renames with an explicit rename error",
+			"surface": "plan-mode-enforce",
+			"tags": ["adversarial"],
+			"input": {
+				"planEnabled": true,
+				"target": "local://plan.md",
+				"move": "local://renamed.md"
+			},
+			"expect": { "throws": true, "errorContains": "renaming files is not allowed" }
+		},
+		{
+			"id": "plan-enforce-on-allows-local-sandbox",
+			"contract": "Plan mode allows writes into local:// artifact sandbox",
+			"surface": "plan-mode-enforce",
+			"tags": ["positive"],
+			"input": {
+				"planEnabled": true,
+				"target": "local://scratch-plan.md",
+				"op": "create"
+			},
+			"expect": { "throws": false }
+		},
+		{
+			"id": "plan-enforce-off-allows-delete",
+			"contract": "When plan mode is off, deletes are not blocked by enforcePlanModeWrite",
+			"surface": "plan-mode-enforce",
+			"tags": ["negative"],
+			"input": {
+				"planEnabled": false,
+				"target": "src/a.ts",
+				"op": "delete"
+			},
+			"expect": { "throws": false }
+		},
+		{
+			"id": "plan-enforce-on-blocks-nested-tree",
+			"contract": "Nested working-tree paths are blocked under plan mode",
+			"surface": "plan-mode-enforce",
+			"tags": ["adversarial"],
+			"input": {
+				"planEnabled": true,
+				"target": "packages/coding-agent/src/x.ts",
+				"op": "update"
+			},
+			"expect": { "throws": true, "errorContains": "working tree is read-only" }
+		},
+		{
+			"id": "plan-enforce-on-allows-local-update",
+			"contract": "Plan mode allows update ops inside local:// sandbox",
+			"surface": "plan-mode-enforce",
+			"tags": ["positive"],
+			"input": {
+				"planEnabled": true,
+				"target": "local://plan.md",
+				"op": "update"
+			},
+			"expect": { "throws": false }
+		}
+	]
+}
+

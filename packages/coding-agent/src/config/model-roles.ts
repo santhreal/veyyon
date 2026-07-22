@@ -2,7 +2,13 @@
  * Built-in model roles and role metadata helpers.
  */
 
-import { isValidThemeColor, type ThemeColor } from "../modes/theme/theme";
+// Import from the leaf color module, not the heavy `theme` barrel. The barrel pulls
+// modes/theme/shimmer -> config/settings -> discovery -> ... -> config/model-resolver,
+// and model-resolver imports this file back, so routing through the barrel forms an
+// import cycle whose top-level `const MODEL_ROLE_ALIAS_PREFIXES = [...]` reads this
+// module's still-uninitialized exports (a TDZ ReferenceError) whenever model-roles is
+// the entry point. color.ts is a true leaf (arktype only), so this edge breaks the cycle.
+import { isValidThemeColor, type ThemeColor } from "../modes/theme/color";
 import type { Settings } from "./settings";
 
 /** Canonical prefix for a configured model role selector. */

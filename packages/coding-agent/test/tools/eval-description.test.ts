@@ -4,17 +4,18 @@ import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool, getEvalToolDescription } from "@veyyon/coding-agent/tools/eval";
+import { makeToolSession } from "../helpers/tool-session";
 
 function makeSession(opts: { spawns?: string | null; backends?: Record<string, boolean> }): ToolSession {
 	const settings = Settings.isolated();
 	for (const [key, value] of Object.entries(opts.backends ?? {})) settings.set(key as never, value);
-	return {
+	return makeToolSession({
 		cwd: "/tmp/eval-test",
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => opts.spawns ?? "*",
 		settings,
-	} as unknown as ToolSession;
+	});
 }
 
 /** Pull the model-facing cell-schema fields (sorted `language` enum + descriptions) from the flat wire schema. */
@@ -57,6 +58,23 @@ describe("eval tool description", () => {
 		// The prelude doc must not promise a helper that always throws.
 		const text = getEvalToolDescription({ py: true, js: true, spawns: false });
 		expect(text).not.toContain("agent(prompt");
+	});
+
+	it("advertises the first named spawn as the agent() default and lists the allowed set", () => {
+		// A concrete allowlist (not just `true`) must surface the first entry as the default
+		// argument value and enumerate every allowed agent, so cell code knows what it may call.
+		const description = getEvalToolDescription({ py: true, js: false, spawns: "fact-finder,oracle" });
+		expect(description).toContain('agent(prompt, agent?="fact-finder"');
+		expect(description).toContain("omit it to use `fact-finder`");
+		expect(description).toContain("Allowed agents: `fact-finder`, `oracle`.");
+	});
+
+	it("omits both agent() and the <dag> block when spawning is disabled by an empty allowlist", () => {
+		// An empty-string allowlist is the resolved form of "no spawns"; neither the agent()
+		// helper nor the multi-agent <dag> orchestration syntax may be advertised.
+		const description = getEvalToolDescription({ py: true, js: false, spawns: "" });
+		expect(description).not.toContain("agent(prompt");
+		expect(description).not.toContain("<dag>");
 	});
 
 	it("EvalTool description reflects spawn policy from the session", () => {

@@ -8,7 +8,7 @@ import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth }
 import { isRecord, trimmedString } from "@veyyon/utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -16,6 +16,11 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
 const ZAI_MCP_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp";
 const ZAI_TOOL_NAME = "web_search_prime";
 const DEFAULT_NUM_RESULTS = 10;
+// Cap the requested count like every other list provider (see clampNumResults /
+// the sibling providers). Without this, an explicit `limit` reached the Z.AI API
+// and the post-fetch slice unclamped, the lone list provider that did not bound
+// the request. 20 matches the house default the majority of providers use.
+const MAX_NUM_RESULTS = 20;
 
 export interface ZaiSearchParams {
 	query: string;
@@ -373,15 +378,23 @@ export async function searchZai(params: ZaiSearchParams): Promise<SearchResponse
 		sessionId: params.sessionId,
 	});
 
-	const rawResult = await withAuth(keyOrResolver, key => callZaiSearch(key, params), {
+	// Cap the requested count once, here, so both the outbound API `count` and the
+	// post-fetch slice honor the same bound as every other list provider (an
+	// unclamped `limit` used to reach the Z.AI API and the slice). Clamping at this
+	// shared entry means a direct searchZai call is bounded too, not only the
+	// ZaiProvider wrapper.
+	const resultCap = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const cappedParams = { ...params, num_results: resultCap };
+
+	const rawResult = await withAuth(keyOrResolver, key => callZaiSearch(key, cappedParams), {
 		signal: params.signal,
 		missingKeyMessage: "Z.AI credentials not found. Set ZAI_API_KEY or login with 'veyyon /login zai'.",
 	});
 	const payload = parseSearchPayload(rawResult);
 	let sources = toSources(payload.results);
 
-	if (params.num_results && sources.length > params.num_results) {
-		sources = sources.slice(0, params.num_results);
+	if (sources.length > resultCap) {
+		sources = sources.slice(0, resultCap);
 	}
 
 	return {

@@ -235,7 +235,7 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 	const pathsByLevel = await Promise.all(
 		dirsToDiscover.map(async ({ dir, level }) => {
-			const paths = await discoverExtensionModulePaths(ctx, dir);
+			const paths = await discoverExtensionModulePaths(dir);
 			return paths.map(extPath => ({ extPath, level }));
 		}),
 	);

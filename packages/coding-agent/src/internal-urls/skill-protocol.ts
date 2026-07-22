@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils";
 import { getActiveSkills } from "../extensibility/skills";
 import { getContentType } from "./content-type";
-import { buildDirectoryResource } from "./filesystem-resource";
+import { buildDirectoryResource, isWithinRoot } from "./filesystem-resource";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
 /**
@@ -63,7 +63,7 @@ export class SkillProtocolHandler implements ProtocolHandler {
 
 			const resolvedPath = path.resolve(targetPath);
 			const resolvedBaseDir = path.resolve(skill.baseDir);
-			if (!resolvedPath.startsWith(resolvedBaseDir + path.sep) && resolvedPath !== resolvedBaseDir) {
+			if (!isWithinRoot(resolvedPath, resolvedBaseDir)) {
 				throw new Error("Path traversal is not allowed");
 			}
 		} else {

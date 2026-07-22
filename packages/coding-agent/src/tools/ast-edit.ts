@@ -169,6 +169,16 @@ export interface AstEditToolDetails {
 
 type AstEditSchemaInfer = typeof astEditSchema.infer;
 
+/**
+ * Filesystem paths an ast_edit call targets, for the cwd boundary
+ * (cwd-boundary.ts). The `paths` arg lists the files edited; internal-scheme
+ * entries are filtered by the boundary.
+ */
+export function astEditFilesystemTargets(args: unknown): string[] {
+	const paths = (args as Partial<AstEditSchemaInfer>).paths;
+	return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : [];
+}
+
 export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolDetails> {
 	readonly name = "ast_edit";
 	readonly approval = (args: unknown) => {
@@ -177,6 +187,9 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 			: [];
 		return paths.length > 0 && paths.every(path => isInternalUrlPath(path)) ? "read" : "write";
 	};
+	// The cwd boundary gates out-of-cwd AST edits in non-yolo modes; internal
+	// schemes are filtered by the boundary. See cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => astEditFilesystemTargets(args);
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const params = args as Partial<AstEditSchemaInfer>;
 		const lines: string[] = [];

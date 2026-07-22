@@ -34,11 +34,10 @@ export function normalizeAnalysis(parsed: {
 	return {
 		type: parsed.type,
 		scope: parsed.scope?.trim() || null,
-		details: parsed.details.map(detail => ({
-			text: detail.text.trim(),
-			changelogCategory: detail.user_visible ? detail.changelog_category : undefined,
-			userVisible: detail.user_visible ?? false,
-		})),
+		// Detail shaping has a single owner in normalizeDetails; do not re-inline
+		// the trim / user_visible->changelogCategory gate here or the two copies
+		// can drift.
+		details: normalizeDetails(parsed.details),
 		issueRefs: parsed.issue_refs ?? [],
 	};
 }

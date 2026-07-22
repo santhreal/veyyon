@@ -8,6 +8,7 @@ import * as path from "node:path";
 // atomic-write.ts and file-lock.ts are env-free, so importing them eagerly is safe.
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { normalizeProfileName } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
 import { withFileLock } from "@veyyon/utils/file-lock";
 
 export type ProfileAliasShell = "bash" | "zsh" | "fish" | "powershell" | "pwsh";
@@ -134,11 +135,6 @@ const POWERSHELL_RESERVED_ALIAS_NAMES: ReadonlySet<string> = new Set([
 	"workflow",
 ]);
 
-// Keep local: importing the pi-utils root here would eagerly load env before
-// cli.ts has applied --profile, regressing profile-specific .env loading.
-function isEnoentError(error: unknown): boolean {
-	return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ENOENT";
-}
 
 function getReservedAliasNames(shell: ProfileAliasShell): ReadonlySet<string> {
 	switch (shell) {
@@ -338,7 +334,7 @@ export async function readProfileAliasConfigFile(
 	try {
 		return await readText(filePath);
 	} catch (error) {
-		if (isEnoentError(error)) return "";
+		if (isEnoent(error)) return "";
 		throw error;
 	}
 }

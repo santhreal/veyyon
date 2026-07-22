@@ -9,7 +9,7 @@ import {
 	type McpConnectionStatusEvent,
 } from "@veyyon/coding-agent/mcp/startup-events";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -25,9 +25,10 @@ import { logger, TempDir } from "@veyyon/utils";
  * and fail.
  */
 
-/** The location line's right zone is where MCP boot health lives. */
+/** MCP boot health lives at the right edge of the composer's one metadata
+ * footline (the location line merged into it in the composer redesign). */
 function locationText(mode: InteractiveMode): string {
-	return stripVTControlCharacters(mode.locationLine.render(140).join("\n"));
+	return stripVTControlCharacters(mode.capabilityLine.render(140).join("\n"));
 }
 describe("InteractiveMode MCP connection status", () => {
 	let authStorage: AuthStorage;
@@ -126,8 +127,12 @@ describe("InteractiveMode MCP connection status", () => {
 
 		// Settled with one failure: a loud-enough count plus the detail pointer.
 		// The raw error text never reaches the zone — it lives in `/mcp list`.
+		// The cross routes through `theme.status.error` (not a raw `✗` literal), so
+		// it degrades with the symbol preset instead of emitting a glyph an ascii
+		// terminal cannot render; build the expected token from the symbol to prove
+		// the routing rather than hardcode the unicode glyph.
 		const text = locationText(mode);
-		expect(text).toContain("mcp ✗1 · /mcp list");
+		expect(text).toContain(`mcp ${theme.status.error}1 · /mcp list`);
 		expect(text).not.toContain("missing command");
 	});
 

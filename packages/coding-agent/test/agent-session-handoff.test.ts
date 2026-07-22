@@ -13,15 +13,13 @@ import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import * as snapcompact from "@veyyon/snapcompact";
 import { TempDir } from "@veyyon/utils";
 
 const HANDOFF_SECRET = "HANDOFF_SECRET_TOKEN_12345";
-const UNRENDERABLE_SNAPCOMPACT_TEXT = "\uE000\uE001\uE002\uE003\uE004\uE005\uE006\uE007\uE008\uE009";
 
-/** Force legacy in-session LLM compaction for tests (migrated configs store handoff|snap only). */
-function withLegacyContextFullStrategy(settings: Settings): Settings {
-	settings.override("compaction.strategy", "context-full" as never);
+/** Force in-place LLM summary compaction for tests (the non-handoff strategy). */
+function withSummaryStrategy(settings: Settings): Settings {
+	settings.override("compaction.strategy", "summary" as never);
 	return settings;
 }
 
@@ -438,7 +436,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("obfuscates the previous compaction summary but preserves opaque replay data", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		const placeholder = obfuscator.obfuscate(HANDOFF_SECRET);
 		const entries = sessionManager.getBranch();
 		const lastEntryId = entries[entries.length - 1]?.id;
@@ -481,7 +479,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("obfuscates migrated snapcompact archive text but preserves opaque replay data", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		const placeholder = obfuscator.obfuscate(HANDOFF_SECRET);
 		const entries = sessionManager.getBranch();
 		const lastEntryId = entries[entries.length - 1]?.id;
@@ -498,7 +496,7 @@ describe("AgentSession handoff", () => {
 			tokensBefore: 100,
 			previousPreserveData: {
 				openaiRemoteCompaction: replaySlot,
-				[snapcompact.PRESERVE_KEY]: {
+				snapcompact: {
 					frames: [],
 					totalChars: 32,
 					truncatedChars: 0,
@@ -526,97 +524,13 @@ describe("AgentSession handoff", () => {
 		if (!preserve) throw new Error("Expected previousPreserveData");
 		// The archive plaintext that compact() migrates into the summary prompt is
 		// redacted, so the raw secret never reaches the provider.
-		const archive = preserve[snapcompact.PRESERVE_KEY] as { text: string; textHead: string };
+		const archive = preserve["snapcompact"] as { text: string; textHead: string };
 		expect(archive.text).toBe(`archived ${placeholder}`);
 		expect(archive.textHead).toBe(`head ${placeholder}`);
 		expect(JSON.stringify(archive)).not.toContain(HANDOFF_SECRET);
 		// Opaque provider-replay state stays byte-identical (same reference) — only the
 		// snapcompact slot's text is rewritten.
 		expect(preserve.openaiRemoteCompaction).toBe(replaySlot);
-	});
-
-	it("does not call the LLM summarizer when manual snapcompact preflight fails", async () => {
-		const entries = sessionManager.getBranch();
-		const lastEntryId = entries[entries.length - 1]?.id;
-		if (!lastEntryId) throw new Error("Expected a seeded entry id");
-		const fixedPreparation: compactionModule.CompactionPreparation = {
-			firstKeptEntryId: lastEntryId,
-			messagesToSummarize: [
-				{
-					role: "user",
-					content: [{ type: "text", text: UNRENDERABLE_SNAPCOMPACT_TEXT.repeat(100) }],
-					timestamp: 1,
-				},
-			],
-			turnPrefixMessages: [],
-			recentMessages: [],
-			isSplitTurn: false,
-			tokensBefore: 100,
-			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
-			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "snapcompact" },
-		};
-		vi.spyOn(compactionModule, "prepareCompaction").mockReturnValue(fixedPreparation);
-		const compactSpy = vi.spyOn(compactionModule, "compact").mockRejectedValue(new Error("429 quota exhausted"));
-
-		await expect(session.compact(undefined, { mode: "snapcompact" })).rejects.toThrow(
-			"snapcompact cannot render this conversation locally",
-		);
-
-		expect(compactSpy).not.toHaveBeenCalled();
-	});
-
-	it("downgrades auto snapcompact to context-full when local preflight rejects the transcript", async () => {
-		session.settings.override("compaction.strategy", "snapcompact" as never);
-		const entries = sessionManager.getBranch();
-		const lastEntryId = entries[entries.length - 1]?.id;
-		if (!lastEntryId) throw new Error("Expected a seeded entry id");
-		const fixedPreparation: compactionModule.CompactionPreparation = {
-			firstKeptEntryId: lastEntryId,
-			messagesToSummarize: [
-				{
-					role: "user",
-					content: [{ type: "text", text: UNRENDERABLE_SNAPCOMPACT_TEXT.repeat(100) }],
-					timestamp: 1,
-				},
-			],
-			turnPrefixMessages: [],
-			recentMessages: [],
-			isSplitTurn: false,
-			tokensBefore: 100,
-			fileOps: { read: new Set(), written: new Set(), edited: new Set() },
-			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "snapcompact" },
-		};
-		vi.spyOn(compactionModule, "prepareCompaction").mockReturnValue(fixedPreparation);
-		const compactSpy = vi.spyOn(compactionModule, "compact").mockResolvedValue({
-			summary: "compacted",
-			shortSummary: undefined,
-			firstKeptEntryId: lastEntryId,
-			tokensBefore: 100,
-			details: {},
-		});
-
-		await session.runIdleCompaction();
-
-		const endEvent = events.find(
-			(event): event is Extract<AgentSessionEvent, { type: "auto_compaction_end" }> =>
-				event.type === "auto_compaction_end",
-		);
-		expect(compactSpy).toHaveBeenCalled();
-		// The start event fires before the in-try preflight downgrades action, so it
-		// still reports "snapcompact"; the end event reflects the downgraded action.
-		expect(events).toContainEqual({ type: "auto_compaction_start", reason: "idle", action: "snapcompact" });
-		expect(endEvent).toMatchObject({
-			type: "auto_compaction_end",
-			action: "context-full",
-		});
-		expect(endEvent?.errorMessage).toBeUndefined();
-		const downgradeNotice = events.find(
-			(event): event is Extract<AgentSessionEvent, { type: "notice" }> =>
-				event.type === "notice" &&
-				event.source === "compaction" &&
-				event.message.startsWith("snapcompact disabled: unsupported characters for selected snapcompact font"),
-		);
-		expect(downgradeNotice?.message).toContain("using context-full auto-compaction instead.");
 	});
 
 	it("strips hook-supplied snapcompact data when persisting context-full compaction", async () => {
@@ -644,7 +558,7 @@ describe("AgentSession handoff", () => {
 					? {
 							preserveData: {
 								otherState: "keep-me",
-								[snapcompact.PRESERVE_KEY]: { frames: [], totalChars: 0, truncatedChars: 0 },
+								snapcompact: { frames: [], totalChars: 0, truncatedChars: 0 },
 							},
 						}
 					: undefined,
@@ -665,7 +579,7 @@ describe("AgentSession handoff", () => {
 		const localSession = new AgentSession({
 			agent: localAgent,
 			sessionManager: localSessionManager,
-			settings: withLegacyContextFullStrategy(
+			settings: withSummaryStrategy(
 				Settings.isolated({
 					"compaction.enabled": true,
 					"compaction.autoContinue": false,
@@ -683,7 +597,7 @@ describe("AgentSession handoff", () => {
 				otherState: "keep-me",
 				resultState: "keep-result",
 			});
-			expect(compactionEntry.preserveData).not.toHaveProperty(snapcompact.PRESERVE_KEY);
+			expect(compactionEntry.preserveData).not.toHaveProperty("snapcompact");
 		} finally {
 			await localSession.dispose();
 			await localTempDir.remove();
@@ -715,7 +629,7 @@ describe("AgentSession handoff", () => {
 					? {
 							preserveData: {
 								otherState: "keep-me",
-								[snapcompact.PRESERVE_KEY]: { frames: [], totalChars: 0, truncatedChars: 0 },
+								snapcompact: { frames: [], totalChars: 0, truncatedChars: 0 },
 							},
 						}
 					: undefined,
@@ -736,7 +650,7 @@ describe("AgentSession handoff", () => {
 		const localSession = new AgentSession({
 			agent: localAgent,
 			sessionManager: localSessionManager,
-			settings: withLegacyContextFullStrategy(
+			settings: withSummaryStrategy(
 				Settings.isolated({
 					"compaction.enabled": true,
 					"compaction.autoContinue": false,
@@ -755,7 +669,7 @@ describe("AgentSession handoff", () => {
 				otherState: "keep-me",
 				resultState: "keep-result",
 			});
-			expect(compactionEntry.preserveData).not.toHaveProperty(snapcompact.PRESERVE_KEY);
+			expect(compactionEntry.preserveData).not.toHaveProperty("snapcompact");
 		} finally {
 			await localSession.dispose();
 			await localTempDir.remove();
@@ -763,7 +677,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("runs context maintenance before sending an oversized pending prompt", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -793,7 +707,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("falls back after one auto-compaction timeout instead of retrying the same model", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -834,7 +748,7 @@ describe("AgentSession handoff", () => {
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 	});
 	it("inherits the live session model as the first compaction candidate when compaction.model is unset", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -860,7 +774,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("applies the compaction.model effort suffix to the compaction call, overriding the session effort", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -894,7 +808,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("uses the session effort for compaction when compaction.model carries no effort suffix", async () => {
-		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.override("compaction.strategy", "summary" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -1002,7 +916,7 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: withLegacyContextFullStrategy(
+			settings: withSummaryStrategy(
 				Settings.isolated({
 					"compaction.enabled": true,
 					"compaction.autoContinue": false,
@@ -1088,7 +1002,7 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: withLegacyContextFullStrategy(
+			settings: withSummaryStrategy(
 				Settings.isolated({
 					"compaction.enabled": true,
 					"compaction.autoContinue": false,
@@ -1171,7 +1085,7 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: withLegacyContextFullStrategy(
+			settings: withSummaryStrategy(
 				Settings.isolated({
 					"compaction.enabled": true,
 					"compaction.autoContinue": false,
@@ -1258,7 +1172,7 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: withLegacyContextFullStrategy(
+			settings: withSummaryStrategy(
 				Settings.isolated({
 					"compaction.enabled": false,
 					"compaction.autoContinue": false,
@@ -1435,7 +1349,7 @@ describe("AgentSession handoff", () => {
 
 		expect(session.autoCompactionEnabled).toBe(false);
 		session.setAutoCompactionEnabled(true);
-		expect(session.settings.get("compaction.strategy")).toBe("snap");
+		expect(session.settings.get("compaction.strategy")).toBe("summary");
 		expect(session.autoCompactionEnabled).toBe(true);
 	});
 

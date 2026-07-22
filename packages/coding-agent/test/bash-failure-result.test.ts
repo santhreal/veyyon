@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { makeToolSession } from "./helpers/tool-session";
 
 function makeSession(): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		skills: [],
@@ -25,7 +26,7 @@ function makeSession(): ToolSession {
 			},
 		},
 		getClientBridge: () => undefined,
-	} as unknown as ToolSession;
+	});
 }
 
 describe("BashTool execution results", () => {

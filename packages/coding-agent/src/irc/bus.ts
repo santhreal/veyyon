@@ -354,8 +354,18 @@ export class IrcBus {
 		try {
 			mainSession.emitIrcRelayObservation(record);
 		} catch (error) {
-			// Display-only forwarding must never affect delivery semantics.
-			logger.debug("IrcBus: main UI relay failed", { to: message.to, error: String(error) });
+			// Display-only forwarding must never affect delivery semantics, so the
+			// throw is still swallowed. What is not acceptable is swallowing it
+			// quietly: the message WAS delivered but never appeared in the
+			// transcript, so the user watching a multi-agent run sees a gap with no
+			// indication one exists, and reports agents that "stopped talking to each
+			// other" when they did not (Law 10).
+			logger.warn("Inter-agent message was delivered but could not be shown in the transcript", {
+				from: message.from,
+				to: message.to,
+				error: String(error),
+				impact: "Delivery was unaffected; only the display copy was lost.",
+			});
 		}
 	}
 }

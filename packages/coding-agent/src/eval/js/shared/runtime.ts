@@ -377,7 +377,10 @@ export class JsRuntime {
 					},
 				});
 				const tableConsole = new Console({ stdout: stream, colorMode: false });
-				(tableConsole.table as (...a: unknown[]) => void)(...args);
+				// `Console.table` exists at runtime but is missing from the `Console`
+				// instance type under this TS config, so reach it through an object cast
+				// (casting the property access alone still trips TS2339 on the access).
+				(tableConsole as unknown as { table: (...a: unknown[]) => void }).table(...args);
 				hooks.onText(buffer.endsWith("\n") ? buffer : `${buffer}\n`);
 			},
 			__veyyon_display__: (value: unknown) => this.displayValue(value),

@@ -1,5 +1,5 @@
 import { type Component, matchesKey, padding, routeSgrMouseInput, ScrollView, type SgrMouseEvent } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
+import { clampLow, formatCount } from "@veyyon/utils";
 import type { ResetUsageAccount } from "../../slash-commands/helpers/reset-usage";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
@@ -69,7 +69,7 @@ export class ResetUsageSelectorComponent implements Component {
 		const startIndex =
 			total <= maxVisible
 				? 0
-				: Math.max(0, Math.min(this.#selectedIndex - Math.floor(maxVisible / 2), total - maxVisible));
+				: clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 		const endIndex = Math.min(startIndex + maxVisible, total);
 
 		const rows: string[] = [];

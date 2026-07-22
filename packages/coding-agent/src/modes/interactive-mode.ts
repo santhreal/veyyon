@@ -29,6 +29,7 @@ import {
 	clearRenderCache,
 	Loader,
 	ProcessTerminal,
+	planPaintGround,
 	Spacer,
 	setTerminalTextSizing,
 	setTuiTight,
@@ -41,7 +42,10 @@ import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
+	clampLow,
 	errorMessage,
+	estimateTokensFromText,
+	formatClock,
 	formatCount,
 	formatNumber,
 	getProjectDir,
@@ -58,7 +62,13 @@ import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import { KeybindingsManager } from "../config/keybindings";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
-import { isSettingsInitialized, onStatusLineSessionAccentChanged, Settings, settings } from "../config/settings";
+import {
+	isSettingsInitialized,
+	onStatusLineSessionAccentChanged,
+	type QuarantinedSettingsFile,
+	Settings,
+	settings,
+} from "../config/settings";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import type {
 	AutocompleteProviderFactory,
@@ -132,7 +142,7 @@ import { VibeSessionRegistry } from "../vibe/runtime";
 import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
-import { ComposerHairline, ghostSunBar, QuietZoneLine } from "./components/composer-chrome";
+import { ComposerHairline, QuietZoneLine } from "./components/composer-chrome";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer-shortcuts";
 import { CustomEditor } from "./components/custom-editor";
 import { ErrorBannerComponent } from "./components/error-banner";
@@ -143,7 +153,7 @@ import type { HookSelectorComponent, HookSelectorSlider } from "./components/hoo
 import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
 import { goalProgressBar } from "./components/status-line/segments";
-import { emberBandEscape, renderSunsetField } from "./components/sun";
+import { renderSunsetField } from "./components/sun";
 import type { ToolExecutionHandle } from "./components/tool-execution";
 import { TranscriptContainer } from "./components/transcript-container";
 import { WelcomeComponent, type LspServerInfo as WelcomeLspServerInfo } from "./components/welcome";
@@ -179,9 +189,17 @@ import { createSessionTeardown, type SessionTeardown } from "./session-teardown"
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
 import { interruptHint } from "./shared";
 import { clearMermaidCache } from "./theme/mermaid-cache";
-import { type ShimmerPalette, shimmerEnabled, shimmerSegments, shimmerText } from "./theme/shimmer";
+import {
+	lavaText,
+	livingSpinnerColor,
+	type ShimmerPalette,
+	shimmerEnabled,
+	shimmerSegments,
+	shimmerText,
+} from "./theme/shimmer";
 import type { Theme } from "./theme/theme";
 import {
+	getCurrentThemeName,
 	getEditorTheme,
 	getSymbolTheme,
 	onTerminalAppearanceChange,
@@ -238,19 +256,30 @@ function workingMessagePalettes(accent: WorkingMessageAccent): { main: ShimmerPa
 	return entry;
 }
 
-function renderWorkingMessage(message: string, accent?: WorkingMessageAccent): string {
+function renderWorkingMessage(message: string, accent?: WorkingMessageAccent, clockText?: string): string {
 	const palettes = accent ? workingMessagePalettes(accent) : undefined;
 	const palette = palettes?.main;
+	const hintPalette = palettes?.hint ?? HINT_SHIMMER_PALETTE;
 	const hint = interruptHint();
-	if (!message.endsWith(hint)) return shimmerText(message, theme, palette);
-	const header = message.slice(0, -hint.length);
-	return shimmerSegments(
-		[
-			{ text: header, palette },
-			{ text: hint, palette: palettes?.hint ?? HINT_SHIMMER_PALETTE },
-		],
-		theme,
-	);
+	let body = message;
+	let hasHint = false;
+	if (body.endsWith(hint)) {
+		body = body.slice(0, -hint.length);
+		hasHint = true;
+	}
+	// The per-task elapsed clock (` · 0:42`) sits between the label and the esc
+	// hint. It is whisper chrome, not part of the task label, so it takes the
+	// hint's dim palette instead of shimmering with the message body.
+	let clock = "";
+	if (clockText && body.endsWith(clockText)) {
+		body = body.slice(0, -clockText.length);
+		clock = clockText;
+	}
+	if (!hasHint && !clock) return shimmerText(message, theme, palette);
+	const segments = [{ text: body, palette }];
+	if (clock) segments.push({ text: clock, palette: hintPalette });
+	if (hasHint) segments.push({ text: hint, palette: hintPalette });
+	return shimmerSegments(segments, theme);
 }
 
 const EDITOR_MAX_HEIGHT_MIN = 6;
@@ -259,6 +288,20 @@ const EDITOR_RESERVED_ROWS = 12;
 const EDITOR_FALLBACK_ROWS = 24;
 const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
 const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
+/**
+ * A small breathing margin below the whole composer block so the prompt never
+ * sits flush against the terminal's bottom edge — jammed there it read as "too
+ * low". One row lifts it just off the floor in every state (home anchor and
+ * mid-conversation alike); the home-screen fill math counts it via the composed
+ * frame, so the anchor stays exact.
+ */
+const COMPOSER_BOTTOM_MARGIN_ROWS = 1;
+/**
+ * Left inset of the composer zone's content (the `›` gutter and the metadata
+ * footline), in columns — the terminal realization of the design mockups'
+ * horizontal composer padding. Nothing in the composer sits at column 0.
+ */
+const COMPOSER_INSET_COLS = 2;
 
 /**
  * Editor max-height cap for a terminal of `terminalRows` rows.
@@ -273,8 +316,8 @@ const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border 
  */
 export function computeEditorMaxHeight(terminalRows: number): number {
 	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
-	const comfortable = Math.max(EDITOR_MAX_HEIGHT_MIN, Math.min(EDITOR_MAX_HEIGHT_MAX, rows - EDITOR_RESERVED_ROWS));
-	return Math.max(EDITOR_MIN_RENDERED_ROWS, Math.min(comfortable, rows - EDITOR_MIN_CHROME_ROWS));
+	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
+	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
 }
 
 const HUD_NOTE_SUP_DIGITS: Record<string, string> = {
@@ -431,7 +474,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
 	statusLine: StatusLineComponent;
-	locationLine: QuietZoneLine;
 	composerHairline: ComposerHairline;
 	capabilityLine: QuietZoneLine;
 
@@ -493,6 +535,14 @@ export class InteractiveMode implements InteractiveModeContext {
 	autoCompactionLoader: Loader | undefined = undefined;
 	retryLoader: Loader | undefined = undefined;
 	#pendingWorkingMessage: string | undefined;
+	// Per-task elapsed clock on the working line: the label is the task, the
+	// clock is how long that exact label has been showing. Reset whenever the
+	// label changes (each tool call / working phase sets a new one).
+	#taskLabel: string | undefined;
+	#taskHasHint = false;
+	#taskStartedAt = 0;
+	#workingClockText: string | undefined;
+	#clockTimer: NodeJS.Timeout | undefined;
 	#workingMessageAccentCacheKey?: WorkingMessageAccentCacheKey;
 	#workingMessageAccentCacheValue?: WorkingMessageAccent;
 	#workingMessageAccentCacheHasValue = false;
@@ -591,6 +641,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.loadingAnimation) {
 			this.loadingAnimation.stop();
 			this.loadingAnimation = undefined;
+			this.#resetTaskClock();
 		}
 		if (this.autoCompactionLoader) {
 			this.autoCompactionLoader.stop();
@@ -640,9 +691,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
 	#mcpFailedServers = new Map<string, { error: string; foreign: boolean }>();
-	/** Ghost-sun position: 0 = risen and resting on the hairline, 1 = fully set. */
-	#ghostSink = 0;
-	#ghostTimer?: NodeJS.Timeout;
 	#welcomeComponent?: WelcomeComponent;
 	/** The welcome card's surrounding spacers, kept so dismissal removes the
 	 *  whole block and leaves no blank rows behind. */
@@ -753,18 +801,18 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#refreshComposerShortcuts();
 		this.statusLine = new StatusLineComponent(session);
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
-		// The borderless composer: no box, no crammed top-border bar. State lives
-		// in two whisper-quiet zones around the prompt — location above the
-		// hairline (path · git, MCP health, the ghost sun), capability below
-		// (model · mode left, context right). The mode/session accent that used
-		// to tint the border now lives on the ember `›` prompt glyph.
+		// The borderless composer, per the agreed design mockups: a static
+		// near-invisible hairline, the content inset off the terminal edge, and
+		// ONE quiet metadata footline below the input — location (path · git)
+		// left, capability (model · mode · context · MCP health) right. The
+		// chrome is silent; motion belongs to content.
 		this.editor.setBorderVisible(false);
 		this.editor.setPlaceholder("ask anything  ·  / for commands");
-		this.locationLine = new QuietZoneLine(
-			width => this.statusLine.renderQuietLines(width, { locationRight: this.#locationRightZone() }).locationLine,
-		);
 		this.composerHairline = new ComposerHairline();
-		this.capabilityLine = new QuietZoneLine(width => this.statusLine.renderQuietLines(width).capabilityLine);
+		this.capabilityLine = new QuietZoneLine(
+			width => this.statusLine.renderQuietLine(width, { locationRight: this.#locationRightZone() }),
+			COMPOSER_INSET_COLS,
+		);
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");
 		this.proseOnlyThinking = settings.get("proseOnlyThinking");
@@ -775,12 +823,14 @@ export class InteractiveMode implements InteractiveModeContext {
 			name: cmd.name,
 			description: cmd.description ?? "(hook command)",
 			getArgumentCompletions: cmd.getArgumentCompletions,
+			category: "extensions",
 		}));
 
 		// Convert custom commands (TypeScript) to SlashCommand format
 		const customCommands: SlashCommand[] = this.session.customCommands.map(loaded => ({
 			name: loaded.command.name,
 			description: `${loaded.command.description} (${loaded.source})`,
+			category: "custom",
 		}));
 
 		// Build skill commands from session.skills (if enabled)
@@ -789,7 +839,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			for (const skill of this.session.skills) {
 				const commandName = `skill:${skill.name}`;
 				this.skillCommands.set(commandName, skill);
-				skillCommandList.push({ name: commandName, description: skill.description });
+				skillCommandList.push({ name: commandName, description: skill.description, category: "skills" });
 			}
 		}
 
@@ -837,15 +887,30 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/**
 	 * The location line's right zone: MCP boot health when it has something to
-	 * say, and always the ghost sun resting on the hairline at the far edge.
+	 * say, otherwise nothing. The resting sun dome that used to sit here read as
+	 * an artificial ornament; the composer's life now lives in the horizon rule
+	 * itself (see {@link ComposerHairline}), not a glyph parked at the edge.
 	 */
 	#locationRightZone(): string | null {
-		const parts: string[] = [];
-		const mcp = this.#mcpZoneText();
-		if (mcp) parts.push(mcp);
-		const ghost = ghostSunBar(TERMINAL.trueColor, this.#ghostSink);
-		if (ghost) parts.push(ghost);
-		return parts.length === 0 ? null : parts.join(theme.fg("dim", "   "));
+		const zones = [this.#draftTokenZone(), this.#mcpZoneText()].filter((z): z is string => z !== null);
+		return zones.length > 0 ? zones.join(theme.fg("dim", " · ")) : null;
+	}
+
+	/**
+	 * DS-6 dock: live draft size in the footline's right zone, gold
+	 * (matchHighlight) so the growing draft reads as "the found thing you are
+	 * about to send". Shown only while a non-blank draft exists; uses the one
+	 * shared byte-aware estimator, so the number matches budget math elsewhere.
+	 */
+	#draftTokenZone(): string | null {
+		const draft = this.editor.getText();
+		const trimmed = draft.trim();
+		if (trimmed.length === 0) return null;
+		// A bare slash-command token ("/se…") is menu navigation, not a draft —
+		// counting its characters is noise. The counter returns the moment the
+		// command takes arguments or the text is prose.
+		if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
+		return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
 	}
 
 	/**
@@ -865,27 +930,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			// config (Claude Code, Codex, …) stay visible but don't alarm —
 			// red at first paint is reserved for veyyon's own configuration.
 			const allForeign = [...this.#mcpFailedServers.values()].every(f => f.foreign);
-			return theme.fg(allForeign ? "dim" : "statusLineDirty", `mcp ✗${failed} · /mcp list`);
+			// Route the cross through the theme symbol, not a raw `✗` literal, so it
+			// degrades with the symbol preset (nerd ``, ascii `[!!]`) instead of
+			// emitting a glyph an ascii terminal cannot render.
+			return theme.fg(allForeign ? "dim" : "statusLineDirty", `mcp ${theme.status.error}${failed} · /mcp list`);
 		}
 		return null;
-	}
-
-	/**
-	 * Drive the ghost sun toward risen (0) or set (1) in short ease steps. On
-	 * submit the sun sets into the composer hairline; when the agent comes to
-	 * rest it rises again. Self-limiting: the timer stops at the target.
-	 */
-	#transitionGhost(target: 0 | 1): void {
-		clearInterval(this.#ghostTimer);
-		this.#ghostTimer = setInterval(() => {
-			const delta = target > this.#ghostSink ? 0.14 : -0.14;
-			this.#ghostSink = Math.min(1, Math.max(0, this.#ghostSink + delta));
-			if (this.#ghostSink === target) {
-				clearInterval(this.#ghostTimer);
-				this.#ghostTimer = undefined;
-			}
-			this.ui.requestRender();
-		}, 55);
 	}
 
 	playWelcomeIntro(): void {
@@ -901,6 +951,18 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.keybindings = logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
 		this.#refreshComposerShortcuts();
 
+		// Clock heartbeat: once per second WHILE THE MODEL WORKS, refresh the
+		// working line's per-task elapsed and repaint the quiet chrome so the
+		// location line's run clock ticks between agent events. At rest every
+		// on-screen time readout is frozen by design (run clock shows the
+		// completed "Worked for …", the context bar tip is static), so an idle
+		// tick would repaint a byte-identical frame — it does nothing.
+		this.#clockTimer = setInterval(() => {
+			if (!this.loadingAnimation && !this.session.isStreaming) return;
+			this.#refreshTaskClock();
+			this.ui.requestRender();
+		}, 1000);
+
 		// Route SIGINT/SIGTERM/SIGHUP/uncaughtException through the same teardown
 		// the TUI Ctrl+C keypress path performs: persist the in-progress editor
 		// draft for `--resume`, then dispose the session (which emits the extension
@@ -915,6 +977,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			getDraftText: () => this.editor.getText(),
 			beginDispose: () => this.session.beginDispose(),
 			saveDraft: text => this.sessionManager.saveDraft(text),
+			// Flush pending debounced settings on every exit path (keypress `/exit`,
+			// Ctrl+C/Ctrl+D, and the postmortem SIGINT/SIGTERM/SIGHUP/uncaughtException
+			// signals all funnel here). Without this a `/settings` change made just
+			// before quitting is lost inside the 100ms save debounce.
+			flushSettings: () => Settings.instance.flush(),
 			disposeSession: reason =>
 				this.session.dispose({ mnemopiConsolidateTimeoutMs: SHUTDOWN_CONSOLIDATE_BUDGET_MS, reason }),
 		});
@@ -1002,15 +1069,18 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.addChild(this.statusContainer);
 		this.ui.addChild(this.statusLine); // Only renders hook statuses (quiet status lives around the composer)
 		this.ui.addChild(this.hookWidgetContainerAbove);
-		this.ui.addChild(this.locationLine);
 		this.ui.addChild(this.composerHairline);
+		// One row of air inside the composer zone above the input, one below —
+		// the mockups' vertical composer padding.
+		this.ui.addChild(new Spacer(1));
 		this.ui.addChild(this.editorContainer);
-		// Air between the prompt and the capability line — they are neighbours,
-		// not roommates.
 		this.ui.addChild(new Spacer(1));
 		this.ui.addChild(this.capabilityLine);
 		this.ui.addChild(this.composerShortcuts);
 		this.ui.addChild(this.hookWidgetContainerBelow);
+		// Breathing room under the composer so it floats just off the terminal's
+		// bottom edge instead of sitting flush against it.
+		this.ui.addChild(new Spacer(COMPOSER_BOTTOM_MARGIN_ROWS));
 		this.ui.setFocus(this.editor);
 		// Anchor the composer to the viewport bottom on the launch/home screen.
 		this.#syncBottomFill();
@@ -1132,6 +1202,10 @@ export class InteractiveMode implements InteractiveModeContext {
 				// Rows already committed to native scrollback are immutable; replay them
 				// after a theme swap so a reader scrolled up sees the same palette.
 				this.ui.requestRender(true, { clearScrollback: true });
+				// A committed theme swap changes the ground the terminal should show;
+				// preview (ephemeral) swaps returned above so a hover does not flicker
+				// the terminal background.
+				this.#applyPaintGround();
 			}),
 		);
 
@@ -1142,12 +1216,66 @@ export class InteractiveMode implements InteractiveModeContext {
 			onTerminalAppearanceChange(mode);
 		});
 
+		// Re-apply the painted ground when the terminal reports an external
+		// background change (a terminal theme switch that clobbered our paint).
+		// The terminal suppresses the self-echo of our own paint, so this fires
+		// only on genuine external changes. Subscribing also replays the current
+		// background to us, applying the initial paint once it is known; the
+		// explicit call below covers `always`/`never`, which do not need a report.
+		// The background-color capability is optional on the Terminal interface
+		// (older custom terminals may lack it); when absent, painting is simply
+		// unavailable and both the subscription and the paint calls no-op.
+		this.ui.terminal.onBackgroundColorChange?.(() => {
+			this.#applyPaintGround();
+		});
+		this.#applyPaintGround();
+
 		// A branch change (checkout, worktree switch, `git switch`) invalidates
 		// the status-line git segments; the lazy top-border provider picks up
 		// the fresh branch on the next painted frame.
 		this.statusLine.watchBranch(() => {
 			this.ui.requestRender();
 		});
+	}
+
+	/** Themes already warned about an unhonored `always`, so the log is not repeated. */
+	#paintGroundWarnedThemes = new Set<string>();
+
+	/**
+	 * Apply the painted-ground policy (`tui.paintGround`): set the terminal
+	 * background to the theme's ground color, or inherit the terminal's own,
+	 * per the setting and the auto-seam rule ({@link planPaintGround}). Called at
+	 * startup, on a committed theme change, and when the terminal reports an
+	 * external background change. The paint is reset on exit by the terminal layer
+	 * (OSC 111), including after a crash, so this never has to undo it here.
+	 */
+	#applyPaintGround(): void {
+		const plan = planPaintGround(
+			this.settings.get("tui.paintGround"),
+			theme.getGroundHex(),
+			this.ui.terminal.backgroundColor,
+		);
+		if (plan.unhonoredAlways) {
+			// `always` is the one setting the user explicitly asked to paint that a
+			// groundless theme cannot honor; say so once per theme rather than
+			// silently do nothing (Law 10) or spam the log on every re-apply.
+			const name = getCurrentThemeName();
+			if (name !== undefined && !this.#paintGroundWarnedThemes.has(name)) {
+				this.#paintGroundWarnedThemes.add(name);
+				logger.warn(
+					'tui.paintGround is "always" but the active theme declares no ground color, so the terminal background is left unpainted',
+					{
+						theme: name,
+						fix: 'Pick a theme that declares a page background, or set tui.paintGround to "auto" or "never". A custom theme can declare one via its "export.pageBg".',
+					},
+				);
+			}
+		}
+		if (plan.paint !== null) {
+			this.ui.terminal.setBackgroundColor?.(plan.paint);
+		} else {
+			this.ui.terminal.resetBackgroundColor?.();
+		}
 	}
 
 	/** Reload the title-generation system prompt override for the provided working
@@ -1170,6 +1298,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		const fileSlashCommands: SlashCommand[] = fileCommands.map(cmd => ({
 			name: cmd.name,
 			description: cmd.description,
+			category: "custom",
 		}));
 		// Surface discovered prompt templates in the picker. AgentSession.prompt() expands
 		// `expandSlashCommand` before `expandPromptTemplate`, and builtin command
@@ -1192,6 +1321,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				// `PromptTemplate.description` from `loadTemplatesFromDir` already includes the
 				// source suffix (e.g. "Review code (project)"), so pass it through verbatim.
 				description: template.description,
+				category: "custom",
 			}));
 		this.#baseAutocompleteProvider = this.#inputController.createAutocompleteProvider(
 			[...this.#pendingSlashCommands, ...fileSlashCommands, ...promptTemplateCommands],
@@ -1553,6 +1683,15 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.setText("");
 		this.editor.imageLinks = undefined;
 		this.ensureLoadingAnimation();
+		// Keep the composer pinned to the viewport bottom as the conversation
+		// begins: the anchor stays live and self-collapses once output fills the
+		// viewport (see #syncBottomFill), so the first message renders at the top of
+		// scrollback with the composer still on the bottom edge. Remeasure directly
+		// — the just-added user message and the working indicator are not in the
+		// committed frame yet, so trusting the stale composed height would reserve
+		// empty-home slack on top of them and overflow, jumping the message above
+		// the fold (the old first-message jerk).
+		this.#syncBottomFill(true);
 		this.ui.requestRender();
 		return submission;
 	}
@@ -1634,7 +1773,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * components (welcome, status line, shortcut bar) and treats the bordered
 	 * editor as its minimum height; being off by a row is harmless.
 	 */
-	#syncBottomFill(): void {
+	#syncBottomFill(remeasure = false): void {
 		// Only anchor on the launch/home screen (an empty transcript). The anchor
 		// deliberately outlives the welcome card: the first keystroke dismisses
 		// the card but the composer must stay at the viewport bottom until a real
@@ -1650,32 +1789,42 @@ export class InteractiveMode implements InteractiveModeContext {
 		const currentFill = this.#bottomFill.render(width).length;
 
 		// Prefer the exact composed frame height (all children, wrapping included)
-		// minus our own fills; fall back to a measured estimate before the first
-		// frame exists so the launch frame is already anchored (no visible reflow).
+		// minus our own fills. `composedFrameRows` is one frame stale, which is fine
+		// for the steady-state onFrameComposed correction but wrong right after a
+		// content change that has not committed yet: on the very frame a submit adds
+		// the user message AND the working indicator, the stale height would reserve
+		// empty-home slack on top of them and overflow, jumping the message above
+		// the fold. `remeasure` (and the pre-first-render seed, when no frame exists)
+		// measures the true current height directly by summing every root child
+		// except our own two fills — the one accurate content measurement, so the
+		// composer lands on the bottom edge on this frame, not the next.
 		let contentExclFill = this.ui.composedFrameRows - currentFill - currentTopFill;
-		if (this.ui.composedFrameRows <= 0) {
-			// Pre-first-render seed: measure the actual home-screen content so the
-			// launch frame is already anchored (no reflow). Includes any transcript
-			// notices (e.g. the no-model warning) that mount before the first paint.
-			let above = this.session.configWarnings.length * 2;
-			if (this.#welcomeComponent) {
-				above += 1 + this.#welcomeComponent.render(width).length + 1;
-			}
-			for (const child of this.chatContainer.children) {
+		if (remeasure || this.ui.composedFrameRows <= 0) {
+			let total = 0;
+			for (const child of this.ui.children) {
+				if (child === this.#bottomFill || child === this.#topFill) continue;
 				try {
-					above += child.render(width).length;
+					total += child.render(width).length;
 				} catch {
-					above += 1;
+					total += 1;
 				}
 			}
-			const below =
-				EDITOR_MIN_RENDERED_ROWS +
-				this.statusLine.render(width).length +
-				this.composerShortcuts.render(width).length;
-			contentExclFill = above + below;
+			contentExclFill = total;
 		}
 
 		const slack = Math.max(0, rows - contentExclFill);
+		// Latch the anchor off for good once a real conversation has grown tall
+		// enough to fill the viewport. Past that point output scrolls into native
+		// scrollback (composedFrameRows can then shrink again), and re-anchoring
+		// would bounce the composer back up mid-stream. The home screen itself (an
+		// empty transcript) never latches off, even on a terminal so short the hero
+		// alone fills it — there is no conversation to scroll yet.
+		if (slack <= 0 && this.chatContainer.children.length > 0) {
+			this.#homeAnchorActive = false;
+			if (currentTopFill !== 0) this.#topFill.setLines(0);
+			if (currentFill !== 0) this.#bottomFill.setLines(0);
+			return;
+		}
 		// With the hero up, give it 2/5 of the slack as top margin (slightly above
 		// true centre reads optically centred); once dismissed, all slack drops
 		// below so the composer stays pinned to the viewport bottom.
@@ -1734,17 +1883,22 @@ export class InteractiveMode implements InteractiveModeContext {
 			const base = this.editor.borderColor;
 			this.editor.borderColor = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
 		}
-		// The border is hidden; the accent lives on the prompt glyph. At rest the
-		// `›` is ember — the sun-seed of the composer. Mode colors (bash, python)
-		// and the named-session accent still take over; the thinking level already
-		// shows in the capability line, so it no longer tints the glyph.
+		// The border is hidden; the accent lives on the prompt glyph. DS-6 morph:
+		// a mode changes the GLYPH, not just the hue — `!` full bypass (alarm),
+		// `$` bash (amber), `◈` plan (violet) — so the state reads even where
+		// color is degraded or the operator is colorblind. Otherwise the `›`
+		// carries the named-session identity accent or the theme's borderAccent.
+		// No pinned hue: the theme (and any rebrand) owns the color through its
+		// tokens.
 		let gutter: string;
 		if (this.session.isApprovalBypassed()) {
-			gutter = theme.getBypassModeBorderColor()("›");
+			gutter = theme.getBypassModeBorderColor()("!");
 		} else if (this.isBashMode) {
-			gutter = theme.getBashModeBorderColor()("›");
+			gutter = theme.getBashModeBorderColor()("$");
 		} else if (this.isPythonMode) {
 			gutter = theme.getPythonModeBorderColor()("›");
+		} else if (this.planModeEnabled && !this.planModePaused) {
+			gutter = theme.fg("modeAccent", "◈");
 		} else {
 			const accentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
 			const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
@@ -1752,13 +1906,25 @@ export class InteractiveMode implements InteractiveModeContext {
 				? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
 				: undefined;
 			const ansi = getSessionAccentAnsi(hex);
-			// The resting `›` burns at ember band 6 — the same ramp as the
-			// hairline tick, pinned to the site's ember scale. Theme accent roles
-			// may be silver; the brand seed is not.
-			gutter = ansi ? `${ansi}›\x1b[39m` : `${emberBandEscape(0.85, TERMINAL.trueColor)}›\x1b[39m`;
+			// A named session keeps its identity accent; otherwise the `›` takes
+			// the theme's borderAccent (ember on titanium) — a fixed hue, never
+			// activity-tinted. The chrome is silent; motion belongs to content.
+			const open = ansi ?? theme.getFgAnsi("borderAccent");
+			gutter = `${open}›\x1b[39m`;
 		}
 		if (this.focusedAgentId) gutter = `\x1b[2m${gutter}\x1b[22m`;
-		this.editor.setPromptGutter(`${gutter} `);
+		this.editor.setPromptGutter(`${" ".repeat(COMPOSER_INSET_COLS)}${gutter} `);
+		// DS-6 multiline whisper: wrapped/subsequent input rows carry a dim `┆`
+		// under the prompt glyph, so a multi-line draft reads as one body with a
+		// quiet spine instead of floating text.
+		this.editor.setPromptGutterContinuation(`${" ".repeat(COMPOSER_INSET_COLS)}${theme.fg("dim", "┆")} `);
+		// DS-6 layer 0, the quiet card: input rows sit on the composerBg tonal
+		// ground (#0C0E12 on titanium — one step off black). Themes inherit
+		// statusLineBg when they don't declare it; a transparent resolved bg
+		// (\x1b[49m, from `""` in theme JSON) means no card — the documented
+		// quiet degrade — so skip the per-row wrap entirely.
+		const composerGround = theme.getBgAnsi("composerBg");
+		this.editor.setRowBackground(composerGround === "\x1b[49m" ? undefined : composerGround);
 		this.ui.requestRender();
 	}
 
@@ -2140,6 +2306,9 @@ export class InteractiveMode implements InteractiveModeContext {
 					}
 				: undefined;
 		this.statusLine.setPlanModeStatus(status);
+		// The composer gutter morphs to `◈` while planning (DS-6): re-derive it
+		// at the same choke point every plan enable/disable/pause flows through.
+		this.updateEditorBorderColor();
 		this.ui.requestRender();
 	}
 
@@ -3771,6 +3940,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#stopLoadingAnimation(false);
 		}
 		this.#cleanupMicAnimation();
+		if (this.#clockTimer) {
+			clearInterval(this.#clockTimer);
+			this.#clockTimer = undefined;
+		}
 		this.#cancelTodoAutoClearTimer();
 		this.#cancelObserverUiSyncTimer();
 		this.#cancelGoalContinuation();
@@ -3812,7 +3985,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	async shutdown(): Promise<void> {
 		if (this.#isShuttingDown) return;
 		this.#isShuttingDown = true;
-		clearInterval(this.#ghostTimer);
 
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
@@ -3951,10 +4123,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.chatContainer.addChild(item);
 		if (item instanceof ChatBlock) {
 			item.mount(this.#chatHost);
-			// A real conversation turn ends the home screen; the composer now rides
-			// the natural bottom of the growing transcript.
-			this.#homeAnchorActive = false;
 		}
+		// The composer stays anchored to the viewport bottom as the transcript
+		// grows; #syncBottomFill latches the anchor off for good only once the
+		// content first fills the viewport, so a short reply keeps the composer on
+		// the bottom edge instead of riding up under it.
 		this.#syncBottomFill();
 	}
 
@@ -4087,13 +4260,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	ensureLoadingAnimation(): void {
-		// The sun sets into the composer hairline while the agent works.
-		this.#transitionGhost(1);
 		if (!this.loadingAnimation) {
 			this.#clearWorkingMessageAccentCache();
 			this.statusContainer.disposeChildren();
 			const messageColorFn = ((message: string) =>
-				renderWorkingMessage(message, this.#getWorkingMessageAccent())) as LoaderMessageColorFn & {
+				renderWorkingMessage(message, this.#getWorkingMessageAccent(), this.#workingClockText)) as LoaderMessageColorFn & {
 				animated?: true;
 			};
 			// Shimmer drives the 30fps redraw; when it is disabled the working
@@ -4103,14 +4274,25 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.loadingAnimation = new Loader(
 				this.ui,
 				spinner => {
+					// The breathing-pixel spinner keeps its frames and runs MOLTEN —
+					// the warm arc's lava heat cycle — while the agent works (the one
+					// live thing). Semantic activity states still win: in living mode
+					// ask/error recolor the whole line green/red via the living hue.
+					const living = livingSpinnerColor(theme);
+					if (living) return `${living}${spinner}\x1b[39m`;
 					const accent = this.#getWorkingMessageAccent();
-					return accent ? `${accent.main}${spinner}\x1b[39m` : theme.fg("accent", spinner);
+					if (accent) return `${accent.main}${spinner}\x1b[39m`;
+					return lavaText(spinner, theme, TERMINAL.trueColor);
 				},
 				messageColorFn,
 				this.#defaultWorkingMessage,
 				getSymbolTheme().spinnerFrames,
 			);
 			this.statusContainer.addChild(this.loadingAnimation);
+			// Seed the per-task clock for the default "Working…" phase so the
+			// elapsed readout is present from the first painted frame.
+			this.#resetTaskClock();
+			this.#setTaskMessage(this.#defaultWorkingMessage);
 		} else if (!this.statusContainer.children.includes(this.loadingAnimation)) {
 			this.statusContainer.disposeChildren();
 			this.statusContainer.addChild(this.loadingAnimation);
@@ -4129,17 +4311,16 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * ONE owner for clearing the working loader: stop it, drop the reference,
-	 * and rise the ghost sun back over the hairline. Controllers that abort a
-	 * turn outside the normal agent_end path (fork, compact, handoff, error)
-	 * call this — never `loadingAnimation.stop()` directly — so the ghost can
-	 * never be left set while the agent rests.
+	 * ONE owner for clearing the working loader: stop it and drop the reference.
+	 * Controllers that abort a turn outside the normal agent_end path (fork,
+	 * compact, handoff, error) call this — never `loadingAnimation.stop()`
+	 * directly — so the loader can never be left running while the agent rests.
 	 */
 	clearWorkingLoader(): boolean {
-		this.#transitionGhost(0);
 		if (!this.loadingAnimation) return false;
 		this.loadingAnimation.stop();
 		this.loadingAnimation = undefined;
+		this.#resetTaskClock();
 		return true;
 	}
 
@@ -4147,17 +4328,52 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (message === undefined) {
 			this.#pendingWorkingMessage = undefined;
 			if (this.loadingAnimation) {
-				this.loadingAnimation.setMessage(this.#defaultWorkingMessage);
+				this.#setTaskMessage(this.#defaultWorkingMessage);
 			}
 			return;
 		}
 
 		if (this.loadingAnimation) {
-			this.loadingAnimation.setMessage(message);
+			this.#setTaskMessage(message);
 			return;
 		}
 
 		this.#pendingWorkingMessage = message;
+	}
+
+	/**
+	 * ONE composer for the working line: splits the caller's message into task
+	 * label + esc hint, restarts the per-task clock when the label changes, and
+	 * hands the loader `label · 0:42 ⟦esc⟧`. Re-invoking with the same label
+	 * refreshes only the clock (the 1s heartbeat rides this).
+	 */
+	#setTaskMessage(message: string): void {
+		const hint = interruptHint();
+		const hasHint = message.endsWith(hint);
+		const label = hasHint ? message.slice(0, -hint.length) : message;
+		if (label !== this.#taskLabel) {
+			this.#taskLabel = label;
+			this.#taskStartedAt = Date.now();
+		}
+		this.#taskHasHint = hasHint;
+		this.#refreshTaskClock();
+	}
+
+	#refreshTaskClock(): void {
+		if (!this.loadingAnimation || this.#taskLabel === undefined) return;
+		this.#workingClockText = ` · ${formatClock(Date.now() - this.#taskStartedAt)}`;
+		this.loadingAnimation.setMessage(
+			`${this.#taskLabel}${this.#workingClockText}${this.#taskHasHint ? interruptHint() : ""}`,
+		);
+	}
+
+	/** Forget the task clock when the working loader goes away, so the next
+	 * run's first task starts its clock at 0:00 instead of inheriting one. */
+	#resetTaskClock(): void {
+		this.#taskLabel = undefined;
+		this.#taskHasHint = false;
+		this.#taskStartedAt = 0;
+		this.#workingClockText = undefined;
 	}
 
 	applyPendingWorkingMessage(): void {
@@ -4170,8 +4386,32 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.setWorkingMessage(message);
 	}
 
+	showUpdateInstalledNotification(installedVersion: string): void {
+		this.#uiHelpers.showUpdateInstalledNotification(installedVersion);
+	}
+
+	showUpdateReadyNotification(newVersion: string): void {
+		this.#uiHelpers.showUpdateReadyNotification(newVersion);
+	}
+
+	showUpdateFailedNotification(newVersion: string, error: string): void {
+		this.#uiHelpers.showUpdateFailedNotification(newVersion, error);
+	}
+
 	showNewVersionNotification(newVersion: string): void {
 		this.#uiHelpers.showNewVersionNotification(newVersion);
+	}
+
+	showPluginUpdatesNotification(count: number): void {
+		this.#uiHelpers.showPluginUpdatesNotification(count);
+	}
+
+	showPluginUpdatesInstalledNotification(count: number): void {
+		this.#uiHelpers.showPluginUpdatesInstalledNotification(count);
+	}
+
+	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void {
+		this.#uiHelpers.showUnparseableSettingsNotification(files);
 	}
 
 	clearEditor(): void {
@@ -4305,8 +4545,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#commandController.handleUsageCommand(reports);
 	}
 
-	async handleChangelogCommand(showFull = false): Promise<void> {
-		await this.#commandController.handleChangelogCommand(showFull);
+	async handleChangelogCommand(): Promise<void> {
+		await this.#commandController.handleChangelogCommand();
 	}
 
 	handleHotkeysCommand(): void {
@@ -4518,9 +4758,16 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#getWelcomeLspServers(),
 			true,
 		);
+		// The full card supersedes the home hero — leaving both mounted painted
+		// two suns and, with the home-anchor slack still sized for an empty
+		// transcript, pushed the freshly added card clean off the top of the
+		// viewport (live capture 2026-07-22: /welcome showed a blank screen).
+		this.dismissWelcome();
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(welcome);
 		this.chatContainer.addChild(new Spacer(1));
+		// Remeasure so the anchor accounts for the card on THIS frame.
+		this.#syncBottomFill(true);
 		welcome.playIntro(() => this.ui.requestComponentRender(welcome));
 	}
 

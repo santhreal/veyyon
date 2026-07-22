@@ -1,0 +1,101 @@
+{
+	"cases": [
+		{
+			"id": "match-line-plain-match",
+			"contract": "Plain mode match lines use star marker and pipe separator",
+			"surface": "match-line-format",
+			"tags": ["positive"],
+			"input": { "lineNumber": 12, "line": "const x = 1;", "isMatch": true, "useHashLines": false },
+			"expect": { "text": "*12|const x = 1;" }
+		},
+		{
+			"id": "match-line-plain-context",
+			"contract": "Plain mode context lines use space marker and pipe separator",
+			"surface": "match-line-format",
+			"tags": ["positive"],
+			"input": { "lineNumber": 13, "line": "return x;", "isMatch": false, "useHashLines": false },
+			"expect": { "text": " 13|return x;" }
+		},
+		{
+			"id": "match-line-hashline-match",
+			"contract": "Hashline mode match lines use star marker and colon separator",
+			"surface": "match-line-format",
+			"tags": ["positive"],
+			"input": { "lineNumber": 1, "line": "export {}", "isMatch": true, "useHashLines": true },
+			"expect": { "text": "*1:export {}" }
+		},
+		{
+			"id": "match-line-no-pad",
+			"contract": "Line numbers are never left-padded; only the marker is width-1",
+			"surface": "match-line-format",
+			"tags": ["boundary"],
+			"input": { "lineNumber": 1000, "line": "a", "isMatch": true, "useHashLines": false },
+			"expect": { "text": "*1000|a" }
+		},
+		{
+			"id": "match-line-unicode-body",
+			"contract": "Unicode and leading spaces in the body are preserved exactly",
+			"surface": "match-line-format",
+			"tags": ["adversarial"],
+			"input": { "lineNumber": 3, "line": "  日本語", "isMatch": true, "useHashLines": true },
+			"expect": { "text": "*3:  日本語" }
+		},
+		{
+			"id": "match-line-empty-body-plain",
+			"contract": "Empty body still emits marker and line number with pipe",
+			"surface": "match-line-format",
+			"tags": ["boundary"],
+			"input": { "lineNumber": 5, "line": "", "isMatch": true, "useHashLines": false },
+			"expect": { "text": "*5|" }
+		},
+		{
+			"id": "match-line-hashline-context",
+			"contract": "Hashline mode context lines use space marker and colon",
+			"surface": "match-line-format",
+			"tags": ["positive"],
+			"input": { "lineNumber": 42, "line": "ctx", "isMatch": false, "useHashLines": true },
+			"expect": { "text": " 42:ctx" }
+		},
+		{
+			"id": "match-line-pipe-in-body-hashline",
+			 "contract": "Pipe characters in body are preserved under hashline colon separator",
+			 "surface": "match-line-format",
+			"tags": ["adversarial"],
+			"input": { "lineNumber": 7, "line": "a|b|c", "isMatch": true, "useHashLines": true },
+			"expect": { "text": "*7:a|b|c" }
+		},
+		{
+			"id": "match-line-colon-in-body-plain",
+			 "contract": "Colon characters in body are preserved under plain pipe separator",
+			 "surface": "match-line-format",
+			"tags": ["adversarial"],
+			"input": { "lineNumber": 8, "line": "a:b:c", "isMatch": false, "useHashLines": false },
+			"expect": { "text": " 8|a:b:c" }
+		},
+		{
+			"id": "match-line-line-one",
+			"contract": "Line number 1 is valid and unpadded",
+			"surface": "match-line-format",
+			"tags": ["boundary"],
+			"input": { "lineNumber": 1, "line": "first", "isMatch": true, "useHashLines": false },
+			"expect": { "text": "*1|first" }
+		},
+
+		{
+			"id": "match-line-empty-body-hashline-context",
+			"contract": "Empty body context in hashline mode uses space marker and colon",
+			"surface": "match-line-format",
+			"tags": ["boundary"],
+			"input": { "lineNumber": 5, "line": "", "isMatch": false, "useHashLines": true },
+			"expect": { "text": " 5:" }
+		},
+		{
+			"id": "match-line-large-line-number",
+			"contract": "Five-digit line numbers appear without padding in hashline match form",
+			"surface": "match-line-format",
+			"tags": ["boundary"],
+			"input": { "lineNumber": 99999, "line": "x", "isMatch": true, "useHashLines": true },
+			"expect": { "text": "*99999:x" }
+		}
+	]
+}

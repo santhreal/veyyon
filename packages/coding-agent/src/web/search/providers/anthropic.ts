@@ -28,6 +28,7 @@ import type {
 	SearchSource,
 } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
+import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -322,10 +323,10 @@ export async function searchAnthropic(
 
 	const result = parseResponse(response);
 
-	const numResults = "authStorage" in params ? (params.numSearchResults ?? params.limit) : params.num_results;
-	if (numResults && result.sources.length > numResults) {
-		result.sources = result.sources.slice(0, numResults);
-	}
+	result.sources = applyResultLimit(
+		result.sources,
+		"authStorage" in params ? (params.numSearchResults ?? params.limit) : params.num_results,
+	);
 
 	return result;
 }

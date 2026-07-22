@@ -4,6 +4,7 @@ import { $which, errorMessage, formatCount, isEnoent, trimTrailingSlashes } from
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { getContentType } from "./content-type";
+import { ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
 import { validateRelativePath } from "./skill-protocol";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, WriteContext } from "./types";
@@ -115,9 +116,7 @@ function toVaultValidationError(error: unknown): Error {
 }
 
 function ensureWithinRoot(targetPath: string, rootPath: string): void {
-	if (targetPath !== rootPath && !targetPath.startsWith(`${rootPath}${path.sep}`)) {
-		throw new Error("vault:// URL escapes vault root");
-	}
+	ensureWithinRootShared(targetPath, rootPath, "vault");
 }
 
 function encodePathComponent(component: string): string {

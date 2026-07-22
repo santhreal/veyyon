@@ -7,6 +7,7 @@ import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
 import { GrepTool } from "../../src/tools/grep";
+import { makeToolSession } from "../helpers/tool-session";
 
 // TW-9: a single grep query can return a match set that dwarfs the inline floor
 // (the line/column budget alone permits well over a megabyte). A 51KB grep
@@ -42,7 +43,7 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 
 	function createSession(): ToolSession {
 		let counter = 0;
-		return {
+		return makeToolSession({
 			cwd: tmpDir,
 			hasUI: false,
 			getSessionFile: () => null,
@@ -54,7 +55,7 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 				return { path: filePath, id };
 			},
 			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
-		} as unknown as ToolSession;
+		});
 	}
 
 	it("spills a >50KB match set to an artifact and keeps a bounded inline body", async () => {

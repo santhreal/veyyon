@@ -38,13 +38,25 @@ function escapePipes(text: string): string {
 	return normalizeFullWidthAscii(text).replaceAll("|", "\\|").replaceAll("\n", "<br>");
 }
 
-/** Parse a markdown pipe-delimited row into cell strings. */
-function parsePipeRow(line: string): string[] {
+/**
+ * Parse a markdown pipe-delimited row into its cell strings. Splits on cell
+ * delimiters only: a `\|` that escapePipes wrote for a literal pipe inside a
+ * cell is not a delimiter and must stay in its cell, so a `|` preceded by a
+ * backslash does not split. The escape is preserved (not unescaped) so a parsed
+ * cell round-trips back into a pipe row without a re-escape step. In this
+ * pipeline escapePipes only ever emits `\|` (never a bare `\\`), so a single
+ * negative lookbehind is sufficient. Splitting on the escaped pipe used to
+ * inflate the cell count and make normalizeDetachedFirstColumnTables abandon any
+ * table that contained a pipe.
+ *
+ * @internal Exported for testing.
+ */
+export function parsePipeRow(line: string): string[] {
 	const trimmed = line.trim();
 	if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return [];
 	return trimmed
 		.slice(1, -1)
-		.split("|")
+		.split(/(?<!\\)\|/)
 		.map(cell => cell.trim());
 }
 

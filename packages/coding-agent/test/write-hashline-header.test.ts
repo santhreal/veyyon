@@ -1,8 +1,8 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/coding-agent/edit/file-snapshot-store";
 import { HashlineFilesystem } from "@veyyon/coding-agent/edit/hashline/filesystem";
 import { writethroughNoop } from "@veyyon/coding-agent/lsp";
@@ -36,8 +36,23 @@ const HASHLINE_HEADER_LINE = /^\[([^#\r\n]+)#([0-9A-F]{4})\]$/;
 describe("write tool hashline header", () => {
 	let tmpDir: string;
 
+	// This suite needs the global `Settings` singleton: the hashline Patcher path
+	// exercised by "makes the post-write tag usable by the hashline patcher" reads
+	// the process-wide `settings`. `Settings.init` is guarded to initialize once per
+	// process, so without the reset guards below a stray init from an earlier file
+	// in the same CI chunk would win and hand THIS suite the wrong instance, and our
+	// init would in turn leak forward and silently no-op the next file's
+	// `Settings.init({ agentDir })` (the exact cross-file contamination that broke
+	// session-workdir-settings-ui when co-run). `resetSettingsForTest` before init
+	// claims a clean slate, and the afterAll reset releases the guard for the next
+	// file. See test/config/settings-init-isolation.test.ts for the locked contract.
 	beforeAll(async () => {
+		resetSettingsForTest();
 		await Settings.init({ inMemory: true });
+	});
+
+	afterAll(() => {
+		resetSettingsForTest();
 	});
 
 	beforeEach(async () => {

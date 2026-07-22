@@ -688,23 +688,50 @@ ON CONFLICT(model_key) DO UPDATE SET
 
 		const results: StoredAuthCredential[] = [];
 		for (const row of rows) {
+			// Every path that drops a row says so. A dropped credential presents to the
+			// user as "you are not signed in to this provider" for an account they did
+			// sign in to, and silently skipping the row leaves them re-authenticating
+			// against a database row that will be skipped again the next time too.
+			// One bad row must not hide the others, so this reports and continues
+			// rather than throwing.
+			let parsed: unknown;
 			try {
-				const parsed = JSON.parse(row.data);
-				if (!parsed || typeof parsed !== "object") continue;
+				parsed = JSON.parse(row.data);
+			} catch (error) {
+				this.#reportUnreadableCredential(row.id, row.provider, `stored data is not valid JSON: ${String(error)}`);
+				continue;
+			}
+			if (!isRecord(parsed)) {
+				this.#reportUnreadableCredential(row.id, row.provider, "stored data is not an object");
+				continue;
+			}
 
-				let credential: AuthCredential;
-				if (row.credential_type === "api_key" && typeof (parsed as { key?: unknown }).key === "string") {
-					credential = { type: "api_key", key: (parsed as { key: string }).key };
-				} else if (row.credential_type === "oauth") {
-					credential = { type: "oauth", ...(parsed as Record<string, unknown>) } as AuthCredential;
-				} else {
+			let credential: AuthCredential;
+			if (row.credential_type === "api_key") {
+				if (typeof parsed.key !== "string") {
+					this.#reportUnreadableCredential(row.id, row.provider, "api_key credential has no string key");
 					continue;
 				}
+				credential = { type: "api_key", key: parsed.key };
+			} else if (row.credential_type === "oauth") {
+				credential = { type: "oauth", ...parsed } as AuthCredential;
+			} else {
+				this.#reportUnreadableCredential(row.id, row.provider, `unknown credential type "${row.credential_type}"`);
+				continue;
+			}
 
-				results.push({ id: row.id, provider: row.provider, credential, disabledCause: row.disabled_cause });
-			} catch {}
+			results.push({ id: row.id, provider: row.provider, credential, disabledCause: row.disabled_cause });
 		}
 		return results;
+	}
+
+	#reportUnreadableCredential(id: number, provider: string, reason: string): void {
+		logger.error("AgentStorage skipped an unreadable auth credential", {
+			id,
+			provider,
+			reason,
+			fix: `Run "veyyon auth-broker login ${provider}" to replace it.`,
+		});
 	}
 
 	/**

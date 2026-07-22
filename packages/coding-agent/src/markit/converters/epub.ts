@@ -1,7 +1,7 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import { XMLParser } from "fast-xml-parser";
 import { createTurndown, normalizeTablesHtml } from "../../utils/turndown";
-import { unzip, unzipText } from "../../utils/zip";
+import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
 const EXTENSIONS = [".epub"];
@@ -106,7 +106,7 @@ export class EpubConverter implements Converter {
 		for (const idref of spineOrder) {
 			const href = manifest.get(idref);
 			if (!href) continue;
-			const filePath = basePath ? `${basePath}/${href}` : href;
+			const filePath = resolveArchiveMemberPath(basePath, href);
 			const html = unzipText(entries, filePath);
 			if (!html) continue;
 			// Strip script/style, convert to markdown

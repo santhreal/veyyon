@@ -17,7 +17,6 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { ArgotSession, DICT_FILENAME, parseDict } from "@veyyon/coding-agent/argot/index";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
@@ -25,6 +24,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { removeSyncWithRetries } from "@veyyon/utils";
+import { ArgotSession, DICT_FILENAME, parseDict } from "argot";
 
 const DICT = `
 version = 1

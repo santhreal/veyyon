@@ -80,10 +80,14 @@ export function commas(value: number): string {
 
 export function fmtNum(value: number, decimals: number = 0): string {
 	if (decimals <= 0) return commas(Math.round(value));
-	const absolute = Math.abs(value);
-	const whole = Math.floor(absolute);
-	const fraction = (absolute - whole).toFixed(decimals).slice(1);
-	return `${value < 0 ? "-" : ""}${commas(whole)}${fraction}`;
+	// Round ONCE at the target precision so a fraction that carries (1.999 -> 2.00,
+	// 99.999 -> 100.00) increments the whole part instead of being dropped. Flooring
+	// the whole and rounding the fraction independently loses that carry.
+	const rounded = Math.abs(value).toFixed(decimals);
+	const dotIndex = rounded.indexOf(".");
+	const whole = rounded.slice(0, dotIndex);
+	const fraction = rounded.slice(dotIndex);
+	return `${value < 0 ? "-" : ""}${commas(Number(whole))}${fraction}`;
 }
 
 export function formatNum(value: number | null, unit: string): string {

@@ -18,10 +18,12 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	allocateCanonicalToolCallId,
 	canonicalizeToolCallIds,
+	resolveCanonicalToolCallId,
+	type ToolCallIdMap,
 } from "@veyyon/coding-agent/session/canonicalize-tool-call-ids";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
 const LONG_A = "call_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|fc_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -85,6 +87,38 @@ function extractPairs(messages: Message[]): Array<{ callId: string; resultId: st
 	}
 	return calls.map((callId, i) => ({ callId, resultId: results[i]! }));
 }
+
+/**
+ * resolveCanonicalToolCallId is the per-ID primitive the walker uses. The walker tests exercise it
+ * indirectly, but its empty-id guard (`if (!id) return id`) is a branch nothing else reaches: a
+ * malformed message with an empty tool-call id must pass through untouched and must NOT consume a
+ * handle, or every later ID shifts and call/result pairing breaks. This locks that guard plus the
+ * assign-once / stable-on-repeat contract directly.
+ */
+describe("resolveCanonicalToolCallId (primitive)", () => {
+	it("passes an empty id through unchanged without allocating a handle", () => {
+		const map: ToolCallIdMap = new Map();
+		let allocations = 0;
+		const allocate = () => {
+			allocations += 1;
+			return `tc_${allocations}`;
+		};
+		expect(resolveCanonicalToolCallId("", map, allocate)).toBe("");
+		expect(allocations).toBe(0);
+		expect(map.size).toBe(0);
+	});
+
+	it("assigns a handle on first sight and returns the same handle on repeat", () => {
+		const map: ToolCallIdMap = new Map();
+		const counter = { value: 0 };
+		const allocate = () => allocateCanonicalToolCallId(counter);
+		expect(resolveCanonicalToolCallId("call_A", map, allocate)).toBe("tc_1");
+		expect(resolveCanonicalToolCallId("call_B", map, allocate)).toBe("tc_2");
+		// Same provider ID -> same handle, no new allocation.
+		expect(resolveCanonicalToolCallId("call_A", map, allocate)).toBe("tc_1");
+		expect(counter.value).toBe(2);
+	});
+});
 
 describe("canonicalizeToolCallIds (unit)", () => {
 	it("assigns tc_1..tc_n on first appearance and pairs call/result", () => {
@@ -322,17 +356,22 @@ describe("canonicalizeToolCallIds provider paths", () => {
 
 describe("AgentSession transformProviderContext canonicalization", () => {
 	let tempDir: TempDir;
-	// AgentSession.setCwd() calls setProjectDir() → process.chdir(), a global
-	// mutation. The mid-session-setCwd test below chdir's into a temp subdir, so
-	// we snapshot the real cwd and restore it in afterEach BEFORE removing the
-	// temp tree. Without this, process.cwd() is left pointing at a deleted dir
-	// and any sibling test that reads it (e.g. bash-timeout-spill's fake session
-	// cwd) fails with ENOENT — a cross-file isolation leak.
-	let originalCwd = "";
+	// AgentSession.setCwd() calls setProjectDir(), which moves both the process
+	// cwd and the `projectDir` global in @veyyon/utils. The mid-session-setCwd
+	// test below enters a temp subdir, so we snapshot the real directory and go
+	// back in afterEach BEFORE removing the temp tree.
+	//
+	// Restore through setProjectDir, not process.chdir: a bare chdir moves the
+	// process but leaves `projectDir` pointing at the deleted temp path, and the
+	// next file to call getProjectDir() then snapshots that dead path as its
+	// "original" directory and fails with ENOENT when it tries to restore it.
+	// That is what made status-line-overflow and stt-submit-trigger fail in a
+	// full run while passing in isolation.
+	let originalProjectDir = "";
 	const cleanups: Array<() => Promise<void>> = [];
 
 	beforeEach(() => {
-		originalCwd = process.cwd();
+		originalProjectDir = getProjectDir();
 		tempDir = TempDir.createSync("@pi-agent-tw8-canonicalize-");
 		cleanups.length = 0;
 	});
@@ -340,7 +379,7 @@ describe("AgentSession transformProviderContext canonicalization", () => {
 	afterEach(async () => {
 		for (const cleanup of cleanups) await cleanup();
 		cleanups.length = 0;
-		process.chdir(originalCwd);
+		setProjectDir(originalProjectDir);
 		tempDir.removeSync();
 	});
 

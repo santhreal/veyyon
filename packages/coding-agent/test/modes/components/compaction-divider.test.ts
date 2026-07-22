@@ -36,14 +36,13 @@ describe("CompactionSummaryMessageComponent", () => {
 		expect(rule).not.toContain(SUMMARY);
 	});
 
-	it("expanded: reveals the summary (and snapcompact frame count) below the divider", () => {
-		const component = makeComponent([{ type: "image", data: "ZmFrZQ==", mimeType: "image/png" }]);
+	it("expanded: reveals the summary below the divider", () => {
+		const component = makeComponent();
 		component.setExpanded(true);
 		const text = Bun.stripANSI(component.render(80).join("\n"));
 		expect(text).toContain("compacted");
 		expect(text).toContain(SUMMARY);
 		expect(text).toContain("tokens");
-		expect(text).toContain("1 snapcompact frame attached");
 	});
 
 	it("degrades to a bare label when the viewport is too narrow for a framed rule", () => {

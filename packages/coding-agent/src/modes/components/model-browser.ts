@@ -10,7 +10,7 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
-import { modelsAreEqual } from "@veyyon/catalog/models";
+import { getModelPricing, modelsAreEqual } from "@veyyon/catalog/models";
 import {
 	type Component,
 	fuzzyRank,
@@ -21,7 +21,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { formatNumber } from "@veyyon/utils";
+import { clampLow, formatNumber } from "@veyyon/utils";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -272,14 +272,29 @@ export function formatRoleChip(role: string, assignment: RoleAssignment, setting
 	return theme.fg(info.color ?? "muted", `${theme.status.enabled}${label}`) + suffix;
 }
 
-/** `$in/out` per-million cost pair; `free` when both legs are zero. */
+/**
+ * `$in/out` per-million cost pair, `free` for a model we can prove is free, and
+ * `—` for one whose price we were never told.
+ *
+ * The last case used to render as `free` too, which was a false claim about
+ * roughly 1,500 of the bundled models: most providers publish no pricing on
+ * their model endpoint, discovery records zeros, and the browser presented paid
+ * models as costing nothing. `—` says what is true, that the price is not
+ * published here, and leaves the user to check the provider.
+ */
 function formatCostPair(model: Model): string {
+	const pricing = getModelPricing(model);
+	if (pricing === "free") return "free";
+	if (pricing === "unpriced") return "—";
 	const cost = model.cost;
-	if (!cost || (cost.input <= 0 && cost.output <= 0)) return "free";
 	const fmt = (n: number): string => {
 		if (n <= 0) return "0";
 		const s = n >= 100 ? String(Math.round(n)) : n >= 10 ? n.toFixed(1) : n.toFixed(2);
-		return s.replace(/\.?0+$/, "");
+		// Trailing zeros are noise only AFTER a decimal point. Stripping them from a
+		// whole number deletes a digit and moves the decimal: `$150/600` rendered as
+		// `$15/6`, and `azure/gpt-5-pro` at $120 per M output showed as $12. 323 price
+		// legs in the bundled catalog hit this, understating some by 10x.
+		return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
 	};
 	return `$${fmt(cost.input)}/${fmt(cost.output)}`;
 }
@@ -350,6 +365,22 @@ export class ModelBrowser implements Component {
 	#roles: RoleAssignments = {};
 	#mruOrder: ReadonlyArray<string> = [];
 	#perf: ReadonlyMap<string, ModelPerfStats> = new Map();
+	/**
+	 * Metadata column widths, measured across the WHOLE list rather than the
+	 * visible window, and cached because measuring is per-item work on every
+	 * render.
+	 *
+	 * Measuring per window is what made the context and price columns slide
+	 * sideways while you scrolled: the widest price in view changes as the window
+	 * moves, so the right-aligned block re-flowed on every wheel tick and the
+	 * numbers no longer lined up with the rows they belong to. Widths have to be a
+	 * property of the list, not of where you happen to be looking.
+	 *
+	 * Invalidated by `#invalidateColumnWidths` whenever the item list or the perf
+	 * measurements change; keyed by perf mode because that mode decides whether
+	 * the perf cell renders at all.
+	 */
+	#columnWidths: { perfMode: PerfMode; ctx: number; cost: number; perf: number } | undefined;
 	#selectedIndex = 0;
 	#hoveredIndex: number | null = null;
 	#maxVisible = 10;
@@ -409,6 +440,9 @@ export class ModelBrowser implements Component {
 	/** Measured TPS/TTFT averages keyed by `provider/id` selector (see AgentStorage.getModelPerf). */
 	setPerfStats(perf: ReadonlyMap<string, ModelPerfStats>): void {
 		this.#perf = perf;
+		// New measurements can widen the perf cell, which shifts the columns to its
+		// right. Re-measure rather than keep widths taken before the numbers landed.
+		this.#invalidateColumnWidths();
 	}
 
 	setMaxVisible(rows: number): void {
@@ -474,7 +508,7 @@ export class ModelBrowser implements Component {
 	#coerceSelectedIndex(index: number): number {
 		const maxIndex = this.#visibleItems.length - 1;
 		if (maxIndex < 0) return 0;
-		const clamped = Math.max(0, Math.min(index, maxIndex));
+		const clamped = clampLow(index, 0, maxIndex);
 		const clampedItem = this.#visibleItems[clamped];
 		if (clampedItem && !this.#isDisabled(clampedItem)) return clamped;
 		for (let i = clamped + 1; i <= maxIndex; i++) {
@@ -490,7 +524,7 @@ export class ModelBrowser implements Component {
 
 	/** Clamp a window start into `[0, total - maxVisible]`. */
 	#clampWindowStart(start: number): number {
-		return Math.max(0, Math.min(start, this.#visibleItems.length - this.#maxVisible));
+		return clampLow(start, 0, this.#visibleItems.length - this.#maxVisible);
 	}
 
 	/** Scroll just enough to keep the selected row inside the window. */
@@ -522,7 +556,7 @@ export class ModelBrowser implements Component {
 			}
 			return;
 		}
-		const target = Math.max(0, Math.min(this.#selectedIndex + delta, count - 1));
+		const target = clampLow(this.#selectedIndex + delta, 0, count - 1);
 		this.#setSelectedIndex(this.#coerceSelectedIndex(target));
 	}
 
@@ -595,6 +629,7 @@ export class ModelBrowser implements Component {
 			items = this.#baseItems;
 		}
 		this.#visibleItems = this.#insertSeparator(items);
+		this.#invalidateColumnWidths();
 		this.#selectedIndex = this.#coerceSelectedIndex(Math.min(this.#selectedIndex, this.#visibleItems.length - 1));
 		this.#ensureSelectedVisible();
 		this.onSelectionChange?.(this.getSelected());
@@ -697,6 +732,35 @@ export class ModelBrowser implements Component {
 		return index;
 	}
 
+	/** Drop the cached column widths; the next render re-measures. */
+	#invalidateColumnWidths(): void {
+		this.#columnWidths = undefined;
+	}
+
+	/**
+	 * Widest context, price, and perf cell across every row in the list.
+	 *
+	 * Measured over the whole list so the columns hold still while you scroll,
+	 * and cached so that costs one pass per list change rather than one per
+	 * render.
+	 */
+	#measureColumns(perfMode: PerfMode): { ctx: number; cost: number; perf: number } {
+		const cached = this.#columnWidths;
+		if (cached && cached.perfMode === perfMode) return cached;
+
+		let ctx = 0;
+		let cost = 0;
+		let perf = 0;
+		for (const item of this.#visibleItems) {
+			if (!item) continue;
+			ctx = Math.max(ctx, visibleWidth(formatContext(item.model)));
+			cost = Math.max(cost, visibleWidth(formatCostPair(item.model)));
+			perf = Math.max(perf, visibleWidth(this.#perfCell(item, perfMode)));
+		}
+		this.#columnWidths = { perfMode, ctx, cost, perf };
+		return this.#columnWidths;
+	}
+
 	/** `0.9s 118t/s` measured-perf cell for the row's meta block; empty when unmeasured or the column is off. */
 	#perfCell(item: ModelBrowserItem, mode: PerfMode): string {
 		if (mode === "off") return "";
@@ -767,7 +831,16 @@ export class ModelBrowser implements Component {
 		const facts: string[] = [model.name];
 		if (model.contextWindow) facts.push(`${formatNumber(model.contextWindow).toLowerCase()} ctx`);
 		if (model.maxTokens) facts.push(`${formatNumber(model.maxTokens).toLowerCase()} out`);
-		facts.push(`${formatCostPair(model)} per M`);
+		// The detail line has room for words, so it says the unpriced case outright
+		// rather than repeating the row's `—`, which on its own reads as zero.
+		const pricing = getModelPricing(model);
+		facts.push(
+			// "price unknown" rather than "price not published": the detail line is one
+			// row and the facts after it (measured throughput and time to first token)
+			// get truncated away on a narrow terminal. The longer phrase cost six
+			// characters and pushed the perf figures off at 70 columns.
+			pricing === "unpriced" ? "price unknown" : pricing === "free" ? "free" : `${formatCostPair(model)} per M`,
+		);
 		if (model.reasoning) facts.push("reasoning");
 		if (model.input.includes("image")) facts.push("vision");
 		const perf = this.#perf.get(selected.selector);
@@ -824,19 +897,8 @@ export class ModelBrowser implements Component {
 			lines.push(truncateToWidth(theme.fg("muted", message), width));
 			for (let i = 1; i < this.#maxVisible; i++) lines.push("");
 		} else {
-			// Per-window column widths keep the metadata block aligned without
-			// scanning the entire catalog on every render.
-			let ctxWidth = 0;
-			let costWidth = 0;
 			const perfMode: PerfMode = width >= PERF_FULL_MIN_WIDTH ? "full" : width >= PERF_TPS_MIN_WIDTH ? "tps" : "off";
-			let perfWidth = 0;
-			for (let i = startIndex; i < endIndex; i++) {
-				const item = this.#visibleItems[i];
-				if (!item) continue;
-				ctxWidth = Math.max(ctxWidth, visibleWidth(formatContext(item.model)));
-				costWidth = Math.max(costWidth, visibleWidth(formatCostPair(item.model)));
-				perfWidth = Math.max(perfWidth, visibleWidth(this.#perfCell(item, perfMode)));
-			}
+			const { ctx: ctxWidth, cost: costWidth, perf: perfWidth } = this.#measureColumns(perfMode);
 
 			// ScrollView reserves a 2-column bar band (gap + glyph) when the list
 			// overflows; compose rows inside it so the right-aligned price column

@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily } from "@veyyon/ai";
-import * as snapcompact from "@veyyon/snapcompact";
+import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction";
+import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily, type TextContent } from "@veyyon/ai";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
@@ -9,50 +9,6 @@ import {
 	normalizeCustomMessagePayload,
 } from "./messages";
 import { type CompactionEntry, EPHEMERAL_MODEL_CHANGE_ROLE, type SessionEntry } from "./session-entries";
-
-// #4470 crash artifacts had legacy frames (no shape metadata) with 17 frames,
-// ~306k archive chars, and ~1.5M truncated chars. Current snapcompact frames
-// carry shape metadata; only legacy archives with frame payload risk get this
-// conservative LLM-payload guard, and transcript rendering remains intact.
-const LEGACY_SNAPCOMPACT_FRAME_COUNT_GUARD = 16;
-const LEGACY_SNAPCOMPACT_ARCHIVE_TEXT_GUARD = 250_000;
-const LEGACY_SNAPCOMPACT_TRUNCATED_CHARS_GUARD = 1_000_000;
-
-function hasLegacySnapcompactFrames(archive: snapcompact.Archive): boolean {
-	return archive.frames.some(frame => frame.font === undefined && frame.variant === undefined);
-}
-
-function hasCrashRiskSnapcompactFramePayload(archive: snapcompact.Archive): boolean {
-	return (
-		archive.frames.length >= LEGACY_SNAPCOMPACT_FRAME_COUNT_GUARD ||
-		snapcompact.frameDataBytes(archive.frames) >= snapcompact.FRAME_DATA_BYTES_BUDGET
-	);
-}
-
-function hasCrashRiskSnapcompactArchiveSize(archive: snapcompact.Archive): boolean {
-	return (
-		archive.frames.length >= LEGACY_SNAPCOMPACT_FRAME_COUNT_GUARD ||
-		archive.truncatedChars >= LEGACY_SNAPCOMPACT_TRUNCATED_CHARS_GUARD ||
-		(snapcompact.archiveSourceText(archive)?.length ?? 0) >= LEGACY_SNAPCOMPACT_ARCHIVE_TEXT_GUARD
-	);
-}
-
-function isCrashRiskLegacySnapcompactArchive(archive: snapcompact.Archive): boolean {
-	return (
-		hasLegacySnapcompactFrames(archive) &&
-		hasCrashRiskSnapcompactFramePayload(archive) &&
-		hasCrashRiskSnapcompactArchiveSize(archive)
-	);
-}
-
-function snapcompactHistoryBlockOptions(
-	archive: snapcompact.Archive,
-	options: BuildSessionContextOptions | undefined,
-): snapcompact.HistoryBlockOptions | undefined {
-	if (options?.transcript) return undefined;
-	if (isCrashRiskLegacySnapcompactArchive(archive)) return { maxFrameDataBytes: 0 };
-	return { maxFrameDataBytes: snapcompact.FRAME_DATA_BYTES_BUDGET };
-}
 
 export interface SessionContext {
 	messages: AgentMessage[];
@@ -146,13 +102,22 @@ export interface StrippedToolCallsMarker {
  * If leafId is provided, walks from that entry to root.
  * Handles compaction and branch summaries along the path.
  */
-function snapcompactHistoryBlocksForContext(
-	archive: snapcompact.Archive | undefined,
+/**
+ * Re-attach the plaintext source of a legacy image-archive compaction as a
+ * single text block, so an old session whose compaction persisted a frame
+ * archive keeps showing its archived history after every context rebuild. The
+ * removed engine also stored the full source under `archive.text`; the frames
+ * were only an image duplicate of it, so recovering the text is lossless. New
+ * sessions never write such an archive, so this returns `undefined` for them.
+ */
+function legacyArchiveBlocksForContext(
+	preserveData: Record<string, unknown> | undefined,
 	options: BuildSessionContextOptions | undefined,
-) {
-	if (!archive) return undefined;
+): TextContent[] | undefined {
 	if (options?.transcript && options.collapseCompactedHistory) return undefined;
-	return snapcompact.historyBlocks(archive, snapcompactHistoryBlockOptions(archive, options));
+	const text = legacyArchiveSourceText(preserveData);
+	if (!text) return undefined;
+	return [{ type: "text", text: `Recovered archived history from a prior compaction:\n\n${text}` }];
 }
 
 export function buildSessionContext(
@@ -348,12 +313,11 @@ export function buildSessionContext(
 	if (options?.transcript && !options.collapseCompactedHistory) {
 		// Display transcript: every entry in chronological order. Compactions do
 		// not erase prior history here — each renders inline (as a divider in the
-		// TUI) at the point it fired, with any snapcompact frames re-attached so
-		// the component can report them.
+		// TUI) at the point it fired, with any legacy archived history re-attached
+		// as text so the component can report it.
 		for (const entry of path) {
 			handleEntryResetTracking(entry);
 			if (entry.type === "compaction") {
-				const snapcompactArchive = snapcompact.getPreservedArchive(entry.preserveData);
 				pushMessage(
 					createCompactionSummaryMessage(
 						entry.summary,
@@ -362,7 +326,7 @@ export function buildSessionContext(
 						entry.shortSummary,
 						undefined,
 						undefined,
-						snapcompactHistoryBlocksForContext(snapcompactArchive, options),
+						legacyArchiveBlocksForContext(entry.preserveData, options),
 						entry.warning,
 					),
 				);
@@ -385,9 +349,8 @@ export function buildSessionContext(
 		})();
 		const remoteReplacementHistory = providerPayload?.items;
 
-		// Re-attach any archived snapcompact frames so the model can keep
-		// reading the archived history after every context rebuild.
-		const snapcompactArchive = snapcompact.getPreservedArchive(compaction.preserveData);
+		// Re-attach any legacy archived history as text so the model can keep
+		// reading it after every context rebuild (old sessions only).
 		const compactionSummaryMsg = createCompactionSummaryMessage(
 			compaction.summary,
 			compaction.tokensBefore,
@@ -395,7 +358,7 @@ export function buildSessionContext(
 			compaction.shortSummary,
 			providerPayload,
 			undefined,
-			snapcompactHistoryBlocksForContext(snapcompactArchive, options),
+			legacyArchiveBlocksForContext(compaction.preserveData, options),
 			compaction.warning,
 		);
 		// Agent context (non-transcript): summary first so the LLM sees the

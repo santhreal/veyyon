@@ -4,8 +4,8 @@ import type { TUI } from "@veyyon/tui";
 import type { ExtensionUIDialogOptions, ExtensionUISelectItem } from "../src/extensibility/extensions";
 import { HookSelectorComponent } from "../src/modes/components/hook-selector";
 import { getThemeByName, setThemeInstance } from "../src/modes/theme/theme";
-import type { ToolSession } from "../src/tools";
 import { AskTool, type AskToolDetails } from "../src/tools/ask";
+import { makeToolSession } from "./helpers/tool-session";
 
 type AskExecutionResult = AgentToolResult<AskToolDetails>;
 type AskSelect = (
@@ -20,18 +20,23 @@ async function drainMicrotasks(): Promise<void> {
 }
 
 function createAskTool(): AskTool {
-	return new AskTool({
-		hasUI: true,
-		settings: {
-			get(key: string): unknown {
-				if (key === "ask.timeout") return 0.01;
-				if (key === "ask.notify") return "off";
-				if (key === "speech.enabled") return false;
-				return undefined;
+	return new AskTool(
+		makeToolSession({
+			hasUI: true,
+			settings: {
+				get(key: string): unknown {
+					if (key === "ask.timeout") return 0.01;
+					if (key === "ask.notify") return "off";
+					if (key === "speech.enabled") return false;
+					return undefined;
+				},
 			},
-		},
-		getPlanModeState: () => ({ enabled: false }),
-	} as unknown as ToolSession);
+			// `planFilePath` is required even when plan mode is off: every real state
+			// carries the path it would write to. The stub used to omit it, which the
+			// old `as unknown as ToolSession` cast accepted.
+			getPlanModeState: () => ({ enabled: false, planFilePath: "PLAN.md" }),
+		}),
+	);
 }
 
 describe("AskTool timeout", () => {

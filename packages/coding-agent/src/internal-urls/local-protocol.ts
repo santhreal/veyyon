@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { errorMessage, formatBytes, formatCount, isEnoent } from "@veyyon/utils";
 import { AgentRegistry } from "../registry/agent-registry";
 import { getContentType } from "./content-type";
-import { buildDirectoryResource } from "./filesystem-resource";
+import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
 import { validateRelativePath } from "./skill-protocol";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
@@ -19,9 +19,7 @@ function parseLocalUrl(input: string): InternalUrl {
 }
 
 function ensureWithinRoot(targetPath: string, rootPath: string): void {
-	if (targetPath !== rootPath && !targetPath.startsWith(`${rootPath}${path.sep}`)) {
-		throw new Error("local:// URL escapes local root");
-	}
+	ensureWithinRootShared(targetPath, rootPath, "local");
 }
 
 function toLocalValidationError(error: unknown): Error {

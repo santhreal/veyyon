@@ -5,6 +5,7 @@ import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { YieldQueue } from "@veyyon/coding-agent/session/yield-queue";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { makeToolSession } from "./helpers/tool-session";
 
 type AsyncEntry = {
 	jobId: string;
@@ -48,7 +49,7 @@ function asyncDetails(message: AgentMessage): AsyncDetails {
 }
 
 function createToolSession(asyncJobManager?: AsyncJobManager): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: process.cwd(),
 		hasUI: false,
 		settings: {
@@ -58,7 +59,7 @@ function createToolSession(asyncJobManager?: AsyncJobManager): ToolSession {
 		getSessionSpawns: () => null,
 		getAgentId: () => null,
 		asyncJobManager,
-	} as unknown as ToolSession;
+	});
 }
 
 function createHarness(initialStreaming: boolean) {

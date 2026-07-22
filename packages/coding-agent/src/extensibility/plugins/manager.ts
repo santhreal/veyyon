@@ -16,10 +16,11 @@ import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { withExitGuard } from "../utils";
 import { refreshBunGitCache } from "./bun-git-cache";
 import { type GitSource, parseGitUrl } from "./git-url";
-import { getInstalledPluginsRegistryPath, parsePluginId, readInstalledPluginsRegistry } from "./installed-registry";
+import { getInstalledPluginsRegistryPath, readInstalledPluginsRegistry } from "./installed-registry";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "./legacy-pi-compat";
 import { resolvePluginManifestEntries } from "./loader";
 import { extractPackageName, parsePluginSpec } from "./parser";
+import { parsePluginId } from "./plugin-id";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
 import type {
 	DoctorCheck,

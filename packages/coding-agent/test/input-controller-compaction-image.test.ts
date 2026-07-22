@@ -20,7 +20,7 @@
  *     with the draft's leading markers and submit picked the wrong images.
  */
 
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test, vi } from "bun:test";
 import type { ImageContent } from "@veyyon/ai";
 import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
@@ -90,6 +90,12 @@ function makeCtx(initialQueue: CompactionQueuedMessage[] = []) {
 		updatePendingMessagesDisplay: () => {},
 		showError: () => {},
 		showStatus: () => {},
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 
 	return { ctx, session, promptCalls, steerCalls, followUpCalls };
@@ -218,6 +224,12 @@ describe("restoreQueuedMessagesToEditor image marker alignment", () => {
 			compactionQueuedMessages: [],
 			locallySubmittedUserSignatures: new Set<string>(),
 			updatePendingMessagesDisplay: () => {},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		return { ctx, editor };
 	}

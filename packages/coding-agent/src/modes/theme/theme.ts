@@ -8,9 +8,9 @@ import {
 	supportsLanguage as nativeSupportsLanguage,
 } from "@veyyon/natives";
 import type { EditorTheme, MarkdownTheme, SelectListTheme, SettingsListTheme, SymbolTheme } from "@veyyon/tui";
+import { parseHexColor, TERMINAL } from "@veyyon/tui";
 import { adjustHsv, colorLuma, errorMessage, getCustomThemesDir, isEnoent, logger } from "@veyyon/utils";
 import { type } from "arktype";
-import chalk from "chalk";
 import { LRUCache } from "lru-cache/raw";
 import {
 	ansi256ToHex,
@@ -28,6 +28,7 @@ import darkThemeJson from "./dark.json" with { type: "json" };
 import { defaultThemes } from "./defaults";
 import lightThemeJson from "./light.json" with { type: "json" };
 import { resolveMermaidAscii } from "./mermaid-cache";
+import { lavaText } from "./shimmer";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
 import { Theme } from "./theme-class";
 
@@ -156,7 +157,22 @@ interface CreateThemeOptions {
 /** HSV adjustment to shift green toward blue for colorblind mode (red-green colorblindness) */
 const COLORBLIND_ADJUSTMENT = { h: 60, s: 0.71 };
 
-function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = {}): Theme {
+/**
+ * Defaults for the optional identity/state accent tokens, keyed by the token,
+ * valued by the required token whose resolved color it inherits when a theme
+ * does not declare it. Session/mode identity fall back to the theme's accent,
+ * share to its link color, info to muted, and match highlights to warning
+ * (the closest "look here" hue every theme already has).
+ */
+const QUIET_TOKEN_DEFAULTS: Partial<Record<ThemeColor, ThemeColor>> = {
+	sessionAccent: "accent",
+	modeAccent: "accent",
+	shareAccent: "link",
+	infoAccent: "muted",
+	matchHighlight: "warning",
+};
+
+export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = {}): Theme {
 	const { mode, symbolPresetOverride, colorBlindMode } = options;
 	const colorMode = mode ?? detectColorMode();
 	const resolvedColors = resolveThemeColors(themeJson.colors, themeJson.vars);
@@ -178,6 +194,7 @@ function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = {}): Th
 		"toolSuccessBg",
 		"toolErrorBg",
 		"statusLineBg",
+		"composerBg",
 	]);
 	for (const [key, value] of Object.entries(resolvedColors)) {
 		if (bgColorKeys.has(key)) {
@@ -186,11 +203,38 @@ function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = {}): Th
 			fgColors[key as ThemeColor] = value;
 		}
 	}
+	// The identity/state accent tokens are optional in theme JSON (they arrived
+	// with the design system's cool arc, long after most themes were authored).
+	// A theme that omits one gets its DOCUMENTED default here — the one owner of
+	// that contract — so lookups never throw and older themes stay valid. Themes
+	// override by declaring the key (titanium.json binds the Daybreak arcs). The
+	// preferred fallback token can itself be optional (e.g. `link`), so the
+	// chain bottoms out on `accent`, which every theme must declare.
+	for (const [token, fallback] of Object.entries(QUIET_TOKEN_DEFAULTS) as [ThemeColor, ThemeColor][]) {
+		if (fgColors[token] === undefined) {
+			fgColors[token] = fgColors[fallback] ?? fgColors.accent;
+		}
+	}
+	// The composer quiet card (DS-6 layer 0) is optional the same way: a theme
+	// that omits it inherits the status line's ground — both are the theme's
+	// "chrome sits on this" surface, and statusLineBg is required so this
+	// always resolves.
+	if (bgColors.composerBg === undefined) {
+		bgColors.composerBg = bgColors.statusLineBg;
+	}
 	// Extract symbol configuration - settings override takes precedence over theme
 	const symbolPreset: SymbolPreset = symbolPresetOverride ?? themeJson.symbols?.preset ?? "unicode";
 	const symbolOverrides = themeJson.symbols?.overrides ?? {};
 	const spinnerFramesOverrides = normalizeSpinnerFramesOverride(themeJson.symbols?.spinnerFrames);
-	return new Theme(fgColors, bgColors, colorMode, symbolPreset, symbolOverrides, spinnerFramesOverrides);
+	// The theme's terminal ground for the painted-ground feature (`tui.paintGround`)
+	// comes from `export.pageBg`, the same background HTML export already uses.
+	// It is accepted only as a literal 6-digit hex: OSC 11 painting needs an exact
+	// #RRGGBB, and a page background left as an ansi index or an unresolved var is
+	// not one, so it resolves to no ground (the consumer then inherits the terminal
+	// background rather than painting a wrong color).
+	const rawGround = resolveThemeExportColors(themeJson).pageBg;
+	const groundHex = rawGround !== undefined && parseHexColor(rawGround) !== null ? rawGround : undefined;
+	return new Theme(fgColors, bgColors, colorMode, symbolPreset, symbolOverrides, spinnerFramesOverrides, groundHex);
 }
 
 async function loadTheme(name: string, options: CreateThemeOptions = {}): Promise<Theme> {
@@ -289,6 +333,117 @@ function getCurrentThemeOptions(): CreateThemeOptions {
 	};
 }
 
+/**
+ * The theme every fallback lands on. It is compiled into the binary as a
+ * built-in, so it is the one theme guaranteed to load no matter what is on disk.
+ */
+export const FALLBACK_THEME_NAME = "dark";
+
+/** Outcome of loading a theme and making it active. */
+export interface ThemeLoadResult {
+	success: boolean;
+	error?: string;
+	/**
+	 * The requested theme failed and `FALLBACK_THEME_NAME` is now rendering.
+	 * Callers with a user-visible channel MUST surface this: the user asked for
+	 * one theme and is looking at another, so staying quiet hides a real degrade.
+	 */
+	fellBack?: boolean;
+}
+
+interface ApplyThemeOptions {
+	/** Repaint live UI without replacing native scrollback. */
+	ephemeral?: boolean;
+	/** Start the custom-theme file watcher once the theme loads. */
+	enableWatcher?: boolean;
+	/**
+	 * Record `name` as the committed theme on success, and the fallback name if
+	 * it falls back.
+	 *
+	 * `currentThemeName` means "the theme the user chose", not "the theme
+	 * currently rendering" — the two deliberately diverge. A preview renders
+	 * another theme while leaving the committed name alone so cancelling can
+	 * restore it (`settings-selector.ts` captures `getCurrentThemeName()` for
+	 * exactly that). A preset/color-blind reload keeps the committed name too:
+	 * if the user's theme is mid-edit and broken, holding their name means the
+	 * next toggle retries it and picks the file back up once they fix it, rather
+	 * than permanently kicking them onto the fallback.
+	 */
+	commitName?: boolean;
+	/**
+	 * Leave the active theme untouched when the load fails, instead of falling
+	 * back. Previewing is browsing: failing to render a candidate is not a reason
+	 * to throw away the theme the user is actually on. The error still surfaces
+	 * through the result, so the degrade stays visible either way.
+	 */
+	keepCurrentOnError?: boolean;
+	/** Result message when a newer request superseded this one. */
+	supersededMessage?: string;
+}
+
+/**
+ * The one owner of "load a theme and make it active".
+ *
+ * Every entry point (init, explicit set, preview, symbol preset, color-blind
+ * mode) routes through here so the request-ordering guard, the fallback, and
+ * the change notification cannot drift apart. They previously hand-rolled this
+ * sequence four times over and had already drifted: two copies swallowed the
+ * load failure entirely, so a broken theme silently swapped what you were
+ * looking at with nothing said (Law 10).
+ */
+async function applyTheme(name: string, options: ApplyThemeOptions = {}): Promise<ThemeLoadResult> {
+	const {
+		ephemeral,
+		enableWatcher,
+		commitName,
+		keepCurrentOnError,
+		supersededMessage = "Theme change superseded by a newer request",
+	} = options;
+	const event: ThemeChangeEvent = ephemeral ? { ephemeral: true } : {};
+	const requestId = ++themeLoadRequestId;
+
+	try {
+		const loadedTheme = await loadTheme(name, getCurrentThemeOptions());
+		if (requestId !== themeLoadRequestId) {
+			return { success: false, error: supersededMessage };
+		}
+		theme = loadedTheme;
+		if (commitName) currentThemeName = name;
+		if (enableWatcher) await startThemeWatcher();
+		notifyThemeChange(event);
+		return { success: true };
+	} catch (error) {
+		if (requestId !== themeLoadRequestId) {
+			return { success: false, error: supersededMessage };
+		}
+
+		const message = errorMessage(error);
+		if (keepCurrentOnError) {
+			logger.warn("Theme failed to load; keeping the active theme", { requested: name, error: message });
+			return { success: false, error: message };
+		}
+
+		// Loud and recorded: the operator is about to be shown a theme they did
+		// not pick. The returned `fellBack` is the user-visible half — the log
+		// alone would be a silent degrade.
+		logger.warn("Theme failed to load; falling back", {
+			requested: name,
+			fallback: FALLBACK_THEME_NAME,
+			error: message,
+		});
+
+		if (commitName) currentThemeName = FALLBACK_THEME_NAME;
+		// The fallback is a built-in, so this cannot hit the disk or throw. If it
+		// ever does, the theme system is unusable and the throw is the honest signal.
+		theme = await loadTheme(FALLBACK_THEME_NAME, getCurrentThemeOptions());
+		// Bump the epoch so memoized renderers re-shape with the fallback colors
+		// instead of holding the failed theme's stale styling.
+		notifyThemeChange(event);
+		// Deliberately no watcher on the fallback: it is a built-in with no file.
+		return { success: false, error: message, fellBack: true };
+	}
+}
+
 export async function initTheme(
 	enableWatcher: boolean = false,
 	symbolPreset?: SymbolPreset,
@@ -303,79 +458,32 @@ export async function initTheme(
 	currentThemeName = name;
 	currentSymbolPresetOverride = symbolPreset;
 	currentColorBlindMode = colorBlindMode ?? false;
-	try {
-		theme = await loadTheme(name, getCurrentThemeOptions());
-		if (enableWatcher) {
-			await startThemeWatcher();
-			startSigwinchListener();
-		}
-	} catch (err) {
-		logger.debug("Theme loading failed, falling back to dark theme", { error: String(err) });
-		currentThemeName = "dark";
-		theme = await loadTheme("dark", getCurrentThemeOptions());
-		// Don't start watcher for fallback theme
+	const result = await applyTheme(name, { enableWatcher, commitName: true });
+	if (result.success && enableWatcher) {
+		startSigwinchListener();
 	}
 }
 
-export async function setTheme(
-	name: string,
-	enableWatcher: boolean = false,
-): Promise<{ success: boolean; error?: string }> {
+/**
+ * Switch to `name` as the committed theme. On failure the fallback renders and
+ * the committed name moves with it: the user explicitly asked for this theme,
+ * so leaving them pointed at one that does not load would fail the same way on
+ * every subsequent reload.
+ */
+export async function setTheme(name: string, enableWatcher: boolean = false): Promise<ThemeLoadResult> {
 	autoDetectedTheme = false;
-	currentThemeName = name;
-	const requestId = ++themeLoadRequestId;
-	try {
-		const loadedTheme = await loadTheme(name, getCurrentThemeOptions());
-		if (requestId !== themeLoadRequestId) {
-			return { success: false, error: "Theme change superseded by a newer request" };
-		}
-		theme = loadedTheme;
-		if (enableWatcher) {
-			await startThemeWatcher();
-		}
-		notifyThemeChange();
-		return { success: true };
-	} catch (error) {
-		if (requestId !== themeLoadRequestId) {
-			return { success: false, error: "Theme change superseded by a newer request" };
-		}
-		// Theme is invalid - fall back to dark theme
-		currentThemeName = "dark";
-		theme = await loadTheme("dark", getCurrentThemeOptions());
-		// The active theme just changed to the fallback — bump the epoch so memoized
-		// renderers (e.g. ToolExecutionComponent) re-shape with the fallback colors
-		// instead of holding the failed theme's stale styling.
-		notifyThemeChange();
-		// Don't start watcher for fallback theme
-		return {
-			success: false,
-			error: errorMessage(error),
-		};
-	}
+	return applyTheme(name, { enableWatcher, commitName: true });
 }
 
 export async function previewTheme(
 	name: string,
 	event: ThemeChangeEvent = { ephemeral: true },
-): Promise<{ success: boolean; error?: string }> {
-	const requestId = ++themeLoadRequestId;
-	try {
-		const loadedTheme = await loadTheme(name, getCurrentThemeOptions());
-		if (requestId !== themeLoadRequestId) {
-			return { success: false, error: "Theme preview superseded by a newer request" };
-		}
-		theme = loadedTheme;
-		notifyThemeChange(event);
-		return { success: true };
-	} catch (error) {
-		if (requestId !== themeLoadRequestId) {
-			return { success: false, error: "Theme preview superseded by a newer request" };
-		}
-		return {
-			success: false,
-			error: errorMessage(error),
-		};
-	}
+): Promise<ThemeLoadResult> {
+	return applyTheme(name, {
+		ephemeral: event.ephemeral,
+		keepCurrentOnError: true,
+		supersededMessage: "Theme preview superseded by a newer request",
+	});
 }
 
 /**
@@ -417,23 +525,14 @@ export function setThemeInstance(themeInstance: Theme): void {
 
 /**
  * Set the symbol preset override, recreating the theme with the new preset.
+ *
+ * Returns the reload outcome so callers can surface a fallback. The preset
+ * itself always takes effect; only re-rendering the committed theme can fail.
  */
-export async function setSymbolPreset(preset: SymbolPreset): Promise<void> {
+export async function setSymbolPreset(preset: SymbolPreset): Promise<ThemeLoadResult> {
 	currentSymbolPresetOverride = preset;
-	if (!currentThemeName) return;
-
-	const requestId = ++themeLoadRequestId;
-	try {
-		const loadedTheme = await loadTheme(currentThemeName, getCurrentThemeOptions());
-		if (requestId !== themeLoadRequestId) return;
-		theme = loadedTheme;
-	} catch {
-		if (requestId !== themeLoadRequestId) return;
-		// Fall back to dark theme with new preset
-		theme = await loadTheme("dark", getCurrentThemeOptions());
-		if (requestId !== themeLoadRequestId) return;
-	}
-	notifyThemeChange({ ephemeral: true });
+	if (!currentThemeName) return { success: true };
+	return applyTheme(currentThemeName, { ephemeral: true });
 }
 
 /**
@@ -447,22 +546,10 @@ export function getSymbolPresetOverride(): SymbolPreset | undefined {
  * Set color blind mode, recreating the theme with the new setting.
  * When enabled, uses blue instead of green for diff additions.
  */
-export async function setColorBlindMode(enabled: boolean): Promise<void> {
+export async function setColorBlindMode(enabled: boolean): Promise<ThemeLoadResult> {
 	currentColorBlindMode = enabled;
-	if (!currentThemeName) return;
-
-	const requestId = ++themeLoadRequestId;
-	try {
-		const loadedTheme = await loadTheme(currentThemeName, getCurrentThemeOptions());
-		if (requestId !== themeLoadRequestId) return;
-		theme = loadedTheme;
-	} catch {
-		if (requestId !== themeLoadRequestId) return;
-		// Fall back to dark theme
-		theme = await loadTheme("dark", getCurrentThemeOptions());
-		if (requestId !== themeLoadRequestId) return;
-	}
-	notifyThemeChange({ ephemeral: true });
+	if (!currentThemeName) return { success: true };
+	return applyTheme(currentThemeName, { ephemeral: true });
 }
 
 /**
@@ -515,8 +602,12 @@ export function isValidSymbolPreset(preset: string): preset is SymbolPreset {
 async function startThemeWatcher(): Promise<void> {
 	stopThemeWatcher();
 
-	// Only watch if it's a custom theme (not built-in)
-	if (!currentThemeName || currentThemeName === "dark" || currentThemeName === "light") {
+	// Only watch custom themes. Ask the built-in registry rather than naming
+	// themes here: `loadThemeJson` resolves built-ins before ever touching the
+	// custom themes dir, so a user file that shadows a built-in name is never
+	// loaded. Watching it anyway would fire a reload on every edit that then
+	// re-resolved to the built-in, silently discarding their changes.
+	if (!currentThemeName || currentThemeName in getBuiltinThemes()) {
 		return;
 	}
 
@@ -586,6 +677,7 @@ function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): 
 	if (!autoDetectedTheme) return;
 	const resolved = getDefaultTheme();
 	if (resolved === currentThemeName) return;
+	const previous = currentThemeName;
 	currentThemeName = resolved;
 	loadTheme(resolved, getCurrentThemeOptions())
 		.then(loadedTheme => {
@@ -593,7 +685,21 @@ function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): 
 			notifyThemeChange(event);
 		})
 		.catch(err => {
-			logger.debug(`Theme switch on ${debugLabel} failed`, { error: String(err) });
+			// Put the name back. It was committed before the load so concurrent
+			// re-evaluations would not stack, but leaving it committed after a failure
+			// meant `resolved === currentThemeName` matched on every later terminal
+			// appearance change, so the early return above skipped the retry forever:
+			// the terminal was in dark mode, veyyon still rendered its light theme, and
+			// nothing tried again for the rest of the session.
+			currentThemeName = previous;
+			// warn, not debug. The user asked for automatic theme switching, it just
+			// did not happen, and the colours on screen are now wrong in a way they
+			// cannot explain from anything they did.
+			logger.warn(`Theme switch on ${debugLabel} failed; keeping the current theme`, {
+				from: previous,
+				to: resolved,
+				error: String(err),
+			});
 		});
 }
 
@@ -647,6 +753,15 @@ function stopSigwinchListener(): void {
 		sigwinchHandler = undefined;
 	}
 	stopMacAppearanceObserver();
+}
+
+/**
+ * Whether a custom-theme file watcher is currently attached. `startThemeWatcher`
+ * returns early for built-in themes and for names with no file on disk, so this
+ * is how a caller tells "watching" apart from "declined to watch".
+ */
+export function isThemeWatcherActive(): boolean {
+	return themeWatcher !== undefined;
 }
 
 export function stopThemeWatcher(): void {
@@ -965,7 +1080,7 @@ export function getMarkdownTheme(): MarkdownTheme {
 		bold: (text: string) => theme.bold(text),
 		italic: (text: string) => theme.italic(text),
 		underline: (text: string) => theme.underline(text),
-		strikethrough: (text: string) => chalk.strikethrough(text),
+		strikethrough: (text: string) => theme.strikethrough(text),
 		symbols: getSymbolTheme(),
 		resolveMermaidAscii: mermaid
 			? (source, maxWidth) =>
@@ -1002,13 +1117,22 @@ export function getSelectListTheme(): SelectListTheme {
 		};
 	}
 	return {
-		selectedPrefix: (text: string) => theme.fg("accent", text),
-		selectedText: (text: string) => theme.fg("accent", text),
+		// The selection cursor is a LIVE warm-arc glyph, so it runs molten
+		// (lava heat cycle) on truecolor terminals and static borderAccent
+		// ember otherwise — the design system's "the one live thing".
+		selectedPrefix: (text: string) => lavaText(text, theme, TERMINAL.trueColor),
+		selectedText: (text: string) => theme.bold(theme.fg("accent", text)),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),
 		symbols: getSymbolTheme(),
 		hovered: (text: string) => theme.bg("selectedBg", text),
+		// The found thing is gold: filter-hit characters paint matchHighlight.
+		matchHighlight: (text: string) => theme.fg("matchHighlight", text),
+		// Category headers per the approved / menu design: an ember uppercase
+		// label with a short rule tail, so the list reads as a map of sections.
+		groupHeader: (name: string) =>
+			theme.fg("borderAccent", `  ${name.toUpperCase()} ${"─".repeat(Math.max(4, 30 - name.length))}`),
 	};
 }
 

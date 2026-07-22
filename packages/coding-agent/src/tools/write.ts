@@ -379,6 +379,16 @@ function parseSqliteWriteTarget(subPath: string, queryString: string): { table: 
 }
 
 /**
+ * Filesystem path a write call targets, for the cwd boundary (cwd-boundary.ts).
+ * The hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it
+ * cannot dodge the gate; ssh/internal schemes are filtered by the boundary.
+ */
+export function writeFilesystemTargets(args: unknown): string[] {
+	const raw = (args as Partial<WriteParams>).path;
+	return typeof raw === "string" ? [unwrapHashlineHeaderPath(raw)] : [];
+}
+
+/**
  * Write tool implementation.
  *
  * Creates or overwrites files with optional LSP formatting and diagnostics.
@@ -410,6 +420,11 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const content = typeof params.content === "string" ? params.content : "";
 		return [`Path: ${truncateForPrompt(targetPath)}`, `Content:\n${truncateForPrompt(content)}`];
 	};
+	// The cwd boundary reads this to gate out-of-cwd writes in non-yolo modes. The
+	// hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it can't
+	// dodge the gate; ssh/internal schemes are filtered by the boundary. See
+	// cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => writeFilesystemTargets(args);
 	readonly label = "Write";
 	readonly description: string;
 	readonly parameters = writeSchema;
@@ -966,8 +981,15 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					return { content: [{ type: "text", text: resultText }], details: {} };
 				}
 				if (scheme !== "local") {
+					// Name the tool that DOES mutate this scheme, so the caller has a
+					// next step instead of a dead end. memory:// is edited with the
+					// memory_edit tool; other read-only schemes have no mutation tool.
+					const mutationTool: Record<string, string> = { memory: "memory_edit" };
+					const tool = mutationTool[scheme];
 					throw new ToolError(
-						`${scheme}:// URLs are read-only for write; use the protocol-specific tool for mutations.`,
+						tool
+							? `${scheme}:// URLs are read-only for the write tool; use the ${tool} tool to change ${scheme}:// entries.`
+							: `${scheme}:// URLs are read-only; there is no write path for this scheme.`,
 					);
 				}
 				// local:// is backed by the session-local artifact sandbox and is

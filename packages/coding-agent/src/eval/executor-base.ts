@@ -5,8 +5,8 @@ import type { ToolSession } from "../tools";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP, isEvalTimeoutControlEvent } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
+import { registerKernelToolBridge } from "./kernel-tool-bridge";
 import type { KernelDisplayOutput } from "./py/display";
-import { registerPyToolBridge } from "./py/tool-bridge";
 
 /**
  * Constructor for a language executor's cancellation error. Each backend
@@ -248,6 +248,37 @@ export function createCancelledKernelResult(output: string): KernelExecutionResu
 }
 
 // ---------------------------------------------------------------------------
+// Timeout annotations (shared by every kernel executor: python, ruby, ...)
+// ---------------------------------------------------------------------------
+
+/** Whole seconds for a timeout label, floored at 1 so a sub-second budget never reads "0 seconds". */
+export function timeoutSeconds(timeoutMs: number): number {
+	return Math.max(1, Math.round(timeoutMs / 1000));
+}
+
+/**
+ * One-line "command timed out" annotation for a cancelled kernel cell. Always a
+ * string: with no known budget it states the bare timeout, otherwise it names
+ * the whole-second budget.
+ */
+export function formatTimeoutAnnotation(timeoutMs?: number): string {
+	if (timeoutMs === undefined) return "Command timed out";
+	return `Command timed out after ${timeoutSeconds(timeoutMs)} seconds`;
+}
+
+/**
+ * Richer annotation for a kernel-level timeout that distinguishes a killed
+ * kernel (state gone, will be recreated) from an interrupted-but-alive kernel.
+ */
+export function formatKernelTimeoutAnnotation(timeoutMs: number | undefined, kernelKilled: boolean): string {
+	if (kernelKilled) {
+		return "eval cell timed out and the kernel was unresponsive to interrupt; the kernel has been killed and will be recreated on the next call.";
+	}
+	const duration = timeoutMs === undefined ? "the configured timeout" : `${timeoutSeconds(timeoutMs)}s`;
+	return `eval cell timed out after ${duration}; kernel interrupted but remains running. Reset the kernel via { reset: true } if state appears corrupted.`;
+}
+
+// ---------------------------------------------------------------------------
 // Managed environment helpers
 // ---------------------------------------------------------------------------
 
@@ -391,7 +422,7 @@ export async function executeWithKernelBase<
 	const runId = `${runIdPrefix}-${crypto.randomUUID()}`;
 	const unregisterBridge =
 		options?.toolSession && options?.bridgeSessionId
-			? registerPyToolBridge(options.bridgeSessionId, runId, {
+			? registerKernelToolBridge(options.bridgeSessionId, runId, {
 					toolSession: options.toolSession,
 					signal: abortShield.signal,
 					emitStatus,

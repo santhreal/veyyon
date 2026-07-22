@@ -1,14 +1,8 @@
 import type { Tool } from "../../tools";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 
 export interface ToolsMarkdownBindings {
 	tools: ReadonlyArray<Pick<Tool, "description" | "name">>;
-}
-
-function escapeTableCell(value: string): string {
-	return value
-		.replace(/\|/g, "\\|")
-		.replace(/\r?\n+/g, " ")
-		.trim();
 }
 
 export function buildToolsMarkdown(bindings: ToolsMarkdownBindings): string {
@@ -20,7 +14,9 @@ export function buildToolsMarkdown(bindings: ToolsMarkdownBindings): string {
 		"| Tool | Description |",
 		"|------|-------------|",
 		...bindings.tools.map(tool => {
-			const description = escapeTableCell(tool.description) || "No description provided.";
+			// Trim after escaping so an all-whitespace description collapses to "" and
+			// falls back, matching the prior behavior.
+			const description = escapeMarkdownTableCell(tool.description).trim() || "No description provided.";
 			return `| \`${tool.name}\` | ${description} |`;
 		}),
 	].join("\n");

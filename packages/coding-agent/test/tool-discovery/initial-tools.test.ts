@@ -29,6 +29,11 @@ const allToolsSettings = Settings.isolated({
 	"todo.enabled": true,
 	"memory.backend": "mnemopi",
 	"autolearn.enabled": true,
+	// Off by default, so without this the two argot tools never get constructed and
+	// the always-active / summary assertions below skip them silently rather than
+	// checking them. Argot tools are always-active built-ins (no loadMode) when
+	// enabled — not discoverable — because loading is the canonical arming flow.
+	"argot.enabled": true,
 	"tools.discoveryMode": "all",
 });
 
@@ -41,6 +46,9 @@ const toolSession: ToolSession = {
 	isToolDiscoveryEnabled: () => true,
 	getSelectedDiscoveredToolNames: () => [],
 	activateDiscoveredTools: async names => names,
+	// Argot tools only construct when a session codec exists (enabled alone is not
+	// enough — a subagent under argot.subagents:off has enabled settings but no codec).
+	getArgotSession: () => ({ loaded: false }) as never,
 };
 
 async function getToolMetadata(): Promise<Map<string, { loadMode?: string; summary?: string }>> {
@@ -57,11 +65,51 @@ async function getToolMetadata(): Promise<Map<string, { loadMode?: string; summa
 	}
 	return metadata;
 }
+/** Built-ins that stay always-active (no loadMode) when constructed — not discoverable. */
+const ALWAYS_ACTIVE_BUILTINS = new Set(["argot_load", "argot_unload"]);
+
 describe("BUILTIN_TOOLS public factory map", () => {
 	it("sets loading fields on tool definitions without wrapping factories", async () => {
 		const metadata = await getToolMetadata();
-		const missing = Object.keys(BUILTIN_TOOLS).filter(name => metadata.get(name)?.loadMode === undefined);
+		const missing = Object.keys(BUILTIN_TOOLS).filter(
+			name => !ALWAYS_ACTIVE_BUILTINS.has(name) && metadata.get(name)?.loadMode === undefined,
+		);
 		expect(missing).toEqual([]);
+	});
+
+	it("keeps argot tools always-active (not discoverable) when enabled AND a codec is exposed", async () => {
+		// Factories gate on argot.enabled AND getArgotSession?.() !== undefined: a
+		// subagent under argot.subagents:"off" (or any stub without a codec) gets neither
+		// tool even when the setting is on. This fixture exposes a codec, so both appear
+		// as always-active built-ins (no loadMode), never discoverable.
+		const metadata = await getToolMetadata();
+		for (const name of ["argot_load", "argot_unload"] as const) {
+			expect(metadata.has(name)).toBe(true);
+			expect(metadata.get(name)?.loadMode).toBeUndefined();
+			expect(metadata.get(name)?.summary?.length).toBeGreaterThan(0);
+		}
+	});
+
+	it("omits argot tools when enabled but the session exposes no codec", async () => {
+		// Dual-gate negative: settings say enabled, but getArgotSession is absent —
+		// the same shape as a subagent with argot.subagents:"off". Neither tool constructs.
+		const { getArgotSession: _drop, ...noCodec } = toolSession;
+		void _drop;
+		const tools = await createTools(noCodec as ToolSession, Object.keys(BUILTIN_TOOLS));
+		const names = new Set(tools.map(tool => tool.name));
+		expect(names.has("argot_load")).toBe(false);
+		expect(names.has("argot_unload")).toBe(false);
+	});
+
+	it("omits argot tools when getArgotSession returns undefined", async () => {
+		const session: ToolSession = {
+			...toolSession,
+			getArgotSession: () => undefined,
+		};
+		const tools = await createTools(session, Object.keys(BUILTIN_TOOLS));
+		const names = new Set(tools.map(tool => tool.name));
+		expect(names.has("argot_load")).toBe(false);
+		expect(names.has("argot_unload")).toBe(false);
 	});
 	it("exposes launch instead of daemon", async () => {
 		const launch = await BUILTIN_TOOLS.launch(toolSession);

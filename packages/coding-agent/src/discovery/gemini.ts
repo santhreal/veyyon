@@ -234,8 +234,8 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 	const projectExtensionsDir = getProjectPath(ctx, "gemini", "extensions");
 
 	const [userPaths, projectPaths] = await Promise.all([
-		userExtensionsDir ? discoverExtensionModulePaths(ctx, userExtensionsDir) : Promise.resolve([]),
-		projectExtensionsDir ? discoverExtensionModulePaths(ctx, projectExtensionsDir) : Promise.resolve([]),
+		userExtensionsDir ? discoverExtensionModulePaths(userExtensionsDir) : Promise.resolve([]),
+		projectExtensionsDir ? discoverExtensionModulePaths(projectExtensionsDir) : Promise.resolve([]),
 	]);
 
 	const items = buildExtensionModuleItems(PROVIDER_ID, userPaths, projectPaths);

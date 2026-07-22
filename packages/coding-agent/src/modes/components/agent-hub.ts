@@ -30,7 +30,7 @@ import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/rend
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
 import { theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
-import { agentStatusGlyph } from "./agent-status-display";
+import { AGENT_STATUS_ORDER, agentStatusGlyph } from "./agent-status-display";
 import { AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { DynamicBorder } from "./dynamic-border";
 
@@ -54,8 +54,6 @@ function sanitizeLine(text: string, maxWidth?: number): string {
 function clampHubLine(line: string, width: number): string {
 	return truncateToWidth(line.replace(/[\r\n]+/g, " "), Math.max(1, width - 2), Ellipsis.Omit);
 }
-
-const STATUS_ORDER: Record<AgentStatus, number> = { running: 0, idle: 1, parked: 2, aborted: 3 };
 
 /** Model id + thinking level (`sonnet-4-6 ◒ high`), level colored per theme. */
 function formatModelBadge(modelId: string, level: ThinkingLevel | undefined): string {
@@ -425,7 +423,7 @@ export class AgentHubOverlayComponent extends Container {
 		if (!this.#rowOrder) {
 			// First refresh (usually the constructor): order by status, then recency.
 			this.#rows = refs.sort(
-				(a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.lastActivity - a.lastActivity,
+				(a, b) => AGENT_STATUS_ORDER[a.status] - AGENT_STATUS_ORDER[b.status] || b.lastActivity - a.lastActivity,
 			);
 			this.#rowOrder = new Map(this.#rows.map((ref, i) => [ref.id, i]));
 		} else {
@@ -433,7 +431,7 @@ export class AgentHubOverlayComponent extends Container {
 			// does not jump around as agents heartbeat or update activity. New agents
 			// are appended at the end and then stay put.
 			this.#rows = refs.sort((a, b) => {
-				const statusDiff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+				const statusDiff = AGENT_STATUS_ORDER[a.status] - AGENT_STATUS_ORDER[b.status];
 				if (statusDiff !== 0) return statusDiff;
 				const aOrder = this.#rowOrder!.get(a.id) ?? Number.MAX_SAFE_INTEGER;
 				const bOrder = this.#rowOrder!.get(b.id) ?? Number.MAX_SAFE_INTEGER;

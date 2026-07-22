@@ -1,5 +1,6 @@
 import { type } from "arktype";
 import type { CommitAgentState } from "../../../commit/agentic/state";
+import { isTestFilePath } from "../../../commit/utils/test-paths";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
 
@@ -55,7 +56,6 @@ const BINARY_EXTENSIONS = new Set([
 	".so",
 	".dylib",
 ]);
-const TEST_PATTERNS = ["/test/", "/tests/", "/__tests__/", "_test.", ".test.", ".spec.", "_spec."];
 
 export function getFilePriority(filename: string): number {
 	const basename = filename.split("/").pop() ?? filename;
@@ -63,10 +63,7 @@ export function getFilePriority(filename: string): number {
 
 	if (BINARY_EXTENSIONS.has(ext)) return -100;
 
-	const lowerPath = filename.toLowerCase();
-	for (const pattern of TEST_PATTERNS) {
-		if (lowerPath.includes(pattern)) return 10;
-	}
+	if (isTestFilePath(filename)) return 10;
 
 	if (LOW_PRIORITY_EXTENSIONS.has(ext) && !MANIFEST_FILES.has(basename)) return 20;
 	if (MANIFEST_FILES.has(basename)) return 70;

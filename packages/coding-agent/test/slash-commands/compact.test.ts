@@ -39,7 +39,7 @@ describe("/compact dispatch (ACP)", () => {
 	});
 
 	it("threads each mode subcommand into compact()", async () => {
-		for (const mode of ["soft", "remote", "snapcompact"] as const satisfies readonly CompactMode[]) {
+		for (const mode of ["soft", "remote"] as const satisfies readonly CompactMode[]) {
 			const h = acpRuntime();
 			await executeAcpBuiltinSlashCommand(`/compact ${mode}`, h.runtime);
 			expect(h.compact).toHaveBeenCalledWith(undefined, { mode });
@@ -58,18 +58,10 @@ describe("/compact dispatch (ACP)", () => {
 		expect(h.compact).toHaveBeenCalledWith("summarize the auth flow", undefined);
 	});
 
-	it("rejects focus text on snapcompact without compacting", async () => {
-		const h = acpRuntime();
-		const result = await executeAcpBuiltinSlashCommand("/compact snapcompact keep the diffs", h.runtime);
-		expect(h.compact).not.toHaveBeenCalled();
-		expect(result).toEqual({ consumed: true });
-		expect((h.output.mock.calls[0]?.[0] as string) ?? "").toContain("snapcompact");
-	});
-
 	it("advertises the mode subcommands and input hint to ACP clients", () => {
 		const advertised = ACP_BUILTIN_SLASH_COMMANDS.find(c => c.name === "compact");
 		expect(advertised).toBeDefined();
-		expect(advertised?.input?.hint).toBe("[soft|remote|snapcompact] [focus]");
+		expect(advertised?.input?.hint).toBe("[soft|remote] [focus]");
 	});
 });
 
@@ -86,12 +78,5 @@ describe("/compact dispatch (TUI)", () => {
 		const h = tuiRuntime();
 		await executeBuiltinSlashCommand("/compact", h.runtime);
 		expect(h.handleCompactCommand).toHaveBeenCalledWith(undefined, undefined);
-	});
-
-	it("warns on snapcompact + focus text and does not compact", async () => {
-		const h = tuiRuntime();
-		await executeBuiltinSlashCommand("/compact snapcompact keep diffs", h.runtime);
-		expect(h.handleCompactCommand).not.toHaveBeenCalled();
-		expect(h.showWarning).toHaveBeenCalled();
 	});
 });

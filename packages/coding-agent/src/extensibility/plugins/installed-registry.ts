@@ -1,41 +1,36 @@
 /**
  * Installed plugin registry read/write (Claude Code-compatible shape).
+ *
+ * This is the single owner of the installed-plugins registry: the type, the
+ * on-disk path/cache helpers, the read/write functions, and the pure CRUD
+ * transforms. The marketplace layer (`marketplace/registry.ts`,
+ * `marketplace/types.ts`) builds on top of this and re-exports it, so the
+ * installed-registry shape lives in exactly one place.
  */
 
 import * as path from "node:path";
 
-import { atomicWriteFile, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
+import { atomicWriteJson, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
 
 export interface InstalledPluginsRegistry {
+	/** MUST be 2 — parseClaudePluginsRegistry rejects non-numeric version. */
 	version: 2;
 	plugins: Record<string, InstalledPluginEntry[]>;
 }
 
 export interface InstalledPluginEntry {
 	scope: "user" | "project";
+	/** Absolute path to cached plugin directory. */
 	installPath: string;
 	version: string;
+	/** ISO 8601 date string. */
 	installedAt: string;
+	/** ISO 8601 date string. */
 	lastUpdated: string;
+	/** For git-sourced plugins. */
 	gitCommitSha?: string;
+	/** Veyyon extension — not in Claude Code's type. CLI/UI concern only in v1. */
 	enabled?: boolean;
-}
-
-const NAME_RE = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
-const MAX_NAME_LENGTH = 64;
-
-export function isValidNameSegment(s: string): boolean {
-	return s.length > 0 && s.length <= MAX_NAME_LENGTH && NAME_RE.test(s);
-}
-
-/** Parse `"name@marketplace"` for legacy installed plugin IDs. */
-export function parsePluginId(id: string): { name: string; marketplace: string } | null {
-	const atIndex = id.lastIndexOf("@");
-	if (atIndex <= 0 || atIndex === id.length - 1) return null;
-	const name = id.slice(0, atIndex);
-	const marketplace = id.slice(atIndex + 1);
-	if (!isValidNameSegment(name) || !isValidNameSegment(marketplace)) return null;
-	return { name, marketplace };
 }
 
 export function getInstalledPluginsRegistryPath(): string {
@@ -44,10 +39,6 @@ export function getInstalledPluginsRegistryPath(): string {
 
 export function getPluginsCacheDir(): string {
 	return path.join(getPluginsDir(), "cache", "plugins");
-}
-
-async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-	await atomicWriteFile(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
 function emptyInstalledPluginsRegistry(): InstalledPluginsRegistry {
@@ -69,6 +60,7 @@ export async function readInstalledPluginsRegistry(filePath: string): Promise<In
 			logger.warn("Invalid installed plugins registry, returning empty", { path: filePath });
 			return emptyInstalledPluginsRegistry();
 		}
+		// Accept any numeric version — forward compatible reads
 		return { ...data, version: 2 };
 	} catch (err) {
 		if (isEnoent(err)) return emptyInstalledPluginsRegistry();
@@ -80,6 +72,39 @@ export async function writeInstalledPluginsRegistry(filePath: string, reg: Insta
 	await atomicWriteJson(filePath, reg);
 }
 
+// ── Installed plugin CRUD ────────────────────────────────────────────
+// Pure functions that transform registry state. Caller is responsible for
+// reading, mutating, and writing back.
+
+export function addInstalledPlugin(
+	reg: InstalledPluginsRegistry,
+	id: string,
+	entry: InstalledPluginEntry,
+): InstalledPluginsRegistry {
+	const existing = reg.plugins[id] ?? [];
+	return {
+		...reg,
+		plugins: { ...reg.plugins, [id]: [...existing, entry] },
+	};
+}
+
+export function removeInstalledPlugin(reg: InstalledPluginsRegistry, id: string): InstalledPluginsRegistry {
+	if (!(id in reg.plugins)) {
+		throw new Error(`Plugin "${id}" not found in registry`);
+	}
+	const { [id]: _, ...rest } = reg.plugins;
+	return { ...reg, plugins: rest };
+}
+
+export function getInstalledPlugin(reg: InstalledPluginsRegistry, id: string): InstalledPluginEntry[] | undefined {
+	return reg.plugins[id];
+}
+
+/**
+ * Collect all installPath values referenced by any of the provided registries.
+ * Use this before deleting a cached plugin directory to verify it is not still
+ * referenced by another scope's registry.
+ */
 export function collectReferencedPaths(...registries: InstalledPluginsRegistry[]): Set<string> {
 	return new Set(
 		registries.flatMap(r =>

@@ -8,6 +8,7 @@
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
+import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -93,12 +94,9 @@ export async function searchSynthetic(params: SearchParamsWithFetch): Promise<Se
 		});
 	}
 
-	const numResults = params.numSearchResults ?? params.limit;
-	const limitedSources = numResults ? sources.slice(0, numResults) : sources;
-
 	return {
 		provider: "synthetic",
-		sources: limitedSources,
+		sources: applyResultLimit(sources, params.numSearchResults ?? params.limit),
 	};
 }
 

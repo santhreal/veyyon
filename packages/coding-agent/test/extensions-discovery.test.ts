@@ -744,4 +744,88 @@ describe("extensions discovery", () => {
 			for (const spy of spies) spy.mockRestore();
 		}
 	});
+
+	// A gitignored `extensions/` folder is the normal way to keep local experiments
+	// out of a repo. Discovery used to run the native glob with `gitignore: true`, so
+	// those extensions were silently dropped from the well-known directories while the
+	// configured-path walk still loaded them — the same file loaded or not depending on
+	// which route reached it.
+	it("loads an extension from the project extensions dir even when git ignores it", async () => {
+		// Two things this setup depends on, both verified against the native glob:
+		// it only applies .gitignore inside a real repo, and a DIRECTORY pattern
+		// ("extensions/") does not filter because the walk root is that directory.
+		// A file-level pattern is what actually reaches the entries.
+		Bun.spawnSync(["git", "init", "-q"], { cwd: tempDir.path() });
+		fs.writeFileSync(path.join(tempDir.path(), ".gitignore"), "ignored-ext.ts\n");
+		fs.writeFileSync(path.join(extensionsDir, "ignored-ext.ts"), extensionCode);
+
+		const { extensions, errors } = await discoverForTest();
+
+		expect(errors).toEqual([]);
+		expect(extensions.map(e => path.basename(e.path))).toContain("ignored-ext.ts");
+	});
+
+	it("loads a gitignored extension given as an explicitly configured path", async () => {
+		const configured = path.join(tempDir.path(), "configured-exts");
+		fs.mkdirSync(configured, { recursive: true });
+		Bun.spawnSync(["git", "init", "-q"], { cwd: tempDir.path() });
+		fs.writeFileSync(path.join(tempDir.path(), ".gitignore"), "configured-ext.ts\n");
+		fs.writeFileSync(path.join(configured, "configured-ext.ts"), extensionCode);
+
+		const paths = await discoverExtensionPaths([configured], tempDir.path());
+
+		expect(paths.map(p => path.basename(p))).toContain("configured-ext.ts");
+	});
+
+	// The configured-path branch used to run its own readdir walk. It now shares the
+	// one discovery owner, so all three layout rules must resolve identically here.
+	it("applies all three discovery rules to a configured path, like a well-known dir", async () => {
+		const configured = path.join(tempDir.path(), "layouts");
+		fs.mkdirSync(path.join(configured, "with-index"), { recursive: true });
+		fs.mkdirSync(path.join(configured, "with-manifest"), { recursive: true });
+
+		fs.writeFileSync(path.join(configured, "direct.ts"), extensionCode);
+		fs.writeFileSync(path.join(configured, "with-index", "index.ts"), extensionCode);
+		fs.writeFileSync(path.join(configured, "with-manifest", "entry.ts"), extensionCode);
+		fs.writeFileSync(
+			path.join(configured, "with-manifest", "package.json"),
+			JSON.stringify({ name: "with-manifest", veyyon: { extensions: ["./entry.ts"] } }),
+		);
+
+		const found = (await discoverExtensionPaths([configured], tempDir.path())).map(p => path.basename(p));
+
+		expect(found).toContain("direct.ts");
+		expect(found).toContain("index.ts");
+		expect(found).toContain("entry.ts");
+	});
+
+	// A dotfile in an extensions directory is tool config, not something to execute.
+	it("does not treat a dotfile in an extensions dir as an extension", async () => {
+		fs.writeFileSync(path.join(extensionsDir, ".eslintrc.js"), extensionCode);
+		fs.writeFileSync(path.join(extensionsDir, "real-ext.ts"), extensionCode);
+
+		const { extensions } = await discoverForTest();
+		const names = extensions.map(e => path.basename(e.path));
+
+		expect(names).toContain("real-ext.ts");
+		expect(names).not.toContain(".eslintrc.js");
+	});
+
+	// ONE PLACE lock. Extension layout resolution had two implementations carrying
+	// the same doc comment and behaving differently; this fails if a second walk
+	// reappears in the loader instead of extending the single owner.
+	it("keeps exactly one extension-discovery walk", async () => {
+		const loaderSrc = await Bun.file(
+			path.join(import.meta.dir, "..", "src", "extensibility", "extensions", "loader.ts"),
+		).text();
+
+		expect(loaderSrc).toContain("discoverExtensionModulePaths");
+		// A re-hand-rolled directory walk in the loader is the regression.
+		expect(loaderSrc).not.toMatch(/fs\.readdir\s*\([^)]*withFileTypes/);
+		expect(loaderSrc).not.toMatch(/async function discoverExtensionsInDir/);
+
+		const helpersSrc = await Bun.file(path.join(import.meta.dir, "..", "src", "discovery", "helpers.ts")).text();
+		const owners = helpersSrc.match(/export async function discoverExtensionModulePaths/g) ?? [];
+		expect(owners.length).toBe(1);
+	});
 });

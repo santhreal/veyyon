@@ -103,16 +103,27 @@ export function parseFileHunks(fileDiff: FileDiff): FileHunks {
 	};
 }
 
-function extractPathFromRename(pathPart: string): string {
+/**
+ * The single owner of git rename-path normalization. `git diff --numstat` emits
+ * a compact rename display: `oldpath => newpath`, or with a common prefix/suffix
+ * `prefix/{old => new}/suffix`. This resolves it to the NEW path, preserving the
+ * suffix after `}`. Do not re-implement this elsewhere; import it.
+ */
+export function extractPathFromRename(pathPart: string): string {
 	const braceStart = pathPart.indexOf("{");
 	if (braceStart !== -1) {
 		const arrowPos = pathPart.indexOf(" => ", braceStart);
 		if (arrowPos !== -1) {
 			const braceEnd = pathPart.indexOf("}", arrowPos);
 			if (braceEnd !== -1) {
+				// A rename brace can be a mid-path segment, e.g.
+				// `src/{old => new}/file.ts`. Keep the prefix before `{`, the new
+				// segment inside the brace, AND the suffix after `}` — dropping the
+				// suffix returned `src/new` instead of `src/new/file.ts`.
 				const prefix = pathPart.slice(0, braceStart);
 				const newName = pathPart.slice(arrowPos + 4, braceEnd).trim();
-				return `${prefix}${newName}`;
+				const suffix = pathPart.slice(braceEnd + 1);
+				return `${prefix}${newName}${suffix}`.trim();
 			}
 		}
 	}

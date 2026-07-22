@@ -58,6 +58,12 @@ function createInitialRenderHarness(): { ctx: InteractiveModeContext; helpers: U
 		clearTransientSessionUi: () => {},
 		toolOutputExpanded: false,
 		hideThinkingBlock: false,
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 	helpers = new UiHelpers(ctx);
 	return { ctx, helpers };
@@ -83,6 +89,12 @@ describe("InteractiveMode.showStatus", () => {
 			},
 			lastStatusSpacer: undefined,
 			lastStatusText: undefined,
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const helpers = new UiHelpers(ctx);
 
@@ -108,6 +120,12 @@ describe("InteractiveMode.showStatus", () => {
 			},
 			lastStatusSpacer: undefined,
 			lastStatusText: undefined,
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const helpers = new UiHelpers(ctx);
 
@@ -140,6 +158,12 @@ describe("InteractiveMode.showStatus", () => {
 			ui: { requestRender: vi.fn() },
 			viewSession: { isStreaming: false },
 			optimisticUserMessageSignature: "hello\u00001",
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const helpers = new UiHelpers(ctx);
 

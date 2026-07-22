@@ -10,6 +10,7 @@ import {
 	prepareUserRetentionTranscript,
 	sliceLastTurnsByUserBoundary,
 	stripMemoryTags,
+	stripRetentionProtocolMarkers,
 	truncateRecallQuery,
 } from "@veyyon/coding-agent/hindsight/content";
 
@@ -271,5 +272,49 @@ describe("formatCurrentTime", () => {
 	it("emits a UTC YYYY-MM-DD HH:MM stamp", () => {
 		const stamp = formatCurrentTime(new Date(Date.UTC(2024, 5, 7, 9, 5)));
 		expect(stamp).toBe("2024-06-07 09:05");
+	});
+});
+
+/**
+ * stripRetentionProtocolMarkers removes the `[role: x]` / `[x:end]` delimiter lines that
+ * prepareRetentionTranscript wraps each turn in, so a stored transcript can be re-read as plain
+ * prose without its scaffolding leaking into an embedding or a memory. A marker only counts when the
+ * whole (trimmed) line is the bracketed token: an inline `[role: user]` mid-sentence, or a bracketed
+ * phrase that is not a marker, must survive untouched. After removal the function collapses any run
+ * of 3+ newlines the deletions opened up back to a blank-line gap and trims the ends. These pin each
+ * of those rules so a regression cannot start eating real content or leaving marker noise behind.
+ */
+describe("stripRetentionProtocolMarkers", () => {
+	it("drops a leading role marker line and keeps the body", () => {
+		expect(stripRetentionProtocolMarkers("[role: user]\nHello there")).toBe("Hello there");
+	});
+
+	it("drops a trailing end marker line", () => {
+		expect(stripRetentionProtocolMarkers("Body\n[user:end]")).toBe("Body");
+	});
+
+	it("removes a marker even when the line is indented or padded with spaces", () => {
+		expect(stripRetentionProtocolMarkers("  [role: assistant]  \nContent")).toBe("Content");
+	});
+
+	it("removes every marker across a multi-turn transcript", () => {
+		const transcript = "[role: user]\nHi\n[user:end]\n[role: assistant]\nYo";
+		expect(stripRetentionProtocolMarkers(transcript)).toBe("Hi\nYo");
+	});
+
+	it("collapses 3+ newlines opened by removed markers down to a single blank line", () => {
+		expect(stripRetentionProtocolMarkers("A\n\n\n\nB")).toBe("A\n\nB");
+	});
+
+	it("trims surrounding blank lines from the result", () => {
+		expect(stripRetentionProtocolMarkers("\n\n[role: user]\nHello\n\n")).toBe("Hello");
+	});
+
+	it("keeps a bracketed line that is not a role/end marker", () => {
+		expect(stripRetentionProtocolMarkers("[not a marker here]\nkeep")).toBe("[not a marker here]\nkeep");
+	});
+
+	it("keeps an inline marker that is only part of a larger line", () => {
+		expect(stripRetentionProtocolMarkers("text [role: user] inline\nkeep")).toBe("text [role: user] inline\nkeep");
 	});
 });

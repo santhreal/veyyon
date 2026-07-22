@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { runConfigCommand } from "@veyyon/coding-agent/cli/config-cli";
+import { runConfigCommand, suggestSettingPaths } from "@veyyon/coding-agent/cli/config-cli";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import { getConfigRootDir, setAgentDir, TempDir } from "@veyyon/utils";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
@@ -192,5 +193,58 @@ describe("config CLI schema coverage", () => {
 		expect(Buffer.byteLength(output)).toBeGreaterThan(65_536);
 		const parsed: unknown = JSON.parse(output);
 		expect(parsed).toMatchObject({ modelRoles: { type: "record" } });
+	});
+});
+
+describe("suggestSettingPaths", () => {
+	// "Unknown setting" plus "run config list" is a dead end when the schema has
+	// hundreds of paths. These lock the three ways a key usually goes wrong, so a
+	// future ranking change cannot quietly stop helping.
+
+	it("finds a path that differs only in capitalization", () => {
+		// The most common miss: users type settings the way they read them in
+		// prose, so the camelCase hump is dropped.
+		expect(suggestSettingPaths("startup.autoupdate")).toEqual(["startup.autoUpdate"]);
+		expect(suggestSettingPaths("THEME.DARK")).toEqual(["theme.dark"]);
+	});
+
+	it("finds a path from a remembered leaf name without its group", () => {
+		expect(suggestSettingPaths("autoUpdate")).toContain("startup.autoUpdate");
+	});
+
+	it("finds a path from a single-character typo", () => {
+		expect(suggestSettingPaths("theme.drk")).toEqual(["theme.dark"]);
+		expect(suggestSettingPaths("compaction.stratgy")).toEqual(["compaction.strategy"]);
+	});
+
+	it("suggests nothing for a key that resembles no setting", () => {
+		// Suggestions have to be worth reading. Offering an unrelated path for
+		// unrelated input is noise, and noise is what makes users stop reading.
+		expect(suggestSettingPaths("zzzzzzzz")).toEqual([]);
+		expect(suggestSettingPaths("completely-made-up-key")).toEqual([]);
+	});
+
+	it("caps the list so the output stays scannable", () => {
+		// A short prefix matches many paths; the point is a fix to paste, not a
+		// second listing of the schema.
+		expect(suggestSettingPaths("t").length).toBeLessThanOrEqual(3);
+		expect(suggestSettingPaths("theme", 2).length).toBeLessThanOrEqual(2);
+	});
+
+	it("does not repeat a path that qualifies under more than one rule", () => {
+		// An exact-but-for-case match is also a substring match and a near edit.
+		const suggestions = suggestSettingPaths("startup.autoupdate");
+		expect(new Set(suggestions).size).toBe(suggestions.length);
+	});
+
+	it("only suggests paths that actually exist", () => {
+		// A suggestion the user cannot then set would be worse than none.
+		for (const key of ["startup.autoupdate", "theme.drk", "autoUpdate"]) {
+			for (const suggestion of suggestSettingPaths(key)) {
+				// Keys hold dots, so check membership rather than toHaveProperty, which
+				// reads a dot as a nested path.
+				expect(Object.keys(SETTINGS_SCHEMA)).toContain(suggestion);
+			}
+		}
 	});
 });

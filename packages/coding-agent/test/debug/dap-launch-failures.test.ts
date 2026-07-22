@@ -809,3 +809,38 @@ describe("DebugTool launch validation", () => {
 		}
 	});
 });
+
+// WHY THIS SUITE EXISTS (BACKLOG DOG-R2-10)
+// -----------------------------------------
+// A dogfood agent could not construct a valid `debug launch`: it kept omitting
+// `program` (the target to RUN) while supplying `file` (which only names a
+// breakpoint's source), and the dead-end error "program is required for launch"
+// gave no way forward, risking a tool-call loop. The error now names the field,
+// distinguishes it from `file`, and shows a minimal valid call. These tests lock
+// that guidance so it cannot regress to the vague form.
+describe("debug launch missing-program guidance", () => {
+	function session(cwd: string): ToolSession {
+		return {
+			cwd,
+			hasUI: false,
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			settings: Settings.isolated({ "debug.enabled": true }),
+		} as unknown as ToolSession;
+	}
+
+	it("names the required program field and shows an example when program is omitted", async () => {
+		const tool = new DebugTool(session("/tmp"));
+		const promise = tool.execute("call", { action: "launch" });
+		await expect(promise).rejects.toThrow(/launch requires "program"/);
+		await expect(promise).rejects.toThrow(/"action":"launch","program":"src\/main\.py"/);
+	});
+
+	it("tells the caller to pass file as program when only file was supplied", async () => {
+		const tool = new DebugTool(session("/tmp"));
+		const promise = tool.execute("call", { action: "launch", file: "app/server.py" });
+		// The exact fix for the loop: reuse the path they already sent, as program.
+		await expect(promise).rejects.toThrow(/"file" only sets a breakpoint's source/);
+		await expect(promise).rejects.toThrow(/"program":"app\/server\.py"/);
+	});
+});

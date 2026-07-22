@@ -1,4 +1,5 @@
 import {
+	clampLow,
 	type Component,
 	matchesKey,
 	padding,
@@ -162,7 +163,7 @@ export class CopySelectorComponent implements Component {
 	}
 
 	#renderTree(inner: number, flat: FlatNode[], cursorIdx: number, rows: number): string[] {
-		const start = Math.max(0, Math.min(cursorIdx - Math.floor(rows / 2), Math.max(0, flat.length - rows)));
+		const start = clampLow(cursorIdx - Math.floor(rows / 2), 0, Math.max(0, flat.length - rows));
 		const out: string[] = [];
 		for (let r = 0; r < rows; r++) {
 			const i = start + r;
@@ -247,7 +248,7 @@ export class CopySelectorComponent implements Component {
 		const selected = flat[cursorIdx]?.target;
 
 		const available = Math.max(MIN_TREE_ROWS + 1, dims.modalHeight - 8);
-		const treeRows = Math.max(1, Math.min(flat.length, Math.floor(available / 2)));
+		const treeRows = clampLow(flat.length, 1, Math.floor(available / 2));
 		this.#treeRows = treeRows;
 		const previewRows = Math.max(1, available - treeRows);
 		const inner = dims.contentWidth;

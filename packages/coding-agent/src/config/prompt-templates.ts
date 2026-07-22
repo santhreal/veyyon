@@ -1,7 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getProjectDir, getProjectPromptsDir, getPromptsDir, logger, parseFrontmatter, prompt } from "@veyyon/utils";
-import { jtdToTypeScript } from "../tools/jtd-to-typescript";
+import {
+	errorMessage,
+	getProjectDir,
+	getProjectPromptsDir,
+	getPromptsDir,
+	logger,
+	parseFrontmatter,
+	prompt,
+} from "@veyyon/utils";
+import { jtdToTypeScript, jtdToTypeScriptParts } from "../tools/jtd-to-typescript";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 
 /**
@@ -14,10 +22,35 @@ export interface PromptTemplate {
 	source: string; // e.g., "(user)", "(project)", "(project:frontend)"
 }
 
+/**
+ * Report an output schema that could not be rendered into a prompt.
+ *
+ * Substituting `unknown` is not a graceful degrade, which is why this exists
+ * rather than a bare catch in each helper. The rendered type is what tells the
+ * model the exact shape it must submit; with `unknown` in its place the model
+ * has nothing to pattern-match on, returns an arbitrary shape, and fails output
+ * validation over and over. That is precisely the failure `renderYieldSchema`
+ * exists to prevent, so reintroducing it silently while the operator watches a
+ * subagent loop is the worst case (Law 10).
+ *
+ * A self-referential schema is NOT this case: the renderer expands it into a
+ * named interface. What reaches here is a schema nested past the renderer's
+ * depth ceiling. A schema that is merely empty or not an object renders as
+ * `unknown` WITHOUT throwing, which is a legitimate degenerate result rather
+ * than a failure, so it correctly reports nothing.
+ */
+function reportUnrenderableSchema(error: unknown): void {
+	logger.warn("A subagent output schema could not be rendered, so the model is not being told what shape to return", {
+		error: errorMessage(error),
+		fix: "Flatten the schema, or describe the deeply nested part as a string. Until then the subagent will keep failing output validation.",
+	});
+}
+
 prompt.registerHelper("jtdToTypeScript", (schema: unknown): string => {
 	try {
 		return jtdToTypeScript(schema);
-	} catch {
+	} catch (error) {
+		reportUnrenderableSchema(error);
 		return "unknown";
 	}
 });
@@ -30,16 +63,22 @@ prompt.registerHelper("jtdToTypeScript", (schema: unknown): string => {
  * in `result.data`, tripping schema validation repeatedly.
  */
 prompt.registerHelper("renderYieldSchema", (schema: unknown): string => {
-	let ts: string;
+	let rendered: { definitions: string; type: string };
 	try {
-		ts = jtdToTypeScript(schema);
-	} catch {
-		ts = "unknown";
+		rendered = jtdToTypeScriptParts(schema);
+	} catch (error) {
+		reportUnrenderableSchema(error);
+		rendered = { definitions: "", type: "unknown" };
 	}
-	const lines = ts.split("\n");
+	const lines = rendered.type.split("\n");
 	const [first, ...rest] = lines;
 	const body = rest.length === 0 ? first : `${first}\n${rest.map(l => `  ${l}`).join("\n")}`;
-	return `result: {\n  data: ${body};\n}`;
+	const envelope = `result: {\n  data: ${body};\n}`;
+	// Interface declarations go BEFORE the envelope, never inside it: a
+	// self-referential schema renders as a named interface plus a reference, and
+	// putting the declaration in type position would teach the model syntax that
+	// does not parse.
+	return rendered.definitions ? `${rendered.definitions}\n\n${envelope}` : envelope;
 });
 
 const INLINE_ARG_SHELL_PATTERN = /\$(?:ARGUMENTS|@(?:\[\d+(?::\d*)?\])?|\d+)/;

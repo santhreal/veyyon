@@ -76,39 +76,38 @@ const USER_AGENT_TARGET_TYPES = new Set(["page", "webview", "background_page"]);
 const PUPPETEER_SOURCE_URL_SUFFIX = "//# sourceURL=__puppeteer_evaluation_script__";
 
 /**
- * Lazy-import puppeteer from a safe CWD so cosmiconfig doesn't choke
- * on malformed package.json files in the user's project tree.
+ * Lazy-import puppeteer with `process.cwd` pointed at a scratch directory, so
+ * cosmiconfig does not choke on a malformed `package.json` in the user's
+ * project tree.
  *
- * Dynamic import is required because puppeteer-core probes the cwd at module
- * load time; we must `process.chdir` to a safe scratch dir before loading and
- * restore cwd afterwards. A static import would run at module-init time before
- * cwd is safe.
+ * The dynamic import is required: puppeteer-core probes the working directory
+ * while its module body evaluates, so a static import would run before the
+ * directory is safe.
+ *
+ * The redirect replaces `process.cwd` for the duration of the import rather
+ * than calling `process.chdir`, and that difference matters in both directions.
+ * `chdir` moves the whole process, so anything reading the working directory
+ * while the import is in flight sees the scratch directory instead of the
+ * user's project, and `@veyyon/utils` keeps its own `projectDir` that a bare
+ * `chdir` silently desynchronizes. Restoring is worse: `chdir` back into a
+ * directory the user has since deleted throws from a `finally` block, which
+ * both masks the import's own result and strands the process in the scratch
+ * directory for the rest of its life. Swapping the function has neither
+ * failure mode, and it works in a Worker thread, where `process.chdir` does not
+ * exist at all.
  */
 let puppeteerModule: typeof Puppeteer | undefined;
 export async function loadPuppeteer(): Promise<typeof Puppeteer> {
 	if (puppeteerModule) return puppeteerModule;
-	const prev = process.cwd();
 	const safeDir = getPuppeteerDir();
 	await Bun.write(path.join(safeDir, "package.json"), "{}");
+	const realCwd = process.cwd;
+	Object.defineProperty(process, "cwd", { value: () => safeDir, configurable: true });
 	try {
-		process.chdir(safeDir);
 		puppeteerModule = (await import("puppeteer-core")).default;
 		return puppeteerModule;
 	} finally {
-		process.chdir(prev);
-	}
-}
-
-let puppeteerModuleWorker: typeof Puppeteer | undefined;
-export async function loadPuppeteerInWorker(safeDir: string): Promise<typeof Puppeteer> {
-	if (puppeteerModuleWorker) return puppeteerModuleWorker;
-	const orig = process.cwd;
-	Object.defineProperty(process, "cwd", { value: () => safeDir, configurable: true });
-	try {
-		puppeteerModuleWorker = (await import("puppeteer-core")).default;
-		return puppeteerModuleWorker;
-	} finally {
-		Object.defineProperty(process, "cwd", { value: orig, configurable: true });
+		Object.defineProperty(process, "cwd", { value: realCwd, configurable: true });
 	}
 }
 
@@ -505,24 +504,47 @@ function wrapSession(session: CDPSession): PuppeteerCdpClient {
 	};
 }
 
-async function sendUserAgentOverride(client: PuppeteerCdpClient, override: UserAgentOverride): Promise<void> {
+/**
+ * Apply the user-agent override through both CDP domains.
+ *
+ * The two are redundant on purpose: `Emulation` is the modern one and
+ * `Network` covers older targets, so one of them failing is normal and not
+ * worth reporting. BOTH failing is not normal, and it is not cosmetic either:
+ * the target keeps its headless user agent, so the page can tell it is
+ * automated and behaves differently, which is the exact thing the override
+ * exists to prevent.
+ *
+ * Every failure here used to be swallowed (`Network.enable` outright, the other
+ * two at `debug`), so a target with no override in place was indistinguishable
+ * from one that had it. The loss is reported now, with what was attempted and
+ * why each attempt failed (Law 10).
+ */
+export async function sendUserAgentOverride(client: PuppeteerCdpClient, override: UserAgentOverride): Promise<void> {
+	const failures: string[] = [];
+	// Not counted as an override failure: it only prepares the Network domain,
+	// and the Emulation path below does not need it.
+	let networkEnableError: string | undefined;
 	try {
 		await client.send("Network.enable");
-	} catch {}
-	try {
-		await client.send("Network.setUserAgentOverride", override as unknown as Record<string, unknown>);
 	} catch (error) {
-		logger.debug("Failed to apply Network user agent override", {
-			error: errorMessage(error),
-		});
+		networkEnableError = errorMessage(error);
 	}
-	try {
-		await client.send("Emulation.setUserAgentOverride", override as unknown as Record<string, unknown>);
-	} catch (error) {
-		logger.debug("Failed to apply Emulation user agent override", {
-			error: errorMessage(error),
-		});
+	let applied = 0;
+	for (const domain of ["Network", "Emulation"] as const) {
+		try {
+			await client.send(`${domain}.setUserAgentOverride`, override as unknown as Record<string, unknown>);
+			applied++;
+		} catch (error) {
+			failures.push(`${domain}: ${errorMessage(error)}`);
+		}
 	}
+	if (applied > 0) return;
+	logger.warn("The browser user-agent override could not be applied, so this target reports itself as automated", {
+		userAgent: override.userAgent,
+		failures,
+		...(networkEnableError ? { networkEnable: networkEnableError } : {}),
+		fix: "Sites may block or behave differently for this target. Check that the browser supports the CDP Emulation domain, or launch without the stealth user agent.",
+	});
 }
 
 export interface UserAgentSession {

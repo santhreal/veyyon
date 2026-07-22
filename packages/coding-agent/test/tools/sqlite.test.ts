@@ -9,6 +9,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import {
 	listTables,
+	looksLikeSqlite,
 	parseSqlitePathCandidates,
 	parseSqliteSelector,
 	renderTable,
@@ -530,5 +531,60 @@ describe("SQLite table listing row counts", () => {
 		const rendered = renderTableList(listTables(base, { probeCap: 3 }));
 		expect(rendered).toContain("big (3+ rows)");
 		expect(rendered).toContain("small (2 rows)");
+	});
+});
+
+/**
+ * looksLikeSqlite is the magic-byte sniff that decides whether a blob is a real
+ * SQLite database before the reader tries to open it. A SQLite file begins with
+ * the exact 16-byte header "SQLite format 3\0" (the final byte is a NUL). It had
+ * no test. The contracts pinned here:
+ *   - the exact 16-byte header returns true, and so does the header followed by
+ *     arbitrary trailing bytes (a real database is far longer than its header);
+ *   - a blob shorter than 16 bytes returns false (it cannot contain the header);
+ *   - any single byte that differs from the header (including the trailing NUL)
+ *     returns false;
+ *   - an empty buffer and ordinary SQL/text bytes return false.
+ * A regression would either open non-SQLite blobs as databases or reject valid
+ * databases that carry trailing content.
+ */
+describe("looksLikeSqlite magic-byte detection", () => {
+	// "SQLite format 3\0" — the canonical 16-byte header every SQLite file starts with.
+	const MAGIC = new Uint8Array([
+		0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
+	]);
+
+	it("accepts the exact 16-byte SQLite header", () => {
+		expect(looksLikeSqlite(MAGIC)).toBe(true);
+	});
+
+	it("accepts the header followed by trailing database bytes", () => {
+		expect(looksLikeSqlite(new Uint8Array([...MAGIC, 0x00, 0x10, 0xff, 0x42]))).toBe(true);
+	});
+
+	it("rejects a buffer shorter than the 16-byte header", () => {
+		expect(looksLikeSqlite(MAGIC.slice(0, 15))).toBe(false);
+		expect(looksLikeSqlite(MAGIC.slice(0, 1))).toBe(false);
+	});
+
+	it("rejects a buffer whose trailing NUL byte is wrong", () => {
+		const off = new Uint8Array(MAGIC);
+		off[15] = 0x01;
+		expect(looksLikeSqlite(off)).toBe(false);
+	});
+
+	it("rejects a buffer with a single differing byte in the middle", () => {
+		const off = new Uint8Array(MAGIC);
+		off[6] = 0x00; // the space between "SQLite" and "format"
+		expect(looksLikeSqlite(off)).toBe(false);
+	});
+
+	it("rejects an empty buffer", () => {
+		expect(looksLikeSqlite(new Uint8Array(0))).toBe(false);
+	});
+
+	it("rejects ordinary SQL text that merely mentions SQLite", () => {
+		expect(looksLikeSqlite(new TextEncoder().encode("SELECT * FROM sqlite_master"))).toBe(false);
+		expect(looksLikeSqlite(new TextEncoder().encode("SQLite is a database"))).toBe(false);
 	});
 });

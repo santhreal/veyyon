@@ -330,6 +330,20 @@ function surfaceUnreadableDir(dir: string, warnings?: string[]): void {
 	logger.warn("Discovery: directory exists but is not readable; its entries were skipped", { path: dir });
 }
 
+/**
+ * Glob helper for extension discovery.
+ *
+ * `gitignore: false` is deliberate. Whether a file is tracked by git says nothing
+ * about whether the user wants it loaded, and a gitignored `extensions/` folder is
+ * the normal way to keep local experiments out of a repo. Filtering on it silently
+ * dropped those extensions from the well-known directories while the configured-path
+ * walk still loaded them, so the same file loaded or not depending on which route
+ * reached it. The globs here are all one level deep, so there is no walk-pruning
+ * cost to giving it up.
+ *
+ * `hidden: false` stays: a dotfile in an extensions directory is tool config
+ * (`.eslintrc.js`, `.prettierrc.js`), not an extension to execute.
+ */
 async function globIf(
 	dir: string,
 	pattern: string,
@@ -338,7 +352,7 @@ async function globIf(
 ): Promise<Array<{ path: string }>> {
 	let matches: Array<{ path: string }>;
 	try {
-		matches = (await glob({ pattern, path: dir, gitignore: true, hidden: false, fileType, recursive })).matches;
+		matches = (await glob({ pattern, path: dir, gitignore: false, hidden: false, fileType, recursive })).matches;
 	} catch {
 		// The native glob throws for an absent path or a non-directory (benign
 		// probe misses) and, with the walker root readability fix, for an
@@ -613,10 +627,7 @@ async function discoverLinkedExtensionModuleFiles(dir: string): Promise<{
 	return { indexFiles, packageJsonFiles };
 }
 
-async function readExtensionModuleManifest(
-	_ctx: LoadContext,
-	packageJsonPath: string,
-): Promise<ExtensionModuleManifest | null> {
+async function readExtensionModuleManifest(packageJsonPath: string): Promise<ExtensionModuleManifest | null> {
 	const content = await readFile(packageJsonPath);
 	if (!content) return null;
 
@@ -637,9 +648,17 @@ async function readExtensionModuleManifest(
  * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "veyyon" (legacy "omp"/"pi") field → load declared paths
  *
  * No recursion beyond one level. Complex packages must use package.json manifest.
- * Uses native glob for fast filesystem scanning with gitignore support.
+ *
+ * The single owner of these rules. Both routes that load extensions come through
+ * here: the well-known agent directories (the five discovery adapters) and the
+ * paths a user configures explicitly (`extensions/loader.ts`
+ * `discoverExtensionPaths`). They used to be separate walks — one glob, one
+ * readdir — that carried this same comment while behaving differently. Do not
+ * reintroduce a second walk; extend this one.
+ *
+ * Runs on the native glob. See `globIf` for why it does not filter on gitignore.
  */
-export async function discoverExtensionModulePaths(_ctx: LoadContext, dir: string): Promise<string[]> {
+export async function discoverExtensionModulePaths(dir: string): Promise<string[]> {
 	const discovered = new Set<string>();
 	// Find all candidate files in parallel using glob
 	const [directFiles, globIndexFiles, globPackageJsonFiles, linkedFiles] = await Promise.all([
@@ -684,7 +703,7 @@ export async function discoverExtensionModulePaths(_ctx: LoadContext, dir: strin
 	for (const match of packageJsonFiles) {
 		const subdir = path.dirname(match.path); // e.g., "my-extension"
 		const packageJsonPath = path.join(dir, match.path);
-		const manifest = await readExtensionModuleManifest(_ctx, packageJsonPath);
+		const manifest = await readExtensionModuleManifest(packageJsonPath);
 		const declaredExtensions =
 			manifest?.extensions?.filter((extPath): extPath is string => typeof extPath === "string") ?? [];
 		if (declaredExtensions.length === 0) continue;

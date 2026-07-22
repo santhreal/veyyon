@@ -61,6 +61,28 @@ describe("resolveCliArgv routes subcommands hidden behind leading global flags",
 			argv: ["gc", "--apply"],
 		});
 	});
+
+	test("--plan does not swallow a following flag, so its value-consuming successor keeps its own value", () => {
+		// Regression for FINDING-FLAGCONSUMESVALUE-SHADOWABLE-BRANCH-DEAD. --plan is
+		// extension-shadowable: a flag-looking successor stays a fresh flag. Before the fix,
+		// flagConsumesValue matched --plan on the broad STRING_VALUE_FLAGS branch first and had
+		// it consume `--model`, exposing `acp` as a bare token that leadingSubcommandIndex then
+		// hoisted to the acp SUBCOMMAND. The correct reading: `--model acp` means model `acp`,
+		// so the whole thing is a launch prompt. This proves flagConsumesValue and the routing
+		// scanner agree with the documented shadowable contract.
+		expect(resolveCliArgv(["--plan", "--model", "acp"])).toEqual({
+			argv: ["launch", "--plan", "--model", "acp"],
+		});
+	});
+
+	test("--plan still consumes a value-like successor, so a subcommand-named plan is not a subcommand", () => {
+		// The value-like half of the same contract: `--plan acp` names a plan `acp`; `acp` must
+		// NOT be routed to the acp subcommand. flagConsumesValue returns true for the value-like
+		// successor, so the scanner skips it and the invocation forwards to launch.
+		expect(resolveCliArgv(["--plan", "acp"])).toEqual({
+			argv: ["launch", "--plan", "acp"],
+		});
+	});
 });
 
 describe("resolveCliArgv near-miss did-you-mean (bare single token)", () => {

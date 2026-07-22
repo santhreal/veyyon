@@ -1,0 +1,20 @@
+{
+	"cases": [
+		{
+			"id": "settings-display-smooth-streaming-default",
+			"contract": "display.smoothStreaming has a boolean default on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "display.smoothStreaming" },
+			"expect": { "default": true, "isolated": true }
+		},
+		{
+			"id": "settings-tools-approval-mode-default",
+			"contract": "tools.approvalMode default is yolo on empty config (product default autonomy)",
+			"surface": "settings-get-default",
+			"tags": ["positive", "regression"],
+			"input": { "path": "tools.approvalMode" },
+			"expect": { "default": "yolo", "isolated": "yolo" }
+		}
+	]
+}

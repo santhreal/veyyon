@@ -24,6 +24,12 @@ function defined<T>(value: T | undefined): T {
 async function createHarness(sessionName: string): Promise<Harness> {
 	const tempDir = TempDir.createSync("@pi-working-accent-");
 	await Settings.init({ inMemory: true, cwd: tempDir.path() });
+	// The per-session working-message accent is a `classic`-shimmer feature: the
+	// default `living` mode deliberately overrides the working line's colour with
+	// the current activity's semantic hue (thinking/streaming/tool/…), so the
+	// session accent only paints the line in classic mode. Pin classic here to
+	// exercise that path; the living override itself is covered by shimmer-living.
+	settings.set("display.shimmer", "classic");
 	await initTheme(false);
 	const sessionManager = SessionManager.inMemory(tempDir.path());
 	await sessionManager.setSessionName(sessionName, "user");

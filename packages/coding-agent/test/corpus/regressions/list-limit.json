@@ -1,0 +1,417 @@
+{
+	"cases": [
+		{
+			"id": "list-limit-no-caps",
+			"contract": "With no limits set, all items return and meta stays empty",
+			"surface": "list-limit",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c"
+				],
+				"options": {}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b",
+					"c"
+				],
+				"limitReached": null,
+				"meta": {}
+			}
+		},
+		{
+			"id": "list-limit-equals-ceiling",
+			"contract": "When length equals limit, limitReached fires (inclusive ceiling)",
+			"surface": "list-limit",
+			"tags": [
+				"boundary",
+				"regression"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c"
+				],
+				"options": {
+					"limit": 3
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b",
+					"c"
+				],
+				"limitReached": 3,
+				"meta": {
+					"resultLimit": {
+						"reached": 3,
+						"suggestion": 6
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-below-ceiling-no-mark",
+			"contract": "When length is strictly below limit, limitReached stays unset",
+			"surface": "list-limit",
+			"tags": [
+				"negative"
+			],
+			"input": {
+				"items": [
+					"x",
+					"y"
+				],
+				"options": {
+					"limit": 5
+				}
+			},
+			"expect": {
+				"items": [
+					"x",
+					"y"
+				],
+				"limitReached": null,
+				"meta": {}
+			}
+		},
+		{
+			"id": "list-limit-match-type-meta-key",
+			"contract": "limitType match writes matchLimit not resultLimit",
+			"surface": "list-limit",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c",
+					"d"
+				],
+				"options": {
+					"limit": 2,
+					"limitType": "match"
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b"
+				],
+				"limitReached": 2,
+				"meta": {
+					"matchLimit": {
+						"reached": 2,
+						"suggestion": 4
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-nonpositive-ignored",
+			"contract": "Non-positive limit and headLimit are treated as absent",
+			"surface": "list-limit",
+			"tags": [
+				"adversarial",
+				"boundary"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b"
+				],
+				"options": {
+					"limit": 0,
+					"headLimit": -1
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b"
+				],
+				"limitReached": null,
+				"meta": {}
+			}
+		},
+		{
+			"id": "list-limit-then-head",
+			"contract": "limit applies first then headLimit on the sliced list with both metas",
+			"surface": "list-limit",
+			"tags": [
+				"adversarial"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c",
+					"d",
+					"e"
+				],
+				"options": {
+					"limit": 4,
+					"headLimit": 2
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b"
+				],
+				"limitReached": 4,
+				"meta": {
+					"resultLimit": {
+						"reached": 4,
+						"suggestion": 8
+					},
+					"headLimit": {
+						"reached": 2,
+						"suggestion": 4
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-head-only-large",
+			"contract": "headLimit alone on a long list truncates to head without limitReached",
+			"surface": "list-limit",
+			"tags": [
+				"boundary"
+			],
+			"input": {
+				"items": [
+					"0",
+					"1",
+					"2",
+					"3",
+					"4",
+					"5",
+					"6",
+					"7",
+					"8",
+					"9",
+					"10",
+					"11",
+					"12",
+					"13",
+					"14",
+					"15",
+					"16",
+					"17",
+					"18",
+					"19"
+				],
+				"options": {
+					"headLimit": 3
+				}
+			},
+			"expect": {
+				"items": [
+					"0",
+					"1",
+					"2"
+				],
+				"limitReached": null,
+				"meta": {
+					"headLimit": {
+						"reached": 3,
+						"suggestion": 6
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-match-and-head-stack",
+			"contract": "match limitType with headLimit stacks both metas",
+			"surface": "list-limit",
+			"tags": [
+				"adversarial"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c",
+					"d",
+					"e",
+					"f"
+				],
+				"options": {
+					"limit": 5,
+					"limitType": "match",
+					"headLimit": 2
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b"
+				],
+				"limitReached": 5,
+				"meta": {
+					"matchLimit": {
+						"reached": 5,
+						"suggestion": 10
+					},
+					"headLimit": {
+						"reached": 2,
+						"suggestion": 4
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-limit-one",
+			"contract": "limit 1 truncates to first item and marks limitReached",
+			"surface": "list-limit",
+			"tags": [
+				"boundary"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c"
+				],
+				"options": {
+					"limit": 1
+				}
+			},
+			"expect": {
+				"items": [
+					"a"
+				],
+				"limitReached": 1,
+				"meta": {
+					"resultLimit": {
+						"reached": 1,
+						"suggestion": 2
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-empty-items",
+			"contract": "Empty list with limits still returns empty without limitReached",
+			"surface": "list-limit",
+			"tags": [
+				"boundary",
+				"negative"
+			],
+			"input": {
+				"items": [],
+				"options": {
+					"limit": 10,
+					"headLimit": 5
+				}
+			},
+			"expect": {
+				"items": [],
+				"limitReached": null,
+				"meta": {}
+			}
+		},
+		{
+			"id": "list-limit-exact-head-equals-length",
+			"contract": "headLimit equal to or greater than length includes all items without head meta",
+			"surface": "list-limit",
+			"tags": [
+				"boundary",
+				"negative"
+			],
+			"input": {
+				"items": [
+					"x",
+					"y"
+				],
+				"options": {
+					"headLimit": 2
+				}
+			},
+			"expect": {
+				"items": [
+					"x",
+					"y"
+				],
+				"limitReached": null,
+				"meta": {}
+			}
+		},
+		{
+			"id": "list-limit-head-after-limit",
+			"contract": "headLimit applies after limit slice; both meta fields set",
+			"surface": "list-limit",
+			"tags": [
+				"positive",
+				"boundary"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b",
+					"c",
+					"d",
+					"e"
+				],
+				"options": {
+					"limit": 4,
+					"headLimit": 2
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b"
+				],
+				"limitReached": 4,
+				"meta": {
+					"resultLimit": {
+						"reached": 4,
+						"suggestion": 8
+					},
+					"headLimit": {
+						"reached": 2,
+						"suggestion": 4
+					}
+				}
+			}
+		},
+		{
+			"id": "list-limit-zero-and-negative-ignored",
+			"contract": "limit 0 and negative are ignored (no cap)",
+			"surface": "list-limit",
+			"tags": [
+				"negative",
+				"adversarial"
+			],
+			"input": {
+				"items": [
+					"a",
+					"b"
+				],
+				"options": {
+					"limit": 0,
+					"headLimit": -1
+				}
+			},
+			"expect": {
+				"items": [
+					"a",
+					"b"
+				],
+				"limitReached": null,
+				"meta": {}
+			}
+		}
+	]
+}

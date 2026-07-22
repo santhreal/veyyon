@@ -6,6 +6,7 @@ import path from "node:path";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { makeToolSession } from "./helpers/tool-session";
 
 // TW-7: a command that emits more than the inline byte budget and then times
 // out (or is cancelled) must route its output through the SAME artifact-spill
@@ -22,7 +23,7 @@ function makeArtifactSession(artifactDir: string): {
 } {
 	const idToPath = new Map<string, string>();
 	let counter = 0;
-	const session = {
+	const session = makeToolSession({
 		// Use the test-owned artifact dir, not the ambient process.cwd(): the
 		// commands here are cwd-independent (printf/yes/sleep), and pinning a dir
 		// we control makes the suite immune to cwd mutations leaked by sibling
@@ -32,7 +33,10 @@ function makeArtifactSession(artifactDir: string): {
 		skills: [],
 		getSessionFile: () => null,
 		getSessionId: () => "test-session",
-		allocateOutputArtifact: (kind: string) => {
+		// Async to match the interface. The stub returned the object directly and
+		// the cast hid it, so the caller's `await` was never exercised against a
+		// real promise here.
+		allocateOutputArtifact: async (kind: string) => {
 			counter += 1;
 			const id = `${kind}-${counter}`;
 			const filePath = path.join(artifactDir, `${id}.txt`);
@@ -56,7 +60,7 @@ function makeArtifactSession(artifactDir: string): {
 			},
 		},
 		getClientBridge: () => undefined,
-	} as unknown as ToolSession;
+	});
 	return { session, idToPath };
 }
 

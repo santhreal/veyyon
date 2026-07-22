@@ -1,3 +1,4 @@
+import { extractPathFromRename } from "../../commit/git/diff";
 import type { NumstatEntry } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
 
@@ -40,7 +41,7 @@ export function extractScopeCandidates(numstat: NumstatEntry[]): ScopeCandidates
 	for (const entry of numstat) {
 		const linesChanged = entry.additions + entry.deletions;
 		if (linesChanged === 0) continue;
-		const normalizedPath = normalizePathForScope(entry.path);
+		const normalizedPath = extractPathFromRename(entry.path);
 		if (isExcludedFile(normalizedPath)) continue;
 		paths.push(normalizedPath);
 		const root = extractTopLevelRoot(normalizedPath);
@@ -167,28 +168,6 @@ function extractTopLevelRoot(path: string): string | null {
 	}
 
 	return null;
-}
-
-function normalizePathForScope(path: string): string {
-	const braceStart = path.indexOf("{");
-	if (braceStart !== -1) {
-		const arrowPos = path.indexOf(" => ", braceStart);
-		if (arrowPos !== -1) {
-			const braceEnd = path.indexOf("}", arrowPos);
-			if (braceEnd !== -1) {
-				const prefix = path.slice(0, braceStart);
-				const newName = path.slice(arrowPos + 4, braceEnd).trim();
-				return `${prefix}${newName}`;
-			}
-		}
-	}
-
-	if (path.includes(" => ")) {
-		const parts = path.split(" => ");
-		return parts[1]?.trim() ?? path.trim();
-	}
-
-	return path.trim();
 }
 
 function analyzeWideChange(paths: string[]): string | null {

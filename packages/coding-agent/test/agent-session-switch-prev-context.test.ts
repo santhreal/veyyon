@@ -14,7 +14,7 @@ import { TempDir } from "@veyyon/utils";
 /**
  * Regression for issue #3846: in-TUI `/resume` rebuilt the *previous*
  * session's display context before switching files. That call expands persisted
- * snapcompact archives and `openaiRemoteCompaction.replacementHistory` payloads
+ * legacy compaction archives and `openaiRemoteCompaction.replacementHistory` payloads
  * into messages, which can OOM on huge pre-fix sessions even though the loader
  * itself streams. The previous context is only needed for same-session reloads
  * (where `#didSessionMessagesChange` compares against the freshly rebuilt one);

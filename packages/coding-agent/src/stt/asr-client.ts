@@ -12,6 +12,7 @@ import {
 	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
 import { tinyWorkerEnv } from "../tiny/title-client";
+import { STT_WORKER_ARG } from "../worker-args";
 import type { SttProgressEvent, SttWorkerInbound, SttWorkerOutbound } from "./asr-protocol";
 import type { SttModelKey } from "./models";
 
@@ -67,7 +68,6 @@ interface StreamState {
  * Hidden subcommand on the main CLI that boots the speech-recognition worker in
  * the spawned subprocess. Kept in sync with the dispatch in `cli.ts`.
  */
-export const STT_WORKER_ARG = "__veyyon_worker_stt";
 
 /**
  * Spawn the speech worker as a subprocess. Exported for tests and the smoke

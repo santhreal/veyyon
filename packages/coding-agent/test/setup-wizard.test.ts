@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { runOnboardingSetup } from "@veyyon/coding-agent/commands/setup";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import * as realImportScan from "@veyyon/coding-agent/discovery/import-scan";
+import { setupMajorFromVersion } from "@veyyon/coding-agent/modes/setup-version";
 import {
 	ALL_SCENES,
 	CURRENT_SETUP_VERSION,
@@ -19,6 +20,7 @@ import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wi
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/coding-agent/web/search/types";
+import { version as packageVersion } from "../package.json";
 
 function fakeContextWithConfiguredModel(): InteractiveModeContext {
 	return {
@@ -27,6 +29,12 @@ function fakeContextWithConfiguredModel(): InteractiveModeContext {
 				getAvailable: () => [{ provider: "configured", id: "model" }],
 			},
 		},
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 }
 
@@ -73,19 +81,47 @@ describe("setup wizard scene selection", () => {
 		expect(scenes.map(scene => scene.id)).toEqual(ALL_SCENES.map(scene => scene.id));
 	});
 
-	it("keeps CURRENT_SETUP_VERSION in sync with the highest scene minVersion", () => {
-		// main.ts's cold-launch gate sources CURRENT_SETUP_VERSION from the tiny
-		// `setup-version` module to decide whether to load the wizard at all. If a
-		// new scene raises the bar but the constant is not bumped, stale installs
-		// would never see the scene. Guard the invariant the gate relies on.
-		const highestMinVersion = Math.max(...ALL_SCENES.map(scene => scene.minVersion));
-		expect(CURRENT_SETUP_VERSION).toBe(highestMinVersion);
+	it("derives CURRENT_SETUP_VERSION from the app major (automated, no hand-bumped integer)", () => {
+		// The onboarding generation IS the app's major semver, sourced from the
+		// shipped VERSION. A CI version bump to a new major advances the gate with
+		// no code change; nobody maintains a separate integer. Guard both the
+		// derivation and that no scene is stranded above the current major.
+		const appMajor = setupMajorFromVersion(packageVersion);
+		expect(CURRENT_SETUP_VERSION).toBe(appMajor);
+		expect(setupMajorFromVersion("2.4.9")).toBe(2);
+		expect(setupMajorFromVersion("0.9.0")).toBe(0);
+		expect(setupMajorFromVersion("garbage")).toBe(0);
+		expect(Math.max(...ALL_SCENES.map(scene => scene.minVersion))).toBeLessThanOrEqual(CURRENT_SETUP_VERSION);
 	});
 
-	it("runs only scenes newer than the stored setup version", async () => {
-		const scenes = [testScene("v1-a", 1), testScene("v1-b", 1), testScene("v2", 2)];
-		const selected = await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), { isTTY: true });
-		expect(selected.map(scene => scene.id)).toEqual(["v2"]);
+	it("re-onboards in full only on a MAJOR bump; a minor/patch update runs nothing", async () => {
+		const scenes = [testScene("a", 1), testScene("b", 1), testScene("c", 1)];
+		// stored 1, still on major 1 (a minor/patch update): no onboarding.
+		expect(
+			await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), { isTTY: true, currentVersion: 1 }),
+		).toEqual([]);
+		// stored 1, app moved to major 2: full onboarding (every eligible scene).
+		const afterMajor = await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), {
+			isTTY: true,
+			currentVersion: 2,
+		});
+		expect(afterMajor.map(scene => scene.id)).toEqual(["a", "b", "c"]);
+	});
+
+	it("hides a scene staged for a future major until that major ships", async () => {
+		const scenes = [testScene("now", 1), testScene("future", 2)];
+		// Fresh install on major 1: the future-major scene is withheld.
+		const onMajor1 = await selectSetupScenes(0, scenes, fakeContextWithConfiguredModel(), {
+			isTTY: true,
+			currentVersion: 1,
+		});
+		expect(onMajor1.map(scene => scene.id)).toEqual(["now"]);
+		// Once major 2 ships, the staged scene joins the onboarding.
+		const onMajor2 = await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), {
+			isTTY: true,
+			currentVersion: 2,
+		});
+		expect(onMajor2.map(scene => scene.id)).toEqual(["now", "future"]);
 	});
 
 	it("runs no scenes at the current setup version", async () => {
@@ -169,6 +205,12 @@ describe("setup wizard persistence", () => {
 				setFocus,
 				requestRender,
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 
 		const pending = runSetupWizard(ctx, [scene], { markComplete: false, playWelcomeIntro: false });
@@ -203,6 +245,12 @@ describe("setup wizard mouse routing", () => {
 				setFocus: () => {},
 				requestRender: () => {},
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const component = new SetupWizardComponent(ctx, [scene]);
 		try {
@@ -239,6 +287,12 @@ describe("setup wizard mouse routing", () => {
 				setFocus: () => {},
 				requestRender: () => {},
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const component = new SetupWizardComponent(ctx, [scene]);
 		try {
@@ -286,6 +340,12 @@ describe("setup wizard mouse routing", () => {
 				setFocus: () => {},
 				requestRender: () => {},
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const component = new SetupWizardComponent(ctx, [scene]);
 		try {
@@ -334,6 +394,12 @@ describe("setup wizard scene footer copy", () => {
 				setFocus: () => {},
 				requestRender: () => {},
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const component = new SetupWizardComponent(ctx, [scene]);
 		try {
@@ -531,6 +597,12 @@ describe("setup wizard scene alignment", () => {
 				setFocus: () => {},
 				requestRender: () => {},
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const component = new SetupWizardComponent(ctx, scenes);
 		try {

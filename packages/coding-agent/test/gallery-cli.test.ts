@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import {
 	GALLERY_STATES,
@@ -7,15 +7,27 @@ import {
 	resolveFixture,
 } from "@veyyon/coding-agent/cli/gallery-cli";
 import type { GalleryFixture } from "@veyyon/coding-agent/cli/gallery-fixtures";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./helpers/settings-test-state";
+
+let settingsState: SettingsTestState | undefined;
 
 beforeAll(async () => {
-	resetSettingsForTest();
+	settingsState = beginSettingsTest();
 	await Settings.init({ inMemory: true });
 	await initTheme(false, undefined, undefined, "dark", "light");
+});
+
+afterAll(() => {
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 });
 
 describe("gallery harness", () => {

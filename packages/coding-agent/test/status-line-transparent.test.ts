@@ -1,20 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./helpers/settings-test-state";
 
-const originalProjectDir = getProjectDir();
+let settingsState: SettingsTestState | undefined;
 
 beforeAll(async () => {
-	resetSettingsForTest();
+	settingsState = beginSettingsTest();
 	await Settings.init({ inMemory: true });
 	await initTheme();
 });
 
 afterAll(() => {
-	resetSettingsForTest();
-	setProjectDir(originalProjectDir);
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 });
 
 function makeSession() {

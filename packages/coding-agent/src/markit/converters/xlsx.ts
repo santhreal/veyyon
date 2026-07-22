@@ -1,6 +1,7 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import { XMLParser } from "fast-xml-parser";
-import { unzip, unzipText } from "../../utils/zip";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
+import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
 const EXTENSIONS = [".xlsx"];
@@ -18,6 +19,8 @@ interface StringItem {
 }
 interface Cell {
 	"@_t"?: string;
+	/** A1 cell reference, e.g. "C2". XLSX omits empty cells, so this is the only reliable column source. */
+	"@_r"?: string;
 	v?: string | number;
 	is?: StringItem;
 }
@@ -86,7 +89,9 @@ export class XlsxConverter implements Converter {
 			const rId = sheet["@_r:id"];
 			const target = relMap.get(rId);
 			if (!target) continue;
-			const sheetPath = target.startsWith("/") ? target.slice(1) : `xl/${target}`;
+			// The workbook rel Target is relative to xl/ (e.g. worksheets/sheet1.xml,
+			// or ../somesheet.xml); decode and normalize it through the shared resolver.
+			const sheetPath = resolveArchiveMemberPath("xl", target);
 			const sheetXml = unzipText(entries, sheetPath);
 			if (!sheetXml) continue;
 			const parsed = parser.parse(sheetXml) as WorksheetDoc;
@@ -95,12 +100,11 @@ export class XlsxConverter implements Converter {
 			// Extract all rows as string arrays
 			const tableRows: string[][] = [];
 			for (const row of rows) {
-				const cells = toArray(row.c);
-				const values: string[] = [];
-				for (const cell of cells) {
-					values.push(this.getCellValue(cell, shared));
-				}
-				tableRows.push(values);
+				const cells = toArray(row.c).map(cell => ({
+					ref: cell["@_r"],
+					value: this.getCellValue(cell, shared),
+				}));
+				tableRows.push(positionRowValues(cells));
 			}
 			if (tableRows.length === 0) continue;
 			// Normalize column count
@@ -111,10 +115,10 @@ export class XlsxConverter implements Converter {
 			sections.push(`## ${sheetName}`);
 			const [header, ...body] = tableRows;
 			const lines: string[] = [];
-			lines.push(`| ${header.join(" | ")} |`);
+			lines.push(`| ${header.map(escapeMarkdownTableCell).join(" | ")} |`);
 			lines.push(`| ${header.map(() => "---").join(" | ")} |`);
 			for (const row of body) {
-				lines.push(`| ${row.join(" | ")} |`);
+				lines.push(`| ${row.map(escapeMarkdownTableCell).join(" | ")} |`);
 			}
 			sections.push(lines.join("\n"));
 		}
@@ -165,6 +169,41 @@ function textValue(t: XmlText | undefined): string {
 	if (t == null) return "";
 	if (typeof t === "object") return t["#text"] || "";
 	return String(t);
+}
+
+/**
+ * Convert the column part of an A1 reference (e.g. "C" in "C2") to a 0-based
+ * column index using bijective base-26: A->0, Z->25, AA->26, AB->27. Returns
+ * undefined when the reference has no leading letters (malformed input).
+ */
+export function columnRefToIndex(ref: string): number | undefined {
+	const match = /^[A-Za-z]+/.exec(ref);
+	if (!match) return undefined;
+	let index = 0;
+	for (const ch of match[0].toUpperCase()) {
+		index = index * 26 + (ch.charCodeAt(0) - 64);
+	}
+	return index - 1;
+}
+
+/**
+ * Place resolved cell values into their true columns. XLSX omits empty cells,
+ * so document order is not column order; each cell's A1 `ref` gives its real
+ * column. A cell with no usable ref (malformed input) falls back to the next
+ * free column so no value is ever dropped, preserving the pre-`@_r` behavior
+ * for files that lack references.
+ */
+export function positionRowValues(cells: { ref: string | undefined; value: string }[]): string[] {
+	const row: string[] = [];
+	let next = 0;
+	for (const { ref, value } of cells) {
+		const col = ref !== undefined ? columnRefToIndex(ref) : undefined;
+		const target = col ?? next;
+		while (row.length <= target) row.push("");
+		row[target] = value;
+		next = target + 1;
+	}
+	return row;
 }
 
 function toArray<T>(val: T | T[] | undefined): T[] {

@@ -26,16 +26,17 @@ import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentProgress, SingleResult } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { VibeSessionRegistry } from "@veyyon/coding-agent/vibe/runtime";
+import { makeToolSession } from "../helpers/tool-session";
 
 function createSession(options: { manager?: AsyncJobManager } = {}): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated({}),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		asyncJobManager: options.manager,
-	} as unknown as ToolSession;
+	});
 }
 
 function makeResult(id: string, overrides: Partial<SingleResult> = {}): SingleResult {

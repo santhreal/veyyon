@@ -38,6 +38,7 @@ export const commands: CommandEntry[] = [
 	{ name: "plugin", load: () => import("./commands/plugin").then(m => m.default) },
 	{ name: "profile", load: () => import("./commands/profile").then(m => m.default), aliases: ["profiles"] },
 	{ name: "say", load: () => import("./commands/say").then(m => m.default) },
+	{ name: "session", load: () => import("./commands/session").then(m => m.default), aliases: ["sessions"] },
 	{ name: "setup", load: () => import("./commands/setup").then(m => m.default) },
 	{ name: "shell", load: () => import("./commands/shell").then(m => m.default) },
 	{ name: "stats", load: () => import("./commands/stats").then(m => m.default) },

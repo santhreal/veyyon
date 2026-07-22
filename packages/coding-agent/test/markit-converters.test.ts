@@ -153,6 +153,33 @@ describe("markit converters", () => {
 		expect(result.content).toContain("| --- | --- |");
 	});
 
+	it("resolves epub hrefs that use '../', a fragment, and percent-encoding without dropping chapters", async () => {
+		// Regression: a naive `${basePath}/${href}` join left these hrefs unmatched
+		// against the zip index, so the chapters were silently dropped from output.
+		const epub = zip({
+			"META-INF/container.xml": enc(
+				`<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`,
+			),
+			"OEBPS/content.opf": enc(
+				`<?xml version="1.0"?><package><metadata xmlns:dc="dc"><dc:title>Relative Book</dc:title></metadata>` +
+					`<manifest>` +
+					`<item id="c1" href="text/ch1.xhtml#top"/>` +
+					`<item id="c2" href="../shared/ch2.xhtml"/>` +
+					`<item id="c3" href="text/ch%203.xhtml"/>` +
+					`</manifest>` +
+					`<spine><itemref idref="c1"/><itemref idref="c2"/><itemref idref="c3"/></spine></package>`,
+			),
+			"OEBPS/text/ch1.xhtml": enc(`<html><body><h2>Fragmented</h2></body></html>`),
+			"shared/ch2.xhtml": enc(`<html><body><h2>Parent Dir</h2></body></html>`),
+			"OEBPS/text/ch 3.xhtml": enc(`<html><body><h2>Spaced Name</h2></body></html>`),
+		});
+		const result = await convertBufferWithMarkit(epub, ".epub");
+		expect(result.ok).toBe(true);
+		expect(result.content).toContain("## Fragmented");
+		expect(result.content).toContain("## Parent Dir");
+		expect(result.content).toContain("## Spaced Name");
+	});
+
 	it("reads PDF text after inline image binary data containing delimiter bytes", async () => {
 		const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-pdf-inline-home-"));
 		const homeRoot = path.parse(homeDir).root;
