@@ -177,6 +177,29 @@ describe("pi.typebox compatibility shim", () => {
 		});
 	});
 
+	describe("string min/maxLength counts code points, not UTF-16 units", () => {
+		it("counts a two-unit emoji as one character at both bounds", () => {
+			// REGRESSION: the shim measured `result.length` (UTF-16 units), so "😀😀😀"
+			// counted as 6 and was wrongly rejected against maxLength 3, and one emoji
+			// counted as 2 and wrongly passed minLength 2.
+			const max3 = Type.String({ maxLength: 3 });
+			expect(safeParse(max3, "😀😀😀").success).toBe(true);
+			expect(safeParse(max3, "😀😀😀😀").success).toBe(false);
+
+			const min2 = Type.String({ minLength: 2 });
+			expect(safeParse(min2, "😀").success).toBe(false);
+			expect(safeParse(min2, "😀😀").success).toBe(true);
+		});
+
+		it("still measures plain ASCII by character", () => {
+			const schema = Type.String({ minLength: 2, maxLength: 4 });
+			expect(safeParse(schema, "a").success).toBe(false);
+			expect(safeParse(schema, "ab").success).toBe(true);
+			expect(safeParse(schema, "abcd").success).toBe(true);
+			expect(safeParse(schema, "abcde").success).toBe(false);
+		});
+	});
+
 	describe("number multipleOf tolerates floating-point divisors", () => {
 		it("accepts exact decimal multiples that a naive remainder rejected", () => {
 			// REGRESSION: the check was `result % opts.multipleOf !== 0`, so a
