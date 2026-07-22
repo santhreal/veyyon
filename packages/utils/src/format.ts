@@ -54,9 +54,17 @@ export function formatNumber(n: number): string {
 	if (!Number.isFinite(n)) return "0";
 	if (n < 1_000) return n.toString();
 	if (n < 10_000) return `${trim1(n / 1_000)}K`;
-	if (n < 1_000_000) return `${Math.round(n / 1_000)}K`;
+	if (n < 1_000_000) {
+		// Math.round can lift a value just under 1M (e.g. 999_500) to 1000, which
+		// must render as "1M", not "1000K"; the same rolls "1000M" up to "1B" below.
+		const k = Math.round(n / 1_000);
+		return k < 1_000 ? `${k}K` : "1M";
+	}
 	if (n < 10_000_000) return `${trim1(n / 1_000_000)}M`;
-	if (n < 1_000_000_000) return `${Math.round(n / 1_000_000)}M`;
+	if (n < 1_000_000_000) {
+		const m = Math.round(n / 1_000_000);
+		return m < 1_000 ? `${m}M` : "1B";
+	}
 	if (n < 10_000_000_000) return `${trim1(n / 1_000_000_000)}B`;
 	return `${Math.round(n / 1_000_000_000)}B`;
 }
