@@ -190,10 +190,16 @@ function convertToTypeScript(
 			// putting `{ kind: "ping"; nknow }` into the prompt.
 			const hasBody = propsType.startsWith("{") && propsType.endsWith("}");
 			const inner = hasBody ? propsType.slice(1, -1).trim() : "";
+			// safeKey for the discriminator field name and JSON.stringify for the tag
+			// value, for the same reason as the property/enum branches: a name or tag
+			// carrying a quote, backslash, or control character must be escaped or the
+			// emitted variant is invalid TypeScript.
+			const tagKey = safeKey(schema.discriminator);
+			const tagLiteral = JSON.stringify(tag);
 			if (inner.length === 0) {
-				variants.push(`{ ${schema.discriminator}: "${tag}" }`);
+				variants.push(`{ ${tagKey}: ${tagLiteral} }`);
 			} else {
-				variants.push(`{ ${schema.discriminator}: "${tag}"; ${inner} }`);
+				variants.push(`{ ${tagKey}: ${tagLiteral}; ${inner} }`);
 			}
 		}
 		return variants.join(" | ");

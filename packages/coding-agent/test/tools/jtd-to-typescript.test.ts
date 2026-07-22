@@ -183,6 +183,26 @@ describe("jtdToTypeScript", () => {
 			expect(output).toBe('{ kind: "ping" } | { kind: "text"; body: string; }');
 		});
 
+		// Locks FINDING-JTD-DISCRIMINATOR-UNESCAPED. The variant builder interpolated
+		// the discriminator name and tag raw, so a non-identifier name or a
+		// quote-bearing tag produced invalid TypeScript.
+		it("quotes a non-identifier discriminator field name", () => {
+			const output = jtdToTypeScript({
+				discriminator: "event-type",
+				mapping: { ping: {} },
+			});
+			expect(output).toBe('{ "event-type": "ping" }');
+		});
+
+		it("escapes a double quote in a discriminator tag value", () => {
+			// Raw `"${tag}"` emitted `{ kind: "a"b" }` — invalid syntax.
+			const output = jtdToTypeScript({
+				discriminator: "kind",
+				mapping: { 'a"b': { properties: { body: { type: "string" } } } },
+			});
+			expect(output).toBe('{ kind: "a\\"b"; body: string; }');
+		});
+
 		it("does not splice a non-object variant into the tag", () => {
 			// Any variant that does not render to braces hits the same slicing path.
 			// Guarding on the shape rather than on one expected string is what makes
