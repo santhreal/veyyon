@@ -71,6 +71,16 @@ All tokens below are required in `colors`.
 
 ## Optional tokens
 
+### Purpose accents (5, optional)
+
+`sessionAccent`, `modeAccent`, `shareAccent`, `infoAccent`, `matchHighlight`
+
+These color the "cool arc" of the design language: session identity segments use `sessionAccent`, mode labels (plan, vibe, goal, loop) use `modeAccent`, share and collab segments use `shareAccent`, informational callouts such as the welcome tip label use `infoAccent`, and fuzzy-filter hit characters in select lists use `matchHighlight`. A theme that omits them still loads: each falls back to a sensible existing token (`sessionAccent` and `modeAccent` to `accent`, `shareAccent` to `link` then `accent`, `infoAccent` to `muted`, `matchHighlight` to `warning`). The built-in titanium theme binds them to its Daybreak palette (teal, violet, indigo, rose, gold).
+
+### `composerBg` (optional)
+
+The tonal ground painted under the composer's input rows (the "quiet card"). Titanium sets it to `#0C0E12`, one step off black. A theme that omits it inherits its `statusLineBg`. Setting it to `""` (transparent) disables the card and the input rows keep the terminal's own background.
+
 ### `export` section (optional)
 
 Used for HTML export theming helpers:

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -251,6 +251,7 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>read</code></td><td></td><td>Read-tool CLI probe</td></tr>
 <tr><td><code>say</code></td><td></td><td>Speak text with local TTS (<code>--voices</code> lists voices)</td></tr>
 <tr><td><code>search</code></td><td><code>q</code></td><td>Web search probe</td></tr>
+<tr><td><code>session</code></td><td><code>sessions</code></td><td>Study a stored session (<code>stats</code>: timing, tool cost, turn cadence)</td></tr>
 <tr><td><code>setup</code></td><td></td><td>First-run setup wizard</td></tr>
 <tr><td><code>shell</code></td><td></td><td>Native shell probe</td></tr>
 <tr><td><code>ssh</code></td><td></td><td>SSH host configuration</td></tr>
@@ -264,6 +265,33 @@ $ veyyon "fix the failing test in auth.rs"
 </table>
 </div>
 <p>Hidden worker selectors and <code>--smoke-test</code> are for CI/packaging, not daily use.</p>
+<h2 id="studying-a-session"><a class="header" href="#studying-a-session">Studying a session</a></h2>
+<p><code>veyyon session stats [id]</code> reads a stored session and reports how it spent its
+time and tokens. With no id it studies the most recent session in the current
+directory; give a session id or filename prefix to pick another one. The command
+reads only, so it is safe to run against a session another process is writing.</p>
+<pre><code class="language-console">$ veyyon session stats
+$ veyyon session stats 3f8a
+$ veyyon session stats --json
+</code></pre>
+<p>It reports, in one pass:</p>
+<ul>
+<li><strong>Totals</strong>: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and the weight tool results added to context.</li>
+<li><strong>Tool latency</strong>: per tool, the call count and the p50, p95, and max execution time, plus total scheduler wait, slowest tool first.</li>
+<li><strong>Tool cost</strong>: per tool, the tokens and bytes its results returned into context, most expensive first.</li>
+<li><strong>Repeated identical calls</strong>: tools called more than once with byte-identical arguments, keyed by an arguments fingerprint.</li>
+<li><strong>Per-turn</strong>: each assistant turn’s model, request time, tool calls, and token usage.</li>
+</ul>
+<p>The timing and weight fields come from the per-tool-call records that
+instrumentation writes. How much is recorded depends on the <code>session.instrumentation</code>
+setting: <code>off</code> records nothing (the command still reports turns and usage from the
+assistant’s own accounting, but tool timing reads as zero), <code>basic</code> records
+wall-clock, <code>rich</code> adds output weight, and <code>ultra</code> adds the arguments fingerprint
+that powers repeated-call detection. Turn on <code>ultra</code> for a session you want to
+study in full, or create a ready-made study profile with <code>veyyon profile new dev --from dev</code>. See <a href="../features/profiles.html">Profiles</a> and the <code>session.instrumentation</code>
+setting for the level details.</p>
+<p><code>--json</code> prints the complete report, including every turn; the text view caps the
+longest tables and says so when it does.</p>
 <p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,
 and no top-level <code>resume</code> / <code>fork</code> / <code>archive</code> verbs. Resume and branch from the TUI (<code>/resume</code>,
 <code>/fork</code>, <code>/session</code>) or the launch session picker; for non-interactive resume use <code>veyyon --print --resume &lt;id&gt;</code> / <code>--continue</code>.</p>

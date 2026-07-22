@@ -124,7 +124,6 @@ Loader failures are explicit:
 - `pty`
 - `shell`
 - `sixel`
-- `snapcompact`
 - `summary`
 - `task`
 - `text`

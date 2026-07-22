@@ -567,7 +567,7 @@ memory:
 | `contextPromotion.enabled` | boolean | `false` | Promote to a larger-context model on overflow instead of compacting. |
 | `compaction.enabled` | boolean | `true` | Automatic conversation compaction. |
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
-| `compaction.strategy` | enum | `snap` | `handoff` (LLM handoff summary / new session transfer) or `snap` (snapcompact dense image archive; no LLM call for the archive path). |
+| `compaction.strategy` | enum | `summary` | `summary` (rewrite old history into an in-place LLM summary) or `handoff` (LLM handoff summary / new session transfer). |
 | `compaction.model` | string | unset | Model for handoff/LLM compaction; unset inherits interactive (`modelRoles.default`). |
 | `compaction.thresholdTokens` | number | `-1` | Absolute token trigger, model-independent: compact when context exceeds this many tokens. The primary knob (`/settings` -> Compaction Threshold). Wins over `thresholdPercent` when `> 0`. If it exceeds the current model's window it is honored up to `contextWindow - 1` and you get a one-time warning. `-1` = use the percent below. |
 | `compaction.thresholdPercent` | number | `-1` | Legacy percent-of-window trigger; ignored when `thresholdTokens > 0`. `-1` = reserve/provider default. |
@@ -576,6 +576,7 @@ memory:
 | `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/profiles/default/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
 | `autolearn.autoContinue` | boolean | `false` | When `autolearn.enabled`, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn. |
 | `autolearn.minToolCalls` | number | `5` | Only nudge after a turn that used at least this many tools. |
+| `session.instrumentation` | enum | `off` | How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: `off` stores nothing extra; `basic` adds wall-clock (start, end, duration, and time-to-first-token for model turns); `rich` adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); `ultra` adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (`message.metrics`) AND per-model-turn metrics and the exact request params sent (`message.turnMetrics` / `message.request`). The `dev` profile preset (`veyyon profile new dev --from dev`) sets this to `ultra`. See [the session instrumentation reference](./internal/session.md#session-instrumentation-structured-analysis) for the on-disk field tables and jq recipes. |
 
 `compaction` has additional tuning keys (idle compaction, supersede/drop heuristics) visible in `veyyon config list`. See [Compaction](./compaction.md) for the full strategy reference.
 
@@ -620,7 +621,9 @@ tui:
 | `images.blockImages` | boolean | `false` | Never send images to providers. |
 | `tui.hyperlinks` | enum | `auto` | `off`, `auto`, `always`. |
 
-For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`.
+For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. See the [status line reference](./handbook/src/features/cockpit.md#status-line) for the full list of segment IDs.
+
+One segment is worth calling out: `profile` shows the active profile name (`work`, `rec`, a client sandbox) so you always know which profile's config, sessions, and keys are live. It hides on the built-in `default` profile, so a vanilla status line is unchanged, and every built-in preset already includes it.
 
 ### Interaction
 
@@ -633,6 +636,7 @@ For a custom status line, set `statusLine.preset: custom` and configure `statusL
 | `autoResume` | boolean | `false` | Auto-resume the most recent session in the cwd. |
 | `ask.timeout` | number | `0` | Seconds before an `ask` prompt times out; `0` = no timeout. (Legacy ms values are migrated to seconds.) |
 | `ask.notify` | enum | `on` | `on`, `off`. |
+| `session.workdir` | string | unset | Per-profile default working directory. When you launch without an explicit `--cwd`, the session starts here. Precedence: an explicit `--cwd` wins, then this setting, then the directory you launched from. Use an absolute or `~`-relative path; a relative path or a missing directory makes launch fail loudly (no silent fallback). Set it in `/settings` (**Interaction** tab, **Profile** group, "Default Working Directory") or with `veyyon config set session.workdir /path/to/project`; clear it with `veyyon config set session.workdir ""`. This is a per-profile default that persists across sessions. It is distinct from `/cwd set` (and the agent's `set_cwd` tool), which re-root the live working directory for the current session only and write nothing to your profile. Note: if you launch from your bare home directory with no `--cwd`, no `--allow-home`, and this setting unset, veyyon relocates the session to a scratch directory (`~/tmp`, then `/tmp`) and prints a one-line notice saying so; set `session.workdir` to a real project directory to land there instead. |
 
 ### Providers and services
 
@@ -726,6 +730,7 @@ Applied whenever raw settings are loaded (global, project, overlays, and runtime
 | `task.simple` | removed |
 | legacy `task.isolation.mode` (`worktree`, `fuse-overlay`, `fuse-projfs`) | `rcopy`, `overlayfs`, `projfs` |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
+| `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |
 
 ## Troubleshooting
 

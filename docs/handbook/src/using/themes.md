@@ -27,11 +27,19 @@ terminal's own background color (OSC 11) to the theme's ground while it runs, so
 fills the window edge-to-edge instead of floating on the terminal's configured background.
 The original background is restored on exit, including crash exits.
 
+The ground is the theme's page background, the same `export.pageBg` color the HTML export
+uses (see `docs/theme.md`). Every built-in theme declares one.
+
 | Value | Behavior |
 | --- | --- |
 | `auto` (default) | Paint only when the terminal's reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn't report its background, inherit it. |
 | `always` | Always paint the theme ground. |
 | `never` | Never touch the terminal background. |
+
+A custom theme that declares no page background has no ground to paint, so Veyyon inherits
+the terminal's own background regardless of this setting. With `always`, it also logs once
+that the active theme declares no ground, since that is the one case you asked to paint and
+it could not. Add an `export.pageBg` to the theme to give it a ground.
 
 Terminals that don't support OSC 11 ignore the sequence; nothing breaks.
 

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -230,6 +230,22 @@ configured) or credential-free engines (Ecosia, Google, Mojeek, or <code>public<
 to every credential-free engine and consolidates deduplicated results). <code>auto</code> resolves the
 first available provider in the built-in priority order; <code>providers.webSearchExclude</code> removes
 providers from that chain entirely.</p>
+<h2 id="exa-research-and-webset-tools"><a class="header" href="#exa-research-and-webset-tools">Exa research and webset tools</a></h2>
+<p>Beyond ranked search, Exa hosts two MCP servers that Veyyon can turn into agent tools. Both
+are off by default, because each one adds tools to every session and costs a discovery
+request at startup.</p>
+<pre><code class="language-yaml">exa:
+  enableResearcher: true
+  enableWebsets: true
+</code></pre>
+<p><code>exa.enableResearcher</code> adds <code>exa_deep_researcher_start</code> and <code>exa_deep_researcher_check</code>. The
+model starts a research run and then polls it, so a single question can take minutes and
+returns a written report rather than a result list.</p>
+<p><code>exa.enableWebsets</code> adds one tool per webset operation the server offers, named
+<code>exa_&lt;operation&gt;</code>. The list comes from the server, so new operations appear without a Veyyon
+release. Websets require <code>EXA_API_KEY</code> in your environment; if it is missing, Veyyon logs the
+reason at startup and registers no webset tools rather than failing later inside a tool call.</p>
+<p><code>exa.enabled: false</code> turns off all of it, including search.</p>
 <h2 id="approvals"><a class="header" href="#approvals">Approvals</a></h2>
 <p>With web search enabled, the tool runs without a per-call approval prompt, because it reads
 public web content rather than touching your machine. If you want the model to never reach

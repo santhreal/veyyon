@@ -56,6 +56,23 @@ Compaction preserves the goal card, active user instructions, recent turns, and 
 
 Prefer `/compact` when you need a summary to retain state. Prefer the `/new` command when prior transcript is no longer useful and you want a clean session without summarization. See [Slash commands](../reference/slash-commands.md).
 
+## Rollout and the state database
+
+Session history is kept in two layers.
+
+The **rollout** is the append-only JSONL file. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a leaf move. The rollout is the source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable.
+
+The **state database** is a local SQLite index that mirrors thread metadata, goal cards, and queued follow-ups. It exists so listing sessions and resuming one do not require replaying the entire rollout log. It is a cache built from the rollout, not a second source of truth.
+
+## How the pieces relate
+
+- A **session** owns one or more **threads** and stores them on disk.
+- A **thread** is a path through the session's tree of turns.
+- A **turn** is one step on that path.
+- The **rollout** is the append-only log that holds every turn, branch, and system event.
+- The **state database** is the runtime index for resume and active metadata.
+- The **goal card** is a separate context slot that carries the current objective across turns and compactions. See [Goal state and long sessions](../context/goal-state.md).
+
 ## Where the details live
 
 - For session commands and storage, see [Sessions](../using/sessions.md).

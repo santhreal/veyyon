@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Edit path and tool arguments - The Veyyon Harness Handbook</title>
+        <title>Why it helps - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -195,21 +195,31 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="edit-path-and-tool-arguments"><a class="header" href="#edit-path-and-tool-arguments">Edit path and tool arguments</a></h1>
-<p>Edits and tool calls go through harness steps that reduce apply and schema failures before a full retry turn.</p>
-<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
+                        <h1 id="why-it-helps"><a class="header" href="#why-it-helps">Why it helps</a></h1>
+<p>The model weights are the same ones you get anywhere. What Veyyon changes is how often a change
+lands on the first attempt, and what a failed attempt costs when it happens. This chapter names the
+concrete reasons, and each links the page that covers it in full.</p>
+<h2 id="fewer-failed-edits-and-tool-calls"><a class="header" href="#fewer-failed-edits-and-tool-calls">Fewer failed edits and tool calls</a></h2>
+<p>Edits and tool calls go through harness steps that catch apply and schema failures before they burn a
+full retry turn.</p>
 <ul>
-<li>Hashline edits anchor on <code>read</code> / <code>grep</code> / <code>write</code> snapshot tags</li>
-<li><code>edit</code>, <code>write</code>, and compatibility modes share the approval gate</li>
-<li>Stale anchors fail verification with recovery context for the model</li>
-<li>Schema repair coerces unambiguous malformed tool JSON before dispatch; ambiguous input is refused</li>
+<li>Hashline edits anchor on <code>read</code> / <code>grep</code> / <code>write</code> snapshot tags, so an edit that targets stale
+content fails verification with recovery context instead of writing a corrupt file.</li>
+<li><code>edit</code>, <code>write</code>, and the compatibility apply modes share one approval gate.</li>
+<li>Schema repair coerces unambiguous malformed tool JSON before dispatch; ambiguous input is refused
+rather than guessed.</li>
 </ul>
-<h2 id="details"><a class="header" href="#details">Details</a></h2>
-<ul>
-<li><a href="../using/editing.html">Editing and repair</a></li>
-<li><a href="../repair/overview.html">Repair overview</a></li>
-<li><a href="../edit/engine.html">The hashline edit engine</a></li>
-</ul>
+<p>See <a href="../using/editing.html">Editing and repair</a>, <a href="../repair/overview.html">Repair overview</a>, and
+<a href="../edit/engine.html">The hashline edit engine</a>.</p>
+<h2 id="less-spent-on-context-and-retries"><a class="header" href="#less-spent-on-context-and-retries">Less spent on context and retries</a></h2>
+<p>A run that avoids a retry turn, and that compacts instead of truncating, spends fewer tokens for the
+same result. See <a href="./lower-cost.html">Context size and retries</a>.</p>
+<h2 id="the-right-model-for-the-job"><a class="header" href="#the-right-model-for-the-job">The right model for the job</a></h2>
+<p>Roles let a cheap model do the cheap work and a stronger one do the hard work, without you switching
+by hand. See <a href="./model-choice.html">Model and provider selection</a>.</p>
+<h2 id="mistakes-stop-at-the-approval-gate"><a class="header" href="#mistakes-stop-at-the-approval-gate">Mistakes stop at the approval gate</a></h2>
+<p>Approval tiers and clear error returns keep a wrong tool call from cascading into more damage. See
+<a href="./safety-errors.html">Approvals and errors</a>.</p>
 
                     </main>
 

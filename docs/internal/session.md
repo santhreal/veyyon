@@ -10,8 +10,9 @@ Covers:
 - Entry taxonomy and tree semantics (`id`/`parentId` + leaf pointer)
 - Migration/compatibility behavior when loading old or malformed files
 - Context reconstruction (`buildSessionContext`)
-- Persistence guarantees, failure behavior, truncation/blob externalization
+- Persistence guarantees, failure behavior, text + image blob externalization
 - Storage abstractions (`FileSessionStorage`, `MemorySessionStorage`) and related utilities
+- Session instrumentation: the graded per-turn and per-tool-call study records that make a stored run measurable and backtest-reproducible, and how to grep/analyze them
 
 Does not cover `/tree` UI rendering behavior beyond semantics that affect session data.
 
@@ -22,7 +23,7 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 - [`src/session/session-migrations.ts`](../../packages/coding-agent/src/session/session-migrations.ts): version migrations
 - [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): file load + blob-ref resolution
 - [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts): `buildSessionContext`
-- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): truncation + image blob externalization
+- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
 - [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
 - [`src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs
 - [`src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts): discovery (list/recent/resolve)
@@ -123,6 +124,8 @@ All non-header entries include:
 - `session_init`
 - `mode_change`
 - `mcp_tool_selection`
+- `subagent_spawn`
+- `settings_snapshot`
 
 ### `message`
 
@@ -354,6 +357,244 @@ Append-only audit record of a session title change (`setSessionName`). The mutab
 }
 ```
 
+### `subagent_spawn`
+
+A navigable parent to child index entry: one per subagent a session spawned. It lets a study enumerate every subagent of a run ("including subagents, everything") without scraping tool-result prose or scanning the artifacts directory. The authoritative per-subagent record is the child transcript at `sessionFile`; this entry is the index over them.
+
+```json
+{
+  "type": "subagent_spawn",
+  "id": "f3a4b5c6",
+  "parentId": "e2f3a4b5",
+  "timestamp": "2026-02-16T10:31:00.000Z",
+  "agentId": "1f9d2a6b9c0d5678",
+  "agentName": "task",
+  "task": "Audit the GC retention paths and report findings.",
+  "sessionFile": "/home/u/.veyyon/profiles/default/agent/sessions/-work-pi/20260216_parent/1f9d2a6b9c0d5678.jsonl",
+  "isolation": "none",
+  "status": "completed",
+  "exitCode": 0,
+  "durationMs": 42130,
+  "usage": {
+    "input": 1200,
+    "output": 640,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0 }
+  },
+  "error": "optional, present only when status is failed"
+}
+```
+
+- `agentId` matches the child transcript filename stem and the `history://<agentId>` reference.
+- `sessionFile` is the child's durable transcript path (`<parentArtifactsDir>/<agentId>.jsonl`). That file, its externalized blobs, and this index entry are retained together; GC never archives the child independently and moves it with the parent (proven in `gc-cli.test.ts`).
+- `status` is `"completed" | "failed" | "cancelled"`; `usage`/`error` are optional.
+
+### `settings_snapshot`
+
+The complete resolved Tier-A config that governed the run, keyed by dotted setting path. Written once at session start (`kind: "full"`), so a later study can reproduce the exact configuration a run used rather than guessing from current defaults. A later `kind: "diff"` snapshot may carry only keys that changed.
+
+```json
+{
+  "type": "settings_snapshot",
+  "id": "a3b4c5d6",
+  "parentId": "f3a4b5c6",
+  "timestamp": "2026-02-16T10:20:31.000Z",
+  "kind": "full",
+  "values": {
+    "compaction.strategy": "summarize",
+    "task.maxConcurrency": 4,
+    "thinkingBudgets.high": 8000,
+    "session.instrumentation": "ultra"
+  }
+}
+```
+
+- `values` is the sorted `getEffectiveSnapshot()` of every schema setting at capture time (hundreds of keys); the example is abridged.
+- Settings that change mid-run and already have dedicated change entries (model, thinking level, service tier, mode, MCP selection) are not re-captured here; this snapshot fills the gap for the static governing config.
+- The per-turn `request` record (below) captures the effective, possibly-overridden sampling/reasoning values a specific turn actually sent; this snapshot captures the session-level defaults. Read them together to reproduce a turn.
+
+## Session Instrumentation (structured analysis)
+
+Instrumentation is the graded, machine-readable study layer of the session file. It exists so a stored run can be measured and backtested field by field: where latency went, what each tool call cost, how fast each turn streamed, and exactly what each request asked the provider for. Every record is a plain JSON object inside the normal JSONL, so a run is analyzable with `grep`, `jq`, or any JSONL reader, with no special tooling.
+
+Owner: [`packages/ai/src/instrumentation.ts`](../../packages/ai/src/instrumentation.ts) is the single place that decides which fields each level fills. The agent loop measures raw timings and hands them to the `capture*` functions; nothing else branches on the level.
+
+### Richness levels (`session.instrumentation`)
+
+One setting, `session.instrumentation`, grades how densely a run records. The levels are ordered, and each includes every field of the levels before it:
+
+| Level | What it adds | Cost |
+| --- | --- | --- |
+| `off` | Nothing. No instrumentation fields are attached (default). | none |
+| `basic` | Wall-clock only: start/end/duration and terminal status, plus provider time-to-first-token. | a subtraction (free) |
+| `rich` | Adds output weight (result bytes/blocks/tokens; one tokenizer pass) and per-turn throughput (tokens/sec). | one tokenizer pass per tool result |
+| `ultra` | Adds everything worth studying: args byte size + fingerprint, cache read/write tokens, reasoning tokens, upstream provider, scheduling detail. | rounding error |
+
+The `dev` profile sets `ultra`. A record carries its own `level` field, so a reader knows which optional fields to expect. Every field above `basic` is optional: a message recorded at a lower level (or by an older build) still loads unchanged.
+
+### Where each record attaches
+
+Instrumentation rides on the messages it describes, not on separate entries, so it stays co-located with the turn/tool call it measures:
+
+- **`message.metrics`** on a `toolResult` message: a `ToolCallMetrics` record of what one tool call did.
+- **`message.turnMetrics`** on an `assistant` message: an `AssistantTurnMetrics` record of what one model turn did (timing, throughput).
+- **`message.request`** on an `assistant` message: an `AssistantTurnRequest` record of what that turn asked for (the sampling/reasoning/tool-choice params as sent).
+
+`turnMetrics` records what a turn DID; `request` records what it was ASKED for. They are siblings so a backtest can pair "this is the request we sent" with "this is what it produced".
+
+### `ToolCallMetrics` (`message.metrics` on a tool result)
+
+Times are Unix epoch milliseconds; durations are milliseconds.
+
+```json
+{
+  "type": "message",
+  "message": {
+    "role": "toolResult",
+    "toolName": "bash",
+    "content": [{ "type": "text", "text": "..." }],
+    "metrics": {
+      "level": "ultra",
+      "startedAt": 1760000000000,
+      "endedAt": 1760000000450,
+      "durationMs": 450,
+      "status": "ok",
+      "queuedMs": 12,
+      "concurrency": "shared",
+      "batchId": "b7",
+      "batchIndex": 0,
+      "batchSize": 3,
+      "resultBytes": 2048,
+      "resultBlocks": 1,
+      "resultImages": 0,
+      "resultTokens": 512,
+      "argsBytes": 96,
+      "argsHash": "1a2b3c4d",
+      "interruptible": true,
+      "signalAborted": false
+    }
+  }
+}
+```
+
+| Field | Tier | Meaning |
+| --- | --- | --- |
+| `level` | basic | Level this record was captured at. |
+| `startedAt` / `endedAt` | basic | When `tool.execute()` began / when the result was emitted. |
+| `durationMs` | basic | Execution wall-clock (`endedAt - startedAt`). |
+| `status` | basic | `ok` \| `error` \| `aborted` \| `blocked` \| `skipped`. |
+| `queuedMs` | rich | Time waited between batch dispatch and execution start. |
+| `concurrency` | rich | `shared` \| `exclusive`: how the scheduler ran it. |
+| `batchId` / `batchIndex` / `batchSize` | rich | Which tool batch it ran in, its position, and the batch size. |
+| `resultBytes` / `resultBlocks` / `resultImages` | rich | UTF-8 bytes of textual content, number of content blocks, number of image blocks. |
+| `resultTokens` | rich | Tokens the result adds to context (the weight the model pays). |
+| `argsBytes` / `argsHash` | ultra | Serialized-args byte size and an FNV-1a fingerprint (spot repeated identical calls). |
+| `interruptible` / `signalAborted` | ultra | Whether the tool declared itself interruptible, and whether its abort signal fired. |
+
+### `AssistantTurnMetrics` (`message.turnMetrics` on an assistant message)
+
+```json
+{
+  "type": "message",
+  "message": {
+    "role": "assistant",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5",
+    "content": [{ "type": "text", "text": "Done." }],
+    "usage": { "input": 100, "output": 300, "cacheRead": 0, "cacheWrite": 0, "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0 } },
+    "turnMetrics": {
+      "level": "ultra",
+      "startedAt": 1760000000000,
+      "endedAt": 1760000002000,
+      "durationMs": 2000,
+      "status": "ok",
+      "ttftMs": 500,
+      "outputTokens": 300,
+      "inputTokens": 100,
+      "totalTokens": 400,
+      "generationMs": 1500,
+      "outputTokensPerSec": 200,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 40,
+      "upstreamProvider": "anthropic"
+    }
+  }
+}
+```
+
+| Field | Tier | Meaning |
+| --- | --- | --- |
+| `level` | basic | Level this record was captured at. |
+| `startedAt` / `endedAt` | basic | Loop-measured request dispatch / turn finalize (equals the message timestamp). |
+| `durationMs` | basic | Turn wall-clock (`endedAt - startedAt`). |
+| `status` | basic | `ok` \| `error` \| `aborted`. |
+| `ttftMs` | basic | Provider time-to-first-token. Kept only when `0 <= ttftMs <= durationMs`; a bogus value (clock skew) is dropped, not stored. |
+| `outputTokens` / `inputTokens` / `totalTokens` | rich | Token counts from the turn's own usage. |
+| `generationMs` | rich | Generation window after the first token (`durationMs - ttftMs`, or `durationMs` when ttft is unknown). |
+| `outputTokensPerSec` | rich | Streaming throughput: `outputTokens / (generationMs / 1000)`. Set only when output and window are positive. |
+| `cacheReadTokens` / `cacheWriteTokens` | ultra | Prompt-cache token buckets. |
+| `reasoningTokens` | ultra | Reasoning/thinking tokens included in `outputTokens`, when the provider reports them. |
+| `upstreamProvider` | ultra | The model provider that actually served the turn, when distinct from the gateway. |
+
+### `AssistantTurnRequest` (`message.request` on an assistant message)
+
+The exact request parameters as sent. These are the effective per-turn values (a harmony-retry temperature bump, a dynamically resolved reasoning effort, a one-turn forced tool choice), which is why they live on the turn and not only in the start-of-run settings snapshot. Every field is optional; an unset field means the provider default was used. Captured whole at any on level (no per-tier selection); an all-defaults turn writes no `request` at all rather than an empty object.
+
+```json
+{
+  "type": "message",
+  "message": {
+    "role": "assistant",
+    "request": {
+      "temperature": 0.7,
+      "topP": 0.95,
+      "topK": 40,
+      "maxTokens": 4096,
+      "presencePenalty": 0.1,
+      "reasoningEffort": "high",
+      "disableReasoning": false,
+      "toolChoice": { "type": "tool", "name": "bash" },
+      "serviceTier": "priority"
+    }
+  }
+}
+```
+
+The numeric thinking budget is not duplicated here: it derives deterministically from `reasoningEffort` plus the `thinkingBudgets.*` values in the settings snapshot.
+
+### Analyzing a session file
+
+Every record is a JSON object on its own line, so standard tools work directly. Examples against a session file:
+
+```bash
+# Per-turn streaming throughput (tokens/sec), one number per model turn.
+jq -c 'select(.type=="message" and .message.role=="assistant" and .message.turnMetrics)
+       | .message.turnMetrics.outputTokensPerSec' session.jsonl
+
+# Slowest tool calls: name + duration, sorted descending.
+jq -c 'select(.type=="message" and .message.role=="toolResult" and .message.metrics)
+       | [.message.metrics.durationMs, .message.toolName]' session.jsonl | sort -rn | head
+
+# Every turn that hit an error or was aborted.
+jq -c 'select(.message.turnMetrics.status? and .message.turnMetrics.status!="ok")
+       | {t: .timestamp, status: .message.turnMetrics.status}' session.jsonl
+
+# Repeated identical tool calls (same args fingerprint); ultra only.
+jq -r 'select(.message.metrics.argsHash) | .message.metrics.argsHash' session.jsonl \
+  | sort | uniq -d
+
+# The resolved config the run used.
+jq -c 'select(.type=="settings_snapshot" and .kind=="full") | .values' session.jsonl
+
+# Enumerate the run's subagents with outcome and cost.
+jq -c 'select(.type=="subagent_spawn")
+       | {agent: .agentName, status, exitCode, ms: .durationMs, out: .usage.output}' session.jsonl
+```
+
+Because the fields are stable and named, a raw `grep '"outputTokensPerSec"'` or `grep '"status":"error"'` is enough for a quick scan when `jq` is not handy. This grep-ability is the point: the instrumentation schema is meant for structured after-the-fact analysis, not just live display.
+
 ## Versioning and Migration
 
 Current session version: `3`.
@@ -385,7 +626,7 @@ Applied when header `version < 3`:
 `loadEntriesFromFile(path)` behavior:
 
 - Missing file (`ENOENT`) -> returns `[]`.
-- Non-parseable lines are handled by lenient JSONL parser (`parseJsonlLenient`).
+- A malformed line is skipped (via `parseJsonlLenient`, or the byte-buffer drain in `loadEntriesFromFileStream` for files >= 8 MiB) so one corrupt record cannot make a whole session unopenable — but the skip is never silent: each dropped record is logged with its offset and a final total is logged, so lost data is visible when studying the session rather than vanishing without a trace. Each malformed record is counted exactly once (the parser reports an error alongside the preceding good record, so counting is gated to the record's own head position).
 - If first parsed entry is not a valid session header (`type !== "session"` or missing string `id`) -> returns `[]`.
 
 `SessionManager.setSessionFile()` behavior:
@@ -470,15 +711,17 @@ Rationale in code: avoid persisting sessions that never produced an assistant re
 
 Before persisting entries:
 
-- Large strings are truncated to `MAX_PERSIST_CHARS` (500,000 chars) with notice:
-  - `"[Session persistence truncated large content]"`
+- Large strings over `MAX_PERSIST_CHARS` (500,000 chars) are externalized to the blob store, never truncated:
+  - the full bytes are written content-addressed and the JSONL line keeps a short `blobtext:sha256:<hash>` ref
+  - on load `resolveBlobRefsInEntries` restores the exact original string, so a huge tool result round-trips losslessly and stays fully readable when studying the session
+  - signed/encrypted blocks (see the persistence pipeline) are exempt and persist verbatim
 - Transient fields `partialJson` and `jsonlEvents` are removed.
-- If object has both `content` and `lineCount`, line count is recomputed after truncation.
+- If an object has both `content` and `lineCount`, line count is recomputed from the inline content, but not when `content` is a `blobtext:` ref (the ref is one line; the real count is preserved).
 - Image blocks in `content` arrays with base64 length >= 1024 are externalized to blob refs:
   - stored as `blob:sha256:<hash>`
   - raw bytes written to blob store (`BlobStore.put`)
 
-On load, blob refs are resolved back to base64 for message/custom_message image blocks.
+On load, blob refs are resolved back: `blob:sha256:` image refs to base64 for message/custom_message image blocks, and `blobtext:sha256:` refs to the original string in place.
 
 ## Storage Abstractions
 
@@ -518,4 +761,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `7ca44d3` on 2026-07-21.*
+*Verified against `1b852a7d` on 2026-07-21.*

@@ -16,8 +16,7 @@ The CLI is `veyyon`. It calls a configured model endpoint with your credentials 
 
 The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.
 
-- [Core concepts (foundations)](../foundations/core-concepts.md) defines a session, thread, turn, the rollout JSONL, and the state database in more detail.
-- [Architecture overview](../foundations/architecture.md) maps the subsystems to their responsibilities.
+- [Architecture at a glance](../foundations/architecture.md) maps the subsystems to their responsibilities.
 - For provider and model configuration, see [Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
 
 ## How the pieces fit

@@ -35,10 +35,10 @@ From `packages/coding-agent/src/config/model-roles.ts`:
 | Role id | UI name | Notes |
 | --- | --- | --- |
 | `default` | (hidden) | Storage key for the interactive model only; not shown in role pickers or default `cycleOrder` |
-| `smol` | Fast | Cheap / fast work; `--smol`, env `VEYYON_SMOL_MODEL` / `VEYYON_SMOL_MODEL` if set |
-| `slow` | Thinking | Heavier reasoning; `--slow` |
+| `smol` | Fast | Cheap / fast work; `--smol` or env `VEYYON_SMOL_MODEL` |
+| `slow` | Thinking | Heavier reasoning; `--slow` or env `VEYYON_SLOW_MODEL` |
 | `vision` | Vision | Multimodal work |
-| `plan` | Architect | Plan mode; `--plan` |
+| `plan` | Architect | Plan mode; `--plan` or env `VEYYON_PLAN_MODEL` |
 | `designer` | Designer | Design-oriented work |
 | `commit` | Commit | Commit / changelog generation |
 | `tiny` | Tiny | Lightweight background (titles, classifiers); else falls back toward `@smol` |

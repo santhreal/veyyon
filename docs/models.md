@@ -91,6 +91,8 @@ providers:
             controller: mlx
 ```
 
+`baseUrl` must be an absolute URL that begins with `http://` or `https://`, at both provider and model level. A scheme-less value like `localhost:11434` or `192.168.1.5:8080` is rejected when the config loads, because it is not a usable endpoint: it either fails to parse or parses with an empty host, so requests go nowhere and prefix cache reuse for a local server never turns on. Write `http://localhost:11434` for a local server, or `https://…` for a remote one. The config is not normalised for you, so that a public host you meant to reach over `https` is never quietly downgraded to plaintext.
+
 ### Allowed provider/model `api` values
 
 - `openai-completions`

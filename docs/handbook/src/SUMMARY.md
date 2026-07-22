@@ -2,18 +2,21 @@
 
 [The Veyyon handbook](./introduction.md)
 
-# Design and mechanisms
+# Understand Veyyon
 
-- [Design and mechanisms](./why/index.md)
-  - [Overview](./why/value.md)
-  - [Mechanisms](./why/innovations.md)
-  - [Performance](./why/performance.md)
-  - [Edit path and tool arguments](./benefits/first-attempt-edits.md)
+- [How to read this book](./foundations/how-to-read.md)
+- [Overview](./why/value.md)
+- [Mechanisms](./why/innovations.md)
+- [Argot](./why/argot.md)
+- [Harness design goals](./foundations/thesis.md)
+- [Architecture at a glance](./foundations/architecture.md)
+- [Performance](./why/performance.md)
+- [Why it helps](./benefits/first-attempt-edits.md)
   - [Context size and retries](./benefits/lower-cost.md)
   - [Model and provider selection](./benefits/model-choice.md)
   - [Approvals and errors](./benefits/safety-errors.md)
 
-# Install and first session
+# Get started
 
 - [Install](./using/install.md)
 - [Signing in](./using/authentication.md)
@@ -27,48 +30,44 @@
   - [Sessions, turns, and threads](./concepts/sessions-turns-threads.md)
   - [Permission model](./concepts/permission-model.md)
   - [Model contract](./concepts/model-contract.md)
-  - [Foundations: sessions and context](./foundations/core-concepts.md)
-  - [How to read this book](./foundations/how-to-read.md)
 
-# Interactive surfaces
+# Everyday use
 
-- [Features](./features/index.md)
-  - [Editing and repair](./using/editing.md)
-  - [Approvals](./features/sandbox.md)
-  - [Permissions UX](./features/permissions-explainer.md)
+- [Editing and repair](./using/editing.md)
+- [Approvals](./features/sandbox.md)
   - [Safety](./using/safety.md)
-  - [Models and providers](./using/models.md)
-  - [Sessions](./using/sessions.md)
-  - [Cockpit](./features/cockpit.md)
-  - [Keybindings and Vim mode](./features/keybindings.md)
-  - [Web search](./features/web-search.md)
-  - [Code review](./features/review.md)
-  - [Non-interactive mode](./features/exec.md)
-  - [Themes and identity](./using/themes.md)
-  - [Examples](./using/examples.md)
+- [Models and providers](./using/models.md)
+- [Sessions](./using/sessions.md)
+- [Cockpit](./features/cockpit.md)
+- [Keybindings and Vim mode](./features/keybindings.md)
+- [Web search](./features/web-search.md)
+- [Code review](./features/review.md)
+- [Non-interactive mode](./features/exec.md)
+- [Themes and identity](./using/themes.md)
+- [Task guides](./using/task-guides.md)
+- [Examples](./using/examples.md)
 
-# Modes and extensions
+# Extend and customize
 
 - [Plan mode, goals, and vibe](./features/plan-mode.md)
 - [Skills](./features/skills.md)
-- [Skills authoring](./features/skills-authoring.md)
+  - [Skills authoring](./features/skills-authoring.md)
 - [Plugins](./features/plugins.md)
 - [Hooks](./features/hooks.md)
-- [Hooks guide](./features/hooks-guide.md)
+  - [Hooks guide](./features/hooks-guide.md)
 - [MCP](./features/mcp.md)
-- [MCP setup](./using/mcp-setup.md)
+  - [MCP setup](./using/mcp-setup.md)
 - [Connectors and Apps](./features/connectors.md)
 - [Session branching](./features/branching.md)
 - [Memory](./features/memory.md)
 - [Profiles](./features/profiles.md)
-- [Roles and profiles](./using/roles-and-profiles.md)
-- [Personalities](./features/personalities.md)
+  - [Roles and profiles](./using/roles-and-profiles.md)
+  - [Personalities](./features/personalities.md)
 - [Speech](./features/speech.md)
 - [Export and import](./features/export-import.md)
-- [Task guides](./using/task-guides.md)
 - [Configuration](./using/configuration.md)
-- [Feature flags](./features/feature-flags.md)
-- [Tools, skills, and extension data](./using/extending.md)
+  - [Feature flags](./features/feature-flags.md)
+  - [Tools, skills, and extension data](./using/extending.md)
 - [Migration guide](./using/migration-guide.md)
 
 # Reference
@@ -82,10 +81,8 @@
   - [Exit codes](./reference/exit-codes.md)
   - [File locations](./reference/file-locations.md)
 
-# How it works
+# Under the hood
 
-- [Harness design goals](./foundations/thesis.md)
-- [Architecture at a glance](./foundations/architecture.md)
 - [Architecture overview](./architecture/overview.md)
   - [Approvals internals](./architecture/sandbox.md)
   - [Session and turn internals](./architecture/session-turn.md)
@@ -97,10 +94,10 @@
   - [The repair cascade](./repair/cascade.md)
   - [Per-model posture](./repair/per-model.md)
   - [Soundness and telemetry](./repair/soundness.md)
-- [Editing](./edit/engine.md)
+- [The edit engine](./edit/engine.md)
   - [Repair on edits](./edit/edit-repair.md)
   - [Edit-path properties](./edit/roadmap.md)
-- [Models](./models/providers.md)
+- [Provider stack](./models/providers.md)
   - [Execution-order prompts](./models/prompts.md)
 - [Context](./context/reads-search.md)
   - [Goal state and long sessions](./context/goal-state.md)
@@ -108,7 +105,7 @@
 - [Role policy](./router/role-routing.md)
 - [Observability](./observability/overview.md)
 
-# Troubleshooting and diagnostics
+# Troubleshooting
 
 - [Troubleshooting](./using/troubleshooting.md)
 - [FAQ](./using/faq.md)

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,9 +214,9 @@ to one token below the window and you get a one-time warning. Set it to
 window. You can also compact on demand with <code>/compact</code>.</li>
 <li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
 <ul>
+<li><code>summary</code>: rewrites old history into an in-place LLM summary on the current branch (the default).</li>
 <li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
 recent decisions, then continues from it (LLM transfer path).</li>
-<li><code>snap</code>: archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
 </ul>
 </li>
 <li><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
@@ -228,7 +228,7 @@ retained verbatim up to the type’s budget.</p>
 <p>Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
 content out of the live context and leaves a short placeholder in its place. Whole tool
 results and large fenced or XML blocks are replaced with a marker such as
-<code>[shaken ~1200 tokens — recover: artifact://42 (region 3)]</code>. The full text is saved as a
+<code>[shaken ~1200 tokens; recover: artifact://42 (region 3)]</code>. The full text is saved as a
 session artifact first, so you can always read it back with <code>read artifact://42</code>. Nothing is
 lost, it just stops being resent on every turn. Run it on demand with <code>/shake</code>, or let
 auto-maintenance run it when <code>compaction.strategy</code> is <code>shake</code>.</p>

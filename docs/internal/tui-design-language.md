@@ -47,6 +47,10 @@ Use a 4-cell rhythm:
 
 Prefer `space-1` / `space-2` in dense tool UIs. One-off paddings are bugs.
 
+### Separator grammar
+
+The TUI has one separator dialect: the middle dot `·` with two spaces on each side (`  ·  `). It joins footer chips, status line segments, keybinding hints, and metadata runs (`v1.2.3 · gpt-5 · openai`). The dot is dim; the terms around it carry the emphasis. Do not introduce a second separator (`|`, `/`, `>`) for the same job: two dialects on one screen read as unfinished. Modal footers were the last `|` holdout; they now route through the shared `SHORTCUT_SEP = "  ·  "` in `modal-shell.ts`, locked by a conformance test (`modal-shell.test.ts`). The dense `theme.sep.dot` (` · `, one space each side) is the tighter variant for inline runs where two-space air is too loose.
+
 ## Color and emphasis
 
 | Role | Rule |
@@ -92,6 +96,21 @@ No gratuitous animation on static content.
 
 Prefer ASCII-safe glyphs with Unicode upgrades when width is known (`theme.symbols` presets: `unicode`, `nerd`, `ascii`). Width math uses grapheme-aware helpers in `@veyyon/tui`, not byte length.
 
+### Blockiness (house glyph style)
+
+The default surface leans on **block glyphs** (`▌▐█▄▀░▒▓ ▪▫ ▁▂▃▄▅▆▇█`) over circles (`●○◌◆◇`) and technical dots (`·•`). Blocks carry the square, engineered character the brand wants; a field of soft circles reads as generic terminal chrome. The rule is a lean, not an absolute: the middle-dot separator (see [Separator grammar](#separator-grammar)) stays a dot because a run of squares between words would fight the text, and a checkmark/cross for pass/fail stays a checkmark/cross because those glyphs are unambiguous.
+
+Where a status marker is a bare presence dot, it is a **square**, not a circle:
+
+| Role | Was | Now |
+| --- | --- | --- |
+| `status.enabled` / `status.done` | `●` `•` | `▪` (filled square) |
+| `status.shadowed` (auto/off) | `○` | `▫` (hollow square) |
+| `radio.selected` / `radio.unselected` | `◉` `○` | `▣` `□` (square-in-square vs open square, kept distinct from the `■`/`□` checkbox) |
+| `thinking.minimal…max` | `o ◔ ◑ ◒ ◕ ◉` | `▁ ▂ ▃ ▅ ▆ █` (an eighth-block level gauge, so effort reads as magnitude) |
+
+These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `symbols-blockiness.test.ts`. The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs deliberately); the block style is the Veyyon default, not a constraint on every theme.
+
 ## Voice register
 
 The website nav speaks lowercase terse ("docs install models changelog"), a display-typography choice for the marketing surface. The TUI deliberately does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
@@ -102,6 +121,7 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 - Mid-turn: `esc to interrupt` while a turn runs.
 - Picker gutters use `› ` (not `>`) for the selected row caret.
 - Tree connectors (`├─`, `└─`) use theme `tree.*` symbols consistently in session tree and tool groups.
+- **Active profile indicator.** The `profile` status line segment names the live profile (`work`, `rec`, a client sandbox) so you always know which config, sessions, and keys are in play. It hides on the built-in `default` profile, so a vanilla status line is unchanged, and it leads the metadata run on the welcome hero the same way. The single owner is `getActiveProfileOrDefault()` in `@veyyon/utils`; the icon is `icon.profile` across the three symbol presets. See [the status line reference](../handbook/src/features/cockpit.md#status-line).
 
 ## Conformance
 

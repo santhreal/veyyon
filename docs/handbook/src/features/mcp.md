@@ -6,27 +6,12 @@ standard that makes this work. Veyyon speaks it as a client: it connects out to 
 consumes their tools and data. It is not itself an MCP server binary. To embed Veyyon in an editor,
 use ACP (`veyyon acp`); to drive it from your own process, use the SDK.
 
-## Transports
+## What it looks like
 
-| Transport | Use when |
-| --- | --- |
-| `stdio` | Local executable (Node, Python, binary) |
-| HTTP / SSE | Remote hosted MCP service |
-
-## Configure servers
-
-**Preferred:** JSON files managed by Veyyon:
-
-| Scope | Path |
-| --- | --- |
-| Project | `.veyyon/mcp.json` |
-| User | `~/.veyyon/profiles/default/agent/mcp.json` |
-
-Example:
+You register a server in an `mcp.json` file, and its tools become callable. A minimal local server:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
   "mcpServers": {
     "sqlite": {
       "type": "stdio",
@@ -38,28 +23,23 @@ Example:
 }
 ```
 
-Veyyon also discovers MCP entries from Claude, Cursor, VS Code, OpenCode, and related tool configs.
+Each tool an MCP server exposes appears namespaced as `mcp__<server>__<tool>`, so a server never
+shadows a built-in tool or another server. Veyyon also discovers MCP entries that Claude, Cursor, VS
+Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
+without re-registering it.
 
-Setup walkthrough: [MCP server setup](../using/mcp-setup.md).
+For the full setup path, choosing a transport (`stdio`, `http`, `sse`), passing environment
+variables, authenticating (bearer token or OAuth), approving tools, the `/mcp` commands, and fixing
+common connection errors, see [MCP server setup](../using/mcp-setup.md).
 
-Engineering detail: [`docs/mcp-config.md`](../../../mcp-config.md).
+## Not to be confused with
 
-## In the TUI
+- **ACP** (`veyyon acp`): the Agent Client Protocol for driving Veyyon from an editor. That makes
+  Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.
+- **SDK**: embedding the agent in your own host process.
 
-| Command | Purpose |
-| --- | --- |
-| `/mcp` | List servers, connection/auth status, exposed tools |
-| `/mcp add` | Add a server (wizard) |
-| `/mcp list` | List configured servers |
-| `/mcp remove <name>` | Remove a server |
-| `/mcp test <name>` | Test connectivity |
-| `/mcp reauth <name>` | Refresh OAuth |
+## Related
 
-Tool names appear namespaced as `mcp__<server>__<tool>`.
-
-## Related surfaces (not MCP server mode)
-
-- **ACP** (`veyyon acp`): Agent Client Protocol for editors; not MCP.
-- **SDK**: embed the agent in a host process.
-
-MCP config remains `mcp.json` and `/mcp`.
+- [MCP server setup](../using/mcp-setup.md): the configuration and troubleshooting guide
+- [MCP internals](../architecture/mcp.md): how the client is built
+- [`docs/mcp-config.md`](../../../mcp-config.md): the engineering reference

@@ -19,9 +19,9 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
   (`compaction.thresholdPercent`), which is a percent of the current model's
   window. You can also compact on demand with `/compact`.
 - **Type** (`compaction.strategy`): how history is compressed:
+  - `summary`: rewrites old history into an in-place LLM summary on the current branch (the default).
   - `handoff`: writes a structured handoff summary that preserves the task, pending questions, and
     recent decisions, then continues from it (LLM transfer path).
-  - `snap`: archives history via the snapcompact engine (dense image snapshot path; schema default).
 - **Model** (`compaction.model`): the model that performs LLM compaction / handoff. Unset uses your
   interactive model. See [Models, roles, and profiles](../using/roles-and-profiles.md).
 
@@ -33,7 +33,7 @@ retained verbatim up to the type's budget.
 Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
 content out of the live context and leaves a short placeholder in its place. Whole tool
 results and large fenced or XML blocks are replaced with a marker such as
-`[shaken ~1200 tokens — recover: artifact://42 (region 3)]`. The full text is saved as a
+`[shaken ~1200 tokens; recover: artifact://42 (region 3)]`. The full text is saved as a
 session artifact first, so you can always read it back with `read artifact://42`. Nothing is
 lost, it just stops being resent on every turn. Run it on demand with `/shake`, or let
 auto-maintenance run it when `compaction.strategy` is `shake`.

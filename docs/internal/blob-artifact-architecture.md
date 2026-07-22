@@ -1,12 +1,12 @@
 # Blob and artifact storage architecture
 
-This document describes how coding-agent stores large/binary payloads outside session JSONL, how truncated tool output is persisted, and how internal URLs (`artifact://`, `agent://`) resolve back to stored data.
+This document describes how coding-agent stores large payloads outside session JSONL — images and oversized text externalized losslessly to content-addressed blobs, and spilled tool output written to session artifact files — and how internal URLs (`artifact://`, `agent://`) resolve back to stored data.
 
 ## Why two storage systems exist
 
 The runtime uses two different persistence mechanisms for different data shapes:
 
-- **Content-addressed blobs** (`blob:sha256:<hash>`): global storage used to externalize large image base64 payloads and provider image data URLs from persisted session entries.
+- **Content-addressed blobs** (`blob:sha256:<hash>` for images, `blobtext:sha256:<hash>` for text): global storage used to externalize large payloads out of persisted session entries — image base64 and provider image data URLs (`blob:`), and any oversized string field such as a large tool result (`blobtext:`). The two namespaces are disjoint (`blobtext:` does not start with `blob:`) but share one on-disk store, so both are protected together by GC. Externalization is lossless: the full bytes live in the blob file and the JSONL line keeps only the short ref, restored exactly on load.
 - **Session-scoped artifacts** (files under `<sessionFile-without-.jsonl>/`): per-session text files used for full tool outputs and subagent outputs.
 
 They are intentionally separate:
@@ -83,12 +83,12 @@ Non-persistent sessions without an adopted manager can store `saveArtifact(...)`
 
 ### 1) Session entry persistence rewrite path
 
-Before a session entry is written, incremental append (`#appendToSessionFile`) or a full-file rewrite (`#rewriteSynchronously` / `#rewriteAtomically`), `SessionManager` serializes it through `#lineFor()`, which runs `prepareEntryForPersistence()` over the truncation pipeline.
+Before a session entry is written, incremental append (`#appendToSessionFile`) or a full-file rewrite (`#rewriteSynchronously` / `#rewriteAtomically`), `SessionManager` serializes it through `#lineFor()`, which runs `prepareEntryForPersistence()` over the persistence pipeline.
 
 Key behaviors:
 
 1. **Reasoning-signature dedup** (`stripReplayedReasoningSignatures`): assistant thinking blocks whose `thinkingSignature` reasoning item is already carried verbatim in the OpenAI Responses `providerPayload.items` drop the duplicate signature from the serialized line (matched on `encrypted_content`, else item `id`); the in-memory entry is untouched.
-2. **Large string truncation**: strings over `MAX_PERSIST_CHARS` (500k) are cut and suffixed with `"[Session persistence truncated large content]"`. Signed blocks are exempt and persist **verbatim**: a `thinking`/`text`/`toolCall` block with a non-empty `thinkingSignature`/`textSignature`/`thoughtSignature`, a `redactedThinking` block, or a Responses `reasoning` item with `encrypted_content` is returned untouched (truncation would invalidate the signature and 400 the replay). A signature key reached outside those shapes is preserved, never cleared or truncated.
+2. **Large string externalization**: strings over `MAX_PERSIST_CHARS` (500k) are written to the blob store as `blobtext:sha256:<hash>` and the JSONL line keeps that short ref — never truncated. The session file is the durable study record, so a huge tool result round-trips losslessly: `resolveBlobRefsInEntries` restores the exact original string on load. Signed blocks are exempt and persist **verbatim** (neither truncated nor externalized): a `thinking`/`text`/`toolCall` block with a non-empty `thinkingSignature`/`textSignature`/`thoughtSignature`, a `redactedThinking` block, or a Responses `reasoning` item with `encrypted_content` is returned untouched (externalizing would break the exact-bytes binding the API validates on replay and 400 it). A signature key reached outside those shapes is preserved, never cleared, truncated, or externalized. When an object carries both `content` and `lineCount`, `lineCount` is recomputed from inline content but left as-is when `content` is a `blobtext:` ref (the ref is one line; the real count must survive).
 3. **Transient field stripping**: `jsonlEvents` (raw subprocess streaming events, already saved to artifact files) is removed from persisted entries.
 4. **Image externalization to blobs**:
    - image blocks in `content` arrays are externalized when `data` is not already a blob ref and base64 length is at least threshold (`BLOB_EXTERNALIZE_THRESHOLD = 1024`),
@@ -110,10 +110,13 @@ For message/custom-message image blocks with `blob:sha256:<hash>` and for persis
 - converts provider `image_url` blobs back to the original string,
 - mutates in-memory entry fields for runtime consumers.
 
+For any string field whose value is a `blobtext:sha256:<hash>` ref (large tool results and other oversized text externalized in step 2), the same pass reads the blob and restores the exact original string in place. A string ref is resolved at its parent slot (an array index or object key), because a child call receives the string by value and cannot rewrite the slot it lives in.
+
 If a blob is missing:
 
 - image-block resolution logs a warning and keeps the original `blob:sha256:` ref string in memory,
 - provider `image_url` resolution logs a warning and keeps the original ref string,
+- `blobtext:` resolution logs a warning and keeps the original ref string (a session copied without its blob dir still opens),
 - load continues.
 
 ### 3) Tool output spill/truncation path
@@ -214,6 +217,7 @@ Blob implications after fork:
 | --------------------------------------------------------- | -------------------------------------------------------------------- |
 | Blob file missing during image-block rehydration          | Warn and keep `blob:sha256:` ref string in memory                    |
 | Blob file missing during provider `image_url` rehydration | Warn and keep `blob:sha256:` ref string in memory                    |
+| Blob file missing during `blobtext:` text rehydration     | Warn and keep `blobtext:sha256:` ref string in memory                |
 | Blob read ENOENT via `BlobStore.get`                      | Returns `null`                                                       |
 | Artifact directory missing (`ArtifactManager.listFiles`)  | Returns empty list (allocation can start fresh)                      |
 | No registered artifact dirs (`artifact://`)               | Throws `No session - artifacts unavailable`                          |
@@ -225,7 +229,7 @@ Blob implications after fork:
 
 ## Binary blob externalization vs text-output artifacts
 
-- **Blob externalization** is for image payloads inside persisted session entry content and provider image data URLs; it replaces inline payload strings in JSONL with stable content refs.
+- **Blob externalization** is for image payloads (`blob:`) and oversized text fields (`blobtext:`) inside persisted session entry content and provider image data URLs; it replaces inline payload strings in JSONL with stable content refs. Garbage collection scans every session root (active, archived, backup, compressed) for both ref kinds through one regex (`\bblob(?:text)?:sha256:([a-f0-9]{64})\b`), so a blob referenced by any on-disk session — including a large tool result kept as `blobtext:` — is never collected while referenced.
 - **Artifacts** are plain text files for execution output and subagent output; file-backed artifacts are addressable by session-local IDs through internal URLs.
 
 The two systems intersect only indirectly: both reduce session JSONL bloat, but they have different identity, lifetime, and retrieval paths.
@@ -236,7 +240,7 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`src/session/artifacts.ts`](../../packages/coding-agent/src/session/artifacts.ts): session artifact directory model and numeric artifact ID/path allocation.
 - [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts): `OutputSink` truncation/spill-to-file behavior and summary metadata.
 - [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): `BlobStore`/`ArtifactManager` construction, persistence-transform and blob-rehydration call sites, session fork/move interactions.
-- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): `prepareEntryForPersistence()`: large-string truncation, transient-field stripping, and synchronous image-blob externalization.
+- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): `prepareEntryForPersistence()`: large-string externalization to `blobtext:` refs, transient-field stripping, and synchronous image-blob externalization.
 - [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): `resolveBlobRefsInEntries()`: blob-ref rehydration to base64 / data URLs on load.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): artifact directory copy during interactive fork.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://` resolver.

@@ -20,11 +20,19 @@ first release cut cleanly, and it stays true if the tag set is ever rebuilt.
 Prep: make sure every change since the last release is written under each affected
 package's `## [Unreleased]` section (see the changelog format in the repo `AGENTS.md`).
 
-Then, from a clean `main`:
+Then run the **Release** workflow from the Actions tab and give it a version:
+`major`, `minor`, `patch`, or an explicit `x.y.z`. That is the whole procedure.
+Nothing about a release depends on your machine.
 
-```
-bun run release <version|major|minor|patch>
-```
+The workflow needs a `RELEASE_PAT` secret: a fine-grained personal access token
+with Contents read/write on this repository. GitHub does not start workflow runs
+for pushes made with the built-in `GITHUB_TOKEN`, so a release pushed with it
+would be tagged and never published. The workflow checks for the token first and
+refuses to start without it, rather than producing a half-release.
+
+You can still run the same script locally when you need to (`bun run release
+<version|major|minor|patch>` from a clean `main`); the workflow runs exactly this
+script, and the only difference is that a local run also watches CI afterwards.
 
 `scripts/release.ts` runs, in order:
 
@@ -33,7 +41,12 @@ bun run release <version|major|minor|patch>
 2. Bump every public `package.json`, the root `@veyyon/*` catalog entries, the Rust
    workspace version, and the `veyyon-natives` version sentinel; regenerate lockfiles.
 3. Normalize + finalize changelogs: `## [Unreleased]` becomes the new version, a fresh
-   empty `## [Unreleased]` is added on top.
+   empty `## [Unreleased]` is added on top. The repo-root `CHANGELOG.md` is then
+   regenerated from `packages/coding-agent/CHANGELOG.md` with `renderRootChangelog`
+   (the same omp→veyyon rebrand and fork split the website uses), so GitHub's repo
+   page shows the same changelog as `veyyon.dev/changelog`. That file is generated,
+   never hand-edited: run `bun run changelog:root` after any source-changelog edit,
+   and the `changelog:root:check` PR guard fails if it drifts.
 4. Run `bun run check`.
 5. Commit `chore: bump version to X.Y.Z` (bare version, no `v`): CI keys the
    never-cancel release concurrency group off the `chore: bump version to ` subject
@@ -41,8 +54,10 @@ bun run release <version|major|minor|patch>
    the subject, on a retry.
 6. Tag and atomically push `main` + the tag (pushed by commit sha so background tag
    pruning can't lose it).
-7. Watch CI until the release jobs finish. `bun run release watch` re-attaches to CI
-   for the current commit.
+7. Watch CI until the release jobs finish. Skipped when the script is running as the
+   Release workflow (`VEYYON_RELEASE_IN_CI=1`), since the push is what starts the
+   release run and the workflow reports its own outcome. `bun run release watch`
+   re-attaches to CI for the current commit from a workstation.
 
 ## What CI does with the tag
 
@@ -53,7 +68,13 @@ platform binary and then publishes:
   the channel the `curl | sh` installer uses);
 - the **npm** packages (`@veyyon/*`), only when the `NPM_PUBLISH=on` repo var opts
   in (off by default, see [deployment.md](./deployment.md));
-- the **Homebrew** formula.
+- the **Homebrew** formula;
+- the **website**, which regenerates `website/changelog.html` from
+  `packages/coding-agent/CHANGELOG.md` (reconciled against the live GitHub Releases
+  for real dates and permalinks) and deploys it to Cloudflare Pages. This is what
+  keeps `veyyon.dev/changelog` current, and it is why the agent never prints release
+  notes into the terminal: after an update it shows one line and points at
+  `/changelog`, which opens that page.
 
 Binaries compile with Bun bytecode by default (`VEYYON_BUILD_BYTECODE=0` opts out),
 ~70ms warm startup instead of ~650ms of JS parse per launch, at the cost of a

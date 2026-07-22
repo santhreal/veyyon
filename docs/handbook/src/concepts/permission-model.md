@@ -76,6 +76,5 @@ do.
 ## Related
 
 - [Approvals](../features/sandbox.md)
-- [Permissions UX](../features/permissions-explainer.md)
 - [Safety](../using/safety.md)
 - [CLI](../reference/cli.md)

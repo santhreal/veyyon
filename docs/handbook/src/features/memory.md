@@ -54,10 +54,10 @@ these primary fields:
 | Setting | Key | Values |
 | --- | --- | --- |
 | Threshold | `compaction.thresholdPercent` | percent of the context window (`compaction.thresholdTokens` optional) |
-| Type | `compaction.strategy` | `handoff` or `snap` (schema default `snap`) |
+| Type | `compaction.strategy` | `summary` or `handoff` (schema default `summary`) |
 | Model | `compaction.model` | model id; unset uses the interactive model |
 
-`handoff` writes a structured session transfer; `snap` archives history via the snapcompact engine.
+`summary` rewrites old history into an in-place LLM summary; `handoff` writes a structured session transfer.
 Run on demand with `/compact`. See [Compaction and project memory](../context/compaction-memory.md).
 
 ## What the model sees

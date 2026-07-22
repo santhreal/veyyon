@@ -73,6 +73,65 @@ The [File locations](../reference/file-locations.md) chapter shows the full layo
 
 On the first interactive launch, the first-run setup (or `veyyon setup`) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with `/setup` or `/providers`, run `/login` (or `/login <provider>`) for OAuth and key entry, or export the provider's environment variable and skip the interactive step. See [Authentication](./authentication.md) and [Configuring providers](./configuring-providers.md).
 
+## Updating
+
+Veyyon keeps itself current. On startup it checks the registry for a newer
+release, and if it finds one it installs it in the background:
+
+```text
+veyyon 1.2.0 installed · restart to use it
+```
+
+The running process keeps the version it started with, so the update takes
+effect the next time you launch. On that launch you get one line naming the new
+version:
+
+```text
+Updated to veyyon 1.2.0 · run /changelog for release notes
+```
+
+`/changelog` opens the release notes on the web rather than printing them into
+your terminal.
+
+Two settings control this, both on by default:
+
+| Setting | Effect when off |
+| --- | --- |
+| `startup.checkUpdate` | No version check runs at all, so nothing updates automatically. |
+| `startup.autoUpdate` | Veyyon still tells you a new version exists, but waits for you to run `veyyon update`. |
+
+Turn automatic updates off like this:
+
+```console
+$ veyyon config set startup.autoUpdate false
+```
+
+You can always update on demand, whichever settings are in force:
+
+```console
+$ veyyon update
+```
+
+Veyyon updates through whatever installed it, whether that is Homebrew, mise,
+bun, npm, or a standalone binary. If an automatic update fails, it says so and
+tells you to retry with `veyyon update`; it never fails quietly and leaves you
+on an old version without a word.
+
+If the same version fails to install twice, the cause is usually the machine
+rather than the release: a binary owned by another user, a read-only image, or a
+package manager that needs elevated permissions. Veyyon reports that failure and
+then leaves it alone for six hours instead of repeating it on every launch. A
+newer release is never held back by an older one's failure, and `veyyon update`
+ignores the pause entirely, so you can always ask to see the error again:
+
+```console
+$ veyyon update
+```
+
+Running several sessions at once is safe. Only the first one to start installs;
+the others see that an install is under way and skip it rather than writing over
+the same binary at the same time.
+
 ## Uninstall
 
 The installer removes everything it added, including the `vey` alias, any shell completions, and a source checkout if you made one:

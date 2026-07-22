@@ -2,6 +2,17 @@
 
 This chapter is a compact map of the main harness mechanisms. It explains what each one is and points you to the chapter that covers it in full. The operator how-tos live under [Using](../using/getting-started.md) and [Features](../features/sandbox.md).
 
+Veyyon is a fork of oh-my-pi. The first group below is what the fork adds on top. The rest is the shared base both projects run on.
+
+## What the fork adds
+
+- **Argot.** A per-project shorthand the model writes in. The model writes a short handle like `§build` where it would have written a long string it repeats, and Veyyon restores the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by context size, and the generated dictionary is cached per project and only grows. See [Argot](./argot.md).
+- **Snap compaction.** Bitmap-frame context compression with lossless dedup and artifact spill, so a long session sheds tokens without losing what it already established. See [Compaction and project memory](../context/compaction-memory.md).
+- **Shared credentials and global config.** Providers and global settings are shared across profiles, so signing in once reaches every profile instead of each one holding its own copy.
+- **Per-profile working directory.** A profile can pin its own working directory, and `setCwd` moves an existing session, so one install can hold several projects without them bleeding into each other.
+- **Absolute-token compaction threshold.** Compaction can trigger on an absolute token count, not only a fraction of the window, so the trigger point is the same across models with different context sizes.
+- **Atomic, serialized config writes.** Settings are written through a single serialized path with an atomic swap, so two writers never tear a config file.
+
 ## Hashline edits
 
 The `edit` and `write` tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.
@@ -19,7 +30,7 @@ See [Approvals](../features/sandbox.md) and `/settings` then Advanced then Safet
 Veyyon separates the model you use from the job it does:
 
 - **The interactive model** is what you set with `/model` or `--model`, and it persists as `modelRoles.default`.
-- **Roles** pin a model to a kind of work. The built-in roles are `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, and `advisor`, and you can add your own in `modelRoles`.
+- **Roles** pin a model to a kind of work, such as `smol` for cheap fast work or `task` for subagents, and you can add your own in `modelRoles`. The full built-in set is listed in [Models, roles, and profiles](../using/roles-and-profiles.md).
 - **Overrides** let a slot win over a role. `subagent.model` overrides `modelRoles.task` when set, and `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it.
 - **Cycling** rotates through `cycleOrder` (which defaults to `smol` then `slow`), bound to `app.model.cycleForward`, often Ctrl+P.
 
