@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadPage, scraperDegrade, tryParseUrl } from "./types";
@@ -268,7 +269,7 @@ async function handleProviderUrl(
 		for (const [category, docs] of categories) {
 			md += `### ${category.charAt(0).toUpperCase() + category.slice(1)} (${docs.length})\n\n`;
 			for (const doc of docs.slice(0, 15)) {
-				md += `- [${doc.title}](https://registry.terraform.io/providers/${namespace}/${type}/latest/docs/${doc.category}/${doc.slug})\n`;
+				md += `- ${markdownLink(doc.title, `https://registry.terraform.io/providers/${namespace}/${type}/latest/docs/${doc.category}/${doc.slug}`)}\n`;
 			}
 			if (docs.length > 15) {
 				md += `\n[…${docs.length - 15} documents elided…]\n`;

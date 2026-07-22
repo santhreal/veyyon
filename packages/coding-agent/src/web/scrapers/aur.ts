@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -78,7 +79,7 @@ export const handleAur: SpecialHandler = async (
 		md += "\n";
 
 		if (pkg.Maintainer) {
-			md += `**Maintainer:** [${pkg.Maintainer}](https://aur.archlinux.org/account/${pkg.Maintainer})\n`;
+			md += `**Maintainer:** ${markdownLink(pkg.Maintainer, `https://aur.archlinux.org/account/${pkg.Maintainer}`)}\n`;
 		} else {
 			md += "**Maintainer:** Orphaned\n";
 		}

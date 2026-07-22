@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -103,12 +104,14 @@ export const handleBiorxiv: SpecialHandler = async (
 		if (paper.license) {
 			md += `**License:** ${paper.license}\n`;
 		}
-		md += `**DOI:** [${paperDoi}](https://doi.org/${paperDoi})\n`;
+		// DOIs legitimately contain parentheses/brackets that would truncate a bare
+		// `[doi](url)`; markdownLink escapes the label and percent-encodes the URL.
+		md += `**DOI:** ${markdownLink(paperDoi, `https://doi.org/${paperDoi}`)}\n`;
 		md += `**Server:** ${serverName}\n`;
 
 		// Published status
 		if (paper.published) {
-			md += `\n> **Published in journal:** [${paper.published}](https://doi.org/${paper.published})\n`;
+			md += `\n> **Published in journal:** ${markdownLink(paper.published, `https://doi.org/${paper.published}`)}\n`;
 		}
 
 		// Abstract
@@ -116,10 +119,10 @@ export const handleBiorxiv: SpecialHandler = async (
 
 		// Links section
 		md += `\n---\n\n## Links\n\n`;
-		md += `- [View on ${serverName}](https://www.${server}.org/content/${paperDoi})\n`;
-		md += `- [PDF](https://www.${server}.org/content/${paperDoi}.full.pdf)\n`;
+		md += `- ${markdownLink(`View on ${serverName}`, `https://www.${server}.org/content/${paperDoi}`)}\n`;
+		md += `- ${markdownLink("PDF", `https://www.${server}.org/content/${paperDoi}.full.pdf`)}\n`;
 		if (paper.jatsxml) {
-			md += `- [JATS XML](${paper.jatsxml})\n`;
+			md += `- ${markdownLink("JATS XML", paper.jatsxml)}\n`;
 		}
 
 		return buildResult(md, {

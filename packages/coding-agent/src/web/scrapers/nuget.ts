@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -134,7 +135,7 @@ export const handleNuGet: SpecialHandler = async (
 		if (targetEntry.licenseExpression) {
 			md += ` · **License:** ${targetEntry.licenseExpression}`;
 		} else if (targetEntry.licenseUrl) {
-			md += ` · **License:** [View](${targetEntry.licenseUrl})`;
+			md += ` · **License:** ${markdownLink("View", targetEntry.licenseUrl)}`;
 		}
 		md += "\n";
 

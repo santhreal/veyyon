@@ -55,6 +55,16 @@ describe("markdownLinkUrl", () => {
 		const url = "https://github.com/owner/repo/blob/main/src/index.ts";
 		expect(markdownLinkUrl(url)).toBe(url);
 	});
+
+	it("does not double-encode a URL that already carries percent-escapes", () => {
+		// The wikidata scraper pre-encodes titles with encodeURIComponent (which
+		// leaves ( ) alone) and then routes through markdownLink. The existing %XX
+		// escapes must survive untouched while the bare parens get encoded, so the
+		// destination still decodes back to the original title.
+		const preEncoded = "https://en.wikipedia.org/wiki/Mercury%20(planet)";
+		expect(markdownLinkUrl(preEncoded)).toBe("https://en.wikipedia.org/wiki/Mercury%20%28planet%29");
+		expect(decodeURIComponent(markdownLinkUrl(preEncoded))).toBe("https://en.wikipedia.org/wiki/Mercury (planet)");
+	});
 });
 
 describe("markdownLink", () => {
@@ -75,5 +85,17 @@ describe("markdownLink", () => {
 
 	it("is a no-op wrapper for already-safe text and URL", () => {
 		expect(markdownLink("Website", "https://project.test")).toBe("[Website](https://project.test)");
+	});
+
+	it("keeps a DOI resolver URL with parentheses resolvable", () => {
+		// DOIs legitimately contain parentheses, e.g. 10.1002/(SICI)1097-0258, and
+		// the biorxiv/semantic-scholar scrapers build `https://doi.org/${doi}` links
+		// from raw API values. The bare parens must encode so the link is not cut
+		// off at the first `(`, and the destination must decode back to the DOI.
+		const doi = "10.1002/(SICI)1097-0258(199601)18:1<43::AID-JOB767>3.0.CO;2-M";
+		const link = markdownLink("DOI", `https://doi.org/${doi}`);
+		expect(link).toBe(`[DOI](https://doi.org/10.1002/%28SICI%291097-0258%28199601%2918:1<43::AID-JOB767>3.0.CO;2-M)`);
+		const dest = link.slice(link.indexOf("](") + 2, -1);
+		expect(decodeURIComponent(dest)).toBe(`https://doi.org/${doi}`);
 	});
 });
