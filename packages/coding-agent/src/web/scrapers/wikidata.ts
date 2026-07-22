@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -203,7 +204,9 @@ export const handleWikidata: SpecialHandler = async (
 				if (sitelink) {
 					const lang = site.replace("wiki", "");
 					const wikiUrl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(sitelink.title)}`;
-					links.push(`[${lang.toUpperCase()}](${wikiUrl})`);
+					// encodeURIComponent leaves ( ) untouched, so a title like "Mercury (planet)"
+					// would truncate a bare `[EN](url)` at the first `(`. markdownLink encodes them.
+					links.push(markdownLink(lang.toUpperCase(), wikiUrl));
 				}
 			}
 

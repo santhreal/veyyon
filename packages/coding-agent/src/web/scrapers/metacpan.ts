@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -132,7 +133,7 @@ function formatModuleMarkdown(module: ModuleResponse, release: ReleaseResponse |
 
 	md += `**Version:** ${module.version}`;
 	md += ` · **Distribution:** ${module.distribution}`;
-	md += ` · **Author:** [${module.author}](https://metacpan.org/author/${module.author})\n`;
+	md += ` · **Author:** ${markdownLink(module.author, `https://metacpan.org/author/${module.author}`)}\n`;
 
 	if (release) {
 		if (release.license?.length) {
@@ -178,7 +179,7 @@ function formatReleaseMarkdown(release: ReleaseResponse): string {
 	if (release.abstract) md += `${release.abstract}\n\n`;
 
 	md += `**Version:** ${release.version}`;
-	md += ` · **Author:** [${release.author}](https://metacpan.org/author/${release.author})\n`;
+	md += ` · **Author:** ${markdownLink(release.author, `https://metacpan.org/author/${release.author}`)}\n`;
 
 	if (release.license?.length) {
 		md += `**License:** ${release.license.join(", ")}\n`;

@@ -150,15 +150,17 @@ export const handleSemanticScholar: SpecialHandler = async (url: string, timeout
 		links.push(markdownLink("PDF", paper.openAccessPdf.url));
 	}
 	if (paper.externalIds?.ArXiv) {
-		links.push(`[arXiv](https://arxiv.org/abs/${paper.externalIds.ArXiv})`);
+		links.push(markdownLink("arXiv", `https://arxiv.org/abs/${paper.externalIds.ArXiv}`));
 	}
 	if (paper.externalIds?.DOI) {
-		links.push(`[DOI](https://doi.org/${paper.externalIds.DOI})`);
+		// DOIs legitimately contain parentheses (e.g. 10.1002/(SICI)1097-0258), which
+		// truncate a bare `[DOI](url)` at the first `(`. Percent-encoding round-trips.
+		links.push(markdownLink("DOI", `https://doi.org/${paper.externalIds.DOI}`));
 	}
 	if (paper.externalIds?.PubMed) {
-		links.push(`[PubMed](https://pubmed.ncbi.nlm.nih.gov/${paper.externalIds.PubMed}/)`);
+		links.push(markdownLink("PubMed", `https://pubmed.ncbi.nlm.nih.gov/${paper.externalIds.PubMed}/`));
 	}
-	links.push(`[Semantic Scholar](https://www.semanticscholar.org/paper/${paper.paperId})`);
+	links.push(markdownLink("Semantic Scholar", `https://www.semanticscholar.org/paper/${paper.paperId}`));
 
 	if (links.length > 0) {
 		sections.push("## Links");

@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { LocalizedText, RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import {
 	buildResult,
@@ -163,7 +164,7 @@ export const handleFirefoxAddons: SpecialHandler = async (
 		if (categories.length > 0) md += `**Categories:** ${categories.join(", ")}\n`;
 
 		if (licenseName && licenseUrl) {
-			md += `**License:** [${licenseName}](${licenseUrl})\n`;
+			md += `**License:** ${markdownLink(licenseName, licenseUrl)}\n`;
 		} else if (licenseName) {
 			md += `**License:** ${licenseName}\n`;
 		} else if (licenseUrl) {
