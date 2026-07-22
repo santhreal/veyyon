@@ -14,6 +14,7 @@
  */
 import { isRecord, logger } from "@veyyon/utils";
 import { areJsonValuesEqual } from "./equality";
+import { isMultipleOf } from "./multiple-of";
 
 export interface JsonSchemaValidationIssue {
 	path: PropertyKey[];
@@ -605,8 +606,7 @@ function validateNumberKeywords(
 		valid = false;
 	}
 	if (typeof schema.multipleOf === "number" && schema.multipleOf > 0) {
-		const quotient = value / schema.multipleOf;
-		if (Math.abs(quotient - Math.round(quotient)) > Number.EPSILON * 10) {
+		if (!isMultipleOf(value, schema.multipleOf)) {
 			pushIssue(issues, path, `must be a multiple of ${schema.multipleOf}`, { keyword: "multipleOf" });
 			valid = false;
 		}
