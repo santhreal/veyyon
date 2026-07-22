@@ -8,6 +8,9 @@
 
 ### Fixed
 
+- Fixed duplicated thinking/answer paragraphs sprayed into native terminal scrollback mid-stream. On the first delta after a streaming rebuild (e.g. the answer block appearing next to the thinking block), the smooth-reveal pacer restarted at zero for a Markdown child that already displayed hundreds of characters, momentarily collapsing its rows; the transcript's committed scrollback prefix diverged and, with `tui.scrollbackRebuild` off (the default), the re-anchor appended a second copy into history. A takeover reveal now seeds at the already-displayed length, so revealed text only ever grows within a block; a genuine rewrite still restarts from zero.
+- Fixed a turn that errors before any streaming begins (the provider rejects the request at setup: unsupported thinking effort, bad model id, auth) dying silently in the TUI — no working line, no banner, no clue. The pre-stream error now pins the same banner above the editor as a mid-stream failure.
+- Fixed the `AgentSession` constructor storing the configured thinking level unclamped against the session's model. A persisted `high` landing on a reasoning model with no controllable effort surface (e.g. `devin/swe-1-6`) threw `requireSupportedEffort` at the first stream of every turn; the constructor now clamps via `resolveThinkingLevelForModel`, mirroring the session-restore path (`off` preserved, supported levels kept, dial-less models forward no effort).
 - Changing the working directory mid-session with `/cwd` or the agent's `set_cwd` tool now re-roots the whole session, not just the filesystem cwd. Project settings, plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing reload for the new directory, matching `/move` (minus relocating the session file). Previously only tools moved and the rest of the session stayed pinned to the original project.
 
 ## [1.0.12] - 2026-07-21
