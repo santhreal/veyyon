@@ -251,21 +251,7 @@ export class PptxConverter implements Converter {
 
 	extractText(shape: Shape): string {
 		const txBody = shape["p:txBody"];
-		if (!txBody) return "";
-		const paragraphs = txBody["a:p"];
-		const pList = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
-		const lines: string[] = [];
-		for (const p of pList) {
-			const runs = p["a:r"];
-			const rList = Array.isArray(runs) ? runs : runs ? [runs] : [];
-			const parts: string[] = [];
-			for (const r of rList) {
-				const t = r["a:t"];
-				if (t != null) parts.push(typeof t === "object" ? t["#text"] || "" : String(t));
-			}
-			if (parts.length > 0) lines.push(parts.join(""));
-		}
-		return lines.join("\n").trim();
+		return txBody ? textFromBody(txBody) : "";
 	}
 
 	extractTable(gf: GraphicFrame): string | null {
@@ -281,22 +267,7 @@ export class PptxConverter implements Converter {
 			const cellTexts: string[] = [];
 			for (const cell of cellList) {
 				const txBody = cell["a:txBody"];
-				if (!txBody) {
-					cellTexts.push("");
-					continue;
-				}
-				const paragraphs = txBody["a:p"];
-				const pList = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
-				const parts: string[] = [];
-				for (const p of pList) {
-					const runs = p["a:r"];
-					const rList = Array.isArray(runs) ? runs : runs ? [runs] : [];
-					for (const r of rList) {
-						const t = r["a:t"];
-						if (t != null) parts.push(typeof t === "object" ? t["#text"] || "" : String(t));
-					}
-				}
-				cellTexts.push(parts.join(" "));
+				cellTexts.push(txBody ? textFromBody(txBody) : "");
 			}
 			mdRows.push(cellTexts);
 		}
@@ -316,4 +287,28 @@ export class PptxConverter implements Converter {
 function toList<T>(val: T | T[] | undefined): T[] {
 	if (!val) return [];
 	return Array.isArray(val) ? val : [val];
+}
+
+/**
+ * Concatenate every run of every paragraph in a PPTX text body.
+ *
+ * Runs inside a paragraph join with the empty string: an `<a:r>` boundary marks
+ * a formatting change (bold, color, language), not a word break, so "Hello"
+ * stored as two runs must render as "Hello" and never "Hel lo". Paragraphs join
+ * with a newline (a table cell later collapses that to a space through
+ * `escapeMarkdownTableCell`). This is the single owner of text-body extraction:
+ * slide body text and table cells both route through it so they cannot disagree
+ * on run spacing.
+ */
+function textFromBody(txBody: TextBody): string {
+	const lines: string[] = [];
+	for (const p of toList(txBody["a:p"])) {
+		const parts: string[] = [];
+		for (const r of toList(p["a:r"])) {
+			const t = r["a:t"];
+			if (t != null) parts.push(typeof t === "object" ? t["#text"] || "" : String(t));
+		}
+		if (parts.length > 0) lines.push(parts.join(""));
+	}
+	return lines.join("\n").trim();
 }

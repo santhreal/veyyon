@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
 import { clampLow, errorMessage, isRecord, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 /**
  * Harbor benchmark runner for the local `veyyon` build.
@@ -922,6 +923,36 @@ function render(st: RenderState): void {
 
 // ────────────────────────────────────────────────────────────────────── report
 
+/** Emoji-tagged status label for a trial's result column. */
+function trialStatusLabel(status: TrialStatus): string {
+	switch (status) {
+		case "pass":
+			return "✅ pass";
+		case "fail":
+			return "❌ fail";
+		case "error":
+			return "⚠️ error";
+		default:
+			return "⏳ running";
+	}
+}
+
+/**
+ * Render one trial as a Markdown results-table row.
+ *
+ * The task name and the free-text `detail` (an exception type, or a
+ * `JSON.stringify` error blob from `benchmarks.ts`) are routed through
+ * `escapeMarkdownTableCell`. A `|` or a newline in either — both routine in
+ * error text — would otherwise end the cell or the row early and shift every
+ * following column against the header.
+ *
+ * @internal Exported for regression testing of the cell escaping.
+ */
+export function renderTrialRow(t: Trial): string {
+	const reward = t.reward !== null ? t.reward.toFixed(2) : "—";
+	return `| ${escapeMarkdownTableCell(t.name)} | ${trialStatusLabel(t.status)} | ${reward} | ${fmtUsd(t.costUsd)} | ${fmtDur(t.durationMs)} | ${escapeMarkdownTableCell(t.detail)} |`;
+}
+
 function writeReport(st: RenderState, benchDir: string, exitCode: number): string {
 	const trials = readTrials(st.jobDir).sort((a, b) => a.name.localeCompare(b.name));
 	const tot = aggregate(trials, readJobResult(st.jobDir), st.expected);
@@ -952,17 +983,7 @@ function writeReport(st: RenderState, benchDir: string, exitCode: number): strin
 	lines.push("| task | result | reward | cost | duration | detail |");
 	lines.push("|---|---|---|---|---|---|");
 	for (const t of trials) {
-		const res =
-			t.status === "pass"
-				? "✅ pass"
-				: t.status === "fail"
-					? "❌ fail"
-					: t.status === "error"
-						? "⚠️ error"
-						: "⏳ running";
-		lines.push(
-			`| ${t.name} | ${res} | ${t.reward !== null ? t.reward.toFixed(2) : "—"} | ${fmtUsd(t.costUsd)} | ${fmtDur(t.durationMs)} | ${t.detail} |`,
-		);
+		lines.push(renderTrialRow(t));
 	}
 	lines.push("");
 	const reportPath = path.join(benchDir, "report.md");
