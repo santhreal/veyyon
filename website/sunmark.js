@@ -7,11 +7,12 @@
 (function () {
   "use strict";
 
-  // sun bands, dark rim -> hot core (identical to sun.js)
-  var COLORS = ["#4a2714", "#6e3418", "#96431b", "#c25a24", "#f0862e", "#fb9e44", "#fbc06d", "#ffe3ad"];
-  // sunset sky, zenith -> horizon. Long, fine-grained ramp with the warmth eased
-  // toward the line, so the strip blends out of the page black instead of popping
-  var SKY = ["#000000", "#060201", "#0c0302", "#130603", "#1b0904", "#240d05", "#2e1207", "#39180a", "#451f0d", "#54280f", "#653112", "#783a16", "#8c451b", "#a15120", "#b85e25", "#cf6b29", "#e67a2c", "#f0862e"];
+  // Sun material comes from the single source of truth (sun-field.js, loaded
+  // first): the ember bands and the dither, shared with sun.js. sunmark draws
+  // pixels, so it uses COLORS and SKY but not the GLYPH ramp.
+  var COLORS = window.veyyonSun.COLORS;
+  var SKY = window.veyyonSun.SKY;
+  var hash = window.veyyonSun.hash;
 
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -19,11 +20,6 @@
   function smooth(e0, e1, x) {
     var t = clamp01((x - e0) / (e1 - e0));
     return t * t * (3 - 2 * t);
-  }
-  function hash(x, y, s) {
-    var h = (x * 374761393 + y * 668265263 + s * 1274126177) >>> 0;
-    h = ((h ^ (h >>> 13)) * 1274126177) >>> 0;
-    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   }
 
   // one banded, dithered pixel disc; coordinates in css px; clipY (optional) is a

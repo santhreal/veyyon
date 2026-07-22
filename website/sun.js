@@ -35,8 +35,10 @@
   var DOCK_START = 0.36,
     DOCK_END = 0.42;
 
-  var COLORS = ["#4a2714", "#6e3418", "#96431b", "#c25a24", "#f0862e", "#fb9e44", "#fbc06d", "#ffe3ad"];
-  var GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"];
+  // Sun material comes from the single source of truth (sun-field.js, loaded
+  // first): one ramp, one glyph vocabulary, one dither, shared with sunmark.js.
+  var COLORS = window.veyyonSun.COLORS;
+  var GLYPH = window.veyyonSun.GLYPH;
 
   var W, H, dpr, cellW, cellH, cols, rows, fontPx, mono, mn;
   var cxPx, cyPx, Rpx;
@@ -80,11 +82,7 @@
   function lerp(a, b, t) {
     return a + (b - a) * t;
   }
-  function hash(x, y, s) {
-    var h = (x * 374761393 + y * 668265263 + s * 1274126177) >>> 0;
-    h = ((h ^ (h >>> 13)) * 1274126177) >>> 0;
-    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
-  }
+  var hash = window.veyyonSun.hash; // per-cell ordered dither, shared source
 
   // sun path: fullscreen -> parked centre (act I) -> docked right (act II).
   // On narrow screens there is no room beside the text, so the dock is top-centre

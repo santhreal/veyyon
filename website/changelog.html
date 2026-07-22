@@ -67,6 +67,19 @@
 				<span class="pill pending">next release</span>
 			</div>
 			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li>Changing the working directory mid-session with <span class="inline">/cwd</span> or the agent's <span class="inline">set_cwd</span> tool now re-roots the whole session, not just the filesystem cwd. Project settings, plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing reload for the new directory, matching <span class="inline">/move</span> (minus relocating the session file). Previously only tools moved and the rest of the session stayed pinned to the original project.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-12"><a href="#v1-0-12">1.0.12</a></h2>
+				<span class="date">2026-07-21</span>
+				<span class="pill pending">pending release</span>
+			</div>
+			<div class="sec">
 				<span class="tag add">Added</span>
 				<ul class="notes">
 				<li>Shared provider credentials across profiles. You sign in to a provider once and every profile reuses that login, so switching profiles no longer means re-authenticating. A machine-wide <span class="inline">profileSharing</span> toggle (default on) controls it; turn it off to keep each profile's credentials private.</li>
@@ -104,7 +117,7 @@
 			</div>
 		</article>
 		<div class="upstream-note">
-			<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> 16.5.2 (MIT, by Can Boluk). Everything before the fork is upstream history, not a veyyon release — see <a href="https://github.com/can1357/oh-my-pi/releases">oh-my-pi's releases</a> for it.</p>
+			<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> 16.5.2 (MIT, by Can Boluk). Everything before the fork is upstream history, not a veyyon release. See <a href="https://github.com/can1357/oh-my-pi/releases">oh-my-pi's releases</a> for it.</p>
 		</div>
 		<!--CHANGELOG:END-->
   </section>
@@ -138,6 +151,7 @@
   </div>
 </footer>
 
+<script src="./sun-field.js" defer></script>
 <script src="./motion.js" defer></script>
 <script src="./sunmark.js" defer></script>
 </body>

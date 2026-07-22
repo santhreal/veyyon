@@ -202,6 +202,79 @@ describe("upstreamNote", () => {
 	});
 });
 
+describe("upstreamNoteMarkdown", () => {
+	it("credits oh-my-pi in Markdown with the same facts as the HTML note", () => {
+		const note = gen.upstreamNoteMarkdown("16.5.2");
+		expect(note).toContain("## Upstream history");
+		expect(note).toContain("[oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT, by Can Boluk)");
+		expect(note).toContain("[oh-my-pi's releases](https://github.com/can1357/oh-my-pi/releases)");
+	});
+
+	it("shares its fork facts with the HTML note so the two can never disagree", () => {
+		// Regression guard: the credit line was duplicated as two literal strings.
+		// Both notes must now name the same author, license, and URLs.
+		const html = gen.upstreamNote("16.5.2");
+		const md = gen.upstreamNoteMarkdown("16.5.2");
+		for (const fact of ["16.5.2", "MIT", "Can Boluk", "https://github.com/can1357/oh-my-pi/releases"]) {
+			expect(html).toContain(fact);
+			expect(md).toContain(fact);
+		}
+	});
+});
+
+describe("renderRootChangelog", () => {
+	it("keeps only veyyon's own entries and drops the pre-fork upstream release cards", () => {
+		// The website shows veyyon releases + a credit note, never upstream cards.
+		// The repo-root CHANGELOG must make the identical cut so GitHub's repo page
+		// matches veyyon.dev/changelog.
+		const root = gen.renderRootChangelog(SAMPLE);
+		expect(root).toContain("## [Unreleased]");
+		expect(root).toContain("## [1.1.0] - 2026-08-02");
+		expect(root).toContain("## [1.0.0] - 2026-08-01");
+		// Pre-fork upstream versions and their bullets are credited, not replayed.
+		expect(root).not.toContain("## [16.5.2]");
+		expect(root).not.toContain("## [16.5.1]");
+		expect(root).not.toContain("Inherited upstream change");
+		expect(root).not.toContain("Older inherited fix");
+	});
+
+	it("rebrands veyyon entries into Veyyon's voice (omp → vey, omp:// → veyyon://)", () => {
+		const root = gen.renderRootChangelog(SAMPLE);
+		expect(root).toContain("Fixed `vey config list` truncation and the veyyon:// scheme autocomplete.");
+		expect(root).not.toContain("omp config list");
+		expect(root).not.toContain("omp://");
+	});
+
+	it("ends with the Markdown upstream-history credit for the fork point", () => {
+		const root = gen.renderRootChangelog(SAMPLE);
+		expect(root.trimEnd().endsWith("for it.")).toBe(true);
+		expect(root).toContain("## Upstream history");
+		expect(root).toContain("[oh-my-pi](https://github.com/can1357/oh-my-pi) 16.5.2 (MIT, by Can Boluk)");
+		// The credit's own oh-my-pi link must survive the rebrand's link stripping,
+		// which only targets `[#123](…oh-my-pi…)` issue refs, not this named link.
+		expect(root).toContain("[oh-my-pi's releases](https://github.com/can1357/oh-my-pi/releases)");
+	});
+
+	it("starts with the `# Changelog` title carried over from the source", () => {
+		expect(gen.renderRootChangelog(SAMPLE).startsWith("# Changelog\n")).toBe(true);
+	});
+
+	it("keeps the whole file when there is no fork heading (all-veyyon history)", () => {
+		// Defensive: a source with no upstream merge is entirely veyyon's, so nothing
+		// is dropped; the credit note is still appended for provenance.
+		const preFork = "# Changelog\n\n## [1.0.0] - 2026-08-01\n\n### Added\n\n- First veyyon release.\n";
+		const root = gen.renderRootChangelog(preFork);
+		expect(root).toContain("## [1.0.0] - 2026-08-01");
+		expect(root).toContain("First veyyon release.");
+		expect(root).toContain("## Upstream history");
+	});
+
+	it("is deterministic: rendering the same source twice yields identical bytes", () => {
+		// The drift guard relies on this — it regenerates and byte-compares.
+		expect(gen.renderRootChangelog(SAMPLE)).toBe(gen.renderRootChangelog(SAMPLE));
+	});
+});
+
 describe("fetchGitHubReleases", () => {
 	it("throws (never returns an empty list) on a non-OK response so the caller can fall back loudly", async () => {
 		const fake = async () => ({ ok: false, status: 503, statusText: "Service Unavailable" });

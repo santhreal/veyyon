@@ -14,9 +14,9 @@ same sixty-character typecheck command on every verification turn. It repeats th
 same import roots all day. This repetition is mechanical. The model has no
 shorter way to name these things, so it types them out in full every time.
 
-That costs money. Output tokens cost about 5-6x times the price of input tokens for opus and gpt sol respectively. A path the model writes
+That costs money. Output tokens cost several times more than input tokens. A path the model writes
 forty times is forty full spellings at the expensive rate. Over a day of
-sessions that is real money spent on decoding on something that requires zero nuance or frontier intelligence.
+sessions that is real money spent on output that requires zero nuance or frontier intelligence.
 
 The repository does know them. Argot is a way to let the model lean on that
 shared knowledge through a macro system that allows for compression of inputs and expansion of outputs.
@@ -77,18 +77,18 @@ effectively perfect recall out to around 200k tokens, which is far more room tha
 a focused coding session ever uses. A handful of handles, held in a window the
 model reads well, is an easy thing to ask for.
 
-Far beyond 200k tokens is counterproductive either way because of performance degradation and increasing costs, especially considering modern compaction methods preserve almost all detail without noticeable loss. But despite this if you insist on staying at a higher context window argot wont work against you. For a cost of a few 100 cached input tokens it will certainly be far more token efficient up until the point where the model starts losing recall(this will vary between models, as models like fable can probably recall repeatedly used canaries up to its max token window). But after the model forgets the *sigil* and the handles it will gracefully degrade and the model will go back to using tool calls the normal slightly less token efficient way. 
+Running far beyond 200k tokens is counterproductive either way, because of recall degradation and rising cost, and because modern compaction preserves almost all of the detail without noticeable loss. But if you do stay at a larger context window, Argot does not work against you. For the cost of a few hundred cached input tokens it stays more token efficient up to the point where the model starts to lose recall, which varies between models: a model with strong long-context recall can hold repeated handles well out toward its full window. Once the model forgets the *sigil* and the handles, it degrades gracefully and goes back to writing the strings in full, the ordinary and slightly less efficient way.
 
-This is also why heavier and more aggressive dictionaries for even slightly repeated phrases may help for the most advanced frontier models like fable. Fable has near perfect recall and somewhat manageable cached input tokens. But its output token pricing is absolutely brutal so cost saving strategies should focus on maximally reducing the output tokens instead of delicately preserving input.
+This is also why a heavier dictionary, one that shortens even lightly repeated phrases, can pay off for the strongest frontier models. A model with near-perfect recall and manageable cached-input cost but expensive output tokens rewards a strategy that reduces output aggressively rather than one that carefully preserves input.
 
 ## The one thing that makes it safe
 
 Earlier I called this a *codec*. A codec only works when both sides share the same encoding. If one side encodes and the other
 does not decode, the data stream breaks.
 
-The solution is simple. Implement the sdk properly into an argon supported harness and the processing should only happen at two points. When the model reads, it must be first processed by the encoder so it receives a compressed mapping. When the model outputs, it must be first processed by the decoder(this applies to before the user sees visual output and before the model emits tool calls). Following those two principles alone the user notices nothing different both in terms of code quality and visual output from the model. 
+The solution is simple. Implement the SDK properly in an Argot-supported harness and the processing happens at only two points. When the model reads, the text is first run through the encoder, so the model receives the compressed mapping. When the model outputs, the text is first run through the decoder, which applies both before the user sees any visual output and before the model emits a tool call. Follow those two principles and the user notices nothing different, in code quality or in what the screen shows.
 
-I mention display because if a harness attempts to support argon but implements it incorrectly you get a TUI
+I mention display because if a harness tries to support Argot but implements it incorrectly you get a TUI
 full of `§dbconn`. Done right, the user's view is byte-for-byte identical whether
 the dictionary is on or off, and only the cost changes.
 
@@ -101,32 +101,46 @@ somewhere other than the project they mean to work in, so a harness that reads
 a file someone has to write, review, and keep current as the paths it names move
 around.
 
-veyyon takes both jobs off you. Nothing is committed. When Argot is on, the
-harness finds the real project root by walking up from the working directory
-until it sees a `.git` (or a `.argot` marker for a project with no git), so it
-roots itself in the project you mean even when you launched from elsewhere. Then
-it reads the project's files, the ones git tracks, and proposes handles for the
-strings that would save the most tokens.
+veyyon takes both jobs off you, and it also refuses to guess which project you
+mean. Nothing is committed, and nothing is loaded automatically at session
+start: the agent itself decides. The system prompt teaches it the notation and
+hands it two tools, `argot_load` and `argot_unload`, and when it starts work in a
+project it calls `argot_load` on that folder. veyyon resolves the folder to its
+real project root by walking up until it sees a `.git` (or a `.argot` marker for
+a project with no git), reads the project's files, the ones git tracks, and
+proposes handles for the strings that would save the most tokens. In a monorepo
+that means the agent loads the one package it is working in, not the repo root a
+launch directory would have foisted on it. Loading is a real action with side
+effects on the local cache, so in the approval-gated modes veyyon asks before it
+runs, showing the resolved root; unloading never needs asking, because it
+teaches less and breaks nothing.
 
 The result is not written back to the tree. It goes into a local cache under
 veyyon's own config directory, keyed by a stable id for that project root, so two
-checkouts never collide and a pull request never has a dictionary to pick up. The
-cache carries a marker for the git commit it was built from. On the next session,
-if the commit has not moved, veyyon loads the cache as is; if it has, veyyon
-regenerates from the new tree. A project with no git rebuilds each session from a
-bounded walk.
+checkouts never collide and a pull request never has a dictionary to pick up. Each
+cache entry is immutable and named by the content it was built from: the git
+commit for a git project, or a signature of the file listing for one with a
+`.argot` marker. On the next session, if the commit has not moved, veyyon loads
+that entry as is; if it has, veyyon reads a different entry, built from the new
+tree, and leaves the old one untouched. A project with no git keys on the file
+listing instead.
 
-Regeneration grows the dictionary monotonically. A handle the model has already
-been taught keeps its exact meaning, and its expansion is never given a second
-name, so any text that once used a handle still expands the same way after the
-codebook grows. New strings earn new handles on top; the old ones are frozen.
+Nothing depends on a handle keeping its name from one entry to the next, because
+veyyon expands every handle before it reaches the saved transcript. No stored
+transcript ever holds a raw handle, so an entry never has to agree with an older
+one, and a rebuilt-from-empty cache would break nothing. That is what lets the
+cache be keyed on content and thrown away freely, rather than pinned and grown
+forever.
 
-Teaching is a single step at the start of a session. veyyon lists the generated
-handles in the system prompt, in the cached part, and that listing is the whole
-of what the model is told: each line is a name and the expansion it stands for,
-plus the fixed note that you write `§name` wherever you would have written the
-expansion. The model reads no file and the harness watches no reads. The session
-is armed directly from the cache, and expansion runs for the rest of the turn.
+Teaching is two pieces, both in the cached part of the system prompt. The fixed
+notation block is there from the first turn: it explains what a handle is and
+tells the model to activate a project itself with `argot_load`. Once the model
+has loaded one, veyyon adds the generated handle table, and that listing is the
+whole of what the model is told about it: each line is a name and the expansion
+it stands for, plus the fixed note that you write `§name` wherever you would
+have written the expansion. The model reads no file and the harness watches no
+reads, and a session where the model never loads anything simply writes full
+strings, exactly as if the feature were off.
 
 ## Under the hood
 
