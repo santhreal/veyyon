@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -271,6 +271,7 @@ one-time migration from the legacy bare-root layout.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
 $ veyyon profile new work
+$ veyyon profile new dev --from dev
 $ veyyon profile new bounty --from blank
 $ veyyon profile rm work --yes
 $ veyyon profile default work
@@ -279,6 +280,7 @@ $ veyyon profile default work
 <li><code>new</code> creates <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> with the expected identity dirs (<code>skills/</code>, <code>commands/</code>, …).</li>
 <li><code>--from default</code> (default) seeds <code>config.yml</code>, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are <strong>not</strong> copied.</li>
 <li><code>--from blank</code> creates an empty agent tree.</li>
+<li><code>--from dev</code> seeds a blank tree, then turns on the study features: <code>session.instrumentation</code> is set to <code>ultra</code> (dense study records on the session file) and Argot, the experimental token-shorthand codec, is enabled. Both are safe with any model, so a fresh <code>dev</code> profile runs without extra configuration. Use it when you want to study how a session spends its time and backtest it. The <code>ultra</code> level records two kinds of record: per tool call (start and end time, execution duration, queue wait, the result’s byte and token weight, and a fingerprint of the arguments) and per model turn (request-start and finalize time, time-to-first-token, output/throughput in tokens per second, cache read/write and reasoning tokens, and the exact sampling and reasoning parameters the turn sent). Lower levels record less: <code>basic</code> is wall-clock only, <code>rich</code> adds output weight and throughput, <code>ultra</code> adds the fingerprint, cache, and provenance detail. See the session instrumentation reference in <code>docs/internal/session.md</code> (the “Session Instrumentation” section) for the on-disk fields and analysis recipes.</li>
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>

@@ -11,8 +11,8 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/resume` | Resume another saved session |
 | `/fork`, `/branch`, `/tree` | Branching and session tree UI |
 | `/rename <title>` | Rename session |
-| `/move <dir>` | Move session to another working directory |
-| `/cwd [path]` | Bare prints the current session cwd; with a path, re-roots the session after validating the directory exists (session-scoped only; does not write profile `session.workdir`) |
+| `/move <dir>` | Relocate the session (including its saved session file) to another working directory and re-root project settings, plugins, commands, and capabilities there |
+| `/cwd [path]` | Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same project-scoped state as `/move` (project settings, plugins, slash commands, capabilities, ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile `session.workdir` |
 | `/export [path]` | Export session JSONL or HTML |
 | `/dump` | Dump debug artifacts |
 | `/session info`, `/session delete` | Session metadata or delete |
@@ -61,7 +61,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/login [provider\|url]` | OAuth / API key login |
 | `/logout [provider]` | Log out |
 | `/usage show\|reset` | Provider rate limits |
-| `/changelog [full]` | Release notes |
+| `/changelog` | Open the release notes on the web |
 
 ## Extensions
 

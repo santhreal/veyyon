@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,6 +206,32 @@
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process exports agent-loop traces over OTLP/protobuf. See <a href="../repair/soundness.html">Soundness and telemetry</a> and <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
 <h2 id="session-debugging"><a class="header" href="#session-debugging">Session debugging</a></h2>
 <p><code>/dump</code>, <code>/context</code>, <code>/debug</code>, and standalone tool CLIs such as <code>veyyon grep</code> for inspecting what the agent would see.</p>
+<h2 id="recording-raw-provider-traffic"><a class="header" href="#recording-raw-provider-traffic">Recording raw provider traffic</a></h2>
+<p>When a model behaves in a way you cannot explain from the transcript, record the
+exact HTTP exchange. Set <code>VEYYON_REQ_DEBUG=1</code> before starting veyyon:</p>
+<pre><code class="language-sh">VEYYON_REQ_DEBUG=1 veyyon
+</code></pre>
+<p>Every request writes two files into the directory you started veyyon from:</p>
+<ul>
+<li><code>rr-session-N.json</code>, the request: method, URL, headers, and body. A JSON body
+is stored parsed under <code>body</code>; anything else is stored as <code>bodyText</code>, or as
+<code>bodyBase64</code> when it is not valid UTF-8.</li>
+<li><code>rr-session-N.res.log</code>, the response: the status line and headers, then the
+raw body bytes exactly as they arrived, including every streaming chunk.</li>
+</ul>
+<p><code>N</code> counts up from 1 each time veyyon starts, and existing files are never
+overwritten, so a second run in the same directory continues past the numbers
+already there.</p>
+<p>Two things are worth knowing before you turn it on. The files land in your
+working directory rather than a cache directory, because you usually want to
+read them next to the project you were working in. And request bodies contain
+whatever you sent the model, including file contents and your API key in the
+headers, so treat them as sensitive and delete them when you are done.</p>
+<p>Recording never interferes with the session it records. If a log cannot be
+written, because the disk is full or the directory is read-only, veyyon logs an
+error naming the file and the cause, stops recording that response, and lets the
+response through untouched. You get your answer and a truncated log, not a
+failed request.</p>
 
                     </main>
 

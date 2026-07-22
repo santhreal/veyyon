@@ -1,6 +1,6 @@
 # Features
 
-This chapter is the hub for Veyyon's features. It groups them into the interactive surfaces you work with directly, the modes and extensions that change how the agent runs, and a short list of recipes.
+This chapter is the hub for Veyyon's features. It follows the same split the book's navigation uses: the surfaces you touch every session, then what you add on top to extend and customize the agent. For worked examples, see the recipes at the end.
 
 ## Interactive surfaces
 
@@ -11,9 +11,9 @@ These are the parts of the TUI you touch every session:
 - The composer gives you prompt history, `@` and `/` completion, and `Esc` to interrupt. See [Quickstart](../using/quickstart.md) and [Keybindings](./keybindings.md).
 - [Web search](./web-search.md) covers searching from inside a session.
 
-## Modes and extensions
+## Extend and customize
 
-These change how the agent runs, or add new capabilities:
+These add capabilities or change how the agent runs:
 
 | Feature | What it adds |
 | --- | --- |

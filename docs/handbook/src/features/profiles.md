@@ -95,6 +95,7 @@ Because directory names resolve first, a rename warns you when the display name 
 ```console
 $ veyyon profile list
 $ veyyon profile new work
+$ veyyon profile new dev --from dev
 $ veyyon profile new bounty --from blank
 $ veyyon profile rm work --yes
 $ veyyon profile default work
@@ -103,6 +104,7 @@ $ veyyon profile default work
 - `new` creates `~/.veyyon/profiles/<name>/agent/` with the expected identity dirs (`skills/`, `commands/`, …).
 - `--from default` (default) seeds `config.yml`, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are **not** copied.
 - `--from blank` creates an empty agent tree.
+- `--from dev` seeds a blank tree, then turns on the study features: `session.instrumentation` is set to `ultra` (dense study records on the session file) and Argot, the experimental token-shorthand codec, is enabled. Both are safe with any model, so a fresh `dev` profile runs without extra configuration. Use it when you want to study how a session spends its time and backtest it. The `ultra` level records two kinds of record: per tool call (start and end time, execution duration, queue wait, the result's byte and token weight, and a fingerprint of the arguments) and per model turn (request-start and finalize time, time-to-first-token, output/throughput in tokens per second, cache read/write and reasoning tokens, and the exact sampling and reasoning parameters the turn sent). Lower levels record less: `basic` is wall-clock only, `rich` adds output weight and throughput, `ultra` adds the fingerprint, cache, and provenance detail. See the session instrumentation reference in `docs/internal/session.md` (the "Session Instrumentation" section) for the on-disk fields and analysis recipes.
 - `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`. If you remove the profile that is set as the launch default, its `defaultProfile` pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.
 - `default [name]` shows or sets the global `defaultProfile` (which profile a bare `vey` launches); `default --clear` removes it.
 

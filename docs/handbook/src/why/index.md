@@ -1,7 +1,8 @@
 # Design and mechanisms
 
 - [Overview](./value.md): what the product is and what the harness does
-- [Mechanisms](./innovations.md): hashline, approvals, model slots, profiles, engine modes
+- [Mechanisms](./innovations.md): what the fork adds, then the shared base (hashline, approvals, model slots, profiles, engine modes)
+- [Argot](./argot.md): the per-project shorthand the model writes in
 - [Performance](./performance.md): retries, edit format, and tool bounds
 - [Edit path and tool arguments](../benefits/first-attempt-edits.md)
 - [Context size and retries](../benefits/lower-cost.md)

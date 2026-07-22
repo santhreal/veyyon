@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,8 +201,7 @@
 Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
 this policy and the execpolicy rules below.</p>
 <p>This page is the operator reference. For the model behind it, see
-<a href="../concepts/permission-model.html">Permission model</a>. For how the prompts look and feel, see
-<a href="./permissions-explainer.html">Permissions and approvals</a>. For the wider boundary, see
+<a href="../concepts/permission-model.html">Permission model</a>. For the wider boundary, see
 <a href="../using/safety.html">Safety</a>.</p>
 <h2 id="tool-tiers"><a class="header" href="#tool-tiers">Tool tiers</a></h2>
 <div class="table-wrapper">
@@ -239,11 +238,36 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 <pre><code class="language-yaml">tools:
   approvalMode: ask
 </code></pre>
-<h2 id="prompt-keys"><a class="header" href="#prompt-keys">Prompt keys</a></h2>
-<p>When a mode requires approval:</p>
-<pre><code class="language-text">[y] yes   [n] no   [a] always for this session   [p] show policy
+<h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
+<p>When the active mode requires approval for a tool call, the TUI shows the action and waits:</p>
+<pre><code class="language-text">Veyyon would like to run a shell command
+
+Command:   cargo test
+Directory: /home/user/my-project
+
+[y] yes   [n] no   [a] always for this session   [p] show policy
 </code></pre>
-<p>Denied actions return an error to the model; permissions are not widened.</p>
+<pre><code class="language-text">Veyyon would like to edit a file
+
+File:   src/main.rs
+Change: update the function signature and add a null check
+
+[y] yes   [n] no   [a] always for this session   [p] show policy
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>y</code></td><td>Allow once</td></tr>
+<tr><td><code>a</code></td><td>Allow this kind of action for the rest of the session</td></tr>
+<tr><td><code>n</code></td><td>Deny; the model receives the denial</td></tr>
+<tr><td><code>p</code></td><td>Show the active policy</td></tr>
+</tbody>
+</table>
+</div>
+<p>Denied actions return an error to the model, and permissions are never widened.</p>
 <h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
 <p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the turn
 stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the
@@ -252,7 +276,7 @@ tiers you need. The process exit status follows the run.</p>
 <p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./permissions-explainer.html">Permissions and approvals</a></li>
+<li><a href="../concepts/permission-model.html">Permission model</a></li>
 <li><a href="./exec.html">Non-interactive mode</a></li>
 <li><a href="../using/safety.html">Safety</a></li>
 </ul>
@@ -265,7 +289,7 @@ tiers you need. The process exit status follows the run.</p>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../features/permissions-explainer.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../using/safety.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -279,7 +303,7 @@ tiers you need. The process exit status follows the run.</p>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../features/permissions-explainer.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../using/safety.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

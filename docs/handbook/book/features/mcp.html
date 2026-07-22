@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,34 +201,9 @@ tools show up in the session, ready for the model to call. The Model Context Pro
 standard that makes this work. Veyyon speaks it as a client: it connects out to MCP servers and
 consumes their tools and data. It is not itself an MCP server binary. To embed Veyyon in an editor,
 use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SDK.</p>
-<h2 id="transports"><a class="header" href="#transports">Transports</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Transport</th><th>Use when</th></tr>
-</thead>
-<tbody>
-<tr><td><code>stdio</code></td><td>Local executable (Node, Python, binary)</td></tr>
-<tr><td>HTTP / SSE</td><td>Remote hosted MCP service</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="configure-servers"><a class="header" href="#configure-servers">Configure servers</a></h2>
-<p><strong>Preferred:</strong> JSON files managed by Veyyon:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Scope</th><th>Path</th></tr>
-</thead>
-<tbody>
-<tr><td>Project</td><td><code>.veyyon/mcp.json</code></td></tr>
-<tr><td>User</td><td><code>~/.veyyon/profiles/default/agent/mcp.json</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Example:</p>
+<h2 id="what-it-looks-like"><a class="header" href="#what-it-looks-like">What it looks like</a></h2>
+<p>You register a server in an <code>mcp.json</code> file, and its tools become callable. A minimal local server:</p>
 <pre><code class="language-json">{
-  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
   "mcpServers": {
     "sqlite": {
       "type": "stdio",
@@ -239,32 +214,25 @@ use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SD
   }
 }
 </code></pre>
-<p>Veyyon also discovers MCP entries from Claude, Cursor, VS Code, OpenCode, and related tool configs.</p>
-<p>Setup walkthrough: <a href="../using/mcp-setup.html">MCP server setup</a>.</p>
-<p>Engineering detail: <a href="../../../mcp-config.html"><code>docs/mcp-config.md</code></a>.</p>
-<h2 id="in-the-tui"><a class="header" href="#in-the-tui">In the TUI</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Command</th><th>Purpose</th></tr>
-</thead>
-<tbody>
-<tr><td><code>/mcp</code></td><td>List servers, connection/auth status, exposed tools</td></tr>
-<tr><td><code>/mcp add</code></td><td>Add a server (wizard)</td></tr>
-<tr><td><code>/mcp list</code></td><td>List configured servers</td></tr>
-<tr><td><code>/mcp remove &lt;name&gt;</code></td><td>Remove a server</td></tr>
-<tr><td><code>/mcp test &lt;name&gt;</code></td><td>Test connectivity</td></tr>
-<tr><td><code>/mcp reauth &lt;name&gt;</code></td><td>Refresh OAuth</td></tr>
-</tbody>
-</table>
-</div>
-<p>Tool names appear namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
-<h2 id="related-surfaces-not-mcp-server-mode"><a class="header" href="#related-surfaces-not-mcp-server-mode">Related surfaces (not MCP server mode)</a></h2>
+<p>Each tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>, so a server never
+shadows a built-in tool or another server. Veyyon also discovers MCP entries that Claude, Cursor, VS
+Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
+without re-registering it.</p>
+<p>For the full setup path, choosing a transport (<code>stdio</code>, <code>http</code>, <code>sse</code>), passing environment
+variables, authenticating (bearer token or OAuth), approving tools, the <code>/mcp</code> commands, and fixing
+common connection errors, see <a href="../using/mcp-setup.html">MCP server setup</a>.</p>
+<h2 id="not-to-be-confused-with"><a class="header" href="#not-to-be-confused-with">Not to be confused with</a></h2>
 <ul>
-<li><strong>ACP</strong> (<code>veyyon acp</code>): Agent Client Protocol for editors; not MCP.</li>
-<li><strong>SDK</strong>: embed the agent in a host process.</li>
+<li><strong>ACP</strong> (<code>veyyon acp</code>): the Agent Client Protocol for driving Veyyon from an editor. That makes
+Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
+<li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<p>MCP config remains <code>mcp.json</code> and <code>/mcp</code>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="../using/mcp-setup.html">MCP server setup</a>: the configuration and troubleshooting guide</li>
+<li><a href="../architecture/mcp.html">MCP internals</a>: how the client is built</li>
+<li><a href="../../../mcp-config.html"><code>docs/mcp-config.md</code></a>: the engineering reference</li>
+</ul>
 
                     </main>
 

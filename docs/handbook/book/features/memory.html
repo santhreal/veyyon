@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -247,12 +247,12 @@ these primary fields:</p>
 </thead>
 <tbody>
 <tr><td>Threshold</td><td><code>compaction.thresholdPercent</code></td><td>percent of the context window (<code>compaction.thresholdTokens</code> optional)</td></tr>
-<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>handoff</code> or <code>snap</code> (schema default <code>snap</code>)</td></tr>
+<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>handoff</code> writes a structured session transfer; <code>snap</code> archives history via the snapcompact engine.
+<p><code>summary</code> rewrites old history into an in-place LLM summary; <code>handoff</code> writes a structured session transfer.
 Run on demand with <code>/compact</code>. See <a href="../context/compaction-memory.html">Compaction and project memory</a>.</p>
 <h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,

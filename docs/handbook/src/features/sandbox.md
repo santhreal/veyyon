@@ -6,8 +6,7 @@ Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bound
 this policy and the execpolicy rules below.
 
 This page is the operator reference. For the model behind it, see
-[Permission model](../concepts/permission-model.md). For how the prompts look and feel, see
-[Permissions and approvals](./permissions-explainer.md). For the wider boundary, see
+[Permission model](../concepts/permission-model.md). For the wider boundary, see
 [Safety](../using/safety.md).
 
 ## Tool tiers
@@ -40,15 +39,36 @@ tools:
   approvalMode: ask
 ```
 
-## Prompt keys
+## The approval prompt
 
-When a mode requires approval:
+When the active mode requires approval for a tool call, the TUI shows the action and waits:
 
 ```text
+Veyyon would like to run a shell command
+
+Command:   cargo test
+Directory: /home/user/my-project
+
 [y] yes   [n] no   [a] always for this session   [p] show policy
 ```
 
-Denied actions return an error to the model; permissions are not widened.
+```text
+Veyyon would like to edit a file
+
+File:   src/main.rs
+Change: update the function signature and add a null check
+
+[y] yes   [n] no   [a] always for this session   [p] show policy
+```
+
+| Key | Effect |
+| --- | --- |
+| `y` | Allow once |
+| `a` | Allow this kind of action for the rest of the session |
+| `n` | Deny; the model receives the denial |
+| `p` | Show the active policy |
+
+Denied actions return an error to the model, and permissions are never widened.
 
 ## Headless
 
@@ -62,6 +82,6 @@ User and project `.rules` files further restrict which commands auto-run. Untrus
 
 ## Related
 
-- [Permissions and approvals](./permissions-explainer.md)
+- [Permission model](../concepts/permission-model.md)
 - [Non-interactive mode](./exec.md)
 - [Safety](../using/safety.md)

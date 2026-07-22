@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-cc1a72e9.js"></script>
+        <script src="toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -233,17 +233,32 @@
 </ul>
 <p>For credits and provenance, see <a href="#acknowledgements">Acknowledgements</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="design-and-mechanisms"><a class="header" href="#design-and-mechanisms">Design and mechanisms</a></h1>
+<h1 id="how-to-read-this-book-1"><a class="header" href="#how-to-read-this-book-1">How to read this book</a></h1>
+<h2 id="structure"><a class="header" href="#structure">Structure</a></h2>
+<p>The book runs from what Veyyon is to how it works inside, in this order:</p>
 <ul>
-<li><a href="#overview">Overview</a>: what the product is and what the harness does</li>
-<li><a href="#mechanisms">Mechanisms</a>: hashline, approvals, model slots, profiles, engine modes</li>
-<li><a href="#performance">Performance</a>: retries, edit format, and tool bounds</li>
-<li><a href="#edit-path-and-tool-arguments">Edit path and tool arguments</a></li>
-<li><a href="#context-size-and-retries">Context size and retries</a></li>
-<li><a href="#model-and-provider-selection">Model and provider selection</a></li>
-<li><a href="#approvals-and-errors">Approvals and errors</a></li>
+<li><strong>Understand Veyyon</strong>: what it is, why it helps, the main mechanisms, and Argot, the shorthand the
+fork adds.</li>
+<li><strong>Get started</strong>: install, sign in, and run your first task.</li>
+<li><strong>Core concepts</strong>: the few ideas the rest of the book builds on (sessions and turns, the permission
+model, the model contract).</li>
+<li><strong>Everyday use</strong>: the operator workflows (editing, approvals, models, sessions, and the interface).</li>
+<li><strong>Extend and customize</strong>: skills, plugins, hooks, MCP, profiles, and configuration.</li>
+<li><strong>Reference</strong>: the exhaustive lists (CLI flags, slash commands, tools, keybindings, environment
+variables, exit codes, file locations).</li>
+<li><strong>Under the hood</strong>: how the harness implements those surfaces (architecture, repair, the edit
+engine, the provider stack, context, observability).</li>
+<li><strong>Troubleshooting</strong>: when something is wrong, plus the FAQ and the doctor self-check.</li>
 </ul>
-<p>Install: <a href="#install">Install</a>. Concepts: <a href="#core-concepts">Core concepts</a>.</p>
+<p>Each concept has one page that owns it, and other pages cross-link to that page rather than repeat the
+full contract. Read top to bottom the first time; after that, jump to the owning page a cross-link
+points you at.</p>
+<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
+<ul>
+<li><strong>Paths and keys</strong> are written as the product uses them (<code>~/.veyyon/profiles/default/agent/config.yml</code>, <code>tools.approvalMode</code>).</li>
+<li><strong>Prior art</strong> is named with license when a technique is adapted; see <a href="#acknowledgements">Acknowledgements</a>.</li>
+<li><strong>Measurements</strong> state the source (this project’s benchmarks vs third-party). If a number has no method, it does not belong in reference material.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
 <p>Veyyon is a local terminal coding agent. The loop, the tools, and your credentials all stay on your machine. You choose which model to use from the bundled provider catalog, either by signing in to a subscription or by bringing your own key.</p>
@@ -276,6 +291,16 @@
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
 <p>This chapter is a compact map of the main harness mechanisms. It explains what each one is and points you to the chapter that covers it in full. The operator how-tos live under <a href="#getting-started">Using</a> and <a href="#approvals">Features</a>.</p>
+<p>Veyyon is a fork of oh-my-pi. The first group below is what the fork adds on top. The rest is the shared base both projects run on.</p>
+<h2 id="what-the-fork-adds"><a class="header" href="#what-the-fork-adds">What the fork adds</a></h2>
+<ul>
+<li><strong>Argot.</strong> A per-project shorthand the model writes in. The model writes a short handle like <code>§build</code> where it would have written a long string it repeats, and Veyyon restores the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by context size, and the generated dictionary is cached per project and only grows. See <a href="#argot">Argot</a>.</li>
+<li><strong>Snap compaction.</strong> Bitmap-frame context compression with lossless dedup and artifact spill, so a long session sheds tokens without losing what it already established. See <a href="#compaction-and-project-memory">Compaction and project memory</a>.</li>
+<li><strong>Shared credentials and global config.</strong> Providers and global settings are shared across profiles, so signing in once reaches every profile instead of each one holding its own copy.</li>
+<li><strong>Per-profile working directory.</strong> A profile can pin its own working directory, and <code>setCwd</code> moves an existing session, so one install can hold several projects without them bleeding into each other.</li>
+<li><strong>Absolute-token compaction threshold.</strong> Compaction can trigger on an absolute token count, not only a fraction of the window, so the trigger point is the same across models with different context sizes.</li>
+<li><strong>Atomic, serialized config writes.</strong> Settings are written through a single serialized path with an atomic swap, so two writers never tear a config file.</li>
+</ul>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
 <p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="#editing-and-repair">Editing and repair</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
@@ -286,7 +311,7 @@
 <p>Veyyon separates the model you use from the job it does:</p>
 <ul>
 <li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
-<li><strong>Roles</strong> pin a model to a kind of work. The built-in roles are <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, and <code>advisor</code>, and you can add your own in <code>modelRoles</code>.</li>
+<li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>task</code> for subagents, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
 <li><strong>Overrides</strong> let a slot win over a role. <code>subagent.model</code> overrides <code>modelRoles.task</code> when set, and <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it.</li>
 <li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
@@ -304,6 +329,177 @@
 <li><a href="#tool-call-repair">Repair</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="argot"><a class="header" href="#argot">Argot</a></h1>
+<p>Argot is experimental: off by default, gated to models you explicitly allow, and
+still being measured on live benches. The mechanism is fully wired and lossless;
+what is unproven is the economics (whether real sessions save enough output
+tokens to matter), which is why it ships behind a flag.</p>
+<p>Argot is a per-project shorthand that the model writes in. A project keeps a
+small table of handles, each one a short name that stands for a longer string it
+repeats a lot: a full path, an import root, a canonical build command. The model
+writes the handle, and Veyyon restores it to the full string before anything runs
+or is shown. This is the largest mechanism the fork adds on top of oh-my-pi.</p>
+<p>This chapter explains what Argot is and how the codec works. To turn it on, see
+<a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>.</p>
+<h2 id="the-idea-in-one-example"><a class="header" href="#the-idea-in-one-example">The idea in one example</a></h2>
+<p>Say a project’s build command is a long, exact string the agent types over and
+over:</p>
+<pre><code>node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci
+</code></pre>
+<p>With Argot, that string gets a handle, for example <code>§build</code>. The model writes
+<code>§build</code>, and by the time the command reaches the shell it is the full string
+again. The model carried a short token where it would have carried a long one,
+and nothing downstream ever saw the short form.</p>
+<p>A handle is a marker followed by a name. The default marker is the section sign
+<code>§</code>, so the handle is <code>§build</code>. A name is lowercase letters, digits, and
+underscores. The marker is configurable per project through the dictionary’s
+<code>sigil</code> field, and it may never contain a character that could blur into a name
+or into whitespace.</p>
+<h2 id="the-dictionary"><a class="header" href="#the-dictionary">The dictionary</a></h2>
+<p>The handles live in a file named <code>AGENTS.dict</code>. It is a small table mapping each
+name to its expansion:</p>
+<pre><code class="language-toml">sigil = "§"
+
+[handles]
+build = "node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci"
+dbconn = "src/server/db/connection.ts"
+</code></pre>
+<p>A handle stands for a recurring string, not a document, so an expansion has an
+upper bound and a longer one is rejected. The file also declares a format
+version. A file that targets a newer major version is refused loudly rather than
+read on a guess.</p>
+<p>You do not write or commit this file by hand, and Veyyon does not guess which
+project you mean. The agent decides: it calls the <code>argot_load</code> tool on the folder
+it is about to work in, and Veyyon generates the dictionary for that project from
+the strings it actually repeats, scores each candidate by how much output it
+would save, and keeps the result in a local cache under its own config
+directory. In a monorepo the agent loads the one package it is working in, not
+the repo root. Nothing is written into your working tree, so there is no file
+for a pull request to pick up, and a session where the agent never loads
+anything simply behaves as if Argot were off.</p>
+<h2 id="two-directions-two-rules"><a class="header" href="#two-directions-two-rules">Two directions, two rules</a></h2>
+<p>Argot has two directions, and they are gated differently on purpose.</p>
+<p><strong>Decoding</strong> is turning a handle back into its full text. It is unconditional.
+Once a dictionary is loaded, every handle expands, always, before the text
+reaches a tool, the disk, or your screen. A handle that arrived at a tool
+unexpanded would be a broken path, not merely worse text, so decoding is never
+something a setting can switch off.</p>
+<p><strong>Encoding</strong> is teaching the model the notation so it writes handles in the first
+place. This is a policy choice, and it has two levers:</p>
+<ul>
+<li>A model allowlist. Only the models you name are taught the shorthand. The list
+is empty by default, so turning Argot on without naming a model stays inert.
+This lets you keep shorthand on for a model you trust to recall the dictionary
+and off for one you are still measuring.</li>
+<li>A context-size cutoff. Recall of the dictionary degrades as a conversation
+grows, so past a token threshold Veyyon stops teaching new shorthand and the
+model writes in full.</li>
+</ul>
+<p>Because decoding never depends on either lever, it is always safe to stop
+encoding. The worst case is the model writing a full string it could have
+shortened, never a raw handle leaking through. Switching models mid-session is
+safe for the same reason: a handle already in the history expands whatever model
+is active now.</p>
+<h2 id="why-it-saves-tokens"><a class="header" href="#why-it-saves-tokens">Why it saves tokens</a></h2>
+<p>Output tokens cost several times more than input tokens. A handle pays off when
+the model would otherwise retype a long string many times across a session, since
+each repeat is output the model is charged for at the higher rate. The generator
+optimizes for exactly this: it fills the dictionary highest-value first, where
+value is how much output a handle removes across the project’s text, and it stops
+before the dictionary itself grows large enough to cost more to carry than it
+saves.</p>
+<h2 id="the-cache-is-immutable-and-content-keyed"><a class="header" href="#the-cache-is-immutable-and-content-keyed">The cache is immutable and content-keyed</a></h2>
+<p>Each cache entry is named by the content it was built from: the git commit for a
+git project, or a signature of the file listing for a project with a <code>.argot</code>
+marker. An entry is never rewritten once it exists. A new commit reads a new
+entry, built from the new tree; the old entry stays exactly as it was. Two agents
+on the same commit read one entry, agents on different commits read different
+entries, and a race to build the same entry produces byte-identical output, so
+the write is safe with no lock.</p>
+<p>Nothing depends on a handle keeping its name from one entry to the next. The
+expansion rule (see “Two directions, two rules” above) expands every handle
+before it reaches the saved transcript, so no stored transcript ever holds a raw
+handle. Because the history never references a handle, a rebuilt-from-empty cache
+would break nothing: the two directions stay correct whatever the dictionary
+holds. That is why the cache can be keyed on content and thrown away freely,
+rather than pinned and grown forever. To rebuild deliberately, delete the
+project’s cache directory and let the next session regenerate it.</p>
+<h2 id="subagents-each-expand-their-own-output"><a class="header" href="#subagents-each-expand-their-own-output">Subagents each expand their own output</a></h2>
+<p>A subagent veyyon spawns for a task follows the same two rules on its own. Every
+agent expands its output before it reaches a tool, the saved transcript, a prompt
+it hands to a child, or the result it returns to a parent, so a handle never
+crosses between a parent and a child in either direction. A subagent that starts
+with no dictionary is already correct: it reads the full text its parent wrote
+(the parent expanded it) and writes full text back (the child expands it).
+Sharing a dictionary between parent and child is only a way to save tokens, never
+a thing correctness rests on. The <code>argot.subagents</code> setting picks between no
+shorthand, a fresh dictionary from the child’s own project, and a copy of the
+parent’s; see <a href="#choose-how-subagents-start">the configuration
+page</a>.</p>
+<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
+<ul>
+<li><a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>: the settings and how to enable it</li>
+<li><a href="#mechanisms">Mechanisms</a>: the rest of what the fork adds</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="harness-design-goals"><a class="header" href="#harness-design-goals">Harness design goals</a></h1>
+<p>Model quality depends on the agent harness: tool schemas, edit format, context handling, and control flow. The same weights can succeed or fail depending on those choices.</p>
+<h2 id="primary-mechanisms"><a class="header" href="#primary-mechanisms">Primary mechanisms</a></h2>
+<ol>
+<li><strong>Edit format.</strong> Formats that are hard to emit cause apply failures and retries. Hashline (and model-specific edit prompts) is the main write path in <code>packages/coding-agent</code>.</li>
+<li><strong>Control flow.</strong> Stop when verification passes; bound retries; budget context and subagent fan-out. Plan mode, goal mode, and tool-approval tiers encode parts of this in the engine.</li>
+</ol>
+<h2 id="design-consequences"><a class="header" href="#design-consequences">Design consequences</a></h2>
+<ul>
+<li>Hashline-aware <code>edit</code> / <code>write</code> with native verification (see <a href="#the-hashline-edit-engine">The hashline edit engine</a>).</li>
+<li>Explicit model slots and optional roles (<code>modelRoles</code>, catalog selectors, thinking levels).</li>
+<li>Engine-enforced modes: plan file + resolve path, goal continuation, approval tiers.</li>
+<li>Schema-based tool-call repair before argument validation (see <a href="#tool-call-repair">Repair</a>).</li>
+</ul>
+<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
+<ul>
+<li><a href="#mechanisms">Mechanisms</a></li>
+<li><a href="#tool-call-repair">Repair</a></li>
+<li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a glance</a></h1>
+<p>Veyyon ships as the <strong><code>veyyon</code></strong> CLI (Bun + TypeScript, Rust helpers). This chapter maps subsystems;
+each has a handbook page and matching engineering notes under <code>docs/</code>.</p>
+<h2 id="the-request-path"><a class="header" href="#the-request-path">The request path</a></h2>
+<pre><code class="language-text">            ┌──────────────────────────────────────────────────────────────┐
+prompt ──► │  veyyon (packages/coding-agent)                              │
+            │    │                                                          │
+            │    ▼                                                          │
+            │  AgentSession turn loop                                      │
+            │    │   model stream → tools (read, bash, edit, …)            │
+            │    ▼                                                          │
+            │  hashline / handlers ──► filesystem (approval-gated)         │
+            └──────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="subsystems"><a class="header" href="#subsystems">Subsystems</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Subsystem</th><th>Responsibility</th><th>Chapter</th></tr>
+</thead>
+<tbody>
+<tr><td>Edit engine (<code>@veyyon/hashline</code>)</td><td>Default hashline edit path</td><td><a href="#the-hashline-edit-engine">Edit engine</a></td></tr>
+<tr><td>Sessions</td><td>Session trees, compaction</td><td><a href="#compaction-and-project-memory">Compaction &amp; memory</a></td></tr>
+<tr><td>MCP</td><td>MCP client integration</td><td><a href="#mcp-3">MCP</a></td></tr>
+<tr><td>Config</td><td>Settings and profiles</td><td><a href="#config">Config</a></td></tr>
+<tr><td>Memory</td><td>off / local / mnemopi / hindsight</td><td><a href="#memory">Memory</a></td></tr>
+<tr><td>Goals</td><td>Goal cards and budgets</td><td><a href="#goal-state-and-long-sessions">Goal state</a></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="design-rules"><a class="header" href="#design-rules">Design rules</a></h2>
+<ol>
+<li><strong>One primary edit path.</strong> Hashline is the default edit surface; alternate <code>edit.mode</code> values exist for compatibility.</li>
+<li><strong>Explicit failures.</strong> Invalid config, stale hashline tags, and denied actions return actionable errors to the operator or model. Denied tools do not auto-escalate permissions.</li>
+</ol>
+<p>Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in <code>packages/coding-agent/src/repair/schema-repair.ts</code>. See <a href="#tool-call-repair">Repair</a>. Providers and models: <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
 <p>Agent wall time is the sum of model latency, tool I/O, retries after failed tool/edit validation, and harness overhead.</p>
 <h2 id="retry-cost"><a class="header" href="#retry-cost">Retry cost</a></h2>
@@ -314,27 +510,37 @@
 <p>CLI/TUI and session loop: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives. Streaming returns tokens as they arrive.</p>
 <h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
 <p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
-<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
+<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#getting-started">Getting started</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="edit-path-and-tool-arguments"><a class="header" href="#edit-path-and-tool-arguments">Edit path and tool arguments</a></h1>
-<p>Edits and tool calls go through harness steps that reduce apply and schema failures before a full retry turn.</p>
-<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
+<h1 id="why-it-helps"><a class="header" href="#why-it-helps">Why it helps</a></h1>
+<p>The model weights are the same ones you get anywhere. What Veyyon changes is how often a change
+lands on the first attempt, and what a failed attempt costs when it happens. This chapter names the
+concrete reasons, and each links the page that covers it in full.</p>
+<h2 id="fewer-failed-edits-and-tool-calls"><a class="header" href="#fewer-failed-edits-and-tool-calls">Fewer failed edits and tool calls</a></h2>
+<p>Edits and tool calls go through harness steps that catch apply and schema failures before they burn a
+full retry turn.</p>
 <ul>
-<li>Hashline edits anchor on <code>read</code> / <code>grep</code> / <code>write</code> snapshot tags</li>
-<li><code>edit</code>, <code>write</code>, and compatibility modes share the approval gate</li>
-<li>Stale anchors fail verification with recovery context for the model</li>
-<li>Schema repair coerces unambiguous malformed tool JSON before dispatch; ambiguous input is refused</li>
+<li>Hashline edits anchor on <code>read</code> / <code>grep</code> / <code>write</code> snapshot tags, so an edit that targets stale
+content fails verification with recovery context instead of writing a corrupt file.</li>
+<li><code>edit</code>, <code>write</code>, and the compatibility apply modes share one approval gate.</li>
+<li>Schema repair coerces unambiguous malformed tool JSON before dispatch; ambiguous input is refused
+rather than guessed.</li>
 </ul>
-<h2 id="details"><a class="header" href="#details">Details</a></h2>
-<ul>
-<li><a href="#editing-and-repair">Editing and repair</a></li>
-<li><a href="#tool-call-repair">Repair overview</a></li>
-<li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
-</ul>
+<p>See <a href="#editing-and-repair">Editing and repair</a>, <a href="#tool-call-repair">Repair overview</a>, and
+<a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
+<h2 id="less-spent-on-context-and-retries"><a class="header" href="#less-spent-on-context-and-retries">Less spent on context and retries</a></h2>
+<p>A run that avoids a retry turn, and that compacts instead of truncating, spends fewer tokens for the
+same result. See <a href="#context-size-and-retries">Context size and retries</a>.</p>
+<h2 id="the-right-model-for-the-job"><a class="header" href="#the-right-model-for-the-job">The right model for the job</a></h2>
+<p>Roles let a cheap model do the cheap work and a stronger one do the hard work, without you switching
+by hand. See <a href="#model-and-provider-selection">Model and provider selection</a>.</p>
+<h2 id="mistakes-stop-at-the-approval-gate"><a class="header" href="#mistakes-stop-at-the-approval-gate">Mistakes stop at the approval gate</a></h2>
+<p>Approval tiers and clear error returns keep a wrong tool call from cascading into more damage. See
+<a href="#approvals-and-errors">Approvals and errors</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="context-size-and-retries"><a class="header" href="#context-size-and-retries">Context size and retries</a></h1>
 <p>Token use and turn count depend on tool output size, compaction, and whether bad edits or tool JSON force retries.</p>
@@ -345,7 +551,7 @@
 <li>Goal mode keeps an objective outside the raw transcript tail</li>
 <li>Edit verification and tool repair reduce failed apply/schema turns</li>
 </ul>
-<h2 id="details-1"><a class="header" href="#details-1">Details</a></h2>
+<h2 id="details"><a class="header" href="#details">Details</a></h2>
 <ul>
 <li><a href="#bounded-reads-and-search">Bounded reads and search</a></li>
 <li><a href="#compaction-and-project-memory">Compaction and project memory</a></li>
@@ -355,14 +561,14 @@
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="model-and-provider-selection"><a class="header" href="#model-and-provider-selection">Model and provider selection</a></h1>
 <p>The agent loop is provider-neutral. Point it at a local server, a direct provider API, or a compatible gateway. The harness selects wire format, prompts, and tool exposure from the model catalog and settings.</p>
-<h2 id="behavior-1"><a class="header" href="#behavior-1">Behavior</a></h2>
+<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
 <ul>
 <li>Provider and model metadata live in the catalog, not hard-coded per call site</li>
 <li>Per-model prompt section order and tool allowlists can be set via harness profiles</li>
 <li>Explicit pin: <code>/model</code>, <code>--model</code>, and <code>config.yml</code></li>
 <li>Tool repair, edit verification, goal/context handling, and output bounds apply regardless of vendor</li>
 </ul>
-<h2 id="details-2"><a class="header" href="#details-2">Details</a></h2>
+<h2 id="details-1"><a class="header" href="#details-1">Details</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="#the-provider-stack-and-bring-your-own-key">Providers</a></li>
@@ -372,14 +578,14 @@
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="approvals-and-errors"><a class="header" href="#approvals-and-errors">Approvals and errors</a></h1>
 <p>File writes and shell commands are gated by <code>tools.approvalMode</code> and related policy (execpolicy rules, project trust). There is no OS-level command sandbox.</p>
-<h2 id="behavior-2"><a class="header" href="#behavior-2">Behavior</a></h2>
+<h2 id="behavior-1"><a class="header" href="#behavior-1">Behavior</a></h2>
 <ul>
 <li>Approval mode selects which tiers (read / write / exec) auto-run vs prompt</li>
 <li>Denied or failed policy checks return to the model; they do not widen permissions</li>
 <li>Tool output records truncation when limits apply</li>
 <li>Invalid config and unrepairable tool arguments surface errors instead of silent defaults</li>
 </ul>
-<h2 id="details-3"><a class="header" href="#details-3">Details</a></h2>
+<h2 id="details-2"><a class="header" href="#details-2">Details</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
@@ -428,6 +634,51 @@ $ vey plugin doctor
 <p>The <a href="#file-locations-1">File locations</a> chapter shows the full layout.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
 <p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
+<h2 id="updating"><a class="header" href="#updating">Updating</a></h2>
+<p>Veyyon keeps itself current. On startup it checks the registry for a newer
+release, and if it finds one it installs it in the background:</p>
+<pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
+</code></pre>
+<p>The running process keeps the version it started with, so the update takes
+effect the next time you launch. On that launch you get one line naming the new
+version:</p>
+<pre><code class="language-text">Updated to veyyon 1.2.0 · run /changelog for release notes
+</code></pre>
+<p><code>/changelog</code> opens the release notes on the web rather than printing them into
+your terminal.</p>
+<p>Two settings control this, both on by default:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Setting</th><th>Effect when off</th></tr>
+</thead>
+<tbody>
+<tr><td><code>startup.checkUpdate</code></td><td>No version check runs at all, so nothing updates automatically.</td></tr>
+<tr><td><code>startup.autoUpdate</code></td><td>Veyyon still tells you a new version exists, but waits for you to run <code>veyyon update</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Turn automatic updates off like this:</p>
+<pre><code class="language-console">$ veyyon config set startup.autoUpdate false
+</code></pre>
+<p>You can always update on demand, whichever settings are in force:</p>
+<pre><code class="language-console">$ veyyon update
+</code></pre>
+<p>Veyyon updates through whatever installed it, whether that is Homebrew, mise,
+bun, npm, or a standalone binary. If an automatic update fails, it says so and
+tells you to retry with <code>veyyon update</code>; it never fails quietly and leaves you
+on an old version without a word.</p>
+<p>If the same version fails to install twice, the cause is usually the machine
+rather than the release: a binary owned by another user, a read-only image, or a
+package manager that needs elevated permissions. Veyyon reports that failure and
+then leaves it alone for six hours instead of repeating it on every launch. A
+newer release is never held back by an older one’s failure, and <code>veyyon update</code>
+ignores the pause entirely, so you can always ask to see the error again:</p>
+<pre><code class="language-console">$ veyyon update
+</code></pre>
+<p>Running several sessions at once is safe. Only the first one to start installs;
+the others see that an install is under way and skip it rather than writing over
+the same binary at the same time.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>The installer removes everything it added, including the <code>vey</code> alias, any shell completions, and a source checkout if you made one:</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
@@ -791,7 +1042,7 @@ fix that rather than retrying with a different silent default.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="#getting-started">Using Veyyon</a>, and for feature guides see <a href="#features">Features</a>.</p>
+<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="#getting-started">Using Veyyon</a>, and for feature guides see <a href="features/index.html">Features</a>.</p>
 <h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
 <p>The CLI is <code>veyyon</code>. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.</p>
 <div class="table-wrapper">
@@ -809,8 +1060,7 @@ fix that rather than retrying with a different silent default.</p>
 <h2 id="foundations-that-pair-with-these-pages"><a class="header" href="#foundations-that-pair-with-these-pages">Foundations that pair with these pages</a></h2>
 <p>The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.</p>
 <ul>
-<li><a href="#core-concepts-1">Core concepts (foundations)</a> defines a session, thread, turn, the rollout JSONL, and the state database in more detail.</li>
-<li><a href="#architecture-at-a-glance">Architecture overview</a> maps the subsystems to their responsibilities.</li>
+<li><a href="#architecture-at-a-glance">Architecture at a glance</a> maps the subsystems to their responsibilities.</li>
 <li>For provider and model configuration, see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/providers.md</code></a>.</li>
 </ul>
 <h2 id="how-the-pieces-fit"><a class="header" href="#how-the-pieces-fit">How the pieces fit</a></h2>
@@ -871,6 +1121,19 @@ original session is never modified.</p>
 <p>Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.</p>
 <p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="#slash-commands-3">Slash commands</a>.</p>
+<h2 id="rollout-and-the-state-database"><a class="header" href="#rollout-and-the-state-database">Rollout and the state database</a></h2>
+<p>Session history is kept in two layers.</p>
+<p>The <strong>rollout</strong> is the append-only JSONL file. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a leaf move. The rollout is the source of truth, and it is never rewritten, which is what makes branching and resume safe and auditable.</p>
+<p>The <strong>state database</strong> is a local SQLite index that mirrors thread metadata, goal cards, and queued follow-ups. It exists so listing sessions and resuming one do not require replaying the entire rollout log. It is a cache built from the rollout, not a second source of truth.</p>
+<h2 id="how-the-pieces-relate"><a class="header" href="#how-the-pieces-relate">How the pieces relate</a></h2>
+<ul>
+<li>A <strong>session</strong> owns one or more <strong>threads</strong> and stores them on disk.</li>
+<li>A <strong>thread</strong> is a path through the session’s tree of turns.</li>
+<li>A <strong>turn</strong> is one step on that path.</li>
+<li>The <strong>rollout</strong> is the append-only log that holds every turn, branch, and system event.</li>
+<li>The <strong>state database</strong> is the runtime index for resume and active metadata.</li>
+<li>The <strong>goal card</strong> is a separate context slot that carries the current objective across turns and compactions. See <a href="#goal-state-and-long-sessions">Goal state and long sessions</a>.</li>
+</ul>
 <h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>
 <ul>
 <li>For session commands and storage, see <a href="#sessions">Sessions</a>.</li>
@@ -941,10 +1204,9 @@ trust the directory.</p>
 <p>When a tool is denied, or a policy check fails, Veyyon returns an error to the model. It
 does not retry with more permission. An error never escalates what the model is allowed to
 do.</p>
-<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
+<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
-<li><a href="#permissions-and-approvals">Permissions UX</a></li>
 <li><a href="#safety-1">Safety</a></li>
 <li><a href="#cli-reference">CLI</a></li>
 </ul>
@@ -1105,110 +1367,9 @@ OpenAI-compatible endpoints.</li>
 <li><a href="#signing-in">Signing in</a>: interactive and env-var auth paths.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="core-concepts-1"><a class="header" href="#core-concepts-1">Core concepts</a></h1>
-<p>Veyyon is built around a few persistent units. This page defines the units that shape a conversation and explains how they fit together.</p>
-<h2 id="session"><a class="header" href="#session">Session</a></h2>
-<p>A <strong>session</strong> is the persisted unit of work. It holds a thread, a working directory, optional goal state, and a JSONL log on disk. When you run <code>veyyon</code> inside a repository, you start a new session. When you resume from the picker, you pick up an existing one.</p>
-<p>Sessions are durable: they survive a TUI restart, a context compaction, or a machine reboot. The file on disk is the source of truth, not the in-memory state.</p>
-<p>See <a href="#sessions">Sessions</a> for operator commands and <a href="#file-locations-1">File locations</a> for where the files live.</p>
-<h2 id="thread"><a class="header" href="#thread">Thread</a></h2>
-<p>A <strong>thread</strong> is the conversation lineage inside a session. It is the sequence of turns from the start of the conversation to the current point. A session can contain more than one thread if you branch or fork.</p>
-<p>The thread is the path the harness follows when it builds context for the next turn. It is not the same as the raw log file: the log file contains every entry, including branches you are no longer on.</p>
-<h2 id="turn"><a class="header" href="#turn">Turn</a></h2>
-<p>A <strong>turn</strong> is one model pass. It starts with a prompt, runs through model inference, tool calls, approvals, and edits, and ends with a final response. The TUI and CLI display each turn as one back-and-forth block.</p>
-<p>During a turn, Veyyon can dispatch tools, apply edits, run verification, and wait for user approval. A single turn may contain many tool calls, but it is still one turn because it is one top-level model invocation with a single final response.</p>
-<h2 id="how-context-history-is-preserved"><a class="header" href="#how-context-history-is-preserved">How context history is preserved</a></h2>
-<p>Context history is preserved in two layers.</p>
-<h3 id="rollout--jsonl-storage"><a class="header" href="#rollout--jsonl-storage">Rollout / JSONL storage</a></h3>
-<p>Every event in a session is appended to a rollout file as a JSONL line. The rollout file lives under the sessions directory below the config home (<code>~/.veyyon/.../sessions/</code>). Each line is a rollout item: a user message, an agent response, a tool call, a compaction, a goal update, or a leaf move.</p>
-<p>Rollout files are append-only. Nothing is ever rewritten. This property makes branching and resume safe and auditable. See <a href="#sessions">Sessions</a> for operator commands and <a href="#session-and-turn">Session and turn internals</a> for the persistence format.</p>
-<h3 id="state-database"><a class="header" href="#state-database">State database</a></h3>
-<p>Thread metadata, goal cards, and queued follow-ups are also mirrored into a local SQLite index so listing and resume do not require replaying the entire rollout log.</p>
-<h2 id="how-context-history-is-updated"><a class="header" href="#how-context-history-is-updated">How context history is updated</a></h2>
-<p>A turn updates the thread by appending new entries to the rollout file. The in-memory view is rebuilt from the thread’s path through the log.</p>
-<p>When a turn grows too long, the harness may <strong>compact</strong> the transcript. Compaction summarizes older turns into a smaller form while preserving the goal, recent user messages, file working sets, and verification facts. The compacted prefix is then used as the older context for later turns, while the recent tail remains intact. See <a href="#compaction-and-project-memory">Compaction &amp; project memory</a> for how summaries are built and what survives.</p>
-<h2 id="relationships"><a class="header" href="#relationships">Relationships</a></h2>
-<ul>
-<li>A <strong>session</strong> owns one or more <strong>threads</strong> and stores them on disk.</li>
-<li>A <strong>thread</strong> is a path through the session’s tree of turns.</li>
-<li>A <strong>turn</strong> is one step on that path.</li>
-<li>The <strong>rollout</strong> is the append-only log that contains every turn, branch, and system event.</li>
-<li>The <strong>state database</strong> is the runtime index for resume and active metadata.</li>
-<li>The <strong>goal card</strong> is a separate context slot that carries the current objective across turns and compactions. See <a href="#goal-state-and-long-sessions">Goal state</a>.</li>
-</ul>
-<h2 id="branching-and-forking"><a class="header" href="#branching-and-forking">Branching and forking</a></h2>
-<p>Because rollout files are append-only, branching does not delete or rewrite history. A branch is recorded as a new entry whose parent points to an earlier entry. The active leaf can be moved to any existing entry, and new turns start from there.</p>
-<p>Use <code>/tree</code> to browse the session tree, <code>/fork</code> to copy history into a new session, <code>/branch</code> to fork from an earlier message, and <code>/btw</code> to ask a question on a short-lived side thread. See <a href="#session-branching">Session branching</a> for commands and behavior.</p>
-<h2 id="plan-mode"><a class="header" href="#plan-mode">Plan mode</a></h2>
-<p>Plan mode is an engine mode: tool surface and prompts favor exploration and drafting a <strong>plan file</strong>. Finalization uses the <strong><code>resolve</code></strong> tool with plan-approval semantics. Toggle with <code>/plan</code>. See <a href="#plan-mode-and-goals">Plan mode and goals</a>.</p>
-<h2 id="what-to-remember"><a class="header" href="#what-to-remember">What to remember</a></h2>
-<ul>
-<li>A session is the saved work unit.</li>
-<li>A thread is the conversation path inside that session.</li>
-<li>A turn is one model pass with a beginning, middle, and end.</li>
-<li>Rollout files are append-only JSONL; the state database is the runtime index.</li>
-<li>Compaction preserves task-critical facts while shrinking the transcript.</li>
-<li>Branching and forking are safe because history is never rewritten.</li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="how-to-read-this-book-1"><a class="header" href="#how-to-read-this-book-1">How to read this book</a></h1>
-<h2 id="structure"><a class="header" href="#structure">Structure</a></h2>
-<ul>
-<li><strong>Using</strong>: install, config, and operator workflows.</li>
-<li><strong>Features</strong>: one topic per page (approvals, plan mode, profiles, …).</li>
-<li><strong>Reference</strong>: CLI flags, slash commands, keybindings, env vars.</li>
-<li><strong>Architecture / repair / edit</strong>: how the harness implements those surfaces.</li>
-</ul>
-<p>Cross-links point at the page that owns a concept; prefer that page over repeating the full contract elsewhere.</p>
-<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
-<ul>
-<li><strong>Paths and keys</strong> are written as the product uses them (<code>~/.veyyon/profiles/default/agent/config.yml</code>, <code>tools.approvalMode</code>).</li>
-<li><strong>Prior art</strong> is named with license when a technique is adapted; see <a href="#acknowledgements">Acknowledgements</a>.</li>
-<li><strong>Measurements</strong> state the source (this project’s benchmarks vs third-party). If a number has no method, it does not belong in reference material.</li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="features"><a class="header" href="#features">Features</a></h1>
-<p>This chapter is the hub for Veyyon’s features. It groups them into the interactive surfaces you work with directly, the modes and extensions that change how the agent runs, and a short list of recipes.</p>
-<h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
-<p>These are the parts of the TUI you touch every session:</p>
-<ul>
-<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, <code>/cockpit</code>, jobs, and the swarm view.</li>
-<li><a href="#keybindings-and-vim-mode">Keybindings</a> covers the chords and Vim mode.</li>
-<li>The composer gives you prompt history, <code>@</code> and <code>/</code> completion, and <code>Esc</code> to interrupt. See <a href="#quickstart">Quickstart</a> and <a href="#keybindings-and-vim-mode">Keybindings</a>.</li>
-<li><a href="#web-search">Web search</a> covers searching from inside a session.</li>
-</ul>
-<h2 id="modes-and-extensions"><a class="header" href="#modes-and-extensions">Modes and extensions</a></h2>
-<p>These change how the agent runs, or add new capabilities:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Feature</th><th>What it adds</th></tr>
-</thead>
-<tbody>
-<tr><td><a href="#plan-mode-and-goals">Plan mode, goals, and vibe</a></td><td>Engine modes that plan, pursue an objective, or direct workers</td></tr>
-<tr><td><a href="#skills">Skills</a></td><td>Reusable, on-demand instructions</td></tr>
-<tr><td><a href="#plugins">Plugins</a></td><td>Packaged extensions</td></tr>
-<tr><td><a href="#hooks">Hooks</a></td><td>TypeScript modules that run on events with <code>pi.on(...)</code></td></tr>
-<tr><td><a href="#mcp">MCP</a></td><td>Model Context Protocol servers and tools</td></tr>
-<tr><td><a href="#session-branching">Branching</a></td><td>Forking a session into parallel lines of work</td></tr>
-<tr><td><a href="#memory">Memory</a></td><td>Project-scoped recall across sessions</td></tr>
-<tr><td><a href="#profiles-1">Profiles</a></td><td>Isolated config, sessions, and state per name</td></tr>
-<tr><td><a href="#personalities">Personalities</a></td><td>Named voice and behavior presets</td></tr>
-<tr><td><a href="#speech">Speech</a></td><td>Text-to-speech output</td></tr>
-<tr><td><a href="#export-and-import">Export and import</a></td><td>Moving sessions in and out</td></tr>
-<tr><td><a href="#connectors-and-apps">Connectors</a></td><td>Third-party app integrations</td></tr>
-<tr><td><a href="#approvals">Approvals</a></td><td>The approval-mode boundary in depth</td></tr>
-<tr><td><a href="#code-review">Code review</a></td><td>Reviewing branches, commits, and uncommitted work</td></tr>
-<tr><td><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></td><td>Running Veyyon from a script</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="recipes"><a class="header" href="#recipes">Recipes</a></h2>
-<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference">Reference</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
 <p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
-<p>For the design behind the edit and repair path, see <a href="#edit-path-and-tool-arguments">Edit path and tool arguments</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
+<p>For the design behind the edit and repair path, see <a href="#why-it-helps">Edit path and tool arguments</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="failure-modes"><a class="header" href="#failure-modes">Failure modes</a></h2>
 <p>Models often emit slightly wrong tool JSON, or line anchors that have gone stale. Hashline catches a stale <code>[path#TAG]</code> tag and returns recovery hints instead of writing the wrong bytes. On top of that, general schema repair runs on every tool call before validation. See <a href="#tool-call-repair">Repair overview</a>.</p>
 <h2 id="write-path-versus-edit-path"><a class="header" href="#write-path-versus-edit-path">Write path versus edit path</a></h2>
@@ -1258,8 +1419,7 @@ OpenAI-compatible endpoints.</li>
 Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
 this policy and the execpolicy rules below.</p>
 <p>This page is the operator reference. For the model behind it, see
-<a href="#permission-model">Permission model</a>. For how the prompts look and feel, see
-<a href="#permissions-and-approvals">Permissions and approvals</a>. For the wider boundary, see
+<a href="#permission-model">Permission model</a>. For the wider boundary, see
 <a href="#safety-1">Safety</a>.</p>
 <h2 id="tool-tiers-1"><a class="header" href="#tool-tiers-1">Tool tiers</a></h2>
 <div class="table-wrapper">
@@ -1296,27 +1456,7 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 <pre><code class="language-yaml">tools:
   approvalMode: ask
 </code></pre>
-<h2 id="prompt-keys"><a class="header" href="#prompt-keys">Prompt keys</a></h2>
-<p>When a mode requires approval:</p>
-<pre><code class="language-text">[y] yes   [n] no   [a] always for this session   [p] show policy
-</code></pre>
-<p>Denied actions return an error to the model; permissions are not widened.</p>
-<h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
-<p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the turn
-stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the
-tiers you need. The process exit status follows the run.</p>
-<h2 id="execpolicy-1"><a class="header" href="#execpolicy-1">Execpolicy</a></h2>
-<p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
-<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
-<ul>
-<li><a href="#permissions-and-approvals">Permissions and approvals</a></li>
-<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
-<li><a href="#safety-1">Safety</a></li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="permissions-and-approvals"><a class="header" href="#permissions-and-approvals">Permissions and approvals</a></h1>
-<p>Reference: <a href="#approvals">Approvals</a>. No OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap).</p>
-<h2 id="prompt-flow"><a class="header" href="#prompt-flow">Prompt flow</a></h2>
+<h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
 <p>When the active mode requires approval for a tool call, the TUI shows the action and waits:</p>
 <pre><code class="language-text">Veyyon would like to run a shell command
 
@@ -1340,35 +1480,22 @@ Change: update the function signature and add a null check
 <tbody>
 <tr><td><code>y</code></td><td>Allow once</td></tr>
 <tr><td><code>a</code></td><td>Allow this kind of action for the rest of the session</td></tr>
-<tr><td><code>n</code></td><td>Deny; model receives the denial</td></tr>
-<tr><td><code>p</code></td><td>Show active policy</td></tr>
+<tr><td><code>n</code></td><td>Deny; the model receives the denial</td></tr>
+<tr><td><code>p</code></td><td>Show the active policy</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="modes-2"><a class="header" href="#modes-2">Modes</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Mode</th><th>read</th><th>write</th><th>exec</th></tr>
-</thead>
-<tbody>
-<tr><td><code>plan</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
-<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
-<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
-<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
-</tbody>
-</table>
-</div>
-<p>Schema default: <strong><code>yolo</code></strong>. Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.</p>
-<p>CLI: <code>--approval-mode &lt;mode&gt;</code>, <code>--yolo</code> / <code>--auto-approve</code>, <code>--plan-yolo</code>.</p>
-<h2 id="headless-1"><a class="header" href="#headless-1">Headless</a></h2>
-<p><code>veyyon --print</code> has no TTY. Modes that would prompt stop the turn; use <code>--yolo</code> or a non-prompting mode for unattended runs.</p>
-<h2 id="execpolicy-2"><a class="header" href="#execpolicy-2">Execpolicy</a></h2>
-<p><code>.rules</code> files (user and project) refine command auto-approval. Untrusted project directories disable project-local rules, config, and hooks until trusted.</p>
-<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
+<p>Denied actions return an error to the model, and permissions are never widened.</p>
+<h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
+<p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the turn
+stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the
+tiers you need. The process exit status follows the run.</p>
+<h2 id="execpolicy-1"><a class="header" href="#execpolicy-1">Execpolicy</a></h2>
+<p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
+<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
 <ul>
-<li><a href="#approvals">Approvals</a></li>
 <li><a href="#permission-model">Permission model</a></li>
+<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
 <li><a href="#safety-1">Safety</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1391,9 +1518,9 @@ Change: update the function signature and add a null check
 </tbody>
 </table>
 </div>
-<h2 id="headless-2"><a class="header" href="#headless-2">Headless</a></h2>
+<h2 id="headless-1"><a class="header" href="#headless-1">Headless</a></h2>
 <p><code>veyyon --print</code> has no TTY for prompts. Set <code>--approval-mode</code> / <code>--yolo</code> explicitly for the job. Reserve full auto-approve for disposable runners. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
-<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
+<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
@@ -1693,7 +1820,10 @@ the recalled messages). Queueing an empty message is refused with an error.</p>
 </tbody>
 </table>
 </div>
-<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
+<p>In the composer’s quiet footline the <code>context_pct</code> segment renders as a growing 8-cell bar instead of the <code>pct/window</code> text: <code>▰▰▰▓▱▱▱▱ 38% ∞</code>. Filled cells take the usage hue (silver, then gold, ember, and red as the window fills), and cells at the 25/50/75/90 percent marks lock in gold once reached. The cell at the fill frontier breathes while the model is running (faster once usage passes 90 percent); at rest it is a static quarter-step glyph showing how full the next cell is, so an idle screen never moves. The percent number stays; the window denominator moves to the <code>context_total</code> segment. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the window. Classic status-line presets keep the text form.</p>
+<p>Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run’s elapsed, in <code>M:SS</code> form and widening to <code>H:MM:SS</code> past the hour: <code>…keyhog  ·  main *      12:34</code>. When the run finishes it reads <code>Worked for 12m34s</code> and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: <code>Running tests · 0:42 ⟦esc⟧</code>; that clock restarts whenever the step changes. The <code>time_spent</code> segment is related but cumulative: it sums every run since <code>/clear</code> and appears in the <code>full</code> and <code>nerd</code> presets.</p>
 <h2 id="session-tree-and-agents"><a class="header" href="#session-tree-and-agents">Session tree and agents</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1791,6 +1921,22 @@ configured) or credential-free engines (Ecosia, Google, Mojeek, or <code>public<
 to every credential-free engine and consolidates deduplicated results). <code>auto</code> resolves the
 first available provider in the built-in priority order; <code>providers.webSearchExclude</code> removes
 providers from that chain entirely.</p>
+<h2 id="exa-research-and-webset-tools"><a class="header" href="#exa-research-and-webset-tools">Exa research and webset tools</a></h2>
+<p>Beyond ranked search, Exa hosts two MCP servers that Veyyon can turn into agent tools. Both
+are off by default, because each one adds tools to every session and costs a discovery
+request at startup.</p>
+<pre><code class="language-yaml">exa:
+  enableResearcher: true
+  enableWebsets: true
+</code></pre>
+<p><code>exa.enableResearcher</code> adds <code>exa_deep_researcher_start</code> and <code>exa_deep_researcher_check</code>. The
+model starts a research run and then polls it, so a single question can take minutes and
+returns a written report rather than a result list.</p>
+<p><code>exa.enableWebsets</code> adds one tool per webset operation the server offers, named
+<code>exa_&lt;operation&gt;</code>. The list comes from the server, so new operations appear without a Veyyon
+release. Websets require <code>EXA_API_KEY</code> in your environment; if it is missing, Veyyon logs the
+reason at startup and registers no webset tools rather than failing later inside a tool call.</p>
+<p><code>exa.enabled: false</code> turns off all of it, including search.</p>
 <h2 id="approvals-1"><a class="header" href="#approvals-1">Approvals</a></h2>
 <p>With web search enabled, the tool runs without a per-call approval prompt, because it reads
 public web content rather than touching your machine. If you want the model to never reach
@@ -1823,7 +1969,7 @@ follows the print-mode run (<code>veyyon --help</code>).</p>
 <h2 id="approvals-2"><a class="header" href="#approvals-2">Approvals</a></h2>
 <p>Tool approvals use <code>tools.approvalMode</code> and per-tool policy. See <a href="#approvals">Approvals</a> and
 <a href="#safety-1">Safety</a>.</p>
-<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
+<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -1871,7 +2017,7 @@ EOF
 </table>
 </div>
 <p>Headless runs have no TTY for approval prompts: choose a mode that does not block (<code>--yolo</code> only on disposable runners) or expect the turn to stop when a prompt would be required. See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
+<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -1906,6 +2052,8 @@ EOF
 terminal’s own background color (OSC 11) to the theme’s ground while it runs, so the UI
 fills the window edge-to-edge instead of floating on the terminal’s configured background.
 The original background is restored on exit, including crash exits.</p>
+<p>The ground is the theme’s page background, the same <code>export.pageBg</code> color the HTML export
+uses (see <code>docs/theme.md</code>). Every built-in theme declares one.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1918,6 +2066,10 @@ The original background is restored on exit, including crash exits.</p>
 </tbody>
 </table>
 </div>
+<p>A custom theme that declares no page background has no ground to paint, so Veyyon inherits
+the terminal’s own background regardless of this setting. With <code>always</code>, it also logs once
+that the active theme declares no ground, since that is the one case you asked to paint and
+it could not. Add an <code>export.pageBg</code> to the theme to give it a ground.</p>
 <p>Terminals that don’t support OSC 11 ignore the sequence; nothing breaks.</p>
 <h2 id="what-the-theme-covers"><a class="header" href="#what-the-theme-covers">What the theme covers</a></h2>
 <p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors, not only the chat pane.</p>
@@ -1926,6 +2078,129 @@ The original background is restored on exit, including crash exits.</p>
 <li>CLI binary: <code>veyyon</code></li>
 <li>Config root: <code>~/.veyyon</code> (<code>VEYYON_CONFIG_DIR</code>; XDG paths after <code>veyyon config init-xdg</code>)</li>
 <li>npm packages: <code>@veyyon/*</code></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="task-guides"><a class="header" href="#task-guides">Task guides</a></h1>
+<p>Short, goal-shaped recipes for common jobs. Each guide points at the deeper feature pages; use those
+when you need full schemas or edge cases.</p>
+<p>Related references: <a href="#custom-hooks-guide">Hooks guide</a>, <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>,
+<a href="#mcp">MCP</a>, <a href="#skills">Skills</a>, <a href="#memory">Memory</a>,
+<a href="#session-branching">Branching</a>, <a href="#approvals">Sandbox</a>.</p>
+<hr>
+<h2 id="automate-a-check-on-every-edit-hooks"><a class="header" href="#automate-a-check-on-every-edit-hooks">Automate a check on every edit (hooks)</a></h2>
+<p>Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.</p>
+<p>The shipped hook model is a <strong>TypeScript module</strong> discovered under <code>.veyyon/hooks/</code> (project) or
+<code>~/.veyyon/profiles/default/agent/hooks/</code> (user). The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<pre><code class="language-ts">// .veyyon/hooks/post-edit-check.ts
+export default (pi) =&gt; {
+  pi.on("tool_result", async (event) =&gt; {
+    if (!/^(edit|write)$/.test(event.toolName)) return;
+    // run your check (spawn a test/linter); return { block, reason } from tool_call to deny
+  });
+};
+</code></pre>
+<p>The Bun runtime imports the module at startup; restart (or <code>/reload-plugins</code>) to pick up changes. See
+<a href="#custom-hooks-guide">Hooks guide</a> for the event names and handler contract.</p>
+<hr>
+<h2 id="run-a-bounded-task-from-a-script-or-ci"><a class="header" href="#run-a-bounded-task-from-a-script-or-ci">Run a bounded task from a script or CI</a></h2>
+<p>Use <code>veyyon --print</code> (<code>-p</code>) when the trigger lives outside the agent (pre-commit, CI, <code>entr</code>, <code>watchexec</code>):</p>
+<pre><code class="language-console">$ veyyon -p --approval-mode auto-edit \
+    "Run the focused tests for the files changed in the last commit and fail if any regress"
+</code></pre>
+<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and still prompts on exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
+<hr>
+<h2 id="give-the-agent-a-new-tool-mcp-or-skills"><a class="header" href="#give-the-agent-a-new-tool-mcp-or-skills">Give the agent a new tool (MCP or skills)</a></h2>
+<p>Goal: teach Veyyon a capability you do not want to bake into the binary.</p>
+<h3 id="choose-the-surface"><a class="header" href="#choose-the-surface">Choose the surface</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Need</th><th>Use</th></tr>
+</thead>
+<tbody>
+<tr><td>Talk to an external system (DB, SaaS, browser bridge) over a protocol</td><td>MCP server</td></tr>
+<tr><td>Package reusable instructions, scripts, and examples as data</td><td>Skill (<code>SKILL.md</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="path-1-add-an-mcp-server"><a class="header" href="#path-1-add-an-mcp-server">Path 1: add an MCP server</a></h3>
+<p>Add it from the TUI, which writes <code>mcp.json</code> for you:</p>
+<pre><code class="language-text">/mcp add
+</code></pre>
+<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> (user) / <code>.veyyon/mcp.json</code> (project) directly:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "database": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/path/to/db-mcp-server/index.js"],
+      "env": { "DB_PATH": "/var/data/app.db" }
+    }
+  }
+}
+</code></pre>
+<p>Confirm discovery with <code>/mcp</code> (or <code>/mcp list</code>), then ask the agent to use the new tool by name. If the
+server needs OAuth, run <code>/mcp reauth &lt;name&gt;</code>. Details: <a href="#mcp">MCP</a>,
+<a href="#mcp-server-setup">MCP setup</a>.</p>
+<h3 id="path-2-author-a-skill"><a class="header" href="#path-2-author-a-skill">Path 2: author a skill</a></h3>
+<p>Create a skill directory in user or project scope, for example
+<code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code> (or <code>.veyyon/skills/…</code> in a repo):</p>
+<pre><code class="language-markdown">---
+name: audit-config
+description: Audit Veyyon config.yml for unsafe approval and tool-policy combinations.
+metadata:
+  short-description: Config safety audit
+---
+
+# Audit config
+
+When asked to audit configuration:
+1. Read the active config.yml and any project overrides.
+2. Flag `yolo` approval paired with broad tool allow-lists on untrusted repos.
+3. Prefer concrete remediations over generic advice.
+</code></pre>
+<p>Restart or open a new session so skill discovery picks it up. Skills are data, you can version them in
+git and share them without shipping a new <code>veyyon</code> build. Prefer a skill when the “tool” is mostly
+prompting and local scripts; prefer MCP when the capability is a long-lived external process. See
+<a href="#skills">Skills</a>.</p>
+<hr>
+<h2 id="share-context-across-sessions-memory-and-branching"><a class="header" href="#share-context-across-sessions-memory-and-branching">Share context across sessions (memory and branching)</a></h2>
+<p>Goal: keep decisions, conventions, and alternate explorations available without pasting transcripts by
+hand.</p>
+<h3 id="memory-carry-guidance-into-new-threads"><a class="header" href="#memory-carry-guidance-into-new-threads">Memory: carry guidance into new threads</a></h3>
+<p>Cross-session memory is off by default. Turn on a backend with <code>memory.backend</code> in <code>config.yml</code>:</p>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+memory:
+  backend: mnemopi        # off (default), local, hindsight, mnemopi
+</code></pre>
+<p>Operate it from the TUI with <code>/memory</code> (<code>/memory stats</code>, <code>/memory diagnose</code>). Keep memory on for repos
+where conventions matter; leave it <code>off</code> for throwaway scratch sessions. See <a href="#memory">Memory</a>.</p>
+<h3 id="branching-explore-without-losing-the-main-line"><a class="header" href="#branching-explore-without-losing-the-main-line">Branching: explore without losing the main line</a></h3>
+<p>Use the session tree when you need parallel context <em>inside</em> one problem.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Intent</th><th>Command</th></tr>
+</thead>
+<tbody>
+<tr><td>Inspect the tree / jump to a prior turn</td><td><code>/tree</code></td></tr>
+<tr><td>Copy history into a new session from a user message</td><td><code>/fork</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Typical flow: reach a decision point, <code>/fork</code> to try an alternate approach, continue on the
+branch that works. Full behavior: <a href="#session-branching">Branching</a> and <a href="#sessions">Sessions</a>.</p>
+<h3 id="memory-vs-branching"><a class="header" href="#memory-vs-branching">Memory vs branching</a></h3>
+<ul>
+<li><strong>Memory</strong> stores durable facts across sessions when a backend is enabled.</li>
+<li><strong>Branching</strong> forks live transcript context for the current problem.</li>
+<li>Branch to explore; use memory for decisions that should outlive one session.</li>
+</ul>
+<hr>
+<h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
+<ul>
+<li><a href="#configuration-4">Configuration</a> for the keys these guides touch</li>
+<li><a href="#examples">Examples</a> for prompt-shaped tasks</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
@@ -1974,7 +2249,7 @@ script from <code>STANDARD.md</code> when touching Rust natives.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="plan-mode-and-goals"><a class="header" href="#plan-mode-and-goals">Plan mode and goals</a></h1>
 <p>Plan mode and goal mode are separate engine modes with different tools and continuation behavior. They cannot be active together (and each conflicts with vibe mode).</p>
-<h2 id="plan-mode-1"><a class="header" href="#plan-mode-1">Plan mode</a></h2>
+<h2 id="plan-mode"><a class="header" href="#plan-mode">Plan mode</a></h2>
 <p>Read-focused exploration that drafts a <strong>plan file</strong> before implementation.</p>
 <h3 id="enabling"><a class="header" href="#enabling">Enabling</a></h3>
 <ul>
@@ -1982,7 +2257,7 @@ script from <code>STANDARD.md</code> when touching Rust natives.</p>
 <li>Slash: <code>/plan</code> toggles plan mode; <code>/plan &lt;prompt&gt;</code> enters plan mode and submits the prompt</li>
 <li><code>/plan-review</code> reopens plan review while plan mode is active</li>
 </ul>
-<h3 id="behavior-3"><a class="header" href="#behavior-3">Behavior</a></h3>
+<h3 id="behavior-2"><a class="header" href="#behavior-2">Behavior</a></h3>
 <ol>
 <li>Session selects a plan file path and records plan-mode state.</li>
 <li>Tool surface adjusts: <code>resolve</code> is available for plan approval; plan-file <code>write</code>/<code>edit</code> may be enabled for drafting.</li>
@@ -2531,8 +2806,20 @@ entry is keyed <code>&lt;plugin_name&gt;@&lt;marketplace_name&gt;</code> and rec
 (user or project), <code>installPath</code>, <code>version</code>, install/update timestamps, the source git
 commit, and an <code>enabled</code> toggle.</li>
 </ul>
-<p>The one plugin-related key that does live in <code>config.yml</code> is <code>marketplace.autoUpdate</code>
-(<code>off</code> / <code>notify</code> / <code>auto</code>), which controls the startup update check.</p>
+<p>The one plugin-related key that does live in <code>config.yml</code> is <code>marketplace.autoUpdate</code>, which
+controls the startup update check. It runs in the background, so it never delays the first
+paint, and it takes one of three values:</p>
+<ul>
+<li><code>notify</code> (the default) refreshes any marketplace catalog older than a day, compares your
+installed versions against it, and prints one line naming how many updates are available.
+Run <code>/plugins</code> to install them.</li>
+<li><code>auto</code> does the same check and installs the updates itself, then prints one line naming how
+many landed. The running session keeps the versions it loaded at startup, so restart to use
+the new ones.</li>
+<li><code>off</code> skips the check entirely and contacts no marketplace.</li>
+</ul>
+<p>A check that fails, usually because you are offline, is written to the log and does not
+interrupt the session.</p>
 <h2 id="related-recipes-1"><a class="header" href="#related-recipes-1">Related recipes</a></h2>
 <p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above, there is
 no model-facing plugin-install tool. For task-shaped recipes that combine plugins with MCP and
@@ -2574,7 +2861,7 @@ export default function hook(pi: HookAPI): void {
 <p>Hook/extension paths are resolved as absolute, <code>~</code>-expanded, or relative to cwd. Discovery loads capability-registered modules, importable <code>.ts</code>/<code>.js</code> factories, plugin extension entry points, and explicit paths.</p>
 <h2 id="lifecycle-extension-bus"><a class="header" href="#lifecycle-extension-bus">Lifecycle (extension bus)</a></h2>
 <p>Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in <code>types.ts</code>). Exact event names and payloads are in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code> and <code>docs/hooks.md</code>.</p>
-<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
+<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
 <ul>
 <li><a href="#custom-hooks-guide">Custom hooks guide</a></li>
 <li>Repository <code>docs/hooks.md</code></li>
@@ -2608,7 +2895,7 @@ export default function (pi: HookAPI): void {
 </ul>
 <h2 id="events"><a class="header" href="#events">Events</a></h2>
 <p>Event names and payloads are defined in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code>. Common surfaces include tool call, permission-related gates (via the approval path), session lifecycle, and compaction. See <code>docs/hooks.md</code> for the typed list and return shapes (<code>block</code>, reasons, message injection).</p>
-<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
+<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li><a href="#hooks">Hooks</a></li>
 <li><a href="#approvals">Approvals</a></li>
@@ -2620,34 +2907,9 @@ tools show up in the session, ready for the model to call. The Model Context Pro
 standard that makes this work. Veyyon speaks it as a client: it connects out to MCP servers and
 consumes their tools and data. It is not itself an MCP server binary. To embed Veyyon in an editor,
 use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SDK.</p>
-<h2 id="transports"><a class="header" href="#transports">Transports</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Transport</th><th>Use when</th></tr>
-</thead>
-<tbody>
-<tr><td><code>stdio</code></td><td>Local executable (Node, Python, binary)</td></tr>
-<tr><td>HTTP / SSE</td><td>Remote hosted MCP service</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="configure-servers"><a class="header" href="#configure-servers">Configure servers</a></h2>
-<p><strong>Preferred:</strong> JSON files managed by Veyyon:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Scope</th><th>Path</th></tr>
-</thead>
-<tbody>
-<tr><td>Project</td><td><code>.veyyon/mcp.json</code></td></tr>
-<tr><td>User</td><td><code>~/.veyyon/profiles/default/agent/mcp.json</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Example:</p>
+<h2 id="what-it-looks-like"><a class="header" href="#what-it-looks-like">What it looks like</a></h2>
+<p>You register a server in an <code>mcp.json</code> file, and its tools become callable. A minimal local server:</p>
 <pre><code class="language-json">{
-  "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
   "mcpServers": {
     "sqlite": {
       "type": "stdio",
@@ -2658,32 +2920,25 @@ use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SD
   }
 }
 </code></pre>
-<p>Veyyon also discovers MCP entries from Claude, Cursor, VS Code, OpenCode, and related tool configs.</p>
-<p>Setup walkthrough: <a href="#mcp-server-setup">MCP server setup</a>.</p>
-<p>Engineering detail: <a href="../../mcp-config.html"><code>docs/mcp-config.md</code></a>.</p>
-<h2 id="in-the-tui"><a class="header" href="#in-the-tui">In the TUI</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Command</th><th>Purpose</th></tr>
-</thead>
-<tbody>
-<tr><td><code>/mcp</code></td><td>List servers, connection/auth status, exposed tools</td></tr>
-<tr><td><code>/mcp add</code></td><td>Add a server (wizard)</td></tr>
-<tr><td><code>/mcp list</code></td><td>List configured servers</td></tr>
-<tr><td><code>/mcp remove &lt;name&gt;</code></td><td>Remove a server</td></tr>
-<tr><td><code>/mcp test &lt;name&gt;</code></td><td>Test connectivity</td></tr>
-<tr><td><code>/mcp reauth &lt;name&gt;</code></td><td>Refresh OAuth</td></tr>
-</tbody>
-</table>
-</div>
-<p>Tool names appear namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
-<h2 id="related-surfaces-not-mcp-server-mode"><a class="header" href="#related-surfaces-not-mcp-server-mode">Related surfaces (not MCP server mode)</a></h2>
+<p>Each tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>, so a server never
+shadows a built-in tool or another server. Veyyon also discovers MCP entries that Claude, Cursor, VS
+Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
+without re-registering it.</p>
+<p>For the full setup path, choosing a transport (<code>stdio</code>, <code>http</code>, <code>sse</code>), passing environment
+variables, authenticating (bearer token or OAuth), approving tools, the <code>/mcp</code> commands, and fixing
+common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.</p>
+<h2 id="not-to-be-confused-with"><a class="header" href="#not-to-be-confused-with">Not to be confused with</a></h2>
 <ul>
-<li><strong>ACP</strong> (<code>veyyon acp</code>): Agent Client Protocol for editors; not MCP.</li>
-<li><strong>SDK</strong>: embed the agent in a host process.</li>
+<li><strong>ACP</strong> (<code>veyyon acp</code>): the Agent Client Protocol for driving Veyyon from an editor. That makes
+Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
+<li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<p>MCP config remains <code>mcp.json</code> and <code>/mcp</code>.</p>
+<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<ul>
+<li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
+<li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
+<li><a href="../../mcp-config.html"><code>docs/mcp-config.md</code></a>: the engineering reference</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mcp-server-setup"><a class="header" href="#mcp-server-setup">MCP server setup</a></h1>
 <p>Veyyon can connect to third-party Model Context Protocol (MCP) servers so external tools and data
@@ -2798,7 +3053,7 @@ tools:
     mcp__sqlite__query: prompt
 </code></pre>
 <p>To turn a server off entirely, add its name to <code>disabledServers</code> in <code>mcp.json</code>.</p>
-<h2 id="in-the-tui-1"><a class="header" href="#in-the-tui-1">In the TUI</a></h2>
+<h2 id="in-the-tui"><a class="header" href="#in-the-tui">In the TUI</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2865,7 +3120,7 @@ provider’s own connector store. Extend it with the integrations below instead.
 <p>Tool policy uses <code>tools.approvalMode</code> and <code>tools.approval.&lt;tool&gt;</code>, same machinery for bash, MCP, and custom tools (<code>docs/approval-mode.md</code>).</p>
 <p>Provider-hosted connector stores and <code>apps</code> connector tables are not part of the current product surface.
 Use MCP, plugins, hooks, and skills for integrations.</p>
-<h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
+<h2 id="see-also-2"><a class="header" href="#see-also-2">See also</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP setup</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -2935,7 +3190,7 @@ branchSummary:
 </code></pre>
 <h2 id="command-availability"><a class="header" href="#command-availability">Command availability</a></h2>
 <p>Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; <code>/btw</code> may remain available for steering, see TUI status when blocked.</p>
-<h2 id="see-also-2"><a class="header" href="#see-also-2">See also</a></h2>
+<h2 id="see-also-3"><a class="header" href="#see-also-3">See also</a></h2>
 <ul>
 <li><a href="#sessions">Sessions</a></li>
 <li><a href="https://github.com/santhreal/veyyon/blob/main/docs/internal/session-operations-export-share-fork-resume.md">Session operations</a></li>
@@ -2993,12 +3248,12 @@ these primary fields:</p>
 </thead>
 <tbody>
 <tr><td>Threshold</td><td><code>compaction.thresholdPercent</code></td><td>percent of the context window (<code>compaction.thresholdTokens</code> optional)</td></tr>
-<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>handoff</code> or <code>snap</code> (schema default <code>snap</code>)</td></tr>
+<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>handoff</code> writes a structured session transfer; <code>snap</code> archives history via the snapcompact engine.
+<p><code>summary</code> rewrites old history into an in-place LLM summary; <code>handoff</code> writes a structured session transfer.
 Run on demand with <code>/compact</code>. See <a href="#compaction-and-project-memory">Compaction and project memory</a>.</p>
 <h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,
@@ -3085,6 +3340,7 @@ one-time migration from the legacy bare-root layout.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
 $ veyyon profile new work
+$ veyyon profile new dev --from dev
 $ veyyon profile new bounty --from blank
 $ veyyon profile rm work --yes
 $ veyyon profile default work
@@ -3093,6 +3349,7 @@ $ veyyon profile default work
 <li><code>new</code> creates <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> with the expected identity dirs (<code>skills/</code>, <code>commands/</code>, …).</li>
 <li><code>--from default</code> (default) seeds <code>config.yml</code>, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are <strong>not</strong> copied.</li>
 <li><code>--from blank</code> creates an empty agent tree.</li>
+<li><code>--from dev</code> seeds a blank tree, then turns on the study features: <code>session.instrumentation</code> is set to <code>ultra</code> (dense study records on the session file) and Argot, the experimental token-shorthand codec, is enabled. Both are safe with any model, so a fresh <code>dev</code> profile runs without extra configuration. Use it when you want to study how a session spends its time and backtest it. The <code>ultra</code> level records two kinds of record: per tool call (start and end time, execution duration, queue wait, the result’s byte and token weight, and a fingerprint of the arguments) and per model turn (request-start and finalize time, time-to-first-token, output/throughput in tokens per second, cache read/write and reasoning tokens, and the exact sampling and reasoning parameters the turn sent). Lower levels record less: <code>basic</code> is wall-clock only, <code>rich</code> adds output weight and throughput, <code>ultra</code> adds the fingerprint, cache, and provenance detail. See the session instrumentation reference in <code>docs/internal/session.md</code> (the “Session Instrumentation” section) for the on-disk fields and analysis recipes.</li>
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
@@ -3115,7 +3372,7 @@ compaction:
   thresholdPercent: 80
 </code></pre>
 <p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception, unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
-<h2 id="see-also-3"><a class="header" href="#see-also-3">See also</a></h2>
+<h2 id="see-also-4"><a class="header" href="#see-also-4">See also</a></h2>
 <ul>
 <li><a href="#models-roles-and-profiles">Models, roles, and profiles</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
@@ -3162,10 +3419,10 @@ modelRoles:
 </thead>
 <tbody>
 <tr><td><code>default</code></td><td>(hidden)</td><td>Storage key for the interactive model only; not shown in role pickers or default <code>cycleOrder</code></td></tr>
-<tr><td><code>smol</code></td><td>Fast</td><td>Cheap / fast work; <code>--smol</code>, env <code>VEYYON_SMOL_MODEL</code> / <code>VEYYON_SMOL_MODEL</code> if set</td></tr>
-<tr><td><code>slow</code></td><td>Thinking</td><td>Heavier reasoning; <code>--slow</code></td></tr>
+<tr><td><code>smol</code></td><td>Fast</td><td>Cheap / fast work; <code>--smol</code> or env <code>VEYYON_SMOL_MODEL</code></td></tr>
+<tr><td><code>slow</code></td><td>Thinking</td><td>Heavier reasoning; <code>--slow</code> or env <code>VEYYON_SLOW_MODEL</code></td></tr>
 <tr><td><code>vision</code></td><td>Vision</td><td>Multimodal work</td></tr>
-<tr><td><code>plan</code></td><td>Architect</td><td>Plan mode; <code>--plan</code></td></tr>
+<tr><td><code>plan</code></td><td>Architect</td><td>Plan mode; <code>--plan</code> or env <code>VEYYON_PLAN_MODEL</code></td></tr>
 <tr><td><code>designer</code></td><td>Designer</td><td>Design-oriented work</td></tr>
 <tr><td><code>commit</code></td><td>Commit</td><td>Commit / changelog generation</td></tr>
 <tr><td><code>tiny</code></td><td>Tiny</td><td>Lightweight background (titles, classifiers); else falls back toward <code>@smol</code></td></tr>
@@ -3214,7 +3471,7 @@ compaction:
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="approvals-3"><a class="header" href="#approvals-3">Approvals</a></h2>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
+<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
@@ -3267,7 +3524,7 @@ compaction:
 <li>Personality does not grant tools, change <code>tools.approvalMode</code>, or bypass sandboxing.</li>
 <li>Personality text is escaped and injected as a bounded system-prompt section; it cannot override project rules or tool policy.</li>
 </ul>
-<h2 id="see-also-4"><a class="header" href="#see-also-4">See also</a></h2>
+<h2 id="see-also-5"><a class="header" href="#see-also-5">See also</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a></li>
 <li><a href="https://github.com/santhreal/veyyon/blob/main/docs/system-prompt-customization.md">System prompt customization</a> (engine doc)</li>
@@ -3377,129 +3634,6 @@ config tree (<code>.veyyon/</code>, <code>~/.veyyon/profiles/default/agent/</cod
 </ul>
 <p>See <a href="#migration-guide">Migration guide</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="task-guides"><a class="header" href="#task-guides">Task guides</a></h1>
-<p>Short, goal-shaped recipes for common jobs. Each guide points at the deeper feature pages; use those
-when you need full schemas or edge cases.</p>
-<p>Related references: <a href="#custom-hooks-guide">Hooks guide</a>, <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>,
-<a href="#mcp">MCP</a>, <a href="#skills">Skills</a>, <a href="#memory">Memory</a>,
-<a href="#session-branching">Branching</a>, <a href="#approvals">Sandbox</a>.</p>
-<hr>
-<h2 id="automate-a-check-on-every-edit-hooks"><a class="header" href="#automate-a-check-on-every-edit-hooks">Automate a check on every edit (hooks)</a></h2>
-<p>Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.</p>
-<p>The shipped hook model is a <strong>TypeScript module</strong> discovered under <code>.veyyon/hooks/</code> (project) or
-<code>~/.veyyon/profiles/default/agent/hooks/</code> (user). The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
-<pre><code class="language-ts">// .veyyon/hooks/post-edit-check.ts
-export default (pi) =&gt; {
-  pi.on("tool_result", async (event) =&gt; {
-    if (!/^(edit|write)$/.test(event.toolName)) return;
-    // run your check (spawn a test/linter); return { block, reason } from tool_call to deny
-  });
-};
-</code></pre>
-<p>The Bun runtime imports the module at startup; restart (or <code>/reload-plugins</code>) to pick up changes. See
-<a href="#custom-hooks-guide">Hooks guide</a> for the event names and handler contract.</p>
-<hr>
-<h2 id="run-a-bounded-task-from-a-script-or-ci"><a class="header" href="#run-a-bounded-task-from-a-script-or-ci">Run a bounded task from a script or CI</a></h2>
-<p>Use <code>veyyon --print</code> (<code>-p</code>) when the trigger lives outside the agent (pre-commit, CI, <code>entr</code>, <code>watchexec</code>):</p>
-<pre><code class="language-console">$ veyyon -p --approval-mode auto-edit \
-    "Run the focused tests for the files changed in the last commit and fail if any regress"
-</code></pre>
-<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and still prompts on exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
-<hr>
-<h2 id="give-the-agent-a-new-tool-mcp-or-skills"><a class="header" href="#give-the-agent-a-new-tool-mcp-or-skills">Give the agent a new tool (MCP or skills)</a></h2>
-<p>Goal: teach Veyyon a capability you do not want to bake into the binary.</p>
-<h3 id="choose-the-surface"><a class="header" href="#choose-the-surface">Choose the surface</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Need</th><th>Use</th></tr>
-</thead>
-<tbody>
-<tr><td>Talk to an external system (DB, SaaS, browser bridge) over a protocol</td><td>MCP server</td></tr>
-<tr><td>Package reusable instructions, scripts, and examples as data</td><td>Skill (<code>SKILL.md</code>)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="path-1-add-an-mcp-server"><a class="header" href="#path-1-add-an-mcp-server">Path 1: add an MCP server</a></h3>
-<p>Add it from the TUI, which writes <code>mcp.json</code> for you:</p>
-<pre><code class="language-text">/mcp add
-</code></pre>
-<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> (user) / <code>.veyyon/mcp.json</code> (project) directly:</p>
-<pre><code class="language-json">{
-  "mcpServers": {
-    "database": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["/path/to/db-mcp-server/index.js"],
-      "env": { "DB_PATH": "/var/data/app.db" }
-    }
-  }
-}
-</code></pre>
-<p>Confirm discovery with <code>/mcp</code> (or <code>/mcp list</code>), then ask the agent to use the new tool by name. If the
-server needs OAuth, run <code>/mcp reauth &lt;name&gt;</code>. Details: <a href="#mcp">MCP</a>,
-<a href="#mcp-server-setup">MCP setup</a>.</p>
-<h3 id="path-2-author-a-skill"><a class="header" href="#path-2-author-a-skill">Path 2: author a skill</a></h3>
-<p>Create a skill directory in user or project scope, for example
-<code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code> (or <code>.veyyon/skills/…</code> in a repo):</p>
-<pre><code class="language-markdown">---
-name: audit-config
-description: Audit Veyyon config.yml for unsafe approval and tool-policy combinations.
-metadata:
-  short-description: Config safety audit
----
-
-# Audit config
-
-When asked to audit configuration:
-1. Read the active config.yml and any project overrides.
-2. Flag `yolo` approval paired with broad tool allow-lists on untrusted repos.
-3. Prefer concrete remediations over generic advice.
-</code></pre>
-<p>Restart or open a new session so skill discovery picks it up. Skills are data, you can version them in
-git and share them without shipping a new <code>veyyon</code> build. Prefer a skill when the “tool” is mostly
-prompting and local scripts; prefer MCP when the capability is a long-lived external process. See
-<a href="#skills">Skills</a>.</p>
-<hr>
-<h2 id="share-context-across-sessions-memory-and-branching"><a class="header" href="#share-context-across-sessions-memory-and-branching">Share context across sessions (memory and branching)</a></h2>
-<p>Goal: keep decisions, conventions, and alternate explorations available without pasting transcripts by
-hand.</p>
-<h3 id="memory-carry-guidance-into-new-threads"><a class="header" href="#memory-carry-guidance-into-new-threads">Memory: carry guidance into new threads</a></h3>
-<p>Cross-session memory is off by default. Turn on a backend with <code>memory.backend</code> in <code>config.yml</code>:</p>
-<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
-memory:
-  backend: mnemopi        # off (default), local, hindsight, mnemopi
-</code></pre>
-<p>Operate it from the TUI with <code>/memory</code> (<code>/memory stats</code>, <code>/memory diagnose</code>). Keep memory on for repos
-where conventions matter; leave it <code>off</code> for throwaway scratch sessions. See <a href="#memory">Memory</a>.</p>
-<h3 id="branching-explore-without-losing-the-main-line"><a class="header" href="#branching-explore-without-losing-the-main-line">Branching: explore without losing the main line</a></h3>
-<p>Use the session tree when you need parallel context <em>inside</em> one problem.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Intent</th><th>Command</th></tr>
-</thead>
-<tbody>
-<tr><td>Inspect the tree / jump to a prior turn</td><td><code>/tree</code></td></tr>
-<tr><td>Copy history into a new session from a user message</td><td><code>/fork</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Typical flow: reach a decision point, <code>/fork</code> to try an alternate approach, continue on the
-branch that works. Full behavior: <a href="#session-branching">Branching</a> and <a href="#sessions">Sessions</a>.</p>
-<h3 id="memory-vs-branching"><a class="header" href="#memory-vs-branching">Memory vs branching</a></h3>
-<ul>
-<li><strong>Memory</strong> stores durable facts across sessions when a backend is enabled.</li>
-<li><strong>Branching</strong> forks live transcript context for the current problem.</li>
-<li>Branch to explore; use memory for decisions that should outlive one session.</li>
-</ul>
-<hr>
-<h2 id="see-also-5"><a class="header" href="#see-also-5">See also</a></h2>
-<ul>
-<li><a href="#configuration-4">Configuration</a> for the keys these guides touch</li>
-<li><a href="#examples">Examples</a> for prompt-shaped tasks</li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuration-4"><a class="header" href="#configuration-4">Configuration</a></h1>
 <p>This page groups settings by what you are trying to do. For provider and sign-in setup, see <a href="#models-and-providers">Models and providers</a> and <a href="#signing-in">Authentication</a>. For the full list of every key, see the repository’s <code>docs/settings.md</code>.</p>
 <h2 id="where-settings-live"><a class="header" href="#where-settings-live">Where settings live</a></h2>
@@ -3528,6 +3662,25 @@ $ veyyon config path                     # print the active agent directory
 </code></pre>
 <p><code>/settings</code> does the same inside a live session. Keys must match a schema path exactly
 (<code>theme.dark</code>, not <code>theme</code>).</p>
+<h3 id="when-a-settings-file-has-a-syntax-error"><a class="header" href="#when-a-settings-file-has-a-syntax-error">When a settings file has a syntax error</a></h3>
+<p>If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
+read it. It tells you at startup, names the file, and runs the session on
+defaults for whatever that file held:</p>
+<pre><code class="language-text">Could not read your settings, so this session is using defaults for them:
+  ~/.veyyon/profiles/default/agent/config.yml
+    original kept at ~/.veyyon/profiles/default/agent/config.yml.corrupt
+</code></pre>
+<p>Your original file is copied to <code>&lt;name&gt;.corrupt</code> before anything else touches it,
+so nothing is lost.</p>
+<p>The most common cause is a value containing a colon. YAML reads that second colon
+as the start of a nested mapping, so this line is invalid:</p>
+<pre><code class="language-text">statusLine: time: %H:%M
+</code></pre>
+<p>Quoting the value fixes it:</p>
+<pre><code class="language-yaml">statusLine: "time: %H:%M"
+</code></pre>
+<p>Fix the syntax in the original file, or copy the preserved file back over it and
+edit from there.</p>
 <h2 id="pick-models-and-providers"><a class="header" href="#pick-models-and-providers">Pick models and providers</a></h2>
 <p>Three explicit model slots, each set on its own:</p>
 <div class="table-wrapper">
@@ -3628,17 +3781,30 @@ the token saving comes from.</p>
 <pre><code class="language-yaml">argot:
   enabled: true
 </code></pre>
-<p>The default is <code>false</code>. You do not write or commit any dictionary. When Argot is
-on, veyyon builds the shorthand for you: it reads the project’s files (the ones
-git tracks, or a walk of the tree for a project with no git that carries a
-<code>.argot</code> marker), proposes handles for the strings that would save the most
-tokens, and keeps the result in a local cache under its own config directory.
-Nothing is written to the working tree, so there is no file for a pull request
-to pick up. The cache regenerates as the project moves (keyed on the git commit),
-and it grows monotonically: a handle the model has already been taught keeps its
-exact meaning, so text that used a handle always expands. At the start of a
-session veyyon teaches the model the handles it generated by listing them in the
-system prompt.</p>
+<p>The default is <code>false</code>. You do not write or commit any dictionary, and veyyon
+does not guess which project you mean: the agent decides. When Argot is on and
+the model is allowed to write shorthand (see the next section), the system
+prompt teaches it the notation and gives it two tools, <code>argot_load</code> and
+<code>argot_unload</code>. Starting work in a project, the agent calls <code>argot_load</code> on that
+folder. veyyon resolves the folder to its project root (the nearest <code>.git</code>, or a
+<code>.argot</code> marker for a project with no git), reads the project’s files (the ones
+git tracks, or a walk of the tree for a <code>.argot</code> project), proposes handles for
+the strings that would save the most tokens, and keeps the result in a local
+cache under its own config directory. In a monorepo the agent loads the one
+package it works in, not the repo root. Loading reads a project tree and writes
+the cache, so in the approval-gated autonomy modes veyyon asks before running
+it and shows the resolved root; unloading never needs approval, because it only
+teaches less and every handle already written keeps expanding.</p>
+<p>Nothing is written to the working tree, so there is no file for a pull request
+to pick up. Each cache entry is immutable and named by the content it was built
+from (the git commit for a git project, or a signature of the file listing for a
+project with a <code>.argot</code> marker). A new commit reads a new entry, built from the
+new tree; the old entry is never rewritten. Nothing depends on a handle keeping
+its name across states, because veyyon expands every handle before it reaches the
+saved transcript, so an entry never has to agree with an older one. Once the
+agent has loaded a project, veyyon lists its handles in the system prompt, and
+the model writes them from then on. A session where the agent never loads
+anything simply writes full strings, exactly as if Argot were off.</p>
 <h3 id="choose-which-models-write-shorthand"><a class="header" href="#choose-which-models-write-shorthand">Choose which models write shorthand</a></h3>
 <p>Enabling Argot alone does not make any model write handles. You also list the
 models allowed to do so:</p>
@@ -3653,6 +3819,24 @@ lets you keep shorthand on for a model you trust to recall the dictionary and of
 for one you are still measuring. Expansion never depends on this list: a handle
 already written expands whatever model is active, so switching models never
 leaves a raw handle behind.</p>
+<h3 id="size-the-dictionary"><a class="header" href="#size-the-dictionary">Size the dictionary</a></h3>
+<p>The generated dictionary is packed under a token budget: handles are added in
+value order until the next one would breach it, so the budget decides how many
+strings earn shorthand. A larger budget teaches more handles, which gives the
+model more chances to save tokens in its writing, but it also makes the notation
+preamble longer every turn. A smaller budget keeps the preamble cheap and teaches
+only the most central strings. Set it with <code>argot.tokenBudget</code>:</p>
+<pre><code class="language-yaml">argot:
+  enabled: true
+  models:
+    - anthropic/claude-opus-4
+  tokenBudget: 2000
+</code></pre>
+<p>The default is <code>1000</code>. Changing the budget generates a new dictionary: the cache
+key folds in the budget, so an entry built under one budget is never reused for
+another, and the old entry is left in place. A value that is not a positive
+number is rejected and the default is used, so a bad setting never quietly
+produces an empty dictionary.</p>
 <h3 id="stop-shorthand-in-a-large-context"><a class="header" href="#stop-shorthand-in-a-large-context">Stop shorthand in a large context</a></h3>
 <p>Recall of the dictionary degrades as a conversation grows. To bound that risk,
 stop teaching shorthand once the context passes a token threshold:</p>
@@ -3666,9 +3850,35 @@ stop teaching shorthand once the context passes a token threshold:</p>
 Handles written earlier still expand losslessly, because the cutoff stops only
 the teaching, never the expansion. The default is <code>-1</code>, which never stops on
 size.</p>
+<h3 id="choose-how-subagents-start"><a class="header" href="#choose-how-subagents-start">Choose how subagents start</a></h3>
+<p>A subagent (a child veyyon spawns for a task) can start with its own shorthand,
+or none. Set that with <code>argot.subagents</code>:</p>
+<pre><code class="language-yaml">argot:
+  enabled: true
+  models:
+    - anthropic/claude-opus-4
+  subagents: fresh
+</code></pre>
+<p>The three values are:</p>
+<ul>
+<li><code>off</code> (the default): a subagent gets no shorthand. It reads full text and
+writes full text.</li>
+<li><code>fresh</code>: a subagent gets its own shorthand session and loads the project of
+its own task through <code>argot_load</code>, independent of the parent. Use this when a
+subagent works a different project than its parent, for example a parent in a
+monorepo and a child scoped to one crate.</li>
+<li><code>inherit</code>: a subagent starts from a copy of the parent’s loaded shorthand, so it
+writes the parent’s handles from its first turn.</li>
+</ul>
+<p>This setting only trades tokens; it never changes what the agents agree on. Every
+agent expands its own output before it reaches a tool, the saved transcript, a
+prompt it hands to a child, or the result it returns to a parent, so a handle
+never crosses between a parent and a child in either direction. A subagent that
+starts with no shorthand is already correct: it simply writes in full. That is why
+<code>off</code> is a safe default and the other two are optimizations.</p>
 <p>The generated cache is per project and local to your machine. To rebuild it from
 scratch, delete the project’s cache directory under veyyon’s config root; the
-next session regenerates it.</p>
+next <code>argot_load</code> regenerates it.</p>
 <h2 id="restrict-tools-for-a-repo-or-role"><a class="header" href="#restrict-tools-for-a-repo-or-role">Restrict tools for a repo or role</a></h2>
 <p>Deny a tool with per-tool policy, or disable a built-in tool entirely:</p>
 <pre><code class="language-yaml">tools:
@@ -3708,8 +3918,10 @@ $ veyyon --cwd /tmp/scratch          # wins over session.workdir for this run
 <p><code>session.workdir</code> must resolve to an existing directory; a relative path or a
 missing directory fails launch rather than falling back silently. Mid-session
 overrides via the agent <code>set_cwd</code> tool or <code>/cwd</code> are session-scoped only: they
-re-root the live session and never write <code>session.workdir</code>. Persist a new
-default with <code>veyyon config set</code> or <code>/settings</code>.</p>
+re-root the live session (the cwd, and with it the project settings, plugins,
+slash commands, capabilities, ssh tool, and system-prompt project framing) and
+never write <code>session.workdir</code>. Persist a new default with <code>veyyon config set</code> or
+<code>/settings</code>.</p>
 <h2 id="profiles-3"><a class="header" href="#profiles-3">Profiles</a></h2>
 <p>Each profile is <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> (including <code>default</code>). Activate with <code>--profile &lt;name&gt;</code> (<code>-p</code> is <code>--print</code>, not profile), <code>VEYYON_PROFILE</code>, or TUI <code>/profile</code> (relaunch).</p>
 <pre><code class="language-console">$ veyyon --profile work
@@ -3730,7 +3942,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 }
 </code></pre>
 <p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="#hooks">Hooks</a>, <a href="#task-guides">Task guides</a>. MCP: <a href="#mcp">MCP</a>.</p>
-<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
@@ -3769,7 +3981,7 @@ $ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
 $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
-<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
+<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
 <p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3784,7 +3996,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <p>External tools via Model Context Protocol: client config in <code>mcp.json</code> (user profile and/or project). See <a href="#mcp">MCP</a>.</p>
 <h2 id="hooks-1"><a class="header" href="#hooks-1">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
-<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
+<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
@@ -3946,6 +4158,7 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>read</code></td><td></td><td>Read-tool CLI probe</td></tr>
 <tr><td><code>say</code></td><td></td><td>Speak text with local TTS (<code>--voices</code> lists voices)</td></tr>
 <tr><td><code>search</code></td><td><code>q</code></td><td>Web search probe</td></tr>
+<tr><td><code>session</code></td><td><code>sessions</code></td><td>Study a stored session (<code>stats</code>: timing, tool cost, turn cadence)</td></tr>
 <tr><td><code>setup</code></td><td></td><td>First-run setup wizard</td></tr>
 <tr><td><code>shell</code></td><td></td><td>Native shell probe</td></tr>
 <tr><td><code>ssh</code></td><td></td><td>SSH host configuration</td></tr>
@@ -3959,6 +4172,33 @@ $ veyyon "fix the failing test in auth.rs"
 </table>
 </div>
 <p>Hidden worker selectors and <code>--smoke-test</code> are for CI/packaging, not daily use.</p>
+<h2 id="studying-a-session"><a class="header" href="#studying-a-session">Studying a session</a></h2>
+<p><code>veyyon session stats [id]</code> reads a stored session and reports how it spent its
+time and tokens. With no id it studies the most recent session in the current
+directory; give a session id or filename prefix to pick another one. The command
+reads only, so it is safe to run against a session another process is writing.</p>
+<pre><code class="language-console">$ veyyon session stats
+$ veyyon session stats 3f8a
+$ veyyon session stats --json
+</code></pre>
+<p>It reports, in one pass:</p>
+<ul>
+<li><strong>Totals</strong>: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and the weight tool results added to context.</li>
+<li><strong>Tool latency</strong>: per tool, the call count and the p50, p95, and max execution time, plus total scheduler wait, slowest tool first.</li>
+<li><strong>Tool cost</strong>: per tool, the tokens and bytes its results returned into context, most expensive first.</li>
+<li><strong>Repeated identical calls</strong>: tools called more than once with byte-identical arguments, keyed by an arguments fingerprint.</li>
+<li><strong>Per-turn</strong>: each assistant turn’s model, request time, tool calls, and token usage.</li>
+</ul>
+<p>The timing and weight fields come from the per-tool-call records that
+instrumentation writes. How much is recorded depends on the <code>session.instrumentation</code>
+setting: <code>off</code> records nothing (the command still reports turns and usage from the
+assistant’s own accounting, but tool timing reads as zero), <code>basic</code> records
+wall-clock, <code>rich</code> adds output weight, and <code>ultra</code> adds the arguments fingerprint
+that powers repeated-call detection. Turn on <code>ultra</code> for a session you want to
+study in full, or create a ready-made study profile with <code>veyyon profile new dev --from dev</code>. See <a href="#profiles-1">Profiles</a> and the <code>session.instrumentation</code>
+setting for the level details.</p>
+<p><code>--json</code> prints the complete report, including every turn; the text view caps the
+longest tables and says so when it does.</p>
 <p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,
 and no top-level <code>resume</code> / <code>fork</code> / <code>archive</code> verbs. Resume and branch from the TUI (<code>/resume</code>,
 <code>/fork</code>, <code>/session</code>) or the launch session picker; for non-interactive resume use <code>veyyon --print --resume &lt;id&gt;</code> / <code>--continue</code>.</p>
@@ -3979,8 +4219,8 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/resume</code></td><td>Resume another saved session</td></tr>
 <tr><td><code>/fork</code>, <code>/branch</code>, <code>/tree</code></td><td>Branching and session tree UI</td></tr>
 <tr><td><code>/rename &lt;title&gt;</code></td><td>Rename session</td></tr>
-<tr><td><code>/move &lt;dir&gt;</code></td><td>Move session to another working directory</td></tr>
-<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the session after validating the directory exists (session-scoped only; does not write profile <code>session.workdir</code>)</td></tr>
+<tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root project settings, plugins, commands, and capabilities there</td></tr>
+<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same project-scoped state as <code>/move</code> (project settings, plugins, slash commands, capabilities, ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
 <tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
@@ -4044,7 +4284,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/login [provider|url]</code></td><td>OAuth / API key login</td></tr>
 <tr><td><code>/logout [provider]</code></td><td>Log out</td></tr>
 <tr><td><code>/usage show|reset</code></td><td>Provider rate limits</td></tr>
-<tr><td><code>/changelog [full]</code></td><td>Release notes</td></tr>
+<tr><td><code>/changelog</code></td><td>Open the release notes on the web</td></tr>
 </tbody>
 </table>
 </div>
@@ -4654,64 +4894,6 @@ credential store). BYOK provider keys never land in plaintext <code>config.yml</
 </table>
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="harness-design-goals"><a class="header" href="#harness-design-goals">Harness design goals</a></h1>
-<p>Model quality depends on the agent harness: tool schemas, edit format, context handling, and control flow. The same weights can succeed or fail depending on those choices.</p>
-<h2 id="primary-mechanisms"><a class="header" href="#primary-mechanisms">Primary mechanisms</a></h2>
-<ol>
-<li><strong>Edit format.</strong> Formats that are hard to emit cause apply failures and retries. Hashline (and model-specific edit prompts) is the main write path in <code>packages/coding-agent</code>.</li>
-<li><strong>Control flow.</strong> Stop when verification passes; bound retries; budget context and subagent fan-out. Plan mode, goal mode, and tool-approval tiers encode parts of this in the engine.</li>
-</ol>
-<h2 id="design-consequences"><a class="header" href="#design-consequences">Design consequences</a></h2>
-<ul>
-<li>Hashline-aware <code>edit</code> / <code>write</code> with native verification (see <a href="#the-hashline-edit-engine">The hashline edit engine</a>).</li>
-<li>Explicit model slots and optional roles (<code>modelRoles</code>, catalog selectors, thinking levels).</li>
-<li>Engine-enforced modes: plan file + resolve path, goal continuation, approval tiers.</li>
-<li>Schema-based tool-call repair before argument validation (see <a href="#tool-call-repair">Repair</a>).</li>
-</ul>
-<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
-<ul>
-<li><a href="#mechanisms">Mechanisms</a></li>
-<li><a href="#tool-call-repair">Repair</a></li>
-<li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a glance</a></h1>
-<p>Veyyon ships as the <strong><code>veyyon</code></strong> CLI (Bun + TypeScript, Rust helpers). This chapter maps subsystems;
-each has a handbook page and matching engineering notes under <code>docs/</code>.</p>
-<h2 id="the-request-path"><a class="header" href="#the-request-path">The request path</a></h2>
-<pre><code class="language-text">            ┌──────────────────────────────────────────────────────────────┐
-prompt ──► │  veyyon (packages/coding-agent)                              │
-            │    │                                                          │
-            │    ▼                                                          │
-            │  AgentSession turn loop                                      │
-            │    │   model stream → tools (read, bash, edit, …)            │
-            │    ▼                                                          │
-            │  hashline / handlers ──► filesystem (approval-gated)         │
-            └──────────────────────────────────────────────────────────────┘
-</code></pre>
-<h2 id="subsystems"><a class="header" href="#subsystems">Subsystems</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Subsystem</th><th>Responsibility</th><th>Chapter</th></tr>
-</thead>
-<tbody>
-<tr><td>Edit engine (<code>@veyyon/hashline</code>)</td><td>Default hashline edit path</td><td><a href="#the-hashline-edit-engine">Edit engine</a></td></tr>
-<tr><td>Sessions</td><td>Session trees, compaction</td><td><a href="#compaction-and-project-memory">Compaction &amp; memory</a></td></tr>
-<tr><td>MCP</td><td>MCP client integration</td><td><a href="#mcp-3">MCP</a></td></tr>
-<tr><td>Config</td><td>Settings and profiles</td><td><a href="#config">Config</a></td></tr>
-<tr><td>Memory</td><td>off / local / mnemopi / hindsight</td><td><a href="#memory">Memory</a></td></tr>
-<tr><td>Goals</td><td>Goal cards and budgets</td><td><a href="#goal-state-and-long-sessions">Goal state</a></td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="design-rules"><a class="header" href="#design-rules">Design rules</a></h2>
-<ol>
-<li><strong>One primary edit path.</strong> Hashline is the default edit surface; alternate <code>edit.mode</code> values exist for compatibility.</li>
-<li><strong>Explicit failures.</strong> Invalid config, stale hashline tags, and denied actions return actionable errors to the operator or model. Denied tools do not auto-escalate permissions.</li>
-</ol>
-<p>Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in <code>packages/coding-agent/src/repair/schema-repair.ts</code>. See <a href="#tool-call-repair">Repair</a>. Providers and models: <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture overview</a></h1>
 <p>Veyyon is a <strong>Bun/TypeScript</strong> coding agent (fork of oh-my-pi) with Rust hot paths (<code>@veyyon/hashline</code>,
 native grep, PTY). The shipped CLI binary is <strong><code>veyyon</code></strong>. There is no separate app-server daemon in
@@ -4904,7 +5086,7 @@ your own keys and choose models.</p>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, re-exports, and related repo checks (see project CI / <code>STANDARD.md</code> where applicable).</li>
 </ul>
-<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
+<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
 <li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
@@ -4913,7 +5095,7 @@ your own keys and choose models.</p>
 <h1 id="tool-call-repair"><a class="header" href="#tool-call-repair">Tool-call repair</a></h1>
 <p>Models often emit tool arguments that are almost valid JSON or almost match the tool schema: stringified objects, trailing commas, truncated payloads, or misnamed fields. Without a repair step those calls fail validation and cost a full turn.</p>
 <p>Repair runs in the agent loop <strong>before</strong> argument validation. Clear malformations are coerced into a schema-valid object; ambiguous cases are refused and returned to the model as an error tool result (no dispatch).</p>
-<h2 id="behavior-4"><a class="header" href="#behavior-4">Behavior</a></h2>
+<h2 id="behavior-3"><a class="header" href="#behavior-3">Behavior</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -4931,7 +5113,7 @@ your own keys and choose models.</p>
 </table>
 </div>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
-<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
+<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
 <li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
@@ -4950,7 +5132,7 @@ your own keys and choose models.</p>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
-<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
+<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#tool-call-repair">Why repair exists</a></li>
 <li><a href="#repair-on-edits">Repair on edits</a></li>
@@ -4992,7 +5174,7 @@ your own keys and choose models.</p>
 </ul>
 <h2 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h2>
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>, …). Standard <code>OTEL_*</code> env vars apply (<code>OTEL_SERVICE_NAME</code>, headers, <code>OTEL_SDK_DISABLED</code>, <code>OTEL_TRACES_EXPORTER=none</code>). Transport is <code>http/protobuf</code> only. See <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
-<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
+<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>
 <li><a href="#observability">Observability</a></li>
 <li><a href="#the-repair-cascade">Repair cascade</a></li>
@@ -5285,9 +5467,9 @@ to one token below the window and you get a one-time warning. Set it to
 window. You can also compact on demand with <code>/compact</code>.</li>
 <li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
 <ul>
+<li><code>summary</code>: rewrites old history into an in-place LLM summary on the current branch (the default).</li>
 <li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
 recent decisions, then continues from it (LLM transfer path).</li>
-<li><code>snap</code>: archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
 </ul>
 </li>
 <li><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
@@ -5299,7 +5481,7 @@ retained verbatim up to the type’s budget.</p>
 <p>Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
 content out of the live context and leaves a short placeholder in its place. Whole tool
 results and large fenced or XML blocks are replaced with a marker such as
-<code>[shaken ~1200 tokens — recover: artifact://42 (region 3)]</code>. The full text is saved as a
+<code>[shaken ~1200 tokens; recover: artifact://42 (region 3)]</code>. The full text is saved as a
 session artifact first, so you can always read it back with <code>read artifact://42</code>. Nothing is
 lost, it just stops being resent on every turn. Run it on demand with <code>/shake</code>, or let
 auto-maintenance run it when <code>compaction.strategy</code> is <code>shake</code>.</p>
@@ -5368,6 +5550,32 @@ spawn, model-slot, and <code>irc</code> messaging patterns instead; you compose 
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process exports agent-loop traces over OTLP/protobuf. See <a href="#observability-for-repair-and-sessions">Soundness and telemetry</a> and <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
 <h2 id="session-debugging"><a class="header" href="#session-debugging">Session debugging</a></h2>
 <p><code>/dump</code>, <code>/context</code>, <code>/debug</code>, and standalone tool CLIs such as <code>veyyon grep</code> for inspecting what the agent would see.</p>
+<h2 id="recording-raw-provider-traffic"><a class="header" href="#recording-raw-provider-traffic">Recording raw provider traffic</a></h2>
+<p>When a model behaves in a way you cannot explain from the transcript, record the
+exact HTTP exchange. Set <code>VEYYON_REQ_DEBUG=1</code> before starting veyyon:</p>
+<pre><code class="language-sh">VEYYON_REQ_DEBUG=1 veyyon
+</code></pre>
+<p>Every request writes two files into the directory you started veyyon from:</p>
+<ul>
+<li><code>rr-session-N.json</code>, the request: method, URL, headers, and body. A JSON body
+is stored parsed under <code>body</code>; anything else is stored as <code>bodyText</code>, or as
+<code>bodyBase64</code> when it is not valid UTF-8.</li>
+<li><code>rr-session-N.res.log</code>, the response: the status line and headers, then the
+raw body bytes exactly as they arrived, including every streaming chunk.</li>
+</ul>
+<p><code>N</code> counts up from 1 each time veyyon starts, and existing files are never
+overwritten, so a second run in the same directory continues past the numbers
+already there.</p>
+<p>Two things are worth knowing before you turn it on. The files land in your
+working directory rather than a cache directory, because you usually want to
+read them next to the project you were working in. And request bodies contain
+whatever you sent the model, including file contents and your API key in the
+headers, so treat them as sensitive and delete them when you are done.</p>
+<p>Recording never interferes with the session it records. If a log cannot be
+written, because the disk is full or the directory is read-only, veyyon logs an
+error naming the file and the cause, stops recording that response, and lets the
+response through untouched. You get your answer and a truncated log, not a
+failed request.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <p>Common failure paths.</p>
@@ -5382,7 +5590,7 @@ veyyon plugin doctor
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code> (plus execpolicy <code>.rules</code>). There is no OS command sandbox. Schema default is <strong><code>yolo</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
-<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
+<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
 <ul>
 <li><a href="#approvals-and-errors">Approvals and errors</a></li>
 <li><a href="#observability">Observability</a></li>

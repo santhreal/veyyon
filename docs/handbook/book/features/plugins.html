@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -330,8 +330,20 @@ entry is keyed <code>&lt;plugin_name&gt;@&lt;marketplace_name&gt;</code> and rec
 (user or project), <code>installPath</code>, <code>version</code>, install/update timestamps, the source git
 commit, and an <code>enabled</code> toggle.</li>
 </ul>
-<p>The one plugin-related key that does live in <code>config.yml</code> is <code>marketplace.autoUpdate</code>
-(<code>off</code> / <code>notify</code> / <code>auto</code>), which controls the startup update check.</p>
+<p>The one plugin-related key that does live in <code>config.yml</code> is <code>marketplace.autoUpdate</code>, which
+controls the startup update check. It runs in the background, so it never delays the first
+paint, and it takes one of three values:</p>
+<ul>
+<li><code>notify</code> (the default) refreshes any marketplace catalog older than a day, compares your
+installed versions against it, and prints one line naming how many updates are available.
+Run <code>/plugins</code> to install them.</li>
+<li><code>auto</code> does the same check and installs the updates itself, then prints one line naming how
+many landed. The running session keeps the versions it loaded at startup, so restart to use
+the new ones.</li>
+<li><code>off</code> skips the check entirely and contacts no marketplace.</li>
+</ul>
+<p>A check that fails, usually because you are offline, is written to the log and does not
+interrupt the session.</p>
 <h2 id="related-recipes"><a class="header" href="#related-recipes">Related recipes</a></h2>
 <p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above, there is
 no model-facing plugin-install tool. For task-shaped recipes that combine plugins with MCP and

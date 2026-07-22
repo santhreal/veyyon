@@ -39,6 +39,29 @@ to every credential-free engine and consolidates deduplicated results). `auto` r
 first available provider in the built-in priority order; `providers.webSearchExclude` removes
 providers from that chain entirely.
 
+## Exa research and webset tools
+
+Beyond ranked search, Exa hosts two MCP servers that Veyyon can turn into agent tools. Both
+are off by default, because each one adds tools to every session and costs a discovery
+request at startup.
+
+```yaml
+exa:
+  enableResearcher: true
+  enableWebsets: true
+```
+
+`exa.enableResearcher` adds `exa_deep_researcher_start` and `exa_deep_researcher_check`. The
+model starts a research run and then polls it, so a single question can take minutes and
+returns a written report rather than a result list.
+
+`exa.enableWebsets` adds one tool per webset operation the server offers, named
+`exa_<operation>`. The list comes from the server, so new operations appear without a Veyyon
+release. Websets require `EXA_API_KEY` in your environment; if it is missing, Veyyon logs the
+reason at startup and registers no webset tools rather than failing later inside a tool call.
+
+`exa.enabled: false` turns off all of it, including search.
+
 ## Approvals
 
 With web search enabled, the tool runs without a per-call approval prompt, because it reads

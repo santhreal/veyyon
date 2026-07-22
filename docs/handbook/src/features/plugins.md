@@ -167,8 +167,20 @@ by the `/plugins` UI and the `veyyon plugin` CLI (edit through those, not by han
   (user or project), `installPath`, `version`, install/update timestamps, the source git
   commit, and an `enabled` toggle.
 
-The one plugin-related key that does live in `config.yml` is `marketplace.autoUpdate`
-(`off` / `notify` / `auto`), which controls the startup update check.
+The one plugin-related key that does live in `config.yml` is `marketplace.autoUpdate`, which
+controls the startup update check. It runs in the background, so it never delays the first
+paint, and it takes one of three values:
+
+- `notify` (the default) refreshes any marketplace catalog older than a day, compares your
+  installed versions against it, and prints one line naming how many updates are available.
+  Run `/plugins` to install them.
+- `auto` does the same check and installs the updates itself, then prints one line naming how
+  many landed. The running session keeps the versions it loaded at startup, so restart to use
+  the new ones.
+- `off` skips the check entirely and contacts no marketplace.
+
+A check that fails, usually because you are offline, is written to the log and does not
+interrupt the session.
 
 ## Related recipes
 

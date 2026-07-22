@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,8 +209,8 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/resume</code></td><td>Resume another saved session</td></tr>
 <tr><td><code>/fork</code>, <code>/branch</code>, <code>/tree</code></td><td>Branching and session tree UI</td></tr>
 <tr><td><code>/rename &lt;title&gt;</code></td><td>Rename session</td></tr>
-<tr><td><code>/move &lt;dir&gt;</code></td><td>Move session to another working directory</td></tr>
-<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the session after validating the directory exists (session-scoped only; does not write profile <code>session.workdir</code>)</td></tr>
+<tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root project settings, plugins, commands, and capabilities there</td></tr>
+<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same project-scoped state as <code>/move</code> (project settings, plugins, slash commands, capabilities, ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
 <tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
@@ -274,7 +274,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/login [provider|url]</code></td><td>OAuth / API key login</td></tr>
 <tr><td><code>/logout [provider]</code></td><td>Log out</td></tr>
 <tr><td><code>/usage show|reset</code></td><td>Provider rate limits</td></tr>
-<tr><td><code>/changelog [full]</code></td><td>Release notes</td></tr>
+<tr><td><code>/changelog</code></td><td>Open the release notes on the web</td></tr>
 </tbody>
 </table>
 </div>

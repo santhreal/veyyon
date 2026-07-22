@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,6 +197,16 @@
                     <main>
                         <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
 <p>This chapter is a compact map of the main harness mechanisms. It explains what each one is and points you to the chapter that covers it in full. The operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
+<p>Veyyon is a fork of oh-my-pi. The first group below is what the fork adds on top. The rest is the shared base both projects run on.</p>
+<h2 id="what-the-fork-adds"><a class="header" href="#what-the-fork-adds">What the fork adds</a></h2>
+<ul>
+<li><strong>Argot.</strong> A per-project shorthand the model writes in. The model writes a short handle like <code>§build</code> where it would have written a long string it repeats, and Veyyon restores the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by context size, and the generated dictionary is cached per project and only grows. See <a href="./argot.html">Argot</a>.</li>
+<li><strong>Snap compaction.</strong> Bitmap-frame context compression with lossless dedup and artifact spill, so a long session sheds tokens without losing what it already established. See <a href="../context/compaction-memory.html">Compaction and project memory</a>.</li>
+<li><strong>Shared credentials and global config.</strong> Providers and global settings are shared across profiles, so signing in once reaches every profile instead of each one holding its own copy.</li>
+<li><strong>Per-profile working directory.</strong> A profile can pin its own working directory, and <code>setCwd</code> moves an existing session, so one install can hold several projects without them bleeding into each other.</li>
+<li><strong>Absolute-token compaction threshold.</strong> Compaction can trigger on an absolute token count, not only a fraction of the window, so the trigger point is the same across models with different context sizes.</li>
+<li><strong>Atomic, serialized config writes.</strong> Settings are written through a single serialized path with an atomic swap, so two writers never tear a config file.</li>
+</ul>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
 <p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="../using/editing.html">Editing and repair</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
@@ -207,7 +217,7 @@
 <p>Veyyon separates the model you use from the job it does:</p>
 <ul>
 <li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
-<li><strong>Roles</strong> pin a model to a kind of work. The built-in roles are <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, and <code>advisor</code>, and you can add your own in <code>modelRoles</code>.</li>
+<li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>task</code> for subagents, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
 <li><strong>Overrides</strong> let a slot win over a role. <code>subagent.model</code> overrides <code>modelRoles.task</code> when set, and <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it.</li>
 <li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
@@ -233,7 +243,7 @@
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../why/performance.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../why/argot.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -247,7 +257,7 @@
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../why/performance.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../why/argot.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

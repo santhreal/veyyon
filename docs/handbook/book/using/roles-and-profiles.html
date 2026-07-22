@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9bf3cc39.js";
+            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-cc1a72e9.js"></script>
+        <script src="../toc-de67d70d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -235,10 +235,10 @@ modelRoles:
 </thead>
 <tbody>
 <tr><td><code>default</code></td><td>(hidden)</td><td>Storage key for the interactive model only; not shown in role pickers or default <code>cycleOrder</code></td></tr>
-<tr><td><code>smol</code></td><td>Fast</td><td>Cheap / fast work; <code>--smol</code>, env <code>VEYYON_SMOL_MODEL</code> / <code>VEYYON_SMOL_MODEL</code> if set</td></tr>
-<tr><td><code>slow</code></td><td>Thinking</td><td>Heavier reasoning; <code>--slow</code></td></tr>
+<tr><td><code>smol</code></td><td>Fast</td><td>Cheap / fast work; <code>--smol</code> or env <code>VEYYON_SMOL_MODEL</code></td></tr>
+<tr><td><code>slow</code></td><td>Thinking</td><td>Heavier reasoning; <code>--slow</code> or env <code>VEYYON_SLOW_MODEL</code></td></tr>
 <tr><td><code>vision</code></td><td>Vision</td><td>Multimodal work</td></tr>
-<tr><td><code>plan</code></td><td>Architect</td><td>Plan mode; <code>--plan</code></td></tr>
+<tr><td><code>plan</code></td><td>Architect</td><td>Plan mode; <code>--plan</code> or env <code>VEYYON_PLAN_MODEL</code></td></tr>
 <tr><td><code>designer</code></td><td>Designer</td><td>Design-oriented work</td></tr>
 <tr><td><code>commit</code></td><td>Commit</td><td>Commit / changelog generation</td></tr>
 <tr><td><code>tiny</code></td><td>Tiny</td><td>Lightweight background (titles, classifiers); else falls back toward <code>@smol</code></td></tr>

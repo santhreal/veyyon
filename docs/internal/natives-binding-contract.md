@@ -72,7 +72,6 @@ Consumers in `packages/coding-agent` and `packages/tui` import directly from `@v
 | Highlight         | `highlightCode`, `supportsLanguage`, `getSupportedLanguages`                                              | `highlight.rs`                                   | sync                       |
 | HTML              | `htmlToMarkdown(html, options?)`                                                                          | `html.rs`                                        | `Promise<string>`          |
 | SIXEL             | `encodeSixel`                                                                                             | `sixel.rs`                                       | sync                       |
-| Snapcompact       | `renderSnapcompactPng(text, options)`                                                                     | `snapcompact.rs`                                 | `Promise<string>`          |
 | Clipboard         | `copyToClipboard`, `readImageFromClipboard`                                                               | `clipboard.rs`                                   | sync / promise             |
 | Tokens            | `countTokens(input, encoding?)`                                                                           | `tokens.rs`                                      | sync                       |
 | System/isolation  | `detectMacOSAppearance`, `MacAppearanceObserver`, `MacOSPowerAssertion`, `getWorkProfile`, `iso*` helpers | `appearance.rs`, `power.rs`, `prof.rs`, `iso.rs` | mixed                      |
