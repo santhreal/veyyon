@@ -1,37 +1,37 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as utils from "@veyyon/utils";
 
 /**
  * custom-share lets a user override the default Gist share with a script at
- * ~/.veyyon/agent/share.{ts,js,mjs}. Its loader was untested. This suite mocks the two
- * @veyyon/utils symbols it uses (getAgentDir, errorMessage) to point at a fresh temp
- * agent dir per test, then exercises the real disk + dynamic-import path: no script ->
- * null (both getCustomSharePath and loadCustomShare), candidate precedence (share.ts is
- * tried before share.js), a valid default-export function is loaded and callable, and a
- * script whose default export is not a function is rejected with a wrapped error. A
- * regression would silently ignore a user's share script or import a bad one without a
- * clear error. Each test uses a unique temp dir so the dynamic-import cache never serves
- * a stale module.
+ * ~/.veyyon/agent/share.{ts,js,mjs}. This suite spies getAgentDir (NOT mock.module)
+ * so the override cannot poison later files in the same `bun test` process —
+ * mock.module("@veyyon/utils") is process-global and was the leaker behind
+ * FINDING-FULL-SUITE-ORDER-DEPENDENT-POLLUTION (settings-test-state saw
+ * /tmp/custom-share-* as getAgentDir after this file ran).
  */
 
 let currentAgentDir = "";
-mock.module("@veyyon/utils", () => ({
-	getAgentDir: () => currentAgentDir,
-	errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
-}));
-
-const { getCustomSharePath, loadCustomShare } = await import("@veyyon/coding-agent/export/custom-share");
-
 const created: string[] = [];
+let getAgentDirSpy: ReturnType<typeof spyOn> | undefined;
+
 beforeEach(() => {
 	currentAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "custom-share-"));
 	created.push(currentAgentDir);
+	getAgentDirSpy?.mockRestore();
+	getAgentDirSpy = spyOn(utils, "getAgentDir").mockImplementation(() => currentAgentDir);
 });
+
 afterEach(() => {
+	getAgentDirSpy?.mockRestore();
+	getAgentDirSpy = undefined;
+	mock.restore();
 	for (const dir of created.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
+
+const { getCustomSharePath, loadCustomShare } = await import("@veyyon/coding-agent/export/custom-share");
 
 const writeScript = (name: string, body: string): void => fs.writeFileSync(path.join(currentAgentDir, name), body);
 

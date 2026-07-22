@@ -1,24 +1,32 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import {
+	invalidateFsScanAfterDelete,
+	invalidateFsScanAfterRename,
+	invalidateFsScanAfterWrite,
+} from "@veyyon/coding-agent/tools/fs-cache-invalidation";
+import * as natives from "@veyyon/natives";
 
 /**
- * The fs-cache-invalidation helpers bust the shared native filesystem scan cache
- * after a write, delete, or rename. They had no test. The only branch worth
- * defending is rename: it must invalidate BOTH the old and new path so stale
- * watchers on either end are cleared, but it must NOT redundantly invalidate
- * twice when the two paths are identical (a no-op move). We mock @veyyon/natives
- * to record exactly which paths were invalidated and in what order.
+ * Records which paths fs-cache invalidation hits. Spy invalidateFsScanCache
+ * (NOT mock.module on the whole natives package) so later suites still see
+ * real natives — mock.module is process-global
+ * (FINDING-FULL-SUITE-ORDER-DEPENDENT-POLLUTION).
  */
 
 const calls: string[] = [];
-mock.module("@veyyon/natives", () => ({
-	invalidateFsScanCache: (path: string) => {
-		calls.push(path);
-	},
-}));
+let invalidateSpy: ReturnType<typeof spyOn> | undefined;
 
-const { invalidateFsScanAfterWrite, invalidateFsScanAfterDelete, invalidateFsScanAfterRename } = await import(
-	"@veyyon/coding-agent/tools/fs-cache-invalidation"
-);
+beforeAll(() => {
+	invalidateSpy = spyOn(natives, "invalidateFsScanCache").mockImplementation((path: string) => {
+		calls.push(path);
+	});
+});
+
+afterAll(() => {
+	invalidateSpy?.mockRestore();
+	invalidateSpy = undefined;
+	mock.restore();
+});
 
 beforeEach(() => {
 	calls.length = 0;
@@ -41,7 +49,6 @@ describe("fs-cache invalidation", () => {
 	});
 
 	it("invalidates only once when the rename endpoints are identical", () => {
-		// A no-op move must not do the redundant second invalidation.
 		invalidateFsScanAfterRename("/repo/same.ts", "/repo/same.ts");
 		expect(calls).toEqual(["/repo/same.ts"]);
 	});

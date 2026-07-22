@@ -1,27 +1,32 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
+import { nativeBlockResolver } from "@veyyon/coding-agent/edit/hashline/block-resolver";
+import * as natives from "@veyyon/natives";
 
 /**
  * nativeBlockResolver wraps the native tree-sitter blockRangeAt with a content-keyed
- * FIFO memo, because streaming previews re-resolve the same (text, line) on every
- * chunk and a full parse per call would be wasteful. This suite mocks the native so
- * it can count parses and lock the caching contract: (1) an identical (text, line,
- * path) parses once and reuses the span; (2) a NULL result is cached too (an
- * unresolvable block must not be re-parsed on every retry); (3) any differing key
- * component (text, line, or path) is a distinct entry; (4) the cache is FIFO-bounded
- * at 512, so the oldest entry is evicted and re-parsed after the bound is exceeded.
- * A regression would either re-parse cached content (the perf bug the memo exists to
- * prevent) or return a stale span for changed text.
+ * FIFO memo. Spy blockRangeAt (NOT mock.module on the whole natives package) so later
+ * suites still see the real tree-sitter — mock.module("@veyyon/natives") is
+ * process-global and was poisoning SWAP.BLK / markdown block e2e tests
+ * (FINDING-FULL-SUITE-ORDER-DEPENDENT-POLLUTION).
  */
 
 let calls = 0;
-mock.module("@veyyon/natives", () => ({
-	blockRangeAt: ({ line }: { code: string; path: string; line: number }) => {
-		calls += 1;
-		return line <= 0 ? null : { startLine: line, endLine: line + 2 };
-	},
-}));
+let blockRangeSpy: ReturnType<typeof spyOn> | undefined;
 
-const { nativeBlockResolver } = await import("@veyyon/coding-agent/edit/hashline/block-resolver");
+beforeAll(() => {
+	blockRangeSpy = spyOn(natives, "blockRangeAt").mockImplementation(
+		({ line }: { code: string; path: string; line: number }) => {
+			calls += 1;
+			return line <= 0 ? null : { startLine: line, endLine: line + 2 };
+		},
+	);
+});
+
+afterAll(() => {
+	blockRangeSpy?.mockRestore();
+	blockRangeSpy = undefined;
+	mock.restore();
+});
 
 describe("nativeBlockResolver memoization", () => {
 	it("parses once and reuses the span for identical (text, line, path)", () => {
@@ -52,30 +57,23 @@ describe("nativeBlockResolver memoization", () => {
 
 describe("nativeBlockResolver FIFO eviction", () => {
 	it("evicts the oldest entry once the 512-entry bound is exceeded, forcing a re-parse", () => {
-		// Fill 512 distinct entries with a run-unique text so this test never collides
-		// with entries left by the memoization tests above.
 		const tag = "evict-run";
 		const first = { path: "p.ts", text: `${tag}-0`, line: 1 };
 		calls = 0;
-		nativeBlockResolver(first); // entry #1 (oldest)
+		nativeBlockResolver(first);
 		for (let i = 1; i < 512; i += 1) {
 			nativeBlockResolver({ path: "p.ts", text: `${tag}-${i}`, line: 1 });
 		}
-		expect(calls).toBe(512); // all misses so far
+		expect(calls).toBe(512);
 
-		// The first entry is still cached at exactly the bound: a re-request is a hit.
 		nativeBlockResolver(first);
 		expect(calls).toBe(512);
 
-		// Inserting a 513th distinct entry pushes size to the max and evicts the oldest
-		// (the FIFO head). After the memoization tests, `first` may not be the literal
-		// head, so insert enough fresh entries to guarantee it is evicted, then confirm
-		// requesting it re-parses.
 		for (let i = 512; i < 1100; i += 1) {
 			nativeBlockResolver({ path: "p.ts", text: `${tag}-${i}`, line: 1 });
 		}
 		const before = calls;
 		nativeBlockResolver(first);
-		expect(calls).toBe(before + 1); // re-parsed: it was evicted
+		expect(calls).toBe(before + 1);
 	});
 });
