@@ -39,11 +39,15 @@ export interface UserMessageMetrics {
 	/**
 	 * Corrective negation: the user is telling us we got it wrong.
 	 *
-	 * Counted on the same prose-only body as {@link anguish}.
+	 * Counted on the same prose-only body as {@link anguish}. The lead
+	 * patterns anchor at the START OF THE MESSAGE only (not every line):
+	 * real corrective negation opens the message, whereas pasted error text
+	 * and bullet lists put words like "Wrong user name" or "No such file" at
+	 * later line starts, so a per-line anchor (`/m`) produced false positives.
 	 *
-	 * - line-leading `nope` / `nah` / `nvm` / `wrong` / `incorrect`
+	 * - message-leading `nope` / `nah` / `nvm` / `wrong` / `incorrect`
 	 *   (word-bounded, so `now`, `nobody`, `north` don't match)
-	 * - line-leading `no` when used as an interjection - followed by
+	 * - message-leading `no` when used as an interjection - followed by
 	 *   punctuation, end-of-text, or a discourse word (`no i meant`,
 	 *   `no, wait`). Determiner `no` (`no extensions to the page`,
 	 *   `no auto start`) doesn't count.
