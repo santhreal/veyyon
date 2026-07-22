@@ -1,5 +1,6 @@
 import { DAY_MS } from "@veyyon/utils/time";
 import { parseQueryTime, type QueryTime } from "../util/datetime";
+import { unicodeWordTokens } from "../util/regex";
 
 export type DatePrecision = "day" | "week" | "month" | "year" | "relative" | "unknown";
 export type ParsedNaturalDate = [eventDate: Date, precision: Exclude<DatePrecision, "unknown">, temporalTags: string[]];
@@ -339,9 +340,14 @@ export function parseNlDate(text: string, reference?: QueryTime): ParsedNaturalD
 export function extractTemporal(text: string, reference?: QueryTime): TemporalInfo {
 	const result = parseNlDate(text, reference);
 	const tags: string[] = [];
-	const textLower = text.toLowerCase();
+	// Match named times as whole words, not substrings: every NAMED_TIME_KEYS
+	// entry is a single token, and some are substrings of others ("night" of
+	// "midnight", "noon" of "afternoon"). A bare `includes` check tagged
+	// "midnight" as "night" (the shorter word appears earlier in the key order),
+	// so the real named time was never recorded.
+	const words = new Set(unicodeWordTokens(text.toLowerCase()));
 	for (const timeName of NAMED_TIME_KEYS) {
-		if (textLower.includes(timeName)) {
+		if (words.has(timeName)) {
 			tags.push(timeName);
 			break;
 		}

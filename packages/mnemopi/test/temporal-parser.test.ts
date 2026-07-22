@@ -211,6 +211,30 @@ describe("temporal parser", () => {
 		expect(result.temporal_tags).toEqual(["2026-05-19", "tuesday", "yesterday", "evening"]);
 	});
 
+	// Named times are matched as whole words. Some keys are substrings of others
+	// ("night" of "midnight", "noon" of "afternoon") and appear earlier in the
+	// key order, so the old substring `includes` check tagged the wrong, shorter
+	// time and dropped the real one. These pin whole-word matching so a named
+	// time is only recorded when its exact word is present.
+	it("tags a named time by whole word, not substring", () => {
+		// "midnight" contains "night"; the tag must be midnight, not night.
+		const midnight = extractTemporal("shipped it at midnight", REF);
+		expect(midnight.temporal_tags).toEqual(["midnight"]);
+		expect(midnight.primary_signal).toBe("midnight");
+
+		// "afternoon" contains "noon"; the tag must be afternoon, not noon.
+		expect(extractTemporal("met this afternoon", REF).temporal_tags).toEqual(["afternoon"]);
+
+		// The exact shorter words still tag themselves.
+		expect(extractTemporal("worked past noon", REF).temporal_tags).toEqual(["noon"]);
+		expect(extractTemporal("out late at night", REF).temporal_tags).toEqual(["night"]);
+
+		// A word that merely contains a named time is not a named time: "tonight"
+		// is not in the vocabulary, so it tags nothing (before the fix it wrongly
+		// matched "night" as a substring).
+		expect(extractTemporal("see you tonight", REF).temporal_tags).toEqual([]);
+	});
+
 	it("extracts vague references", () => {
 		let result = extractTemporal("recently updated the server", REF);
 		expect(result.event_date).toBe("2026-05-20");
