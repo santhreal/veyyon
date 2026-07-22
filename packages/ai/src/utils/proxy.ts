@@ -251,13 +251,17 @@ export async function connectProxiedSocket(
 			return;
 		}
 
-		tunnelSocket = tls.connect({
+		// Read the just-connected socket through a local const: `tunnelSocket` is a
+		// closure-captured `let`, so TS widens it back to `| undefined` at every read
+		// even right after this assignment. The local keeps the listener wiring typed.
+		const socket = tls.connect({
 			socket: rawSocket,
 			servername: targetHost,
 			ALPNProtocols: ["h2"],
 		});
-		tunnelSocket.once("secureConnect", onTunnelReady);
-		tunnelSocket.once("error", onTunnelError);
+		tunnelSocket = socket;
+		socket.once("secureConnect", onTunnelReady);
+		socket.once("error", onTunnelError);
 	};
 	const onProxyReady = (): void => {
 		if (!rawSocket) return;
@@ -284,7 +288,9 @@ export async function connectProxiedSocket(
 		timeout.unref?.();
 	}
 
-	rawSocket = useProxySsl
+	// Local const for the same reason as tunnelSocket above: the closure-captured
+	// `rawSocket` let is not narrowed after assignment, so wire listeners via `socket`.
+	const socket = useProxySsl
 		? tls.connect({
 				host: proxyHost,
 				port: proxyPort,
@@ -293,8 +299,9 @@ export async function connectProxiedSocket(
 				host: proxyHost,
 				port: proxyPort,
 			});
-	rawSocket.once("error", onRawError);
-	rawSocket.once(readyEvent, onProxyReady);
+	rawSocket = socket;
+	socket.once("error", onRawError);
+	socket.once(readyEvent, onProxyReady);
 
 	return promise;
 }

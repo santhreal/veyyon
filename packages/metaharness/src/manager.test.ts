@@ -247,21 +247,18 @@ describe("ManagerServer API", () => {
 		expect(deleteUnknown.status).toBe(404);
 	});
 
-	it("serves edit and SnapCompact metrics and native traces through one API", async () => {
+	it("serves edit metrics and native traces through one API", async () => {
 		const jobsDir = makeJobsDir();
 		const manager = new ManagerServer(jobsDir);
-		for (const benchmark of ["edit", "snapcompact"] as const) {
-			const jobName = `${benchmark}-arm`;
-			manager.store.registerLaunch({
-				benchmark,
-				jobName,
-				dataset: benchmark === "edit" ? "typescript-edit" : "squad-dev",
-				agent: benchmark,
-				models: ["test/model"],
-				pid: process.pid,
-			});
-			manager.store.markExit(jobName, 0);
-		}
+		manager.store.registerLaunch({
+			benchmark: "edit",
+			jobName: "edit-arm",
+			dataset: "typescript-edit",
+			agent: "edit",
+			models: ["test/model"],
+			pid: process.pid,
+		});
+		manager.store.markExit("edit-arm", 0);
 		const editDir = path.join(jobsDir, "edit-arm");
 		fs.writeFileSync(
 			path.join(editDir, "result.json"),
@@ -284,17 +281,6 @@ describe("ManagerServer API", () => {
 		);
 		fs.mkdirSync(path.join(editDir, "result.dump", "rename"), { recursive: true });
 		fs.writeFileSync(path.join(editDir, "result.dump", "rename", "run-1.md"), "# conversation\n\nassistant answer");
-		const snapDir = path.join(jobsDir, "snapcompact-arm");
-		fs.writeFileSync(
-			path.join(snapDir, "records.jsonl"),
-			`${JSON.stringify({ cond: "text", chunk: 0, pos_rel: 0, q: "question", answer: "answer", golds: ["gold"], em: 0, f1: 0.5 })}\n`,
-		);
-		fs.writeFileSync(
-			path.join(snapDir, "summary.json"),
-			JSON.stringify({
-				rows: [{ n: 1, f1: 0.5, em: 0, cost_usd: 0.1, tokens_in: 10, tokens_out: 2, cache_w: 0, cache_r: 0 }],
-			}),
-		);
 		manager.store.syncAll();
 		const server = manager.start(0);
 		cleanups.push(() => {
@@ -311,16 +297,6 @@ describe("ManagerServer API", () => {
 			await fetch(`${base}/api/runs/edit-arm/traces/${encodeURIComponent(edit.traces[0].name)}`)
 		).json()) as { entries: Array<{ kind: string; text: string }> };
 		expect(editTrace.entries).toEqual([{ kind: "conversation", text: "# conversation\n\nassistant answer" }]);
-
-		const snap = (await (await fetch(`${base}/api/runs/snapcompact-arm`)).json()) as {
-			run: { benchmark: string; metrics: Record<string, number> };
-			traces: Array<{ name: string }>;
-		};
-		expect(snap.run).toMatchObject({ benchmark: "snapcompact", metrics: { f1: 0.5, exact_match: 0 } });
-		const snapTrace = (await (
-			await fetch(`${base}/api/runs/snapcompact-arm/traces/${encodeURIComponent(snap.traces[0].name)}`)
-		).json()) as { entries: Array<{ kind: string }> };
-		expect(snapTrace.entries.map(entry => entry.kind)).toEqual(["question", "answer", "reference"]);
 	});
 	it("guards resume: unknown, non-harbor, running, and config-less runs are rejected", async () => {
 		const jobsDir = makeJobsDir();

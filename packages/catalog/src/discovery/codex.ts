@@ -225,7 +225,9 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 			baseUrl,
 			reasoning,
 			input,
+			// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			pricing: "unknown",
 			remoteCompaction: CODEX_REMOTE_COMPACTION,
 			contextWindow,
 			maxTokens,

@@ -24,6 +24,7 @@ import type { Api, FetchImpl, KnownApi, Model, Provider, ThinkingBudgets, Usage 
 import type { Type } from "arktype";
 import type { ZodType, z } from "zod/v4";
 import type { ApiKey } from "./auth-retry";
+import type { AssistantTurnMetrics, AssistantTurnRequest, ToolCallMetrics } from "./instrumentation";
 import type { BedrockOptions } from "./providers/amazon-bedrock";
 import type { AnthropicOptions } from "./providers/anthropic";
 import type { FallbackParam, StopDetails } from "./providers/anthropic-wire";
@@ -617,8 +618,8 @@ export interface ImageContent {
 	mimeType: string; // e.g., "image/jpeg", "image/png"
 	/**
 	 * OpenAI-only resolution hint. `"original"` preserves native resolution
-	 * (required for snapcompact frames, whose glyphs do not survive the
-	 * default `auto` downscale). Providers without a detail knob ignore it.
+	 * (useful for dense text-in-image content whose glyphs do not survive
+	 * the default `auto` downscale). Providers without a detail knob ignore it.
 	 */
 	detail?: "auto" | "low" | "high" | "original";
 }
@@ -744,6 +745,22 @@ export interface AssistantMessage {
 	timestamp: number; // Unix timestamp in milliseconds
 	duration?: number; // Request duration in milliseconds
 	ttft?: number; // Time to first token in milliseconds
+	/**
+	 * Dense per-turn study record (request-start wall-clock, ttft, throughput),
+	 * present when session instrumentation is on. The graded, single-owner form of
+	 * the loose `duration`/`ttft` scalars above; its detail scales with the
+	 * configured {@link InstrumentationLevel} (absent at `off` and on turns
+	 * recorded before it existed). See {@link captureAssistantTurnMetrics}.
+	 */
+	turnMetrics?: AssistantTurnMetrics;
+	/**
+	 * Exact sampling/reasoning/tool-choice parameters AS SENT for this turn,
+	 * present when session instrumentation is on. The replay-fidelity companion to
+	 * {@link turnMetrics}: it records what the turn was asked for, so a backtest can
+	 * reproduce the request. Absent at `off`, on all-default turns, and on turns
+	 * recorded before it existed. See {@link captureAssistantTurnRequest}.
+	 */
+	request?: AssistantTurnRequest;
 }
 
 export interface ToolResultMessage<TDetails = unknown> {
@@ -763,6 +780,13 @@ export interface ToolResultMessage<TDetails = unknown> {
 	 * Never set together with isError.
 	 */
 	useless?: boolean;
+	/**
+	 * Dense study record for this call (timing, output weight, args fingerprint),
+	 * present when session instrumentation is on. Its detail scales with the
+	 * configured {@link InstrumentationLevel}; absent at `off` and on messages
+	 * recorded before instrumentation existed. See {@link captureToolCallMetrics}.
+	 */
+	metrics?: ToolCallMetrics;
 	timestamp: number; // Unix timestamp in milliseconds
 }
 

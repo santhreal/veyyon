@@ -42,7 +42,7 @@ export interface CreateExperimentRequest {
 	goal?: string;
 }
 
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isProcessAlive } from "@veyyon/utils";
 import indexHtml from "./web/index.html";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
@@ -98,15 +98,9 @@ function assertSafeJobName(jobName: string): void {
 	}
 }
 
-/** True when `pid` names a live process (signal-0 probe). */
+/** True when `pid` names a live process. A null pid is never live. */
 function pidAlive(pid: number | null): boolean {
-	if (pid == null) return false;
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
-	}
+	return pid != null && isProcessAlive(pid);
 }
 
 /**
@@ -163,7 +157,6 @@ export function resolveArmLaunch(store: RunStore, experimentId: string, req: Add
 	}
 	const jobName = `${experimentId}-${req.arm}`;
 	if (store.getRun(jobName)) throw new Error(`arm '${req.arm}' already exists in '${experimentId}'`);
-	const conditions = strings(cfg.conditions);
 	return {
 		benchmark: template.benchmark,
 		model: req.model,
@@ -176,7 +169,6 @@ export function resolveArmLaunch(store: RunStore, experimentId: string, req: Add
 		agent: str(cfg.agent),
 		webSearch: cfg.webSearch === true || undefined,
 		prebuiltBinaries: cfg.prebuiltBinaries === true || undefined,
-		conditions: conditions.length > 0 ? conditions : undefined,
 		jobName,
 		prewalk: req.prewalk,
 		role: req.role,
@@ -381,12 +373,10 @@ export class ManagerServer {
 	launch(request: LaunchRequest): { jobName: string; pid: number } {
 		if (!request.model) throw new Error("model is required");
 		const benchmark = request.benchmark ?? "harbor";
-		if (benchmark !== "harbor" && benchmark !== "edit" && benchmark !== "snapcompact") {
+		if (benchmark !== "harbor" && benchmark !== "edit") {
 			throw new Error(`unsupported benchmark: ${benchmark}`);
 		}
-		const dataset =
-			request.dataset ??
-			(benchmark === "harbor" ? "terminal-bench@2.0" : benchmark === "edit" ? "typescript-edit" : "squad-dev");
+		const dataset = request.dataset ?? (benchmark === "harbor" ? "terminal-bench@2.0" : "typescript-edit");
 		const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 		const modelSlug = request.model.replace(/[^a-zA-Z0-9]+/g, "-");
 		const jobName = request.jobName ?? `${modelSlug}-${stamp}`;
@@ -405,12 +395,6 @@ export class ManagerServer {
 			if (request.include?.length) argv.push("--tasks", request.include.join(","));
 			if (request.concurrency !== undefined) argv.push("--task-concurrency", String(request.concurrency));
 			if (request.attempts !== undefined) argv.push("--runs", String(request.attempts));
-		} else if (benchmark === "snapcompact") {
-			cwd = PKG_DIR;
-			argv = ["uv", "run", "src/adapters/snapcompact.py", "--model", request.model, "--output-dir", jobDir];
-			if (request.tasks !== undefined) argv.push("--limit-paras", String(request.tasks));
-			if (request.concurrency !== undefined) argv.push("--workers", String(request.concurrency));
-			if (request.conditions?.length) argv.push("--conditions", request.conditions.join(","));
 		} else {
 			cwd = PKG_DIR;
 			argv = ["bun", "src/runner.ts", ...harborRunnerArgs(request, { jobsDir: this.jobsDir, jobName, dataset })];

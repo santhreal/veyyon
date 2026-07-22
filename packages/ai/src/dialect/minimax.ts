@@ -9,8 +9,8 @@ import dialectPrompt from "./minimax.md" with { type: "text" };
 import {
 	escapeXmlAttr,
 	escapeXmlText,
-	renderDelimitedThinking,
 	renderLegacyTextTranscript,
+	renderXmlThinkingTags,
 	stringifyJson,
 } from "./rendering";
 import type { DialectDefinition, DialectRenderOptions, DialectToolResult } from "./types";
@@ -54,7 +54,7 @@ function renderToolResults(results: readonly DialectToolResult[]): string {
 }
 
 function renderThinking(text: string): string {
-	return renderDelimitedThinking("<thinking>", "</thinking>", text);
+	return renderXmlThinkingTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

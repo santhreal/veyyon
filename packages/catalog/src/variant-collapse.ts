@@ -291,8 +291,41 @@ function geminiProFamily(mode: "budget" | "google-level"): EffortVariantFamily {
 	};
 }
 
+/**
+ * Gemini 3.6 Flash (Cloud Code Assist) exposes explicit per-tier wire ids —
+ * `gemini-3.6-flash-{low,medium,high}`, one upstream deployment per tier
+ * (display names "Gemini 3.6 Flash (Low/Medium/High)") — unlike 3.5 Flash, which
+ * serves a few ids selected by an in-body thinkingBudget. Without a family here
+ * the tiers never collapse: a user selects a raw `-low` deployment AND then a
+ * separate thinking effort stacks on top, so the status line reads the
+ * contradictory "Flash (Low) · high". Collapsing merges the three into one
+ * "Gemini 3.6 Flash" whose effort routes 1:1 onto the tier wire id (`mode:
+ * "effort"` — the id carries the tier, so no budget/level goes in the body).
+ * Minimal mirrors Low (no separate minimal deployment) so the effort stays
+ * selectable. Wire ids are from live Antigravity discovery; presence-filtered
+ * collapsing makes this inert on any provider that does not serve them, so it is
+ * shared by both CCA tables safely. The bare `gemini-3.6-flash` id is served
+ * only by unrelated aggregators, so the logical id introduced here never
+ * collides with a CCA member.
+ */
+function gemini36FlashFamily(): EffortVariantFamily {
+	return {
+		id: "gemini-3.6-flash",
+		name: "Gemini 3.6 Flash",
+		members: ["gemini-3.6-flash-low", "gemini-3.6-flash-medium", "gemini-3.6-flash-high"],
+		routing: {
+			[Effort.Minimal]: "gemini-3.6-flash-low",
+			[Effort.Low]: "gemini-3.6-flash-low",
+			[Effort.Medium]: "gemini-3.6-flash-medium",
+			[Effort.High]: "gemini-3.6-flash-high",
+		},
+		thinking: { mode: "effort", efforts: GEMINI_3_FLASH_FAMILY_EFFORTS },
+	};
+}
+
 /** CCA families shared verbatim by both providers (transport-agnostic). */
 const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
+	gemini36FlashFamily(),
 	{
 		// Legacy static family — covers stale snapshots and caches. Stale ids are
 		// unverified against the budget-mode CCA contract; keep them on level.

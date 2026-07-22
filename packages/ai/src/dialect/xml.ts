@@ -4,9 +4,9 @@ import { buildArgShapes, type ToolArgShape } from "./coercion";
 import { DeepSeekInbandScanner } from "./deepseek";
 import {
 	escapeXmlAttr,
-	renderDelimitedThinking,
 	renderLegacyTextTranscript,
 	renderToolResponseResults,
+	renderXmlThinkingTags,
 	stringifyJson,
 } from "./rendering";
 import type {
@@ -49,7 +49,7 @@ function renderToolResults(results: readonly DialectToolResult[]): string {
 }
 
 function renderThinking(text: string): string {
-	return renderDelimitedThinking("<thinking>", "</thinking>", text);
+	return renderXmlThinkingTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

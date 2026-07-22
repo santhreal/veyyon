@@ -2,6 +2,7 @@ import { type Api, type ApiKey, assistantText, completeSimple, type FetchImpl, t
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { estimateTokensFromText, trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
 import { envBool, envInt, envString } from "../util/env";
+import { safeForLog } from "./extraction/diagnostics";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
 import {
 	getMnemopiRuntimeOptions,
@@ -159,22 +160,24 @@ export async function callConfiguredCompletion(
 	if (model === undefined) {
 		return null;
 	}
-	try {
-		const message = await completeSimple(
-			model,
-			{
-				messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-			},
-			{
-				apiKey: llmApiKey() || undefined,
-				maxTokens: opts.maxTokens ?? llmMaxTokens(),
-				temperature,
-			},
-		);
-		return assistantText(message).trim() || null;
-	} catch {
-		return null;
-	}
+	// Do NOT swallow a model error to null here. Like the custom-completion path
+	// above (which already propagates), a throw from completeSimple (the provider
+	// crashed, rate-limited, or timed out) is a real failure and must reach the
+	// caller: extraction records it as configured_completion_raised, and
+	// summarization logs it and falls through. A `catch { return null }` would
+	// misreport a crashed model as "no output" (a Law 10 silent fallback).
+	const message = await completeSimple(
+		model,
+		{
+			messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+		},
+		{
+			apiKey: llmApiKey() || undefined,
+			maxTokens: opts.maxTokens ?? llmMaxTokens(),
+			temperature,
+		},
+	);
+	return assistantText(message).trim() || null;
 }
 
 export function buildHostPrompt(memories: readonly string[], source = ""): string {
@@ -199,15 +202,45 @@ async function tryHostLlm(prompt: string, maxTokens: number, temperature: number
 		return [false, null];
 	}
 
-	const raw = await callHostLlm(prompt, {
-		maxTokens,
-		temperature,
-		timeout: 15,
-		provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
-		model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
-	});
-	const text = typeof raw === "string" ? raw.trim() : "";
-	return [true, text === "" ? null : text];
+	try {
+		const raw = await callHostLlm(prompt, {
+			maxTokens,
+			temperature,
+			timeout: 15,
+			provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
+			model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
+		});
+		const text = typeof raw === "string" ? raw.trim() : "";
+		return [true, text === "" ? null : text];
+	} catch (exc) {
+		// The host backend threw. This is a real failure, not "no output":
+		// surface it loudly (never a silent swallow) and report the call as
+		// attempted-but-empty so summarization falls through to a local backend
+		// with the error on the record. A fallback is allowed only when it is
+		// loud and recall-preserving (Law 10).
+		console.warn(`mnemopi summarize: host LLM backend raised: ${safeForLog(exc)}`);
+		return [true, null];
+	}
+}
+
+// Run a summarization LLM call, surfacing any failure loudly and falling
+// through to the next backend. A thrown error here (network, timeout, HTTP
+// non-2xx, a crashed configured/host model) is a real failure, never "no
+// output": log it (never silently swallow, Law 10) and return null so the
+// caller tries the next path. This is the ONE place the summarization backends
+// (configured, remote) turn a failure into a loud, recall-preserving fallback.
+async function summaryOrNull(label: string, call: () => Promise<string | null>): Promise<string | null> {
+	try {
+		const raw = await call();
+		if (raw === null) {
+			return null;
+		}
+		const cleaned = cleanOutput(raw);
+		return cleaned === "" ? null : cleaned;
+	} catch (exc) {
+		console.warn(`mnemopi summarize: ${label} raised: ${safeForLog(exc)}`);
+		return null;
+	}
 }
 
 export function cleanOutput(text: string): string {
@@ -293,44 +326,49 @@ export async function callRemoteLlm(
 		stop: ["</s>", "<|user|>"],
 	});
 	const fetchImpl = options.fetch ?? fetch;
-	try {
-		// withAuth re-resolves the key on 401 (force-refresh, then sibling
-		// rotation) when the configured key is a resolver. An empty static key
-		// attempts without an Authorization header (local/proxy setups).
-		// One 60s fence spans every auth attempt AND the body read (a stalled
-		// stream is only interrupted by the armed signal); the timer clears on
-		// settle instead of lingering like a bare AbortSignal.timeout.
-		return await withScopedTimeoutSignal(60000, async signal => {
-			const response = await withAuth(llmApiKey(), async key => {
-				const headers: Record<string, string> = { "Content-Type": "application/json" };
-				if (key !== "") {
-					headers.Authorization = `Bearer ${key}`;
-				}
-				const res = await fetchImpl(`${baseUrl}/chat/completions`, {
-					method: "POST",
-					headers,
-					body,
-					signal,
-				});
-				if (res.status === 401) {
-					throw new ProviderHttpError("mnemopi remote LLM request unauthorized (401)", 401, {
-						headers: res.headers,
-					});
-				}
-				return res;
-			});
-			if (!response.ok) {
-				return null;
+	// Do NOT wrap this in `catch { return null }`. A thrown error (network down,
+	// timeout, JSON parse failure) or a non-2xx HTTP response is a real failure
+	// and must reach the caller: extraction records it as remote_call_raised, and
+	// summarization logs it and falls through to a local backend. Swallowing it to
+	// null would misreport a hard failure as "the model produced no output",
+	// hiding the error from the operator (a Law 10 silent fallback).
+	//
+	// withAuth re-resolves the key on 401 (force-refresh, then sibling rotation)
+	// when the configured key is a resolver. An empty static key attempts without
+	// an Authorization header (local/proxy setups). One 60s fence spans every auth
+	// attempt AND the body read (a stalled stream is only interrupted by the armed
+	// signal); the timer clears on settle instead of lingering like a bare
+	// AbortSignal.timeout.
+	return await withScopedTimeoutSignal(60000, async signal => {
+		const response = await withAuth(llmApiKey(), async key => {
+			const headers: Record<string, string> = { "Content-Type": "application/json" };
+			if (key !== "") {
+				headers.Authorization = `Bearer ${key}`;
 			}
-			const data = (await response.json()) as {
-				choices?: Array<{ message?: { content?: unknown } }>;
-			};
-			const content = data.choices?.[0]?.message?.content;
-			return typeof content === "string" ? content : null;
+			const res = await fetchImpl(`${baseUrl}/chat/completions`, {
+				method: "POST",
+				headers,
+				body,
+				signal,
+			});
+			if (res.status === 401) {
+				throw new ProviderHttpError("mnemopi remote LLM request unauthorized (401)", 401, {
+					headers: res.headers,
+				});
+			}
+			return res;
 		});
-	} catch {
-		return null;
-	}
+		if (!response.ok) {
+			throw new ProviderHttpError(`mnemopi remote LLM request failed (HTTP ${response.status})`, response.status, {
+				headers: response.headers,
+			});
+		}
+		const data = (await response.json()) as {
+			choices?: Array<{ message?: { content?: unknown } }>;
+		};
+		const content = data.choices?.[0]?.message?.content;
+		return typeof content === "string" ? content : null;
+	});
 }
 
 export function localGgufAvailable(): false {
@@ -349,12 +387,9 @@ async function summarizeChunk(
 	const hostPrompt = buildHostPrompt(memories, source);
 	const prompt = buildPrompt(memories, source);
 	if (configuredLlmWillHandleCall()) {
-		const raw = await callConfiguredCompletion(hostPrompt, 0.3, { maxTokens: llmMaxTokens() });
-		if (raw === null) {
-			return null;
-		}
-		const cleaned = cleanOutput(raw);
-		return cleaned === "" ? null : cleaned;
+		return await summaryOrNull("configured completion", () =>
+			callConfiguredCompletion(hostPrompt, 0.3, { maxTokens: llmMaxTokens() }),
+		);
 	}
 	const [attempted, hostText] = await tryHostLlm(hostPrompt, llmMaxTokens(), 0.3);
 	if (attempted) {
@@ -370,10 +405,9 @@ async function summarizeChunk(
 	}
 
 	if (llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false)) {
-		const raw = await callRemoteLlm(prompt, 0.3, options);
-		if (raw !== null) {
-			const cleaned = cleanOutput(raw);
-			return cleaned === "" ? null : cleaned;
+		const summary = await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, 0.3, options));
+		if (summary !== null) {
+			return summary;
 		}
 	}
 
@@ -419,16 +453,16 @@ export async function complete(
 	options: CompleteOptions = {},
 ): Promise<string | null> {
 	if (configuredLlmWillHandleCall()) {
-		const raw = await callConfiguredCompletion(prompt, temperature, { maxTokens: llmMaxTokens() });
-		return raw === null ? null : cleanOutput(raw) || null;
+		return await summaryOrNull("configured completion", () =>
+			callConfiguredCompletion(prompt, temperature, { maxTokens: llmMaxTokens() }),
+		);
 	}
 	const [attempted, hostText] = await tryHostLlm(prompt, llmMaxTokens(), temperature);
 	if (attempted) {
 		return hostText;
 	}
 	if (llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false)) {
-		const remote = await callRemoteLlm(prompt, temperature, options);
-		return remote === null ? null : cleanOutput(remote) || null;
+		return await summaryOrNull("remote LLM", () => callRemoteLlm(prompt, temperature, options));
 	}
 	return callLocalLlm(prompt);
 }

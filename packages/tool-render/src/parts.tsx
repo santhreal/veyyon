@@ -9,15 +9,24 @@ import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripA
 
 export type Tone = "accent" | "ok" | "err" | "warn";
 
+/**
+ * Whether a node renders to nothing. `null`/`undefined` are absent values, `""`
+ * is an empty string child, and `false` is the residue of a `cond && <X/>` guard.
+ * Components use this to collapse rather than emit empty chrome.
+ */
+function isEmptyNode(node: ReactNode): boolean {
+	return node == null || node === "" || node === false;
+}
+
 /** Inline chip. Renders nothing for empty content. */
 export function Badge({ children, tone }: { children: ReactNode; tone?: Tone }): ReactNode {
-	if (children == null || children === "" || children === false) return null;
+	if (isEmptyNode(children)) return null;
 	return <span className={`tv-badge${tone ? ` tv-badge--${tone}` : ""}`}>{children}</span>;
 }
 
 /** Chip row; falsy items are skipped. Usable inline (summaries) and in bodies. */
 export function Badges({ items }: { items: ReadonlyArray<ReactNode> }): ReactNode {
-	const visible = items.filter(item => item != null && item !== "" && item !== false);
+	const visible = items.filter(item => !isEmptyNode(item));
 	if (visible.length === 0) return null;
 	return (
 		<span className="tv-badges">
@@ -60,7 +69,7 @@ export function KvGrid({ children }: { children: ReactNode }): ReactNode {
 }
 
 export function Kv({ k, children }: { k: ReactNode; children: ReactNode }): ReactNode {
-	if (children == null || children === "" || children === false) return null;
+	if (isEmptyNode(children)) return null;
 	return (
 		<>
 			<span className="tv-kv-key">{k}</span>
@@ -214,7 +223,7 @@ export function ResultImages({ result }: { result: ToolResultLike | undefined })
 
 /** Callout block. */
 export function Note({ tone, children }: { tone?: "err" | "warn" | "ok"; children: ReactNode }): ReactNode {
-	if (children == null || children === "" || children === false) return null;
+	if (isEmptyNode(children)) return null;
 	return <div className={`tv-note${tone ? ` tv-note--${tone}` : ""}`}>{children}</div>;
 }
 

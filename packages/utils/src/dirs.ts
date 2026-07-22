@@ -315,9 +315,29 @@ function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unk
 		else existing[key] = next;
 		if (Object.keys(existing).length === 0) {
 			// Nothing left — remove the file rather than leaving an empty stub.
+			//
+			// If the unlink fails the removal still has to persist. Swallowing it left
+			// the file holding its previous contents, so the key the caller just
+			// deleted came back on the next read: a profile switch or a change to the
+			// credential-sharing posture reported success and silently reverted. An
+			// empty file is a worse-looking but honest end state, and the next write
+			// cleans it up. A failure to write that is left to throw, because at that
+			// point nothing can be persisted and saying so is the only correct move.
 			try {
 				fs.unlinkSync(filePath);
-			} catch {}
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+					// process.emitWarning rather than the logger: logger imports this
+					// module for getLogsDir, so importing it back would close a cycle in
+					// the module that resolves every path the logger needs.
+					process.emitWarning(
+						`Could not remove the now-empty global config ${filePath} (${errorMessage(error)}); ` +
+							`writing it empty instead so the removal of "${key}" persists.`,
+						{ code: "VEYYON_CONFIG_UNLINK_FAILED" },
+					);
+					atomicWriteFileSync(filePath, "");
+				}
+			}
 			return filePath;
 		}
 		// Atomic: an interrupted write here would corrupt cross-profile keys
@@ -476,10 +496,35 @@ export function getProjectDir(): string {
 	return projectDir;
 }
 
-/** Set the project directory. */
+/**
+ * Move the project directory, and the process working directory with it.
+ *
+ * This is the only place either of those changes. They are one thing wearing two
+ * hats: `getProjectDir` answers project-relative lookups (settings discovery,
+ * AGENTS.md, git detection) and `process.cwd()` answers everything a child
+ * process or a relative path resolves against. If they drift apart, half the
+ * program is looking at a directory the user never chose, and nothing says so.
+ *
+ * The `chdir` therefore runs first and the global is assigned only once it has
+ * succeeded. Assigning first meant a directory that had been deleted or turned
+ * unreadable between resolving it and entering it left `getProjectDir` naming a
+ * path the process could not reach, which is exactly the drift this function
+ * exists to prevent. Throws when the directory cannot be entered; there is no
+ * usable state to fall back to.
+ */
 export function setProjectDir(dir: string): void {
-	projectDir = standardizeMacOSPath(path.resolve(dir));
-	process.chdir(projectDir);
+	const resolved = standardizeMacOSPath(path.resolve(dir));
+	try {
+		process.chdir(resolved);
+	} catch (error) {
+		throw new Error(
+			`Cannot enter the project directory: ${resolved}\n` +
+				`  ${error instanceof Error ? error.message : String(error)}\n` +
+				`Check that the directory still exists and that you have permission to read it.`,
+			{ cause: error },
+		);
+	}
+	projectDir = resolved;
 }
 
 /**
@@ -591,24 +636,42 @@ class DirResolver {
 		};
 	}
 
+	/**
+	 * Cache key for a resolved subdirectory.
+	 *
+	 * The category is part of the key because it is part of the answer. Under XDG
+	 * the three categories are three different roots (`~/.local/share/veyyon`,
+	 * `~/.local/state/veyyon`, `~/.cache/veyyon`), so keying on the name alone
+	 * meant the first caller to ask for a given name decided the root for every
+	 * later caller, whatever category they asked for. Nothing collides today, and
+	 * that is exactly why it needed fixing before something did: the symptom would
+	 * be data written under one root and read back from another, on XDG machines
+	 * only, with no error anywhere.
+	 */
+	static #cacheKey(subdir: string, xdg?: XdgCategory): string {
+		return `${xdg ?? ""}\0${subdir}`;
+	}
+
 	/** Config-root subdirectory, with optional XDG override. */
 	rootSubdir(subdir: string, xdg?: XdgCategory): string {
-		const cached = this.#rootCache.get(subdir);
+		const key = DirResolver.#cacheKey(subdir, xdg);
+		const cached = this.#rootCache.get(key);
 		if (cached) return cached;
 		const base = xdg ? this.#rootDirs[xdg] : this.configRoot;
 		const result = path.join(base, subdir);
-		this.#rootCache.set(subdir, result);
+		this.#rootCache.set(key, result);
 		return result;
 	}
 
 	/** Agent subdirectory, with optional XDG override. */
 	agentSubdir(userAgentDir: string | undefined, subdir: string, xdg?: XdgCategory): string {
 		if (!userAgentDir || userAgentDir === this.agentDir) {
-			const cached = this.#agentCache.get(subdir);
+			const key = DirResolver.#cacheKey(subdir, xdg);
+			const cached = this.#agentCache.get(key);
 			if (cached) return cached;
 			const base = xdg ? this.#agentDirs[xdg] : this.agentDir;
 			const result = path.join(base, subdir);
-			this.#agentCache.set(subdir, result);
+			this.#agentCache.set(key, result);
 			return result;
 		}
 		return path.join(userAgentDir, subdir);
@@ -837,6 +900,29 @@ export function listProfiles(): ProfileInfo[] {
 
 	profiles.sort((left, right) => left.name.localeCompare(right.name));
 	return profiles;
+}
+
+/**
+ * Existing legacy per-profile `shared-auth` directories, one per profile that
+ * has one on disk.
+ *
+ * Early builds resolved {@link getSharedAuthDir} under each profile's own root
+ * (`profiles/<name>/shared-auth`). When the shared store moved to the machine-
+ * global `~/.veyyon/shared-auth` (so every profile reads one set of logins),
+ * credentials already written to those per-profile locations were left behind:
+ * the global store starts empty and the first-run promotion only looked at the
+ * per-profile *agent* dir, not this old shared-auth dir. Returning these lets
+ * the shared-store seed find and promote orphaned logins so a user who updates
+ * across that move is not silently logged out. Only directories that exist are
+ * returned; the caller decides which to promote.
+ */
+export function getLegacyPerProfileSharedAuthDirs(): string[] {
+	const dirsOut: string[] = [];
+	for (const profile of listProfiles()) {
+		const dir = path.join(profile.rootDir, "shared-auth");
+		if (fs.existsSync(dir)) dirsOut.push(dir);
+	}
+	return dirsOut;
 }
 
 /** Whether a profile root exists on disk (`default` checks `~/.veyyon/profiles/default/agent`). */
@@ -1189,6 +1275,18 @@ export function getAgentDbPath(agentDir?: string): string {
 /** Get the last-seen-changelog-version marker file (~/.veyyon/agent/last-changelog-version). */
 export function getLastChangelogVersionPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "last-changelog-version", "state");
+}
+
+/**
+ * Get the automatic-update state file (~/.veyyon/agent/auto-update-state.json).
+ *
+ * Holds the record of the last failed background update so a launch that cannot
+ * install does not retry and re-report the same failure every time you start.
+ * It doubles as the lock target that keeps concurrent launches from installing
+ * at once.
+ */
+export function getAutoUpdateStatePath(agentDir?: string): string {
+	return dirs.agentSubdir(agentDir, "auto-update-state.json", "state");
 }
 
 /** Get the path to history.db (SQLite database for session history). */

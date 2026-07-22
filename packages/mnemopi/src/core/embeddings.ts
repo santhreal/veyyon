@@ -381,20 +381,45 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				}
 				return res;
 			});
+			// Every `null` below drops memory search back to keyword matching for this
+			// call. That is a real recall loss the user cannot see: results just get
+			// worse, with no error and no marker. The `!response.ok` and missing-rows
+			// branches reported NOTHING at all, and the throw reported at debug level,
+			// so a mistyped base URL or an expired key degraded memory indefinitely in
+			// silence (Law 10).
 			if (!response.ok) {
+				reportEmbeddingFailure(`the embeddings endpoint returned HTTP ${response.status}`, baseUrl);
 				return null;
 			}
 			const { data: rows } = (await response.json()) as { data?: Array<{ embedding: number[] }> };
 			if (rows === undefined) {
+				reportEmbeddingFailure("the embeddings endpoint returned a response with no `data` array", baseUrl);
 				return null;
 			}
 			apiCallCount += 1;
 			return rows.map(row => new Float32Array(row.embedding));
 		});
 	} catch (error) {
-		logger.debug("mnemopi embedding request failed", { status: extractHttpStatusFromError(error) });
+		const status = extractHttpStatusFromError(error);
+		reportEmbeddingFailure(status !== undefined ? `the request failed with HTTP ${status}` : String(error), baseUrl);
 		return null;
 	}
+}
+
+/**
+ * The one place that reports a failed embedding request.
+ *
+ * Every caller answers the failure the same way, by falling back to keyword-only
+ * search, so every caller owes the operator the same explanation: what broke,
+ * which endpoint, and what it costs them.
+ */
+function reportEmbeddingFailure(cause: string, baseUrl: string): void {
+	logger.warn("Memory embedding failed, falling back to keyword-only search", {
+		cause,
+		baseUrl,
+		impact: "Semantic recall is unavailable for this query, so memory results will be less relevant.",
+		fix: "Check the embedding base URL and API key in your memory settings, or disable embeddings to stop retrying.",
+	});
 }
 
 async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> {

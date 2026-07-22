@@ -56,12 +56,27 @@ describe("host LLM backend registry", () => {
 		});
 	});
 
-	it("swallows backend exceptions", async () => {
+	// Regression: callHostLlm must NOT swallow a backend throw to null. Doing so
+	// (the old `catch { return null }`) made the extraction layer misreport a hard
+	// failure as "the model produced no output" and left its host_adapter_raised
+	// branch dead. The error must propagate so the caller can classify it (Law 10:
+	// no silent fallbacks).
+	it("propagates backend exceptions instead of swallowing them to null", async () => {
 		setHostLlmBackend(
 			new CallableLlmBackend("boom", () => {
 				throw new Error("provider exploded");
 			}),
 		);
-		expect(await callHostLlm("anything", { maxTokens: 64 })).toBeNull();
+		await expect(callHostLlm("anything", { maxTokens: 64 })).rejects.toThrow("provider exploded");
+	});
+
+	// A rejected promise from the backend is a failure too, not "no output".
+	it("propagates a rejected backend promise", async () => {
+		setHostLlmBackend(
+			new CallableLlmBackend("boom-async", async () => {
+				throw new Error("socket hung up");
+			}),
+		);
+		await expect(callHostLlm("anything", { maxTokens: 64 })).rejects.toThrow("socket hung up");
 	});
 });

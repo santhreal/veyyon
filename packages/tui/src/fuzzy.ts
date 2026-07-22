@@ -491,3 +491,47 @@ export function fuzzyFilter<T>(items: readonly T[], query: string, getText: (ite
 export function resetFuzzyIndexCache(): void {
 	indexCache.clear();
 }
+
+/**
+ * Character positions in `text` (original indices) that a highlight should
+ * mark for `query` — the DISPLAY side of fuzzy matching, deliberately separate
+ * from the scoring path so ranking can evolve without moving highlights, and
+ * one owner so every list paints hits the same way.
+ *
+ * Per query token (case-insensitive): prefer the first word-boundary
+ * substring occurrence, then any substring occurrence, then an in-order
+ * character subsequence. Returns a sorted, de-duplicated index list; empty
+ * when the query is blank or nothing matches.
+ */
+export function matchPositions(query: string, text: string): number[] {
+	const q = query.trim().toLowerCase();
+	if (q.length === 0) return [];
+	const t = text.toLowerCase();
+	const hits = new Set<number>();
+	for (const token of q.split(/\s+/)) {
+		if (token.length === 0) continue;
+		// Word-boundary substring first, then any substring.
+		let at = -1;
+		for (let i = t.indexOf(token); i >= 0; i = t.indexOf(token, i + 1)) {
+			const boundary = i === 0 || !/[a-z0-9]/.test(t[i - 1] ?? "");
+			if (boundary) {
+				at = i;
+				break;
+			}
+			if (at < 0) at = i;
+		}
+		if (at >= 0) {
+			for (let i = 0; i < token.length; i++) hits.add(at + i);
+			continue;
+		}
+		// In-order subsequence fallback.
+		let qi = 0;
+		for (let ti = 0; ti < t.length && qi < token.length; ti++) {
+			if (t[ti] === token[qi]) {
+				hits.add(ti);
+				qi++;
+			}
+		}
+	}
+	return [...hits].sort((a, b) => a - b);
+}

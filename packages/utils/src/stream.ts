@@ -394,19 +394,39 @@ export async function* readSseEvents(
 	}
 }
 
+/** A malformed JSONL record that lenient parsing skipped. */
+export interface JsonlSkip {
+	/** Character offset into the buffer where the bad record began. */
+	offset: number;
+	/** The skipped line, so callers can log or surface what was dropped. */
+	snippet: string;
+}
+
+export interface ParseJsonlLenientOptions {
+	/**
+	 * Called once per malformed record that is skipped. Supply this to surface
+	 * dropped data loudly (never a silent skip): a session loader logs the offset
+	 * and counts skips so lost entries are visible rather than invisibly gone.
+	 */
+	onSkip?: (skip: JsonlSkip) => void;
+}
+
 /**
  * Parse a complete JSONL string, skipping malformed lines instead of throwing.
  *
  * Uses `Bun.JSONL.parseChunk` internally. On parse errors, the malformed
- * region is skipped up to the next newline and parsing continues.
+ * region is skipped up to the next newline and parsing continues. Pass
+ * `onSkip` to be told about every dropped record — a silent skip loses data
+ * invisibly, so callers that care about recall (session load/study) should log it.
  *
  * @example
  * ```ts
  * const entries = parseJsonlLenient<MyType>(fileContents);
  * ```
  */
-export function parseJsonlLenient<T>(buffer: string): T[] {
+export function parseJsonlLenient<T>(buffer: string, options?: ParseJsonlLenientOptions): T[] {
 	let entries: T[] | undefined;
+	let consumed = 0;
 
 	while (buffer.length > 0) {
 		const { values, error, read, done } = parseJsonlChunkCompat(buffer);
@@ -419,12 +439,28 @@ export function parseJsonlLenient<T>(buffer: string): T[] {
 			}
 		}
 		if (error) {
+			// `read > 0` means parseChunk consumed good record(s) (already collected
+			// above) and the error belongs to the NEXT record — `read` points at the
+			// delimiter just before it. Advance past the good records WITHOUT counting a
+			// skip; the malformed record resurfaces at the head (`read === 0`) on the
+			// next iteration, where it is skipped and reported through onSkip exactly
+			// once. Counting here as well is what double-reported every malformed line.
+			const isHeadError = read === 0;
 			const nextNewline = buffer.indexOf("\n", read);
-			if (nextNewline === -1) break;
-			buffer = buffer.substring(nextNewline + 1);
+			if (nextNewline === -1) {
+				if (isHeadError) options?.onSkip?.({ offset: consumed, snippet: buffer.slice(0, 200) });
+				break;
+			}
+			if (isHeadError) {
+				options?.onSkip?.({ offset: consumed, snippet: buffer.slice(0, Math.min(nextNewline, 200)) });
+			}
+			const step = nextNewline + 1;
+			consumed += step;
+			buffer = buffer.substring(step);
 			continue;
 		}
 		if (read === 0) break;
+		consumed += read;
 		buffer = buffer.substring(read);
 		if (done) break;
 	}

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -310,5 +310,130 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 		expect(fs.existsSync(path.join(target, "logs"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "logs"))).toBe(false);
 		expect(fs.existsSync(path.join(target, ".migration-in-progress"))).toBe(false);
+	});
+});
+
+/**
+ * Removing the last key from the global config deletes the file, and that
+ * delete used to happen inside an empty `catch {}`.
+ *
+ * When the unlink failed, on a read-only config directory, with the file held
+ * open by another process on Windows, or with an immutable bit set, the file
+ * kept its previous contents and nothing was written. The key the caller had
+ * just removed therefore came back on the very next read. The concrete case is
+ * `writeGlobalProfileSharing(true)`, which restores the default posture by
+ * DELETING the key: it reported success, and credential sharing stayed off.
+ */
+describe("global config cleanup when the file cannot be unlinked", () => {
+	function failUnlink(code: string): () => void {
+		const spy = spyOn(fs, "unlinkSync").mockImplementation(() => {
+			const error = new Error(`${code}: simulated`) as NodeJS.ErrnoException;
+			error.code = code;
+			throw error;
+		});
+		return () => spy.mockRestore();
+	}
+
+	it("persists the removal by emptying the file when unlink fails", () => {
+		writeGlobalProfileSharing(false);
+		expect(resolveGlobalProfileSharing()).toBe(false);
+		const restore = failUnlink("EPERM");
+
+		try {
+			const file = writeGlobalProfileSharing(true);
+
+			expect(fs.readFileSync(file, "utf8")).toBe("");
+		} finally {
+			restore();
+		}
+	});
+
+	it("does not resurrect the removed value on the next read", () => {
+		// The failure the user actually sees: sharing is turned back on, veyyon says
+		// it worked, and the next command still runs with sharing off.
+		writeGlobalProfileSharing(false);
+		const restore = failUnlink("EPERM");
+
+		try {
+			writeGlobalProfileSharing(true);
+
+			expect(resolveGlobalProfileSharing()).toBe(true);
+		} finally {
+			restore();
+		}
+	});
+
+	it("warns with the path and the cause so the state is explainable", async () => {
+		writeGlobalDefaultProfile("work");
+		const restore = failUnlink("EACCES");
+		const warnings: Array<{ message: string; code?: string }> = [];
+		const onWarning = (warning: Error & { code?: string }) => {
+			warnings.push({ message: warning.message, code: warning.code });
+		};
+		process.on("warning", onWarning);
+
+		try {
+			const file = writeGlobalDefaultProfile(undefined);
+			// process.emitWarning delivers on the next tick, so the listener has to
+			// outlive the call that triggers it.
+			await Bun.sleep(0);
+
+			const mine = warnings.find(w => w.code === "VEYYON_CONFIG_UNLINK_FAILED");
+			expect(mine).toBeDefined();
+			expect(mine?.message).toContain(file);
+			expect(mine?.message).toContain("EACCES");
+			expect(mine?.message).toContain("defaultProfile");
+		} finally {
+			restore();
+			process.off("warning", onWarning);
+		}
+	});
+
+	it("treats an already-absent file as a clean removal, with no warning", async () => {
+		// ENOENT means the file is already gone, which is the outcome that was
+		// wanted. Only a real failure earns a warning, or the warning stops meaning
+		// anything, and nothing gets written back over a file that is not there.
+		writeGlobalDefaultProfile("work");
+		const restore = failUnlink("ENOENT");
+		const warnings: string[] = [];
+		const onWarning = (warning: Error & { code?: string }) => {
+			if (warning.code === "VEYYON_CONFIG_UNLINK_FAILED") warnings.push(warning.message);
+		};
+		process.on("warning", onWarning);
+
+		try {
+			const file = writeGlobalDefaultProfile(undefined);
+			await Bun.sleep(0);
+
+			expect(warnings).toEqual([]);
+			// The stub kept the file on disk, so this asserts the real point: the
+			// ENOENT branch wrote nothing, leaving the file exactly as it was.
+			expect(fs.readFileSync(file, "utf8")).toContain("work");
+		} finally {
+			restore();
+			process.off("warning", onWarning);
+		}
+	});
+
+	it("still deletes the file outright when unlink works", () => {
+		// The happy path has to keep working: no empty stub left behind.
+		const file = writeGlobalDefaultProfile("work");
+		expect(fs.existsSync(file)).toBe(true);
+
+		writeGlobalDefaultProfile(undefined);
+
+		expect(fs.existsSync(file)).toBe(false);
+	});
+
+	it("leaves other keys untouched when only one of several is removed", () => {
+		// The unlink path is only reached when the record empties. With a sibling key
+		// present the file is rewritten normally and must keep that sibling.
+		writeGlobalDefaultProfile("work");
+		writeGlobalProfileSharing(false);
+
+		writeGlobalDefaultProfile(undefined);
+
+		expect(resolveGlobalProfileSharing()).toBe(false);
+		expect(resolveGlobalDefaultProfile()).toBeUndefined();
 	});
 });

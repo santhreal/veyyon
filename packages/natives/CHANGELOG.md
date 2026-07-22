@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The `snapcompact` native module (`renderSnapcompactPng` and the `snapcompact.rs` crate module) that rendered conversation history to bitmap PNG frames, following removal of the `snap` compaction strategy.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

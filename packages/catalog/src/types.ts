@@ -733,6 +733,21 @@ export interface Model<TApi extends Api = Api> {
 		cacheRead: number; // $/million tokens
 		cacheWrite: number; // $/million tokens
 	};
+	/**
+	 * Whether the numbers in {@link cost} were actually published by the upstream.
+	 *
+	 * `cost` cannot represent "we were never told": a provider that publishes no
+	 * pricing produces the same all-zero object as a genuinely free model, and
+	 * reading that zero as free is how veyyon came to display roughly 1,500 paid
+	 * models as costing nothing. This field records which of the two happened, so
+	 * {@link getModelPricing} reads a fact instead of inferring one from a zero.
+	 *
+	 * `"unknown"` is set by any discovery module whose upstream `/models` response
+	 * carries no pricing, which today is all of them. Absent means the entry
+	 * predates this field, and is treated as unknown-but-unrecorded: the
+	 * `:free` id marker is the only evidence available for those.
+	 */
+	pricing?: "published" | "unknown";
 	/** Premium Copilot requests charged per user-initiated request (defaults to 1). */
 	premiumMultiplier?: number;
 	contextWindow: number | null;

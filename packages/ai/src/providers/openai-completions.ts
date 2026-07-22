@@ -6,6 +6,7 @@ import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
 import {
 	$env,
 	isRecord,
+	logger,
 	parseStreamingJson,
 	parseStreamingJsonThrottled,
 	trimTrailingSlashes,
@@ -263,7 +264,20 @@ function normalizeStreamingContentText(content: unknown): string {
 	return "";
 }
 
-function serializeToolArguments(value: unknown): string {
+/**
+ * Serialize a recorded tool call's arguments back into the JSON string the
+ * provider expects when the conversation is replayed.
+ *
+ * The `arguments` field only has to be a string containing JSON, so any valid
+ * JSON is preserved, not just an object: a stored array or scalar is still what
+ * the model produced, and re-serializing it keeps the replayed history honest.
+ * Dropping such a value to `{}` used to corrupt the model's view of its own
+ * history (it would see it called the tool with no arguments) for no gain. The
+ * `{}` safety net remains for a string that is not valid JSON at all, since a
+ * strict provider rejects a non-JSON arguments string, but that drop is now
+ * surfaced rather than swallowed (Law 10).
+ */
+export function serializeToolArguments(value: unknown, toolName?: string): string {
 	if (isRecord(value)) {
 		try {
 			return JSON.stringify(value);
@@ -276,12 +290,16 @@ function serializeToolArguments(value: unknown): string {
 		const trimmed = value.trim();
 		if (trimmed.length === 0) return "{}";
 		try {
-			const parsed = JSON.parse(trimmed);
-			if (isRecord(parsed)) {
-				return JSON.stringify(parsed);
-			}
-		} catch {}
-		return "{}";
+			// Re-stringify so the output is canonical JSON, whether the parsed value
+			// is an object, an array, or a scalar. All three are valid here.
+			return JSON.stringify(JSON.parse(trimmed));
+		} catch {
+			logger.warn("A recorded tool call had unparseable arguments, replaced with {} when replayed to the provider", {
+				...(toolName ? { tool: toolName } : {}),
+				fix: "The model emitted arguments that are not valid JSON. The tool already ran, but its arguments are lost from the replayed history, which can confuse later turns. This usually points at a provider streaming malformed tool-call deltas.",
+			});
+			return "{}";
+		}
 	}
 
 	return "{}";
@@ -2025,7 +2043,7 @@ export function convertMessages(
 						type: "function" as const,
 						function: {
 							name: tc.name,
-							arguments: serializeToolArguments(tc.arguments),
+							arguments: serializeToolArguments(tc.arguments, tc.name),
 						},
 					};
 				});

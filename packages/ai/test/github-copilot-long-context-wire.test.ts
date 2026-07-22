@@ -119,8 +119,8 @@ describe("GitHub Copilot long-context variant wire model id", () => {
 
 /**
  * GitHub Copilot's Responses endpoint rejects the `detail: "original"` image
- * hint (a veyyon extension that preserves native-resolution snapcompact
- * frames) with an HTTP 400. The catalog resolves `supportsImageDetailOriginal`
+ * hint (a veyyon extension that preserves native-resolution images) with an
+ * HTTP 400. The catalog resolves `supportsImageDetailOriginal`
  * to `false` for Copilot, and the Responses request builder degrades the hint
  * to `"auto"` so the wire stays valid. Every other host preserves `"original"`.
  */
@@ -190,7 +190,7 @@ describe("GitHub Copilot Responses image detail clamp (#2822)", () => {
 		expect(await detailOnWire(model)).toBe("auto");
 	});
 
-	it("preserves `original` for non-Copilot Responses hosts (snapcompact native frames)", async () => {
+	it("preserves `original` for non-Copilot Responses hosts (native-resolution images)", async () => {
 		const model = makeLongContextVariant({
 			api: "openai-responses",
 			provider: "openai",

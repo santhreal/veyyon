@@ -204,7 +204,9 @@ function normalizeModel(
 		baseUrl,
 		reasoning: inferReasoningFromGeminiId(id),
 		input: inferInputFromGeminiId(id),
+		// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		pricing: "unknown",
 		contextWindow,
 		maxTokens,
 	};

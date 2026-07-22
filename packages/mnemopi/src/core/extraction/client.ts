@@ -179,8 +179,4 @@ export class ExtractionClient {
 		}
 		return [];
 	}
-
-	xtractFacts(messages: readonly ChatMessage[]): Promise<ExtractedFact[]> {
-		return this.extractFacts(messages);
-	}
 }

@@ -18,7 +18,7 @@ import { createRoot } from "react-dom/client";
 type RunRole = "baseline" | "variant" | "";
 
 interface RunRow {
-	benchmark: "harbor" | "edit" | "snapcompact";
+	benchmark: "harbor" | "edit";
 	jobName: string;
 	dataset: string;
 	agent: string;
@@ -1872,12 +1872,6 @@ function LaunchForm({ onDone }: { onDone: () => void }) {
 					.map(s => s.trim())
 					.filter(Boolean);
 			}
-			if (f.get("conditions")) {
-				body.conditions = String(f.get("conditions"))
-					.split(",")
-					.map(s => s.trim())
-					.filter(Boolean);
-			}
 			if (f.get("goal")) body.goal = f.get("goal");
 			if (f.get("role")) body.role = f.get("role");
 			if (f.get("note")) body.note = f.get("note");
@@ -1902,7 +1896,6 @@ function LaunchForm({ onDone }: { onDone: () => void }) {
 			<select name="benchmark" className={input}>
 				<option value="harbor">Harbor</option>
 				<option value="edit">TypeScript edit</option>
-				<option value="snapcompact">SnapCompact</option>
 			</select>
 			<input name="model" placeholder="model (required)" required className={input} />
 			<input name="dataset" placeholder="dataset (terminal-bench@2.0)" className={input} />
@@ -1915,7 +1908,6 @@ function LaunchForm({ onDone }: { onDone: () => void }) {
 				<input type="checkbox" name="prewalk" /> prewalk (default smol)
 			</label>
 			<input name="include" placeholder="include tasks, comma-sep" className={`${input} col-span-2`} />
-			<input name="conditions" placeholder="SnapCompact conditions, comma-sep" className={`${input} col-span-2`} />
 			<input
 				name="goal"
 				placeholder="experiment goal (what question does this answer?)"

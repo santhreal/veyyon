@@ -27,11 +27,31 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * Format an elapsed duration as a live colon clock, seconds-precise:
+ * `0:07`, `12:34`, `1:02:03`. This is the house style for TICKING clocks
+ * (pause hold, working-task elapsed, session elapsed) where a stable, widening
+ * digital readout beats formatDuration's compound unit style ("3m20s"), which
+ * suits one-shot completed durations.
+ */
+export function formatClock(ms: number): string {
+	const totalSeconds = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / SEC)) : 0;
+	const seconds = totalSeconds % 60;
+	const minutes = Math.floor(totalSeconds / 60) % 60;
+	const hours = Math.floor(totalSeconds / 3600);
+	if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+	return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
  * Format a number with K/M/B suffix for compact display.
  * Uses 1 decimal for small leading digits when non-zero, rounded otherwise.
  * Examples: "999", "1K", "1.5K", "25K", "1M", "1.5M", "25M", "1.5B"
  */
 export function formatNumber(n: number): string {
+	// Guard non-finite input so a NaN/Infinity never renders as "NaNB"/"InfinityB",
+	// matching formatCount/formatDuration. Signed negatives pass through with their
+	// sign (like formatCount), since a negative delta is a legitimate display value.
+	if (!Number.isFinite(n)) return "0";
 	if (n < 1_000) return n.toString();
 	if (n < 10_000) return `${trim1(n / 1_000)}K`;
 	if (n < 1_000_000) return `${Math.round(n / 1_000)}K`;
@@ -52,6 +72,10 @@ function trim1(n: number): string {
  * Examples: "512B", "1.5KB", "2.3MB", "1.2GB"
  */
 export function formatBytes(bytes: number): string {
+	// Guard non-finite input so a NaN/Infinity never renders as "NaNGB"/"InfinityGB"
+	// (same house convention as formatCount/formatDuration). Signed negatives pass
+	// through, since a byte-count delta can legitimately be negative.
+	if (!Number.isFinite(bytes)) return "0B";
 	if (bytes < 1024) return `${bytes}B`;
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
 	if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
@@ -84,7 +108,12 @@ export function formatCount(label: string, count: number): string {
  * Format age from seconds to human-readable string.
  */
 export function formatAge(ageSeconds: number | null | undefined): string {
-	if (!ageSeconds) return "";
+	// A negative age means a future timestamp (bad data or timezone skew). Treat
+	// it as unknown rather than letting it fall through every branch to "just
+	// now", which would mislabel a future-dated item as freshly published. This
+	// matches the sibling renderers that already guard `< 0` (the export/html
+	// view and workspace-tree's `Math.max(0, ...)`).
+	if (!ageSeconds || ageSeconds < 0) return "";
 	const mins = Math.floor(ageSeconds / 60);
 	const hours = Math.floor(mins / 60);
 	const days = Math.floor(hours / 24);
@@ -113,5 +142,9 @@ export function pluralize(label: string, count: number): string {
  * Format a ratio as a percentage.
  */
 export function formatPercent(ratio: number): string {
+	// A ratio of 0/0 is NaN; guard so it renders "0.0%" rather than "NaN%",
+	// matching the non-finite handling of the other formatters. The value range is
+	// not clamped (a ratio above 1 legitimately renders above 100%).
+	if (!Number.isFinite(ratio)) return "0.0%";
 	return `${(ratio * 100).toFixed(1)}%`;
 }

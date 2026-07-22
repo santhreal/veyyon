@@ -106,6 +106,67 @@ describe("collapseEffortVariants", () => {
 		});
 	});
 
+	// Regression: Gemini 3.6 Flash ships explicit per-tier wire ids
+	// (`-low`/`-medium`/`-high`), one deployment per tier. Before this family
+	// existed they never collapsed, so a user selected a raw `-low` deployment
+	// AND a separate thinking effort stacked on top, producing the contradictory
+	// "Gemini 3.6 Flash (Low) · high" status line. Collapsing merges the three
+	// into one "Gemini 3.6 Flash" whose effort routes 1:1 onto the tier wire id.
+	it("collapses the 3.6-flash per-tier variants into one effort-routed spec", () => {
+		const out = collapseEffortVariants(
+			[
+				memberSpec("gemini-3.6-flash-low"),
+				memberSpec("gemini-3.6-flash-medium"),
+				memberSpec("gemini-3.6-flash-high"),
+			],
+			ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
+		);
+
+		expect(out.map(m => m.id)).toEqual(["gemini-3.6-flash"]);
+		const flash = out[0];
+		expect(flash?.name).toBe("Gemini 3.6 Flash");
+		// First present member is the default wire id (no effort selected).
+		expect(flash?.requestModelId).toBe("gemini-3.6-flash-low");
+		expect(flash?.thinking?.mode).toBe("effort");
+		expect(flash?.thinking?.efforts).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
+		// The tier wire id carries the tier, so no budget/level goes in the body.
+		expect(flash?.thinking?.effortBudgets).toBeUndefined();
+		// Minimal floors to the low deployment; the rest route 1:1 to their tier.
+		expect(flash?.thinking?.effortRouting).toEqual({
+			minimal: "gemini-3.6-flash-low",
+			low: "gemini-3.6-flash-low",
+			medium: "gemini-3.6-flash-medium",
+			high: "gemini-3.6-flash-high",
+		});
+		// The raw tier ids alias to the collapsed logical id, so a config still
+		// pointing at `gemini-3.6-flash-low` resolves to "Gemini 3.6 Flash".
+		expect(resolveVariantAlias("google-antigravity", "gemini-3.6-flash-low")).toBe("gemini-3.6-flash");
+
+		// The effort is actually WIRED: at request time each selected effort resolves
+		// to its tier wire id, so "high" is not a cosmetic label — it sends the
+		// -high deployment. This is the half of the bug the user called out
+		// ("never wired"): the collapsed model routes, the raw variant never did.
+		const model = buildModel(flash as ModelSpec<"google-gemini-cli">);
+		expect(resolveWireModelId(model, Effort.High)).toBe("gemini-3.6-flash-high");
+		expect(resolveWireModelId(model, Effort.Medium)).toBe("gemini-3.6-flash-medium");
+		expect(resolveWireModelId(model, Effort.Low)).toBe("gemini-3.6-flash-low");
+		expect(resolveWireModelId(model, Effort.Minimal)).toBe("gemini-3.6-flash-low");
+		// No effort selected falls back to the default wire id (the low deployment).
+		expect(resolveWireModelId(model, undefined)).toBe("gemini-3.6-flash-low");
+	});
+
+	// The family is presence-filtered: a provider that serves only one tier still
+	// collapses to the clean logical id, dropping routes whose member is absent,
+	// so the family is safe to share across CCA tables that lack the other tiers.
+	it("collapses a lone 3.6-flash tier and drops absent routes", () => {
+		const out = collapseEffortVariants([memberSpec("gemini-3.6-flash-high")], GEMINI_CLI_VARIANT_COLLAPSE_TABLE);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]?.id).toBe("gemini-3.6-flash");
+		expect(out[0]?.requestModelId).toBe("gemini-3.6-flash-high");
+		expect(out[0]?.thinking?.effortRouting).toEqual({ high: "gemini-3.6-flash-high" });
+	});
+
 	it("drops routes whose target member is absent", () => {
 		const out = collapseEffortVariants(
 			[memberSpec("gemini-3.5-flash-extra-low")],

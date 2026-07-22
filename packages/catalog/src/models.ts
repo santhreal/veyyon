@@ -43,6 +43,56 @@ export function getBundledModels(provider: GeneratedProvider): Model<Api>[] {
 	return models ? (Array.from(models.values()) as Model<Api>[]) : [];
 }
 
+/**
+ * What we actually know about a model's per-token price.
+ *
+ * `unpriced` is the important one. Discovery fills `cost` with zeros whenever a
+ * provider's `/models` endpoint carries no pricing, which is most of them, so an
+ * all-zero cost means "we were never told" far more often than it means "this
+ * costs nothing". Treating the two as the same thing is how a paid model ends up
+ * displayed as free.
+ */
+export type ModelPricing = "priced" | "free" | "unpriced";
+
+/**
+ * Positive evidence that a model is free, as opposed to merely unpriced.
+ *
+ * OpenRouter is the one provider that marks its free tier in the model id, with
+ * a `:free` suffix, and it does so consistently: in the bundled catalog every
+ * `:free` model has a zero cost and no priced model carries the suffix. That
+ * marker is the only free signal we have, so it is the only one trusted here.
+ */
+function hasFreeMarker(modelId: string): boolean {
+	return modelId.endsWith(":free");
+}
+
+/**
+ * Classify a model's pricing.
+ *
+ * This is the one owner of the "is it free or do we just not know" question.
+ * Anything rendering or reasoning about price asks here rather than testing
+ * `cost.input === 0` itself, because that test cannot tell the two apart.
+ */
+export function getModelPricing<TApi extends Api>(
+	model: Pick<Model<TApi>, "id" | "cost"> & { pricing?: "published" | "unknown" },
+): ModelPricing {
+	const cost = model.cost;
+	if (cost && (cost.input > 0 || cost.output > 0)) return "priced";
+
+	// A recorded fact beats a guess. Discovery marks `pricing: "unknown"` when the
+	// upstream published nothing, and a model we were never told the price of is
+	// not free however its id happens to end. Without this an OpenRouter-style
+	// `:free` id arriving from a provider that simply omits pricing would be
+	// announced as free on no evidence at all.
+	if (model.pricing === "unknown") return "unpriced";
+
+	// A zero cost the upstream DID publish is a real zero.
+	if (model.pricing === "published") return "free";
+
+	// No marker: the entry predates the field, so the id suffix is all there is.
+	return hasFreeMarker(model.id) ? "free" : "unpriced";
+}
+
 export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {
 	const orchestration = usage.orchestration;
 	usage.cost.input = (model.cost.input / 1000000) * (usage.input + (orchestration?.input ?? 0));

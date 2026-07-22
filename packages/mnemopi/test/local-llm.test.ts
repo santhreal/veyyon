@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { FetchImpl } from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
 import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import { CallableLlmBackend, resetHostLlmBackendForTests, setHostLlmBackend } from "@veyyon/mnemopi/core/llm-backends";
 import {
@@ -84,6 +85,37 @@ describe("local LLM TypeScript port", () => {
 		setHostLlmBackend(new CallableLlmBackend("host", () => null));
 		expect(await summarizeMemories(["Memory one"], "", { fetch: fetchMock })).toBeNull();
 		expect(calls).toBe(0);
+	});
+
+	// Recall-preserving loud fallback: when the remote transport throws during
+	// summarization, the failure is surfaced (console.warn in summaryOrNull) and
+	// the call falls through to the local backend rather than propagating the
+	// throw out of summarizeMemories. The fallback is allowed only because it is
+	// loud, not silent (Law 10). Without the wrap, callRemoteLlm now throws and
+	// this would reject instead of returning null.
+	it("survives a throwing remote transport by falling through loudly, not propagating the throw", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_LLM_BASE_URL = "http://remote/v1";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		const fetchThrow: FetchImpl = async () => {
+			throw new Error("remote summarize connection reset");
+		};
+		expect(await summarizeMemories(["Memory one"], "", { fetch: fetchThrow })).toBeNull();
+	});
+
+	// Twin for a host backend that throws during summarization: tryHostLlm logs
+	// the crash and reports the call as attempted-but-empty, so summarization
+	// falls through to a local backend instead of rejecting.
+	it("survives a throwing host backend during summarization by falling through loudly", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "true";
+		delete process.env.MNEMOPI_LLM_BASE_URL;
+		setHostLlmBackend(
+			new CallableLlmBackend("host-boom", () => {
+				throw new Error("host summarize crashed");
+			}),
+		);
+		expect(await summarizeMemories(["Memory one"], "", {})).toBeNull();
 	});
 
 	it("renders host sleep prompt override without chat-template tokens", () => {
@@ -234,7 +266,13 @@ describe("local LLM TypeScript port", () => {
 		}
 	});
 
-	it("returns null from a pi-ai model whose completion throws, forwarding the runtime api key", async () => {
+	// complete() still returns null when the configured pi-ai model throws, but the
+	// failure is no longer swallowed silently: callConfiguredCompletion now
+	// propagates the throw and summaryOrNull logs it before falling through
+	// (Law 10). The null here is the loud, recall-preserving fallback, not a hidden
+	// error. The extraction layer records the same throw as
+	// configured_completion_raised (extraction.test.ts).
+	it("returns null loudly from a pi-ai model whose completion throws, forwarding the runtime api key", async () => {
 		const okModel = createMockModel({ handler: () => ({ content: ["model summary"] }) });
 		const okMemory = new Mnemopi({ llm: { model: okModel, apiKey: "sk-runtime" } });
 		try {
@@ -258,21 +296,29 @@ describe("local LLM TypeScript port", () => {
 		}
 	});
 
-	it("returns null on remote non-ok, network throw, and unauthorized responses", async () => {
+	// Regression: callRemoteLlm must PROPAGATE real failures, not swallow them to
+	// null. The old `catch { return null }` (and the silent `!response.ok → null`)
+	// made a hard failure look like "the model produced no output", hid the error
+	// from the operator, and left extraction's remote_call_raised branch dead
+	// (Law 10: no silent fallbacks). A non-2xx response, a network throw, and a
+	// 401 must each raise so the caller can classify them.
+	it("propagates remote non-ok, network throw, and unauthorized responses instead of returning null", async () => {
 		process.env.MNEMOPI_LLM_BASE_URL = "http://remote/v1";
 		process.env.MNEMOPI_LLM_API_KEY = "sk-static";
 
 		const serverError: FetchImpl = async () => new Response("upstream error", { status: 500 });
-		expect(await callRemoteLlm("prompt", 0.3, { fetch: serverError })).toBeNull();
+		await expect(callRemoteLlm("prompt", 0.3, { fetch: serverError })).rejects.toBeInstanceOf(ProviderHttpError);
+		await expect(callRemoteLlm("prompt", 0.3, { fetch: serverError })).rejects.toThrow("HTTP 500");
 
 		const networkThrow: FetchImpl = async () => {
 			throw new Error("connection reset");
 		};
-		expect(await callRemoteLlm("prompt", 0.3, { fetch: networkThrow })).toBeNull();
+		await expect(callRemoteLlm("prompt", 0.3, { fetch: networkThrow })).rejects.toThrow("connection reset");
 
-		// A 401 raises ProviderHttpError; a static key cannot refresh, so it surfaces as null.
+		// A 401 raises ProviderHttpError; a static key cannot refresh, so the error
+		// surfaces to the caller rather than being swallowed.
 		const unauthorized: FetchImpl = async () => new Response("nope", { status: 401 });
-		expect(await callRemoteLlm("prompt", 0.3, { fetch: unauthorized })).toBeNull();
+		await expect(callRemoteLlm("prompt", 0.3, { fetch: unauthorized })).rejects.toBeInstanceOf(ProviderHttpError);
 	});
 
 	it("completes through the remote transport when only environment settings are present", async () => {

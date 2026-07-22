@@ -27,12 +27,37 @@ const ALWAYS_IGNORED = ["**/.git", "**/.git/**"];
 const NODE_MODULES_IGNORED = ["**/node_modules", "**/node_modules/**"];
 
 /**
+ * Anchor a gitignore pattern to its .gitignore directory and re-express it as
+ * exclude globs relative to the search base. Gitignore anchors any pattern that
+ * carries a slash other than a trailing one (both `/foo` and `foo/bar`) to the
+ * directory of the .gitignore itself; only a slash-free name (`foo`) is allowed
+ * to match at any depth. `relativePattern` is the pattern with any leading `/`
+ * already removed.
+ *
+ * Two globs are always returned: the name itself (which matches a file of that
+ * name) and `<name>/**` (which matches the contents when the name is a
+ * directory). A bare gitignore entry like `dist` ignores both a file `dist` and
+ * a directory `dist/` with everything under it, and `**` does not match across
+ * the final path segment, so the contents variant is required or a directory's
+ * files leak through. Returns an empty array when the target resolves outside
+ * `baseDir` (it can then match nothing under it).
+ */
+function anchorGitignorePattern(relativePattern: string, gitignoreDir: string, baseDir: string): string[] {
+	const absolutePattern = path.join(gitignoreDir, relativePattern);
+	const relativeToBase = path.relative(baseDir, absolutePattern);
+	if (relativeToBase.startsWith("..")) return [];
+	const anchored = relativeToBase.replace(/\\/g, "/");
+	if (!anchored) return [];
+	return [anchored, `${anchored}/**`];
+}
+
+/**
  * Parse a single .gitignore file and return glob-compatible exclude patterns.
  * @param content - Raw content of the .gitignore file
  * @param gitignoreDir - Absolute path to the directory containing the .gitignore
  * @param baseDir - Absolute path to the glob's cwd (for relativizing rooted patterns)
  */
-function parseGitignorePatterns(content: string, gitignoreDir: string, baseDir: string): string[] {
+export function parseGitignorePatterns(content: string, gitignoreDir: string, baseDir: string): string[] {
 	const patterns: string[] = [];
 
 	for (const rawLine of content.split("\n")) {
@@ -48,44 +73,28 @@ function parseGitignorePatterns(content: string, gitignoreDir: string, baseDir: 
 
 		let pattern = line;
 
-		// Handle trailing slash (directory-only match)
-		// For glob exclude, we treat it as matching the dir and its contents
-		const isDirectoryOnly = pattern.endsWith("/");
-		if (isDirectoryOnly) {
+		// A trailing slash means "directory only" in gitignore. We strip it and
+		// then emit the same globs as a bare name: under `onlyFiles` the directory
+		// entry itself yields no result, so what matters either way is excluding
+		// the directory's contents, which the `<name>/**` glob below always covers.
+		if (pattern.endsWith("/")) {
 			pattern = pattern.slice(0, -1);
 		}
 
-		// Handle rooted patterns (start with /)
+		// A slash anywhere but the end anchors the pattern to the .gitignore's
+		// directory (gitignore semantics); a bare name matches at any depth.
 		if (pattern.startsWith("/")) {
-			// Rooted pattern: relative to the .gitignore location
-			const absolutePattern = path.join(gitignoreDir, pattern.slice(1));
-			const relativeToBase = path.relative(baseDir, absolutePattern);
-			if (relativeToBase.startsWith("..")) {
-				// Pattern is outside the search directory, skip
-				continue;
-			}
-			pattern = relativeToBase.replace(/\\/g, "/");
-			if (isDirectoryOnly) {
-				patterns.push(pattern);
-				patterns.push(`${pattern}/**`);
-			} else {
-				patterns.push(pattern);
-			}
+			// Rooted: strip the leading slash, then anchor to the .gitignore dir.
+			patterns.push(...anchorGitignorePattern(pattern.slice(1), gitignoreDir, baseDir));
+		} else if (pattern.includes("/")) {
+			// Unrooted but carries a mid-path slash: still anchored, NOT "match
+			// anywhere". `src/generated` must exclude only `<gitignore>/src/generated`,
+			// never `packages/foo/src/generated`.
+			patterns.push(...anchorGitignorePattern(pattern, gitignoreDir, baseDir));
 		} else {
-			// Unrooted pattern: match anywhere in the tree
-			if (pattern.includes("/")) {
-				// Contains slash: match from any directory level
-				patterns.push(`**/${pattern}`);
-				if (isDirectoryOnly) {
-					patterns.push(`**/${pattern}/**`);
-				}
-			} else {
-				// No slash: match file/dir name anywhere
-				patterns.push(`**/${pattern}`);
-				if (isDirectoryOnly) {
-					patterns.push(`**/${pattern}/**`);
-				}
-			}
+			// No slash: match the file/dir name at any depth in the tree. The
+			// `/**` variant excludes the contents when the name is a directory.
+			patterns.push(`**/${pattern}`, `**/${pattern}/**`);
 		}
 	}
 

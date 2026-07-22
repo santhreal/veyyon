@@ -2,7 +2,14 @@ import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./hermes.md" with { type: "text" };
-import { renderChatMlTranscript, renderDelimitedThinking, renderToolResponseResults, stringifyJson } from "./rendering";
+import {
+	renderChatMlTranscript,
+	renderThinkTags,
+	renderToolResponseResults,
+	stringifyJson,
+	THINK_CLOSE,
+	THINK_OPEN,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -14,8 +21,6 @@ import type {
 
 const TOOL_OPEN = "<tool_call>";
 const TOOL_CLOSE = "</tool_call>";
-const THINK_OPEN = "<think>";
-const THINK_CLOSE = "</think>";
 const HOLD_TAGS = [TOOL_OPEN, TOOL_CLOSE, THINK_OPEN, THINK_CLOSE] as const;
 
 export class HermesInbandScanner implements InbandScanner {
@@ -180,7 +185,7 @@ function renderToolResults(results: readonly DialectToolResult[], _options: Dial
 }
 
 function renderThinking(text: string): string {
-	return renderDelimitedThinking(THINK_OPEN, THINK_CLOSE, text);
+	return renderThinkTags(text);
 }
 
 function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {

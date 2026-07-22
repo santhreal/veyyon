@@ -19,7 +19,6 @@ import {
 } from "./aggregator";
 import { decodeEmbeddedClientArchive } from "./embedded-client";
 import embeddedClientArchiveTxt from "./embedded-client.generated.txt";
-import { getGainDashboardStats } from "./gain-aggregator";
 
 const EMBEDDED_CLIENT_ARCHIVE = decodeEmbeddedClientArchive(embeddedClientArchiveTxt);
 
@@ -260,12 +259,6 @@ async function handleApi(req: Request): Promise<Response> {
 		const result = await syncAllSessions();
 		const count = await getTotalMessageCount();
 		return Response.json({ ...result, totalMessages: count });
-	}
-
-	if (path === "/api/stats/gain") {
-		const project = url.searchParams.get("project");
-		const stats = await getGainDashboardStats(range, project);
-		return Response.json(stats);
 	}
 
 	return new Response("Not Found", { status: 404 });

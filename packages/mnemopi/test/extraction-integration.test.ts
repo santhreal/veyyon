@@ -3,7 +3,7 @@ import type { FetchImpl } from "@veyyon/ai";
 import { extractFacts } from "@veyyon/mnemopi/core/extraction";
 import { type ChatMessage, ExtractionClient } from "@veyyon/mnemopi/core/extraction/client";
 import { getExtractionStats, resetExtractionStats } from "@veyyon/mnemopi/core/extraction/diagnostics";
-import { resetHostLlmBackendForTests } from "@veyyon/mnemopi/core/llm-backends";
+import { CallableLlmBackend, resetHostLlmBackendForTests, setHostLlmBackend } from "@veyyon/mnemopi/core/llm-backends";
 
 const OLD_ENV = { ...process.env };
 
@@ -102,6 +102,48 @@ describe("extraction integration", () => {
 		const cloud = getExtractionStats().by_tier.cloud;
 		expect(cloud.failures).toBe(1);
 		expect(cloud.error_samples.some(sample => sample.reason === "json_parse_failed")).toBe(true);
+	});
+
+	// Regression: a host LLM backend that THROWS must be recorded as a real host
+	// FAILURE (host_adapter_raised), never as no_output. Before the callHostLlm
+	// silent swallow was removed, the throw was caught deep in callHostLlm and
+	// returned as null, so extraction saw "host produced nothing" and its
+	// host_adapter_raised branch was dead. The operator could not tell a crashed
+	// backend from a backend that legitimately found no facts (Law 10).
+	it("records a throwing host backend as a host failure, not no_output", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "true";
+		setHostLlmBackend(
+			new CallableLlmBackend("boom", () => {
+				throw new Error("host adapter crashed");
+			}),
+		);
+
+		expect(await extractFacts("Ada prefers deterministic tests.")).toEqual([]);
+		const host = getExtractionStats().by_tier.host;
+		expect(host.failures).toBe(1);
+		expect(host.no_output).toBe(0);
+		expect(host.error_samples.some(sample => sample.reason === "host_adapter_raised")).toBe(true);
+		expect(host.error_samples.some(sample => sample.msg.includes("host adapter crashed"))).toBe(true);
+	});
+
+	// Regression twin for the remote transport: a network throw (or non-2xx) must
+	// be recorded as remote_call_raised, not no_output. callRemoteLlm used to
+	// swallow the throw to null, making this failure invisible and the
+	// remote_call_raised branch dead (Law 10).
+	it("records a throwing remote transport as a remote failure, not no_output", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_LLM_BASE_URL = "http://fake-remote/v1";
+		const fetchThrow: FetchImpl = async () => {
+			throw new Error("connection reset by peer");
+		};
+
+		expect(await extractFacts("Ada prefers deterministic tests.", { fetch: fetchThrow })).toEqual([]);
+		const remote = getExtractionStats().by_tier.remote;
+		expect(remote.failures).toBe(1);
+		expect(remote.no_output).toBe(0);
+		expect(remote.error_samples.some(sample => sample.reason === "remote_call_raised")).toBe(true);
+		expect(remote.error_samples.some(sample => sample.msg.includes("connection reset by peer"))).toBe(true);
 	});
 
 	it("uses millisecond-scale rate-limit and fallback backoff delays", async () => {

@@ -31,6 +31,22 @@ export function isEnoent(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "ENOENT";
 }
 
+/**
+ * Build an `ENOENT` filesystem error for a path, shaped like the Node
+ * `ErrnoException` a real `fs` call throws (`code`, `errno`, `syscall`, `path`),
+ * so a synthetic "no such file" reads identically to a native one at the
+ * boundary and passes {@link isEnoent}. Storage backends use this when a
+ * requested session/blob is absent.
+ */
+export function enoentError(path: string): FsError {
+	const err = new Error(`ENOENT: no such file, '${path}'`) as FsError;
+	err.code = "ENOENT";
+	err.errno = -2;
+	err.syscall = "open";
+	err.path = path;
+	return err;
+}
+
 export function isEacces(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "EACCES";
 }

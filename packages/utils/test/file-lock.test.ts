@@ -3,7 +3,7 @@ import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __internalsForTesting, withFileLock, withFileLockSync } from "../src/file-lock";
+import { __internalsForTesting, tryWithFileLock, withFileLock, withFileLockSync } from "../src/file-lock";
 import { removeWithRetries } from "../src/temp";
 
 const {
@@ -218,5 +218,120 @@ describe("file-lock sync/async mutual exclusion", () => {
 
 		const final = JSON.parse(fsSync.readFileSync(target, "utf-8")) as { counter: number };
 		expect(final.counter).toBe(N);
+	});
+});
+
+describe("tryWithFileLock", () => {
+	test("runs fn and returns its value when the lock is free", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "free.json");
+
+		const result = await tryWithFileLock(target, async () => 42);
+
+		expect(result).toEqual({ acquired: true, value: 42 });
+	});
+
+	test("does not run fn while another holder has the lock", async () => {
+		// The property that makes this usable for background work: a second
+		// process gets out of the way instead of duplicating the work. Launching
+		// the same program in three terminals must not run one-time startup work
+		// three times.
+		const root = await mkRoot();
+		const target = path.join(root, "held.json");
+		let ran = 0;
+
+		const result = await withFileLock(target, async () =>
+			tryWithFileLock(target, async () => {
+				ran += 1;
+				return "inner";
+			}),
+		);
+
+		expect(result).toEqual({ acquired: false });
+		expect(ran).toBe(0);
+	});
+
+	test("exactly one of many concurrent callers runs fn", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "concurrent.json");
+		let ran = 0;
+
+		const results = await Promise.all(
+			Array.from({ length: 8 }, () =>
+				tryWithFileLock(target, async () => {
+					ran += 1;
+					// Hold the lock long enough that the other callers must contend.
+					await Bun.sleep(20);
+					return ran;
+				}),
+			),
+		);
+
+		expect(ran).toBe(1);
+		expect(results.filter(r => r.acquired)).toHaveLength(1);
+	});
+
+	test("releases the lock so a later caller can acquire it", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "sequential.json");
+
+		expect((await tryWithFileLock(target, async () => "first")).acquired).toBe(true);
+		expect(await tryWithFileLock(target, async () => "second")).toEqual({ acquired: true, value: "second" });
+	});
+
+	test("releases the lock when fn throws", async () => {
+		// A crash inside the critical section must not wedge the lock for the
+		// staleMs window, which for long-running work is deliberately minutes.
+		const root = await mkRoot();
+		const target = path.join(root, "throws.json");
+
+		await expect(
+			tryWithFileLock(target, async () => {
+				throw new Error("boom");
+			}),
+		).rejects.toThrow("boom");
+
+		expect((await tryWithFileLock(target, async () => "after")).acquired).toBe(true);
+	});
+
+	test("reaps a lock held by a dead process and then takes it", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "dead-owner.json");
+		const lockPath = getLockPath(target);
+		await fs.mkdir(lockPath);
+		// pid 1 is alive, so use a pid that cannot be: liveness is what decides.
+		await Bun.write(`${lockPath}/info`, JSON.stringify({ pid: 0x7fffffff, timestamp: Date.now(), token: "x" }));
+
+		const result = await tryWithFileLock(target, async () => "reaped");
+
+		expect(result).toEqual({ acquired: true, value: "reaped" });
+	});
+
+	test("does not reap a live holder whose lock is younger than staleMs", async () => {
+		// The failure this guards: a staleMs shorter than the work lets a second
+		// caller reap a lock that is still legitimately held, and both run.
+		const root = await mkRoot();
+		const target = path.join(root, "live-owner.json");
+		const lockPath = getLockPath(target);
+		await fs.mkdir(lockPath);
+		await Bun.write(`${lockPath}/info`, JSON.stringify({ pid: process.pid, timestamp: Date.now(), token: "x" }));
+
+		expect(await tryWithFileLock(target, async () => "nope", { staleMs: 600_000 })).toEqual({ acquired: false });
+	});
+
+	test("reaps a live holder whose lock has aged past staleMs", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "aged.json");
+		const lockPath = getLockPath(target);
+		await fs.mkdir(lockPath);
+		await Bun.write(
+			`${lockPath}/info`,
+			JSON.stringify({ pid: process.pid, timestamp: Date.now() - 60_000, token: "x" }),
+		);
+
+		expect(await tryWithFileLock(target, async () => "taken", { staleMs: 1_000 })).toEqual({
+			acquired: true,
+			value: "taken",
+		});
 	});
 });

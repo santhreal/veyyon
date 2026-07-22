@@ -76,6 +76,46 @@ export function resolvePaintGround(
 	}
 }
 
+/**
+ * What the painted-ground consumer should do this frame.
+ *
+ * - `{ paint: "#RRGGBB" }` → set the terminal background to that color.
+ * - `{ paint: null }` → leave the terminal background alone (reset any paint
+ *   this session applied). `unhonoredAlways` is true only when the user asked
+ *   for `always` but the theme declares no ground, so the consumer can say so
+ *   rather than silently do nothing (Law 10).
+ */
+export interface PaintGroundPlan {
+	paint: string | null;
+	unhonoredAlways: boolean;
+}
+
+/**
+ * Decide the painted-ground action from the policy, the theme's declared ground
+ * color, and the terminal's own background.
+ *
+ * The theme ground is `undefined` when the active theme declares none (a user
+ * theme without an `export.pageBg`). Painting then would mean inventing a color,
+ * which would recolor the terminal a shade the theme never chose, so this
+ * inherits the terminal background instead. `always` is the one case where the
+ * user explicitly asked to paint and cannot be honored, so it is flagged for the
+ * caller to surface rather than swallow.
+ *
+ * This is the pure decision; the caller performs the OSC 11 write. It composes
+ * {@link resolvePaintGround} so the auto-seam rule lives in exactly one place.
+ */
+export function planPaintGround(
+	setting: PaintGroundSetting,
+	themeGroundHex: string | undefined,
+	terminalBackgroundHex: string | undefined,
+): PaintGroundPlan {
+	if (themeGroundHex === undefined) {
+		return { paint: null, unhonoredAlways: setting === "always" };
+	}
+	const shouldPaint = resolvePaintGround(setting, themeGroundHex, terminalBackgroundHex);
+	return { paint: shouldPaint ? themeGroundHex : null, unhonoredAlways: false };
+}
+
 /** OSC 11 set-background sequence for a `#RRGGBB` color (BEL terminated). */
 export function osc11SetBackgroundSequence(hex: string): string | null {
 	const rgb = parseHexColor(hex);

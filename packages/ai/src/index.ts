@@ -7,6 +7,7 @@ export * from "./auth-gateway/types";
 export * from "./auth-retry";
 export * from "./auth-storage";
 export * from "./error/rate-limit";
+export * from "./instrumentation";
 export * from "./provider-details";
 export * from "./providers/anthropic";
 export * from "./providers/anthropic-client";

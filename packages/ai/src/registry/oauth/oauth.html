@@ -143,6 +143,11 @@
 				if (!cv) return;
 				var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 				var ctx = cv.getContext("2d", { alpha: true });
+				// This page is served self-contained by the local auth server, so it
+				// cannot import the shared sun source (website/sun-field.js). The ramp
+				// and glyphs below are the same sun as everywhere else; brand-conformance
+				// pins them to site.css so this inline copy cannot silently drift. Keep
+				// them identical to sun-field.js / sun.ts if you touch them.
 				var COLORS = ["#4a2714", "#6e3418", "#96431b", "#c25a24", "#f0862e", "#fb9e44", "#fbc06d", "#ffe3ad"];
 				var GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"];
 				var W, H, dpr, cellW, cellH, cols, rows, fontPx, mono, cxPx, cyPx, Rpx;
