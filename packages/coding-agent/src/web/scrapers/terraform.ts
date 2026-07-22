@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -147,7 +148,9 @@ async function handleModuleUrl(
 		for (const input of inputs.slice(0, 30)) {
 			const required = (input.required ?? input.default === undefined) ? "Yes" : "No";
 			const type = input.type ?? "any";
-			const desc = (input.description ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 80);
+			// Slice the raw text first, then escape: slicing an already-escaped
+			// string could cut through a `\|` sequence and leave a dangling `\`.
+			const desc = escapeMarkdownTableCell((input.description ?? "").slice(0, 80));
 			md += `| ${input.name} | \`${type}\` | ${required} | ${desc} |\n`;
 		}
 		if (inputs.length > 30) {

@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import {
 	buildResult,
 	loadFailure,
@@ -240,8 +241,10 @@ export const handleRepology: SpecialHandler = async (
 			if (shownRepos.has(repoKey)) continue;
 			shownRepos.add(repoKey);
 
-			const repoName = prettifyRepo(pkg.repo);
-			const version = pkg.origversion || pkg.version;
+			const repoName = escapeMarkdownTableCell(prettifyRepo(pkg.repo));
+			// A `|` inside inline code still splits a GFM table row: the row parser
+			// runs before inline-code parsing, so the version needs escaping too.
+			const version = escapeMarkdownTableCell(pkg.origversion || pkg.version);
 			md += `| ${repoName} | \`${version}\` | ${statusIndicator(pkg.status)} ${pkg.status} |\n`;
 
 			count++;

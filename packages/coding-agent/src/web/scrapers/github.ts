@@ -1,5 +1,6 @@
 import { $env, formatCount } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatMediaDuration, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -491,7 +492,8 @@ async function renderGitHubRepo(
 	return { content: md, ok: true };
 }
 
-interface GitHubActionsStep {
+/** @internal Exported for testing the table-cell escaping in {@link renderActionsSteps}. */
+export interface GitHubActionsStep {
 	name: string;
 	status: string;
 	conclusion: string | null;
@@ -549,11 +551,6 @@ function actionDuration(start?: string | null, end?: string | null): string {
 	return formatMediaDuration(Math.round(ms / 1000));
 }
 
-/** Escape `|` so step/job names can't break a markdown table row. */
-function escapeCell(text: string): string {
-	return text.replaceAll("|", "\\|");
-}
-
 /**
  * Strip the per-line ISO-8601 timestamp prefix GitHub prepends to every job log line.
  * Cuts ~28 bytes/line of noise while preserving the message text. Also drops the leading
@@ -564,14 +561,18 @@ export function stripActionsLogTimestamps(logs: string): string {
 	return logs.replace(/^\uFEFF/, "").replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z /gm, "");
 }
 
-/** Render a job's steps as a markdown table. Empty string when there are no steps. */
-function renderActionsSteps(steps?: GitHubActionsStep[]): string {
+/**
+ * Render a job's steps as a markdown table. Empty string when there are no steps.
+ *
+ * @internal Exported for regression testing of table-cell escaping.
+ */
+export function renderActionsSteps(steps?: GitHubActionsStep[]): string {
 	if (!steps || steps.length === 0) return "";
 	let md = "| # | Step | Status | Conclusion | Duration |\n";
 	md += "|---|------|--------|------------|----------|\n";
 	for (const step of steps) {
 		const dur = actionDuration(step.started_at, step.completed_at) || "-";
-		md += `| ${step.number} | ${escapeCell(step.name)} | ${step.status} | ${step.conclusion ?? "-"} | ${dur} |\n`;
+		md += `| ${step.number} | ${escapeMarkdownTableCell(step.name)} | ${step.status} | ${step.conclusion ?? "-"} | ${dur} |\n`;
 	}
 	return `${md}\n`;
 }
@@ -645,7 +646,7 @@ async function renderGitHubActionsRun(
 		md += `## Jobs (${jobs.length})\n\n`;
 		for (const job of jobs) {
 			const dur = actionDuration(job.started_at, job.completed_at);
-			md += `### ${escapeCell(job.name)} — ${statusLabel(job.status, job.conclusion)}${dur ? ` (${dur})` : ""}\n\n`;
+			md += `### ${escapeMarkdownTableCell(job.name)} — ${statusLabel(job.status, job.conclusion)}${dur ? ` (${dur})` : ""}\n\n`;
 			if (job.conclusion !== "success") {
 				md += renderActionsSteps(job.steps);
 			}
@@ -672,7 +673,7 @@ async function renderGitHubActionsJob(
 	const runResult = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}/actions/runs/${job.run_id}`, timeout, signal);
 	const run = runResult.ok && runResult.data ? (runResult.data as GitHubActionsRun) : null;
 
-	let md = `# ${escapeCell(job.name)}\n\n`;
+	let md = `# ${escapeMarkdownTableCell(job.name)}\n\n`;
 	if (run) {
 		md += renderActionsRunMeta(run);
 	} else if (job.workflow_name) {
@@ -680,7 +681,7 @@ async function renderGitHubActionsJob(
 		if (job.head_branch) md += `**Branch:** ${job.head_branch}\n`;
 	}
 	const dur = actionDuration(job.started_at, job.completed_at);
-	md += `**Job:** ${escapeCell(job.name)} · ${statusLabel(job.status, job.conclusion)}${dur ? ` · ${dur}` : ""}\n`;
+	md += `**Job:** ${escapeMarkdownTableCell(job.name)} · ${statusLabel(job.status, job.conclusion)}${dur ? ` · ${dur}` : ""}\n`;
 	if (job.runner_name) md += `**Runner:** ${job.runner_name}\n`;
 	if (job.html_url) md += `URL: ${job.html_url}\n`;
 	md += `\n---\n\n`;

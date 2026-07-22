@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -230,7 +231,7 @@ export const handleSecEdgar: SpecialHandler = async (
 			for (const filing of keyFilings) {
 				const filingUrl = buildFilingUrl(cik, filing.accessionNumber, filing.primaryDocument);
 				const desc = filing.primaryDocDescription || filing.form;
-				md += `| ${filing.filingDate} | [${filing.form}](${filingUrl}) | ${desc} |\n`;
+				md += `| ${filing.filingDate} | [${filing.form}](${filingUrl}) | ${escapeMarkdownTableCell(desc)} |\n`;
 			}
 			md += "\n";
 		}
@@ -245,7 +246,7 @@ export const handleSecEdgar: SpecialHandler = async (
 			for (const filing of allFilings) {
 				const filingUrl = buildFilingUrl(cik, filing.accessionNumber, filing.primaryDocument);
 				const desc = filing.primaryDocDescription || filing.form;
-				md += `| ${filing.filingDate} | [${filing.form}](${filingUrl}) | ${desc} |\n`;
+				md += `| ${filing.filingDate} | [${filing.form}](${filingUrl}) | ${escapeMarkdownTableCell(desc)} |\n`;
 			}
 			md += "\n";
 		}
