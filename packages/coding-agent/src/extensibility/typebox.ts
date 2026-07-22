@@ -252,6 +252,32 @@ function createStringValidator(
 	};
 }
 
+const IPV6_HEXTET_RE = /^[0-9a-fA-F]{1,4}$/;
+
+/**
+ * Whether `value` is a valid IPv6 address, including the `::` zero-compressed
+ * form. The old single regex only matched the fully expanded eight-group form,
+ * so every common compressed address (`::1`, `fe80::1`, `::`) was rejected.
+ *
+ * A `::` stands for one or more all-zero groups and may appear at most once, so
+ * the two sides around it together carry at most seven explicit groups. The
+ * fully expanded form is exactly eight groups. Embedded-IPv4 tails
+ * (`::ffff:1.2.3.4`) are not accepted, matching the prior behavior.
+ */
+function isFormatIpv6(value: string): boolean {
+	if (!/^[0-9a-fA-F:]+$/.test(value)) return false;
+	const sides = value.split("::");
+	if (sides.length > 2) return false;
+	if (sides.length === 2) {
+		const head = sides[0] === "" ? [] : sides[0].split(":");
+		const tail = sides[1] === "" ? [] : sides[1].split(":");
+		if (head.length + tail.length > 7) return false;
+		return [...head, ...tail].every(group => IPV6_HEXTET_RE.test(group));
+	}
+	const groups = value.split(":");
+	return groups.length === 8 && groups.every(group => IPV6_HEXTET_RE.test(group));
+}
+
 function createFormatStringValidator(format: string): (data: unknown) => unknown {
 	return (data: unknown) => {
 		if (typeof data !== "string") return validationFailure("Expected string");
@@ -281,7 +307,10 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time format") : data;
 			}
 			case "time": {
-				const timeRegex = /^\d{2}:\d{2}:\d{2}(.\d{3})?([+-]\d{2}:\d{2}|Z)?$/;
+				// The fractional-seconds separator is a literal dot, so it must be
+				// escaped: an unescaped `.` matched any character, wrongly accepting a
+				// value like "12:00:00X123".
+				const timeRegex = /^\d{2}:\d{2}:\d{2}(\.\d{3})?([+-]\d{2}:\d{2}|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}
 			case "ipv4": {
@@ -291,8 +320,7 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return parts.some(part => part > 255) ? validationFailure("Invalid IPv4 address") : data;
 			}
 			case "ipv6": {
-				const ipv6Regex = /^([\da-f]{1,4}:){7}[\da-f]{1,4}$/i;
-				return ipv6Regex.test(data) ? data : validationFailure("Invalid IPv6 format");
+				return isFormatIpv6(data) ? data : validationFailure("Invalid IPv6 format");
 			}
 			default:
 				return data;

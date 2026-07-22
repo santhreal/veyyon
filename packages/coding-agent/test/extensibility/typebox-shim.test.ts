@@ -74,6 +74,47 @@ describe("pi.typebox compatibility shim", () => {
 		expect(safeParse(schema, "https://example.com").success).toBe(true);
 	});
 
+	describe("string format: time", () => {
+		const schema = Type.String({ format: "time" });
+
+		it("accepts a plain time and the optional fraction and offset", () => {
+			expect(safeParse(schema, "12:00:00").success).toBe(true);
+			expect(safeParse(schema, "12:00:00.123").success).toBe(true);
+			expect(safeParse(schema, "12:00:00.123Z").success).toBe(true);
+			expect(safeParse(schema, "12:00:00+05:30").success).toBe(true);
+		});
+
+		it("requires a literal dot before the milliseconds, not any character", () => {
+			// REGRESSION: the fraction group was `(.\d{3})?` with an unescaped dot, so
+			// any character followed by three digits passed. The dot must be literal.
+			expect(safeParse(schema, "12:00:00X123").success).toBe(false);
+			expect(safeParse(schema, "12:00:00 123").success).toBe(false);
+			expect(safeParse(schema, "12:00").success).toBe(false);
+		});
+	});
+
+	describe("string format: ipv6", () => {
+		const schema = Type.String({ format: "ipv6" });
+
+		it("accepts the zero-compressed :: form and the full eight-group form", () => {
+			// REGRESSION: the old regex only matched the fully expanded form, so every
+			// common compressed address was wrongly rejected.
+			expect(safeParse(schema, "::1").success).toBe(true);
+			expect(safeParse(schema, "fe80::1").success).toBe(true);
+			expect(safeParse(schema, "::").success).toBe(true);
+			expect(safeParse(schema, "2001:db8::8a2e:370:7334").success).toBe(true);
+			expect(safeParse(schema, "1:2:3:4:5:6:7:8").success).toBe(true);
+		});
+
+		it("rejects a double ::, an over-long group, and non-hex input", () => {
+			expect(safeParse(schema, "1::2::3").success).toBe(false);
+			expect(safeParse(schema, "12345::").success).toBe(false);
+			expect(safeParse(schema, "gggg::1").success).toBe(false);
+			expect(safeParse(schema, "1:2:3:4:5:6:7").success).toBe(false);
+			expect(safeParse(schema, "").success).toBe(false);
+		});
+	});
+
 	it("preserves unknown properties by default on Type.Object", () => {
 		const schema = Type.Object({ a: Type.String() });
 		const parsed = safeParse(schema, { a: "x", extra: 1 });
