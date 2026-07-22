@@ -1,4 +1,5 @@
 import { errorMessage, tryParseJson } from "@veyyon/utils";
+import { markdownLink } from "../../utils/markdown-link";
 import type { SpecialHandler } from "./types";
 import { buildResult, decodeHtmlEntities, formatIsoDate, loadPage, tryParseUrl } from "./types";
 
@@ -35,7 +36,7 @@ async function fetchItems(ids: number[], timeout: number, limit = 20, signal?: A
 	return results.filter((item): item is HNItem => item !== null && !item.deleted && !item.dead);
 }
 
-function decodeHNText(html: string): string {
+export function decodeHNText(html: string): string {
 	return decodeHtmlEntities(
 		html
 			.replace(/<p>/g, "\n\n")
@@ -46,7 +47,14 @@ function decodeHNText(html: string): string {
 			.replace(/<\/code>/g, "`")
 			.replace(/<i>/g, "*")
 			.replace(/<\/i>/g, "*")
-			.replace(/<a href="([^"]+)"[^>]*>([^<]*)<\/a>/g, "[$2]($1)")
+			// HN comment anchors carry arbitrary hrefs and label text. A bare
+			// `[$2]($1)` truncates at the first `)` in the URL (Wikipedia
+			// `/wiki/Foo_(disambiguation)` links are common in comments) and breaks
+			// on a `[`/`]` in the label, so route both halves through markdownLink.
+			// The href is still HTML-entity-encoded here; markdownLinkUrl only
+			// percent-encodes `( ) space` (never `&`), so the trailing
+			// decodeHtmlEntities pass still resolves `&amp;` while leaving %28/%29.
+			.replace(/<a href="([^"]+)"[^>]*>([^<]*)<\/a>/g, (_m, href, text) => markdownLink(text, href))
 			.replace(/<[^>]+>/g, ""),
 	).trim();
 }
