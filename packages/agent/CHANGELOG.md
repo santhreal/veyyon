@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The `snap` compaction strategy and its dependency on `@veyyon/snapcompact`. Compaction offers `summary` (default) and `handoff`. Archives left by the removed image-archive engine still load: `legacyArchiveSourceText` (in `compaction/legacy-snapcompact-archive.ts`) recovers their plaintext source as a text block, and the next compaction folds it into a normal LLM summary.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

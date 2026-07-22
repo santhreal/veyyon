@@ -28,7 +28,6 @@ import { convertTools } from "@veyyon/ai/providers/openai-responses";
 import { buildResponsesInput, resolveOpenAICompatPolicy } from "@veyyon/ai/providers/openai-shared";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
-import * as snapcompact from "@veyyon/snapcompact";
 import { errorMessage, logger, prompt, stringifyJson } from "@veyyon/utils";
 import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
 import { ThinkingLevel } from "../thinking";
@@ -43,6 +42,12 @@ import {
 	V2_RETAINED_MESSAGE_TOKEN_BUDGET,
 } from "./compaction-v2-streaming";
 import type { CompactionEntry, SessionEntry } from "./entries";
+import {
+	hasLegacyArchive,
+	LEGACY_FRAME_TOKEN_ESTIMATE,
+	legacyArchiveSourceText,
+	stripLegacyArchive,
+} from "./legacy-snapcompact-archive";
 import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
 import {
 	buildOpenAiNativeHistory,
@@ -58,7 +63,7 @@ import compactionSummaryPrompt from "./prompts/compaction-summary.md" with { typ
 import compactionTurnPrefixPrompt from "./prompts/compaction-turn-prefix.md" with { type: "text" };
 import compactionUpdateSummaryPrompt from "./prompts/compaction-update-summary.md" with { type: "text" };
 import handoffDocumentPrompt from "./prompts/handoff-document.md" with { type: "text" };
-import snapcompactArchiveContextPrompt from "./prompts/snapcompact-archive-context.md" with { type: "text" };
+import legacyArchiveContextPrompt from "./prompts/legacy-archive-context.md" with { type: "text" };
 
 import {
 	computeFileLists,
@@ -160,7 +165,7 @@ export interface CompactionResult<T = unknown> {
 
 export interface CompactionSettings {
 	enabled: boolean;
-	strategy?: "handoff" | "snap" | "context-full" | "shake" | "snapcompact" | "off";
+	strategy?: "handoff" | "summary" | "context-full" | "shake" | "off";
 	thresholdPercent?: number;
 	thresholdTokens?: number;
 	midTurnEnabled?: boolean;
@@ -189,7 +194,7 @@ export const DEFAULT_RESERVE_TOKENS = 16384;
 // chose a reserve" from "user explicitly configured the default value".
 export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
 	enabled: true,
-	strategy: "snap",
+	strategy: "summary",
 	thresholdPercent: -1,
 	thresholdTokens: -1,
 	midTurnEnabled: true,
@@ -302,7 +307,7 @@ export function shouldCompact(contextTokens: number, contextWindow: number, sett
  *
  * The provider-reported usage is normally ground truth, but a
  * `before_provider_request` payload transform — a compression extension (e.g.
- * Headroom), an obfuscator, or inline snapcompact — can shrink the request below
+ * Headroom) or an obfuscator — can shrink the request below
  * the real stored conversation. The provider then reports deflated prompt
  * tokens, so anchoring compaction purely on that usage lets the real history
  * grow unbounded until it overflows and native compaction can no longer run.
@@ -487,11 +492,12 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 				if (message.blocks) {
 					for (const block of message.blocks) {
 						if (block.type === "text") fragments.push(block.text);
-						else extra += snapcompact.FRAME_TOKEN_ESTIMATE;
+						else extra += LEGACY_FRAME_TOKEN_ESTIMATE;
 					}
 				} else if (message.images) {
-					// Snapcompact frames render at ≥1568px; providers bill the downscaled cap.
-					extra += message.images.length * snapcompact.FRAME_TOKEN_ESTIMATE;
+					// Legacy snapcompact frames rendered at large sizes; providers bill the
+					// downscaled cap. Only old persisted summaries still carry these.
+					extra += message.images.length * LEGACY_FRAME_TOKEN_ESTIMATE;
 				}
 			}
 			break;
@@ -840,23 +846,23 @@ function localCodexCompaction(options: SummaryOptions | undefined) {
 	});
 }
 
-function formatPreviousSnapcompactArchive(archiveText: string): string {
-	return prompt.render(snapcompactArchiveContextPrompt, { archiveText });
+function formatLegacyArchiveText(archiveText: string): string {
+	return prompt.render(legacyArchiveContextPrompt, { archiveText });
 }
 
-function mergePreviousSummaryWithSnapcompactArchive(
+function mergePreviousSummaryWithLegacyArchive(
 	previousSummary: string | undefined,
 	archiveText: string | undefined,
 ): string | undefined {
 	if (!archiveText) return previousSummary;
-	const archiveSummary = formatPreviousSnapcompactArchive(archiveText);
+	const archiveSummary = formatLegacyArchiveText(archiveText);
 	return previousSummary ? `${previousSummary}\n\n${archiveSummary}` : archiveSummary;
 }
 
-function createSnapcompactArchiveMigrationMessage(archiveText: string): Message {
+function createLegacyArchiveMigrationMessage(archiveText: string): Message {
 	return {
 		role: "user",
-		content: [{ type: "text", text: formatPreviousSnapcompactArchive(archiveText) }],
+		content: [{ type: "text", text: formatLegacyArchiveText(archiveText) }],
 		timestamp: Date.now(),
 	};
 }
@@ -1419,21 +1425,18 @@ export async function compact(
 		completeImpl: options?.completeImpl,
 	};
 
-	const previousSnapcompactArchive = snapcompact.getPreservedArchive(previousPreserveData);
-	const previousSnapcompactArchiveText = previousSnapcompactArchive
-		? snapcompact.archiveSourceText(previousSnapcompactArchive)
-		: undefined;
-	const previousSummaryForCompaction = mergePreviousSummaryWithSnapcompactArchive(
+	const previousLegacyArchiveText = legacyArchiveSourceText(previousPreserveData);
+	const previousSummaryForCompaction = mergePreviousSummaryWithLegacyArchive(
 		previousSummary,
-		previousSnapcompactArchiveText,
+		previousLegacyArchiveText,
 	);
-	const snapcompactArchiveMigrationMessage = previousSnapcompactArchiveText
-		? createSnapcompactArchiveMigrationMessage(previousSnapcompactArchiveText)
+	const legacyArchiveMigrationMessage = previousLegacyArchiveText
+		? createLegacyArchiveMigrationMessage(previousLegacyArchiveText)
 		: undefined;
 
 	let preserveData = withOpenAiRemoteCompactionPreserveData(previousPreserveData, undefined);
 	const remoteMessages: AgentMessage[] = [
-		...(snapcompactArchiveMigrationMessage ? [snapcompactArchiveMigrationMessage] : []),
+		...(legacyArchiveMigrationMessage ? [legacyArchiveMigrationMessage] : []),
 		...messagesToSummarize,
 		...turnPrefixMessages,
 		...recentMessages,
@@ -1615,12 +1618,12 @@ export async function compact(
 		throw new Error("First kept entry has no ID - session may need migration");
 	}
 
-	// This LLM-summary path migrated any prior snapcompact frames into the summary
-	// text above; strip the now-stale frame archive from preserveData so it cannot
-	// re-attach to the rebuilt context. Only the legacy-frame case needs stripping —
-	// when there was no previous archive, preserveData carries no frames to drop.
-	const finalPreserveData = previousSnapcompactArchive
-		? snapcompact.stripPreservedArchive(preserveData)
+	// This LLM-summary path migrated any prior legacy frame archive into the
+	// summary text above; strip the now-stale archive from preserveData so it
+	// cannot re-attach to the rebuilt context. Only the legacy case needs
+	// stripping — a session without a prior archive carries no frames to drop.
+	const finalPreserveData = hasLegacyArchive(previousPreserveData)
+		? stripLegacyArchive(preserveData)
 		: preserveData;
 
 	return {

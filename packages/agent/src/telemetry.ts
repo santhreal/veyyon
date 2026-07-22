@@ -47,6 +47,7 @@ import {
 	type ToolChoice,
 	type Usage,
 } from "@veyyon/ai";
+import { stringifyJsonSafe } from "@veyyon/utils";
 import { AgentRunCollector, type AgentRunCoverage, type AgentRunSummary, type ToolStatus } from "./run-collector";
 import type { AgentTool } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
@@ -2025,10 +2026,7 @@ export function setSpanAttribute(span: Span | undefined, key: string, value: Att
 /** Re-exports so consumers can write hooks without depending on @opentelemetry/api directly. */
 export { type Attributes, type Span, SpanKind, SpanStatusCode, type Tracer, trace };
 
+/** Render a span attribute. The shared owner never yields "[object Object]". */
 function safeJson(value: unknown): string {
-	try {
-		return JSON.stringify(value);
-	} catch {
-		return String(value);
-	}
+	return stringifyJsonSafe(value);
 }

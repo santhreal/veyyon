@@ -40,7 +40,6 @@
     "@veyyon/natives": "catalog:",
     "@veyyon/utils": "catalog:",
     "@veyyon/wire": "catalog:",
-    "@veyyon/snapcompact": "catalog:",
     "@opentelemetry/api": "catalog:"
   },
   "devDependencies": {
