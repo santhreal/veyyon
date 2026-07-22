@@ -177,6 +177,26 @@ describe("pi.typebox compatibility shim", () => {
 		});
 	});
 
+	describe("number multipleOf tolerates floating-point divisors", () => {
+		it("accepts exact decimal multiples that a naive remainder rejected", () => {
+			// REGRESSION: the check was `result % opts.multipleOf !== 0`, so a
+			// fractional divisor rejected exact multiples (0.3 is a multiple of 0.1,
+			// 19.99 is a multiple of 0.01) because the float remainder is non-zero.
+			const tenth = Type.Number({ multipleOf: 0.1 });
+			expect(safeParse(tenth, 0.3).success).toBe(true);
+			const cent = Type.Number({ multipleOf: 0.01 });
+			expect(safeParse(cent, 19.99).success).toBe(true);
+			expect(safeParse(cent, 1_000_000.05).success).toBe(true);
+		});
+
+		it("still rejects genuine non-multiples", () => {
+			const half = Type.Number({ multipleOf: 0.5 });
+			expect(safeParse(half, 2.6).success).toBe(false);
+			const three = Type.Number({ multipleOf: 3 });
+			expect(safeParse(three, 10).success).toBe(false);
+		});
+	});
+
 	it("preserves unknown properties by default on Type.Object", () => {
 		const schema = Type.Object({ a: Type.String() });
 		const parsed = safeParse(schema, { a: "x", extra: 1 });

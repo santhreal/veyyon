@@ -17,7 +17,7 @@
  * like a small validator at runtime.
  */
 
-import { areJsonValuesEqual } from "@veyyon/ai/utils/schema";
+import { areJsonValuesEqual, isMultipleOf } from "@veyyon/ai/utils/schema";
 import { isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
@@ -375,7 +375,7 @@ function createConstrainedNumberValidator(
 		if (opts?.exclusiveMaximum !== undefined && result >= opts.exclusiveMaximum) {
 			return validationFailure(`Number must be less than ${opts.exclusiveMaximum}`);
 		}
-		if (opts?.multipleOf !== undefined && result % opts.multipleOf !== 0) {
+		if (opts?.multipleOf !== undefined && !isMultipleOf(result, opts.multipleOf)) {
 			return validationFailure(`Number must be a multiple of ${opts.multipleOf}`);
 		}
 		return result;

@@ -6,6 +6,7 @@ export * from "./equality";
 export * from "./fields";
 export * from "./json-schema-validator";
 export * from "./meta-validator";
+export * from "./multiple-of";
 export * from "./normalize";
 export * from "./spill";
 export * from "./strict-tool-validation";
