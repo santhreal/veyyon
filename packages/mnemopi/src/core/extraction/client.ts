@@ -144,7 +144,12 @@ export class ExtractionClient {
 			return [];
 		}
 
-		const userPrompt = EXTRACTION_USER_TEMPLATE.replace("{conversation_text}", conversationText);
+		// Use a replacement function, not a string: a string replacement makes
+		// String.prototype.replace interpret `$$`, `$&`, `` $` ``, `$'`, and `$n`
+		// in the conversation text as special patterns. Conversation content
+		// routinely contains `$` (shell snippets, regex, prices), which would
+		// otherwise corrupt the prompt by splicing the match or template prefix.
+		const userPrompt = EXTRACTION_USER_TEMPLATE.replace("{conversation_text}", () => conversationText);
 		const response = await this.chat(
 			[
 				{ role: "system", content: EXTRACTION_SYSTEM_PROMPT },
