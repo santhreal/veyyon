@@ -13,8 +13,8 @@ import {
  * shape what the agent actually sees from a scraped page, so their edge behavior
  * is pinned here:
  *   - decodeHtmlEntities decodes the common named/numeric entities and, crucially,
- *     replaces &amp; AFTER the others so an encoded literal like `&amp;lt;` decodes
- *     to `&lt;` (one level) instead of being double-decoded to `<`;
+ *     replaces &amp; AFTER the others so an encoded literal like `&amp;quot;` decodes
+ *     to `&quot;` (one level) instead of being double-decoded to `"`;
  *   - formatIsoDate returns the leading YYYY-MM-DD of an ISO-ish string verbatim,
  *     converts numbers/Dates through UTC, and returns "" for nullish or unparseable
  *     input rather than throwing on Invalid Date;
@@ -37,9 +37,23 @@ describe("decodeHtmlEntities", () => {
 	});
 
 	it("replaces &amp; last so an encoded literal entity is not double-decoded", () => {
-		// `&amp;lt;` is the encoding of the literal text `&lt;`; it must decode to
-		// `&lt;`, never to `<`.
+		// `&amp;X;` is the encoding of the literal text `&X;`; each must decode
+		// exactly one level. REGRESSION: `&amp;` used to run third, before &quot;,
+		// &#39;, &#x27;, &#x2F;, and &nbsp;, so those five double-decoded (e.g.
+		// `&amp;quot;` became `"` instead of `&quot;`). `&amp;lt;`/`&amp;gt;` were
+		// accidentally safe because &lt;/&gt; already ran before &amp;. Now &amp;
+		// runs last, so every doubly-encoded entity stops at one level.
 		expect(decodeHtmlEntities("&amp;lt;")).toBe("&lt;");
+		expect(decodeHtmlEntities("&amp;gt;")).toBe("&gt;");
+		expect(decodeHtmlEntities("&amp;quot;")).toBe("&quot;");
+		expect(decodeHtmlEntities("&amp;#39;")).toBe("&#39;");
+		expect(decodeHtmlEntities("&amp;#x27;")).toBe("&#x27;");
+		expect(decodeHtmlEntities("&amp;#x2F;")).toBe("&#x2F;");
+		expect(decodeHtmlEntities("&amp;nbsp;")).toBe("&nbsp;");
+		// A bare `&amp;` still decodes to a single `&`, and a doubly-encoded
+		// ampersand `&amp;amp;` decodes one level to `&amp;`.
+		expect(decodeHtmlEntities("a &amp; b")).toBe("a & b");
+		expect(decodeHtmlEntities("&amp;amp;")).toBe("&amp;");
 	});
 });
 

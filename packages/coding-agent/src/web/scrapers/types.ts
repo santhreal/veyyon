@@ -353,17 +353,24 @@ export function formatIsoDate(value?: string | number | Date): string {
 
 /**
  * Decode common HTML entities.
+ *
+ * `&amp;` is decoded LAST, after every other entity. Order matters because a
+ * doubly-encoded literal like `&amp;quot;` (the encoding of the text `&quot;`)
+ * must decode exactly one level, to `&quot;`, not two levels to `"`. If `&amp;`
+ * ran first it would turn `&amp;quot;` into `&quot;`, which the later `&quot;`
+ * pass would then wrongly decode to `"`. Decoding `&amp;` last means the `&`
+ * it produces is never seen by another entity pass.
  */
 export function decodeHtmlEntities(text: string): string {
 	return text
 		.replace(/&lt;/g, "<")
 		.replace(/&gt;/g, ">")
-		.replace(/&amp;/g, "&")
 		.replace(/&quot;/g, '"')
 		.replace(/&#0?39;/g, "'")
 		.replace(/&#x27;/g, "'")
 		.replace(/&#x2F;/g, "/")
-		.replace(/&nbsp;/g, " ");
+		.replace(/&nbsp;/g, " ")
+		.replace(/&amp;/g, "&");
 }
 
 /**
