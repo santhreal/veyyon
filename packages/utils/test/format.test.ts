@@ -84,6 +84,17 @@ describe("formatNumber", () => {
 		expect(formatNumber(25_000_000_000)).toBe("25B");
 	});
 
+	// Regression lock: values in the top rounding band of a tier (Math.round lifts
+	// n/1000 or n/1_000_000 to 1000) must roll up to the next unit instead of
+	// rendering the malformed "1000K" / "1000M". 999_499 stays "999K" (the last
+	// value that rounds to 999); 999_500 is the first that would overflow.
+	it("rolls a tier-top rounding overflow up to the next unit", () => {
+		expect(formatNumber(999_500)).toBe("1M");
+		expect(formatNumber(999_999)).toBe("1M");
+		expect(formatNumber(999_500_000)).toBe("1B");
+		expect(formatNumber(999_999_999)).toBe("1B");
+	});
+
 	// Regression lock: NaN/Infinity previously fell through every threshold to the
 	// billions branch and rendered "NaNB"/"InfinityB". They now return "0", matching
 	// formatCount/formatDuration's non-finite handling. Signed negatives keep their
