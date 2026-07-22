@@ -40,6 +40,20 @@ const primitiveMap: Record<JTDPrimitive, string> = {
  */
 const MAX_SCHEMA_DEPTH = 100;
 
+/** A property name that TypeScript accepts unquoted. */
+const KEY_IDENTIFIER = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+
+/**
+ * Render an object property name as a TypeScript key. A bare identifier is
+ * emitted as-is; anything else is quoted with JSON.stringify so a name carrying
+ * a double quote, backslash, or control character becomes a valid escaped string
+ * key — a raw `"${key}"` would emit invalid TypeScript. Mirrors the ai package's
+ * schema emitter (utils/schema/typescript.ts).
+ */
+function safeKey(key: string): string {
+	return KEY_IDENTIFIER.test(key) ? key : JSON.stringify(key);
+}
+
 /** The sub-schemas reachable from a node, in the order the renderer visits them. */
 function childSchemas(schema: object): unknown[] {
 	const children: unknown[] = [];
@@ -142,16 +156,14 @@ function convertToTypeScript(
 		if (schema.properties) {
 			for (const [key, value] of Object.entries(schema.properties)) {
 				const propType = convertToTypeScript(value, true, names);
-				const safeName = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : `"${key}"`;
-				lines.push(`  ${safeName}: ${propType};`);
+				lines.push(`  ${safeKey(key)}: ${propType};`);
 			}
 		}
 
 		if (schema.optionalProperties) {
 			for (const [key, value] of Object.entries(schema.optionalProperties)) {
 				const propType = convertToTypeScript(value, true, names);
-				const safeName = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : `"${key}"`;
-				lines.push(`  ${safeName}?: ${propType};`);
+				lines.push(`  ${safeKey(key)}?: ${propType};`);
 			}
 		}
 

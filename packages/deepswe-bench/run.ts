@@ -455,6 +455,22 @@ function renderReport(results: ArmResult[], model: string): string {
 			lines.push(`| ${r.arm} | ${r.task} | ${fmt(r.argotLoadCalls)} | ${fmt(r.assistantMsgsWithSigil)} |`);
 		}
 	}
+	const allTools = [...new Set(results.flatMap(r => Object.keys(r.toolCalls ?? {})))].sort();
+	if (allTools.length > 0) {
+		lines.push("");
+		lines.push("## Tool Call Distribution (per arm totals)");
+		lines.push("");
+		lines.push(`| arm | ${allTools.join(" | ")} |`);
+		lines.push(`|---|${allTools.map(() => "---|").join("")}`);
+		for (const arm of arms) {
+			const rows = results.filter(r => r.arm === arm && !r.error);
+			const cells = allTools.map(t => {
+				const sum = rows.reduce((acc, r) => acc + ((r.toolCalls ?? {})[t] ?? 0), 0);
+				return fmt(sum);
+			});
+			lines.push(`| ${arm} | ${cells.join(" | ")} |`);
+		}
+	}
 	lines.push("");
 	return `${lines.join("\n")}\n`;
 }
