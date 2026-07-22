@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.svg" width="72" height="72" alt="Veyyon">
+  <img src="assets/sun.svg" width="320" alt="Veyyon sun">
 </p>
 
 <p align="center">
@@ -17,18 +17,18 @@
 </p>
 
 <p align="center">
-  <em>The coding agent that lives in your terminal.</em>
+  <em>A coding agent with the whole workbench wired in.</em>
 </p>
 
 <p align="center">
   <img src="assets/demo-hero.gif" width="840" alt="Veyyon TUI booting into the ember-sun splash with the composer ready">
 </p>
 
-Terminal coding agent (CLI/TUI). Hashline edits, multi-provider catalog, local credentials, Rust natives on hot paths.
+Veyyon runs in your terminal and treats the machinery around your code, the language server, the debugger, the shell, the browser, as tools it can call. The model weights are the same ones you get anywhere. The harness is what changes how reliably they land a change.
 
-Multi-provider catalog · 31 registered built-in tools (plus optional/gated tools) · LSP/DAP · Rust natives (`@veyyon/natives`).
+Multi-provider catalog · 31 built-in tools (more optional and gated) · LSP and DAP · Rust natives on every hot path · and a per-project shorthand the model writes in.
 
-## Install
+## Install it in one line
 
 **Linux / macOS**
 
@@ -42,7 +42,7 @@ curl -fsSL https://get.veyyon.dev | sh
 irm https://veyyon.dev/install.ps1 | iex
 ```
 
-This installs a single self-contained binary and links a short `vey` command. First interactive `vey` opens the first-run setup (providers, glyphs, theme); re-run with `veyyon setup`. To pin a version or build from a checkout: `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.12` or `--source`.
+This installs a single self-contained binary and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); re-run it any time with `veyyon setup`. To pin a version or build from a checkout: `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.12` or `--source`.
 
 **From source (contributing)**
 
@@ -60,7 +60,7 @@ macOS · Linux · Windows · bun ≥ 1.3.14
 
 ### Shell completions
 
-`veyyon` generates completion scripts for **bash**, **zsh**, and **fish** from live command/flag metadata. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against on-disk sessions.
+`veyyon` generates completion scripts for **bash**, **zsh**, and **fish** from live command and flag metadata. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against on-disk sessions.
 
 ```sh
 # zsh: add to ~/.zshrc (or write the output into a file on your $fpath)
@@ -73,103 +73,115 @@ eval "$(veyyon completions bash)"
 veyyon completions fish > ~/.config/fish/completions/veyyon.fish
 ```
 
-## Why the harness matters
+## The harness is the product
 
-Same model weights, different harness (edit format, tool surface), different outcomes. Veyyon leans on this: hashline edits instead of `str_replace`, summarized `read`, in-process search, LSP, and per-model prompt assembly all shift how reliably a model lands a change. Details: handbook [Mechanisms](docs/handbook/src/why/innovations.md).
+Give two harnesses the same model weights and you get different outcomes, because the edit format, the tool surface, and the way the prompt is assembled all change how reliably the model lands a change. Veyyon leans on that: hashline edits instead of `str_replace`, summarized `read`, in-process search, a real language server, and per-model prompt assembly. Details are in the handbook [Mechanisms](docs/handbook/src/why/innovations.md) chapter.
 
-## Features
+## New since the fork
 
-### 01 · Code execution with tool-calling
+Veyyon is a fork of oh-my-pi (MIT). Most of what follows in this README is the shared base both projects run on. This section is what the fork adds on top.
 
-Persistent Python and Bun eval kernels can call agent tools (read, grep, task, …) over a loopback bridge in one session.
+### Argot: a shorthand the model writes in (experimental)
+
+This is the largest thing the fork adds, and it is experimental: off by default, gated per model, and still being proven on live benches. When it is on, the agent loads the project it is working in with the `argot_load` tool, and Veyyon generates a dictionary for that project mapping short handles to the long strings it repeats: a full path, a canonical command, a fixed identifier. The model writes `§dbconn` where it would have written the whole string, and Veyyon restores every handle to its full text before anything runs or reaches your screen.
+
+The round trip is lossless. The model reads and writes less boilerplate, and nothing downstream, no tool, no file, no transcript, ever sees an unexpanded handle. Encoding is gated per model and by context size, so a large or unfamiliar context writes in full instead of risking a garbled handle; decoding always runs, so a handle can never leak. The dictionary is generated per project, kept in a local content-keyed cache, and never committed. See [Argot](docs/handbook/src/why/argot.md).
+
+The fork also adds snap compaction with lossless dedup and artifact spill, shared credentials and global config across profiles, a per-profile working directory, an absolute-token compaction threshold, and atomic, serialized config writes. Each is covered in [Mechanisms](docs/handbook/src/why/innovations.md).
+
+## What it can do
+
+### 01 · The agent writes code that calls its own tools
+
+Ask it to cross-reference two files and it does not grep twice and guess. Persistent Python and Bun eval kernels stay live across the session and call agent tools (`read`, `grep`, `task`, and the rest) over a loopback bridge, so one cell can read, transform, and act.
 
 <p align="center">
   <img src="assets/demo-ask.gif" width="820" alt="Asking about a file: Veyyon calls the read tool and answers grounded in the source">
 </p>
 
-### 02 · LSP
+### 02 · Renames go through the language server, not find-and-replace
 
-Rename and related ops go through the language server (including `workspace/willRenameFiles` where supported) so dependent files update with the edit.
+Ask for a rename and the dependent files move with it. Rename and related operations route through the language server (including `workspace/willRenameFiles` where the server supports it), so references update with the edit instead of drifting.
 
-### 03 · Debugger (DAP)
+### 03 · It drives a real debugger
 
-Attach via DAP backends (lldb, dlv, debugpy, and others configured for the project) to step, inspect frames, and evaluate.
+A binary segfaults, and the agent attaches over DAP, steps to the bad frame, and reads the values there. Backends (lldb, dlv, debugpy, and others configured for the project) let it step, inspect frames, and evaluate.
 
-### 04 · Time-traveling stream rules (TTSR)
+### 04 · Rules that wait for the model to go off-script
 
-Regex rules can abort a stream mid-token, inject a system reminder, and retry. Injections can survive compaction.
+Your rules sit dormant until a regex matches mid-stream. Then Veyyon aborts the stream mid-token, injects a system reminder, and retries. These injections can survive compaction, so the correction keeps holding.
 
-### 05 · Subagents
+### 05 · Fan a job out to workers, get typed results back
 
-The `task` tool fans out into optional isolated worktrees; workers use their own tool surface and can return schema-validated results to the parent.
+Split a task with the `task` tool and each worker runs in its own optional isolated worktree with its own tool surface. Workers return schema-validated results to the parent, not free text you have to reparse.
 
-### 06 · Advisor role
+### 06 · A second model, reading every turn
 
-A second model (advisor role) can read each main-agent turn and inject notes into the session on its own context.
+Pair a reviewer to the advisor role and it reads each main-agent turn on its own context, injecting notes into the session when the main agent starts to drift.
 
-### 07 · Collab
+### 07 · Hand someone the link and they are in
 
-`/collab` publishes a session on a relay (link/QR). Peers join with `veyyon join` or a browser view. Frames are sealed client-side.
+`/collab` publishes your live session on a relay as a link or QR. Peers join with `veyyon join` or a browser view. Frames are sealed client-side.
 
-### 08 · web_search and remote read
+### 08 · Read a PDF off arxiv like it is a local file
 
-`web_search` ranks providers; `read` accepts URLs (including PDFs) and returns structured markdown for use like local files.
+`read` accepts URLs, PDFs included, and returns structured markdown you use exactly like a path. `web_search` ranks providers, so the agent picks a source instead of guessing a URL.
 
-### 09 · In-process tools
+### 09 · Native on every path, Windows included
 
-Search/glob/find run in-process via natives; shell uses brush with session continuity. One binary for macOS, Linux, and Windows.
+Other agents shell out to `rg`, `grep`, `find`, and `bash`. Veyyon runs search, glob, and find in-process through its Rust natives, and shell through brush with session continuity. One binary for macOS, Linux, and Windows.
 
-### 10 · `/review`
+### 10 · Code review that ends with a verdict
 
-Interactive code review over branches, commits, or uncommitted work; findings ranked with confidence scores in-session.
+`/review` reads a branch, a commit, or your uncommitted work and returns ranked findings with confidence scores in-session, so you get a call on whether the change ships, not a wall of nits.
 
-### 11 · Hashline
+### 11 · Edits anchored to content hashes, not line numbers
 
-Edits reference content-hash anchors from prior reads instead of retyping surrounding lines. Stale anchors fail verification before write.
+The model points an edit at a content-hash anchor from an earlier read instead of retyping the surrounding lines. A stale anchor fails verification before anything is written, so a file that moved under the agent cannot silently corrupt a patch.
 
 <p align="center">
   <img src="assets/demo-edit.gif" width="820" alt="A hashline edit landing: read, anchored diff, and a verified write to src/utils.ts">
 </p>
 
-### 12 · Unified read surface
+### 12 · One read tool for files, URLs, and internal resources
 
-`read` covers filesystem paths and internal/URL resources (including PR-shaped paths where configured) under one tool interface.
+`read` covers filesystem paths, URLs, and internal schemes under a single interface (including PR-shaped paths where configured), so the agent learns one call shape and reuses it everywhere.
 
-### 13 · Memory
+### 13 · Memory the agent keeps between sessions
 
-Backends such as mnemopi retain and recall project-scoped facts across sessions when enabled.
+With a backend such as mnemopi enabled, Veyyon retains and recalls project-scoped facts across sessions, so it does not relearn your codebase every time you open it.
 
-### 14 · ACP
+### 14 · Drive it from your editor
 
-`veyyon acp` runs as an Agent Client Protocol server for editors (for example Zed) with the same tool loop and approval gates.
+`veyyon acp` runs as an Agent Client Protocol server, so Zed and other ACP editors get the same tool loop and approval gates as the terminal.
 
-### 15 · Foreign-tool discovery
+### 15 · It inherits the config your other tools already wrote
 
-With discovery enabled (default), Veyyon loads context, skills, rules, and MCP from common on-disk layouts (Claude, Codex, Cursor, Gemini, OpenCode, and related paths) without converting them first. Disable with `discovery.importForeignConfig: false`.
+With discovery on by default, Veyyon loads context, skills, rules, and MCP from the on-disk layouts of Claude, Codex, Cursor, Gemini, OpenCode, and related tools, with no conversion step. Turn it off with `discovery.importForeignConfig: false`.
 
-### 16 · `veyyon commit`
+### 16 · Commits split into atomic, ordered pieces
 
-`veyyon commit` inspects the working tree (`git_overview`, `git_file_diff`, `git_hunk`), groups changes into dependency-ordered atomic commits, and rejects cycles before writing. Lock files are excluded from analysis.
+`veyyon commit` reads the working tree through `git_overview`, `git_file_diff`, and `git_hunk`, groups the changes into dependency-ordered atomic commits, and rejects cycles before it writes. Lock files stay out of the analysis.
 
-### 17 · Internal URL schemes
+### 17 · A PR is just another path
 
-FS-shaped tools accept internal schemes such as `pr://`, `issue://`, `agent://`, `skill://`, `rule://`, and `conflict://` with the same call shapes as filesystem paths (for example `read pr://1428`, `agent://<id>/findings.0.path`).
+FS-shaped tools accept internal schemes like `pr://`, `issue://`, `agent://`, `skill://`, `rule://`, and `conflict://` with the same call shapes as filesystem paths, so `read pr://1428` and `agent://<id>/findings.0.path` just work.
 
-### 18 · Merge conflicts
+### 18 · Each merge conflict is one addressable URL
 
-Conflict hunks are addressable as `conflict://N` (or `conflict://*`). Writing `@theirs`, `@ours`, or `@base` selects a side.
+A conflict hunk is `conflict://N` (or `conflict://*` for all of them). Write `@theirs`, `@ours`, or `@base` to pick a side without hand-editing the markers.
 
-### 19 · `ast_edit` + `resolve`
+### 19 · Preview a structural rewrite, then accept it
 
-`ast_edit` stages structural rewrites (ast-grep) and returns a proposed preview. `resolve` accepts or rejects; accepted applies are atomic.
+`ast_edit` stages an ast-grep rewrite and returns a proposed preview with the match count. `resolve` accepts or rejects, and an accepted apply is atomic.
 
-### 20 · Browser
+### 20 · Drives a real browser, quietly
 
-`browser` drives headless Chromium (Puppeteer) or a CDP-attached target. Default settings reduce automation fingerprints.
+`browser` drives headless Chromium (Puppeteer) or a CDP-attached target. Stealth defaults are on, so a page sees a normal user rather than an automation fingerprint.
 
-## Built-in tools
+## Whatever the task needs is already a tool
 
-Tools share the agent registry with `read` and `bash`. Restrict the exposed set with `--tools read,edit,bash,…`. Hidden tools remain indexed for `search_tool_bm25` when `tools.discoveryMode` allows discovery.
+Tools share the agent registry with `read` and `bash`. Restrict the exposed set with `--tools read,edit,bash,…`. Hidden tools stay indexed for `search_tool_bm25` when `tools.discoveryMode` allows discovery.
 
 **Files and search**
 
@@ -211,11 +223,11 @@ Tools share the agent registry with `read` and `bash`. Restrict the exposed set 
 - `resolve`: apply or discard a queued preview action.
 - `search_tool_bm25`: BM25 over the hidden tool index; activates top matches mid-session.
 
-Setting-gated, off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `search_tool_bm25`, `retain`, `recall`, `reflect`. Flip them on once, scoped per project.
+Setting-gated and off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `search_tool_bm25`, `retain`, `recall`, `reflect`. Flip them on once, scoped per project.
 
 [Tools reference →](packages/coding-agent/README.md)
 
-## Providers and model selection
+## Dozens of providers, one `/model` away
 
 - **Interactive model:** `/model` or `--model`; persisted as `modelRoles.default`.
 - **Roles:** `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor` (plus custom names). Assign in `modelRoles` or settings → Model → Roles. Launch pins: `--smol`, `--slow`, `--plan`.
@@ -224,7 +236,7 @@ Setting-gated, off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `
 
 See [Models, roles, and profiles](docs/handbook/src/using/roles-and-profiles.md).
 
-Auth tags below: `oauth` signs in with your provider account, `plan` routes through a coding-plan subscription, `local` runs against a local server with the key optional.
+The auth tags below read as follows: `oauth` signs in with your provider account, `plan` routes through a coding-plan subscription, `local` runs against a local server with the key optional.
 
 ### Hosted APIs
 
@@ -247,15 +259,15 @@ Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM
 ### Routing settings
 
 - **Custom providers**: OpenAI-compatible and other API kinds in `~/.veyyon/profiles/default/agent/models.yml` (`openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, `google-vertex`, …).
-- **Fallback chains**: `retry.fallbackChains` (per role or model). On 429/quota failure the next entry continues the turn; primary returns after cooldown.
+- **Fallback chains**: `retry.fallbackChains` (per role or model). On a 429 or quota failure the next entry continues the turn; the primary returns after cooldown.
 - **Path-scoped models**: `enabledModels` / `disabledProviders` with a `path:` prefix for repo-local sets.
-- **Round-robin credentials**: Multiple API keys per provider with session affinity and per-credential backoff.
+- **Round-robin credentials**: multiple API keys per provider with session affinity and per-credential backoff.
 
-Provider and routing settings: `~/.veyyon/profiles/default/agent/models.yml` (see `packages/coding-agent` docs).
+Provider and routing settings live in `~/.veyyon/profiles/default/agent/models.yml` (see `packages/coding-agent` docs).
 
-## Web search
+## One search tool, many backends behind it
 
-`web_search` is a built-in tool. Mode `auto` walks the configured provider chain; pin a single provider id when desired. Site-aware extraction turns selected hosts into structured markdown.
+`web_search` is a built-in tool. Mode `auto` walks the configured provider chain; pin a single provider id when you want one. Site-aware extraction turns selected hosts into structured markdown.
 
 ### Search providers
 
@@ -308,7 +320,7 @@ Host-specific extraction for:
 
 [`web_search` source](packages/coding-agent/src/web/search/index.ts)
 
-## Rust natives (`@veyyon/natives`)
+## Rust on the hot paths (`@veyyon/natives`)
 
 Four crates, one platform-tagged N-API addon. Search, shell, AST, highlight, PTY, image decode, and BPE counting run in-process on the libuv pool.
 
@@ -342,9 +354,7 @@ The table below is a per-module breakdown that intentionally omits glue and test
 | sixel      | Terminal image rendering · decode PNG · JPEG · WebP · GIF · resize · SIXEL encode    | icy_sixel · image                         |    55 |
 | html       | HTML to Markdown with optional content cleaning                                      | html-to-markdown-rs                       |    50 |
 
-## Entry points
-
-Same engine, four hosts:
+## Four ways to run the same engine
 
 - **Interactive:** `veyyon` (TUI)
 - **One-shot:** `veyyon -p` / `--print`
@@ -353,7 +363,7 @@ Same engine, four hosts:
 
 ### Interactive TUI
 
-Default surface. Tool calls render as cards; the `ask` tool shows a structured option picker. The same permission/ask surfaces can route over ACP when the client advertises them.
+The default surface. Tool calls render as cards; the `ask` tool shows a structured option picker. The same permission and ask surfaces route over ACP when the client advertises them.
 
 <p align="center">
   <img src="assets/demo-commands.gif" width="820" alt="Typing / opens the slash-command palette, filtering live to model and session commands">
@@ -414,12 +424,12 @@ The [Agent Client Protocol](https://github.com/zed-industries/agent-client-proto
 
 SDK: `@veyyon/coding-agent` (see `packages/coding-agent`).
 
-## Extending
+## Built to extend, not outgrow
 
 Source and releases: [github.com/santhreal/veyyon](https://github.com/santhreal/veyyon).
 
-- **Extensions**: TypeScript modules using the same tool, slash-command, hotkey, and TUI registration APIs as built-ins.
-- **Discovery**: with foreign import enabled, loads rules/skills/MCP from common on-disk layouts (Claude, Cursor, Codex, Gemini, Windsurf, Cline, Copilot, VS Code, …).
+- **Extensions**: TypeScript modules using the same tool, slash-command, hotkey, and TUI registration APIs as the built-ins.
+- **Discovery**: with foreign import enabled, loads rules, skills, and MCP from common on-disk layouts (Claude, Cursor, Codex, Gemini, Windsurf, Cline, Copilot, VS Code, …).
 - **Reload**: `/reload-plugins` after local edits; packages publish via npm or marketplaces.
 
 Operator handbook: `docs/handbook/`.
