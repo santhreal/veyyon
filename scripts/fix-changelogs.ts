@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import * as path from "node:path";
+import { compareDottedNumeric } from "@veyyon/utils/semver";
 import { $, Glob } from "bun";
 
 const CHANGELOG_GLOB = "packages/*/CHANGELOG.md";
@@ -435,15 +436,14 @@ function sectionHasContent(section: ReleaseSection): boolean {
 	return section.subsections.some(subsection => trimBlankLines(numberedText(subsection.lines)).length > 0);
 }
 
+/**
+ * Newest first. Delegates to the one version-ordering owner: the local version
+ * of this returned NaN for a title with a non-numeric part (`NaN - 0` is NaN and
+ * `NaN !== 0` is true), and a comparator that returns NaN leaves the resulting
+ * order up to the engine.
+ */
 function compareVersionTitlesDesc(left: string, right: string): number {
-	const leftParts = left.split(".").map(part => Number.parseInt(part, 10));
-	const rightParts = right.split(".").map(part => Number.parseInt(part, 10));
-	const limit = Math.max(leftParts.length, rightParts.length);
-	for (let index = 0; index < limit; index++) {
-		const difference = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
-		if (difference !== 0) return difference;
-	}
-	return 0;
+	return compareDottedNumeric(right, left);
 }
 
 function sortReleaseSections(document: ChangelogDocument): void {

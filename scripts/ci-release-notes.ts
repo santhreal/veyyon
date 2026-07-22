@@ -28,6 +28,7 @@
  * underneath; this only adds curated context.
  */
 
+import { compareSemver } from "@veyyon/utils/semver";
 import { $, Glob } from "bun";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
@@ -37,20 +38,17 @@ const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhr
 // alphabetically after these.
 const CATEGORY_ORDER = ["Breaking Changes", "Added", "Changed", "Fixed", "Removed"] as const;
 
-/** Compare two `X.Y.Z` (or `vX.Y.Z`) version strings; non-semver returns 0. */
+/**
+ * Compare two version strings, accepting a leading `v` on either side.
+ *
+ * Delegates to the repo-wide comparator rather than matching `X.Y.Z` here. The
+ * local version this replaced returned 0 for anything that did not match that
+ * exact shape, which read as "these are the same version". A prerelease target
+ * such as `1.2.1-rc.1` therefore compared equal to every entry in the
+ * changelog, and the release notes for it merged the project's entire history.
+ */
 export function compareVersions(a: string, b: string): number {
-	const am = a
-		.replace(/^v/, "")
-		.trim()
-		.match(/^(\d+)\.(\d+)\.(\d+)$/);
-	const bm = b
-		.replace(/^v/, "")
-		.trim()
-		.match(/^(\d+)\.(\d+)\.(\d+)$/);
-	if (!am || !bm) return 0;
-	if (am[1] !== bm[1]) return Number(am[1]) - Number(bm[1]);
-	if (am[2] !== bm[2]) return Number(am[2]) - Number(bm[2]);
-	return Number(am[3]) - Number(bm[3]);
+	return compareSemver(a.trim(), b.trim());
 }
 
 export interface ChangelogVersionSpan {

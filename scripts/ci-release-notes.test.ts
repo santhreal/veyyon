@@ -57,6 +57,38 @@ describe("compareVersions", () => {
 		// Numeric (not lexicographic) — 15.2.0 < 15.13.0.
 		expect(compareVersions("15.2.0", "15.13.0") < 0).toBe(true);
 	});
+
+	it("orders a prerelease against released versions instead of calling everything equal", () => {
+		// REGRESSION: this comparator used to match `X.Y.Z` only and return 0 for
+		// anything else, meaning "same version". A prerelease target compared equal
+		// to every released version, so mergePackageSection selected the whole
+		// changelog and the release notes for an rc contained the entire history.
+		expect(compareVersions("1.2.1-rc.1", "1.2.0") > 0).toBe(true);
+		expect(compareVersions("1.2.1-rc.1", "1.2.1") < 0).toBe(true);
+		expect(compareVersions("1.0.0", "1.2.1-rc.1") < 0).toBe(true);
+		expect(compareVersions("1.2.1-rc.1", "1.2.1-rc.1") === 0).toBe(true);
+	});
+});
+
+describe("mergePackageSection with a prerelease target", () => {
+	it("selects no released section for a prerelease that has none of its own", () => {
+		// The concrete failure the comparator bug produced: every released section
+		// compared equal to the rc target and was merged into its notes.
+		const changelog = ["## [1.2.0]", "### Added", "- older feature", "", "## [1.1.0]", "### Added", "- oldest"].join(
+			"\n",
+		);
+
+		expect(mergePackageSection(changelog, null, "1.2.1-rc.1")).toBe("");
+	});
+
+	it("still selects the range below a prerelease when a floor is given", () => {
+		const changelog = ["## [1.2.0]", "### Added", "- newer", "", "## [1.1.0]", "### Added", "- older"].join("\n");
+
+		const merged = mergePackageSection(changelog, "1.1.0", "1.2.1-rc.1");
+
+		expect(merged).toContain("- newer");
+		expect(merged).not.toContain("- older");
+	});
 });
 
 describe("enumerateChangelogVersions", () => {

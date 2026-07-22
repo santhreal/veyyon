@@ -42,6 +42,13 @@ find_tarball() {
    echo "${matches[0]}"
 }
 
+section "Installer function unit tests"
+# Fast, dependency-free checks of install.sh's helper functions (checksum
+# verification, uninstall, alias linking, atomic binary placement, retry knob)
+# before the build-heavy smoke tests. Exits non-zero on any failure, so a broken
+# installer helper fails the run here rather than after a full build.
+sh "$ROOT_DIR/scripts/install-tests/functions.test.sh"
+
 section "Binary install smoke"
 bun --cwd=packages/natives run build
 bun --cwd=packages/coding-agent run build
@@ -93,7 +100,7 @@ cp "$natives_pkg_backup" "$ROOT_DIR/packages/natives/package.json"
 # 3. Pack the remaining workspace packages (natives core and coding-agent
 #    handled separately). `collab-web` is private but still packed here so its
 #    prepack build and tarball file list stay release-safe.
-for pkg in utils wire hashline catalog ai mnemopi snapcompact agent tui stats; do
+for pkg in utils wire hashline catalog ai mnemopi agent tui stats; do
    (
       cd "$ROOT_DIR/packages/$pkg"
       bun pm pack --destination "$TARBALL_DIR" --quiet >/dev/null
@@ -124,7 +131,6 @@ hashline_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-hashline-*.tgz)"
 catalog_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-catalog-*.tgz)"
 ai_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-ai-*.tgz)"
 mnemopi_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-mnemopi-*.tgz)"
-snapcompact_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-snapcompact-*.tgz)"
 agent_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-agent-core-*.tgz)"
 tui_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-tui-*.tgz)"
 stats_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-stats-*.tgz)"
@@ -149,7 +155,6 @@ mkdir -p "$TARBALL_APP_DIR"
 			'@veyyon/ai': '$ai_tgz',
 			'@veyyon/catalog': '$catalog_tgz',
 			'@veyyon/mnemopi': '$mnemopi_tgz',
-			'@veyyon/snapcompact': '$snapcompact_tgz',
 			'@veyyon/agent-core': '$agent_tgz',
 			'@veyyon/tui': '$tui_tgz',
 			'@veyyon/stats': '$stats_tgz',
@@ -158,7 +163,7 @@ mkdir -p "$TARBALL_APP_DIR"
 		require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
 	"
 
-   bun add "$utils_tgz" "$wire_tgz" "$natives_tgz" "$hashline_tgz" "$catalog_tgz" "$ai_tgz" "$mnemopi_tgz" "$snapcompact_tgz" "$agent_tgz" "$tui_tgz" "$stats_tgz" "$coding_agent_tgz"
+   bun add "$utils_tgz" "$wire_tgz" "$natives_tgz" "$hashline_tgz" "$catalog_tgz" "$ai_tgz" "$mnemopi_tgz" "$agent_tgz" "$tui_tgz" "$stats_tgz" "$coding_agent_tgz"
    # The platform leaf must arrive through the core's optionalDependencies +
    # override, not as a direct dependency — assert it landed before smoking so a
    # resolution regression is distinguishable from a runtime loader bug.
