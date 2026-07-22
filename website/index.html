@@ -15,7 +15,7 @@
 <title>Veyyon: terminal coding agent</title>
 <meta property="og:title" content="Veyyon: terminal coding agent" />
 <meta property="og:url" content="https://veyyon.dev/" />
-<meta name="description" content="Local terminal coding agent. Your provider keys, hashline edits, tool loop, approval modes, multi-provider catalog. CLI/TUI." />
+<meta name="description" content="Local terminal coding agent. Your provider keys, hashline edits, Argot per-project shorthand, tool loop, approval modes, multi-provider catalog. CLI/TUI." />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -109,22 +109,10 @@
       <p class="scene-detail">MCP servers in <span class="mono">mcp.json</span>, filesystem skills, TypeScript hooks via <span class="mono">pi.on(...)</span>, browser and web_search tools, <span class="mono">veyyon --print</span> for scripts.</p>
     </div></div>
 
-    <!-- terminal demo -->
+    <!-- terminal demo: real capture (assets/demo-hero.gif), not hand-coded HTML -->
     <div class="scene" id="s11">
       <div class="showcase">
-        <div class="term">
-          <div class="bar"><span class="dot"></span><span class="path">~/acme/api</span><span class="rt">openai/gpt-5</span></div>
-<div class="body"><span class="pr">›</span> <span class="u">add rate limiting to the upload endpoint</span>
-
-  <span class="tc">◆ plan</span>
-    <span class="tk">├─</span> read   routes/upload.ts
-    <span class="tk">├─</span> grep   "rateLimit"      <span class="ok">ok</span>  <span class="tk">3 matches</span>
-    <span class="tk">└─</span> edit   routes/upload.ts   <span class="ok">ok</span>  <span class="tk">+18 −2</span>
-
-  running tests <span class="tk">…</span>  <span class="ok">ok</span>  <span class="tk">42 passed</span>
-
-  <span class="hint">esc to interrupt · ? shortcuts · / commands</span></div>
-        </div>
+        <img class="capture" src="./demo-hero.gif" width="660" alt="Veyyon documents the token-bucket rate limiter end to end on Gemini 3.6 Flash high" />
         <a href="./install.html" class="btn primary" style="margin-top:34px">Get started</a>
       </div>
     </div>
@@ -141,24 +129,33 @@
         <p class="sub">What the binary implements. Details live in the handbook under <span class="mono">docs/handbook/</span>.</p></div>
       <div class="ledger">
         <div class="ledger-row"><span class="ledger-idx">01</span>
+          <div><h3>Argot</h3>
+            <p>The largest thing the fork adds (experimental). A per-project shorthand: the agent loads the project it
+              works in with <span class="inline">argot_load</span>, the model writes a short handle like
+              <span class="inline">§dbconn</span> where it would have written a long string it repeats, and Veyyon restores
+              the full text before anything runs or is shown. The round trip is lossless, encoding is gated per model and by
+              context size, and the generated dictionary lives in a local content-keyed cache, never committed. Enable with
+              <span class="inline">argot.enabled</span>. See handbook: Argot.</p></div>
+        </div>
+        <div class="ledger-row"><span class="ledger-idx">02</span>
           <div><h3>Hashline edits</h3>
             <p>Edits reference content-hash anchors from <span class="inline">read</span> / <span class="inline">grep</span>.
               Verification runs before write. Stale tags return tool errors. Separate schema repair may rewrite tool JSON
               before validation.</p></div>
         </div>
-        <div class="ledger-row"><span class="ledger-idx">02</span>
+        <div class="ledger-row"><span class="ledger-idx">03</span>
           <div><h3>Plan mode</h3>
             <p>Engine mode that drafts a plan file and uses <span class="inline">resolve</span> for plan approval before
               normal mutation resumes. Toggle with <span class="inline">/plan</span>; setting <span class="inline">plan.enabled</span>.</p></div>
         </div>
-        <div class="ledger-row"><span class="ledger-idx">03</span>
+        <div class="ledger-row"><span class="ledger-idx">04</span>
           <div><h3>Models and roles</h3>
             <p>Interactive model via <span class="inline">/model</span>, stored as <span class="inline">modelRoles.default</span>.
               Optional roles (<span class="inline">smol</span>, <span class="inline">slow</span>, <span class="inline">plan</span>, …).
               <span class="inline">subagent.model</span> and <span class="inline">compaction.model</span> override when set.
               Schema default for <span class="inline">tools.approvalMode</span> is <span class="inline">yolo</span>.</p></div>
         </div>
-        <div class="ledger-row"><span class="ledger-idx">04</span>
+        <div class="ledger-row"><span class="ledger-idx">05</span>
           <div><h3>Compaction and sessions</h3>
             <p><span class="inline">compaction.strategy</span> is <span class="inline">handoff</span> or <span class="inline">snap</span>
               (default <span class="inline">snap</span>). Threshold via <span class="inline">compaction.thresholdPercent</span>.
@@ -166,14 +163,14 @@
               <span class="inline">/fork</span> navigate the tree. Memory backends are opt-in
               (<span class="inline">memory.backend</span>).</p></div>
         </div>
-        <div class="ledger-row"><span class="ledger-idx">05</span>
+        <div class="ledger-row"><span class="ledger-idx">06</span>
           <div><h3>Approvals (not OS sandbox)</h3>
             <p><span class="inline">tools.approvalMode</span>: <span class="inline">plan</span>,
               <span class="inline">ask</span>, <span class="inline">auto-edit</span>, <span class="inline">yolo</span>
               (schema default <span class="inline">yolo</span>). No Landlock/seccomp/Seatbelt confinement.
               Task isolation (<span class="inline">task.isolation</span>) is optional CoW for subagent worktrees.</p></div>
         </div>
-        <div class="ledger-row"><span class="ledger-idx">06</span>
+        <div class="ledger-row"><span class="ledger-idx">07</span>
           <div><h3>Subagents and status</h3>
             <p><span class="inline">task</span> spawns workers; <span class="inline">/cockpit</span> lists agents;
               status line segments are configurable. See handbook multi-agent and task docs.</p></div>
@@ -246,8 +243,12 @@
       <h2>What Veyyon is</h2>
       <p>Fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT) and
         <a href="https://github.com/badlogic/pi-mono">Pi</a>. Local terminal coding agent: CLI/TUI, your
-        provider credentials, tool loop, hashline edits, approval modes. Does not train weights. Config and
-        docs: <a href="./docs/">handbook</a>. Releases: <a href="./changelog.html">changelog</a>.</p>
+        provider credentials, tool loop, hashline edits, approval modes. Does not train weights.</p>
+      <p>What the fork adds on top: <b>Argot</b>, a per-project shorthand the model writes in; snap compaction with
+        lossless dedup and artifact spill; shared credentials and global config across profiles; a per-profile
+        working directory; an absolute-token compaction threshold; and atomic, serialized config writes. Read the
+        <a href="./docs/why/argot.html">Argot chapter</a>. Config and docs: <a href="./docs/">handbook</a>.
+        Releases: <a href="./changelog.html">changelog</a>.</p>
     </div>
   </section>
 
@@ -300,6 +301,7 @@
   </div>
 </footer>
 
+<script src="./sun-field.js" defer></script>
 <script src="./sun.js" defer></script>
 <script src="./motion.js" defer></script>
 <script>

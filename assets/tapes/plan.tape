@@ -31,4 +31,4 @@ Sleep 1500ms
 Type "add a sliding-window limiter alongside the token bucket"
 Sleep 800ms
 Enter
-Sleep 12s
+Sleep 22s

@@ -27,4 +27,4 @@ Show
 Type "add a clamp(n, lo, hi) helper to src/utils.ts"
 Sleep 800ms
 Enter
-Sleep 16s
+Sleep 26s

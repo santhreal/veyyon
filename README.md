@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hero.gif" width="840" alt="Veyyon TUI booting into the ember-sun splash with the composer ready">
+  <img src="assets/demo-hero.gif" width="840" alt="Veyyon documents the token-bucket rate limiter end to end on Gemini 3.6 Flash high">
 </p>
 
 Veyyon runs in your terminal and treats the machinery around your code, the language server, the debugger, the shell, the browser, as tools it can call. The model weights are the same ones you get anywhere. The harness is what changes how reliably they land a change.
@@ -86,6 +86,12 @@ Veyyon is a fork of oh-my-pi (MIT). Most of what follows in this README is the s
 This is the largest thing the fork adds, and it is experimental: off by default, gated per model, and still being proven on live benches. When it is on, the agent loads the project it is working in with the `argot_load` tool, and Veyyon generates a dictionary for that project mapping short handles to the long strings it repeats: a full path, a canonical command, a fixed identifier. The model writes `§dbconn` where it would have written the whole string, and Veyyon restores every handle to its full text before anything runs or reaches your screen.
 
 The round trip is lossless. The model reads and writes less boilerplate, and nothing downstream, no tool, no file, no transcript, ever sees an unexpanded handle. Encoding is gated per model and by context size, so a large or unfamiliar context writes in full instead of risking a garbled handle; decoding always runs, so a handle can never leak. The dictionary is generated per project, kept in a local content-keyed cache, and never committed. See [Argot](docs/handbook/src/why/argot.md).
+
+<p align="center">
+  <img src="assets/argot-settings-off.png" width="400" alt="Argot settings with the feature off: only the master toggle">
+  &nbsp;
+  <img src="assets/argot-settings-on.png" width="400" alt="Argot settings with the feature on: master toggle plus four dependent knobs">
+</p>
 
 The fork also adds snap compaction with lossless dedup and artifact spill, shared credentials and global config across profiles, a per-profile working directory, an absolute-token compaction threshold, and atomic, serialized config writes. Each is covered in [Mechanisms](docs/handbook/src/why/innovations.md).
 
@@ -369,6 +375,10 @@ The default surface. Tool calls render as cards; the `ask` tool shows a structur
   <img src="assets/demo-commands.gif" width="820" alt="Typing / opens the slash-command palette, filtering live to model and session commands">
 </p>
 
+<p align="center">
+  <img src="assets/demo-plan.gif" width="820" alt="Plan mode explores read-only and drafts a plan while holding mutation">
+</p>
+
 ### SDK: embed in Node
 
 `@veyyon/coding-agent`
@@ -480,7 +490,6 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[@veyyon/hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |
 | **[@veyyon/mnemopi](packages/mnemopi)**              | Local SQLite memory engine for Veyyon agents                             |
 | **[@veyyon/metaharness](packages/metaharness)**      | Experimentation / meta harness package                                     |
-| **[@veyyon/snapcompact](packages/snapcompact)**         | Bitmap-frame context compression package and SQuAD eval suite              |
 | **[@veyyon/swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                      |
 
 ### Rust Crates
