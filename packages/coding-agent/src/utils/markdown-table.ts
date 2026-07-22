@@ -34,7 +34,15 @@ export function escapeMarkdownTableCell(value: string): string {
  */
 export function renderMarkdownTable(rows: string[][]): string {
 	if (rows.length === 0) return "";
-	const maxCols = Math.max(...rows.map(row => row.length));
+	// Fold the widest-row search with a loop, not `Math.max(...rows.map(...))`.
+	// Spreading an array into a call throws RangeError once it exceeds the
+	// engine argument limit (~1e6 in Bun/JSC), and an XLSX sheet reaches
+	// 1,048,576 rows, so the spread form crashed the whole conversion on a large
+	// spreadsheet. A reduce has no such ceiling.
+	let maxCols = 0;
+	for (const row of rows) {
+		if (row.length > maxCols) maxCols = row.length;
+	}
 	if (maxCols === 0) return "";
 	const pad = (row: string[]): string[] => {
 		const filled = row.slice();
