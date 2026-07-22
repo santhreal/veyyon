@@ -2,7 +2,7 @@
 
 Ship-facing rituals for changelog, docs, screenshots, and demos. Open these when landing or proving a product change.
 
-Prompt-authoring skills in this directory (`system-prompts`, `tool-prompt-optimization`, `semantic-compression`) are owner-maintained. Do not treat them as part of the ship ritual, and do not expand or “simplify” them for agents.
+Prompt-authoring & evaluation skills in this directory (`system-prompts`, `tool-prompt-optimization`, `semantic-compression`, `evals`) are owner-maintained. Do not treat them as part of the ship ritual, and do not expand or “simplify” them for agents.
 
 ## Open this first
 
@@ -13,7 +13,7 @@ Prompt-authoring skills in this directory (`system-prompts`, `tool-prompt-optimi
 | Settings off/on proof, gallery, or README still | [screenshots](screenshots/SKILL.md) |
 | Any workflow GIF / VHS tape | [record-demo](record-demo/SKILL.md) |
 | A demo that must show a Veyyon-unique capability | [prove-feature](prove-feature/SKILL.md) |
-
+| System prompt tuning, flag overlays, and A/B benchmarks | [evals](evals/SKILL.md) |
 ## Ritual order
 
 `ship-feature` is the router. It calls the others in order: changelog and docs → settings differential → demo → gates. `prove-feature` is the bar for *which* demo is worth shipping when the change is a differentiator (Argot, hashline landing, and so on), not a generic ask/edit toy.
