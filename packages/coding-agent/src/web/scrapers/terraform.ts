@@ -148,11 +148,15 @@ async function handleModuleUrl(
 		md += "|------|------|----------|-------------|\n";
 		for (const input of inputs.slice(0, 30)) {
 			const required = (input.required ?? input.default === undefined) ? "Yes" : "No";
-			const type = input.type ?? "any";
+			// A `|` inside inline code still splits a GFM table row (row parsing runs
+			// before inline-code parsing), and registry JSON is author-controlled, so
+			// the name and backticked type need escaping too, not just the description.
+			const name = escapeMarkdownTableCell(input.name);
+			const type = escapeMarkdownTableCell(input.type ?? "any");
 			// Slice the raw text first, then escape: slicing an already-escaped
 			// string could cut through a `\|` sequence and leave a dangling `\`.
 			const desc = escapeMarkdownTableCell((input.description ?? "").slice(0, 80));
-			md += `| ${input.name} | \`${type}\` | ${required} | ${desc} |\n`;
+			md += `| ${name} | \`${type}\` | ${required} | ${desc} |\n`;
 		}
 		if (inputs.length > 30) {
 			md += `\n[…${inputs.length - 30} inputs elided…]\n`;
