@@ -1,19 +1,26 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { getConfigDirs } from "@veyyon/coding-agent/config";
 import { getUserPath } from "@veyyon/coding-agent/discovery/helpers";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfile, getAgentDir } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../helpers/settings-test-state";
 
 describe("VEYYON_CONFIG_DIR", () => {
-	const original = process.env.VEYYON_CONFIG_DIR;
+	let settingsState: SettingsTestState | undefined;
+
+	beforeEach(() => {
+		settingsState = beginSettingsTest();
+	});
+
 	afterEach(() => {
-		if (original === undefined) {
-			delete process.env.VEYYON_CONFIG_DIR;
-		} else {
-			process.env.VEYYON_CONFIG_DIR = original;
-		}
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 	});
 
 	test("getUserPath resolves the native user scope via getAgentDir (profile-aware)", () => {
