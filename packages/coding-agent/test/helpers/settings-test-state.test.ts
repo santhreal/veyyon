@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { isSettingsInitialized, Settings } from "@veyyon/coding-agent/config/settings";
-import { getKeybindings, setKeybindings } from "@veyyon/tui";
 import {
 	getActiveProfile,
 	getAgentDir,
@@ -15,13 +14,19 @@ import {
 	setProfile,
 	setProjectDir,
 } from "@veyyon/utils";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./settings-test-state";
+import {
+	beginSettingsTest,
+	currentKeybindingsForTest,
+	installKeybindingsForTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./settings-test-state";
 
 /**
  * Locks the isolation contract of beginSettingsTest / restoreSettingsTestState.
- * If restore leaves cwd, agent dir, profile, or env dirty, later suites in the
- * same bun test process fail nondeterministically (settings-reload-cwd and
- * any suite that trusts process.cwd() or the Settings singleton).
+ * If restore leaves cwd, agent dir, profile, env, or keybindings dirty, later
+ * suites in the same bun test process fail nondeterministically
+ * (FINDING-FULL-SUITE-ORDER-DEPENDENT-POLLUTION).
  */
 describe("settings-test-state isolation", () => {
 	let state: SettingsTestState | undefined;
@@ -34,6 +39,8 @@ describe("settings-test-state isolation", () => {
 			restoreSettingsTestState(state);
 			state = undefined;
 		}
+		// Belt-and-suspenders after proving tests that poison keybindings.
+		restoreSettingsTestState(undefined);
 		for (const dir of temps.splice(0)) {
 			if (fs.existsSync(dir)) removeSyncWithRetries(dir);
 		}
@@ -143,13 +150,56 @@ describe("settings-test-state isolation", () => {
 	it("clears a leaked setKeybindings singleton so later suites see defaults", () => {
 		state = beginSettingsTest();
 		const poisoned = KeybindingsManager.inMemory({ "tui.select.cancel": "ctrl+z" });
-		setKeybindings(poisoned);
-		expect(getKeybindings()).toBe(poisoned);
+		installKeybindingsForTest(poisoned);
+		expect(currentKeybindingsForTest()).toBe(poisoned);
 
 		restoreSettingsTestState(state);
 		state = undefined;
 
 		// A fresh default manager — not the poisoned instance.
-		expect(getKeybindings()).not.toBe(poisoned);
+		expect(currentKeybindingsForTest()).not.toBe(poisoned);
+	});
+
+	it("adversarial: begin clears a prior suite's poisoned keybindings before the suite body runs", () => {
+		const priorPoison = KeybindingsManager.inMemory({ "tui.select.cancel": "f9" });
+		installKeybindingsForTest(priorPoison);
+		expect(currentKeybindingsForTest()).toBe(priorPoison);
+
+		// begin must wipe the poison so this suite never observes the prior map.
+		state = beginSettingsTest();
+		expect(currentKeybindingsForTest()).not.toBe(priorPoison);
+
+		restoreSettingsTestState(state);
+		state = undefined;
+	});
+
+	it("adversarial: restore(undefined) still clears a poisoned keybindings singleton", () => {
+		const poisoned = KeybindingsManager.inMemory({ "app.tools.expand": "alt+z" });
+		installKeybindingsForTest(poisoned);
+		expect(currentKeybindingsForTest()).toBe(poisoned);
+
+		restoreSettingsTestState(undefined);
+
+		expect(currentKeybindingsForTest()).not.toBe(poisoned);
+	});
+
+	it("adversarial: restore does not throw when the snapshotted projectDir was deleted by another suite", () => {
+		// Reproduces the canonicalize → service-tier cascade from fulltest.log:
+		// begin snapshots a path that no longer exists on disk; restore must fall
+		// back instead of throwing ENOENT from setProjectDir.
+		state = beginSettingsTest();
+		const safeCwd = state.cwd;
+		const ghost = path.join(os.tmpdir(), `settings-iso-ghost-${Snowflake.next()}`);
+		const snap: SettingsTestState = {
+			...state,
+			projectDir: ghost,
+			cwd: safeCwd,
+		};
+		expect(fs.existsSync(ghost)).toBe(false);
+
+		expect(() => restoreSettingsTestState(snap)).not.toThrow();
+		state = undefined;
+		expect(getProjectDir()).toBe(safeCwd);
+		expect(process.cwd()).toBe(safeCwd);
 	});
 });
