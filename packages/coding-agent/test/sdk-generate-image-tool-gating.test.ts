@@ -73,4 +73,26 @@ describe("generate_image tool gating", () => {
 		const names = await activeToolNames(Settings.isolated({}), ["read", "generate_image"]);
 		expect(names).toContain("generate_image");
 	});
+
+	// Regression for HUNT-SDKWIRING-CUSTOMTOOL-WHITELIST-BYPASS: tts is registered
+	// exactly like image-gen — a force-activated custom tool — but did NOT honor an
+	// explicit `toolNames` whitelist, so it survived `--no-tools` and any whitelist
+	// that omitted it. The SDK now gates it on the whitelist the same way. (Exa's
+	// tools share the identical `whitelist` filter; they are not asserted here only
+	// because discovery makes a live round trip that would need a network stub.)
+	it("excludes tts from a restricted tool whitelist even when speechgen is enabled", async () => {
+		const names = await activeToolNames(Settings.isolated({ "speechgen.enabled": true }), ["read"]);
+		expect(names).toContain("read");
+		expect(names).not.toContain("tts");
+	});
+
+	it("excludes tts under --no-tools (empty whitelist) even when speechgen is enabled", async () => {
+		const names = await activeToolNames(Settings.isolated({ "speechgen.enabled": true }), []);
+		expect(names).not.toContain("tts");
+	});
+
+	it("includes tts when explicitly requested and speechgen is enabled", async () => {
+		const names = await activeToolNames(Settings.isolated({ "speechgen.enabled": true }), ["read", "tts"]);
+		expect(names).toContain("tts");
+	});
 });
