@@ -12,7 +12,7 @@
  * Compared to AJV this is single-pass, synchronous, dependency-free, and
  * tolerates non-standard shapes (`nullable`) that LLM-emitted schemas carry.
  */
-import { isRecord, logger } from "@veyyon/utils";
+import { codePointLength, isRecord, logger } from "@veyyon/utils";
 import { areJsonValuesEqual } from "./equality";
 import { isMultipleOf } from "./multiple-of";
 
@@ -501,19 +501,6 @@ function validateArrayKeywords(
 	}
 
 	return valid;
-}
-
-/**
- * Number of Unicode code points in `value`. JSON Schema 2020-12 defines string
- * length in code points, not UTF-16 code units, so an astral character such as
- * an emoji counts as one. `value.length` counts it as two and would wrongly
- * reject a string at `maxLength` (or pass it at `minLength`). `for...of` over a
- * string iterates code points, so this counts them without allocating an array.
- */
-function codePointLength(value: string): number {
-	let count = 0;
-	for (const _ of value) count += 1;
-	return count;
 }
 
 /**

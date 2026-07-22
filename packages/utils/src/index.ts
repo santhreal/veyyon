@@ -45,6 +45,7 @@ export * from "./snowflake";
 export * from "./stderr-guard";
 export * from "./stream";
 export * from "./string-case";
+export * from "./string-length";
 export * from "./strip-ansi";
 export * from "./tab-spacing";
 export * from "./temp";

@@ -18,7 +18,7 @@
  */
 
 import { areJsonValuesEqual, isMultipleOf } from "@veyyon/ai/utils/schema";
-import { isDateOnly, isRecord, isUuid } from "@veyyon/utils";
+import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
 // Type aliases — exported so `import type { Static, TSchema } from "..."`
@@ -238,10 +238,15 @@ function createStringValidator(
 		const result = baseValidator(data);
 		if (isValidationFailure(result)) return result;
 		if (typeof result !== "string") return validationFailure("Expected string");
-		if (opts?.minLength !== undefined && result.length < opts.minLength) {
+		// Measure in Unicode code points, not UTF-16 units: a `.length` check
+		// double-counts an astral character (an emoji is one code point but two
+		// units) and wrongly rejects a string at maxLength or passes it at
+		// minLength. Same contract as the in-tree JSON Schema validator.
+		const length = opts?.minLength !== undefined || opts?.maxLength !== undefined ? codePointLength(result) : 0;
+		if (opts?.minLength !== undefined && length < opts.minLength) {
 			return validationFailure(`String must have at least ${opts.minLength} characters`);
 		}
-		if (opts?.maxLength !== undefined && result.length > opts.maxLength) {
+		if (opts?.maxLength !== undefined && length > opts.maxLength) {
 			return validationFailure(`String must have at most ${opts.maxLength} characters`);
 		}
 		if (opts?.pattern !== undefined) {
