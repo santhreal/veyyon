@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { buildModel } from "@veyyon/catalog/build";
-import { Effort } from "@veyyon/catalog/effort";
+import { canonicalizeEfforts, Effort } from "@veyyon/catalog/effort";
 import {
 	clampThinkingLevelForModel,
 	getSupportedEfforts,
@@ -585,8 +585,11 @@ describe("model thinking derivation", () => {
 	});
 
 	it("encodes effort-dial-less reasoners as thinking: undefined", () => {
+		// grok-4.20-0309-reasoning thinks natively but rejects the wire
+		// `reasoning.effort` param (grok-build used to be the fixture here, but
+		// it DOES accept the dial and is on the effort-capable allowlist).
 		const model = createModel({
-			id: "grok-build",
+			id: "grok-4.20-0309-reasoning",
 			api: "openai-responses",
 			provider: "xai-oauth",
 			compat: { supportsReasoningEffort: false },
@@ -596,6 +599,40 @@ describe("model thinking derivation", () => {
 		expect(model.thinking).toBeUndefined();
 		expect(getSupportedEfforts(model)).toEqual([]);
 		expect(clampThinkingLevelForModel(model, Effort.High)).toBeUndefined();
+	});
+
+	it("keeps grok-build on the effort-capable allowlist with a real effort ladder", () => {
+		// Regression lock: grok-build was curated `supportsReasoningEffort:
+		// false`, which stripped its thinking dial entirely — the model DOES
+		// accept the wire effort param. A dial-less encode here would silently
+		// discard the user's chosen thinking level on every grok-build turn.
+		const model = createModel({
+			id: "grok-build",
+			api: "openai-responses",
+			provider: "xai-oauth",
+		});
+
+		expect(model.reasoning).toBe(true);
+		expect(getSupportedEfforts(model).length).toBeGreaterThan(0);
+		expect(clampThinkingLevelForModel(model, Effort.High)).toBeDefined();
+	});
+
+	it("explains the no-effort-surface case instead of listing zero supported efforts", () => {
+		// Locks the error contract for reasoning models with no controllable
+		// effort dial (thinking: undefined). The old message ended
+		// "Supported efforts: " with an EMPTY list — it read as truncated, named
+		// no cause, and offered no fix (seen live 2026-07-22 when a persisted
+		// `high` level hit devin/swe-1-6 and killed every turn). The message must
+		// state that the model exposes no controllable efforts and how to proceed.
+		const model = createModel({
+			id: "grok-4.20-0309-reasoning",
+			api: "openai-responses",
+			provider: "xai-oauth",
+			compat: { supportsReasoningEffort: false },
+		});
+
+		expect(() => requireSupportedEffort(model, Effort.High)).toThrow(/no controllable thinking efforts/);
+		expect(() => requireSupportedEffort(model, Effort.High)).not.toThrow(/Supported efforts:\s*$/);
 	});
 
 	it("bakes the wire-exact five-tier low..max ladder on GPT-5.6 wire-effort APIs", () => {
@@ -886,5 +923,84 @@ describe("model thinking runtime helpers", () => {
 			mode: "effort",
 			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
 		});
+	});
+});
+
+/**
+ * `ThinkingConfig.efforts` is contractually ordered least -> most intensive, and
+ * the clamp helpers (`clampThinkingLevelForModel`, `minimumSupportedEffort`, and
+ * the downstream auto clamp) walk the ladder in array order and break on the
+ * first entry past the request. A hand-authored model spec can declare its
+ * ladder out of order or with duplicates; identity defines no ladder for a
+ * custom model id, so before the fix that raw array was baked verbatim and the
+ * clamps picked the wrong effort. These pin the invariant that the build
+ * canonicalizes any authored ladder, and that the clamps then resolve correctly.
+ */
+describe("canonicalizeEfforts", () => {
+	it("reorders an out-of-order ladder into least -> most intensive", () => {
+		// The declared set is preserved exactly; only the order changes.
+		expect(canonicalizeEfforts([Effort.High, Effort.Low, Effort.Medium])).toEqual([
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+		]);
+		expect(canonicalizeEfforts([Effort.Max, Effort.Minimal])).toEqual([Effort.Minimal, Effort.Max]);
+		expect(canonicalizeEfforts([Effort.XHigh, Effort.Low])).toEqual([Effort.Low, Effort.XHigh]);
+	});
+
+	it("drops duplicates while canonicalizing", () => {
+		expect(canonicalizeEfforts([Effort.High, Effort.Low, Effort.High])).toEqual([Effort.Low, Effort.High]);
+		expect(canonicalizeEfforts([Effort.Max, Effort.Max, Effort.Max])).toEqual([Effort.Max]);
+	});
+
+	it("leaves an already-canonical ladder unchanged and maps empty to empty", () => {
+		expect(canonicalizeEfforts([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High])).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+		]);
+		expect(canonicalizeEfforts([])).toEqual([]);
+	});
+});
+
+describe("hand-authored effort ladders bake canonical", () => {
+	// A custom model id: identity defines no ladder, so `resolveModelThinking`
+	// falls back to the authored `thinking.efforts`. This is the only vector that
+	// can carry an out-of-order ladder into a built model.
+	function customModel(efforts: Effort[]): Model<"openai-completions"> {
+		return createModel({
+			id: "my-local-thinker",
+			api: "openai-completions",
+			provider: "custom",
+			thinking: { mode: "effort", efforts },
+		});
+	}
+
+	it("stores an out-of-order authored ladder in canonical order", () => {
+		expect(customModel([Effort.High, Effort.Low, Effort.Medium]).thinking?.efforts).toEqual([
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+		]);
+		// A ladder identity would never infer (minimal + max only) proves the build,
+		// not identity inference, is doing the canonicalization.
+		expect(customModel([Effort.Max, Effort.Minimal]).thinking?.efforts).toEqual([Effort.Minimal, Effort.Max]);
+	});
+
+	it("clamps an unsupported request down to the nearest lower supported effort", () => {
+		// Authored out of order as [High, Low]; a Medium request has no exact match
+		// and must clamp down to Low, not up to High. Array-order iteration over the
+		// raw [High, Low] would break on High immediately and return the wrong end.
+		const model = customModel([Effort.High, Effort.Low]);
+		expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.High]);
+		expect(clampThinkingLevelForModel(model, Effort.Medium)).toBe(Effort.Low);
+		expect(clampThinkingLevelForModel(model, Effort.Max)).toBe(Effort.High);
+		expect(clampThinkingLevelForModel(model, Effort.Minimal)).toBe(Effort.Low);
+	});
+
+	it("reports the lowest supported effort regardless of authored order", () => {
+		expect(minimumSupportedEffort(customModel([Effort.Max, Effort.Minimal]))).toBe(Effort.Minimal);
+		expect(minimumSupportedEffort(customModel([Effort.High, Effort.Low, Effort.Medium]))).toBe(Effort.Low);
 	});
 });

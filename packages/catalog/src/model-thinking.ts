@@ -6,7 +6,7 @@
  * entries. Everything below the "runtime helpers" divider reads baked fields
  * only: no id parsing, no host matching, no compat detection per request.
  */
-import { Effort, THINKING_EFFORTS } from "./effort";
+import { canonicalizeEfforts, Effort, THINKING_EFFORTS } from "./effort";
 import { modelMatchesHost } from "./hosts";
 import {
 	type AnthropicModel,
@@ -162,7 +162,12 @@ function fillThinkingWireDefaults<TApi extends Api>(
 	thinking: ThinkingConfig,
 ): ThinkingConfig {
 	const parsed = parseKnownModel(spec.id);
-	const normalizedEfforts = getModelDefinedEfforts(spec, compat) ?? thinking.efforts;
+	// Canonicalize the ladder so a hand-authored `thinking.efforts` that violates
+	// the documented least->most order (or carries duplicates) still bakes into a
+	// canonical ladder; identity-derived ladders are already canonical, so this is
+	// a no-op for them. Without it, an out-of-order user ladder reaches the clamp
+	// helpers, which walk it in array order and pick the wrong effort.
+	const normalizedEfforts = canonicalizeEfforts(getModelDefinedEfforts(spec, compat) ?? thinking.efforts);
 	const effortsChanged = !sameEffortList(normalizedEfforts, thinking.efforts);
 	const effortMap =
 		thinking.effortMap === undefined || effortsChanged
@@ -736,6 +741,14 @@ export function requireSupportedEffort<TApi extends Api>(model: ApiModel<TApi>, 
 	}
 	const levels = getSupportedEfforts(model);
 	if (!levels.includes(effort)) {
+		if (levels.length === 0) {
+			// Distinct message for the no-effort-surface case: the old text ended
+			// "Supported efforts: " with an empty list, which reads as truncated
+			// and gives the operator no way forward.
+			throw new Error(
+				`Thinking effort ${effort} is not supported by ${model.provider}/${model.id}: the model exposes no controllable thinking efforts. Send no effort (the model manages reasoning internally) or turn thinking off.`,
+			);
+		}
 		throw new Error(
 			`Thinking effort ${effort} is not supported by ${model.provider}/${model.id}. Supported efforts: ${levels.join(", ")}`,
 		);
@@ -794,8 +807,7 @@ export function resolveWireModelId<TApi extends Api>(model: ApiModel<TApi>, effo
 export function minimumSupportedEffort<TApi extends Api>(model: ApiModel<TApi>): Effort | undefined {
 	const efforts = model.thinking?.efforts;
 	if (!efforts || efforts.length === 0) return undefined;
-	for (const effort of THINKING_EFFORTS) {
-		if (efforts.includes(effort)) return effort;
-	}
-	return efforts[0];
+	// Canonical order regardless of how the ladder was authored: the lowest
+	// supported effort is the first entry of the canonicalized ladder.
+	return canonicalizeEfforts(efforts)[0];
 }
