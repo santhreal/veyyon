@@ -34,7 +34,13 @@ jobs:
     name: Internal link check
     runs-on: ubuntu-latest
     steps:
+      # Full history: the freshness gate resolves each doc's verification-stamp
+      # commit (`git cat-file -e <sha>`) and its last-edit date (`git log`). A
+      # shallow (depth-1) checkout has only the tip commit, so every stamp sha
+      # reads as "does not exist" and every doc looks edited at the tip date.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"

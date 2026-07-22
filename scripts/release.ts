@@ -8,8 +8,10 @@
  *
  * Example: bun scripts/release.ts minor
  */
+import { isNewerVersion } from "@veyyon/utils/semver";
 import { $, Glob } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
+import { buildRootChangelog, ROOT_PATH } from "./sync-root-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const packageJsonGlob = new Glob("packages/*/package.json");
@@ -270,12 +272,13 @@ function bumpVersion(current: string, bump: "major" | "minor" | "patch"): string
 	}
 }
 
-function compareVersions(a: string, b: string): number {
-	const [aMajor, aMinor, aPatch] = parseVersion(a);
-	const [bMajor, bMinor, bPatch] = parseVersion(b);
-	if (aMajor !== bMajor) return aMajor - bMajor;
-	if (aMinor !== bMinor) return aMinor - bMinor;
-	return aPatch - bPatch;
+/**
+ * Whether this run is the release workflow rather than a workstation. Set by
+ * `.github/workflows/release.yml`; deliberately its own variable and not bare
+ * `CI`, so a release run from any other CI context still behaves normally.
+ */
+function releaseRunsInCI(): boolean {
+	return process.env.VEYYON_RELEASE_IN_CI === "1";
 }
 
 async function cmdRelease(versionOrBump: string): Promise<void> {
@@ -313,7 +316,7 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		console.log(`Bumping ${versionOrBump} version from ${latestTag} -> ${version}`);
 	}
 
-	if (compareVersions(version, latestTag) <= 0) {
+	if (!isNewerVersion(version, latestTag)) {
 		console.error(`Error: Version ${version} must be greater than latest tag ${latestTag}`);
 		process.exit(1);
 	}
@@ -422,6 +425,11 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		);
 	}
 	await updateChangelogsForRelease(version);
+	// Regenerate the repo-root CHANGELOG.md from the just-finalized source so the
+	// changelog GitHub shows on the repo page carries this release. Same render
+	// the website uses; the `changelog:root:check` CI guard fails if it drifts.
+	await Bun.write(ROOT_PATH, buildRootChangelog());
+	console.log("  Updated CHANGELOG.md (repo root)");
 	console.log();
 
 	// 6. Run checks
@@ -463,6 +471,17 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	console.log();
 
 	// 9. Watch CI
+	//
+	// Skipped when the release itself is running as a CI job: the push above
+	// starts the release run, and this script is not the thing that should sit
+	// and poll it. The dispatching workflow reports its own outcome, and
+	// `bun scripts/release.ts watch` re-attaches from a workstation if someone
+	// wants to follow along.
+	if (releaseRunsInCI()) {
+		console.log(`Pushed v${version}. The release run picks it up from here.`);
+		return;
+	}
+
 	console.log("Watching CI...");
 	const success = await watchCI();
 

@@ -26,6 +26,17 @@ ALIAS_NAME="vey"
 INSTALL_DIR="${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"
 MIN_BUN_VERSION="1.3.14"
 
+# Retry transient network failures on every download (a dropped connection or a
+# 5xx/429 from GitHub should not fail the whole install on the first blip). Kept
+# in one place so every curl fetch below retries the same way. Only `--retry`
+# and `--retry-delay` are used: both are in curl since 7.12 (2004), so this does
+# not break an old curl the way `--retry-connrefused` (7.52+) would.
+# NOTE: this is expanded UNQUOTED at each call site ($CURL_RETRY, not
+# "$CURL_RETRY") on purpose, so the flags word-split into separate curl
+# arguments. Do not quote it (shellcheck SC2086 is wrong here): quoting passes
+# the whole string as one argument and curl rejects it.
+CURL_RETRY="--retry 3 --retry-delay 1"
+
 MODE=""
 REF=""
 VERIFY=1
@@ -63,6 +74,22 @@ warn() { printf '  !!  %s\n' "$*" >&2; }
 die()  { printf '  xx  %s\n' "$*" >&2; exit 1; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
+
+# ---- GitHub API fetch, optionally authenticated ----
+# Unauthenticated api.github.com is capped at 60 requests/hr per IP; a token
+# raises that limit. Use this ONLY for api.github.com JSON calls (release
+# metadata), never for the binary/sidecar asset download: those redirect to a
+# separate storage host, and a manually-set `-H Authorization` is resent across
+# a cross-host redirect, which would leak the token to that host. The token is
+# always optional — anonymous installs must keep working with no token set.
+gh_curl() {
+    tok="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    if [ -n "$tok" ]; then
+        curl -fsSL $CURL_RETRY -H "Authorization: Bearer $tok" "$@"
+    else
+        curl -fsSL $CURL_RETRY "$@"
+    fi
+}
 
 # ---- the `vey` alias: one short launch command next to the binary ----
 link_alias() {
@@ -137,6 +164,29 @@ doctor() {
     if has "$ALIAS_NAME"; then ok "'$ALIAS_NAME' is on PATH"; else warn "'$ALIAS_NAME' not on PATH yet (restart your shell)"; fi
 }
 
+# ---- place a downloaded binary at its final path, atomically ----
+# Refuses an empty download, makes the file executable BEFORE the move (so it is
+# never visible non-executable at the final path), then moves it into place.
+# `mv` within one filesystem is atomic and preserves the mode set here; the temp
+# file lives in the same dir as the destination so the move never crosses a
+# filesystem boundary. args: <tmpfile> <dest>
+finalize_binary() {
+    tmp="$1"; dest="$2"
+    [ -s "$tmp" ] || die "downloaded binary is empty — refusing to install (try again or use --source)"
+    chmod +x "$tmp" || die "could not make $tmp executable"
+    mv -f "$tmp" "$dest" || die "could not move binary into place at $dest"
+}
+
+# ---- parse the release tag from a GitHub release JSON blob ----
+# Reads JSON on stdin, prints the `tag_name` value (empty if absent). Anchored
+# on the `"tag_name":` key specifically, not "the last quoted string on the
+# first line that mentions tag_name" — the old form would grab a wrong token if
+# the JSON were formatted differently or put on one line. `head -n1` keeps a
+# single value even if the blob somehow contains more than one match.
+parse_release_tag() {
+    sed -n -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1
+}
+
 # ---- checksum verification (fail closed on mismatch) ----
 verify_sha256() {
     file="$1"; expected="$2"
@@ -157,7 +207,7 @@ verify_release_binary() {
         warn "checksum verification skipped (--no-verify)"
         return 0
     fi
-    if sum=$(curl -fsSL --connect-timeout 10 --max-time 30 "${url}.sha256" 2>/dev/null); then
+    if sum=$(curl -fsSL $CURL_RETRY --connect-timeout 10 --max-time 30 "${url}.sha256" 2>/dev/null); then
         expected=$(printf '%s' "$sum" | awk '{print $1}')
         [ -n "$expected" ] || die "published checksum for $asset is empty/unparseable — refusing to install (pass --no-verify to override)"
         verify_sha256 "$file" "$expected"
@@ -285,28 +335,32 @@ install_binary() {
 
     if [ -n "$REF" ]; then
         say "fetching release $REF..."
-        RELEASE_JSON=$(curl -fsSL --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/tags/${REF}") \
+        RELEASE_JSON=$(gh_curl --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/tags/${REF}") \
             || die "release tag not found: $REF (for a branch/commit, use --source --ref)"
     else
         say "fetching latest release..."
-        RELEASE_JSON=$(curl -fsSL --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/latest") \
-            || die "could not reach GitHub releases"
+        RELEASE_JSON=$(gh_curl --connect-timeout 10 --max-time 60 "https://api.github.com/repos/${REPO}/releases/latest") \
+            || die "could not reach GitHub releases (network error or rate limit — set GITHUB_TOKEN to raise the API limit, retry, or use --source)"
     fi
-    LATEST=$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    LATEST=$(printf '%s' "$RELEASE_JSON" | parse_release_tag)
     [ -z "$LATEST" ] && die "failed to parse release tag"
     say "version: $LATEST"
 
     mkdir -p "$INSTALL_DIR"
     BINARY_URL="https://github.com/${REPO}/releases/download/${LATEST}/${BINARY}"
     tmpbin="$INSTALL_DIR/.$BIN_NAME.download"
+    # Never leave a partial or tampered download behind: a failed curl, a
+    # checksum mismatch (die inside verify_release_binary), or a Ctrl-C must all
+    # clean up the temp file. Cleared after the atomic move succeeds.
+    trap 'rm -f "$tmpbin"' EXIT INT TERM
     say "downloading $BINARY..."
-    curl -fsSL --connect-timeout 10 --speed-limit 1024 --speed-time 30 "$BINARY_URL" -o "$tmpbin" \
+    curl -fsSL $CURL_RETRY --connect-timeout 10 --speed-limit 1024 --speed-time 30 "$BINARY_URL" -o "$tmpbin" \
         || die "download failed ($BINARY not published for this release?) — try --source"
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
 
-    mv "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
-    chmod +x "$INSTALL_DIR/$BIN_NAME"
+    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
+    trap - EXIT INT TERM
     ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
     link_alias "$INSTALL_DIR"
     install_completions "$INSTALL_DIR/$BIN_NAME"

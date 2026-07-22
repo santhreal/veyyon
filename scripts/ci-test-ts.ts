@@ -91,7 +91,6 @@ const fastWorkspacePackages = [
 	"packages/utils",
 	"packages/catalog",
 	"packages/ai",
-	"packages/snapcompact",
 	"packages/agent",
 ];
 

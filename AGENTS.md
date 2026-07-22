@@ -28,6 +28,26 @@ Unless user tells you exactly what to write:
 - **Never comment on GitHub** (issues, PRs, discussions).
 - **Never create issues on GitHub**.
 
+## Proving a Feature (the 10-minute rule)
+
+A feature is not done when the code compiles. It is done when you can prove it works, fast, with artifacts anyone can open. The test: **could you ship a demo, a settings differential, and a bench for this feature in ten minutes right now?** If the answer is no, the feature is not finished, no matter how much code it has.
+
+**A proof is a differential, not a snapshot.** One picture of the feature sitting at its defaults proves nothing: it does not show that the knob does anything. Every proof contrasts two states of the same surface, the feature off and the feature on, and the reader sees exactly what changed. A single frame with no counterpart is a failed proof, no matter how good it looks.
+
+**A settings change is permanent; an in-session change is ephemeral.** Know which one your feature is before you prove it. An ephemeral change is session-only and reverts (a theme hover-preview, a one-shot preview toggle): its differential is the live-vs-reverted view. A settings change is written to config and persists across restarts: its differential is off-vs-on across two launches, and the proof must show the value actually persisted, not just flashed on screen. Do not prove a permanent setting with an ephemeral snapshot, or the other way round.
+
+Every user-facing feature update lands with three artifacts, all committed:
+
+1. **A demo in `demos/` (or `assets/tapes/`).** A runnable script or recording that drives the real feature end to end, the way a user would reach it. Not a unit test, not a snippet in a comment. Someone should be able to run it and watch the feature do its job, and watch it behave differently with the feature off vs on.
+2. **A settings differential: two screenshots, off and on.** Capture the settings screen with the feature off, then with it on, so the pair shows the knob is wired, not just declared in a defaults table. Seed each state deterministically (`veyyon config set <path> <value>` before recording) rather than by pressing a toggle whose keybinding may not land; drive both from one tape run through a small driver so the pair regenerates together. Store both next to the demo. **A degenerate pair — the two shots identical, or the "on" shot not actually on — is a failed proof; check the bytes differ and the values changed.**
+3. **A bench with exact parity.** Measure the feature on and off against the same corpus, same inputs, same seed. Report the exact numbers. "Exact parity" means the off-arm reproduces the pre-feature baseline to the token or the millisecond, so any delta is attributable to the feature and nothing else. A bench that cannot reproduce its own baseline proves nothing.
+
+Beyond the three artifacts, **assert every setting the feature adds actually works end to end** — the default is honored, each non-default value changes observable behavior, and an invalid value fails loud. A setting that appears in the defaults but never reaches behavior is a defect, the same class as a dead flag.
+
+**An experimental feature that is off hides its dependent knobs completely.** When a feature is gated behind a master toggle and that toggle is off, the knobs that only matter when it is on must not appear in the settings screen at all — not greyed out, not inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle (see `CONDITIONS` in `settings-defs.ts`); the selector hides any setting whose condition returns false. The off-vs-on screenshot pair is exactly what proves this: off shows only the master toggle, on shows the toggle plus its dependents. A dependent knob visible while the feature is off is a defect.
+
+If a feature cannot meet this bar, it is experimental and must say so in its settings group, stay off by default, hide its dependent knobs while off, and carry a backlog row for the missing proof. Do not ship it as done.
+
 ## Code Quality
 
 - No `any` unless absolutely necessary.
@@ -206,6 +226,16 @@ For the bash tool specifically:
 - `ToolExecutionComponent.#buildRenderContext()` for bash must work even before a result exists — the renderer uses call args plus render context to show the command preview while streaming.
 - Verify both live streaming and rebuilt transcript paths after any bash preview change. A fix in one path does not fix the other.
 
+## Argot (project shorthand)
+
+Argot is the codec that lets the model write short `§handle` tokens; veyyon expands them to full text before anything outside the model's history sees them. **The complete integration spec lives in the `argot` package's [`INTEGRATING.md`](../../../libs/context/argot/INTEGRATING.md) — read it, do not re-derive it.** All codec logic (longest match, the boundary rule, streaming a handle split across token deltas) lives in argot behind named functions. veyyon's job is only to call those functions at the seams; never hand-roll handle logic here.
+
+- **Every seam is wired in one place: `packages/coding-agent/src/argot-wire.ts`.** It is the only veyyon module that touches the codec. The seams (argot's manual numbers them 1-6): `expandToolArguments` (tool args), `expandAssistantContent` (finished display), `createSubagentStreamDecoder` (the live streamed preview — feeds `StreamDecoder.push`/`flush`, never a raw delta), `expandSessionContext` (transcript/export/resume), and `expandSubagentReturn` (a subagent's result to its parent).
+- **The contract is absolute: a user NEVER sees a raw `§handle`.** That includes the live subagent HUD preview (`progress.recentOutput` in `task/executor.ts`), which decodes streamed deltas through `createSubagentStreamDecoder`. A raw handle reaching any display, tool, transcript, or the parent is a defect, not a cosmetic issue.
+- **Adding a new place the model's text crosses out of its history is adding a seam.** Route it through an `argot-wire.ts` function; if none fits, add one there (a thin delegate to `argot`), never a new codec call site scattered elsewhere.
+- Tests: `test/argot-subagent-*.test.ts` drive the real executor and prove each seam with a negative control (revert the expand → the handle leaks). Any new seam gets the same treatment.
+- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential `assets/argot-settings-off.png` and `assets/argot-settings-on.png` (regenerated together by `scripts/demos/record-argot-settings.sh`, which seeds `argot.enabled` off then on with `config set` and records the single-state tape `assets/tapes/argot-settings.tape` twice) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/argot-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
+
 ## Commands
 
 - NEVER commit unless asked.
@@ -262,6 +292,9 @@ Location: `packages/*/CHANGELOG.md` (per package).
 - New entries always go under `## [Unreleased]`.
 - Never modify already-released sections (e.g., `## [0.12.2]`) — they are immutable.
 - Don't flag changelog section order or formatting in reviews or PRs — `bun run release` runs `fix-changelogs` which normalizes everything automatically.
+
+**Enforced (`changelog` CI job on every PR).** `bun run changelog:check` fails a PR that changes a publishable package's shipped source without adding a bullet to that package's `## [Unreleased]` section. This is what makes releases safe to cut at any time: a feature can never merge without reaching the changelog. Tests, fixtures, docs, `package.json`, and `tsconfig*.json` are not "shipped source" and never trigger it. Run it locally before pushing with `CHANGELOG_BASE=origin/main bun run changelog:check`.
+- Escape hatch for a change with genuinely no user-facing effect (a pure internal refactor): put `[skip changelog]` in a commit message to waive the whole PR, or `[skip changelog: <package>]` (bare name, dir, or `@veyyon/<name>`) to waive one package. The waiver lives in git history, so it is a conscious, reviewable decision, never a silent skip.
 
 **Attribution:**
 - Internal (from issues): `Fixed foo bar ([#123](https://github.com/santhreal/veyyon/issues/123))`.

@@ -36,6 +36,34 @@ jobs:
       - name: Lint
         run: bun run lint:ts
 
+  changelog:
+    name: Changelog entry
+    # PRs only: a push to main is a merge or the release commit, neither of which
+    # can meaningfully be blocked here. The gate fails a PR that changes a
+    # publishable package's shipped source without adding a `## [Unreleased]`
+    # entry, so a feature can never merge without reaching the changelog.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the merge-base against the PR base resolves.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Require a changelog entry for changed source
+        env:
+          # The base commit GitHub records for the PR; an ancestor of the merge
+          # ref checked out above, so no extra fetch is needed.
+          CHANGELOG_BASE: ${{ github.event.pull_request.base.sha }}
+        run: bun run changelog:check
+      - name: Require the repo-root CHANGELOG to match the canonical source
+        # The root CHANGELOG.md is generated from packages/coding-agent/CHANGELOG.md
+        # (same rebrand the website uses). Fail if it drifted; the fix is to run
+        # `bun run changelog:root`.
+        run: bun run changelog:root:check
+
   test:
     name: TypeScript tests
     runs-on: ubuntu-latest
