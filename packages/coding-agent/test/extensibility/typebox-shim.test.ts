@@ -109,6 +109,20 @@ describe("pi.typebox compatibility shim", () => {
 			expect(safeParse(schema, "12:00:00.").success).toBe(false);
 			expect(safeParse(schema, "12:00:00.Z").success).toBe(false);
 		});
+
+		it("range-bounds the hour, minute, second, and offset", () => {
+			// REGRESSION: plain `\d{2}` groups accepted nonsense components. `time`
+			// has no Date backstop (unlike `date-time`), so the regex enforces the
+			// RFC 3339 bounds: hour 00-23, minute 00-59, second 00-60 (leap second).
+			expect(safeParse(schema, "23:59:59").success).toBe(true);
+			expect(safeParse(schema, "23:59:60").success).toBe(true); // leap second
+			expect(safeParse(schema, "00:00:00-11:30").success).toBe(true);
+			expect(safeParse(schema, "24:00:00").success).toBe(false);
+			expect(safeParse(schema, "12:60:00").success).toBe(false);
+			expect(safeParse(schema, "12:00:61").success).toBe(false);
+			expect(safeParse(schema, "45:99:99").success).toBe(false);
+			expect(safeParse(schema, "12:00:00+25:00").success).toBe(false);
+		});
 	});
 
 	describe("string format: date-time", () => {
