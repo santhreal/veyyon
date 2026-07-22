@@ -4,6 +4,7 @@ import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import { xmlNodeText } from "./xml-text";
 
 const EXTENSIONS = [".pptx"];
 const MIMETYPES = ["application/vnd.openxmlformats-officedocument.presentationml.presentation"];
@@ -298,7 +299,7 @@ function textFromBody(txBody: TextBody): string {
 		const parts: string[] = [];
 		for (const r of toList(p["a:r"])) {
 			const t = r["a:t"];
-			if (t != null) parts.push(typeof t === "object" ? t["#text"] || "" : String(t));
+			if (t != null) parts.push(xmlNodeText(t));
 		}
 		if (parts.length > 0) lines.push(parts.join(""));
 	}

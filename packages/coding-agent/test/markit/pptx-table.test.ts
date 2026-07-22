@@ -135,3 +135,41 @@ describe("PptxConverter run joining", () => {
 		expect(result.content).not.toContain("Hel lo");
 	});
 });
+
+/**
+ * Locks the PPTX half of the xmlNodeText numeric-zero fix. A run whose text is
+ * "0" is number-parsed by fast-xml-parser to the number 0, and because the
+ * <a:t> carries xml:space it becomes { "#text": 0 }. The old extraction wrote
+ * `t["#text"] || ""`, so a legitimate "0" run collapsed to an empty cell. Both
+ * the cell path and the slide-body path now route through the same xmlNodeText
+ * owner, so a "0" survives.
+ */
+describe("PptxConverter numeric run text", () => {
+	const attrCell = (text: string): string =>
+		`<a:tc><a:txBody><a:p><a:r><a:t xml:space="preserve">${text}</a:t></a:r></a:p></a:txBody></a:tc>`;
+	const row = (...cells: string[]): string => `<a:tr>${cells.join("")}</a:tr>`;
+
+	it("keeps a table cell whose run text is '0' with an xml:space attribute", async () => {
+		const pptx = zip({
+			"ppt/presentation.xml": enc(
+				`<?xml version="1.0"?><p:presentation xmlns:p="p" xmlns:r="r"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>`,
+			),
+			"ppt/_rels/presentation.xml.rels": enc(
+				`<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="slides/slide1.xml"/></Relationships>`,
+			),
+			"ppt/slides/slide1.xml": enc(
+				`<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree>` +
+					`<p:graphicFrame><a:graphic><a:graphicData><a:tbl>` +
+					row(attrCell("Score"), attrCell("Grade")) +
+					row(attrCell("0"), attrCell("F")) +
+					`</a:tbl></a:graphicData></a:graphic></p:graphicFrame>` +
+					`</p:spTree></p:cSld></p:sld>`,
+			),
+		});
+		const result = await convertBufferWithMarkit(pptx, ".pptx");
+		expect(result.ok).toBe(true);
+		expect(result.content).toContain("| Score | Grade |");
+		// The "0" run must land in column A, not collapse to an empty cell.
+		expect(result.content).toContain("| 0 | F |");
+	});
+});

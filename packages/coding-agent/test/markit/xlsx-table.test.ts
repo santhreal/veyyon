@@ -115,4 +115,31 @@ describe("XlsxConverter end-to-end table alignment and escaping", () => {
 			expect(result.content).toContain("| a\\|b |  | z |");
 		});
 	});
+
+	it("keeps an inline-string cell whose text is '0' and carries an attribute", async () => {
+		// REGRESSION: fast-xml-parser number-parses the tag text "0" to the number 0
+		// and, because the <t> carries xml:space, wraps it as { "#text": 0 }. The old
+		// `t["#text"] || ""` extraction turned that real "0" into an empty cell. The
+		// xmlNodeText owner reads #text with a null check, so the "0" survives.
+		const xlsx = zip({
+			"xl/workbook.xml": enc(
+				`<?xml version="1.0"?><workbook xmlns:r="r"><sheets><sheet name="Zeros" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+			),
+			"xl/_rels/workbook.xml.rels": enc(
+				`<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`,
+			),
+			"xl/worksheets/sheet1.xml": enc(
+				`<?xml version="1.0"?><worksheet><sheetData>` +
+					`<row r="1"><c r="A1" t="inlineStr"><is><t>Count</t></is></c><c r="B1" t="inlineStr"><is><t>Label</t></is></c></row>` +
+					`<row r="2"><c r="A2" t="inlineStr"><is><t xml:space="preserve">0</t></is></c><c r="B2" t="inlineStr"><is><t>zero</t></is></c></row>` +
+					`</sheetData></worksheet>`,
+			),
+		});
+
+		const result = await convertBufferWithMarkit(xlsx, ".xlsx");
+		expect(result.ok).toBe(true);
+		expect(result.content).toContain("| Count | Label |");
+		// The "0" must appear in column A, not be dropped to an empty cell.
+		expect(result.content).toContain("| 0 | zero |");
+	});
 });
