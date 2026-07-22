@@ -502,6 +502,19 @@ function validateArrayKeywords(
 	return valid;
 }
 
+/**
+ * Number of Unicode code points in `value`. JSON Schema 2020-12 defines string
+ * length in code points, not UTF-16 code units, so an astral character such as
+ * an emoji counts as one. `value.length` counts it as two and would wrongly
+ * reject a string at `maxLength` (or pass it at `minLength`). `for...of` over a
+ * string iterates code points, so this counts them without allocating an array.
+ */
+function codePointLength(value: string): number {
+	let count = 0;
+	for (const _ of value) count += 1;
+	return count;
+}
+
 /** Apply string-shaped keywords: `min/maxLength`, `pattern`. Invalid regexes flag the schema itself rather than the value. */
 function validateStringKeywords(
 	schema: Record<string, unknown>,
@@ -510,11 +523,13 @@ function validateStringKeywords(
 	issues: JsonSchemaValidationIssue[],
 ): boolean {
 	let valid = true;
-	if (typeof schema.minLength === "number" && value.length < schema.minLength) {
+	const length =
+		typeof schema.minLength === "number" || typeof schema.maxLength === "number" ? codePointLength(value) : 0;
+	if (typeof schema.minLength === "number" && length < schema.minLength) {
 		pushIssue(issues, path, `must be at least ${schema.minLength} characters`, { keyword: "minLength" });
 		valid = false;
 	}
-	if (typeof schema.maxLength === "number" && value.length > schema.maxLength) {
+	if (typeof schema.maxLength === "number" && length > schema.maxLength) {
 		pushIssue(issues, path, `must be at most ${schema.maxLength} characters`, { keyword: "maxLength" });
 		valid = false;
 	}
