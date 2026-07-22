@@ -100,4 +100,25 @@ describe("renderMarkdownTable", () => {
 		expect(renderMarkdownTable([])).toBe("");
 		expect(renderMarkdownTable([[], []])).toBe("");
 	});
+
+	// Regression: the widest-row search used `Math.max(...rows.map(r => r.length))`.
+	// Spreading an array into a call throws RangeError once it passes the engine
+	// argument limit (~1e6 in Bun/JSC). An XLSX worksheet holds up to 1,048,576
+	// rows, so a large spreadsheet drove renderMarkdownTable past the ceiling and
+	// crashed the whole conversion with "Maximum call stack size exceeded" instead
+	// of producing a table. The fold has no such ceiling.
+	it("renders a row count past the argument-spread ceiling without throwing", () => {
+		const rows: string[][] = [["H1", "H2"]];
+		// 1.1M body rows: above the ~1e6 spread limit, below any real memory wall.
+		for (let i = 0; i < 1_100_000; i++) rows.push(["a", "b"]);
+
+		const out = renderMarkdownTable(rows);
+		const lines = out.split("\n");
+		// Header + delimiter + one line per body row, all present, none dropped.
+		expect(lines.length).toBe(rows.length + 1);
+		expect(lines[0]).toBe("| H1 | H2 |");
+		expect(lines[1]).toBe("| --- | --- |");
+		expect(lines[2]).toBe("| a | b |");
+		expect(lines[lines.length - 1]).toBe("| a | b |");
+	});
 });
