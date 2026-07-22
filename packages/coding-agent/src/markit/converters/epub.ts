@@ -3,6 +3,7 @@ import { XMLParser } from "fast-xml-parser";
 import { createTurndown, normalizeTablesHtml } from "../../utils/turndown";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import { xmlNodeText } from "./xml-text";
 
 const EXTENSIONS = [".epub"];
 const MIMETYPES = ["application/epub", "application/epub+zip", "application/x-epub+zip"];
@@ -127,17 +128,16 @@ export class EpubConverter implements Converter {
 
 	getText(node: MetaValue | undefined): string | undefined {
 		if (node == null) return undefined;
-		if (typeof node === "string") return node;
-		// fast-xml-parser number-parses tag text by default, so a purely numeric
-		// value like the title "1984" or a year-only `dc:date` arrives as a number
-		// (or, for "true"/"false", a boolean). Stringify it rather than dropping it;
-		// the old `typeof === "string"`-only path silently lost such metadata.
-		if (typeof node === "number" || typeof node === "boolean") return String(node);
-		// Guard the `#text` read with a null check, not truthiness: a `#text` of the
-		// number 0 or the string "0" is a real value that a truthiness test discards.
-		if (node["#text"] != null) return String(node["#text"]);
+		// A repeated element (e.g. multiple `dc:creator`) parses to an array; pick
+		// the first entry, then coerce its scalar through the shared owner.
 		if (Array.isArray(node)) return this.getText(node[0]);
-		return undefined;
+		// An attribute-node with no `#text` is a present-but-empty element; keep the
+		// undefined ("absent metadata") contract rather than emitting "".
+		if (typeof node === "object" && node["#text"] == null) return undefined;
+		// xmlNodeText handles the fast-xml-parser coercions this reader used to do
+		// inline: numeric/boolean tag text ("1984", a year-only date, "true") and a
+		// `#text` of the number 0, neither of which may be dropped.
+		return xmlNodeText(node);
 	}
 
 	getTextArray(node: MetaValue | undefined): (string | undefined)[] {

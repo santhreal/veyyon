@@ -3,6 +3,7 @@ import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "../../utils/markdown-table";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
+import { xmlNodeText } from "./xml-text";
 
 const EXTENSIONS = [".xlsx"];
 const MIMETYPES = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
@@ -156,9 +157,7 @@ export class XlsxConverter implements Converter {
 }
 
 function textValue(t: XmlText | undefined): string {
-	if (t == null) return "";
-	if (typeof t === "object") return t["#text"] || "";
-	return String(t);
+	return xmlNodeText(t);
 }
 
 /**
