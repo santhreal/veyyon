@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -21,7 +22,7 @@ interface Address {
 	country?: string;
 }
 
-interface CompanyData {
+export interface CompanyData {
 	name: string;
 	company_number: string;
 	jurisdiction_code: string;
@@ -74,6 +75,42 @@ interface ApiResponse {
 	results: {
 		company: CompanyData;
 	};
+}
+
+/**
+ * Render the two-column basic-info table for a company.
+ *
+ * @internal exported for regression testing. Every value cell holds external
+ * registry free-text (status, type, branch) or an external id/date, any of which
+ * can carry a `|` or a newline that would end the two-column row early and shift
+ * the value against the Field header; each is routed through the canonical
+ * {@link escapeMarkdownTableCell}. The left (Field) column is static and needs no
+ * escaping. Returns the header, separator, and one line per present field.
+ */
+export function renderCompanyInfoTable(company: CompanyData): string {
+	let md = "| Field | Value |\n|-------|-------|\n";
+	md += `| **Company Number** | ${escapeMarkdownTableCell(company.company_number)} |\n`;
+	md += `| **Jurisdiction** | ${escapeMarkdownTableCell(company.jurisdiction_code.toUpperCase())} |\n`;
+	if (company.current_status) {
+		md += `| **Status** | ${escapeMarkdownTableCell(company.current_status)} |\n`;
+	}
+	if (company.company_type) {
+		md += `| **Company Type** | ${escapeMarkdownTableCell(company.company_type)} |\n`;
+	}
+	if (company.incorporation_date) {
+		md += `| **Incorporated** | ${escapeMarkdownTableCell(company.incorporation_date)} |\n`;
+	}
+	if (company.dissolution_date) {
+		md += `| **Dissolved** | ${escapeMarkdownTableCell(company.dissolution_date)} |\n`;
+	}
+	if (company.branch) {
+		const branch = company.branch_status ? `${company.branch} (${company.branch_status})` : company.branch;
+		md += `| **Branch** | ${escapeMarkdownTableCell(branch)} |\n`;
+	}
+	if (company.native_company_number && company.native_company_number !== company.company_number) {
+		md += `| **Native Number** | ${escapeMarkdownTableCell(company.native_company_number)} |\n`;
+	}
+	return md;
 }
 
 /**
@@ -140,28 +177,7 @@ export const handleOpenCorporates: SpecialHandler = async (
 
 		let md = `# ${company.name}\n\n`;
 
-		// Basic info table
-		md += "| Field | Value |\n|-------|-------|\n";
-		md += `| **Company Number** | ${company.company_number} |\n`;
-		md += `| **Jurisdiction** | ${company.jurisdiction_code.toUpperCase()} |\n`;
-		if (company.current_status) {
-			md += `| **Status** | ${company.current_status} |\n`;
-		}
-		if (company.company_type) {
-			md += `| **Company Type** | ${company.company_type} |\n`;
-		}
-		if (company.incorporation_date) {
-			md += `| **Incorporated** | ${company.incorporation_date} |\n`;
-		}
-		if (company.dissolution_date) {
-			md += `| **Dissolved** | ${company.dissolution_date} |\n`;
-		}
-		if (company.branch) {
-			md += `| **Branch** | ${company.branch}${company.branch_status ? ` (${company.branch_status})` : ""} |\n`;
-		}
-		if (company.native_company_number && company.native_company_number !== company.company_number) {
-			md += `| **Native Number** | ${company.native_company_number} |\n`;
-		}
+		md += renderCompanyInfoTable(company);
 		md += "\n";
 
 		// Registered address

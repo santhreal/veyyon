@@ -62,6 +62,61 @@ describe("normalizeForFuzzy quote and dash folding", () => {
 	});
 });
 
+/**
+ * These lock the whitespace/invisible-character arm of the normalizer-parity
+ * contract. normalizeUnicode folds non-breaking and other exotic spaces to a
+ * regular space and strips zero-width characters, but normalizeForFuzzy used to
+ * collapse only ASCII space and tab. A file line indented or spaced with a
+ * non-breaking space (U+00A0, common in text pasted from rich editors or some
+ * generated code) therefore failed to fuzzy-match its plain-ASCII twin even
+ * though the exact-Unicode pass treated them as equal, so the edit tool could not
+ * locate an otherwise-identical target. normalizeForFuzzy now strips the same
+ * zero-width set and collapses the same exotic-space set. The parity tests assert
+ * a spaced/invisible line and its plain twin normalize to the SAME string, since
+ * that identity is exactly what the fuzzy pass compares.
+ */
+describe("normalizeForFuzzy whitespace and invisible-character folding", () => {
+	it("folds an internal non-breaking space to a single regular space", () => {
+		// U+00A0 between the tokens; trim() only handles leading/trailing, so the
+		// internal one is the regression surface.
+		expect(normalizeForFuzzy("a b")).toBe("a b");
+	});
+
+	it("folds en/em/thin/hair and narrow/math/ideographic spaces to a single space", () => {
+		// U+2002 en, U+2003 em, U+2009 thin, U+200A hair.
+		expect(normalizeForFuzzy("a b c d e")).toBe("a b c d e");
+		// U+202F narrow no-break, U+205F medium math, U+3000 ideographic.
+		expect(normalizeForFuzzy("a b c　d")).toBe("a b c d");
+	});
+
+	it("collapses a mixed run of ASCII and exotic spaces to one space", () => {
+		expect(normalizeForFuzzy("a  \t  b")).toBe("a b");
+	});
+
+	it("strips zero-width characters so they cannot split a token", () => {
+		// U+200B zero-width space, U+200D zero-width joiner, U+FEFF BOM: each
+		// disappears entirely, matching normalizeUnicode's zero-width stripping.
+		expect(normalizeForFuzzy("foo​bar‍baz﻿")).toBe("foobarbaz");
+	});
+
+	it("normalizes a non-breaking-space line identically to its plain twin (match parity)", () => {
+		// This is the regression: the fuzzy pass compares these two forms, so a
+		// non-breaking space must collapse to the same single space the ASCII line has.
+		const exotic = normalizeForFuzzy("const x = 1;");
+		const plain = normalizeForFuzzy("const x = 1;");
+		expect(exotic).toBe(plain);
+		expect(exotic).toBe("const x = 1;");
+	});
+
+	it("agrees with normalizeUnicode on folding an internal ideographic space", () => {
+		// The shared intent the parity contract guards, now for whitespace as well
+		// as quotes: both fold U+3000 to a regular space.
+		const input = "a　b";
+		expect(normalizeForFuzzy(input)).toBe("a b");
+		expect(normalizeUnicode(input)).toBe("a b");
+	});
+});
+
 describe("normalizeUnicode", () => {
 	it("folds dashes, quotes, non-breaking spaces, ≠, ½, and strips zero-width characters", () => {
 		expect(normalizeUnicode("a—b")).toBe("a-b");
