@@ -1,7 +1,7 @@
 import { vi } from "bun:test";
 import * as fs from "node:fs";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
-import { isTuiTight, setTuiTight } from "@veyyon/tui";
+import { isTuiTight, resetKeybindingsForTests, setTuiTight } from "@veyyon/tui";
 import {
 	__resetDirsFromEnvForTests,
 	getActiveProfile,
@@ -84,6 +84,9 @@ export function restoreSettingsTestState(state: SettingsTestState | undefined): 
 			: process.cwd();
 	setProjectDir(projectTarget);
 	setTuiTight(state.tuiTight);
+	// Keybindings are a process-global singleton; suites that call setKeybindings
+	// without restoring poison later files in the same bun test process.
+	resetKeybindingsForTests();
 	// Final env pin for agent-dir keys that setAgentDir/setProfile may have
 	// rewritten away from the snapshot when profile was active.
 	restoreEnvValue("VEYYON_CODING_AGENT_DIR", state.env.VEYYON_CODING_AGENT_DIR);

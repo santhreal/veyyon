@@ -14,6 +14,7 @@ import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
 	hasFilesystemTargets,
+	searchPathFilesystemTargets,
 } from "@veyyon/coding-agent/tools/cwd-boundary";
 import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/inspect-image";
 import { isPathWithinCwd } from "@veyyon/coding-agent/tools/path-utils";
@@ -99,9 +100,9 @@ describe("cwdEscapingTargets containment policy", () => {
 	it("writeFilesystemTargets and readFilesystemTargets agree on bare path extraction", () => {
 		expect(writeFilesystemTargets({ path: "src/a.ts", content: "x" })).toEqual(["src/a.ts"]);
 		expect(readFilesystemTargets({ path: "src/a.ts" })).toEqual(["src/a.ts"]);
-		expect(cwdEscapingTargets(toolWith(writeFilesystemTargets), { path: "/etc/shadow", content: "x" }, CWD)).toEqual(
-			["/etc/shadow"],
-		);
+		expect(cwdEscapingTargets(toolWith(writeFilesystemTargets), { path: "/etc/shadow", content: "x" }, CWD)).toEqual([
+			"/etc/shadow",
+		]);
 	});
 
 	it("formatCwdBoundaryReason names the cwd and at least one escape", () => {
@@ -258,6 +259,27 @@ describe("per-tool filesystemTargets extraction", () => {
 		const inCwd = "*** Begin Patch\n*** Update File: src/a.ts\n*** Move to: src/b.ts\n*** End Patch";
 		expect(cwdEscapingTargets(toolWith(editFilesystemTargets), { input: inCwd }, CWD)).toEqual([]);
 	});
+
+	it("grep/glob/ast_grep search roots escape when the path base is outside cwd", () => {
+		// Policy (FINDING-CWD-BOUNDARY-SEARCH-TOOLS): search tools gate like point
+		// reads — an out-of-cwd search root prompts in non-yolo modes. Bases come
+		// from globSearchBase (literal path, or the fixed prefix before the first
+		// glob meta). Omitted path / bare relative patterns stay in-bounds.
+		expect(searchPathFilesystemTargets({ path: "/etc/passwd" })).toEqual(["/etc/passwd"]);
+		expect(searchPathFilesystemTargets({ path: "/etc/**" })).toEqual(["/etc"]);
+		expect(searchPathFilesystemTargets({ path: "src;/etc" })).toEqual(["src", "/etc"]);
+		expect(searchPathFilesystemTargets({ paths: ["/var/log", "src"] })).toEqual(["/var/log", "src"]);
+		expect(searchPathFilesystemTargets({ path: "*.ts" })).toEqual([""]);
+		expect(searchPathFilesystemTargets({})).toEqual([]);
+
+		const search = toolWith(searchPathFilesystemTargets);
+		expect(cwdEscapingTargets(search, { path: "/etc/passwd" }, CWD)).toEqual(["/etc/passwd"]);
+		expect(cwdEscapingTargets(search, { path: "/etc/**" }, CWD)).toEqual(["/etc"]);
+		expect(cwdEscapingTargets(search, { path: "src;/etc" }, CWD)).toEqual(["/etc"]);
+		expect(cwdEscapingTargets(search, { path: "src" }, CWD)).toEqual([]);
+		expect(cwdEscapingTargets(search, { path: "*.ts" }, CWD)).toEqual([]);
+		expect(cwdEscapingTargets(search, {}, CWD)).toEqual([]);
+	});
 });
 
 describe("formatCwdBoundaryReason", () => {
@@ -314,7 +336,7 @@ describe("filesystem cwd boundary through the approval gate", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			toolNames: ["read", "write", "edit"],
+			toolNames: ["read", "write", "edit", "grep", "glob"],
 		});
 		session = created.session;
 	});
@@ -342,7 +364,7 @@ describe("filesystem cwd boundary through the approval gate", () => {
 		} as AgentToolContext;
 	}
 
-	function tool(name: "read" | "write" | "edit") {
+	function tool(name: "read" | "write" | "edit" | "grep" | "glob") {
 		const t = session.getToolByName(name);
 		if (!t) throw new Error(`expected ${name} tool`);
 		return t;
@@ -454,5 +476,39 @@ describe("filesystem cwd boundary through the approval gate", () => {
 			),
 		).rejects.toThrow(/outside the session working directory/);
 		expect(fs.readFileSync(target, "utf8")).toBe("before");
+	});
+
+	it("blocks an out-of-cwd grep in ask mode (search tools honor the same boundary as read)", async () => {
+		// Differential: in-cwd grep auto-approves (read tier alone is not the blocker);
+		// out-of-cwd path is blocked by the cwd boundary before content leaks.
+		const inside = await tool("grep").execute(
+			"gin-ask",
+			{ pattern: "INSIDE", path: cwd },
+			undefined,
+			undefined,
+			ctx({ "tools.approvalMode": "ask" }),
+		);
+		expect(textOf(inside)).toContain("INSIDE_CONTENT");
+		await expect(
+			tool("grep").execute(
+				"gout-ask",
+				{ pattern: "OUTSIDE", path: outsideFile },
+				undefined,
+				undefined,
+				ctx({ "tools.approvalMode": "ask" }),
+			),
+		).rejects.toThrow(/outside the session working directory/);
+	});
+
+	it("blocks an out-of-cwd glob in ask mode", async () => {
+		await expect(
+			tool("glob").execute(
+				"glob-out-ask",
+				{ path: path.join(tempDir, "*") },
+				undefined,
+				undefined,
+				ctx({ "tools.approvalMode": "ask" }),
+			),
+		).rejects.toThrow(/outside the session working directory/);
 	});
 });

@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { KeybindingsManager, profileHasKeybindingsFile } from "@veyyon/coding-agent/config/keybindings";
 import { matchesAppFollowUp } from "@veyyon/coding-agent/modes/utils/keybinding-matchers";
-import { type KeybindingsConfig, setKeybindings } from "@veyyon/tui";
+import { type KeybindingsConfig, resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
 import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/utils";
 import { YAML } from "bun";
 
@@ -23,7 +23,7 @@ describe("KeybindingsManager.create", () => {
 	});
 
 	afterEach(() => {
-		setKeybindings(KeybindingsManager.inMemory());
+		resetKeybindingsForTests();
 	});
 
 	it("preserves an unparseable keybindings.yml instead of losing the user's map", async () => {

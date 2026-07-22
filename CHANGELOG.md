@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### Added
+### Removed
 
-- A `profile` status line segment. The status line now shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides on the built-in `default` profile, so a vanilla status line is unchanged, and every built-in preset includes it.
+- The `snap` compaction strategy (the experimental image-archive engine that rendered discarded history to bitmap frames) and its `@veyyon/snapcompact` package. `compaction.strategy` now offers two pure-LLM strategies, `summary` (the new default) and `handoff`. Sessions compacted by the old engine still open without loss: their archived plaintext source re-attaches to the compaction summary as recovered text, and the next compaction folds it into a normal LLM summary. A stored `snap` strategy value normalizes to `summary` on load.
 
 ### Fixed
 

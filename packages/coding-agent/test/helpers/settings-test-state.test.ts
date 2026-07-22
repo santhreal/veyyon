@@ -2,16 +2,18 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { isSettingsInitialized, Settings } from "@veyyon/coding-agent/config/settings";
+import { getKeybindings, setKeybindings } from "@veyyon/tui";
 import {
 	getActiveProfile,
 	getAgentDir,
 	getProjectDir,
 	removeSyncWithRetries,
+	Snowflake,
 	setAgentDir,
 	setProfile,
 	setProjectDir,
-	Snowflake,
 } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./settings-test-state";
 
@@ -136,5 +138,18 @@ describe("settings-test-state isolation", () => {
 
 		expect(process.cwd()).toBe(beforeCwd);
 		expect(getProjectDir()).toBe(beforeCwd);
+	});
+
+	it("clears a leaked setKeybindings singleton so later suites see defaults", () => {
+		state = beginSettingsTest();
+		const poisoned = KeybindingsManager.inMemory({ "tui.select.cancel": "ctrl+z" });
+		setKeybindings(poisoned);
+		expect(getKeybindings()).toBe(poisoned);
+
+		restoreSettingsTestState(state);
+		state = undefined;
+
+		// A fresh default manager — not the poisoned instance.
+		expect(getKeybindings()).not.toBe(poisoned);
 	});
 });

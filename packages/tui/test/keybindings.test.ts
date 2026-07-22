@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { addKeyAliases, canonicalKeyId, KeybindingsManager, parseKey, TUI_KEYBINDINGS } from "@veyyon/tui";
+import {
+	addKeyAliases,
+	canonicalKeyId,
+	getKeybindings,
+	KeybindingsManager,
+	parseKey,
+	resetKeybindingsForTests,
+	setKeybindings,
+	TUI_KEYBINDINGS,
+} from "@veyyon/tui";
 
 describe("KeybindingsManager", () => {
 	it("does not evict selector confirm when input submit is rebound", () => {
@@ -72,5 +81,13 @@ describe("KeybindingsManager", () => {
 			expect(aliases.has(canonicalKeyId(parsed))).toBe(true);
 			expect(keybindings.matches(input, "tui.input.copy")).toBe(true);
 		}
+	});
+
+	it("resetKeybindingsForTests clears a poisoned global singleton", () => {
+		const poisoned = new KeybindingsManager(TUI_KEYBINDINGS, { "tui.select.cancel": "ctrl+z" });
+		setKeybindings(poisoned);
+		expect(getKeybindings()).toBe(poisoned);
+		resetKeybindingsForTests();
+		expect(getKeybindings()).not.toBe(poisoned);
 	});
 });
