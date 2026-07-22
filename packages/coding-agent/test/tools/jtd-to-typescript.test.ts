@@ -49,6 +49,24 @@ describe("jtdToTypeScript", () => {
 			);
 		});
 
+		// Locks FINDING-JTD-PROPERTY-KEY-UNESCAPED. A non-identifier key was quoted
+		// with raw `"${key}"`, so a name carrying a quote/backslash/newline emitted
+		// invalid TypeScript. safeKey now escapes via JSON.stringify.
+		it("quotes a non-identifier property name", () => {
+			expect(jtdToTypeScript({ properties: { "foo-bar": { type: "string" } } })).toBe('{\n  "foo-bar": string;\n}');
+		});
+
+		it("escapes a double quote in a property name", () => {
+			// Raw interpolation emitted `"a"b": string;` — invalid syntax.
+			expect(jtdToTypeScript({ properties: { 'a"b': { type: "string" } } })).toBe('{\n  "a\\"b": string;\n}');
+		});
+
+		it("escapes a backslash in an optional property name", () => {
+			expect(jtdToTypeScript({ optionalProperties: { "a\\b": { type: "int32" } } })).toBe(
+				'{\n  "a\\\\b"?: number;\n}',
+			);
+		});
+
 		it("marks optional properties with a question mark", () => {
 			// The distinction is the whole reason JTD separates the two keys, and a
 			// model told everything is required will pad output with empty values.
