@@ -321,7 +321,13 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				// followed by ONE OR MORE digits, so match `\d+`, not a fixed `\d{3}`
 				// (which rejected valid times such as "12:00:00.5" and
 				// "12:00:00.123456"). A lone dot with no digits still fails.
-				const timeRegex = /^\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)?$/;
+				//
+				// The components are range-bounded (hour 00-23, minute 00-59, second
+				// 00-60 to allow a leap second, and the same bounds on the offset):
+				// with plain `\d{2}` groups a nonsense value like "45:99:99" passed.
+				// Unlike `date-time`, `time` has no Date backstop, so the bounds must
+				// live in the regex.
+				const timeRegex = /^([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([+-]([01]\d|2[0-3]):[0-5]\d|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}
 			case "ipv4": {
