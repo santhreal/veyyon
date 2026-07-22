@@ -15,7 +15,10 @@
   --fg:#f6f7f9; --fg-2:#b4bac4; --muted:#7c828d; --dim:#4a505a;
   --silver:#c6cbd4; --silver-hi:#e6e9ee;
   --sun:#f0862e; --sun-hi:#fb9e44;   /* ember accent — the sun; kept distinct from --amber warning */
-  --green:#7fb98a; --amber:#c9a24b; --red:#c96f6e;
+  --green:#7fb98a; --amber:#c9a24b; --red:#d1706e;
+  /* Daybreak cool arc — identity & state hues shared with the TUI theme:
+     teal = session, violet = modes, indigo = share, rose = info, gold = match */
+  --gold:#f5b841; --teal:#3fb6a8; --violet:#9b7ede; --indigo:#6478d8; --rose:#e88aa8;
   --line:rgba(198,203,212,.12); --line-2:rgba(198,203,212,.21);
   --sans:"InterV",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --mono:"JBM",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -123,6 +126,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 
 /* the one product surface under the hero */
 .showcase{margin-top:64px;border:1px solid var(--line-2);background:var(--raised)}
+.showcase .capture{display:block;width:100%;height:auto;border:0;background:#000}
 .term{font-family:var(--mono);font-size:13.5px;line-height:1.8}
 .term .bar{display:flex;align-items:center;gap:9px;padding:12px 18px;border-bottom:1px solid var(--line);
   color:var(--muted);font-size:12px}

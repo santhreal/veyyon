@@ -35,7 +35,7 @@ Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "fore
 Hide
 Type "clear" Enter
 Sleep 300ms
-Type "bash scripts/demos/launch.sh" Enter
+Type "bash scripts/demos/launch.sh --auto-approve" Enter
 Sleep 1500ms
 Show
 
@@ -49,5 +49,5 @@ Sleep 1500ms
 Enter
 
 # The agent reads the file, applies the edit, and reports. End on the outcome:
-# the streamed reply and the diff, not the spinner.
-Sleep 32s
+# the streamed reply and the diff, not the spinner. Sized for 3.6 Flash high.
+Sleep 45s
