@@ -5,7 +5,7 @@
  * Uses the settings schema as the source of truth for available settings.
  */
 
-import { APP_NAME, getAgentDir, isRecord } from "@veyyon/utils";
+import { APP_NAME, clampLow, getAgentDir, isRecord, levenshteinDistance } from "@veyyon/utils";
 import chalk from "chalk";
 import {
 	getDefault,
@@ -60,6 +60,68 @@ function findSettingDef(path: string): CliSettingDef | undefined {
 		description: ui?.description ?? "",
 		tab: ui?.tab ?? "internal",
 	};
+}
+
+/**
+ * Setting paths a user probably meant when `key` matched nothing, best first.
+ *
+ * "Unknown setting" plus "run config list" is a poor answer when the schema has
+ * hundreds of paths: the list is far too long to scan, and the usual cause is a
+ * one-character slip or the wrong capitalization. Naming the near misses turns a
+ * dead end into a fix the user can paste.
+ *
+ * Ranked by how likely the confusion is, not by string distance alone. A path
+ * that differs only in case comes first, since that is a spelling of the same
+ * intent. Then paths containing what was typed, which covers a remembered leaf
+ * name with the wrong group ("autoUpdate" for "startup.autoUpdate"). Then close
+ * edits, which covers a typo.
+ */
+export function suggestSettingPaths(key: string, limit = 3): string[] {
+	const all = Object.keys(SETTINGS_SCHEMA);
+	const typed = key.toLowerCase();
+	const seen = new Set<string>();
+	const out: string[] = [];
+	const take = (candidates: string[]): void => {
+		for (const candidate of candidates) {
+			if (out.length >= limit) return;
+			if (seen.has(candidate)) continue;
+			seen.add(candidate);
+			out.push(candidate);
+		}
+	};
+
+	take(all.filter(path => path.toLowerCase() === typed));
+	take(all.filter(path => path.toLowerCase().includes(typed)));
+	// Distance scaled to the input: one edit in a short key is a typo, whereas
+	// one edit in a long path could still be a different setting entirely, so
+	// allow a little more room as paths grow but never enough to suggest noise.
+	const budget = clampLow(Math.floor(typed.length / 4), 1, 3);
+	const near = all
+		.map(path => ({ path, distance: levenshteinDistance(typed, path.toLowerCase()) }))
+		.filter(entry => entry.distance <= budget)
+		.sort((a, b) => a.distance - b.distance || a.path.localeCompare(b.path))
+		.map(entry => entry.path);
+	take(near);
+
+	return out;
+}
+
+/**
+ * Report a key that matches no setting, naming near misses when there are any.
+ *
+ * One owner for the message so `get`, `set`, and `reset` cannot drift into
+ * helping by different rules.
+ */
+function reportUnknownSetting(key: string): void {
+	console.error(chalk.red(`Unknown setting: ${key}`));
+	const suggestions = suggestSettingPaths(key);
+	if (suggestions.length > 0) {
+		console.error(chalk.dim("\nDid you mean:"));
+		for (const suggestion of suggestions) {
+			console.error(chalk.dim(`  ${suggestion}`));
+		}
+	}
+	console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
 }
 
 /** Get available values for a setting */
@@ -279,8 +341,7 @@ function handleGet(key: string | undefined, flags: { json?: boolean }): void {
 
 	const def = findSettingDef(key);
 	if (!def) {
-		console.error(chalk.red(`Unknown setting: ${key}`));
-		console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
+		reportUnknownSetting(key);
 		process.exit(1);
 	}
 
@@ -305,8 +366,7 @@ async function handleSet(key: string | undefined, value: string | undefined, fla
 
 	const def = findSettingDef(key);
 	if (!def) {
-		console.error(chalk.red(`Unknown setting: ${key}`));
-		console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
+		reportUnknownSetting(key);
 		process.exit(1);
 	}
 
@@ -335,8 +395,7 @@ async function handleReset(key: string | undefined, flags: { json?: boolean }): 
 
 	const def = findSettingDef(key);
 	if (!def) {
-		console.error(chalk.red(`Unknown setting: ${key}`));
-		console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
+		reportUnknownSetting(key);
 		process.exit(1);
 	}
 

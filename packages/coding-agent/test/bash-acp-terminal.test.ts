@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { ClientBridge, ClientBridgeTerminalHandle } from "@veyyon/coding-agent/session/client-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { makeToolSession } from "./helpers/tool-session";
 
 function makeSession(bridge: ClientBridge): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		skills: [],
@@ -33,7 +34,7 @@ function makeSession(bridge: ClientBridge): ToolSession {
 			},
 		},
 		getClientBridge: () => bridge,
-	} as unknown as ToolSession;
+	});
 }
 
 afterEach(() => {

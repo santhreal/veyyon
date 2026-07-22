@@ -87,3 +87,26 @@ export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number
 	});
 	return track;
 }
+
+/**
+ * Render the full slider line every segment-slider surface shares: optional
+ * dim caption, prev/next arrows (theme `nav.prev`/`nav.next`, accent while a
+ * step exists in that direction, dim at the ends), the chip track, and an
+ * optional hooked detail line for the active segment. One owner: the
+ * plan-review model slider and the hook selector previously each hand-rolled
+ * this line with raw `◂`/`▸`/`↳` literals that ignored the symbol presets.
+ */
+export function renderSliderLines(
+	segments: Array<TrackSegment & { detail?: string }>,
+	activeIndex: number,
+	caption?: string,
+): string[] {
+	const track = renderSegmentTrack(segments, activeIndex);
+	const leftArrow = theme.fg(activeIndex > 0 ? "accent" : "dim", theme.nav.prev);
+	const rightArrow = theme.fg(activeIndex < segments.length - 1 ? "accent" : "dim", theme.nav.next);
+	const captionText = caption ? `${theme.fg("dim", caption)}  ` : "";
+	const trackLine = `${captionText}${leftArrow}  ${track}  ${rightArrow}`;
+	const detail = segments[activeIndex]?.detail;
+	if (!detail) return [trackLine];
+	return [trackLine, `  ${theme.fg("dim", theme.tree.hook)} ${theme.fg("muted", detail)}`];
+}

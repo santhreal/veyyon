@@ -1,11 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import * as snapcompact from "@veyyon/snapcompact";
+import type { TextContent } from "@veyyon/ai";
 import type { CompactionSummaryMessage } from "./messages";
 import { buildSessionContext, type StrippedToolCallsMarker } from "./session-context";
 import type { SessionEntry } from "./session-entries";
 
 const timestamp = "2026-07-09T00:00:00.000Z";
+
+// A compaction persisted by the removed image-archive engine: preserveData
+// carries a `snapcompact` slot whose `text` is the full archived source (the
+// frames were only an image duplicate of it). On rebuild the session now
+// re-attaches that source as a plain text block, never as image frames.
+const LEGACY_ARCHIVE_SOURCE = "archived line one\narchived line two";
 
 const compactedEntries = [
 	{
@@ -24,10 +30,11 @@ const compactedEntries = [
 		firstKeptEntryId: "m1",
 		tokensBefore: 123,
 		preserveData: {
-			[snapcompact.PRESERVE_KEY]: {
+			snapcompact: {
 				frames: [{ data: "base64-frame", mimeType: "image/png", cols: 10, rows: 10, chars: 100 }],
 				totalChars: 100,
 				truncatedChars: 0,
+				text: LEGACY_ARCHIVE_SOURCE,
 				textHead: "head",
 				textTail: "tail",
 			},
@@ -50,8 +57,8 @@ function compactionSummary(messages: AgentMessage[]): CompactionSummaryMessage {
 	return summary;
 }
 
-describe("buildSessionContext snapcompact archives", () => {
-	it("omits snapcompact archive blocks from collapsed transcript summaries", () => {
+describe("buildSessionContext legacy image-archive recovery", () => {
+	it("omits legacy archive blocks from collapsed transcript summaries", () => {
 		const context = buildSessionContext(compactedEntries, undefined, undefined, {
 			transcript: true,
 			collapseCompactedHistory: true,
@@ -63,22 +70,25 @@ describe("buildSessionContext snapcompact archives", () => {
 		expect(summary.blocks).toBeUndefined();
 	});
 
-	it("keeps snapcompact archive blocks in full transcript summaries", () => {
+	it("recovers the legacy archive source as a text block in full transcript summaries", () => {
 		const context = buildSessionContext(compactedEntries, undefined, undefined, { transcript: true });
 
 		const summary = compactionSummary(context.messages);
 
-		expect(summary.images?.map(image => image.data)).toEqual(["base64-frame"]);
-		expect(summary.blocks?.map(block => block.type)).toEqual(["text", "image", "text"]);
+		// Never image frames: exactly one recovered text block carrying the source.
+		expect(summary.images).toBeUndefined();
+		expect(summary.blocks?.map(block => block.type)).toEqual(["text"]);
+		expect((summary.blocks?.[0] as TextContent).text).toContain(LEGACY_ARCHIVE_SOURCE);
 	});
 
-	it("keeps snapcompact archive blocks in provider context summaries", () => {
+	it("recovers the legacy archive source as a text block in provider context summaries", () => {
 		const context = buildSessionContext(compactedEntries);
 
 		const summary = compactionSummary(context.messages);
 
-		expect(summary.images?.map(image => image.data)).toEqual(["base64-frame"]);
-		expect(summary.blocks?.map(block => block.type)).toEqual(["text", "image", "text"]);
+		expect(summary.images).toBeUndefined();
+		expect(summary.blocks?.map(block => block.type)).toEqual(["text"]);
+		expect((summary.blocks?.[0] as TextContent).text).toContain(LEGACY_ARCHIVE_SOURCE);
 	});
 });
 

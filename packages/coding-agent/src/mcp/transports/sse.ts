@@ -11,6 +11,7 @@ import type {
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
 import { createMCPTimeout, getNeverAbortSignal, resolveMCPTimeoutMs } from "../timeout";
+import { reportUndeliveredServerResponse } from "./server-response-delivery";
 
 interface MCPTimeoutOperation {
 	signal?: AbortSignal;
@@ -329,6 +330,13 @@ export class LegacySseTransport implements MCPTransport {
 		}
 	}
 
+	/**
+	 * POST a JSON-RPC response back to the server.
+	 *
+	 * Same contract, and same fix, as the streamable-HTTP transport: a dropped
+	 * reply leaves the server waiting on an answer we computed and discarded, so
+	 * the undelivered reply is reported rather than swallowed (Law 10).
+	 */
 	async #sendServerResponse(id: string | number, result?: unknown, error?: JsonRpcError): Promise<void> {
 		if (!this.#connected) return;
 		const timeout = resolveMCPTimeoutMs(this.#config.timeout);
@@ -340,8 +348,14 @@ export class LegacySseTransport implements MCPTransport {
 			);
 			operation.clear();
 			await response.body?.cancel();
-		} catch {
+		} catch (sendError) {
 			operation.clear();
+			reportUndeliveredServerResponse({
+				url: this.#config.url,
+				requestId: id,
+				kind: error ? "error" : "result",
+				cause: sendError,
+			});
 		}
 	}
 

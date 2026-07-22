@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { compareDottedNumeric, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -18,17 +18,6 @@ interface ParsedCabal {
 	bugReports?: string;
 	category?: string;
 	stability?: string;
-}
-
-function compareVersions(a: string, b: string): number {
-	const aParts = a.split(".").map(part => Number.parseInt(part, 10) || 0);
-	const bParts = b.split(".").map(part => Number.parseInt(part, 10) || 0);
-	const max = Math.max(aParts.length, bParts.length);
-	for (let i = 0; i < max; i++) {
-		const delta = (aParts[i] || 0) - (bParts[i] || 0);
-		if (delta !== 0) return delta;
-	}
-	return 0;
 }
 
 function extractCabalField(content: string, fieldName: string): string | undefined {
@@ -101,7 +90,7 @@ export const handleHackage: SpecialHandler = async (
 
 		const versionMap = tryParseJson<HackageVersionMap>(versionResult.content);
 		if (!versionMap) return scraperDegrade("hackage", "unexpected response shape");
-		const latestVersion = Object.keys(versionMap).sort(compareVersions).at(-1);
+		const latestVersion = Object.keys(versionMap).sort(compareDottedNumeric).at(-1);
 		if (!latestVersion) return null;
 
 		// Fetch the latest cabal file for package metadata.

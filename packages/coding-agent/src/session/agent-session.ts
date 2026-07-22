@@ -57,11 +57,13 @@ import {
 	compactionContextTokens,
 	createCompactionSummaryMessage,
 	DEFAULT_SHAKE_CONFIG,
-	effectiveReserveTokens,
 	estimateTokens,
 	generateBranchSummary,
 	generateHandoffFromContext,
+	hasLegacyArchive,
 	isThresholdTokensClampedForWindow,
+	redactLegacyArchiveText,
+	stripLegacyArchive,
 	prepareCompaction,
 	renderHandoffPrompt,
 	resolveBudgetReserveTokens,
@@ -130,7 +132,6 @@ import { modelsAreEqual } from "@veyyon/catalog/models";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { Patch } from "@veyyon/hashline";
 import { MacOSPowerAssertion } from "@veyyon/natives";
-import * as snapcompact from "@veyyon/snapcompact";
 import {
 	errorMessage,
 	escapeXmlText,
@@ -152,6 +153,7 @@ import {
 	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
+import type { ArgotSession } from "argot";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	AdviseTool,
@@ -176,8 +178,7 @@ import {
 	resolveAdvisorDeliveryChannel,
 	slugifyAdvisorName,
 } from "../advisor";
-import type { ArgotSession } from "../argot";
-import { expandAssistantContent, expandSessionContext } from "../argot-wire";
+import { ArgotStreamDisplayDecoder, expandAssistantContent, expandSessionContext } from "../argot-wire";
 import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";
@@ -186,7 +187,6 @@ import { shouldEnableAppendOnlyContext } from "../config/append-only-context-mod
 import {
 	isCompactionStrategyOff,
 	isThresholdCompactionDisabled,
-	normalizeCompactionStrategy,
 	resolveCompactionEngineAction,
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
@@ -225,6 +225,7 @@ import { loadCapability } from "../discovery";
 import { expandApplyPatchToEntries, normalizeDiff, normalizeToLF, ParseError, previewPatch, stripBom } from "../edit";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { disposeJuliaKernelSessionsByOwner } from "../eval/jl/executor";
+import { disposeVmContextsByOwner } from "../eval/js/context-manager";
 import { namespaceSessionId as namespacePythonSessionId } from "../eval/py";
 import {
 	disposeKernelSessionsByOwner,
@@ -348,6 +349,7 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "../tool-discovery/tool-index";
+import { validateApprovalModeSetting } from "../tools/approval";
 import { assertEditableFile } from "../tools/auto-generated-guard";
 import { releaseTabsForOwner } from "../tools/browser/tab-supervisor";
 import { normalizeToolNames } from "../tools/builtin-names";
@@ -613,11 +615,11 @@ export type AgentSessionEvent =
 	| {
 			type: "auto_compaction_start";
 			reason: "threshold" | "overflow" | "idle" | "incomplete";
-			action: "context-full" | "handoff" | "shake" | "snapcompact";
+			action: "context-full" | "handoff" | "shake";
 	  }
 	| {
 			type: "auto_compaction_end";
-			action: "context-full" | "handoff" | "shake" | "snapcompact";
+			action: "context-full" | "handoff" | "shake";
 			result: CompactionResult | undefined;
 			aborted: boolean;
 			willRetry: boolean;
@@ -759,14 +761,14 @@ export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "la
 const RETRY_BACKOFF_JITTER_RATIO = 0.25;
 /**
  * Hysteresis band for the post-maintenance "did we actually create headroom?"
- * check shared by the shake tail and the context-full / snapcompact tail. A
+ * check shared by the shake tail and the context-full tail. A
  * pass counts as having resolved threshold pressure only when residual context
  * lands at or below `COMPACTION_RECOVERY_BAND × threshold`. Re-checking against
  * the raw threshold lets a pass keep reclaiming a trickle of the previous
  * turn's output and land just under the line every turn, sustaining the
  * auto-continue dead loop reported in #2275; the same band stops the
- * context-full / snapcompact tail from re-firing on a history whose single
- * most-recent kept turn already exceeds the threshold (the snapcompact thrash).
+ * context-full tail from re-firing on a history whose single
+ * most-recent kept turn already exceeds the threshold (the compaction thrash).
  */
 const COMPACTION_RECOVERY_BAND = 0.8;
 
@@ -879,7 +881,7 @@ export interface AgentSessionConfig {
 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => AgentMessage[] | Promise<AgentMessage[]>;
 	/**
 	 * Per-request transform applied after `convertToLlm` and before the
-	 * provider call. Used for snapcompact, secret obfuscation, and image
+	 * provider call. Used for secret obfuscation and image
 	 * clamping. When supplied via {@link createAgentSession}, the advisor agent
 	 * inherits this so its requests undergo the same shaping as the main turn.
 	 */
@@ -1674,7 +1676,7 @@ function mergeLlmCompactionPreserveData(
 	resultPreserveData: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
 	const preserveData = { ...(hookPreserveData ?? {}), ...(resultPreserveData ?? {}) };
-	return snapcompact.stripPreservedArchive(Object.keys(preserveData).length > 0 ? preserveData : undefined);
+	return stripLegacyArchive(Object.keys(preserveData).length > 0 ? preserveData : undefined);
 }
 
 type MessageEndPersistenceSlot = {
@@ -2086,6 +2088,8 @@ export class AgentSession {
 	#contextUsageRevision = 0;
 	#obfuscator: SecretObfuscator | undefined;
 	#argot: ArgotSession | undefined;
+	/** Per-streaming-message argot display decoder (seam 3); reset on each assistant message_start. */
+	#argotStreamDisplay: ArgotStreamDisplayDecoder | undefined;
 	/** Session-start value of `inlineToolDescriptors`; drives handoff tool pruning. */
 	#pruneToolDescriptions = false;
 	#checkpointState: CheckpointState | undefined = undefined;
@@ -2592,13 +2596,14 @@ export class AgentSession {
 		this.#titleSystemPrompt = config.titleSystemPrompt;
 		this.#pruneToolDescriptions = config.pruneToolDescriptions === true;
 		this.#validateRetryFallbackChains();
+		this.#validateApprovalModeSetting();
 		this.#toolRegistry = config.toolRegistry ?? new Map();
 		this.#createVibeTools = config.createVibeTools;
 		this.#builtInToolNames = new Set(config.builtInToolNames ?? []);
 		this.#requestedToolNames = config.requestedToolNames;
 		this.#transformContext = config.transformContext ?? (messages => messages);
 		// Canonicalize provider tool-call IDs to short session-local handles before
-		// obfuscation / snapcompact / provider serialization. Runs once per request
+		// obfuscation / provider serialization. Runs once per request
 		// after convertToLlm; map is session-stable so prior history serializes
 		// byte-identically (prompt cache preserved). On resume the map rebuilds from
 		// stored history by walking messages in order (no schema change).
@@ -3463,10 +3468,9 @@ export class AgentSession {
 			? ThinkingLevel.Off
 			: agent.state.thinkingLevel;
 
-		// Advisor state is in-memory-only, so snapcompact's frame archive has no
-		// stable SessionEntry preserveData slot to carry across future advisor
-		// maintenance runs. Use an LLM summary even when the primary session is
-		// configured for snapcompact.
+		// Advisor state is in-memory-only, with no persisted SessionEntry stream,
+		// so its overflow maintenance always uses an LLM summary regardless of the
+		// primary session's configured compaction strategy.
 
 		let compactResult: CompactionResult | undefined;
 		let lastError: unknown;
@@ -3649,6 +3653,15 @@ export class AgentSession {
 
 	getHindsightSessionState(): HindsightSessionState | undefined {
 		return this.#hindsightSessionState;
+	}
+
+	/**
+	 * This session's Argot codec, or `undefined` when the feature is off. Exposed
+	 * so a spawning parent can hand a subagent a fork of it (the `inherit`
+	 * subagent mode); the fork is detached, so the child never mutates the parent.
+	 */
+	getArgotSession(): ArgotSession | undefined {
+		return this.#argot;
 	}
 
 	setHindsightSessionState(state: HindsightSessionState | undefined): HindsightSessionState | undefined {
@@ -4244,6 +4257,31 @@ export class AgentSession {
 		// see full text. The original event.message keeps the handles so the
 		// persistence path and next-turn context stay cheap (the token win).
 		let displayEvent: AgentEvent = event;
+		if (event.type === "message_start" && event.message.role === "assistant") {
+			// Start a fresh per-message argot stream decoder (seam 3): the live
+			// preview re-renders the accumulated partial, and a handle can split
+			// across deltas, so text/thinking blocks render only decoder-proved text.
+			this.#argotStreamDisplay = new ArgotStreamDisplayDecoder(this.#argot);
+		}
+		if (
+			event.type === "message_update" &&
+			event.message.role === "assistant" &&
+			this.#argotStreamDisplay !== undefined
+		) {
+			const streamEvent = event.assistantMessageEvent;
+			if (streamEvent.type === "text_delta" || streamEvent.type === "thinking_delta") {
+				this.#argotStreamDisplay.push(streamEvent.contentIndex, streamEvent.delta);
+			}
+			const streamedContent = this.#argotStreamDisplay.decodeContent(event.message.content);
+			if (streamedContent !== event.message.content) {
+				displayEvent = { ...event, message: { ...event.message, content: streamedContent } };
+			}
+		}
+		if (event.type === "message_end") {
+			// The finished message expands wholesale below; drop the stream state.
+			this.#argotStreamDisplay?.flush();
+			this.#argotStreamDisplay = undefined;
+		}
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			const message = event.message;
 			const content = this.displayAssistantContent(message.content);
@@ -4998,12 +5036,18 @@ export class AgentSession {
 	#getTtsrInjectionContent(): { content: string; rules: Rule[] } | undefined {
 		if (this.#pendingTtsrInjections.length === 0) return undefined;
 		const rules = this.#pendingTtsrInjections;
+		// Rule bodies may carry feature-gated content (e.g. cwd-reroot's `argot_load`
+		// advice, wrapped in `{{#if argot}}`). Resolve that against the live feature
+		// flags before the body becomes the outer template's `content`, so a rule
+		// never advertises a tool the current config does not register (argot is off
+		// by default, so an ungated argot mention would be dead advice).
+		const ruleContext = { argot: this.settings.get("argot.enabled") === true };
 		const content = rules
 			.map(r =>
 				prompt.render(ttsrInterruptTemplate, {
 					name: r.name,
 					path: this.#displayRulePath(r.path),
-					content: r.content,
+					content: prompt.render(r.content, ruleContext),
 				}),
 			)
 			.join("\n\n");
@@ -6462,6 +6506,10 @@ export class AgentSession {
 		await disposeKernelSessionsByOwner(this.#evalKernelOwnerId);
 		await disposeRubyKernelSessionsByOwner(this.#evalKernelOwnerId);
 		await disposeJuliaKernelSessionsByOwner(this.#evalKernelOwnerId);
+		// JS eval contexts are owner-scoped like the kernels above; without this
+		// the eval subprocess leaked across sessions for the life of the parent
+		// (GRAN-11). Reap the ones this session owns.
+		await disposeVmContextsByOwner(this.#evalKernelOwnerId);
 		// Release headless / spawned Chromium and worker tabs this session
 		// opened via the browser tool. The tool's `tabs`/`browsers` maps are
 		// module-global — subagents and future sessions share them — so we
@@ -7585,10 +7633,10 @@ export class AgentSession {
 	#obfuscatePreparationForProvider(preparation: CompactionPreparation): CompactionPreparation {
 		if (!this.#obfuscator?.hasSecrets()) return preparation;
 		const previousSummary = this.#obfuscateTextForProvider(preparation.previousSummary);
-		// `compact()` folds the prior snapcompact archive's plaintext into the
-		// summarization prompt on the snapcompact→context-full transition, so the
+		// `compact()` folds a prior legacy image-archive's plaintext into the
+		// summarization prompt on the legacy-archive→summary migration, so the
 		// archive's text regions must be redacted alongside the summary. Only the
-		// `snapcompact` slot's text is rewritten; every other preserveData key —
+		// legacy archive slot's text is rewritten; every other preserveData key —
 		// notably the OpenAI remote-compaction `encrypted_content` replay state — is
 		// opaque provider-replay data and stays byte-identical.
 		const previousPreserveData = this.#obfuscatePreservedArchiveText(preparation.previousPreserveData);
@@ -7601,30 +7649,17 @@ export class AgentSession {
 		return { ...preparation, previousSummary, previousPreserveData };
 	}
 
-	/** Redact secrets in the persisted snapcompact archive's plaintext regions
-	 *  ({@link snapcompact.archiveSourceText}'s `text`/`textHead`/`textTail`) so the
-	 *  snapcompact→context-full migration in `compact()` cannot ship raw archived
-	 *  user/tool text to the provider. Frames and every non-`snapcompact` key pass
-	 *  through byte-identical; the same reference is returned when nothing changes. */
+	/** Redact secrets in a legacy persisted image-archive's plaintext regions
+	 *  (`text`/`textHead`/`textTail`) so the legacy-archive→summary migration in
+	 *  `compact()` cannot ship raw archived user/tool text to the provider. Every
+	 *  non-archive key passes through byte-identical; the same reference is
+	 *  returned when nothing changes. Only old sessions still carry such an archive. */
 	#obfuscatePreservedArchiveText(
 		preserveData: Record<string, unknown> | undefined,
 	): Record<string, unknown> | undefined {
 		const obfuscator = this.#obfuscator;
-		if (!obfuscator?.hasSecrets() || !preserveData || !snapcompact.getPreservedArchive(preserveData)) {
-			return preserveData;
-		}
-		const slot = preserveData[snapcompact.PRESERVE_KEY] as Record<string, unknown>;
-		const obfuscated: Record<string, unknown> = { ...slot };
-		let changed = false;
-		for (const key of ["text", "textHead", "textTail"] as const) {
-			const value = slot[key];
-			if (typeof value !== "string" || value.length === 0) continue;
-			const next = obfuscator.obfuscate(value);
-			if (next === value) continue;
-			obfuscated[key] = next;
-			changed = true;
-		}
-		return changed ? { ...preserveData, [snapcompact.PRESERVE_KEY]: obfuscated } : preserveData;
+		if (!obfuscator?.hasSecrets() || !hasLegacyArchive(preserveData)) return preserveData;
+		return redactLegacyArchiveText(preserveData, value => obfuscator.obfuscate(value));
 	}
 
 	#deobfuscateFromProvider(text: string): string {
@@ -10104,6 +10139,7 @@ export class AgentSession {
 		if (getSupportedEfforts(model).length === 0) return;
 
 		let resolved: Effort | undefined;
+		let classificationError: string | undefined;
 		if (this.#magicKeywordEnabled("ultrathink") && containsUltrathink(promptText)) {
 			// The user explicitly asked for maximum thinking; bypass the classifier
 			// (and its xhigh auto ceiling) and jump straight to the highest
@@ -10122,9 +10158,7 @@ export class AgentSession {
 					metadataResolver: provider => this.agent.metadataForProvider(provider),
 				});
 			} catch (error) {
-				logger.debug("auto-thinking: classification failed; using fallback level", {
-					error: errorMessage(error),
-				});
+				classificationError = errorMessage(error);
 			} finally {
 				clearTimeout(timer);
 			}
@@ -10134,6 +10168,21 @@ export class AgentSession {
 		if (this.#promptGeneration !== generation || !this.#autoThinking) return;
 
 		const effort = resolved ?? resolveProvisionalAutoLevel(model);
+
+		// Auto thinking exists to pick the level for you. When classification fails
+		// it quietly falls back to a provisional level, so the user gets a thinking
+		// budget nobody chose while the feature reports itself as on. That was a
+		// `logger.debug`, which is silent (Law 10). Reported at warn, and the level
+		// actually used is named, because "auto-thinking failed" without it does not
+		// tell an operator what their turn ran at.
+		if (classificationError !== undefined) {
+			logger.warn("auto-thinking: could not classify the prompt, using a fallback level", {
+				error: classificationError,
+				fallbackLevel: effort ?? "none",
+				timeoutMs: AgentSession.#AUTO_THINKING_TIMEOUT_MS,
+				fix: "If this repeats, the classifier model may be unreachable; set a fixed thinking level with /think to stop relying on it.",
+			});
+		}
 		if (effort === undefined) return;
 		const shouldPersistResolution = this.#autoResolvedLevel !== effort;
 		this.#autoResolvedLevel = effort;
@@ -10548,7 +10597,7 @@ export class AgentSession {
 
 	#shakeElidePlaceholder(region: ShakeRegion, index: number, artifactId: string | undefined): string {
 		if (artifactId) {
-			return `[shaken ~${region.tokens} tokens — recover: artifact://${artifactId} (region ${index + 1})]`;
+			return `[shaken ~${region.tokens} tokens; recover: artifact://${artifactId} (region ${index + 1})]`;
 		}
 		return `[shaken ~${region.tokens} tokens]`;
 	}
@@ -10585,16 +10634,6 @@ export class AgentSession {
 		// Resolve the `/compact <mode>` subcommand up front so input validation
 		// runs before we disconnect/abort the active agent operation below.
 		const compactMode = options?.mode ? findCompactMode(options.mode) : undefined;
-		// Modes that produce no LLM summary (snapcompact) have nothing to focus.
-		// Reject focus text loudly so programmatic callers don't silently lose
-		// instructions (the slash path pre-validates via parseCompactArgs).
-		// `internalGuidance` counts the same way — plan-mode approval never
-		// combines with a rejects-focus mode, but reject early if a caller ever
-		// wires it up so we don't silently drop the directive on the snapcompact
-		// fallback (issue #4359).
-		if (compactMode?.rejectsFocus && (customInstructions || options?.internalGuidance)) {
-			throw new Error(`/compact ${compactMode.name} does not take focus instructions.`);
-		}
 		const compactionAbortController = new AbortController();
 		this.#compactionAbortController = compactionAbortController;
 
@@ -10609,7 +10648,7 @@ export class AgentSession {
 			// The `/compact <mode>` override (resolved above) replaces the configured
 			// strategy/remote flags for this one invocation. Merged before
 			// prepareCompaction so the remote gating (preparation.settings.
-			// remoteEnabled/endpoint) and the snapcompact decision below both see it.
+			// remoteEnabled/endpoint) and the compaction decision below both see it.
 			const effectiveSettings = compactMode
 				? { ...compactionSettings, ...compactMode.overrides }
 				: compactionSettings;
@@ -10673,133 +10712,12 @@ export class AgentSession {
 
 			const compactionPrep = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
 
-			// Strategy honored on manual /compact too. Custom instructions (public
-			// user focus OR internal plan-mode guidance) imply a directed LLM
-			// summary; a text-only model cannot read snapcompact frames.
-			const wantsSnapcompact =
-				compactionPrep.kind !== "fromHook" &&
-				(normalizeCompactionStrategy(effectiveSettings.strategy) === "snap" ||
-					effectiveSettings.strategy === "snapcompact") &&
-				!customInstructions &&
-				!options?.internalGuidance;
-			// `/compact snapcompact` is an explicit no-LLM archive request: honor
-			// its contract by failing locally rather than silently shipping the
-			// transcript to a provider. The default-configured snapcompact
-			// strategy, in contrast, falls back to LLM compaction (mirroring the
-			// auto-compaction path) so a routine /compact still completes on a
-			// text-only model (issue #5064).
-			const explicitSnapcompact = compactMode?.name === "snapcompact";
-			let snapcompactReady = wantsSnapcompact;
-			const snapcompactShapeSetting = this.settings.get("snapcompact.shape");
-			let snapcompactShape: snapcompact.Shape | undefined;
-			if (wantsSnapcompact && !this.model.input.includes("image")) {
-				if (explicitSnapcompact) {
-					this.emitNotice(
-						"warning",
-						`snapcompact needs a vision-capable model (${this.model.id} is text-only)`,
-						"compaction",
-					);
-					throw new Error(`snapcompact cannot run locally: ${this.model.id} is text-only.`);
-				}
-				this.emitNotice(
-					"warning",
-					`snapcompact needs a vision-capable model (${this.model.id} is text-only); falling back to LLM compaction`,
-					"compaction",
-				);
-				snapcompactReady = false;
-			} else if (snapcompactReady) {
-				const text = snapcompact.serializeConversation(
-					convertToLlm(preparation.messagesToSummarize.concat(preparation.turnPrefixMessages)),
-				);
-				const probeText = snapcompact.renderabilityProbeText(
-					text,
-					preparation.previousPreserveData,
-					preparation.previousSummary,
-				);
-				snapcompactShape = snapcompact.resolveShapeForText(probeText, this.model, snapcompactShapeSetting);
-				const renderScan = snapcompact.scanRenderability(probeText, { shape: snapcompactShape });
-				if (!renderScan.isSafe) {
-					const percent = (renderScan.unrenderableRatio * 100).toFixed(1);
-					this.emitNotice(
-						"warning",
-						`snapcompact disabled: unsupported characters for selected snapcompact font (${percent}%). No LLM fallback was attempted.`,
-						"compaction",
-					);
-					throw new Error(
-						`snapcompact cannot render this conversation locally: unsupported characters for selected snapcompact font (${percent}%).`,
-					);
-				}
-			}
-
 			let summary: string;
 			let shortSummary: string | undefined;
 			let firstKeptEntryId: string;
 			let tokensBefore: number;
 			let details: unknown;
 			let codexCompaction: CodexCompactionContext | undefined;
-
-			// Snapcompact runs locally first. The frame cap is sized from the live
-			// model window via #computeSnapcompactMaxFrames so the post-render context
-			// fits without the warning loop (issue #3247). Zero-frame budget now fails
-			// the snapcompact request locally rather than falling back to an LLM call.
-			let snapcompactResult: snapcompact.CompactionResult | undefined;
-			if (snapcompactReady) {
-				const maxFrames = this.#computeSnapcompactMaxFrames(preparation, effectiveSettings);
-				if (maxFrames < 1) {
-					logger.warn("Snapcompact skipped: kept history alone exceeds the context budget", {
-						model: this.model?.id,
-					});
-					this.emitNotice(
-						"warning",
-						"snapcompact: kept history alone exceeds the context budget. No LLM fallback was attempted.",
-						"compaction",
-					);
-					throw new Error("snapcompact cannot run locally: kept history alone exceeds the context budget.");
-				} else {
-					const shape = snapcompactShape;
-					if (!shape) {
-						throw new Error("snapcompact shape was not resolved before rendering.");
-					}
-					snapcompactResult = await snapcompact.compact(preparation, {
-						convertToLlm,
-						model: this.model,
-						...(snapcompactShapeSetting === "auto" ? {} : { shape }),
-						maxFrames,
-					});
-					const framePayloadBytes = this.#snapcompactFramePayloadBytes(snapcompactResult);
-					if (framePayloadBytes > snapcompact.FRAME_DATA_BYTES_BUDGET) {
-						logger.warn("Snapcompact exceeded the per-request frame payload budget", {
-							model: this.model?.id,
-							framePayloadBytes,
-							budget: snapcompact.FRAME_DATA_BYTES_BUDGET,
-						});
-						this.emitNotice(
-							"warning",
-							"snapcompact produced too much standing image payload. No LLM fallback was attempted.",
-							"compaction",
-						);
-						throw new Error(
-							"snapcompact cannot run locally: standing image payload exceeds the per-request budget.",
-						);
-					}
-					const ctxWindow = this.model?.contextWindow ?? 0;
-					const budget =
-						ctxWindow > 0
-							? ctxWindow - effectiveReserveTokens(ctxWindow, effectiveSettings)
-							: Number.POSITIVE_INFINITY;
-					if (this.#projectSnapcompactContextTokens(preparation, snapcompactResult) > budget) {
-						logger.warn("Snapcompact still overflows the window after frame-budget sizing", {
-							model: this.model?.id,
-						});
-						this.emitNotice(
-							"warning",
-							"snapcompact could not bring the context under the limit. No LLM fallback was attempted.",
-							"compaction",
-						);
-						throw new Error("snapcompact could not bring the context under the limit locally.");
-					}
-				}
-			}
 
 			if (compactionPrep.kind === "fromHook") {
 				summary = compactionPrep.summary;
@@ -10808,13 +10726,6 @@ export class AgentSession {
 				tokensBefore = compactionPrep.tokensBefore;
 				details = compactionPrep.details;
 				preserveData = compactionPrep.preserveData;
-			} else if (snapcompactResult) {
-				summary = snapcompactResult.summary;
-				shortSummary = snapcompactResult.shortSummary;
-				firstKeptEntryId = snapcompactResult.firstKeptEntryId;
-				tokensBefore = snapcompactResult.tokensBefore;
-				details = snapcompactResult.details;
-				preserveData = { ...(compactionPrep.preserveData ?? {}), ...(snapcompactResult.preserveData ?? {}) };
 			} else {
 				codexCompaction = createCodexCompactionContext({
 					trigger: "manual",
@@ -11238,7 +11149,7 @@ export class AgentSession {
 		// Auto-promote first: switching to a larger-context model avoids compacting
 		// the history at all. The post-turn threshold path already promotes before
 		// compacting; without this, the pre-prompt path would pre-empt promotion and
-		// compact (snapcompact/summary) a session that should have just been promoted.
+		// compact (summary) a session that should have just been promoted.
 		if (await this.#promoteContextModel()) {
 			logger.debug("Pre-prompt context promotion avoided compaction", {
 				contextTokens,
@@ -13227,121 +13138,7 @@ export class AgentSession {
 	}
 
 	/**
-	 * Cap on snapcompact frames the post-compaction context can carry without
-	 * busting the model window. Mirrors the per-frame token charge used by the
-	 * projection ({@link snapcompact.FRAME_TOKEN_ESTIMATE}, the conservative
-	 * high-res Anthropic ceiling), so picking `maxFrames` from this helper makes
-	 * {@link #projectSnapcompactContextTokens} succeed by construction.
-	 *
-	 * Skip vs. cap use different reserves on purpose. The **skip** decision
-	 * (return `0`) trips only when kept-recent plus non-message tokens already
-	 * eat the entire `ctxWindow − reserve` envelope: at that point no archive
-	 * shape — frame-bearing or text-only — can fit, and the caller MUST
-	 * shortcut to the LLM summarizer instead of re-running snapcompact to
-	 * re-emit the "could not bring the context under the limit" warning every
-	 * threshold tick. The **cap** calculation subtracts a shape-aware reserve
-	 * (`2 × geometry(shape).capacity` chars worth of text edges, billed at the
-	 * tiktoken cl100k baseline, plus a 2k summary-template allowance) sized
-	 * from the same `shape` snapcompact will use, so the projection still
-	 * passes once frames land — but it MUST NOT gate the skip decision, since
-	 * a frame-less archive (`text.length <= 2 * edgeCap` short-circuit in
-	 * `planArchive`) typically costs only a few hundred tokens of summary
-	 * lead and would fit under residual headroom far smaller than the cap
-	 * reserve (chatgpt-codex reviews on #3249).
-	 *
-	 * Returns `1` when the frame charge would overflow but the text-only path
-	 * still has room: snapcompact's planner picks the frame-less layout
-	 * automatically when the discarded text fits in the edges, so giving it
-	 * the minimum cap lets it succeed instead of being skipped outright.
-	 *
-	 * Without this cap, the bundled `MAX_FRAMES_DEFAULT = 80` × 5024 tokens =
-	 * ~402k frame-token projection always overflows any sub-1M-token window
-	 * (issue #3247).
-	 */
-	#computeSnapcompactMaxFrames(preparation: CompactionPreparation, settings: CompactionSettings): number {
-		const ctxWindow = this.model?.contextWindow ?? 0;
-		if (ctxWindow <= 0) return Math.min(snapcompact.MAX_FRAMES_DEFAULT, snapcompact.maxFramesForDataBudget());
-		const reserve = effectiveReserveTokens(ctxWindow, settings);
-		let baseTokens = computeNonMessageTokens(this);
-		for (const message of preparation.recentMessages) {
-			baseTokens += estimateTokens(message);
-		}
-		const totalBudget = ctxWindow - reserve;
-		// Skip iff there is no headroom whatsoever; a text-only archive costs
-		// far less than the cap reserve below, so any positive residual is
-		// worth attempting and the projection guard catches actual overflow.
-		if (baseTokens >= totalBudget) return 0;
-		// Cap reserve mirrors what `estimateTokens(summaryMessage)` will charge
-		// when frames > 0: `countTokens(summaryTemplate ‖ textHead ‖ textTail)`
-		// plus `numFrames × FRAME_TOKEN_ESTIMATE`. Resolve the shape this
-		// snapcompact pass will actually use (matches the `shape` argument
-		// passed to `snapcompact.compact` in the auto and manual paths) so the
-		// text-edge cost reflects the live frame geometry rather than a fixed
-		// approximation. Reviewer (chatgpt-codex on #3249): a 4k reserve
-		// undersized the ~7k text-edge cost on the default Anthropic
-		// 11on16-bw shape, so the projection then rejected the `maxFrames`
-		// the cap had picked and the warning loop reappeared.
-		//
-		// - `textHead` and `textTail` each consume up to `geometry.capacity`
-		//   chars when frames > 0 (one HQ-capacity page per edge: see
-		//   `TEXT_EDGE_PAGES = 1` in `planArchive`), so 2 × capacity chars
-		//   total. Per-shape capacity: Anthropic 11on16-bw ~13.9k, Opus
-		//   1932px ~21k, Gemini 8on22-bw 2048px ~23.8k, OpenAI 1568px ~13.9k.
-		// - tiktoken cl100k ≈ 4 chars/token on ASCII (verified empirically
-		//   for prose, code, and JSON); a 1.15 multiplier absorbs tokenizer
-		//   drift on denser content (e.g. dense JSON / tool-result blobs).
-		// - Summary template (intro + FILES section + grid notes) bills
-		//   ~2k tokens for typical sessions.
-		const shape = snapcompact.resolveShape(this.model, this.settings.get("snapcompact.shape"));
-		const edgeCap = snapcompact.geometry(shape).capacity;
-		const textEdgeTokens = Math.ceil((2 * edgeCap * 1.15) / 4);
-		const SUMMARY_TEMPLATE_TOKENS = 2000;
-		const capReserve = textEdgeTokens + SUMMARY_TEMPLATE_TOKENS;
-		const frameBudget = totalBudget - baseTokens - capReserve;
-		if (frameBudget < snapcompact.FRAME_TOKEN_ESTIMATE) return 1;
-		return Math.min(
-			Math.floor(frameBudget / snapcompact.FRAME_TOKEN_ESTIMATE),
-			snapcompact.MAX_FRAMES_DEFAULT,
-			snapcompact.maxFramesForDataBudget(),
-		);
-	}
-
-	#snapcompactFramePayloadBytes(result: snapcompact.CompactionResult): number {
-		const archive = snapcompact.getPreservedArchive(result.preserveData);
-		return archive ? snapcompact.frameDataBytes(archive.frames) : 0;
-	}
-
-	/**
-	 * Project the post-compaction context size of a snapcompact result: kept
-	 * recent messages + the summary message with its re-attached frames + the
-	 * fixed non-message overhead (system prompt + tools). Mirrors how the
-	 * compacted context is rebuilt, so the estimate matches the wire shape, and
-	 * lets the caller decide whether snapcompact brought the context under the
-	 * window or should fall back to an LLM summary.
-	 */
-	#projectSnapcompactContextTokens(preparation: CompactionPreparation, result: snapcompact.CompactionResult): number {
-		const archive = snapcompact.getPreservedArchive(result.preserveData);
-		const blocks = archive
-			? snapcompact.historyBlocks(archive, { maxFrameDataBytes: snapcompact.FRAME_DATA_BYTES_BUDGET })
-			: undefined;
-		const summaryMessage = createCompactionSummaryMessage(
-			result.summary,
-			result.tokensBefore,
-			new Date().toISOString(),
-			result.shortSummary,
-			undefined,
-			undefined,
-			blocks,
-		);
-		let tokens = computeNonMessageTokens(this) + estimateTokens(summaryMessage);
-		for (const message of preparation.recentMessages) {
-			tokens += estimateTokens(message);
-		}
-		return tokens;
-	}
-
-	/**
-	 * Post-maintenance progress check for the context-full / snapcompact tail.
+	 * Post-maintenance progress check for the context-full tail.
 	 *
 	 * After `appendCompaction` rewrote history and `replaceMessages` swapped in the
 	 * compacted context, measure the residual context off the live message set and
@@ -13553,9 +13350,8 @@ export class AgentSession {
 		const shouldAutoContinue =
 			!suppressContinuation && options.autoContinue !== false && compactionSettings.autoContinue !== false;
 		const suppressHandoff = options.suppressHandoff === true;
-		let fallbackFromShake = false;
-		// Tier-0 lossless pass, ahead of every strategy. Before an LLM compaction,
-		// snapcompact, or shake ever touches history under pressure, drop
+		// Tier-0 lossless pass, ahead of every strategy. Before an LLM compaction
+		// ever touches history under pressure, drop
 		// tool-results that are byte-identical to a newer copy (a re-read of an
 		// unchanged file, a re-run of the same command). This is recall-preserving
 		// (the newest copy stays live; elided copies recover via the offload
@@ -13575,21 +13371,6 @@ export class AgentSession {
 					return COMPACTION_CHECK_NONE;
 				}
 			}
-		}
-		// Shake runs inline (cheap, no remote LLM). On overflow recovery, if shake
-		// reclaims nothing we fall through to the summary-compaction body below so
-		// the oversized input still gets resolved.
-		if ((compactionSettings.strategy as string) === "shake") {
-			const outcome = await this.#runAutoShake(
-				reason,
-				willRetry,
-				generation,
-				shouldAutoContinue,
-				options.triggerContextTokens,
-				suppressContinuation,
-			);
-			if (outcome !== "fallback") return outcome;
-			fallbackFromShake = true;
 		}
 		// "overflow" and "incomplete" force inline execution because they are recovery
 		// paths the caller wants resolved before scheduling the next turn. "idle" is
@@ -13617,18 +13398,11 @@ export class AgentSession {
 		// "overflow" forces context-full because the input itself is broken — a handoff
 		// LLM call would hit the same overflow. "incomplete" is an output-side problem,
 		// so a handoff request on the existing context is still viable.
-		let action: "context-full" | "handoff" | "snapcompact" = resolveCompactionEngineAction(
-			compactionSettings.strategy,
-			{ reason, suppressHandoff },
-		);
-		if (action === "snapcompact" && this.model && !this.model.input.includes("image")) {
-			this.emitNotice(
-				"warning",
-				`snapcompact needs a vision-capable active model (${this.model.id} is text-only); using context-full auto-compaction instead.`,
-				"compaction",
-			);
-			action = "context-full";
-		}
+		// Mutable: handoff can fail open into context-full maintenance below.
+		let action: "context-full" | "handoff" = resolveCompactionEngineAction(compactionSettings.strategy, {
+			reason,
+			suppressHandoff,
+		});
 		// Abort any older auto-compaction before installing this run's controller.
 		this.#autoCompactionAbortController?.abort();
 		const autoCompactionAbortController = new AbortController();
@@ -13792,89 +13566,6 @@ export class AgentSession {
 			let tokensBefore: number;
 			let details: unknown;
 
-			// Snapcompact runs locally first. The post-compaction context = kept-recent
-			// + a summary message carrying the imaged archive at FRAME_TOKEN_ESTIMATE
-			// per frame; #computeSnapcompactMaxFrames sizes the frame cap from the
-			// live window so we don't run snapcompact just to overflow every threshold
-			// tick. Any local blocker (unsupported snapcompact glyphs, kept-history too large,
-			// post-render overflow) downgrades auto maintenance to a context-full LLM
-			// summary instead of wedging the session (#3659) — auto runs the default
-			// strategy on the user's behalf, so a fallback that lets the session keep
-			// running is the right behavior. Manual `/compact snapcompact` keeps the
-			// local-only contract (#3599): the user explicitly picked it.
-			let snapcompactResult: snapcompact.CompactionResult | undefined;
-			let snapcompactBlocker: string | undefined;
-			if (action === "snapcompact" && compactionPrep.kind !== "fromHook") {
-				const text = snapcompact.serializeConversation(
-					convertToLlm(preparation.messagesToSummarize.concat(preparation.turnPrefixMessages)),
-				);
-				const probeText = snapcompact.renderabilityProbeText(
-					text,
-					preparation.previousPreserveData,
-					preparation.previousSummary,
-				);
-				const shapeSetting = this.settings.get("snapcompact.shape");
-				const shape = snapcompact.resolveShapeForText(probeText, this.model, shapeSetting);
-				const renderScan = snapcompact.scanRenderability(probeText, { shape });
-				if (!renderScan.isSafe) {
-					const percent = (renderScan.unrenderableRatio * 100).toFixed(1);
-					logger.warn("Snapcompact disabled: unsupported characters for selected snapcompact font", {
-						model: this.model?.id,
-						unrenderableRatio: renderScan.unrenderableRatio,
-					});
-					snapcompactBlocker = `snapcompact disabled: unsupported characters for selected snapcompact font (${percent}%); using context-full auto-compaction instead.`;
-				} else {
-					const maxFrames = this.#computeSnapcompactMaxFrames(preparation, compactionSettings);
-					if (maxFrames < 1) {
-						logger.warn("Snapcompact skipped: kept history alone exceeds the context budget", {
-							model: this.model?.id,
-						});
-						snapcompactBlocker =
-							"snapcompact: kept history alone exceeds the context budget; using context-full auto-compaction instead.";
-					} else {
-						snapcompactResult = await snapcompact.compact(preparation, {
-							convertToLlm,
-							model: this.model,
-							...(shapeSetting === "auto" ? {} : { shape }),
-							maxFrames,
-						});
-						const framePayloadBytes = this.#snapcompactFramePayloadBytes(snapcompactResult);
-						if (framePayloadBytes > snapcompact.FRAME_DATA_BYTES_BUDGET) {
-							logger.warn("Snapcompact exceeded the per-request frame payload budget", {
-								model: this.model?.id,
-								framePayloadBytes,
-								budget: snapcompact.FRAME_DATA_BYTES_BUDGET,
-							});
-							snapcompactBlocker =
-								"snapcompact produced too much standing image payload; using context-full auto-compaction instead.";
-							snapcompactResult = undefined;
-						}
-						if (snapcompactResult) {
-							const ctxWindow = this.model?.contextWindow ?? 0;
-							const budget =
-								ctxWindow > 0
-									? ctxWindow - effectiveReserveTokens(ctxWindow, compactionSettings)
-									: Number.POSITIVE_INFINITY;
-							const projected = this.#projectSnapcompactContextTokens(preparation, snapcompactResult);
-							if (projected > budget) {
-								logger.warn("Snapcompact still overflows the window after frame-budget sizing", {
-									model: this.model?.id,
-									projected,
-									budget,
-								});
-								snapcompactBlocker =
-									"snapcompact could not bring the context under the limit; using context-full auto-compaction instead.";
-								snapcompactResult = undefined;
-							}
-						}
-					}
-				}
-				if (snapcompactBlocker) {
-					this.emitNotice("warning", snapcompactBlocker, "compaction");
-					action = "context-full";
-				}
-			}
-
 			if (compactionPrep.kind === "fromHook") {
 				summary = compactionPrep.summary;
 				shortSummary = compactionPrep.shortSummary;
@@ -13882,13 +13573,6 @@ export class AgentSession {
 				tokensBefore = compactionPrep.tokensBefore;
 				details = compactionPrep.details;
 				preserveData = compactionPrep.preserveData;
-			} else if (snapcompactResult) {
-				summary = snapcompactResult.summary;
-				shortSummary = snapcompactResult.shortSummary;
-				firstKeptEntryId = snapcompactResult.firstKeptEntryId;
-				tokensBefore = snapcompactResult.tokensBefore;
-				details = snapcompactResult.details;
-				preserveData = { ...(compactionPrep.preserveData ?? {}), ...(snapcompactResult.preserveData ?? {}) };
 			} else {
 				const candidates = this.#getCompactionModelCandidates(availableModels);
 				// Per-candidate effort configured on `compaction.model` (its `:level`
@@ -14089,8 +13773,8 @@ export class AgentSession {
 			// Post-maintenance progress guard — evaluated BEFORE emitting
 			// auto_compaction_end so the TUI rebuild triggered by that event
 			// already reflects any rescue rewrite (elide / image-drop) and the
-			// dead-end warning stamped on the compaction entry. Snapcompact can
-			// project over budget and fall back to a context-full summary; the
+			// dead-end warning stamped on the compaction entry. The summary
+			// strategy can project over budget and fall back to a context-full summary; the
 			// summarizer keeps `keepRecentTokens` of recent history verbatim and
 			// findCutPoint can only cut at turn boundaries (never tool results),
 			// so a single oversized recent turn (e.g. a huge tool result) leaves
@@ -14135,7 +13819,7 @@ export class AgentSession {
 				retryFits = this.#compactionCreatedRetryFit();
 				if (!retryFits) {
 					retryFits = await this.#rescueCompactionDeadEnd(autoCompactionSignal, {
-						skipElide: fallbackFromShake,
+						skipElide: false,
 						hasProgress: () => this.#compactionCreatedRetryFit(),
 					});
 				}
@@ -14146,14 +13830,14 @@ export class AgentSession {
 				// Mirror the shake recovery-band check: only auto-continue when compaction
 				// landed residual context under `COMPACTION_RECOVERY_BAND × threshold`.
 				// Re-firing on a history that still sits just over the line is the
-				// snapcompact thrash, so require genuine headroom, not a bare fit. Even
+				// compaction thrash, so require genuine headroom, not a bare fit. Even
 				// when auto-continue is disabled, a no-headroom threshold pass must still
 				// block later automatic continuations (todo reminders/session_stop hooks)
 				// from re-entering the same oversized context.
 				hasHeadroom = this.#compactionCreatedHeadroom();
 				if (!hasHeadroom) {
 					hasHeadroom = await this.#rescueCompactionDeadEnd(autoCompactionSignal, {
-						skipElide: fallbackFromShake,
+						skipElide: false,
 						hasProgress: () => this.#compactionCreatedHeadroom(),
 					});
 				}
@@ -14228,171 +13912,6 @@ export class AgentSession {
 			}
 		}
 		return COMPACTION_CHECK_NONE;
-	}
-
-	/**
-	 * Run a shake-strategy auto-maintenance pass. Emits the
-	 * `auto_compaction_start`/`auto_compaction_end` pair with a shake `action`,
-	 * runs {@link shake} inline against the protect-window config, and schedules
-	 * continuation exactly like the context-full tail.
-	 *
-	 * Returns `"fallback"` only for an overflow recovery where shake reclaimed
-	 * nothing (or threw) — the caller then runs the summary-compaction body so
-	 * the oversized input still gets resolved. Returns `"handled"` otherwise.
-	 */
-	async #runAutoShake(
-		reason: "overflow" | "threshold" | "idle" | "incomplete",
-		willRetry: boolean,
-		generation: number,
-		autoContinue: boolean,
-		triggerContextTokens?: number,
-		suppressContinuation = false,
-	): Promise<CompactionCheckResult | "fallback"> {
-		const action = "shake";
-		this.#autoCompactionAbortController?.abort();
-		const controller = new AbortController();
-		this.#autoCompactionAbortController = controller;
-		const signal = controller.signal;
-		try {
-			await this.#emitSessionEvent({ type: "auto_compaction_start", reason, action });
-			const result = await this.shake("elide", { config: DEFAULT_SHAKE_CONFIG, signal });
-			if (signal.aborted) {
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: true,
-					willRetry: false,
-				});
-				return COMPACTION_CHECK_NONE;
-			}
-			const reclaimed = result.toolResultsDropped + result.blocksDropped > 0;
-			// Detect the dead-loop reported in issues #2119/#2275: the threshold check
-			// fires, shake runs, but residual context is still above the configured
-			// threshold. The next agent_end would re-trigger shake, which has nothing
-			// new to drop on the second pass, so the loop spins until the user kills it.
-			// Same hazard for "incomplete" (the retry would re-hit the length cap) and
-			// for the existing "overflow + nothing reclaimed" case. In every recovery
-			// reason we hand off to the summarization-driven context-full path so the
-			// situation actually resolves; "idle" is exempt because its 60s+ timer
-			// re-checks usage before re-firing and cannot dead-loop on its own.
-			//
-			// #2275: the post-shake check MUST stay provider-anchored when caller
-			// usage and local estimates diverge. The local estimator undercounts
-			// thinking-signature payloads, so thinking-heavy sessions can read well
-			// below the provider usage that fired the threshold. Prefer the caller's
-			// context figure when supplied, then subtract shake's own savings and add
-			// hysteresis (80% recovery band) so we don't oscillate at the boundary.
-			// Threshold callers pass the provider-billed trigger after accounting for
-			// any supersede/drop-useless pruning that already rewrote the next prompt;
-			// without that pre-shake savings, shake can fall through to context-full
-			// even though the post-prune history is already inside the recovery band.
-			const contextWindow = this.model?.contextWindow ?? 0;
-			const compactionSettings = this.settings.getGroup("compaction");
-			let stillOverThreshold = false;
-			if (contextWindow > 0) {
-				if (typeof triggerContextTokens === "number" && Number.isFinite(triggerContextTokens)) {
-					const correctedTokens = Math.max(0, triggerContextTokens - result.tokensFreed);
-					const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
-					const recoveryBand = Math.floor(thresholdTokens * COMPACTION_RECOVERY_BAND);
-					stillOverThreshold = correctedTokens > recoveryBand;
-				} else {
-					const postShakeTokens = this.getContextUsage({ contextWindow })?.tokens ?? 0;
-					stillOverThreshold = shouldCompact(postShakeTokens, contextWindow, compactionSettings);
-				}
-			}
-			const shouldFallBack = reason !== "idle" && ((reason === "overflow" && !reclaimed) || stillOverThreshold);
-			if (shouldFallBack) {
-				const errorMessage = reclaimed
-					? `Auto-shake reclaimed ~${result.tokensFreed} tokens but context is still above the threshold; falling back to context-full compaction.`
-					: "Auto-shake found nothing eligible to drop; falling back to context-full compaction.";
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: false,
-					willRetry: false,
-					skipped: !reclaimed,
-					errorMessage,
-				});
-				return "fallback";
-			}
-			await this.#emitSessionEvent({
-				type: "auto_compaction_end",
-				action,
-				result: undefined,
-				aborted: false,
-				willRetry,
-				skipped: !reclaimed,
-			});
-
-			let continuationScheduled = false;
-			if (!willRetry && reason !== "idle" && autoContinue) {
-				this.#scheduleAutoContinuePrompt(generation);
-				continuationScheduled = true;
-			}
-			if (willRetry) {
-				// The shake rebuild replays every entry, so a trailing error/length
-				// assistant from the failed turn re-enters agent state — drop it before
-				// retrying, same as the context-full tail.
-				const messages = this.agent.state.messages;
-				const lastMsg = messages[messages.length - 1];
-				if (lastMsg?.role === "assistant") {
-					const lastAssistant = lastMsg as AssistantMessage;
-					const shouldDrop =
-						lastAssistant.stopReason === "error" ||
-						(reason === "incomplete" && lastAssistant.stopReason === "length");
-					if (shouldDrop) this.agent.replaceMessages(messages.slice(0, -1));
-				}
-				this.#scheduleAgentContinue({ delayMs: 100, generation });
-				continuationScheduled = true;
-			} else if (!suppressContinuation && this.agent.hasQueuedMessages()) {
-				this.#scheduleAgentContinue({
-					delayMs: 100,
-					generation,
-					shouldContinue: () => this.agent.hasQueuedMessages(),
-				});
-				continuationScheduled = true;
-			}
-			if (!reclaimed) {
-				return willRetry && continuationScheduled
-					? { ...COMPACTION_CHECK_CONTINUATION, historyRewritten: true }
-					: continuationScheduled
-						? COMPACTION_CHECK_CONTINUATION
-						: COMPACTION_CHECK_NONE;
-			}
-			return {
-				...(continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_NONE),
-				historyRewritten: true,
-			};
-		} catch (error) {
-			if (signal.aborted) {
-				await this.#emitSessionEvent({
-					type: "auto_compaction_end",
-					action,
-					result: undefined,
-					aborted: true,
-					willRetry: false,
-				});
-				return COMPACTION_CHECK_NONE;
-			}
-			const message = error instanceof Error ? error.message : "shake failed";
-			await this.#emitSessionEvent({
-				type: "auto_compaction_end",
-				action,
-				result: undefined,
-				aborted: false,
-				willRetry: false,
-				errorMessage: message,
-				skipped: false,
-			});
-			// Overflow still needs recovery even if shake threw.
-			return reason === "overflow" ? "fallback" : COMPACTION_CHECK_NONE;
-		} finally {
-			if (this.#autoCompactionAbortController === controller) {
-				this.#autoCompactionAbortController = undefined;
-			}
-		}
 	}
 
 	/**
@@ -14519,6 +14038,22 @@ export class AgentSession {
 			}
 		}
 		return chains;
+	}
+
+	/**
+	 * Surface a hand-edited `tools.approvalMode` typo loudly. An unrecognized
+	 * value fails closed to `ask` (see `normalizeApprovalMode`); without this
+	 * warning that downgrade would be invisible, and a user who typo'd an intended
+	 * safety mode could mistake the prompts for a bug. Only fires when the value is
+	 * actually configured and invalid — a fresh install (no value) says nothing.
+	 */
+	#validateApprovalModeSetting(): void {
+		if (!this.settings.isConfigured("tools.approvalMode")) return;
+		const warning = validateApprovalModeSetting(this.settings.get("tools.approvalMode"));
+		if (warning) {
+			logger.warn(warning);
+			this.configWarnings.push(warning);
+		}
 	}
 
 	#validateRetryFallbackChains(): void {
@@ -16080,7 +15615,7 @@ export class AgentSession {
 		// Only same-session reloads compare against the prior context to detect
 		// rollback edits (`#didSessionMessagesChange` below). Building it for a
 		// different-session switch is a pure waste — and on huge pre-fix sessions
-		// it materializes every persisted snapcompact frame plus the
+		// it materializes every persisted legacy compaction frame plus the
 		// `openaiRemoteCompaction.replacementHistory` payload into messages,
 		// blowing the heap before the new session even loads (issue #3846). The
 		// error-recovery path rebuilds the context on demand from the restored

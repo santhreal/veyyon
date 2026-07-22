@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, vi } from "bun:test";
 import type {
 	ExtensionActions,
 	ExtensionCommandContextActions,
@@ -38,6 +38,12 @@ describe("issue #1020 - ctx.shutdown() in interactive mode", () => {
 				// other session fields are only touched lazily by other actions; we
 				// only invoke `shutdown`, so leave them out.
 			},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 
 		const controller = new ExtensionUiController(ctxStub);
@@ -82,6 +88,12 @@ describe("issue #1020 - ctx.shutdown() in interactive mode", () => {
 			setEditorComponent: () => {},
 			toolOutputExpanded: false,
 			setToolsExpanded: () => {},
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 
 		const controller = new ExtensionUiController(ctxStub);

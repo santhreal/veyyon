@@ -31,7 +31,7 @@ import type {
 	SearchSource,
 } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { dateToAgeSeconds } from "../utils";
+import { dateToAgeSeconds, sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { type ApiConfig, getAvailableAuthMethods } from "./perplexity-auth";
@@ -756,8 +756,9 @@ function parseStreamedApiResponse(message: AssistantMessage, metadata: Perplexit
 }
 
 function applySourceLimit(result: SearchResponse, limit?: number): SearchResponse {
-	if (limit && result.sources.length > limit) {
-		result.sources = result.sources.slice(0, limit);
+	const cap = sanitizeResultLimit(limit);
+	if (cap !== undefined && result.sources.length > cap) {
+		result.sources = result.sources.slice(0, cap);
 	}
 	return result;
 }

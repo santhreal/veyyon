@@ -178,3 +178,57 @@ describe("ast_grep parse errors", () => {
 		}
 	});
 });
+
+// WHY THIS SUITE EXISTS (BACKLOG DOG-3)
+// -------------------------------------
+// A bare "No matches found" hid the most common cause of a surprising zero:
+// ast_grep selects files by language, so a language/path mismatch searches ZERO
+// files and still reports "no matches" — a silent recall hole (Law 10). The empty
+// result now states how many files were searched, and a zero-file search reads as a
+// scoping problem, not proven absence. These tests lock the diagnostic in.
+describe("ast_grep zero-match diagnostics", () => {
+	it("says NO FILES were searched when the path has nothing to search", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-empty-"));
+		try {
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "ast_grep");
+			expect(tool).toBeDefined();
+
+			const result = await tool!.execute("ast-grep-empty", { pat: "someCall($A)", path: tempDir });
+			const text = result.content.find(content => content.type === "text")?.text ?? "";
+			const details = result.details as { matchCount?: number; filesSearched?: number } | undefined;
+
+			expect(details?.matchCount).toBe(0);
+			expect(details?.filesSearched).toBe(0);
+			expect(text).toContain("NO FILES were searched");
+			expect(text).toContain("selects files by language");
+			// It must NOT read as proven absence.
+			expect(text).not.toBe("No matches found");
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("reports the searched-file count when files were searched but nothing matched", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-nomatch-"));
+		try {
+			await Bun.write(path.join(tempDir, "code.ts"), "export const x = 1;\nexport function y() { return 2; }\n");
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "ast_grep");
+			expect(tool).toBeDefined();
+
+			const result = await tool!.execute("ast-grep-nomatch", { pat: "thisCallDoesNotExist($A)", path: tempDir });
+			const text = result.content.find(content => content.type === "text")?.text ?? "";
+			const details = result.details as { matchCount?: number; filesSearched?: number } | undefined;
+
+			expect(details?.matchCount).toBe(0);
+			expect(details?.filesSearched ?? 0).toBeGreaterThan(0);
+			expect(text).toContain("searched");
+			expect(text).toContain("file");
+			expect(text).not.toContain("NO FILES were searched");
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+});

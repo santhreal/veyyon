@@ -1,10 +1,16 @@
 /**
- * Tests for the vendored argot codec and its veyyon wire glue: the session
- * lifecycle as veyyon drives it (armed from a parsed vocabulary, the same way
- * the generated cache arms a session), and expansion at the tool-argument and
+ * Tests for the argot codec (the `argot` package) and its veyyon wire glue: the
+ * session lifecycle as veyyon drives it (loaded from a parsed vocabulary, the same
+ * way loadArgotFolder arms a session), expansion at the tool-argument and
  * assistant-content seams (the same seams the secret codec uses for
- * deobfuscation). The generated-cache arming path itself lives in
- * argot-cache.test.ts.
+ * deobfuscation), and the independent argotPreamble/argotHandles system-prompt
+ * injection. The generated-cache load path itself lives in argot-cache.test.ts.
+ *
+ * These certify the codec MECHANISM is lossless and total at every boundary. They
+ * are necessary but not sufficient for "argot works": whether a real model adopts
+ * handles and nets a token saving is an economic truth only the live bench can
+ * certify (see BACKLOG task 9). Green here means "when adoption happens, savings
+ * are real and safe", not "adoption happens".
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -13,11 +19,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
-import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict } from "@veyyon/coding-agent/argot/index";
+import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
 import { expandAssistantContent, expandSessionContext, expandToolArguments } from "@veyyon/coding-agent/argot-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
+import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
+import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict, renderPreamble } from "argot";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { makeToolSession } from "./helpers/tool-session";
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -257,7 +266,9 @@ describe("expandSessionContext", () => {
 const HANDLE_TABLE =
 	"## Project shorthand (Argot)\n\nUse handles.\n\n- `§dbconn` → `postgres://prod-primary.internal:5432/orders`\n";
 
-describe("argot handle-table injection into the system prompt", () => {
+const NOTATION_PREAMBLE = renderPreamble({ tools: true });
+
+describe("argot preamble and handle-table injection into the system prompt", () => {
 	let tempDir = "";
 	let tempHomeDir = "";
 	let originalHome: string | undefined;
@@ -280,30 +291,87 @@ describe("argot handle-table injection into the system prompt", () => {
 		workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
 	});
 
-	it("injects the handle table when the encode gate lets this turn teach shorthand", async () => {
+	it("injects the handle table when argotHandles is passed", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			...baseOptions(),
-			injectArgotPreamble: true,
+			argotPreamble: NOTATION_PREAMBLE,
 			argotHandles: HANDLE_TABLE,
 		});
 		expect(systemPrompt).toContain(HANDLE_TABLE);
+		expect(systemPrompt).toContain(NOTATION_PREAMBLE);
 	});
 
-	it("omits the handle table when the encode gate is closed", async () => {
+	it("injects handles independently of the preamble (handles without preamble)", async () => {
+		// The two params are independent: a handle table alone still appears, and
+		// no notation/tool preamble is invented from thin air.
 		const { systemPrompt } = await buildSystemPrompt({
 			...baseOptions(),
-			injectArgotPreamble: false,
+			argotPreamble: undefined,
 			argotHandles: HANDLE_TABLE,
 		});
-		expect(systemPrompt.join("\n\n")).not.toContain(HANDLE_TABLE);
+		// Handles alone still appear — they are independent of the preamble flag.
+		expect(systemPrompt).toContain(HANDLE_TABLE);
+		expect(systemPrompt.join("\n\n")).not.toContain("argot_load(folder_path)");
 	});
 
-	it("omits the block when the gate is open but there are no handles", async () => {
+	it("injects the preamble WITHOUT handles when only argotPreamble is passed (unarmed-but-can-encode)", async () => {
+		// The unarmed state: the model is taught the notation and told to call
+		// argot_load, but no project handle table is present yet. (The preamble itself
+		// may mention `§dbconn` as a notation example — that is not a taught handle.)
 		const { systemPrompt } = await buildSystemPrompt({
 			...baseOptions(),
-			injectArgotPreamble: true,
+			argotPreamble: NOTATION_PREAMBLE,
 			argotHandles: undefined,
 		});
-		expect(systemPrompt.join("\n\n")).not.toContain("Project shorthand (Argot)");
+		const joined = systemPrompt.join("\n\n");
+		expect(systemPrompt).toContain(NOTATION_PREAMBLE);
+		expect(joined).toContain("argot_load(folder_path)");
+		expect(systemPrompt).not.toContain(HANDLE_TABLE);
+		expect(joined).not.toContain("postgres://prod-primary.internal:5432/orders");
+	});
+
+	it("injects neither preamble nor handles when both are undefined", async () => {
+		const { systemPrompt } = await buildSystemPrompt({
+			...baseOptions(),
+			argotPreamble: undefined,
+			argotHandles: undefined,
+		});
+		const joined = systemPrompt.join("\n\n");
+		expect(joined).not.toContain("Project shorthand (Argot)");
+		expect(joined).not.toContain("argot_load(folder_path)");
+		expect(joined).not.toContain(HANDLE_TABLE);
+	});
+});
+
+describe("createArgotSession starts unarmed (agent-driven loading)", () => {
+	it("returns an unarmed top-level session whose expand is identity until a load", () => {
+		// Loading is agent-driven: createArgotSession never arms from cwd. An
+		// unarmed session is fully correct — expansion is identity, so nothing
+		// decodes wrong and nothing leaks.
+		const session = createArgotSession({
+			enabled: true,
+			isSubagent: false,
+			subagentMode: "off",
+		});
+		expect(session).toBeDefined();
+		expect(session!.loaded).toBe(false);
+		expect(session!.expand("open §dbconn now")).toBe("open §dbconn now");
+	});
+});
+
+describe("ArgotLoadTool / ArgotUnloadTool approval tiers", () => {
+	it("marks load as write-tier with the requested folder in approval details, unload as read", () => {
+		const session = makeToolSession({
+			cwd: "/tmp/argot-approval",
+			getArgotSession: () => new ArgotSession(),
+			settings: { get: () => undefined },
+		});
+		const load = new ArgotLoadTool(session);
+		const unload = new ArgotUnloadTool(session);
+		expect(load.approval).toBe("write");
+		expect(unload.approval).toBe("read");
+		expect(load.formatApprovalDetails({ folder_path: "/repo/crate" })).toEqual(["Folder: /repo/crate"]);
+		expect(load.formatApprovalDetails({ folder_path: "  " })).toEqual(["Folder: (missing)"]);
+		expect(load.formatApprovalDetails({})).toEqual(["Folder: (missing)"]);
 	});
 });

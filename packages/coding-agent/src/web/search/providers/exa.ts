@@ -13,13 +13,18 @@ import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const EXA_API_URL = "https://api.exa.ai/search";
 const DEFAULT_EXA_SEARCH_DELAY_MS = getDefault("exa.searchDelayMs");
+// Result-count bounds, matching the house convention every other list provider
+// follows (clampNumResults with a per-provider DEFAULT/MAX). The Exa `/search`
+// API accepts up to 100 results, the same ceiling firecrawl uses.
+const DEFAULT_NUM_RESULTS = 10;
+const MAX_NUM_RESULTS = 100;
 
 let nextExaSearchRequestAt = 0;
 let exaSearchThrottle = Promise.resolve();
@@ -267,7 +272,7 @@ export function synthesizeAnswer(results: ExaSearchResult[]): string | undefined
 export function buildExaRequestBody(params: ExaSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		query: params.query,
-		numResults: params.num_results ?? 10,
+		numResults: params.num_results ?? DEFAULT_NUM_RESULTS,
 		type: normalizeSearchType(params.type),
 		contents: {
 			summary: { query: params.query },
@@ -397,9 +402,15 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		storedKey && params.authStorage
 			? params.authStorage.resolver("exa", { sessionId: params.sessionId })
 			: getEnvApiKey("exa");
+	// Clamp once at the shared entry so BOTH call paths (the REST `numResults`
+	// and the MCP `num_results`) and the post-fetch slice below are bounded to
+	// the same cap, regardless of whether the caller reached searchExa directly
+	// or through ExaProvider.search. This mirrors the zai/brave/tavily pattern.
+	const resultCap = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const cappedParams: ExaSearchParams = { ...params, num_results: resultCap };
 	const response = keyOrResolver
-		? await withAuth(keyOrResolver, key => callExaSearch(key, params), { signal: params.signal })
-		: await callExaMcpSearch(params);
+		? await withAuth(keyOrResolver, key => callExaSearch(key, cappedParams), { signal: params.signal })
+		: await callExaMcpSearch(cappedParams);
 
 	// Convert to unified SearchResponse
 	const sources: SearchSource[] = [];
@@ -418,8 +429,8 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		}
 	}
 
-	// Apply num_results limit if specified
-	const limitedSources = params.num_results ? sources.slice(0, params.num_results) : sources;
+	// Bound the returned sources to the same clamped cap used for the request.
+	const limitedSources = sources.length > resultCap ? sources.slice(0, resultCap) : sources;
 
 	// Synthesize answer only from results that have a URL (same guard as sources loop)
 	const answer = response.results ? synthesizeAnswer(response.results.filter(r => !!r.url)) : undefined;

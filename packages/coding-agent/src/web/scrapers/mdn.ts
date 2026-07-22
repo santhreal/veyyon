@@ -1,4 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
+import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { SpecialHandler } from "./types";
 import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -82,20 +83,7 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 
 			case "table":
 				if (value.rows && value.rows.length > 0) {
-					// Simple markdown table
-					const header = (await Promise.all(value.rows[0].map(cell => htmlToBasicMarkdown(cell)))).join(" | ");
-					const separator = value.rows[0].map(() => "---").join(" | ");
-					const bodyRows = await Promise.all(
-						value.rows
-							.slice(1)
-							.map(async row => (await Promise.all(row.map(cell => htmlToBasicMarkdown(cell)))).join(" | ")),
-					);
-
-					parts.push(`| ${header} |`);
-					parts.push(`| ${separator} |`);
-					for (const row of bodyRows) {
-						parts.push(`| ${row} |`);
-					}
+					parts.push(...(await buildMarkdownTableFromHtmlRows(value.rows)));
 				}
 				break;
 
@@ -106,6 +94,25 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	}
 
 	return parts.join("\n\n");
+}
+
+/**
+ * Convert a table's rows (each cell a fragment of HTML) into the lines of a
+ * GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown and
+ * then routed through the canonical escapeMarkdownTableCell, so a `|` (common in
+ * MDN code samples like `a | b`) or a newline (a multi-paragraph cell) cannot
+ * break out of its cell and shift every later column. The first row is the
+ * header. Returns the header line, the `---` separator, and one line per body
+ * row, ready to push into the section list.
+ */
+export async function buildMarkdownTableFromHtmlRows(rows: string[][]): Promise<string[]> {
+	const renderRow = async (row: string[]): Promise<string> =>
+		(await Promise.all(row.map(async cell => escapeMarkdownTableCell(await htmlToBasicMarkdown(cell))))).join(" | ");
+	const headerCells = rows[0] ?? [];
+	const header = await renderRow(headerCells);
+	const separator = headerCells.map(() => "---").join(" | ");
+	const body = await Promise.all(rows.slice(1).map(renderRow));
+	return [`| ${header} |`, `| ${separator} |`, ...body.map(row => `| ${row} |`)];
 }
 
 export const handleMDN: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {

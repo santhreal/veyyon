@@ -77,6 +77,13 @@ function createContext(options: { terminalProgress?: boolean } = {}) {
 		showStatus: vi.fn(),
 		showWarning: vi.fn(),
 		showError: vi.fn(),
+		// Required members of the context. They used to be omitted, and the
+		// controller called them as `?.()` to tolerate exactly this stub, which meant
+		// production silently skipped the composer refresh and the welcome dismissal
+		// whenever either member was missing. The calls are unconditional now, so the
+		// stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 		editor: { getText: () => "" },
 		sessionManager: { getSessionName: () => "test-session" },
 		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn(), terminal: { setProgress } },

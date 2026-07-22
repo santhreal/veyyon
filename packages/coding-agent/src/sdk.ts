@@ -60,14 +60,16 @@ import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import "./discovery";
-import { type ArgotGate, ArgotSession, shouldEncode } from "./argot";
-import { armArgotFromCache } from "./argot-cache";
+import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
+import { createArgotSession, collectArgotLoadedRoots, rearmArgotForDecode } from "./argot-cache";
 import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { initializeWithSettings } from "./discovery";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
+import { disposeAllVmContexts, disposeVmContextsByOwner } from "./eval/js/context-manager";
 import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
 import { disposeAllRubyKernelSessions, disposeRubyKernelSessionsByOwner } from "./eval/rb/executor";
 import { defaultEvalSessionId } from "./eval/session-id";
+import { getExaMcpTools } from "./exa/tools";
 import {
 	type CustomCommandsLoadResult,
 	type LoadedCustomCommand,
@@ -142,8 +144,6 @@ import { clampProviderContextImages } from "./session/provider-image-budget";
 import { getRestorableSessionModels } from "./session/session-context";
 import { SessionManager } from "./session/session-manager";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
-import { SnapcompactInlineTransformer } from "./session/snapcompact-inline";
-import { createSnapcompactSavingsRecorder } from "./session/snapcompact-savings-journal";
 import { closeAllConnections } from "./ssh/connection-manager";
 import { unmountAll } from "./ssh/sshfs-mount";
 import {
@@ -523,6 +523,13 @@ export interface CreateAgentSessionOptions {
 	taskDepth?: number;
 	/** Parent Hindsight state to alias for subagent memory tools. */
 	parentHindsightSessionState?: HindsightSessionState;
+	/**
+	 * Parent session's Argot codec, forked into this subagent when
+	 * `argot.subagents` is `inherit`. Absent for a top-level session or when the
+	 * parent has Argot off; `createArgotSession` then arms fresh (never silently
+	 * empty). Correctness never depends on this: it is a token optimization.
+	 */
+	parentArgot?: ArgotSession;
 	/** Parent Mnemopi state to alias for subagent memory tools. */
 	parentMnemopiSessionState?: MnemopiSessionState;
 	/** Pre-allocated agent identity for IRC routing. Default: "Main" for top-level, parentTaskPrefix-derived for sub. */
@@ -918,6 +925,9 @@ function registerEvalCleanup(): void {
 	postmortem.register("python-cleanup", disposeAllKernelSessions);
 	postmortem.register("ruby-cleanup", disposeAllRubyKernelSessions);
 	postmortem.register("julia-cleanup", disposeAllJuliaKernelSessions);
+	// JS eval worker/subprocess: reap on hard process exit too, the same as the
+	// kernels above, so it cannot outlive the process (GRAN-11).
+	postmortem.register("js-eval-cleanup", disposeAllVmContexts);
 }
 
 function customToolToDefinition(tool: CustomTool): ToolDefinition {
@@ -1282,19 +1292,30 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	}
 	const secretsEnabled = obfuscator?.hasSecrets() === true;
 
-	// Argot per-project shorthand codec (experimental). The dictionary is a local
-	// cache, generated from the repository under the config root and armed at
-	// session start (armArgotFromCache); the handles are taught to the model
-	// through the system prompt (see promptFragment below), not by reading a
-	// committed file. Expansion runs at the same two seams as secret
+	// Argot per-project shorthand codec (experimental). Loading is agent-driven:
+	// the session starts unarmed and the model loads the project it intends to
+	// work in through the argot_load tool (the canonical flow in argot's SPEC —
+	// auto-arming from the launch directory picks the wrong project in a
+	// monorepo). The dictionary lives in a local cache under the config root,
+	// never committed. The notation and the load-yourself instruction are taught
+	// through the system prompt (see argotPreamble below), the loaded handles
+	// through promptFragment. Expansion runs at the same two seams as secret
 	// deobfuscation — tool-call arguments before execution and assistant content
 	// before display — so the cheap handle stays in history (the token win) while
 	// everything outside history sees full text.
 	const argotEnabled = settings.get("argot.enabled") === true;
-	const argot = argotEnabled ? new ArgotSession() : undefined;
-	if (argot) {
-		await armArgotFromCache(argot, cwd);
-	}
+	// A subagent (task-spawned child) follows the `argot.subagents` policy instead
+	// of always starting empty: `off` gets no codec, `fresh` gets its own empty
+	// session and loads its task's project itself, `inherit` forks the parent's
+	// codec. Correctness never rests on this (the boundary rule expands every
+	// emitted seam); the policy trades tokens.
+	const argotIsSubagent = (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
+	const argot = createArgotSession({
+		enabled: argotEnabled,
+		isSubagent: argotIsSubagent,
+		subagentMode: settings.get("argot.subagents"),
+		parentArgot: options.parentArgot,
+	});
 	// Encode gate: which models may WRITE shorthand and an optional context-size
 	// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
 	// unconditional and lossless whatever this holds; the gate governs only
@@ -1323,6 +1344,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	let existingSession = logger.time("loadSessionContext", () =>
 		deobfuscateSessionContext(sessionManager.buildSessionContext(), obfuscator),
 	);
+	// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
+	// token win), so a resumed branch can hold `§handle` tokens from argot_load
+	// calls in earlier sessions; the display/export seams can only expand them
+	// with those dictionaries loaded. The branch's own argot_load tool results
+	// name the exact projects the model chose, so resume re-arms those roots
+	// with teach:false — no walking, no guessing, and teaching stays
+	// agent-driven (the model re-decides by calling argot_load again).
+	if (argot !== undefined && existingBranch.length > 0) {
+		const argotRoots = collectArgotLoadedRoots(
+			existingBranch.flatMap(entry => (entry.type === "message" ? [entry.message] : [])),
+		);
+		if (argotRoots.length > 0) {
+			await rearmArgotForDecode(argot, argotRoots, undefined, settings.get("argot.tokenBudget"));
+		}
+	}
 	const hasExistingSession = existingBranch.length > 0;
 	const hasThinkingEntry = existingBranch.some(entry => entry.type === "thinking_level_change");
 	const hasServiceTierEntry = existingBranch.some(entry => entry.type === "service_tier_change");
@@ -1722,6 +1758,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			},
 			getArtifactManager: () => sessionManager.getArtifactManager(),
+			recordSubagentSpawn: record => sessionManager.appendSubagentSpawn(record),
 			settings,
 			authStorage,
 			modelRegistry,
@@ -1895,13 +1932,40 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		}
 
-		if (settings.get("speechgen.enabled")) {
+		// Like image-gen above, tts is a custom tool force-activated via
+		// `alwaysInclude`, so an explicit `--no-tools` / tool whitelist must be
+		// honored here or it would leak past every filter (issue #5305).
+		const speechRequested = !options.toolNames || options.toolNames.includes(ttsTool.name);
+		if (settings.get("speechgen.enabled") && speechRequested) {
 			customTools.push(ttsTool as unknown as CustomTool);
 		}
 
 		// Add web search tools
 		if (options.toolNames?.includes("web_search")) {
 			customTools.push(...getSearchTools());
+		}
+
+		// Exa's hosted MCP servers. Both settings default to off, so this costs a
+		// round trip only for sessions that asked for the tools. `exa.enabled` is
+		// the master switch the search provider already honors, so it gates these
+		// too: turning Exa off must turn all of Exa off.
+		if (settings.get("exa.enabled")) {
+			const exaTools = await logger.time("getExaMcpTools", () =>
+				getExaMcpTools({
+					researcher: settings.get("exa.enableResearcher"),
+					websets: settings.get("exa.enableWebsets"),
+				}),
+			);
+			// Honor an explicit tool whitelist: these are force-activated too, so
+			// `--no-tools` / a whitelist that names none of them must drop them all
+			// (same leak class as image-gen/tts, issue #5305).
+			const whitelist = options.toolNames;
+			const requestedExaTools = whitelist
+				? exaTools.filter(tool => whitelist.includes((tool as { name: string }).name))
+				: exaTools;
+			if (requestedExaTools.length > 0) {
+				customTools.push(...(requestedExaTools as unknown as CustomTool[]));
+			}
 		}
 
 		// Discover custom tools from `.veyyon/tools/`, `.claude/tools/`, plugins, etc.
@@ -2530,14 +2594,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					? `${appendPrompt}\n\n${options.appendSystemPrompt}`
 					: options.appendSystemPrompt;
 			}
-			// Gate teaching the handle table by the encode policy: the active model
-			// must be on the allowlist and the context under the cutoff, and the cache
-			// must actually hold handles. Decoding is unaffected — handles already in
-			// history still expand at the seams whatever this holds.
+			// Gate teaching by the encode policy: the active model must be on the
+			// allowlist and the context under the cutoff. When encoding is on, the
+			// prompt always carries the notation preamble (which also tells the model
+			// to load its project itself through argot_load); the concrete handle
+			// table is added once the model has loaded one. Decoding is unaffected —
+			// handles already in history still expand at the seams whatever this holds.
 			const argotActiveModel = getActiveModelString();
-			const injectArgotPreamble =
+			const argotCanEncode =
 				argotEnabled &&
-				argot?.loaded === true &&
+				argot !== undefined &&
 				argotActiveModel !== undefined &&
 				shouldEncode(argotGate, { model: argotActiveModel, contextTokens: argotContextTokens });
 			const defaultPrompt = await buildSystemPromptInternal({
@@ -2562,8 +2628,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				taskMaxConcurrency: settings.get("task.maxConcurrency"),
 				taskIrcEnabled: isIrcEnabled(settings, options.taskDepth ?? 0),
 				secretsEnabled,
-				injectArgotPreamble,
-				argotHandles: injectArgotPreamble && argot ? argot.promptFragment() : undefined,
+				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
+				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
 				workspaceTree: workspaceTreePromise,
 				includeWorkspaceTree,
 				memoryRootEnabled: memoryBackend.id === "local",
@@ -2767,25 +2833,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return wrapSteeringForModel(withContext);
 		};
 		// Per-request provider-context transforms. Obfuscate FIRST so secrets are
-		// redacted from text before snapcompact rasterizes it into PNG frames, then
-		// clamp images to the active provider budget before the request is sent.
-		const snapcompactSystemPromptMode = settings.get("snapcompact.systemPrompt");
-		const snapcompactInline =
-			snapcompactSystemPromptMode !== "none" || settings.get("snapcompact.toolResults")
-				? new SnapcompactInlineTransformer(
-						{
-							renderSystemPrompt: snapcompactSystemPromptMode,
-							renderToolResults: settings.get("snapcompact.toolResults"),
-							shape: settings.get("snapcompact.shape"),
-						},
-						// Journal the tokens each imaged tool result keeps off the wire
-						// (frames never reach session.jsonl, so this is their only trace).
-						createSnapcompactSavingsRecorder(() => sessionManager.getSessionFile() ?? null),
-					)
-				: undefined;
+		// redacted from text, then clamp images to the active provider budget
+		// before the request is sent.
 		const transformProviderContext = async (context: Context, transformModel: Model): Promise<Context> => {
-			let transformed = obfuscator ? obfuscateProviderContext(obfuscator, context) : context;
-			if (snapcompactInline) transformed = await snapcompactInline.transform(transformed, transformModel);
+			const transformed = obfuscator ? obfuscateProviderContext(obfuscator, context) : context;
 			return clampProviderContextImages(transformed, transformModel);
 		};
 		const onPayload = async (payload: unknown, _model?: Model) => {
@@ -2899,6 +2950,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
 			intentTracing: !!intentField,
+			instrumentation: settings.get("session.instrumentation"),
 			pruneToolDescriptions: inlineToolDescriptors,
 			// Re-resolved with the active model on every request so mid-session
 			// model switches pick the right tool-calling shape (a switch to a
@@ -3099,6 +3151,31 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			titleSystemPrompt: options.titleSystemPrompt,
 		});
 		hasSession = true;
+
+		// Record the top-level session's exact system prompt + active tools at start,
+		// reusing the SAME `session_init` entry a subagent writes (ONE PLACE — see
+		// task/executor.ts). This makes the main agent's run replayable/backtestable at
+		// full fidelity: the exact prompt bytes AS SENT are in the record, not merely
+		// reconstructable from config (GRAN-4). Written once on a NEW session only —
+		// resumed sessions already carry their init entry, so we do not duplicate it.
+		if (agentKind === "main" && !hasExistingSession) {
+			sessionManager.appendSessionInit({
+				systemPrompt: session.agent.state.systemPrompt.join("\n\n"),
+				task: "",
+				tools: session.getActiveToolNames(),
+			});
+		}
+
+		// Record the complete effective config that governs this run (every Tier-A
+		// setting AS RESOLVED), for EVERY new session — main and subagent alike — so a
+		// backtest can reproduce the exact configuration, not guess it from current
+		// defaults (GRAN-3). Written once per new session; resumed sessions keep the
+		// snapshot they were created with. The few settings that change interactively
+		// (model, thinking, tier, mode, MCP selection) are tracked by their own entries.
+		if (!hasExistingSession) {
+			sessionManager.appendSettingsSnapshot(settings.getEffectiveSnapshot());
+		}
+
 		if (asyncJobManager) {
 			session.yieldQueue.register<AsyncResultEntry>("async-result", {
 				isStale: entry => asyncJobManager.isDeliverySuppressed(entry.jobId),
@@ -3339,6 +3416,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				await disposeKernelSessionsByOwner(evalKernelOwnerId);
 				await disposeRubyKernelSessionsByOwner(evalKernelOwnerId);
 				await disposeJuliaKernelSessionsByOwner(evalKernelOwnerId);
+				await disposeVmContextsByOwner(evalKernelOwnerId);
 				if (ownsAuthStorage) authStorage.close();
 			}
 		} catch (cleanupError) {

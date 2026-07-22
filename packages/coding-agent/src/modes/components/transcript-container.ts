@@ -1,4 +1,5 @@
 import {
+	clampLow,
 	type Component,
 	Container,
 	type NativeScrollbackCommittedRows,
@@ -474,7 +475,7 @@ export class TranscriptContainer
 				if (settledRaw > 0) {
 					let lead = 0;
 					while (lead < raw.length && isPlainBlank(raw[lead]!)) lead++;
-					settled = Math.max(0, Math.min(contribution.length, settledRaw - lead));
+					settled = clampLow(settledRaw - lead, 0, contribution.length);
 				}
 				this.#nativeScrollbackLiveRegionStart = row + sep + settled;
 			}

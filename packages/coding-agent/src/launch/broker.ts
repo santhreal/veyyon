@@ -9,6 +9,7 @@ import {
 	errorMessage,
 	isEexist,
 	isEnoent,
+	isProcessAlive,
 	logger,
 	postmortem,
 	sanitizeText,
@@ -57,6 +58,13 @@ const SIGNAL_NUMBER: Record<DaemonSignal, number> = {
 interface ManagedProcess {
 	pid: number;
 	exited: Promise<number>;
+	/**
+	 * The signal that terminated the process, if any (Bun.Subprocess.signalCode:
+	 * the signal NAME, e.g. "SIGTERM", or null). Read on settle so a signal-killed
+	 * process reports its signal instead of a misleading numeric exit code (a
+	 * SIGTERM'd `bash -c '...; sleep 60'` otherwise surfaced as exit=1). (DOG-2)
+	 */
+	signalCode?: string | null;
 	unref(): void;
 }
 
@@ -237,12 +245,9 @@ async function acquireBrokerLease(runtimeDir: string): Promise<BrokerLease | nul
 			try {
 				const raw: unknown = await Bun.file(pidPath).json();
 				if (typeof raw === "object" && raw !== null && "pid" in raw && typeof raw.pid === "number") {
-					try {
-						process.kill(raw.pid, 0);
-						return null;
-					} catch {
-						// Stale PID file; the next loop iteration claims it.
-					}
+					// A live owner keeps its claim. Anything else leaves a stale PID
+					// file that the next loop iteration claims.
+					if (isProcessAlive(raw.pid)) return null;
 				}
 			} catch {
 				// Malformed or partially-written PID files are stale.
@@ -510,6 +515,7 @@ class DaemonBroker {
 		record.snapshot.readyAt = undefined;
 		record.snapshot.exitedAt = undefined;
 		record.snapshot.exitCode = undefined;
+		record.snapshot.signal = undefined;
 		record.snapshot.exitReason = undefined;
 		record.snapshot.pid = undefined;
 		record.snapshot.readyMatch = undefined;
@@ -731,12 +737,24 @@ class DaemonBroker {
 	async #settle(record: ManagedDaemon, generation: number, exitCode?: number, error?: string): Promise<void> {
 		if (generation !== record.generation || terminalState(record.snapshot.state)) return;
 		await this.#readDetachedOutput(record, generation);
+		// Capture the terminating signal BEFORE clearing record.process below, so a
+		// signal-killed process reports the signal (e.g. SIGTERM) rather than a
+		// misleading numeric exit code (DOG-2). PTY-run daemons (the common case:
+		// #onPtyExit) carry NO Bun.Subprocess.signalCode, so reading only
+		// record.process.signalCode missed every operator `launch stop` and left it
+		// surfacing exit=1 for a SIGTERM'd shell (DOG-R2-5). An operator stop goes
+		// through #stopRecord, which sends SIGTERM via terminate() and sets
+		// stopRequested — so a stop-terminated daemon reports SIGTERM and suppresses
+		// the shell's misleading numeric exit code. (A crash the operator did NOT
+		// request keeps its exitCode and normal failed/restart handling below.)
+		const signal = record.process?.signalCode ?? (record.stopRequested ? "SIGTERM" : undefined);
 		record.process = undefined;
 		record.input = undefined;
 		record.pty = undefined;
 		record.snapshot.pid = undefined;
 		record.snapshot.exitedAt = Date.now();
-		record.snapshot.exitCode = exitCode;
+		record.snapshot.exitCode = signal ? undefined : exitCode;
+		record.snapshot.signal = signal ?? undefined;
 		record.snapshot.exitReason = error;
 		record.snapshot.readyPending = undefined;
 		const failed = error !== undefined || (exitCode !== undefined && exitCode !== 0);

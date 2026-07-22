@@ -198,7 +198,11 @@ const LINE_RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 
 /** Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk. Throws via {@link ToolError} on invalid bounds. */
 export function parseLineRangeChunk(sel: string): LineRange | null {
-	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel);
+	// Tolerate surrounding whitespace so a spaced multi-range list like
+	// `1-3, 5-7` parses. Without this the `" 5-7"` chunk fails the anchored
+	// regex, `parseLineRanges` returns null, and `read` silently widens the
+	// selector to the whole file instead of the requested lines.
+	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel.trim());
 	if (!lineMatch) return null;
 	const rawStart = Number.parseInt(lineMatch[1]!, 10);
 	if (rawStart < 1) {
@@ -488,6 +492,27 @@ export function isReadableUrlPath(value: string): boolean {
 }
 
 /**
+ * The literal base directory a glob/search pattern descends from — the longest
+ * leading path segment run that contains no glob metacharacter (`*?[{`).
+ *
+ * This is what the cwd boundary checks for a search tool (`grep`/`glob`/
+ * `ast_grep`): the pattern names a scope, and the scope's fixed root is what
+ * decides whether the search reaches outside cwd. `src/**\/*.ts` bases at `src`,
+ * `/etc/**` at `/etc`, a plain `/etc/passwd` (no metachar) is its own base, and
+ * a bare `*.ts` or `**\/x` bases at `""` (an empty string meaning "starts at
+ * cwd", which the boundary treats as in-bounds). A `..` in the base is resolved
+ * later by {@link resolveToCwd}, so `src/../../etc/**` correctly bases outside.
+ */
+export function globSearchBase(pattern: string): string {
+	const trimmed = pattern.trim();
+	const meta = trimmed.search(/[*?[{]/);
+	if (meta === -1) return trimmed;
+	const literalPrefix = trimmed.slice(0, meta);
+	const lastSlash = literalPrefix.lastIndexOf("/");
+	return lastSlash === -1 ? "" : literalPrefix.slice(0, lastSlash);
+}
+
+/**
  * Resolve a path relative to the given cwd.
  * Handles ~ expansion and absolute paths.
  *
@@ -511,6 +536,20 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 	return path.resolve(cwd, expanded);
 }
 
+/**
+ * True when `resolvedPath` (an already-resolved absolute path) is inside `cwd`,
+ * or equal to it. Pure containment only: it does not expand `~`, resolve
+ * internal schemes, or apply the bare-root alias — resolve the raw input first
+ * (via `resolveToCwd`) and pass the result here. This is the single containment
+ * predicate. `formatPathRelativeToCwd` and the tool-call filesystem boundary
+ * (`cwd-boundary.ts`) both route through it so "inside the working directory"
+ * means the same thing in the display path and in the permission gate.
+ */
+export function isPathWithinCwd(resolvedPath: string, cwd: string): boolean {
+	const relative = path.relative(path.resolve(cwd), resolvedPath);
+	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 export function formatPathRelativeToCwd(
 	filePath: string,
 	cwd: string,
@@ -524,7 +563,7 @@ export function formatPathRelativeToCwd(
 	const expanded = expandPath(normalized);
 	const resolvedPath = path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(cwd, expanded);
 	const relative = path.relative(resolvedCwd, resolvedPath);
-	const isWithinCwd = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+	const isWithinCwd = isPathWithinCwd(resolvedPath, resolvedCwd);
 	let displayPath = normalizePosixPath(isWithinCwd ? relative || "." : resolvedPath);
 	if (options.trailingSlash && displayPath !== "." && !displayPath.endsWith("/")) {
 		displayPath += "/";

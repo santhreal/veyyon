@@ -38,6 +38,17 @@ export interface KernelShutdownResult {
 	confirmed: boolean;
 }
 
+/**
+ * A completed subprocess exit, as distinct from "not exited yet". Presence of the
+ * object (not the value of `code`) is what signals the exit: a clean exit reports
+ * `code: 0` and a signal-terminated process reports `code: null`, both of which
+ * are truthy observations, whereas a shutdown timeout resolves to `null` instead.
+ */
+interface KernelExitObservation {
+	/** Exit code, or `null` when the process was terminated by a signal. */
+	code: number | null;
+}
+
 export interface KernelShutdownOptions {
 	signal?: AbortSignal;
 	timeoutMs?: number;
@@ -319,6 +330,11 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			/* ignore */
 		}
 
+		// `result === null` means the wait TIMED OUT (process still running) and we
+		// escalate. A truthy result means the process actually exited — including a
+		// clean `code: 0` and a signal's `code: null` — so we must NOT escalate on
+		// those. Branching on code truthiness here (the old `number | null` return)
+		// treated a graceful exit-0 as still-running and hard-killed every kernel.
 		const exited = this.#waitForExitWithTimeout(timeoutMs);
 		let result = await exited;
 		if (!result) {
@@ -338,6 +354,8 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			result = await this.#waitForExitWithTimeout(timeoutMs);
 		}
 
+		// Confirmed whenever the process exited by any means; only a persistent
+		// timeout (still null after SIGKILL + grace) leaves this false.
 		const confirmed = !!result;
 		this.#shutdownConfirmed = confirmed;
 		this.#disposed = true;
@@ -557,13 +575,25 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 		}
 	}
 
-	#waitForExitWithTimeout(timeoutMs: number): Promise<number | null> {
-		if (!this.#exitedPromise) return Promise.resolve(0);
+	/**
+	 * Wait for the subprocess to exit, or resolve `null` if `timeoutMs` elapses
+	 * first. The exit result is an OBJECT ({@link KernelExitObservation}) so it is
+	 * always truthy — even when the process exited with code `0` (clean success)
+	 * or was terminated by a signal (which yields a null code). Only a genuine
+	 * timeout resolves to `null`. Callers MUST branch on `=== null` / truthiness,
+	 * never on the code value: a `number | null` return would make code `0` falsy
+	 * and a signal's null code indistinguishable from the timeout sentinel, which
+	 * caused a clean exit to be misread as "still running" and every shutdown to
+	 * escalate to SIGKILL while reporting `confirmed: false` (BACKLOG
+	 * KERNEL-EXIT-CONFIRM).
+	 */
+	#waitForExitWithTimeout(timeoutMs: number): Promise<KernelExitObservation | null> {
+		if (!this.#exitedPromise) return Promise.resolve({ code: 0 });
 		const exitedPromise = this.#exitedPromise;
 		const timeout = new Promise<null>(resolve => {
 			const timer = setTimeout(() => resolve(null), Math.max(0, timeoutMs));
 			timer.unref?.();
 		});
-		return Promise.race([exitedPromise.then(code => code as number | null), timeout]);
+		return Promise.race([exitedPromise.then(code => ({ code: (code as number | null) ?? null })), timeout]);
 	}
 }

@@ -33,6 +33,10 @@ export interface StatusLineSegmentOptions {
 		/** Quiet zones: the gauge warms up the ember ramp as it fills (silver when
 		 *  cool, sun-fire when hot); the error state keeps its semantic red. */
 		emberRamp?: boolean;
+		/** Quiet zones: render the growing 8-cell context bar with a breathing
+		 *  tip and gold major-fill anchors instead of the `pct/window` text.
+		 *  The percent number stays; the window denominator is dropped. */
+		bar?: boolean;
 	};
 }
 

@@ -120,8 +120,46 @@ export function reconcileGuestSnapshotHostState(ctx: GuestSnapshotActivityReconc
 	reconcileGuestIdleHostState(ctx, false);
 }
 
+/**
+ * The slice of the interactive-mode context the guest link actually uses.
+ *
+ * Same reasoning as {@link CollabHostContext}: `InteractiveModeContext` has
+ * over 200 required members, so a consumer typed against all of it can only be
+ * built by the real TUI, and every test stub has to be cast into place. Naming
+ * what this class reads is what makes it substitutable.
+ */
+export type CollabGuestContext = Pick<
+	InteractiveModeContext,
+	| "chatContainer"
+	| "clearWorkingLoader"
+	| "collabGuest"
+	| "compactionQueuedMessages"
+	| "eventBus"
+	| "eventController"
+	| "handleResumeSession"
+	| "pendingMessagesContainer"
+	| "pendingTools"
+	| "reloadTodos"
+	| "renderInitialMessages"
+	| "resetObserverRegistry"
+	| "session"
+	| "sessionManager"
+	| "settings"
+	| "showError"
+	| "showHookEditor"
+	| "showHookSelector"
+	| "showStatus"
+	| "statusContainer"
+	| "statusLine"
+	| "streamingComponent"
+	| "streamingMessage"
+	| "syncRunningSubagentBadge"
+	| "ui"
+	| "updateEditorBorderColor"
+>;
+
 export class CollabGuestLink {
-	#ctx: InteractiveModeContext;
+	#ctx: CollabGuestContext;
 	#socket: CollabSocket | null = null;
 	#roomId = "";
 	/** Previous session file to restore on leave; null = previous session was unsaved. */
@@ -211,7 +249,7 @@ export class CollabGuestLink {
 		return true;
 	}
 
-	constructor(ctx: InteractiveModeContext) {
+	constructor(ctx: CollabGuestContext) {
 		this.#ctx = ctx;
 	}
 

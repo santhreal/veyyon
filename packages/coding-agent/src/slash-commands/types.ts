@@ -24,6 +24,12 @@ export interface BuiltinSlashCommand {
 	inlineHint?: string;
 	/** TUI-only dynamic status text for command-name autocomplete. Static `description` remains canonical for ACP/help. */
 	getTuiAutocompleteDescription?: (runtime: TuiSlashCommandRuntime) => string | undefined;
+	/**
+	 * Group header the command renders under when the / menu is browsed with no
+	 * filter. Assigned centrally from BUILTIN_SLASH_COMMAND_CATEGORIES (one
+	 * owner); never set inline on a registry entry.
+	 */
+	category?: string;
 }
 
 /** Parsed slash-command text after stripping the leading "/". */

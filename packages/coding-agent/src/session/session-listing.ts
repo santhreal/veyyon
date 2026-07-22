@@ -58,6 +58,15 @@ export interface RecentSessionInfo {
 
 const SESSION_LIST_PREFIX_BYTES = 4096;
 /**
+ * Escalated prefix for files whose 4 KB prefix contains no user message even
+ * though the file is clearly larger. A big pre-message entry (system-prompt
+ * snapshot, extension payload — ~100 KB observed live) pushes the first user
+ * message far past the small prefix, and every such session listed as
+ * "(no messages)" in /resume despite being a full conversation. Paid only by
+ * files that actually hit the degenerate case.
+ */
+const SESSION_LIST_ESCALATED_PREFIX_BYTES = 1_048_576;
+/**
  * Tail window read to derive {@link SessionStatus}. Large enough to capture a
  * typical final assistant turn (thinking + text); when the final message exceeds
  * it the status falls back to `unknown` rather than misreporting.
@@ -337,10 +346,48 @@ function getSessionListWorkerCount(fileCount: number): number {
 }
 
 /**
+ * Walk parsed list entries for the display fields: first user message, all
+ * message text, parsed count, and the latest compaction summary. ONE owner —
+ * the normal 4 KB prefix pass and the escalated wide pass run the same walk.
+ */
+function walkListEntries(entries: Record<string, unknown>[]): {
+	parsedMessageCount: number;
+	firstMessage: string;
+	allMessages: string[];
+	shortSummary: string | undefined;
+} {
+	let parsedMessageCount = 0;
+	let firstMessage = "";
+	const allMessages: string[] = [];
+	let shortSummary: string | undefined;
+	for (let i = 1; i < entries.length; i++) {
+		const entry = entries[i] as { type?: string; message?: Message; shortSummary?: string };
+		if (entry.type === "compaction" && typeof entry.shortSummary === "string") {
+			shortSummary = entry.shortSummary;
+		}
+		if (entry.type === "message" && entry.message) {
+			parsedMessageCount++;
+			if (entry.message.role === "user" || entry.message.role === "assistant") {
+				const textContent = contentText(entry.message.content, { separator: " " });
+				if (textContent) {
+					allMessages.push(textContent);
+					if (!firstMessage && entry.message.role === "user") {
+						firstMessage = textContent;
+					}
+				}
+			}
+		}
+	}
+	return { parsedMessageCount, firstMessage, allMessages, shortSummary };
+}
+
+/**
  * Scan a single session file into a {@link SessionInfo}. Always reads the 4 KB
  * header/first-message prefix; only reads the 32 KB tail window (and derives
  * {@link SessionStatus}) when `withStatus` is set — the recent/most-recent
- * lookups skip it.
+ * lookups skip it. When the prefix holds no user message but the file is
+ * larger than the prefix, one bounded escalated read recovers the display
+ * fields (see {@link SESSION_LIST_ESCALATED_PREFIX_BYTES}).
  */
 async function scanSessionFile(
 	file: string,
@@ -359,37 +406,19 @@ async function scanSessionFile(
 		const header = parseSessionListHeader(content, entries);
 		if (!header) return undefined;
 
-		let parsedMessageCount = 0;
-		let firstMessage = "";
-		const allMessages: string[] = [];
-		let shortSummary: string | undefined;
-
-		for (let i = 1; i < entries.length; i++) {
-			const entry = entries[i] as { type?: string; message?: Message; shortSummary?: string };
-
-			if (entry.type === "compaction" && typeof entry.shortSummary === "string") {
-				shortSummary = entry.shortSummary;
-			}
-
-			if (entry.type === "message" && entry.message) {
-				parsedMessageCount++;
-
-				if (entry.message.role === "user" || entry.message.role === "assistant") {
-					const textContent = contentText(entry.message.content, { separator: " " });
-
-					if (textContent) {
-						allMessages.push(textContent);
-
-						if (!firstMessage && entry.message.role === "user") {
-							firstMessage = textContent;
-						}
-					}
-				}
-			}
+		let walked = walkListEntries(entries);
+		let scanned = content;
+		if (!walked.firstMessage && !extractFirstDisplayMessageFromPrefix(content) && size > SESSION_LIST_PREFIX_BYTES) {
+			// Degenerate prefix: a large pre-message entry hides the first user
+			// message past the 4 KB window. Escalate ONCE to a bounded wide read —
+			// only these files pay for it.
+			const [wide] = await storage.readTextSlices(file, Math.min(size, SESSION_LIST_ESCALATED_PREFIX_BYTES), 0);
+			scanned = wide;
+			walked = walkListEntries(parseJsonlLenient<Record<string, unknown>>(wide));
 		}
-
-		firstMessage ||= extractFirstDisplayMessageFromPrefix(content) ?? "";
-		const messageCount = Math.max(parsedMessageCount, countMessageMarkers(content));
+		const { parsedMessageCount, allMessages, shortSummary } = walked;
+		const firstMessage = walked.firstMessage || (extractFirstDisplayMessageFromPrefix(scanned) ?? "");
+		const messageCount = Math.max(parsedMessageCount, countMessageMarkers(scanned));
 		return {
 			path: file,
 			id: header.id,
@@ -569,7 +598,18 @@ export async function findMostRecentSession(
 	return sessions[0]?.path ?? null;
 }
 
-/** Get recent sessions for display in the welcome screen. */
+/** True when a session has neither a title nor any user message — nothing a
+ * human could recognize or want to continue. Every launch creates one such
+ * empty file, so without this filter the welcome hero's "continue where you
+ * left off" line pointed at the CURRENT launch's own blank session
+ * ("Untitled · 11:48 AM · just now"), which is self-referential noise. */
+function isBlankSession(info: SessionInfo): boolean {
+	return !sanitizeSessionName(info.title) && (!info.firstMessage || info.firstMessage === "(no messages)");
+}
+
+/** Get recent sessions for display in the welcome screen. Blank sessions
+ * (see {@link isBlankSession}) are skipped — `/resume`'s full list still
+ * shows everything; this is only the hero's recognizable shortlist. */
 export async function getRecentSessions(
 	sessionDir: string,
 	limit = 4,
@@ -577,8 +617,9 @@ export async function getRecentSessions(
 ): Promise<RecentSessionInfo[]> {
 	const sessions = await scanSessionDir(sessionDir, storage, false);
 	const recent: RecentSessionInfo[] = [];
-	for (let i = 0; i < sessions.length && i < limit; i++) {
-		const info = sessions[i];
+	for (const info of sessions) {
+		if (recent.length >= limit) break;
+		if (isBlankSession(info)) continue;
 		recent.push({ path: info.path, name: sessionDisplayName(info), timeAgo: formatTimeAgo(info.modified) });
 	}
 	return recent;

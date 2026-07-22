@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { EMPTY_GATE, shouldEncode } from "@veyyon/coding-agent/argot/index";
 import { buildArgotGate } from "@veyyon/coding-agent/argot-wire";
+import { EMPTY_GATE, shouldEncode } from "argot";
 
 const MODEL = "anthropic/claude-opus-4";
 const OTHER = "anthropic/claude-haiku-4";

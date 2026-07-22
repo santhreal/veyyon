@@ -145,8 +145,20 @@ class FileSessionStorageWriter implements SessionStorageWriter {
 		writerRegistry.unregister(this);
 		try {
 			fs.closeSync(this.#fd);
-		} catch {
-			// Ignore close errors
+		} catch (err) {
+			// A failing close is not cosmetic: on a delayed-allocation or network
+			// filesystem it is where a write error surfaces, so the session
+			// transcript can be short by whatever did not land. This used to be
+			// ignored outright, which made a truncated transcript indistinguishable
+			// from a complete one (Law 10). It goes through the same path as a write
+			// error, so `getError()` reports it and the `onError` callback fires.
+			// Still does not throw: close runs on shutdown and teardown paths where
+			// throwing would mask the reason the session is ending.
+			const error = this.#recordError(err);
+			logger.warn("Could not close the session file cleanly; the transcript may be missing its last writes", {
+				error: error.message,
+				fix: "Check that the session directory is writable and not out of space. The session's earlier messages are unaffected.",
+			});
 		}
 	}
 

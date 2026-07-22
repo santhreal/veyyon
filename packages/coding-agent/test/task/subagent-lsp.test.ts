@@ -19,6 +19,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/tools/yield";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { makeToolSession } from "../helpers/tool-session";
 
 const TEST_TASK: TaskParams = { agent: "task", name: "CheckLsp", task: "Inspect LSP tools." };
 
@@ -103,7 +104,7 @@ function createSession(
 		getApiKey: async () => null,
 	} as unknown as ModelRegistry;
 
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		enableLsp: options.parentEnableLsp,
@@ -116,7 +117,7 @@ function createSession(
 		getSessionSpawns: () => "*",
 		modelRegistry,
 		getPlanModeState: () => options.planMode,
-	} as unknown as ToolSession;
+	});
 }
 
 function mockAgents(agent: AgentDefinition): void {

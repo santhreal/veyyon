@@ -7,6 +7,7 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, SingleResult } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 // Contract: the task tool appends an advisory (never a rejection) steering the
 // spawner toward more specific agent types when one call resolves ≥2 items to
@@ -68,14 +69,14 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 	});
 
 	function session(suppress: boolean): ToolSession {
-		return {
+		return makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
 			suppressSpawnAdvisory: suppress,
 			settings: Settings.isolated({ "task.isolation.mode": "none", "task.batch": true }),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-		} as unknown as ToolSession;
+		});
 	}
 
 	async function spawnText(suppress: boolean): Promise<string> {

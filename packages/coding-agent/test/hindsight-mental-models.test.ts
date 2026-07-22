@@ -10,8 +10,11 @@ import {
 	ensureMentalModels,
 	loadMentalModelsBlock,
 	MENTAL_MODEL_RENDER_BUDGET_CHARS_DEFAULT,
+	type MentalModelSeed,
 	renderMentalModelsBlock,
 	resolveSeedsForScope,
+	seedAlreadyExists,
+	summarizeMentalModel,
 } from "@veyyon/coding-agent/hindsight/mental-models";
 
 afterEach(() => {
@@ -336,5 +339,91 @@ describe("diffMentalModelContent", () => {
 		expect(out).toContain("input capped at 1000 lines per side before diff");
 		// Sanity: cap kicks in well below 1s on any sane CI box.
 		expect(elapsedMs).toBeLessThan(2_000);
+	});
+});
+
+/* -------------------------------------------------------------------------- */
+/* summarizeMentalModel                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * summarizeMentalModel renders a one-line roster entry for a mental model (used in listings and
+ * status output). It had no direct test. The two conditional suffixes are the whole contract: a tag
+ * list appears only when tags are present and non-empty, and the refresh state distinguishes a
+ * refreshed model (with its timestamp) from one that was "never refreshed" (missing OR null
+ * last_refreshed_at). A regression would drop the tags or mislabel a fresh model as never refreshed.
+ */
+describe("summarizeMentalModel", () => {
+	it("renders id, name, tag list, and refresh timestamp when all are present", () => {
+		expect(
+			summarizeMentalModel({
+				id: "m1",
+				bank_id: "b",
+				name: "Prefs",
+				tags: ["a", "b"],
+				last_refreshed_at: "2024-01-01",
+			}),
+		).toBe("- m1: Prefs [a, b] (refreshed 2024-01-01)");
+	});
+
+	it("omits the tag list when tags are absent or empty", () => {
+		expect(summarizeMentalModel({ id: "m2", bank_id: "b", name: "X", tags: [] })).toBe("- m2: X (never refreshed)");
+		expect(summarizeMentalModel({ id: "m3", bank_id: "b", name: "Y" })).toBe("- m3: Y (never refreshed)");
+	});
+
+	it("labels a model with a null last_refreshed_at as never refreshed", () => {
+		expect(summarizeMentalModel({ id: "m4", bank_id: "b", name: "Z", last_refreshed_at: null })).toBe(
+			"- m4: Z (never refreshed)",
+		);
+	});
+});
+
+/* -------------------------------------------------------------------------- */
+/* seedAlreadyExists                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * seedAlreadyExists decides whether a mental-model seed is already provisioned so ensureMentalModels
+ * does not re-create it. It had no direct test. Two match paths matter: an exact id match (regardless
+ * of tags), and a LEGACY-id match that ALSO requires the model's tag set to equal the seed's (an
+ * order-independent set compare) so a legacy unqualified seed only counts as present when its tags
+ * line up. A regression that dropped the tag guard would treat a differently-scoped legacy model as
+ * the seed and skip provisioning; one that broke the set compare would needlessly re-create it.
+ */
+describe("seedAlreadyExists", () => {
+	const seed: MentalModelSeed = {
+		id: "canonical",
+		name: "Canonical",
+		sourceQuery: "q",
+		tags: ["x", "y"],
+		legacyIds: ["old1", "old2"],
+	};
+
+	it("matches on an exact id regardless of tags", () => {
+		expect(seedAlreadyExists(seed, [{ id: "canonical", bank_id: "b", name: "c", tags: ["unrelated"] }])).toBe(true);
+	});
+
+	it("does not match a different id whose tags happen to equal the seed's", () => {
+		expect(seedAlreadyExists(seed, [{ id: "other", bank_id: "b", name: "o", tags: ["x", "y"] }])).toBe(false);
+	});
+
+	it("matches a legacy id when the tag set is equal, ignoring order", () => {
+		expect(seedAlreadyExists(seed, [{ id: "old1", bank_id: "b", name: "o", tags: ["y", "x"] }])).toBe(true);
+	});
+
+	it("rejects a legacy id whose tag set differs from the seed's", () => {
+		expect(seedAlreadyExists(seed, [{ id: "old1", bank_id: "b", name: "o", tags: ["x"] }])).toBe(false);
+		// A legacy model with no tags cannot match a seed that carries tags.
+		expect(seedAlreadyExists(seed, [{ id: "old2", bank_id: "b", name: "o" }])).toBe(false);
+	});
+
+	it("returns false against an empty model list", () => {
+		expect(seedAlreadyExists(seed, [])).toBe(false);
+	});
+
+	it("uses only the exact id path when the seed declares no legacy ids", () => {
+		const noLegacy: MentalModelSeed = { id: "c2", name: "C2", sourceQuery: "q", tags: ["a"] };
+		expect(seedAlreadyExists(noLegacy, [{ id: "c2", bank_id: "b", name: "c", tags: ["different"] }])).toBe(true);
+		expect(seedAlreadyExists(noLegacy, [{ id: "old1", bank_id: "b", name: "o", tags: ["a"] }])).toBe(false);
 	});
 });

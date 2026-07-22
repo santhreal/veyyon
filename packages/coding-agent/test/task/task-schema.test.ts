@@ -4,6 +4,7 @@ import { TaskTool, taskSchema } from "@veyyon/coding-agent/task";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { type } from "arktype";
+import { makeToolSession } from "../helpers/tool-session";
 
 // Contract: the single-spawn schema (`task.batch: false`; the exported
 // `taskSchema` instance) carries no batch fields. The batch shape (`tasks[]` +
@@ -55,13 +56,13 @@ describe("task spawn validation", () => {
 	});
 
 	function createSession(): ToolSession {
-		return {
+		return makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({ "task.isolation.mode": "none", "task.batch": false }),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-		} as unknown as ToolSession;
+		});
 	}
 
 	async function executeText(params: unknown): Promise<string> {

@@ -2,17 +2,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { formatPathRelativeToCwd } from "../tools/path-utils";
 import { ToolError } from "../tools/tool-errors";
-import type {
-	CreateFile,
-	DeleteFile,
-	Position,
-	Range,
-	RenameFile,
-	TextDocumentEdit,
-	TextEdit,
-	WorkspaceEdit,
-} from "./types";
-import { uriToFile } from "./utils";
+import type { CreateFile, DeleteFile, Range, RenameFile, TextDocumentEdit, TextEdit, WorkspaceEdit } from "./types";
+import { comparePosition, positionsEqual, rangesEqual, uriToFile } from "./utils";
 
 // =============================================================================
 // Text Edit Application
@@ -43,17 +34,6 @@ export function applyTextEditsToString(content: string, edits: TextEdit[]): stri
 	}
 
 	return lines.join("\n");
-}
-
-function comparePosition(a: Position, b: Position): number {
-	return a.line === b.line ? a.character - b.character : a.line - b.line;
-}
-function positionsEqual(a: Position, b: Position): boolean {
-	return a.line === b.line && a.character === b.character;
-}
-
-function rangesEqual(a: Range, b: Range): boolean {
-	return positionsEqual(a.start, b.start) && positionsEqual(a.end, b.end);
 }
 
 function isEmptyRange(range: Range): boolean {

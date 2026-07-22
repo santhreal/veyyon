@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { getThemeByName, initTheme, type Theme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
+	capParseErrors,
 	dedupeParseErrors,
 	expandKeyHint,
 	formatCodeFrameLine,
@@ -11,7 +12,14 @@ import {
 	formatErrorMessage,
 	formatExpandHint,
 	formatParseErrors,
+	formatParseErrorsCountLabel,
 	formatScreenshot,
+	formatToolWorkingDirectory,
+	getDiffStats,
+	getDomain,
+	getLspBatchRequest,
+	getPreviewLines,
+	previewLine,
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/render-utils";
@@ -350,5 +358,97 @@ describe("formatExpandHint / expandKeyHint", () => {
 		setKeybindings(KeybindingsManager.inMemory());
 		expect(formatExpandHint(plainTheme, true, true)).toBe("");
 		expect(formatExpandHint(plainTheme, false, false)).toBe("");
+	});
+});
+
+/**
+ * The pure, theme-free helpers in render-utils had no direct coverage even though every
+ * tool renderer depends on them. These pin their exact data behavior so a refactor of the
+ * (heavily theme-coupled) module cannot silently change how diffs are counted, domains are
+ * shortened, previews are collapsed, parse errors are capped, or LSP batches are flushed.
+ */
+describe("getDomain", () => {
+	it("returns the hostname with a leading www. stripped, and echoes an unparseable input", () => {
+		expect(getDomain("https://www.example.com/x")).toBe("example.com");
+		expect(getDomain("http://sub.foo.io")).toBe("sub.foo.io");
+		expect(getDomain("not-a-url")).toBe("not-a-url");
+	});
+});
+
+describe("getDiffStats", () => {
+	it("counts added/removed lines and contiguous change runs as hunks", () => {
+		// + and - both present, split by a context line -> two separate hunks.
+		expect(getDiffStats("+a\n-b\n c\n+d")).toEqual({ added: 2, removed: 1, hunks: 2, lines: 4 });
+		expect(getDiffStats("")).toEqual({ added: 0, removed: 0, hunks: 0, lines: 0 });
+	});
+
+	it("counts unified-diff file headers as add/remove lines (they start with +++/---)", () => {
+		// Documents a known quirk: `--- a` and `+++ b` are counted, so header-bearing
+		// diffs report two extra changed lines. The @@ hunk marker breaks the run.
+		expect(getDiffStats("--- a\n+++ b\n@@ -1 +1 @@\n+x\n-y")).toEqual({
+			added: 2,
+			removed: 2,
+			hunks: 2,
+			lines: 5,
+		});
+	});
+});
+
+describe("previewLine / getPreviewLines", () => {
+	it("collapses whitespace (including newlines and tabs) into a single spaced line", () => {
+		expect(previewLine("a\n\tb   c", 20)).toBe("a b c");
+	});
+
+	it("keeps only the first maxLines non-blank lines, trimmed", () => {
+		expect(getPreviewLines("  one  \n\n  two  \nthree", 2, 10)).toEqual(["one", "two"]);
+	});
+});
+
+describe("capParseErrors / formatParseErrorsCountLabel", () => {
+	it("dedupes then caps to the limit, reporting the pre-cap total", () => {
+		expect(capParseErrors(["e1", "e1", "e2"])).toEqual({ errors: ["e1", "e2"], total: 2 });
+		expect(capParseErrors(["e1", "e2", "e3"], 1)).toEqual({ errors: ["e1"], total: 3 });
+		expect(capParseErrors(undefined)).toEqual({ errors: [], total: 0 });
+	});
+
+	it("labels a within-limit count directly and a capped count as N / total", () => {
+		expect(formatParseErrorsCountLabel(["a", "b", "c"])).toBe("3 parse issues");
+		expect(formatParseErrorsCountLabel(["a"])).toBe("1 parse issue");
+		expect(formatParseErrorsCountLabel([], 25)).toBe("20 / 25 parse issues");
+	});
+});
+
+describe("formatToolWorkingDirectory", () => {
+	it("hides an unset workdir or one equal to the project dir, shows an in-project relative path", () => {
+		const cwd = process.cwd();
+		expect(formatToolWorkingDirectory(undefined, cwd)).toBeUndefined();
+		expect(formatToolWorkingDirectory(".", cwd)).toBeUndefined();
+		expect(formatToolWorkingDirectory("src/tools", cwd)).toBe("src/tools");
+	});
+
+	it("shows an absolute (home-shortened) path when the workdir escapes the project dir", () => {
+		expect(formatToolWorkingDirectory("/etc", process.cwd())).toBe("/etc");
+	});
+});
+
+describe("getLspBatchRequest", () => {
+	// Minimal structural stand-in for ToolCallContext: only index/batchId/toolCalls[].name are read.
+	const ctx = (index: number, names: string[], batchId = "b1") =>
+		({
+			index,
+			batchId,
+			toolCalls: names.map(name => ({ name })),
+		}) as unknown as Parameters<typeof getLspBatchRequest>[0];
+
+	it("returns undefined without a context or when no other call in the batch is a write", () => {
+		expect(getLspBatchRequest(undefined)).toBeUndefined();
+		expect(getLspBatchRequest(ctx(0, ["read", "search"]))).toBeUndefined();
+	});
+
+	it("requests a batch, flushing only when no later call in the batch is a write", () => {
+		// A later write exists -> defer the flush.
+		expect(getLspBatchRequest(ctx(0, ["edit", "write"]))).toEqual({ id: "b1", flush: false });
+		// This is the last write in the batch -> flush now.
+		expect(getLspBatchRequest(ctx(1, ["edit", "write"]))).toEqual({ id: "b1", flush: true });
 	});
 });

@@ -1,0 +1,36 @@
+{
+	"cases": [
+		{
+			"id": "settings-tier-openai-default-none",
+			"contract": "Default tier.openai is none on an empty isolated config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "tier.openai" },
+			"expect": { "default": "none", "isolated": "none" }
+		},
+		{
+			"id": "settings-tier-subagent-default-inherit",
+			"contract": "Default tier.subagent is inherit",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "tier.subagent" },
+			"expect": { "default": "inherit", "isolated": "inherit" }
+		},
+		{
+			"id": "settings-override-tier-openai-priority",
+			"contract": "Isolated override sets tier.openai to priority",
+			"surface": "settings-override",
+			"tags": ["positive"],
+			"input": { "overrides": { "tier.openai": "priority" }, "path": "tier.openai" },
+			"expect": { "value": "priority" }
+		},
+		{
+			"id": "settings-display-smooth-streaming-exists",
+			"contract": "display.smoothStreaming is a real schema path",
+			"surface": "settings-path-exists",
+			"tags": ["boundary"],
+			"input": { "path": "display.smoothStreaming" },
+			"expect": { "exists": true }
+		}
+	]
+}

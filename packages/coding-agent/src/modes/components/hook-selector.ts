@@ -3,6 +3,7 @@
  * Displays a list of string options with keyboard navigation.
  */
 import {
+	clampLow,
 	Container,
 	Ellipsis,
 	extractPrintableText,
@@ -29,7 +30,7 @@ import {
 } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import { DynamicBorder } from "./dynamic-border";
-import { renderSegmentTrack } from "./segment-track";
+import { renderSliderLines } from "./segment-track";
 
 /** One segment of a {@link HookSelectorSlider} — a label and an optional
  *  detail line (e.g. the resolved model name) shown beneath the track while
@@ -207,7 +208,7 @@ export class HookSelectorComponent extends Container {
 				index => Number.isInteger(index) && index >= 0 && index < this.#options.length,
 			),
 		);
-		this.#markableCount = Math.max(0, Math.min(opts?.markableCount ?? this.#options.length, this.#options.length));
+		this.#markableCount = clampLow(opts?.markableCount ?? this.#options.length, 0, this.#options.length);
 		this.#selectedIndex = this.#coerceSelectedIndex(opts?.initialIndex ?? 0);
 		this.#maxVisible = Math.max(3, opts?.maxVisible ?? 12);
 		this.#onSelectCallback = onSelect;
@@ -219,7 +220,7 @@ export class HookSelectorComponent extends Container {
 		this.#onTimeoutResetCallback = opts?.onTimeoutReset;
 		if (opts?.slider && opts.slider.segments.length > 0) {
 			this.#slider = opts.slider;
-			this.#sliderIndex = Math.max(0, Math.min(opts.slider.index, opts.slider.segments.length - 1));
+			this.#sliderIndex = clampLow(opts.slider.index, 0, opts.slider.segments.length - 1);
 		}
 
 		this.addChild(new DynamicBorder());
@@ -280,7 +281,7 @@ export class HookSelectorComponent extends Container {
 	#coerceSelectedIndex(index: number): number {
 		if (this.#filteredOptions.length === 0) return -1;
 		const maxIndex = this.#filteredOptions.length - 1;
-		const clamped = Math.max(0, Math.min(index, maxIndex));
+		const clamped = clampLow(index, 0, maxIndex);
 		const clampedOption = this.#filteredOptions[clamped];
 		if (clampedOption && !this.#isDisabled(clampedOption.index)) return clamped;
 		for (let i = clamped + 1; i <= maxIndex; i++) {
@@ -301,7 +302,7 @@ export class HookSelectorComponent extends Container {
 		const maxIndex = this.#filteredOptions.length - 1;
 		let index = this.#selectedIndex;
 		while (true) {
-			const next = Math.max(0, Math.min(index + delta, maxIndex));
+			const next = clampLow(index + delta, 0, maxIndex);
 			if (next === index) return;
 			index = next;
 			const option = this.#filteredOptions[index];
@@ -433,7 +434,7 @@ export class HookSelectorComponent extends Container {
 		// possible rather than letting one long description swallow the budget.
 		const descMode: number | "full" = compact ? 0 : "full";
 		const rowBudget = Math.max(1, this.#maxVisible);
-		const selectedIndex = Math.max(0, Math.min(this.#selectedIndex, total - 1));
+		const selectedIndex = clampLow(this.#selectedIndex, 0, total - 1);
 		let startIndex = selectedIndex;
 		let endIndex = selectedIndex + 1;
 		let rows = this.#optionRowCount(
@@ -566,17 +567,7 @@ export class HookSelectorComponent extends Container {
 	#renderSliderLine(): string {
 		const slider = this.#slider;
 		if (!slider) return "";
-		const segments = slider.segments;
-		const active = this.#sliderIndex;
-		const track = renderSegmentTrack(segments, active);
-
-		const leftArrow = theme.fg(active > 0 ? "accent" : "dim", "◂");
-		const rightArrow = theme.fg(active < segments.length - 1 ? "accent" : "dim", "▸");
-		const caption = slider.caption ? `${theme.fg("dim", slider.caption)}  ` : "";
-		const trackLine = `${caption}${leftArrow}  ${track}  ${rightArrow}`;
-		const detail = segments[active]?.detail;
-		if (!detail) return trackLine;
-		return `${trackLine}\n  ${theme.fg("dim", "↳")} ${theme.fg("muted", detail)}`;
+		return renderSliderLines(slider.segments, this.#sliderIndex, slider.caption).join("\n");
 	}
 
 	/** Move the slider by `delta`, clamped to the segment range, refresh the
@@ -584,7 +575,7 @@ export class HookSelectorComponent extends Container {
 	#moveSlider(delta: number): void {
 		const slider = this.#slider;
 		if (!slider) return;
-		const next = Math.max(0, Math.min(slider.segments.length - 1, this.#sliderIndex + delta));
+		const next = clampLow(this.#sliderIndex + delta, 0, slider.segments.length - 1);
 		if (next === this.#sliderIndex) return;
 		this.#sliderIndex = next;
 		this.#sliderComponent?.setText(this.#renderSliderLine());

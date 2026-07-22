@@ -8,7 +8,7 @@
  * are stubbed. One host/relay boots once and is reused; guest frames ride the
  * in-memory transport, so the suite stays fast and time-independent.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
@@ -74,6 +74,12 @@ function makeHostContext(): HostHarness {
 		ui: { requestRender: () => {} },
 		showStatus: () => {},
 		collabHost: undefined,
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 	const nextPrompt = (): Promise<{ from?: string }> => {
 		const { promise, resolve } = Promise.withResolvers<{ from?: string }>();

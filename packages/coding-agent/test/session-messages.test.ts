@@ -14,11 +14,12 @@ function expectAttribution(message: Message | undefined, expected: "user" | "age
 }
 
 describe("convertToLlm compaction summary", () => {
-	it("appends snapcompact frames as image blocks after the summary text", () => {
+	it("appends a compaction summary's legacy image blocks after the summary text", () => {
 		// Regression: the live session uses THIS converter (not agent-core's
-		// defaultConvertToLlm). Dropping the frames here silently severs the
-		// archive from the provider request — the model sees a summary that
-		// references attached frames that never arrive.
+		// defaultConvertToLlm). A compaction summary may still carry legacy
+		// `images` (from an old persisted archive); dropping them here would
+		// silently sever that content from the provider request — the model
+		// would see a summary that references attachments that never arrive.
 		const images: ImageContent[] = [
 			{ type: "image", data: "ZmFrZQ==", mimeType: "image/png" },
 			{ type: "image", data: "ZmFrZTI=", mimeType: "image/png" },

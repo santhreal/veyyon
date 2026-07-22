@@ -27,6 +27,18 @@ export interface SessionTeardownDeps {
 	 */
 	saveDraft: (text: string) => Promise<void>;
 	/**
+	 * Flush any pending debounced Settings save to disk. A `settings.set()`
+	 * schedules a 100ms-debounced async write; without this flush a setting the
+	 * user changed just before quitting (or whose async write has not landed) is
+	 * lost on the next exit/signal. Called on EVERY teardown so the keypress
+	 * `/exit`, Ctrl+C/Ctrl+D, and every catchable signal path all persist pending
+	 * settings, matching the session record's exit-durability guarantee. Runs
+	 * before the (potentially long) `disposeSession` so a slow dispose or a second
+	 * signal cannot strand the settings write. Errors are logged, never abort the
+	 * disposal chain (same contract as `saveDraft`).
+	 */
+	flushSettings: () => Promise<void>;
+	/**
 	 * Dispose the session — emits `session_shutdown`, drains async jobs, closes
 	 * the manager. Receives the postmortem reason that triggered the teardown
 	 * (undefined on the keypress/`/exit` path) so `AgentSession.dispose()` can
@@ -59,9 +71,9 @@ export type SessionTeardown = (reason?: postmortem.Reason) => Promise<void>;
  * keypress-initiated teardown awaits the in-flight promise and its reason is
  * dropped — by then the exit entry is already being written as a normal exit.
  *
- * `saveDraft` failures are logged but never abort the disposal chain — a
- * draft-write error must not leak background bash/task jobs or skip the
- * extension `session_shutdown` event.
+ * `saveDraft` and `flushSettings` failures are logged but never abort the
+ * disposal chain — a draft- or settings-write error must not leak background
+ * bash/task jobs or skip the extension `session_shutdown` event.
  */
 export function createSessionTeardown(deps: SessionTeardownDeps): SessionTeardown {
 	let pending: Promise<void> | undefined;
@@ -72,6 +84,13 @@ export function createSessionTeardown(deps: SessionTeardownDeps): SessionTeardow
 			await deps.saveDraft(draftText);
 		} catch (err) {
 			logger.warn("Failed to save session draft during teardown", { error: String(err) });
+		}
+		// Persist pending debounced settings BEFORE the (potentially long) dispose so
+		// a slow dispose or a second signal cannot strand a just-changed setting.
+		try {
+			await deps.flushSettings();
+		} catch (err) {
+			logger.warn("Failed to flush settings during teardown", { error: String(err) });
 		}
 		await deps.disposeSession(reason);
 	};

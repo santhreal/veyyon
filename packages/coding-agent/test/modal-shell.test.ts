@@ -68,6 +68,23 @@ describe("ModalShell", () => {
 		expect(fitTipLine(["a very long tip that will not fit in ten", "short tip"], 12)).toBe("short tip");
 	});
 
+	it("joins footer chips with the shared `·` grammar, never the legacy `|`", () => {
+		// The whole TUI uses one separator dialect — the middle dot with two spaces
+		// each side. Modal footers were the lone `|` holdout, which read as a
+		// foreign dialect on the same screen. This locks the grammar so a `|`
+		// separator cannot creep back into the chip band.
+		const shortcuts = [
+			{ label: "up/down select" },
+			{ label: "enter confirm", clickable: true, id: "confirm" },
+			{ label: "esc cancel", clickable: true, id: "close" },
+		];
+		const row = stripVTControlCharacters(renderModalShortcuts(shortcuts, 84)[0] ?? "");
+		expect(row).toContain("  ·  ");
+		expect(row).not.toContain("|");
+		// The dot joins adjacent chips: exactly (n-1) separators for n chips.
+		expect(row.split("  ·  ").length).toBe(shortcuts.length);
+	});
+
 	it("never strands a lone trailing chip on its own wrapped row", () => {
 		// Regression: plan-review's "actions" footer at this width used to wrap
 		// with 5 chips on row one and "esc cancel" alone on row two, looking
@@ -83,8 +100,9 @@ describe("ModalShell", () => {
 		const rows = renderModalShortcuts(shortcuts, 84).map(line => stripVTControlCharacters(line).trim());
 		expect(rows.length).toBe(2);
 		expect(rows[0]).not.toContain("esc cancel");
-		// The trailing row must carry at least two chips, not a solitary one.
-		expect(rows[1]?.includes("|")).toBe(true);
+		// The trailing row must carry at least two chips, not a solitary one. Chips
+		// are joined by the shared `·` separator (one grammar across the TUI).
+		expect(rows[1]?.includes("·")).toBe(true);
 		expect(rows[1]).toContain("esc cancel");
 	});
 
@@ -98,10 +116,11 @@ describe("ModalShell", () => {
 			stripVTControlCharacters(line).trim(),
 		);
 		expect(rows.length).toBe(3);
-		// No row after the first may be a solitary chip beneath a fuller row.
+		// No row after the first may be a solitary chip beneath a fuller row. A row
+		// with the shared `·` separator carries two or more chips.
 		for (let i = 1; i < rows.length; i++) {
-			const soloChip = !rows[i]!.includes("|");
-			expect(soloChip && rows[i - 1]!.includes("|")).toBe(false);
+			const soloChip = !rows[i]!.includes("·");
+			expect(soloChip && rows[i - 1]!.includes("·")).toBe(false);
 		}
 		expect(rows.join(" ")).toContain("esc close");
 	});

@@ -118,8 +118,32 @@ const SNAPSHOT_CHUNK_BYTES = 512 * 1024;
  */
 export type CollabGuestUiResult = { kind: "answered"; value: CollabUiResponseValue } | { kind: "unavailable" };
 
+/**
+ * The slice of the interactive-mode context the host actually uses.
+ *
+ * `InteractiveModeContext` has over 200 required members, so anything typed
+ * against the whole of it can only be constructed by the real TUI. That is why
+ * every test stubbing one reaches for `as unknown as InteractiveModeContext`,
+ * and a double cast means the stub is no longer checked against what it stands
+ * in for at all. Naming the eight members this class reads gives a caller (and
+ * a test) something it can actually satisfy, and makes the dependency legible:
+ * the host talks to the session, the bus, and three pieces of chrome.
+ */
+export type CollabHostContext = Pick<
+	InteractiveModeContext,
+	| "collabHost"
+	| "eventBus"
+	| "session"
+	| "sessionManager"
+	| "settings"
+	| "showStatus"
+	| "statusLine"
+	| "ui"
+	| "updatePendingMessagesDisplay"
+>;
+
 export class CollabHost {
-	#ctx: InteractiveModeContext;
+	#ctx: CollabHostContext;
 	#socket: CollabSocket | null = null;
 	#link = "";
 	#webLink = "";
@@ -139,7 +163,7 @@ export class CollabHost {
 	#registryUnsubscribe?: () => void;
 	#stopped = false;
 
-	constructor(ctx: InteractiveModeContext) {
+	constructor(ctx: CollabHostContext) {
 		this.#ctx = ctx;
 	}
 

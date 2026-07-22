@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { commands } from "@veyyon/coding-agent/cli-commands";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 // E2E twins for the non-TTY stdin contract:
@@ -51,7 +52,24 @@ const spawnCli = (
 	return { proc, done };
 };
 
+/**
+ * A two-word prompt whose first word is not a subcommand, so argv falls through
+ * to `launch` and the non-TTY guard is what answers.
+ */
+const PROSE_POSITIONALS = ["rename", "everything"] as const;
+
+/** Every name argv can resolve to a subcommand by, aliases included. */
+const registeredNames = (): string[] => commands.flatMap(c => [c.name, ...(c.aliases ?? [])]);
+
 describe("non-TTY stdin contract (e2e)", () => {
+	it("the prose positional this suite relies on is not a registered subcommand", () => {
+		// Guards the suite's own premise. Without this, a future `veyyon rename`
+		// would turn the test below into an assertion about that command's usage
+		// error while still claiming to test the non-TTY guard, which is exactly
+		// how it broke with `sessions`.
+		expect(registeredNames()).not.toContain(PROSE_POSITIONALS[0]);
+	});
+
 	it("interactive launch with non-TTY stdin and nothing piped fails fast instead of hanging", async () => {
 		const { done } = spawnCli([], "ignore");
 		const { stderr, exitCode } = await done;
@@ -72,15 +90,25 @@ describe("non-TTY stdin contract (e2e)", () => {
 	}, 60_000);
 
 	it("positional args with non-TTY stdin name both fixes: the -p rerun and the subcommand possibility", async () => {
-		const { done } = spawnCli(["sessions", "list"], "ignore");
+		// The first word has to be one that falls through to `launch` as prose. This
+		// test used to hardcode `sessions list`, which was prose when it was written
+		// and then became a registered alias of `veyyon session`; the CLI correctly
+		// answered with that command's usage error and the test read it as a
+		// regression in the non-TTY guard. Deriving the word from the registry and
+		// asserting it is unclaimed means the next command added cannot quietly
+		// change what this test is exercising: it fails loudly and says why.
+		const [first, second] = PROSE_POSITIONALS;
+		expect(registeredNames()).not.toContain(first);
+
+		const { done } = spawnCli([first, second], "ignore");
 		const { stderr, exitCode } = await done;
 
 		expect(exitCode).toBe(1);
 		expect(stderr).toContain("Interactive mode needs a terminal");
 		// The exact rerun command, with the positional prompt quoted into it.
-		expect(stderr).toContain('veyyon -p "sessions list"');
+		expect(stderr).toContain(`veyyon -p "${first} ${second}"`);
 		// The typo'd-subcommand escape hatch.
-		expect(stderr).toContain('If "sessions" was meant as a subcommand');
+		expect(stderr).toContain(`If "${first}" was meant as a subcommand`);
 		expect(stderr).toContain("veyyon --help");
 		// The old message lied when positionals were present.
 		expect(stderr).not.toContain("no prompt was piped in");

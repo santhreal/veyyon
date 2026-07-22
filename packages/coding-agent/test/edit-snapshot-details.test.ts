@@ -19,9 +19,10 @@ import { writethroughNoop } from "@veyyon/coding-agent/lsp";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { formatHashlineHeader } from "@veyyon/hashline";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "./helpers/tool-session";
 
 function makeSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
@@ -31,7 +32,7 @@ function makeSession(cwd: string): ToolSession {
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
 		getPlanModeState: () => undefined,
-	} as unknown as ToolSession;
+	});
 }
 
 const noopBeginDeferred = (_p: string) => ({
@@ -188,7 +189,7 @@ describe("EditTool single-path aggregation across mixed-size entries", () => {
 		await Bun.write(path.join(tempDir, "shrink.txt"), `${FILLER}TAIL\n`);
 
 		// Replace mode lets us shrink the file in one edit, then tweak the result.
-		const replaceSession = {
+		const replaceSession = makeToolSession({
 			cwd: tempDir,
 			hasUI: false,
 			getSessionFile: () => null,
@@ -198,7 +199,7 @@ describe("EditTool single-path aggregation across mixed-size entries", () => {
 			getArtifactsDir: () => null,
 			getSessionId: () => null,
 			getPlanModeState: () => undefined,
-		} as unknown as ToolSession;
+		});
 		const tool = new EditTool(replaceSession);
 
 		const result = await tool.execute("call-shrink", {
@@ -230,10 +231,10 @@ describe("executeHashlineSingle multi-section aggregate cap", () => {
 		// the wrapping fix from #3787 review every per-file snapshot would
 		// survive to the session JSONL.
 		const fileCount = 5;
-		const session = {
+		const session = makeToolSession({
 			cwd: tempDir,
 			settings: Settings.isolated(),
-		} as unknown as ToolSession;
+		});
 
 		const tags: string[] = [];
 		const filler = "filler line of content xxxx yyyy zzzz\n".repeat(120); // ~5 KB

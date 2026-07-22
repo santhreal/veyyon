@@ -11,7 +11,7 @@
  * Product constraint: Veyyon stays transcript + composer; overlays float on
  * top. This is not a full-screen TUI conversion.
  */
-import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { clamp, clampLow, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { theme } from "../theme/theme";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
@@ -84,9 +84,9 @@ export interface ModalDims {
  * to paint meaningful chrome (Grok abort gate: w<20 or h<6).
  */
 export function computeModalDims(areaWidth: number, areaHeight: number, sizing: ModalSizing): ModalDims | null {
-	const maxWidth = Math.min(Math.max(0, areaWidth - 4), sizing.maxWidth);
+	const maxWidth = clamp(areaWidth - 4, 0, sizing.maxWidth);
 	const preferred = Math.floor(areaWidth * sizing.widthPct);
-	const modalWidth = Math.min(areaWidth, Math.max(sizing.minWidth, Math.min(preferred, maxWidth)));
+	const modalWidth = Math.min(areaWidth, clampLow(preferred, sizing.minWidth, maxWidth));
 	const modalHeight = Math.max(0, areaHeight - 2 * sizing.vMargin);
 	if (modalWidth < 20 || modalHeight < 6) return null;
 	const leftPad = Math.max(0, Math.floor((areaWidth - modalWidth) / 2));
@@ -111,7 +111,12 @@ export interface ShortcutHitRect {
 	colEnd: number;
 }
 
-const SHORTCUT_SEP = "  |  ";
+// One separator grammar across the whole TUI: the middle dot, two spaces each
+// side. The composer status line, welcome hints, and every ceremony footer use
+// `·`; modal footers used to be the lone `|` holdout, which read as a different
+// dialect on the same screen. Same visible width (5 cells), so chip layout math
+// is unchanged.
+const SHORTCUT_SEP = "  ·  ";
 
 function styleShortcutChip(label: string, hovered: boolean): string {
 	const space = label.indexOf(" ");

@@ -17,6 +17,7 @@ import { $env, readSseJson } from "@veyyon/utils";
 import packageJson from "../../../../package.json" with { type: "json" };
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
+import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -593,12 +594,7 @@ export async function searchCodex(params: SearchParams): Promise<SearchResponse>
 		{ sessionId: params.sessionId, signal: params.signal, seed: seed.access },
 	);
 
-	let sources = result.sources;
-
-	const numResults = params.numSearchResults ?? params.limit;
-	if (numResults && sources.length > numResults) {
-		sources = sources.slice(0, numResults);
-	}
+	const sources = applyResultLimit(result.sources, params.numSearchResults ?? params.limit);
 
 	return {
 		provider: "codex",

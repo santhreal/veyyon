@@ -13,7 +13,7 @@ import * as zodModule from "zod/v4";
 import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
 import { type Hook, hookCapability } from "../../capability/hook";
 import { loadCapability } from "../../discovery";
-import { getExtensionNameFromPath } from "../../discovery/helpers";
+import { discoverExtensionModulePaths, getExtensionNameFromPath } from "../../discovery/helpers";
 import type { ExecOptions } from "../../exec/exec";
 import { execCommand } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
@@ -436,53 +436,6 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
 }
 
 /**
- * Discover extensions in a directory.
- *
- * Discovery rules:
- * 1. Direct files: `extensions/*.ts` or `*.js` → load
- * 2. Subdirectory with index: `extensions/<ext>/index.ts` or `index.js` → load
- * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "veyyon" (legacy "omp"/"pi") field → load declared paths
- *
- * No recursion beyond one level. Complex packages must use package.json manifest.
- */
-async function discoverExtensionsInDir(dir: string): Promise<string[]> {
-	const discovered: string[] = [];
-
-	// First check if this directory itself has explicit extension entries (package.json or index)
-	const rootEntries = await resolveExtensionEntries(dir);
-	if (rootEntries) {
-		return rootEntries;
-	}
-
-	// Otherwise, discover extensions from directory contents
-	let entries: fs1.Dirent[];
-	try {
-		entries = await fs.readdir(dir, { withFileTypes: true });
-	} catch (err) {
-		if (isEnoent(err)) return [];
-		logger.warn("Failed to discover extensions in directory", { path: dir, error: String(err) });
-		return [];
-	}
-
-	for (const entry of entries) {
-		const entryPath = path.join(dir, entry.name);
-
-		if ((entry.isFile() || entry.isSymbolicLink()) && isExtensionFile(entry.name)) {
-			discovered.push(entryPath);
-			continue;
-		}
-
-		if (entry.isDirectory() || entry.isSymbolicLink()) {
-			const resolved = await resolveExtensionEntries(entryPath);
-			if (resolved) {
-				discovered.push(...resolved);
-			}
-		}
-	}
-
-	return discovered;
-}
-/**
  * Discover absolute paths of extensions to load, without importing or
  * binding factories. Hot path on session startup — the scan walks native
  * `.veyyon`/`.pi` extension capabilities, JS/TS hook factories, the
@@ -568,7 +521,9 @@ export async function discoverExtensionPaths(
 				continue;
 			}
 
-			const discovered = await discoverExtensionsInDir(resolved);
+			// Same three discovery rules as the well-known agent directories, so
+			// configured paths and discovered ones resolve a layout identically.
+			const discovered = await discoverExtensionModulePaths(resolved);
 			if (discovered.length > 0) {
 				addPaths(discovered);
 			}

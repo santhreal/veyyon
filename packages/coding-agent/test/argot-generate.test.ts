@@ -2,13 +2,13 @@
  * The auto dict generator is vendored from the argot SDK, where its behavior is
  * covered in depth (ranking, budget packing, TOML escaping, determinism). These
  * tests confirm the vendored copy is REACHABLE through veyyon's import surface
- * (`@veyyon/coding-agent/argot/index`) and still honors the two contracts a
+ * (`argot`) and still honors the two contracts a
  * harness depends on: the emitted dictionary re-parses through the same codec,
  * and it stays under the token budget a harness reads into context.
  */
 
 import { describe, expect, it } from "bun:test";
-import { generateDict, generateDictFromRepo, makeExpander, parseDict } from "@veyyon/coding-agent/argot/index";
+import { generateDict, generateDictFromRepo, makeExpander, parseDict } from "argot";
 
 const PATH = "packages/coding-agent/src/database/connection.ts";
 const CMD = "CARGO_TARGET_DIR=/dev/null bunx tsgo -p packages/coding-agent/tsconfig.json --noEmit";

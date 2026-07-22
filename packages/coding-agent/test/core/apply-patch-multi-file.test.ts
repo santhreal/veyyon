@@ -17,9 +17,10 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { EditTool, type EditToolDetails } from "@veyyon/coding-agent/edit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 function makeApplyPatchSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
@@ -29,7 +30,7 @@ function makeApplyPatchSession(cwd: string): ToolSession {
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
 		getPlanModeState: () => undefined,
-	} as unknown as ToolSession;
+	});
 }
 
 let tempDir: string;

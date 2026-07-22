@@ -5,8 +5,8 @@
  * (#000000) everywhere — no tinted or raised panels, no colored state
  * backgrounds — with silver (#C6CBD4) as the structural/brand color and
  * ember (#F0862E, the website's sun accent) as the single accent, carried
- * by links, the accent border, and the selection glow (#241510, the one
- * permitted non-black surface). These asserts lock that model so a theme
+ * by links, the accent border, and the selection surface (#241510, a dim ember
+ * wash under selected text and the one permitted non-black surface). These asserts lock that model so a theme
  * edit that reintroduces a non-black panel background, drifts the silver,
  * or drops the ember accent fails here instead of silently shipping an
  * off-brand default. Reference implementation: website/site.css :root.
@@ -14,14 +14,14 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { EMBER as SUN_EMBER_RAMP } from "@veyyon/coding-agent/modes/components/sun";
+import { EMBER as SUN_EMBER_RAMP, GLYPH as SUN_GLYPH } from "@veyyon/coding-agent/modes/components/sun";
 import { SILVER_STOPS } from "@veyyon/coding-agent/modes/components/welcome";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 
 const BLACK = "#000000";
 const BRAND_SILVER = "#C6CBD4";
 const EMBER = "#F0862E";
-const EMBER_GLOW = "#241510";
+const EMBER_SELECTION = "#241510";
 
 /** Parse a `--token:#hex` custom property out of website/site.css :root. */
 function websiteToken(css: string, token: string): string {
@@ -30,8 +30,34 @@ function websiteToken(css: string, token: string): string {
 	return match![1].toUpperCase();
 }
 
+/**
+ * Assert that a web sun renderer's inline material equals the terminal sun
+ * (sun.ts). Every surface that draws the sun — the hero, the marks, the OAuth
+ * callback page — must draw the identical ember ramp and glyph vocabulary, or
+ * the brand fractures into several slightly-different suns. This extracts the
+ * `COLORS`/`GLYPH` arrays a renderer declares and pins both to the terminal
+ * `EMBER`/`GLYPH`, stop for stop. `source` names the file for the failure line.
+ */
+function expectSunFieldParity(js: string, source: string): void {
+	const hex = (stop: readonly [number, number, number]) =>
+		`#${stop.map(channel => channel.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+
+	const colorsMatch = js.match(/COLORS = \[([^\]]+)\]/);
+	expect(colorsMatch, `${source} must define a COLORS ramp`).not.toBeNull();
+	const webColors = [...colorsMatch![1].matchAll(/#[0-9a-fA-F]{6}/g)].map(m => m[0].toUpperCase());
+	expect(webColors.length, `${source}: the ember ramp has eight stops`).toBe(8);
+	expect(webColors, `${source}: ember ramp equals the terminal EMBER ramp, stop for stop`).toEqual(
+		SUN_EMBER_RAMP.map(hex),
+	);
+
+	const glyphMatch = js.match(/GLYPH = \[([^\]]+)\]/);
+	expect(glyphMatch, `${source} must define a GLYPH ramp`).not.toBeNull();
+	const webGlyphs = [...glyphMatch![1].matchAll(/"([^"]*)"/g)].map(m => m[1]);
+	expect(webGlyphs, `${source}: glyph ramp equals the terminal GLYPH ramp`).toEqual([...SUN_GLYPH]);
+}
+
 // Every paintable background surface must stay pitch black, except the
-// selection surface, which carries the ember glow tint.
+// selection surface, which carries the dim ember wash.
 const BLACK_BACKGROUND_KEYS = [
 	"userMessageBg",
 	"customMessageBg",
@@ -55,9 +81,9 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		}
 	});
 
-	it("tints the selection surface with the ember glow, nothing brighter", async () => {
+	it("tints the selection surface with a dim ember wash, nothing brighter", async () => {
 		const theme = await titanium();
-		expect(theme.getBgColorHex("selectedBg").toUpperCase()).toBe(EMBER_GLOW);
+		expect(theme.getBgColorHex("selectedBg").toUpperCase()).toBe(EMBER_SELECTION);
 	});
 
 	it("uses brand silver for the primary accent and structural border tone", async () => {
@@ -107,7 +133,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		for (const key of BLACK_BACKGROUND_KEYS) {
 			expect(theme!.getBgColorHex(key)).toBe("#FFFFFF");
 		}
-		// Selection carries a light ember-glow tint, nothing saturated.
+		// Selection carries a dim ember wash, nothing saturated.
 		expect(theme!.getBgColorHex("selectedBg").toUpperCase()).toBe("#FBE9D9");
 		// Structure is a dark silver (equal-ish RGB channels), never a hue.
 		const accent = theme!.getColorHex("accent");
@@ -142,6 +168,27 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		expect(hex(SILVER_STOPS[2]!)).toBe(websiteToken(css, "silver-hi"));
 		expect(hex(SUN_EMBER_RAMP[4]!)).toBe(websiteToken(css, "sun"));
 		expect(hex(SUN_EMBER_RAMP[5]!)).toBe(websiteToken(css, "sun-hi"));
+	});
+
+	// website/sun-field.js is the web-side single source: both the hero journey
+	// (website/sun.js) and the structural marks (website/sunmark.js) read their
+	// material from it. Pin it to the terminal sun so the web hero and the
+	// terminal splash render one sun, not two copies that silently drift.
+	it("keeps website/sun-field.js in parity with the terminal sun (sun.ts)", () => {
+		const field = fs.readFileSync(path.join(import.meta.dir, "../../../website/sun-field.js"), "utf-8");
+		expectSunFieldParity(field, "website/sun-field.js");
+	});
+
+	// The OAuth callback page (packages/ai) is served self-contained by the local
+	// auth server, so it cannot import the shared source and carries its own
+	// inline COLORS/GLYPH. It is the fourth surface that draws the sun; pin it too
+	// so the copy it is forced to keep still cannot drift from the one sun.
+	it("keeps the OAuth callback sun (oauth.html) in parity with the terminal sun", () => {
+		const oauth = fs.readFileSync(
+			path.join(import.meta.dir, "../../ai/src/registry/oauth/oauth.html"),
+			"utf-8",
+		);
+		expectSunFieldParity(oauth, "packages/ai/src/registry/oauth/oauth.html");
 	});
 
 	// The three shipped web dashboards (collab-web, veybot, stats) inherited an
@@ -357,5 +404,12 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		expect(theme.getColorHex("error").toUpperCase()).toBe(websiteToken(css, "red"));
 		// Ember stays distinct from the amber warning color on both surfaces.
 		expect(websiteToken(css, "sun")).not.toBe(websiteToken(css, "amber"));
+		// The Daybreak cool arc + match gold are shared brand values: the TUI's
+		// identity/state tokens and the site's CSS variables must move together.
+		expect(theme.getColorHex("sessionAccent").toUpperCase()).toBe(websiteToken(css, "teal"));
+		expect(theme.getColorHex("modeAccent").toUpperCase()).toBe(websiteToken(css, "violet"));
+		expect(theme.getColorHex("shareAccent").toUpperCase()).toBe(websiteToken(css, "indigo"));
+		expect(theme.getColorHex("infoAccent").toUpperCase()).toBe(websiteToken(css, "rose"));
+		expect(theme.getColorHex("matchHighlight").toUpperCase()).toBe(websiteToken(css, "gold"));
 	});
 });

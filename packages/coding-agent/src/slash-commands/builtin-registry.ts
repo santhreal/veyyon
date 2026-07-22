@@ -1480,7 +1480,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		subcommands: COMPACT_MODES.map(mode => ({
 			name: mode.name,
 			description: mode.description,
-			usage: mode.rejectsFocus ? undefined : "[focus]",
+			usage: "[focus]",
 		})),
 		acpInputHint: `[${COMPACT_MODES.map(mode => mode.name).join("|")}] [focus]`,
 		allowArgs: true,
@@ -1786,22 +1786,34 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		handle: async (command, runtime) => {
 			const current = runtime.sessionManager.getCwd();
 			if (!command.args) {
-				await runtime.output(current);
+				await runtime.output(
+					`${current}\n(session-scoped and ephemeral. For a per-profile default working directory, set session.workdir in /settings › Interaction › Profile on this profile.)`,
+				);
 				return commandConsumed();
 			}
 			if (runtime.session.isStreaming) return usage("Cannot change cwd while streaming.", runtime);
 			const resolvedPath = resolveToCwd(command.args, current);
+			// A relative arg resolves against the SESSION cwd, not the OS cwd or the
+			// project root, so name that base in the failure — otherwise `/cwd tmp`
+			// from a session rooted elsewhere reads as "tmp doesn't exist" with no clue why.
+			const relativeHint = path.isAbsolute(command.args.trim())
+				? ""
+				: ` (relative paths resolve against the current session cwd ${current}; pass an absolute path to avoid this)`;
 			try {
 				const st = await fs.stat(resolvedPath);
 				if (!st.isDirectory()) {
-					return usage(`Not a directory: ${resolvedPath}`, runtime);
+					return usage(`Not a directory: ${resolvedPath}${relativeHint}`, runtime);
 				}
 			} catch {
-				return usage(`Directory does not exist: ${resolvedPath}`, runtime);
+				return usage(`Directory does not exist: ${resolvedPath}${relativeHint}`, runtime);
 			}
 			try {
 				const next = await runtime.session.setCwd(resolvedPath, { validate: true });
-				await runtime.output(next === current ? `cwd unchanged: ${next}` : `cwd set: ${current} → ${next}`);
+				await runtime.output(
+					next === current
+						? `cwd unchanged: ${next}`
+						: `cwd set: ${current} → ${next}\nThis change is session-scoped and ephemeral (it does not persist). For a per-profile default, set session.workdir in /settings › Interaction › Profile on this profile.`,
+				);
 				await runtime.notifyTitleChanged?.();
 				return commandConsumed();
 			} catch (err) {
@@ -2187,6 +2199,101 @@ function buildDirectoryCompletionDisplayValue(prefix: string, absoluteValue: str
 	return `${relative.replaceAll("\\", "/")}/`;
 }
 
+/**
+ * The ONE owner of / menu grouping: every builtin command's category, keyed by
+ * name. The unfiltered / menu renders these as group headers (SelectItem.group
+ * via SlashCommand.category); header order follows the first appearance of
+ * each category in registry order. A builtin missing here fails the
+ * registry-coherence test, so new commands must be categorized at birth.
+ */
+export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> = {
+	settings: "setup",
+	statusline: "setup",
+	welcome: "setup",
+	lsp: "setup",
+	setup: "setup",
+	login: "setup",
+	logout: "setup",
+	profile: "setup",
+	mcp: "setup",
+	ssh: "setup",
+	extensions: "setup",
+	plugins: "setup",
+	"reload-plugins": "setup",
+	plan: "modes",
+	"plan-review": "modes",
+	vibe: "modes",
+	goal: "modes",
+	"guided-goal": "modes",
+	loop: "modes",
+	queue: "modes",
+	prewalk: "modes",
+	fast: "modes",
+	yolo: "modes",
+	pause: "modes",
+	model: "model",
+	switch: "model",
+	thinking: "model",
+	force: "model",
+	retry: "model",
+	share: "share",
+	collab: "share",
+	join: "share",
+	leave: "share",
+	export: "share",
+	dump: "share",
+	copy: "share",
+	browser: "workspace",
+	cwd: "workspace",
+	tools: "workspace",
+	agents: "workspace",
+	jobs: "workspace",
+	usage: "workspace",
+	cockpit: "workspace",
+	todo: "context",
+	context: "context",
+	memory: "context",
+	compact: "context",
+	shake: "context",
+	handoff: "context",
+	btw: "context",
+	tan: "context",
+	session: "session",
+	new: "session",
+	fresh: "session",
+	drop: "session",
+	resume: "session",
+	rename: "session",
+	move: "session",
+	branch: "session",
+	fork: "session",
+	tree: "session",
+	exit: "session",
+	quit: "session",
+	changelog: "info",
+	hotkeys: "info",
+	debug: "info",
+	omfg: "info",
+};
+
+/**
+ * Deliberate category sequence for the unfiltered / menu browse view: what you
+ * reach for most sits first (session and mode control), setup and reference
+ * material last. The one owner of the browse order — registry order stops
+ * mattering for headers. Extension-supplied groups (skills, custom,
+ * extensions) trail the builtins by first appearance.
+ */
+export const BUILTIN_SLASH_COMMAND_CATEGORY_ORDER: readonly string[] = [
+	"session",
+	"modes",
+	"model",
+	"context",
+	"share",
+	"workspace",
+	"setup",
+	"info",
+] as const;
+
 /** Builtin command metadata used for slash-command autocomplete and help text. */
 export const BUILTIN_SLASH_COMMAND_DEFS: ReadonlyArray<BuiltinSlashCommand> = BUILTIN_SLASH_COMMAND_REGISTRY.map(
 	command => ({
@@ -2197,6 +2304,7 @@ export const BUILTIN_SLASH_COMMAND_DEFS: ReadonlyArray<BuiltinSlashCommand> = BU
 		subcommands: command.subcommands,
 		inlineHint: command.inlineHint,
 		getTuiAutocompleteDescription: command.getTuiAutocompleteDescription,
+		category: BUILTIN_SLASH_COMMAND_CATEGORIES[command.name],
 	}),
 );
 

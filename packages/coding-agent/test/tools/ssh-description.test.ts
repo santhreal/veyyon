@@ -7,6 +7,7 @@ import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager"
 import * as sshExecutor from "@veyyon/coding-agent/ssh/ssh-executor";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { loadSshTool } from "@veyyon/coding-agent/tools/ssh";
+import { makeToolSession } from "../helpers/tool-session";
 
 const SOURCE: SourceMeta = {
 	provider: "test",
@@ -32,7 +33,7 @@ function mockHosts(hosts: SSHHost[]): void {
 }
 
 function createSession(): ToolSession {
-	return { cwd: "/tmp" } as unknown as ToolSession;
+	return makeToolSession({ cwd: "/tmp" });
 }
 
 async function loadTestTool(hosts: SSHHost[] = [HOST_A]) {

@@ -16,7 +16,11 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { planTurnPersistence, sessionMessagePersistenceKey } from "@veyyon/coding-agent/session/turn-persistence";
+import {
+	planTurnPersistence,
+	sameMessageContent,
+	sessionMessagePersistenceKey,
+} from "@veyyon/coding-agent/session/turn-persistence";
 
 function assistant(overrides: Partial<Extract<AgentMessage, { role: "assistant" }>> = {}) {
 	return {
@@ -162,5 +166,51 @@ describe("planTurnPersistence", () => {
 		// to completion before onTurnEnd reached us). We have nothing to do.
 		const plan = planTurnPersistence(["a", "b"], new Set(["a", "b"]));
 		expect(plan).toEqual({ kind: "ok", toPersist: [] });
+	});
+});
+
+/**
+ * sameMessageContent is the content-equality check the branch rebuild uses to decide whether a
+ * candidate message is a fresh variant of one already recorded (it compares the CONTENT payload, not
+ * the whole message, so metadata like timestamp is deliberately ignored). It had no direct test. A
+ * regression that ignored role or compared the wrong field would treat distinct turns as identical
+ * (dropping one) or identical turns as distinct (double-persisting). These pin: reference identity is
+ * a fast true; differing roles are always unequal; only the content array (or `files` for a
+ * fileMention) is compared, so a timestamp difference does not matter; and differing content is
+ * unequal.
+ */
+describe("sameMessageContent", () => {
+	const user = (text: string, timestamp = 1): AgentMessage => ({
+		role: "user",
+		content: [{ type: "text", text }],
+		attribution: "user",
+		timestamp,
+	});
+
+	test("returns true for the same object reference without inspecting content", () => {
+		const message = user("hi");
+		expect(sameMessageContent(message, message)).toBe(true);
+	});
+
+	test("compares only content, so equal content at different timestamps is still equal", () => {
+		expect(sameMessageContent(user("hi", 1), user("hi", 999))).toBe(true);
+	});
+
+	test("returns false when the content differs", () => {
+		expect(sameMessageContent(user("hi"), user("bye"))).toBe(false);
+	});
+
+	test("returns false when the roles differ even if the text is identical", () => {
+		expect(sameMessageContent(user("hi"), assistant({ content: [{ type: "text", text: "hi" }] }))).toBe(false);
+	});
+
+	test("compares the files array for fileMention messages", () => {
+		const mention = (path: string): AgentMessage => ({
+			role: "fileMention",
+			files: [{ path, content: "" }],
+			timestamp: 1,
+		});
+		expect(sameMessageContent(mention("a.ts"), mention("a.ts"))).toBe(true);
+		expect(sameMessageContent(mention("a.ts"), mention("b.ts"))).toBe(false);
 	});
 });

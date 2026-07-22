@@ -6,9 +6,10 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { ConflictHistory } from "@veyyon/coding-agent/tools/conflict-detect";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		enableLsp: false,
@@ -16,7 +17,7 @@ function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): T
 		getSessionSpawns: () => "*",
 		settings: Settings.isolated(),
 		...overrides,
-	} as unknown as ToolSession;
+	});
 }
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {

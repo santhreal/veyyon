@@ -1,0 +1,205 @@
+{
+	"cases": [
+		{
+			"id": "approval-yolo-exec-allow",
+			"contract": "Yolo mode allows exec-tier tools without prompting",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "yolo",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-always-ask-write-prompt",
+			"contract": "always-ask prompts on write-tier tools",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "always-ask",
+				"userConfig": {}
+			},
+			"expect": { "policy": "prompt", "tier": "write", "override": false }
+		},
+		{
+			"id": "approval-always-ask-read-allow",
+			"contract": "always-ask allows read-tier tools without prompting",
+			"surface": "resolve-approval",
+			"tags": ["negative"],
+			"input": {
+				"tool": { "name": "read", "approval": "read" },
+				"args": {},
+				"mode": "always-ask",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "read", "override": false }
+		},
+		{
+			"id": "approval-user-deny-beats-yolo",
+			"contract": "Explicit user deny remains deny even in yolo mode",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "regression"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "yolo",
+				"userConfig": { "bash": "deny" }
+			},
+			"expect": { "policy": "deny", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-plan-autonomy-denies-write",
+			"contract": "Plan autonomy without planModeActive hard-denies write-tier mutations",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "negative"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "plan",
+				"userConfig": {},
+				"options": { "planModeActive": false }
+			},
+			"expect": {
+				"policy": "deny",
+				"tier": "write",
+				"override": false,
+				"reasonContains": "Plan autonomy"
+			}
+		},
+		{
+			"id": "approval-plan-mode-active-write-prompts",
+			"contract": "planModeActive lifts write hard-deny to prompt so plan-file guard can run at execute",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "boundary"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "plan",
+				"userConfig": {},
+				"options": { "planModeActive": true }
+			},
+			"expect": {
+				"policy": "prompt",
+				"tier": "write",
+				"override": false
+			}
+		},
+		{
+			"id": "approval-plan-mode-active-exec-still-deny",
+			"contract": "planModeActive still hard-denies exec-tier tools",
+			"surface": "resolve-approval",
+			"tags": ["adversarial"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "plan",
+				"userConfig": {},
+				"options": { "planModeActive": true }
+			},
+			"expect": {
+				"policy": "deny",
+				"tier": "exec",
+				"override": false
+			}
+		},
+		{
+			"id": "approval-bypass-upgrades-prompt-not-deny",
+			"contract": "bypassAllApprovals turns prompt into allow but never overrides deny",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "regression"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "always-ask",
+				"userConfig": { "bash": "deny" },
+				"options": { "bypassAllApprovals": true }
+			},
+			"expect": { "policy": "deny", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-unannotated-defaults-exec",
+			"contract": "Tools without approval annotation default to exec tier",
+			"surface": "resolve-approval",
+			"tags": ["boundary"],
+			"input": {
+				"tool": { "name": "custom_tool" },
+				"args": {},
+				"mode": "write",
+				"userConfig": {}
+			},
+			"expect": { "policy": "prompt", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-auto-edit-allows-write",
+			"contract": "auto-edit autonomy allows write-tier without prompt",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "auto-edit",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "write", "override": false }
+		},
+		{
+			"id": "approval-auto-edit-prompts-exec",
+			"contract": "auto-edit still prompts (or denies) on exec-tier tools",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "auto-edit",
+				"userConfig": {}
+			},
+			"expect": { "policy": "prompt", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-user-allow-beats-always-ask",
+			"contract": "Per-tool user allow override allows write under always-ask",
+			"surface": "resolve-approval",
+			"tags": ["adversarial"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "always-ask",
+				"userConfig": { "write": "allow" }
+			},
+			"expect": { "policy": "allow", "tier": "write", "override": false }
+		},
+		{
+			"id": "approval-bypass-allows-always-ask-exec",
+			"contract": "bypassAllApprovals upgrades always-ask exec prompt to allow",
+			"surface": "resolve-approval",
+			"tags": ["adversarial"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "always-ask",
+				"userConfig": {},
+				"options": { "bypassAllApprovals": true }
+			},
+			"expect": { "policy": "allow", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-ask-mode-read-allow",
+			"contract": "ask autonomy allows read-tier",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "read", "approval": "read" },
+				"args": {},
+				"mode": "ask",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "read", "override": false }
+		}
+	]
+}
+

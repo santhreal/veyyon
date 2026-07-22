@@ -93,6 +93,11 @@ export function validateServerName(name: string): string | undefined {
 	if (!/^[a-zA-Z0-9_.:-]+$/.test(name)) {
 		return "Server name can only contain letters, numbers, dash, underscore, dot, and colon";
 	}
+	// Reject pure dot-path tokens; they are never legitimate server ids and can
+	// confuse filesystem-shaped consumers that treat the name as a path segment.
+	if (name === "." || name === ".." || name.split(/[.:]/).every(p => p === "" || p === "." || p === "..")) {
+		return "Server name cannot be a path segment like '.' or '..'";
+	}
 	return undefined;
 }
 

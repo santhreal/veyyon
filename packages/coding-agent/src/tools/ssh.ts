@@ -21,13 +21,13 @@ import { formatStyledTruncationWarning, type OutputMeta, stripOutputNotice } fro
 import { capPreviewLines, replaceTabs } from "./render-utils";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
-import { clampTimeout } from "./tool-timeouts";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
 const sshSchema = type({
 	host: type("string").describe("ssh host"),
 	command: type("string").describe("remote command"),
 	"cwd?": type("string").describe("remote working directory; omit unless required, never ~ or ~/..."),
-	"timeout?": type("number").describe("timeout in seconds"),
+	"timeout?": type("number").describe(describeTimeoutParam("ssh")),
 });
 
 export interface SSHToolDetails {
@@ -170,7 +170,7 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 
 	async execute(
 		_toolCallId: string,
-		{ host, command, cwd, timeout: rawTimeout = 60 }: SshToolParams,
+		{ host, command, cwd, timeout: rawTimeout }: SshToolParams,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<SSHToolDetails>,
 		_ctx?: AgentToolContext,
@@ -188,9 +188,12 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 		const hostInfo = await ensureHostInfo(hostConfig);
 		const remoteCommand = buildRemoteCommand(command, cwd, hostInfo);
 
-		// Clamp to reasonable range: 1s - 3600s (1 hour)
+		// Clamp to the tool's configured range (see TOOL_TIMEOUTS.ssh). A clamp
+		// silently changes the budget the agent asked for, so we surface it in the
+		// result text below (Law 10) instead of applying it quietly.
 		const timeoutSec = clampTimeout("ssh", rawTimeout);
 		const timeoutMs = timeoutSec * 1000;
+		const clampNotice = formatTimeoutClampNotice("ssh", rawTimeout, timeoutSec);
 
 		const tailBuffer = new TailBuffer(DEFAULT_MAX_BYTES);
 		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("ssh")) ?? {};
@@ -208,7 +211,10 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 			throw new ToolError(result.output || "Command aborted");
 		}
 
-		const outputText = result.output || "(no output)";
+		const commandOutput = result.output || "(no output)";
+		// The notice rides on the result text so it reaches the agent on every
+		// path: the success return, and the non-zero-exit throw below.
+		const outputText = clampNotice ? `${clampNotice}\n\n${commandOutput}` : commandOutput;
 		const details: SSHToolDetails = {};
 		const resultBuilder = toolResult(details).text(outputText).truncationFromSummary(result, { direction: "tail" });
 

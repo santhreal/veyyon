@@ -9,17 +9,45 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { APP_NAME } from "@veyyon/utils";
+import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
 import { shimmerEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
 import { sunMark } from "./sun";
+import { isSettingsInitialized, settings } from "../../config/settings";
 import tipsText from "./tips.txt" with { type: "text" };
 
-/** Tips embedded at build time, one per line; blanks dropped. */
-const TIPS: readonly string[] = tipsText
+/** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`.
+ *  A gated tip is shown only while that boolean setting is true — a tip that
+ *  says "type `orchestrate` and watch it glow" is a lie when magic keywords
+ *  are disabled, and the hero must never advertise behavior the user turned
+ *  off. */
+const TIP_GATE = /^\[gate:([a-zA-Z0-9.]+)\]\s*/;
+
+/** A tip's display text plus the boolean setting that must be true to show it. */
+export interface TipEntry {
+	text: string;
+	gate?: string;
+}
+
+/** Tips embedded at build time, one per line; blanks dropped. Exported for the
+ *  schema-conformance test (every gate must name a real settings key). */
+export const TIP_ENTRIES: readonly TipEntry[] = tipsText
 	.split("\n")
 	.map(line => line.trim())
-	.filter(line => line.length > 0);
+	.filter(line => line.length > 0)
+	.map(line => {
+		const gate = TIP_GATE.exec(line);
+		return gate ? { text: line.slice(gate[0].length), gate: gate[1] } : { text: line };
+	});
+
+/** Resolve gated tips against live settings. `isEnabled` is injected so tests
+ *  need no settings singleton; unknown keys are the conformance test's job,
+ *  not a runtime branch. Exported for tests. */
+export function filterTipsByGates(tips: readonly TipEntry[], isEnabled: (key: string) => boolean): string[] {
+	return tips.filter(tip => tip.gate === undefined || isEnabled(tip.gate)).map(tip => tip.text);
+}
+
+const TIPS: readonly string[] = TIP_ENTRIES.map(tip => tip.text);
 
 /** Max recent-session rows shown under the action menu (only when present). */
 export const WELCOME_SESSION_SLOTS = 3;
@@ -86,7 +114,9 @@ export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): str
 	if (wrappedBody.length === 0) return [];
 
 	const continuationIndent = padding(labelWidth);
-	const styledLabel = theme.fg("customMessageLabel", label);
+	// Daybreak cool arc: informational callouts carry the info accent (rose on
+	// titanium), keeping tips visually distinct from session/mode/share chrome.
+	const styledLabel = theme.fg("infoAccent", label);
 
 	const lines = wrappedBody.map((line, index) => {
 		const styledBody = theme.fg("muted", line);
@@ -153,7 +183,13 @@ export class WelcomeComponent implements Component {
 			if (theme.getSymbolPreset() === "unicode" && Math.random() < 0.1) {
 				this.#selectedTip = "Please use nerdfont for the best symbol rendering.";
 			} else {
-				this.#selectedTip = pickWeightedTip(TIPS, Math.random());
+				// Gated tips resolve against live settings at pick time, so a tip
+				// never advertises a feature the user has disabled. Pre-init
+				// contexts (bare component tests) see the full corpus.
+				const visible = isSettingsInitialized()
+					? filterTipsByGates(TIP_ENTRIES, key => settings.get(key as Parameters<typeof settings.get>[0]) === true)
+					: TIPS;
+				this.#selectedTip = pickWeightedTip(visible, Math.random());
 			}
 		}
 		return this.#selectedTip || undefined;
@@ -242,14 +278,28 @@ export class WelcomeComponent implements Component {
 		const lines = this.#sunriseHeader(termWidth);
 		if (!this.full) {
 			lines.push("");
+			// Continue where you left off: the most recent session, one quiet
+			// line. The data was always fetched for the hero; before this it was
+			// only ever shown behind /welcome — the single most useful thing at
+			// launch stayed hidden.
+			const recent = this.recentSessions[0];
+			if (recent) {
+				const nameBudget = Math.max(8, Math.min(40, termWidth - 30));
+				const name =
+					visibleWidth(recent.name) > nameBudget ? truncateToWidth(recent.name, nameBudget) : recent.name;
+				lines.push(
+					centerLine(
+						theme.fg("muted", name) + theme.fg("dim", ` · ${recent.timeAgo} — `) + theme.fg("accent", "/resume"),
+						termWidth,
+					),
+				);
+			}
+			// The /resume hint dedups against the continue line above.
+			const more = recent ? "  ·  /settings" : "  ·  /resume  ·  /settings";
 			lines.push(
-				centerLine(
-					theme.fg("dim", "more: ") +
-						theme.fg("accent", "/welcome") +
-						theme.fg("dim", "  ·  /resume  ·  /settings"),
-					termWidth,
-				),
+				centerLine(theme.fg("dim", "more: ") + theme.fg("accent", "/welcome") + theme.fg("dim", more), termWidth),
 			);
+			for (const tipLine of this.#centeredTipBlock(termWidth)) lines.push(tipLine);
 			return lines;
 		}
 		// /welcome: the sunrise header, then a centred menu column. Open space is
@@ -265,7 +315,12 @@ export class WelcomeComponent implements Component {
 			for (const session of sessions) lines.push(colPad + this.#sessionRow(session, colW));
 		}
 		lines.push("");
-		for (const tipLine of this.#renderTip(colW)) lines.push(colPad + tipLine.trimStart());
+		// Drop only renderWelcomeTip's single indent space — trimStart here used
+		// to strip the continuation indent too, breaking the hanging alignment
+		// of wrapped tips.
+		for (const tipLine of this.#renderTip(colW)) {
+			lines.push(colPad + (tipLine.startsWith(" ") ? tipLine.slice(1) : tipLine));
+		}
 		return lines;
 	}
 
@@ -289,6 +344,10 @@ export class WelcomeComponent implements Component {
 		);
 		// Disc diameter is 0.6·sunW (sunMark); rows restore roundness at the 2.1
 		// cell aspect, with one row of air under the disc.
+		// Cap-wins, NOT clamp/clampLow: on a short terminal (sunRowBudget < 7) the
+		// budget must win so the sun never overflows the rows we have. clamp/clampLow
+		// let the low bound (7) win in that degenerate case, which would draw the sun
+		// taller than the budget and break the layout.
 		const sunH = Math.min(Math.max(7, Math.round((sunW * 0.6) / 2.1) + 2), sunRowBudget);
 		const sun = this.#currentLogoFrame(sunW, sunH);
 		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
@@ -313,7 +372,13 @@ export class WelcomeComponent implements Component {
 		const meta = model
 			? theme.fg("dim", `v${this.version} · ${model}`)
 			: theme.fg("dim", `v${this.version} · no model yet · `) + theme.fg("accent", "/login");
-		lines.push(centerLine(meta, termWidth));
+		// A named profile leads the metadata so you know at launch which sandbox's
+		// config, sessions, and keys are live. The built-in "default" profile is the
+		// common case and stays silent, keeping the vanilla hero uncluttered.
+		const profile = getActiveProfileOrDefault();
+		const metaLine =
+			profile === DEFAULT_PROFILE_DIR_NAME ? meta : theme.fg("muted", profile) + theme.fg("dim", " · ") + meta;
+		lines.push(centerLine(metaLine, termWidth));
 		lines.push(centerLine(theme.fg("muted", VEYYON_VALUE_LINE), termWidth));
 		return lines;
 	}
@@ -341,6 +406,25 @@ export class WelcomeComponent implements Component {
 		const tip = this.tip;
 		if (!tip) return [];
 		return renderWelcomeTip(tip, boxWidth);
+	}
+
+	/**
+	 * The tip centred as ONE BLOCK: a shared left offset from the widest line,
+	 * hanging indent intact. Centring each wrapped line individually shattered
+	 * the paragraph — the last fragment ("just images") floated alone mid-air
+	 * with no visual connection to its sentence. Returns a leading blank line
+	 * when there is a tip, nothing otherwise.
+	 */
+	#centeredTipBlock(termWidth: number): string[] {
+		// renderWelcomeTip prefixes every line with one indent space; drop that
+		// single space (keeping the continuation indent) before re-centring.
+		const tipLines = this.#renderTip(Math.min(64, termWidth - 4)).map(line =>
+			line.startsWith(" ") ? line.slice(1) : line,
+		);
+		if (tipLines.length === 0) return [];
+		const blockWidth = Math.max(...tipLines.map(line => visibleWidth(line)));
+		const pad = padding(Math.max(0, Math.floor((termWidth - blockWidth) / 2)));
+		return ["", ...tipLines.map(line => pad + line)];
 	}
 
 	/** Fit string to exact width with ANSI-aware truncation/padding. */
@@ -392,7 +476,7 @@ const SILVER_RAMP_256 = [243, 250, 255];
  * Brand contract: monochrome silver only — no hue sweep.
  */
 export function silverEscape(intensity: number): string {
-	const t = Math.max(0, Math.min(1, intensity));
+	const t = clamp01(intensity);
 	if (TERMINAL.trueColor) {
 		const seg = t * (SILVER_STOPS.length - 1);
 		const i = Math.min(SILVER_STOPS.length - 2, Math.floor(seg));
@@ -429,7 +513,7 @@ export function gradientEscape(_t: number, shine?: ShineConfig): string {
 export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineConfig): string[] {
 	const reset = "\x1b[0m";
 	const cols = Math.max(1, ...lines.map(l => l.length));
-	const frontier = shine ? Math.max(0, Math.min(1, shine.pos)) : 1;
+	const frontier = shine ? clamp01(shine.pos) : 1;
 	const edgeStrength = shine?.strength ?? 0;
 	void phase;
 	return lines.map(line => {

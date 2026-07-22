@@ -3,13 +3,27 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { normalizePremiumRequests } from "@veyyon/stats/format";
 import { TERMINAL } from "@veyyon/tui";
-import { formatDuration, formatNumber, getProjectDir, pathIsWithin, relativePathWithinRoot } from "@veyyon/utils";
+import {
+	clamp01,
+	DEFAULT_PROFILE_DIR_NAME,
+	formatDuration,
+	formatNumber,
+	getActiveProfileOrDefault,
+	getProjectDir,
+	pathIsWithin,
+	relativePathWithinRoot,
+} from "@veyyon/utils";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
 import { emberBandEscape } from "../sun";
-import { formatContextUsage, getContextUsageLevel, getContextUsageThemeColor } from "./context-thresholds";
+import {
+	type ContextUsageLevel,
+	formatContextUsage,
+	getContextUsageLevel,
+	getContextUsageThemeColor,
+} from "./context-thresholds";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types";
 
 export type { SegmentContext } from "./types";
@@ -161,7 +175,7 @@ const GOAL_NEAR_BUDGET_FRACTION = 0.9;
 
 /** Compact filled/empty unicode bar for a 0..1 fraction (clamped). */
 export function goalProgressBar(fraction: number): string {
-	const clamped = Math.max(0, Math.min(1, fraction));
+	const clamped = clamp01(fraction);
 	const filled = Math.round(clamped * GOAL_BAR_WIDTH);
 	return `${"▰".repeat(filled)}${"▱".repeat(GOAL_BAR_WIDTH - filled)}`;
 }
@@ -199,7 +213,9 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	const status = goal?.status ?? (mode.paused ? "paused" : "active");
 
 	let icon: string = theme.icon.goal;
-	let color: ThemeColor = "accent";
+	// Modes carry the cool arc's mode hue (violet on titanium); semantic
+	// warning/success/dim states below still override it.
+	let color: ThemeColor = "modeAccent";
 	switch (status) {
 		case "paused":
 			icon = theme.icon.pause || theme.symbol("status.pending");
@@ -245,18 +261,21 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 function renderBaseMode(ctx: SegmentContext): RenderedSegment {
 	const pauseSuffix = theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
 
+	// Every mode label reads in the cool arc's mode hue (`modeAccent`, violet
+	// on titanium) so "what mode am I in" is one color everywhere; paused keeps
+	// the semantic warning override.
 	const plan = ctx.planMode;
 	if (plan && (plan.enabled || plan.paused)) {
 		const label = plan.paused ? `Plan${pauseSuffix}` : "Plan";
 		const content = withIcon(theme.icon.plan, label);
-		const color = plan.paused ? "warning" : "accent";
+		const color = plan.paused ? "warning" : "modeAccent";
 		return { content: theme.fg(color, content), visible: true };
 	}
 
 	const prewalk = ctx.prewalk;
 	if (prewalk?.enabled) {
 		const content = withIcon(theme.icon.prewalk, "Prewalk");
-		return { content: theme.fg("accent", content), visible: true };
+		return { content: theme.fg("modeAccent", content), visible: true };
 	}
 
 	const goal = ctx.goalMode;
@@ -267,13 +286,13 @@ function renderBaseMode(ctx: SegmentContext): RenderedSegment {
 	const vibe = ctx.vibeMode;
 	if (vibe?.enabled) {
 		const content = withIcon(theme.icon.agents, "Vibe");
-		return { content: theme.fg("accent", content), visible: true };
+		return { content: theme.fg("modeAccent", content), visible: true };
 	}
 
 	const loop = ctx.loopMode;
 	if (loop?.enabled) {
 		const content = withIcon(theme.icon.loop, "Loop");
-		return { content: theme.fg("customMessageLabel", content), visible: true };
+		return { content: theme.fg("modeAccent", content), visible: true };
 	}
 
 	return { content: "", visible: false };
@@ -488,16 +507,91 @@ const costSegment: StatusLineSegment = {
 	},
 };
 
+/** The context bar's fixed cell count — small enough to whisper, wide enough
+ *  that one cell is a meaningful 12.5% step. */
+const CONTEXT_BAR_CELLS = 8;
+/** Brand breathing frames for the bar's tip — the same pixel-inhale cycle the
+ *  working spinner uses, so the two live elements share one vocabulary. */
+const CONTEXT_BAR_TIP_FRAMES = ["░", "▒", "▓", "█", "▓", "▒"] as const;
+/** Cells whose right edge is a major fill (25%, 50%, 75%, ~90%): once
+ *  reached they lock in gold, giving the eye fixed anchors on the ramp. */
+const CONTEXT_BAR_MAJOR_CELLS = new Set([1, 3, 5, 6]);
+/** Tip breath cadence; past the error threshold the breath doubles — the bar
+ *  visibly quickens as compaction nears. */
+const CONTEXT_BAR_TIP_STEP_MS = 1000;
+const CONTEXT_BAR_TIP_STEP_URGENT_MS = 500;
+
+/** Static frontier glyphs for the RESTING bar: the tip encodes the next
+ *  cell's fractional fill as data (quarter steps), no motion. */
+const CONTEXT_BAR_FRACTION_GLYPHS = ["▱", "░", "▒", "▓"] as const;
+
+/**
+ * The growing context bar (approved §04 mock): `▰▰▰▓▱▱▱▱` — filled cells in
+ * the usage-level hue (silver → gold → ember → alarm via the ONE
+ * getContextUsageThemeColor owner), reached major-fill cells locked gold, and
+ * dim rest cells. The frontier cell is dual-natured: while the agent RUNS
+ * (`live`) it breathes the brand frames — motion means "the model is working
+ * right now", the same contract as the spinner; at rest it is a STATIC
+ * quarter-step glyph showing the next cell's fractional fill, because motion
+ * on an idle screen signals activity that does not exist. Pure in
+ * (ratio, level, nowMs, live) so tests can pin exact frames.
+ */
+export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs: number, live: boolean): string {
+	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
+	const filled = Math.min(CONTEXT_BAR_CELLS, Math.floor(clamped * CONTEXT_BAR_CELLS));
+	const levelColor = getContextUsageThemeColor(level);
+	let tipFrame: string;
+	if (live) {
+		const stepMs = level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS;
+		tipFrame = CONTEXT_BAR_TIP_FRAMES[Math.floor(nowMs / stepMs) % CONTEXT_BAR_TIP_FRAMES.length] as string;
+	} else {
+		const fraction = clamped * CONTEXT_BAR_CELLS - filled;
+		tipFrame = CONTEXT_BAR_FRACTION_GLYPHS[
+			Math.min(CONTEXT_BAR_FRACTION_GLYPHS.length - 1, Math.floor(fraction * 4))
+		] as string;
+	}
+	let bar = "";
+	for (let cell = 0; cell < CONTEXT_BAR_CELLS; cell++) {
+		if (cell < filled) {
+			bar +=
+				CONTEXT_BAR_MAJOR_CELLS.has(cell) && level !== "error"
+					? theme.fg("matchHighlight", "▰")
+					: theme.fg(levelColor, "▰");
+		} else if (cell === filled && clamped < 1) {
+			bar += tipFrame === "▱" ? theme.fg("dim", "▱") : theme.fg(levelColor, tipFrame);
+		} else {
+			bar += theme.fg("dim", "▱");
+		}
+	}
+	return bar;
+}
+
 const contextPctSegment: StatusLineSegment = {
 	id: "context_pct",
 	render(ctx) {
 		const pct = ctx.contextPercent;
 		const window = ctx.contextWindow;
+		const level = getContextUsageLevel(pct ?? 0, window);
+
+		if (ctx.options.context_pct?.bar) {
+			// Quiet zones: the bar carries the heat; the percent number stays and
+			// the `/window` denominator is dropped (approved §04). Auto-compaction
+			// shows as a session-accent ∞ — the endless-session mark.
+			const bar = renderContextBar((pct ?? 0) / 100, level, Date.now(), ctx.session.isStreaming);
+			// Whole percent: the bar already carries the fine grain, and the two
+			// saved cells keep the gauge alive on 100-col footlines.
+			const pctText = pct === null || pct === undefined ? "?" : `${Math.round(pct)}%`;
+			const autoIcon =
+				ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
+			return {
+				content: `${bar} ${theme.fg(getContextUsageThemeColor(level), pctText)}${autoIcon}`,
+				visible: true,
+			};
+		}
 
 		const autoIcon = ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.icon.auto}` : "";
 		const text = `${formatContextUsage(pct, window, ctx.contextTokens)}${autoIcon}`;
 
-		const level = getContextUsageLevel(pct ?? 0, window);
 		// The quiet zone's gauge warms up the ember ramp as it fills — the sun
 		// heating — while the error state keeps its unmistakable semantic red.
 		const content =
@@ -568,7 +662,8 @@ const sessionSegment: StatusLineSegment = {
 		const sessionId = sessionManager?.getSessionId?.();
 		const display = sessionId?.slice(0, 8) || "new";
 
-		return { content: withIcon(theme.icon.session, display), visible: true };
+		// Session identity reads in the cool arc's session hue (teal on titanium).
+		return { content: theme.fg("sessionAccent", withIcon(theme.icon.session, display)), visible: true };
 	},
 };
 
@@ -577,6 +672,21 @@ const hostnameSegment: StatusLineSegment = {
 	render(_ctx) {
 		const name = os.hostname().split(".")[0];
 		return { content: withIcon(theme.icon.host, name), visible: true };
+	},
+};
+
+// The active veyyon profile ("work", "rec", a client sandbox). Hidden when it is
+// the built-in "default" profile: an unconfigured user has nothing to disambiguate
+// and the decluttered default status line stays quiet. Any named profile shows,
+// so you always know which sandbox's config, sessions, and keys are in play.
+const profileSegment: StatusLineSegment = {
+	id: "profile",
+	render(_ctx) {
+		const name = getActiveProfileOrDefault();
+		if (name === DEFAULT_PROFILE_DIR_NAME) {
+			return { content: "", visible: false };
+		}
+		return { content: withIcon(theme.icon.profile, name), visible: true };
 	},
 };
 
@@ -649,7 +759,8 @@ const collabSegment: StatusLineSegment = {
 			ctx.collab.role === "host"
 				? `⇄ collab:${ctx.collab.participantCount}`
 				: `⇄ collab guest:${ctx.collab.participantCount}`;
-		return { content: theme.fg("accent", label), visible: true };
+		// Share/collab state reads in the cool arc's share hue (indigo on titanium).
+		return { content: theme.fg("shareAccent", label), visible: true };
 	},
 };
 
@@ -732,6 +843,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	time: timeSegment,
 	session: sessionSegment,
 	hostname: hostnameSegment,
+	profile: profileSegment,
 	cache_read: cacheReadSegment,
 	cache_write: cacheWriteSegment,
 	cache_hit: cacheHitSegment,

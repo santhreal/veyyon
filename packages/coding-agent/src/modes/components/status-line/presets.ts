@@ -11,7 +11,11 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// as clean silver text on black, and never depends on a font the user may not
 		// have. Icons are blank in the default theme (see theme.ts), so segments read
 		// as plain words divided by a quiet bar — the premium, decluttered look.
-		leftSegments: ["model", "mode", "path", "git", "context_pct"],
+		//
+		// `profile` leads: it hides on the built-in "default" profile, so a vanilla
+		// user sees nothing, but any named sandbox ("work", "rec") reads first, so you
+		// always know which config, sessions, and keys are live.
+		leftSegments: ["profile", "model", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		separator: "pipe",
 		segmentOptions: {
@@ -22,7 +26,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	minimal: {
-		leftSegments: ["path", "git"],
+		leftSegments: ["profile", "path", "git"],
 		rightSegments: ["session_name", "mode", "context_pct"],
 		separator: "slash",
 		segmentOptions: {
@@ -32,7 +36,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	compact: {
-		leftSegments: ["model", "mode", "git", "pr"],
+		leftSegments: ["profile", "model", "mode", "git", "pr"],
 		rightSegments: ["session_name", "cost", "context_pct"],
 		separator: "powerline-thin",
 		segmentOptions: {
@@ -42,7 +46,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	full: {
-		leftSegments: ["pi", "hostname", "model", "mode", "path", "git", "pr", "subagents"],
+		leftSegments: ["pi", "hostname", "profile", "model", "mode", "path", "git", "pr", "subagents"],
 		rightSegments: [
 			"session_name",
 			"cache_hit",
@@ -66,7 +70,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	nerd: {
 		// Full preset with all Nerd Font icons
-		leftSegments: ["pi", "hostname", "model", "mode", "path", "git", "pr", "session", "subagents"],
+		leftSegments: ["pi", "hostname", "profile", "model", "mode", "path", "git", "pr", "session", "subagents"],
 		rightSegments: [
 			"session_name",
 			"token_in",
@@ -91,7 +95,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	ascii: {
 		// No Nerd Font dependencies
-		leftSegments: ["model", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "model", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		separator: "ascii",
 		segmentOptions: {
@@ -103,7 +107,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	custom: {
 		// User-defined - these are just defaults that get overridden
-		leftSegments: ["model", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "model", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		separator: "powerline-thin",
 		segmentOptions: {},

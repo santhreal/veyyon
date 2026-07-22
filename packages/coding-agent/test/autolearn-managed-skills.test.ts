@@ -5,7 +5,9 @@ import * as path from "node:path";
 import {
 	deleteManagedSkill,
 	getManagedSkillsDir,
+	isValidManagedSkillName,
 	MAX_MANAGED_SKILL_BYTES,
+	sanitizeManagedDescription,
 	sanitizeSkillName,
 	toSkillFrontmatter,
 	writeManagedSkill,
@@ -251,5 +253,44 @@ describe("managed-skills primitives", () => {
 				await removeWithRetries(outside);
 			}
 		});
+	});
+});
+
+/**
+ * isValidManagedSkillName and sanitizeManagedDescription guard the two untrusted strings a learned
+ * skill contributes: its directory name (which becomes a filesystem path and a slash-command) and
+ * its human-facing description (which is injected into the model prompt). They had no direct test.
+ * A too-loose name check would allow a traversal- or collision-prone name; a too-loose description
+ * sanitizer would let control chars, angle brackets, or backticks reach the prompt. These pin the
+ * exact name grammar (`^[a-z0-9][a-z0-9-]{0,63}$`, max 64) and the description scrubbing rules.
+ */
+describe("isValidManagedSkillName", () => {
+	it("accepts a lowercase alnum name up to 64 chars, starting with alnum", () => {
+		expect(isValidManagedSkillName("my-skill-1")).toBe(true);
+		expect(isValidManagedSkillName("a")).toBe(true);
+		expect(isValidManagedSkillName("a".repeat(64))).toBe(true);
+	});
+
+	it("rejects an over-length name, uppercase, a leading dash, empty, or a dot/underscore", () => {
+		expect(isValidManagedSkillName("a".repeat(65))).toBe(false);
+		expect(isValidManagedSkillName("MySkill")).toBe(false);
+		expect(isValidManagedSkillName("-x")).toBe(false);
+		expect(isValidManagedSkillName("")).toBe(false);
+		expect(isValidManagedSkillName("a_b")).toBe(false);
+		expect(isValidManagedSkillName("a.b")).toBe(false);
+	});
+});
+
+describe("sanitizeManagedDescription", () => {
+	it("replaces control/format chars with a space and collapses the result", () => {
+		const esc = String.fromCharCode(27); // ESC (Cc)
+		const zwsp = String.fromCharCode(0x200b); // zero-width space (Cf)
+		expect(sanitizeManagedDescription(`a${esc}b${zwsp}c`)).toBe("a b c");
+	});
+
+	it("strips angle brackets and backticks, collapses tilde runs, and trims whitespace", () => {
+		expect(sanitizeManagedDescription("a<b>c`d")).toBe("abcd");
+		expect(sanitizeManagedDescription("a~~~b~c")).toBe("a~b~c");
+		expect(sanitizeManagedDescription("  a\t\n  b  ")).toBe("a b");
 	});
 });

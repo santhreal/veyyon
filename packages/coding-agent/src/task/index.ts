@@ -14,12 +14,21 @@
  *   - Session artifacts for debugging
  */
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import path from "node:path";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { emptyCost, emptyUsage } from "@veyyon/catalog/models";
-import { $env, directoryExists, errorMessage, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
+import {
+	$env,
+	directoryExists,
+	errorMessage,
+	formatCount,
+	getSessionsDir,
+	logger,
+	pluralize,
+	prompt,
+	Snowflake,
+} from "@veyyon/utils";
 import type { ToolSession } from "..";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import { MCPManager } from "../mcp/manager";
@@ -1329,8 +1338,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// Derive artifacts directory
 		const sessionFile = this.session.getSessionFile();
 		const artifactsDir = sessionFile ? sessionFile.slice(0, -6) : null;
-		const tempArtifactsDir = artifactsDir ? null : path.join(os.tmpdir(), `veyyon-task-${Snowflake.next()}`);
-		const effectiveArtifactsDir = artifactsDir || tempArtifactsDir!;
+		// When the parent has no session file (a fileless/in-memory parent), subagent
+		// transcripts must still be durable and studyable — the "including subagents,
+		// everything" fidelity requirement. Route them to the durable sessions dir (never
+		// os.tmpdir, which the OS GC-reaps) and never delete them. A subagent transcript is
+		// a full session record with session_init; losing it is a data-loss bug (GRAN-1).
+		const orphanArtifactsDir = artifactsDir ? null : path.join(getSessionsDir(), `orphan-task-${Snowflake.next()}`);
+		const effectiveArtifactsDir = artifactsDir || orphanArtifactsDir!;
 
 		const localProtocolOptions: LocalProtocolOptions = this.session.localProtocolOptions ?? {
 			getArtifactsDir: this.session.getArtifactsDir ?? (() => null),
@@ -1498,6 +1512,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				parentArtifactManager,
 				parentHindsightSessionState: this.session.getHindsightSessionState?.(),
 				parentMnemopiSessionState: this.session.getMnemopiSessionState?.(),
+				parentArgot: this.session.getArgotSession?.(),
 				parentTelemetry: this.session.getTelemetry?.(),
 				parentEvalSessionId,
 				parentAgentId: this.session.getAgentId?.() ?? MAIN_AGENT_ID,
@@ -1573,12 +1588,26 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				});
 			}
 
-			// Cleanup temp directory if used
-			const shouldCleanupTempArtifacts =
-				tempArtifactsDir && (!isIsolated || changesApplied === true || changesApplied === null);
-			if (shouldCleanupTempArtifacts) {
-				await fs.rm(tempArtifactsDir, { recursive: true, force: true });
-			}
+			// The orphan artifacts dir (fileless parent) is intentionally NOT deleted: it holds
+			// subagent session transcripts that must remain studyable (GRAN-1). It lives under
+			// the durable sessions dir, not os.tmpdir, so nothing GC-reaps it.
+
+			// Record a structured parent->child index entry pointing at this subagent's durable
+			// transcript, so a study/backtest tool can enumerate a session's subagents without
+			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
+			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
+			this.session.recordSubagentSpawn?.({
+				agentId: result.id,
+				agentName: result.agent,
+				task: result.task,
+				sessionFile: path.join(effectiveArtifactsDir, `${result.id}.jsonl`),
+				isolation: isIsolated ? isolationMode : "none",
+				status: result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed",
+				exitCode: result.exitCode,
+				durationMs: result.durationMs,
+				usage: result.usage,
+				error: result.error,
+			});
 
 			return this.#buildResultPayload(result, projectAgentsDir, Date.now() - startTime, mergeSummary);
 		} catch (err) {

@@ -115,6 +115,18 @@ describe("goal runtime", () => {
 		).toBe(0);
 	});
 
+	it("clamps each component independently, so one component dropping cannot cancel another's growth", () => {
+		// input +10 and output +1 both grew, but cacheWrite fell 9 -> 1 (e.g. the 1h ephemeral cache
+		// rotated). Per-component Math.max floors the cacheWrite delta at 0, giving 11. A single clamp on
+		// the TOTAL would instead net the -8 against the +11 and report 3, undercounting real new work.
+		expect(
+			goalTokenDelta(
+				createUsage({ input: 20, output: 5, cacheRead: 0, cacheWrite: 1 }),
+				createUsage({ input: 10, output: 4, cacheRead: 0, cacheWrite: 9 }),
+			),
+		).toBe(11);
+	});
+
 	it("advances wall-clock accounting only by persisted whole seconds", async () => {
 		const harness = createHarness({
 			state: { enabled: true, mode: "active", goal: createGoal() },

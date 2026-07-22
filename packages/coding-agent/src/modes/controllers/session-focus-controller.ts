@@ -14,6 +14,27 @@ import { AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../registry
 import type { AgentSession } from "../../session/agent-session";
 import type { InteractiveModeContext } from "../types";
 
+/**
+ * The slice of the interactive context this controller uses: 10 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type SessionFocusControllerContext = Pick<
+	InteractiveModeContext,
+	| "clearTransientSessionUi"
+	| "collabGuest"
+	| "eventController"
+	| "renderInitialMessages"
+	| "session"
+	| "showStatus"
+	| "statusLine"
+	| "ui"
+	| "unsubscribe"
+	| "updateEditorBorderColor"
+>;
+
 export class SessionFocusController {
 	#focusedAgentId: string | undefined;
 	/** Session currently attached while focused; undefined when unfocused. */
@@ -21,7 +42,7 @@ export class SessionFocusController {
 	#registryUnsubscribe: (() => void) | undefined;
 
 	constructor(
-		private ctx: InteractiveModeContext,
+		private ctx: SessionFocusControllerContext,
 		private registry: AgentRegistry = AgentRegistry.global(),
 		private lifecycle: () => AgentLifecycleManager = () => AgentLifecycleManager.global(),
 	) {}

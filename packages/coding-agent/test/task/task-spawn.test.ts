@@ -21,6 +21,7 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, SingleResult, TaskParams } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 const taskAgent: AgentDefinition = {
 	name: "task",
@@ -30,14 +31,14 @@ const taskAgent: AgentDefinition = {
 };
 
 function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> }): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? {}),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		asyncJobManager: options.manager,
-	} as unknown as ToolSession;
+	});
 }
 
 function getFirstText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -354,14 +355,16 @@ describe("task spawn routing", () => {
 
 		const manager = createManager();
 		const settings = Settings.isolated({ "task.maxConcurrency": 4 });
-		const tool = await TaskTool.create({
-			cwd: "/tmp",
-			hasUI: false,
-			settings,
-			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
-			asyncJobManager: manager,
-		} as unknown as ToolSession);
+		const tool = await TaskTool.create(
+			makeToolSession({
+				cwd: "/tmp",
+				hasUI: false,
+				settings,
+				getSessionFile: () => null,
+				getSessionSpawns: () => "*",
+				asyncJobManager: manager,
+			}),
+		);
 
 		// Prime the semaphore at the initial high cap.
 		const first = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
@@ -405,14 +408,16 @@ describe("task spawn routing", () => {
 
 		const manager = createManager();
 		const settings = Settings.isolated({ "task.maxConcurrency": 4 });
-		const tool = await TaskTool.create({
-			cwd: "/tmp",
-			hasUI: false,
-			settings,
-			getSessionFile: () => null,
-			getSessionSpawns: () => "*",
-			asyncJobManager: manager,
-		} as unknown as ToolSession);
+		const tool = await TaskTool.create(
+			makeToolSession({
+				cwd: "/tmp",
+				hasUI: false,
+				settings,
+				getSessionFile: () => null,
+				getSessionSpawns: () => "*",
+				asyncJobManager: manager,
+			}),
+		);
 
 		const jobs: AsyncJob[] = [];
 		for (const id of ["First", "Second", "Third", "Fourth", "Fifth"]) {

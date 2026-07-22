@@ -1,20 +1,15 @@
-import { type Component, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { formatBytes } from "@veyyon/utils";
+import { type Component, padLineToWidth } from "@veyyon/tui";
+import { clamp01, clampLow, formatBytes } from "@veyyon/utils";
 import { getTinyTitleModelSpec, type TinyTitleLocalModelKey } from "../../tiny/models";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
 import { theme } from "../theme/theme";
 
 const DEFAULT_BAR_WIDTH = 24;
 
-function padLine(line: string, width: number): string {
-	const visible = visibleWidth(line);
-	return visible >= width ? truncateToWidth(line, width) : `${line}${" ".repeat(width - visible)}`;
-}
-
 function progressBar(progress: number | undefined, width: number): string {
-	const barWidth = Math.max(8, Math.min(DEFAULT_BAR_WIDTH, width));
+	const barWidth = clampLow(width, 8, DEFAULT_BAR_WIDTH);
 	if (progress === undefined) return theme.fg("muted", "░".repeat(barWidth));
-	const ratio = Math.max(0, Math.min(1, progress / 100));
+	const ratio = clamp01(progress / 100);
 	const filled = Math.round(ratio * barWidth);
 	return `${theme.fg("accent", "█".repeat(filled))}${theme.fg("muted", "░".repeat(barWidth - filled))}`;
 }
@@ -85,6 +80,6 @@ export class TinyTitleDownloadProgressComponent implements Component {
 			.filter((part): part is string => Boolean(part))
 			.join(" ");
 
-		return [border, padLine(` ${title}`, width), padLine(` ${details}`, width), border];
+		return [border, padLineToWidth(` ${title}`, width), padLineToWidth(` ${details}`, width), border];
 	}
 }

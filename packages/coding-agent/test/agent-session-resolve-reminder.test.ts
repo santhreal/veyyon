@@ -14,6 +14,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { queueResolveHandler, ResolveTool } from "@veyyon/coding-agent/tools/resolve";
 import { buildNamedToolChoice } from "@veyyon/coding-agent/utils/tool-choice";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { makeToolSession } from "./helpers/tool-session";
 
 describe("AgentSession resolve reminder", () => {
 	let session: AgentSession;
@@ -37,14 +38,14 @@ describe("AgentSession resolve reminder", () => {
 
 		mock = createMockModel({ handler: () => ({ content: ["Done"] }) });
 
-		toolSession = {
+		toolSession = makeToolSession({
 			getToolChoiceQueue: () => session.toolChoiceQueue,
 			buildToolChoice: (name: string) => buildNamedToolChoice(name, session.model!),
 			peekQueueInvoker: () => session.peekQueueInvoker(),
 			peekPendingInvoker: () => session.peekPendingInvoker(),
 			clearPendingInvokers: () => session.clearPendingInvokers(),
 			peekStandingResolveHandler: () => session.peekStandingResolveHandler(),
-		} as unknown as ToolSession;
+		});
 
 		const agent = new Agent({
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },

@@ -1,3 +1,4 @@
+import { enoentError } from "@veyyon/utils";
 import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,
@@ -97,15 +98,6 @@ interface SliceRow {
 const DEFAULT_TABLE = "veyyon_session_files";
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
 const utf8Decoder = new TextDecoder("utf-8");
-
-function enoent(p: string): NodeJS.ErrnoException {
-	const err = new Error(`ENOENT: no such file, '${p}'`) as NodeJS.ErrnoException;
-	err.code = "ENOENT";
-	err.errno = -2;
-	err.path = p;
-	err.syscall = "open";
-	return err;
-}
 
 function detectAdapter(client: SqlSessionStorageClient): SqlSessionStorageAdapter {
 	const reported = String(client.options?.adapter ?? "").toLowerCase();
@@ -328,7 +320,7 @@ class SqlSessionStorageBackend implements SessionStorageBackend {
 				: [prefixBytes, suffixBytes, suffixBytes, path];
 		const rows = (await this.#client.unsafe(this.#q.readSlices, values)) as SliceRow[];
 		const row = rows[0];
-		if (!row) throw enoent(path);
+		if (!row) throw enoentError(path);
 		return [decodeSqlBytes(row.head), decodeSqlBytes(row.tail)];
 	}
 

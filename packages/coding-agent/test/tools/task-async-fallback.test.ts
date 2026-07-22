@@ -4,15 +4,16 @@ import { TaskTool } from "@veyyon/coding-agent/task";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import type { TaskParams } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 function createSession(overrides: Partial<Record<string, unknown>> = {}): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated(overrides),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-	} as unknown as ToolSession;
+	});
 }
 
 function getFirstText(result: { content: Array<{ type: string; text?: string }> }): string {

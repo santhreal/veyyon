@@ -3,15 +3,16 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { disposeAllVmContexts } from "@veyyon/coding-agent/eval/js/context-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool } from "@veyyon/coding-agent/tools/eval";
+import { makeToolSession } from "../helpers/tool-session";
 
 function makeSession(): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
-	} as unknown as ToolSession;
+	});
 }
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {

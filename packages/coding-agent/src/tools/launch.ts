@@ -196,9 +196,15 @@ function operationFor(params: LaunchParams, session: ToolSession): DaemonOperati
 	}
 }
 
-function daemonLabel(daemon: DaemonSnapshot): string {
+export function daemonLabel(daemon: DaemonSnapshot): string {
 	const pid = daemon.pid === undefined ? "" : ` pid=${daemon.pid}`;
-	const exit = daemon.exitCode === undefined ? "" : ` exit=${daemon.exitCode}`;
+	// A signal-terminated process reports its signal (e.g. SIGTERM), not a numeric
+	// exit code that would mislead (DOG-2).
+	const exit = daemon.signal
+		? ` signal=${daemon.signal}`
+		: daemon.exitCode === undefined
+			? ""
+			: ` exit=${daemon.exitCode}`;
 	return `${daemon.name}: ${daemon.state}${pid}${exit} uptime=${formatDuration(
 		(daemon.exitedAt ?? Date.now()) - daemon.startedAt,
 	)} restarts=${daemon.restartCount}${daemon.detached ? " detached" : daemon.persist ? " persistent" : ""}`;
@@ -225,7 +231,7 @@ function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready
 	return parts;
 }
 
-function toolContent(result: DaemonRpcResult, params: LaunchParams): string {
+export function toolContent(result: DaemonRpcResult, params: LaunchParams): string {
 	switch (result.op) {
 		case "ping":
 		case "shutdown":
@@ -244,10 +250,27 @@ function toolContent(result: DaemonRpcResult, params: LaunchParams): string {
 			}
 			return lines.join("\n");
 		}
-		case "list":
-			return result.daemons.length
-				? result.daemons.map(daemon => `- ${daemonLabel(daemon)}`).join("\n")
-				: "No daemons.";
+		case "list": {
+			if (!result.daemons.length) return "No daemons.";
+			// Show every live daemon, but cap the terminal (exited/failed) tail so
+			// the list does not grow unbounded and waste tokens on every call when
+			// old jobs pile up (DOG-1). The most recently exited are the useful ones.
+			const TERMINAL_SHOWN = 10;
+			const isTerminal = (daemon: DaemonSnapshot): boolean => daemon.state === "exited" || daemon.state === "failed";
+			const live = result.daemons.filter(daemon => !isTerminal(daemon));
+			const exited = result.daemons
+				.filter(isTerminal)
+				.sort((left, right) => (right.exitedAt ?? 0) - (left.exitedAt ?? 0));
+			const shownExited = exited.slice(0, TERMINAL_SHOWN);
+			const lines = [...live, ...shownExited].map(daemon => `- ${daemonLabel(daemon)}`);
+			const hidden = exited.length - shownExited.length;
+			if (hidden > 0) {
+				lines.push(
+					`… and ${hidden} more exited daemon${hidden === 1 ? "" : "s"} not shown (showing the ${TERMINAL_SHOWN} most recent).`,
+				);
+			}
+			return lines.join("\n");
+		}
 		case "logs": {
 			const text = sanitizeText(result.text);
 			return `${text}${text && !text.endsWith("\n") ? "\n" : ""}[${result.name}: ${result.state}; cursor=${result.cursor}${result.timedOut ? "; follow timed out" : ""}]`;
@@ -419,7 +442,9 @@ function stateColor(state: DaemonState): ThemeColor {
 function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	const meta = [theme.fg(stateColor(daemon.state), daemon.state)];
 	if (daemon.readyPending?.length) meta.push(theme.fg("warning", `waiting on ${daemon.readyPending.join("+")}`));
-	if (daemon.exitCode !== undefined) {
+	if (daemon.signal) {
+		meta.push(theme.fg("error", `signal ${daemon.signal}`));
+	} else if (daemon.exitCode !== undefined) {
 		meta.push(theme.fg(daemon.exitCode === 0 ? "muted" : "error", `exit ${daemon.exitCode}`));
 	} else if (daemon.pid !== undefined) {
 		meta.push(`pid ${daemon.pid}`);

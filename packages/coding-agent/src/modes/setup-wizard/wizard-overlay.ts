@@ -3,20 +3,24 @@ import {
 	matchesKey,
 	type OverlayFocusOwner,
 	padding,
+	padLineToWidth,
 	routeSgrMouseInput,
 	type SgrMouseEvent,
 	TERMINAL,
-	truncateToWidth,
-	visibleWidth,
 } from "@veyyon/tui";
 import { APP_NAME } from "@veyyon/utils";
 import { sunMark } from "../components/sun";
 import { silverEscape } from "../components/welcome";
 import { theme } from "../theme/theme";
-import type { InteractiveModeContext } from "../types";
 import { renderSetupOutro, SETUP_OUTRO_MS } from "./scenes/outro";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";
-import type { SetupScene, SetupSceneController, SetupSceneHost, SetupSceneResult } from "./scenes/types";
+import type {
+	SetupScene,
+	SetupSceneController,
+	SetupSceneHost,
+	SetupSceneResult,
+	SetupWizardContext,
+} from "./scenes/types";
 
 type WizardPhase = "splash" | "transition" | "scene" | "outro" | "done";
 
@@ -25,14 +29,9 @@ const MIN_CONTENT_WIDTH = 20;
 /** Cross-dissolve duration from the splash into the first scene. */
 const SCENE_TRANSITION_MS = 420;
 
-function clampLine(line: string, width: number): string {
-	const truncated = truncateToWidth(line, width);
-	return truncated + padding(Math.max(0, width - visibleWidth(truncated)));
-}
-
 function indentLine(line: string, width: number, indent: number): string {
 	const prefix = padding(Math.min(indent, Math.max(0, width - 1)));
-	return clampLine(prefix + line, width);
+	return padLineToWidth(prefix + line, width);
 }
 /** Stable per-row jitter in [0,1) for the dissolve reveal order. */
 function rowNoise(y: number): number {
@@ -76,7 +75,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	#sceneFocusTarget: Component | undefined;
 
 	constructor(
-		readonly ctx: InteractiveModeContext,
+		readonly ctx: SetupWizardContext,
 		readonly scenes: readonly SetupScene[],
 	) {}
 
@@ -269,7 +268,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	}
 
 	#fitToScreen(lines: string[], width: number, height: number): string[] {
-		const fitted = lines.slice(0, height).map(line => clampLine(line, width));
+		const fitted = lines.slice(0, height).map(line => padLineToWidth(line, width));
 		while (fitted.length < height) {
 			fitted.push(padding(width));
 		}

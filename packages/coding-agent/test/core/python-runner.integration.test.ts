@@ -79,6 +79,63 @@ describe.skipIf(!SHOULD_RUN)("python runner subprocess", () => {
 		}
 	});
 
+	// GRAN-11 sub-item (a): the Python kernel is spawned `detached: true` on POSIX,
+	// so it becomes its OWN session/process-group leader (proven by the test above).
+	// A process-GROUP-directed signal aimed at the parent's group would NOT reach a
+	// child in its own group. The reap must therefore signal the kernel's DIRECT
+	// pid. `BaseKernel.shutdown` escalates via `proc.kill("SIGTERM"/"SIGKILL")` on
+	// the Bun.Subprocess, which targets the child pid directly (not the group), so
+	// it does reach the detached child. This test locks that: it captures the real
+	// OS pid of the detached kernel, confirms it is alive, then asserts shutdown
+	// actually reaps it. If a future change relied on a group signal, the detached
+	// child would survive and this test would fail with the process still alive.
+	it.skipIf(process.platform === "win32")(
+		"reaps the detached kernel process on shutdown (direct-pid kill reaches a setsid child)",
+		async () => {
+			using tempDir = TempDir.createSync("@python-runner-reap-");
+			const kernel = await PythonKernel.start({ cwd: tempDir.path() });
+			const result = await executePythonWithKernel(kernel, "import os; print(os.getpid())");
+			const pid = Number(result.output.trim());
+			expect(Number.isInteger(pid)).toBe(true);
+			expect(pid).toBeGreaterThan(1);
+
+			// `process.kill(pid, 0)` sends no signal; it only probes existence: it
+			// succeeds while the pid is live and throws ESRCH once the pid is gone.
+			const isAlive = (p: number): boolean => {
+				try {
+					process.kill(p, 0);
+					return true;
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+					return true; // EPERM etc: the process exists, we just can't signal it
+				}
+			};
+
+			expect(isAlive(pid)).toBe(true);
+
+			// The reap CONTRACT: the detached child is actually gone after shutdown, and
+			// (post KERNEL-EXIT-CONFIRM fix) `confirmed` truthfully reports the exit.
+			// An idle kernel takes the graceful `{"type":"exit"}` path and exits with
+			// code 0, which the FIRST wait observes — so shutdown confirms quickly and
+			// does NOT need to escalate to SIGTERM/SIGKILL. If exit-0 were still misread
+			// as "still running", this would both take multiple grace windows and report
+			// confirmed:false, so the timing bound doubles as a no-needless-escalation
+			// check (a full escalation would blow past ~2s of grace windows).
+			const startedAt = Date.now();
+			const shutdown = await kernel.shutdown();
+			const elapsedMs = Date.now() - startedAt;
+			expect(shutdown.confirmed).toBe(true);
+			expect(elapsedMs).toBeLessThan(2_000);
+
+			let stillAlive = isAlive(pid);
+			for (let i = 0; stillAlive && i < 100; i++) {
+				await new Promise(resolve => setTimeout(resolve, 20));
+				stillAlive = isAlive(pid);
+			}
+			expect(stillAlive).toBe(false);
+		},
+	);
+
 	it("cancels a long sleep via SIGINT within 500ms", async () => {
 		using tempDir = TempDir.createSync("@python-runner-cancel-");
 		const kernel = await PythonKernel.start({ cwd: tempDir.path() });

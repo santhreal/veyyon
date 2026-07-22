@@ -12,7 +12,7 @@
  */
 
 /** Subcommand selecting a one-off compaction mode for manual `/compact`. */
-export type CompactMode = "soft" | "remote" | "snapcompact";
+export type CompactMode = "soft" | "remote";
 
 /**
  * Per-invocation overrides merged over the configured `compaction.*` settings.
@@ -20,7 +20,7 @@ export type CompactMode = "soft" | "remote" | "snapcompact";
  * assignable to the full `CompactionSettings`.
  */
 export interface CompactionOverride {
-	strategy?: "context-full" | "snapcompact";
+	strategy?: "context-full";
 	remoteEnabled?: boolean;
 }
 
@@ -30,12 +30,6 @@ export interface CompactModeDef {
 	readonly description: string;
 	/** Settings overrides applied on top of `compaction.*` for this run. */
 	readonly overrides: CompactionOverride;
-	/**
-	 * When true, the mode produces no LLM summary, so trailing focus text is
-	 * meaningless and rejected by the parser (snapcompact archives history into
-	 * images without a directed summary).
-	 */
-	readonly rejectsFocus?: boolean;
 	/**
 	 * When true, the mode explicitly demands a remote path; the engine warns and
 	 * falls back to a local summary if neither a remote endpoint nor a
@@ -56,12 +50,6 @@ export const COMPACT_MODES: readonly CompactModeDef[] = [
 		overrides: { strategy: "context-full", remoteEnabled: true },
 		requiresRemote: true,
 	},
-	{
-		name: "snapcompact",
-		description: "Archive history onto dense bitmap images the model reads back (no LLM call)",
-		overrides: { strategy: "snapcompact" },
-		rejectsFocus: true,
-	},
 ];
 
 /** Resolve a subcommand token (case-insensitive) to its mode definition. */
@@ -81,7 +69,6 @@ export interface ParsedCompactArgs {
  *
  * Backward compatible: when the first token is not a known mode, the entire
  * argument string is treated as focus instructions (the historical behavior).
- * A recognized mode with `rejectsFocus` and trailing text is an error.
  */
 export function parseCompactArgs(args: string): ParsedCompactArgs | { error: string } {
 	const trimmed = args.trim();
@@ -96,10 +83,5 @@ export function parseCompactArgs(args: string): ParsedCompactArgs | { error: str
 	}
 
 	const focus = spaceIndex === -1 ? "" : trimmed.slice(spaceIndex + 1).trim();
-	if (mode.rejectsFocus && focus) {
-		return {
-			error: `/compact ${mode.name} does not take focus instructions (it archives history without an LLM summary).`,
-		};
-	}
 	return { mode: mode.name, instructions: focus || undefined };
 }

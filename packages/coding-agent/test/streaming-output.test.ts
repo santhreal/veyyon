@@ -6,6 +6,7 @@ import {
 	formatHeadTruncationNotice,
 	formatMiddleElisionMarker,
 	formatTailTruncationNotice,
+	noTruncResult,
 	OutputSink,
 	TailBuffer,
 	truncateHead,
@@ -609,6 +610,52 @@ describe("truncateMiddle", () => {
 		expect(formatMiddleElisionMarker(1, 100)).toBe("[…100B elided…]");
 		expect(formatMiddleElisionMarker(123, 4096)).toBe("[…123ln elided…]");
 	});
+
+	/**
+	 * The head and tail windows are sized by INDEPENDENT byte and line budgets, so the kept split is
+	 * not necessarily even: a byte-heavy head can be capped at far fewer lines than the tail. The
+	 * result must carry the REAL kept head/tail line counts (headLines/tailLines) so downstream code
+	 * (output-meta's truncation notice) reports the correct "Showing lines A-B and C-D" ranges instead
+	 * of re-deriving a wrong even ceil/floor split. This locks out the bug where a 40-line input showed
+	 * lines 1-2 + 26-40 but the notice claimed lines 1-9 + 33-40.
+	 */
+	test("reports the real (uneven) head/tail line split when the head is byte-limited", () => {
+		const longHead = Array.from({ length: 20 }, (_, i) => `H${i}:${"x".repeat(200)}`);
+		const shortTail = Array.from({ length: 20 }, (_, i) => `T${i}`);
+		const content = [...longHead, ...shortTail].join("\n");
+
+		const result = truncateMiddle(content, {
+			maxBytes: 1000,
+			maxLines: 30,
+			maxHeadBytes: 500, // only ~2 of the 200-byte head lines fit
+			maxHeadLines: 15,
+		});
+
+		// Cross-check the reported counts against the actual composed output.
+		const lines = result.content.split("\n");
+		const markerIdx = lines.findIndex(l => l.includes("elided"));
+		const realHead = markerIdx;
+		const realTail = lines.length - markerIdx - 1;
+
+		expect(result.headLines).toBe(2);
+		expect(result.tailLines).toBe(15);
+		expect(result.headLines).toBe(realHead);
+		expect(result.tailLines).toBe(realTail);
+		// The split is genuinely uneven — not the ceil/floor an even reconstruction would produce.
+		expect(result.headLines).not.toBe(result.tailLines);
+	});
+
+	test("reports an even head/tail split when both windows hit the line budget", () => {
+		const content = Array.from({ length: 100 }, (_, i) => `L${i}`).join("\n");
+		const result = truncateMiddle(content, {
+			maxBytes: 100_000,
+			maxLines: 20,
+			maxHeadBytes: 50_000,
+			maxHeadLines: 10,
+		});
+		expect(result.headLines).toBe(10);
+		expect(result.tailLines).toBe(10);
+	});
 });
 
 describe("OutputSink head-retain mode", () => {
@@ -733,5 +780,36 @@ describe("OutputSink maxColumns (per-line cap)", () => {
 		expect(dropped).toBeGreaterThan(0);
 		// elided + dropped + kept ≤ totalBytes (with a small slack for the marker/newlines).
 		expect(elided + dropped).toBeLessThan(dumped.totalBytes);
+	});
+});
+
+/**
+ * noTruncResult builds the "nothing was truncated" TruncationResult: it echoes content back and, when
+ * the caller does not supply them, derives totalLines (newline count + 1) and totalBytes (UTF-8 byte
+ * length). It had no direct test. The contracts pinned here matter because downstream reporting shows
+ * these counts to the user:
+ *   - totalLines is newline-count + 1, so a single line is 1, "a\nb\nc" is 3, a trailing newline adds
+ *     a line ("a\n" -> 2), and empty content is still 1 line;
+ *   - totalBytes is the UTF-8 byte length, NOT the string length: "é" is 2 bytes and "😀" is 4;
+ *   - explicitly provided totalLines/totalBytes are passed through verbatim (the caller already knows
+ *     them and the deriving must not override).
+ */
+describe("noTruncResult", () => {
+	test("derives totalLines as newline-count + 1", () => {
+		expect(noTruncResult("hello").totalLines).toBe(1);
+		expect(noTruncResult("a\nb\nc").totalLines).toBe(3);
+		expect(noTruncResult("a\n").totalLines).toBe(2);
+		expect(noTruncResult("").totalLines).toBe(1);
+	});
+
+	test("derives totalBytes as the UTF-8 byte length, not the string length", () => {
+		expect(noTruncResult("hello").totalBytes).toBe(5);
+		expect(noTruncResult("é").totalBytes).toBe(2);
+		expect(noTruncResult("😀").totalBytes).toBe(4);
+		expect(noTruncResult("").totalBytes).toBe(0);
+	});
+
+	test("echoes content and passes explicit totals through unchanged", () => {
+		expect(noTruncResult("whatever", 99, 42)).toEqual({ content: "whatever", totalLines: 99, totalBytes: 42 });
 	});
 });

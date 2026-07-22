@@ -1,6 +1,6 @@
-import type { InteractiveModeContext } from "../types";
+import type { SetupWizardContext } from "./scenes/types";
 
-export async function runProviderSetupWizard(ctx: InteractiveModeContext): Promise<void> {
+export async function runProviderSetupWizard(ctx: SetupWizardContext): Promise<void> {
 	// Keep the full setup wizard behind the existing cold-start boundary; a static
 	// import here would load provider/OAuth/search/theme setup deps on every TUI startup.
 	const { ALL_SCENES, runSetupWizard } = await import("./index");

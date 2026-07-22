@@ -16,8 +16,11 @@ describe("toJsonRpcError", () => {
 	});
 
 	it("handles non-Error values", () => {
+		// String throw-sites preserve their message (not collapsed to Internal error).
 		const result = toJsonRpcError("string error");
-		expect(result).toEqual({ code: -32603, message: "Internal error" });
+		expect(result).toEqual({ code: -32603, message: "string error" });
+		// Empty string still falls back to Internal error.
+		expect(toJsonRpcError("")).toEqual({ code: -32603, message: "Internal error" });
 	});
 
 	it("ignores non-numeric code", () => {

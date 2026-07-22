@@ -1,8 +1,8 @@
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
-import { type Component, Loader, TERMINAL } from "@veyyon/tui";
-import { logger, prompt } from "@veyyon/utils";
+import { type Component, Loader, type LoaderMessageColorFn, TERMINAL } from "@veyyon/tui";
+import { clampLow, logger, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { extractTextContent } from "../../commit/utils";
 import { settings } from "../../config/settings";
@@ -18,6 +18,7 @@ import { TodoReminderComponent } from "../../modes/components/todo-reminder";
 import { ToolExecutionComponent } from "../../modes/components/tool-execution";
 import { TtsrNotificationComponent } from "../../modes/components/ttsr-notification";
 import { createUsageRowBlock } from "../../modes/components/usage-row";
+import { setShimmerActivity, shimmerText } from "../../modes/theme/shimmer";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
@@ -39,6 +40,68 @@ import {
 } from "../utils/transcript-render-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
 import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
+
+/**
+ * The slice of the interactive context this controller uses: 51 members of the
+ * 215 `InteractiveModeContext` requires. See `CollabHostContext` for why the
+ * full interface cannot be used as a parameter type: nothing but the real TUI
+ * can satisfy it, so every test has to cast a stub into place unchecked.
+ */
+export type EventControllerContext = Pick<
+	InteractiveModeContext,
+	| "addMessageToChat"
+	| "applyCwdChange"
+	| "autoCompactionLoader"
+	| "chatContainer"
+	| "clearOptimisticUserMessage"
+	| "clearPinnedError"
+	| "clearTransientSessionUi"
+	| "clearWorkingLoader"
+	| "editor"
+	| "effectiveHideThinkingBlock"
+	| "ensureLoadingAnimation"
+	| "flushCompactionQueue"
+	| "flushPendingModelSwitch"
+	| "focusedAgentId"
+	| "getUserMessageText"
+	| "handlePlanApproval"
+	| "init"
+	| "isInitialized"
+	| "lastAssistantUsage"
+	| "loadingAnimation"
+	| "locallySubmittedUserSignatures"
+	| "noteDisplayableThinkingContent"
+	| "optimisticUserMessageSignature"
+	| "pendingTools"
+	| "present"
+	| "proseOnlyThinking"
+	| "rebuildChatFromMessages"
+	| "refreshComposerShortcuts"
+	| "reloadTodos"
+	| "renderInitialMessages"
+	| "replaceOptimisticUserMessage"
+	| "retryLoader"
+	| "session"
+	| "sessionManager"
+	| "setTodos"
+	| "setWorkingMessage"
+	| "settings"
+	| "showError"
+	| "showPinnedError"
+	| "showStatus"
+	| "showWarning"
+	| "statusContainer"
+	| "statusLine"
+	| "streamingComponent"
+	| "streamingMessage"
+	| "todoPhases"
+	| "toolOutputExpanded"
+	| "ui"
+	| "unsubscribe"
+	| "updateEditorBorderColor"
+	| "updatePendingMessagesDisplay"
+	| "viewSession"
+>;
 
 type AgentSessionEventKind = AgentSessionEvent["type"];
 
@@ -120,7 +183,7 @@ export class EventController {
 	#handlers: AgentSessionEventHandlers;
 	#terminalProgressActive = false;
 
-	constructor(private ctx: InteractiveModeContext) {
+	constructor(private ctx: EventControllerContext) {
 		// Enhanced speech (`speech.enhanced`) rewrites blocks through the
 		// tiny/smol role with this session's registry and credentials; the
 		// vocalizer falls back to mechanical cleanup when unset. Tolerates
@@ -194,9 +257,17 @@ export class EventController {
 				this.ctx.ui.resetDisplay();
 			},
 			goal_updated: async () => {},
-			cwd_changed: async () => {
-				this.ctx.statusLine.invalidate();
-				this.ctx.ui.requestRender();
+			cwd_changed: async event => {
+				// A session-scoped cwd change (`/cwd` or the agent's `set_cwd` tool)
+				// already updated SessionManager cwd + `getProjectDir()` inside
+				// AgentSession.setCwd. The remaining re-root — reloading project
+				// settings, plugins, capabilities, slash commands, the ssh tool, and
+				// the system-prompt project framing for the new directory — lives in
+				// applyCwdChange, the same path `/move` runs. Without this, tools moved
+				// to the new dir but the agent's config and command surface stayed
+				// pinned to the old one. applyCwdChange ends with statusLine.invalidate
+				// + ui.requestRender, so those are covered here too.
+				await this.ctx.applyCwdChange(event.cwd);
 			},
 		} satisfies AgentSessionEventHandlers;
 	}
@@ -447,10 +518,10 @@ export class EventController {
 		this.#cancelIdleRecap();
 		this.ctx.statusLine.markActivityStart();
 		this.#setTerminalProgress(true);
+		// The turn opens with the model reasoning before any token streams.
+		setShimmerActivity("thinking");
 		this.ctx.ensureLoadingAnimation();
-		// Optional: many controller-level tests mock a partial InteractiveModeContext
-		// without the composer bar wired up.
-		this.ctx.refreshComposerShortcuts?.();
+		this.ctx.refreshComposerShortcuts();
 		this.ctx.ui.requestRender();
 	}
 
@@ -708,6 +779,13 @@ export class EventController {
 
 	async #handleMessageUpdate(event: Extract<AgentSessionEvent, { type: "message_update" }>): Promise<void> {
 		this.#ensureWorkingLoaderWhileStreaming();
+		// Living shimmer: a text delta means the model is writing (streaming
+		// comet); a thinking delta means it is reasoning (ponder breath). Not
+		// every message_update carries a delta (e.g. a toolCall-finalize update),
+		// so guard — those leave the activity as-is.
+		const streamDelta = event.assistantMessageEvent;
+		if (streamDelta?.type === "text_delta") setShimmerActivity("streaming");
+		else if (streamDelta?.type === "thinking_delta") setShimmerActivity("thinking");
 		this.#vocalizeDelta(event);
 		if (this.ctx.streamingComponent && event.message.role === "assistant") {
 			const smoothStreaming = this.ctx.settings.get("display.smoothStreaming");
@@ -984,6 +1062,8 @@ export class EventController {
 
 	async #handleToolExecutionStart(event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>): Promise<void> {
 		this.#ensureWorkingLoaderWhileStreaming();
+		// Living shimmer: a tool is executing — the head scans back and forth.
+		setShimmerActivity("tool");
 		this.#updateWorkingMessageFromIntent(event.intent);
 		this.#resolveDisplaceablePoll(event.toolName);
 		if (!this.ctx.pendingTools.has(event.toolCallId)) {
@@ -1182,6 +1262,9 @@ export class EventController {
 
 	async #finishAgentEnd(): Promise<void> {
 		this.#setTerminalProgress(false);
+		// Living shimmer: the turn is over — return to the resting state so the
+		// next turn opens fresh from `thinking` rather than mid-motion.
+		setShimmerActivity("idle");
 		this.ctx.statusLine.markActivityEnd();
 		this.#streamingReveal.stop();
 		this.#toolArgsReveal.flushAll();
@@ -1222,7 +1305,7 @@ export class EventController {
 		this.#resolveDisplaceablePoll();
 		this.#resolveDisplaceableTodo();
 		this.#lastAssistantComponent = undefined;
-		this.ctx.refreshComposerShortcuts?.();
+		this.ctx.refreshComposerShortcuts();
 		this.ctx.ui.requestRender();
 		this.#scheduleIdleCompaction();
 		this.#scheduleIdleRecap();
@@ -1285,9 +1368,7 @@ export class EventController {
 				? "Auto-handoff"
 				: event.action === "shake"
 					? "Auto-shake"
-					: event.action === "snapcompact"
-						? "Auto-snapcompact"
-						: "Auto context-full maintenance";
+					: "Auto context-full maintenance";
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
@@ -1296,7 +1377,7 @@ export class EventController {
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(this.ctx.autoCompactionLoader);
-		this.ctx.refreshComposerShortcuts?.();
+		this.ctx.refreshComposerShortcuts();
 		this.ctx.ui.requestRender();
 	}
 
@@ -1311,16 +1392,13 @@ export class EventController {
 		}
 		const isHandoffAction = event.action === "handoff";
 		const isShakeAction = event.action === "shake";
-		const isSnapcompactAction = event.action === "snapcompact";
 		if (event.aborted) {
 			this.ctx.showStatus(
 				isHandoffAction
 					? "Auto-handoff cancelled"
 					: isShakeAction
 						? "Auto-shake cancelled"
-						: isSnapcompactAction
-							? "Auto-snapcompact cancelled"
-							: "Auto context-full maintenance cancelled",
+						: "Auto context-full maintenance cancelled",
 			);
 		} else if (isShakeAction) {
 			// Shake produces no CompactionResult; rebuild on success, suppress benign skips.
@@ -1371,20 +1449,21 @@ export class EventController {
 		} else if (event.skipped) {
 			// Benign skip: no model selected, no candidate models available, or nothing
 			// to compact yet. Not a failure — suppress the warning.
-		} else if (isSnapcompactAction) {
-			this.ctx.showWarning("Auto-snapcompact maintenance failed; continuing without maintenance");
 		} else {
 			this.ctx.showWarning("Auto context-full maintenance failed; continuing without maintenance");
 		}
 		await this.ctx.flushCompactionQueue({ willRetry: event.willRetry });
 		this.#ensureWorkingLoaderWhileStreaming();
-		this.ctx.refreshComposerShortcuts?.();
+		this.ctx.refreshComposerShortcuts();
 		this.ctx.ui.requestRender();
 	}
 
 	async #handleAutoRetryStart(event: Extract<AgentSessionEvent, { type: "auto_retry_start" }>): Promise<void> {
 		this.#trackRetrySupersededAssistantComponent(this.#lastAssistantComponent);
 		this.#stopWorkingLoader();
+		// Living shimmer: keep the activity truthful across the retry window (the
+		// retry uses its own warning loader; the working loader resumes after).
+		setShimmerActivity("error");
 		this.ctx.statusContainer.disposeChildren();
 		if (AIError.is(event.errorId, AIError.Flag.ThinkingLoop)) {
 			// The retry path drops the failed assistant from runtime context. Do not
@@ -1394,10 +1473,17 @@ export class EventController {
 			this.ctx.clearPinnedError();
 		}
 		const delaySeconds = Math.round(event.delayMs / 1000);
+		// In living mode the activity is now "error", so render the retry text
+		// through the shimmer: it blinks red (the error motion) instead of sitting
+		// in a flat muted grey. Other modes keep the plain warning styling.
+		const living = this.ctx.settings.get("display.shimmer") === "living";
+		const retryMessageColor: LoaderMessageColorFn = living
+			? Object.assign((text: string) => shimmerText(text, theme), { animated: true as const })
+			: (text: string) => theme.fg("muted", text);
 		this.ctx.retryLoader = new Loader(
 			this.ctx.ui,
-			spinner => theme.fg("warning", spinner),
-			text => theme.fg("muted", text),
+			spinner => theme.fg(living ? "error" : "warning", spinner),
+			retryMessageColor,
 			`Retrying (${event.attempt}/${event.maxAttempts}) in ${delaySeconds}s…${this.#maintenanceEscHint()}`,
 			getSymbolTheme().spinnerFrames,
 		);
@@ -1411,6 +1497,8 @@ export class EventController {
 			this.ctx.retryLoader = undefined;
 			this.ctx.statusContainer.disposeChildren();
 		}
+		// Living shimmer: retry resolved — the model resumes reasoning.
+		setShimmerActivity("thinking");
 		if (event.success) {
 			let appliedRecovered = false;
 			for (const recovered of event.recoveredErrors ?? []) {
@@ -1509,7 +1597,7 @@ export class EventController {
 		if (threshold <= 0) return;
 		if (this.#currentContextTokens() < threshold) return;
 
-		const timeoutMs = Math.max(60, Math.min(3600, idleSettings.idleTimeoutSeconds)) * 1000;
+		const timeoutMs = clampLow(idleSettings.idleTimeoutSeconds, 60, 3600) * 1000;
 		this.#idleCompactionTimer = setTimeout(() => {
 			this.#idleCompactionTimer = undefined;
 			// Re-check conditions before firing. Pruning may have run between arming
@@ -1532,7 +1620,7 @@ export class EventController {
 		if (this.ctx.editor.getText().trim()) return;
 
 		const timeoutMs =
-			Math.max(IDLE_RECAP_MIN_SECONDS, Math.min(IDLE_RECAP_MAX_SECONDS, recapSettings.idleSeconds)) * 1000;
+			clampLow(recapSettings.idleSeconds, IDLE_RECAP_MIN_SECONDS, IDLE_RECAP_MAX_SECONDS) * 1000;
 		this.#idleRecapTimer = setTimeout(() => {
 			this.#idleRecapTimer = undefined;
 			void this.#runIdleRecap();

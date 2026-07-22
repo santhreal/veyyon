@@ -61,6 +61,29 @@ import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
 import { groupBySource, parseRemoveArgs, readScopeFlag, showCommandMessage } from "./command-controller-shared";
 
+/**
+ * The slice of the interactive context this controller uses: 12 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type McpCommandControllerContext = Pick<
+	InteractiveModeContext,
+	| "editor"
+	| "editorContainer"
+	| "mcpManager"
+	| "oauthManualInput"
+	| "present"
+	| "session"
+	| "showError"
+	| "showHookInput"
+	| "showHookSelector"
+	| "showStatus"
+	| "showWarning"
+	| "ui"
+>;
+
 const MCP_MANUAL_INPUT_PROVIDER_ID = "mcp";
 const MCP_MANUAL_LOGIN_TIP = "Headless? Paste the redirect URL or code with /login <value>.";
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string, onTimeout?: () => void): Promise<T> {
@@ -246,7 +269,7 @@ type MCPSearchParsed = {
 };
 
 export class MCPCommandController {
-	constructor(private ctx: InteractiveModeContext) {}
+	constructor(private ctx: McpCommandControllerContext) {}
 
 	/**
 	 * Handle /mcp command and route to subcommands
@@ -1116,11 +1139,11 @@ export class MCPCommandController {
 			if (state === "connected") {
 				block.setStatus(theme.fg("success", `${theme.status.enabled} Connected to "${name}"`));
 			} else if (state === "connecting") {
-				block.setStatus(theme.fg("muted", `◌ "${name}" is still connecting...`));
+				block.setStatus(theme.fg("muted", `${theme.status.connecting} "${name}" is still connecting...`));
 			} else {
 				block.setStatus(
 					options?.suppressDisconnectedWarning
-						? theme.fg("muted", `◌ Connection check complete for "${name}"`)
+						? theme.fg("muted", `${theme.status.connecting} Connection check complete for "${name}"`)
 						: theme.fg("warning", `warn Could not connect to "${name}" yet`),
 				);
 			}
@@ -1191,7 +1214,7 @@ export class MCPCommandController {
 				lines.push(theme.fg("success", `${theme.status.enabled} Successfully connected to server`));
 				lines.push("");
 			} else if (isConnecting) {
-				lines.push(theme.fg("muted", `◌ Server is connecting in background...`));
+				lines.push(theme.fg("muted", `${theme.status.connecting} Server is connecting in background...`));
 				lines.push(theme.fg("muted", `  Run ${theme.fg("accent", `/mcp test ${name}`)} in a few seconds.`));
 				lines.push("");
 			} else {
@@ -1246,11 +1269,11 @@ export class MCPCommandController {
 	#serverStatusRows(name: string, state: string, type?: string): string[] {
 		const status =
 			state === "inactive"
-				? theme.fg("warning", " ◌ inactive")
+				? theme.fg("warning", ` ${theme.status.connecting} inactive`)
 				: state === "connected"
-					? theme.fg("success", " ● connected")
+					? theme.fg("success", ` ${theme.status.active} connected`)
 					: state === "connecting"
-						? theme.fg("muted", " ◌ connecting")
+						? theme.fg("muted", ` ${theme.status.connecting} connecting`)
 						: theme.fg("muted", ` ${theme.status.shadowed} not connected`);
 		const typeTag = type ? ` ${theme.fg("dim", `[${type}]`)}` : "";
 		const rows = [`  ${theme.fg("accent", name)}${status}${typeTag}`];
@@ -1361,7 +1384,7 @@ export class MCPCommandController {
 			if (relevantDisabled.length > 0) {
 				lines.push(theme.fg("accent", "Disabled") + theme.fg("muted", " (discovered servers):"));
 				for (const name of relevantDisabled) {
-					lines.push(`  ${theme.fg("accent", name)}${theme.fg("warning", " ◌ disabled")}`);
+					lines.push(`  ${theme.fg("accent", name)}${theme.fg("warning", ` ${theme.status.connecting} disabled`)}`);
 				}
 				lines.push("");
 			}

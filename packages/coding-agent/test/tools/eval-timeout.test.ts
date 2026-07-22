@@ -3,15 +3,16 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { disposeAllVmContexts } from "@veyyon/coding-agent/eval/js/context-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool } from "@veyyon/coding-agent/tools/eval";
+import { makeToolSession } from "../helpers/tool-session";
 
 function makeSession(): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => null,
 		settings: Settings.isolated(),
-	} as unknown as ToolSession;
+	});
 }
 
 /**
@@ -61,6 +62,43 @@ describe("EvalTool timeout semantics", () => {
 
 		const cell = result.details?.cells?.[0];
 		expect(cell?.exitCode).toBeUndefined();
+	});
+
+	// eval used to clamp an over-ceiling timeout silently (only bash reported the
+	// clamp). These lock the fix: an over-ceiling request is pinned to eval's
+	// 3600s max AND the caller is told, while an in-range or disabled timeout
+	// says nothing about clamping.
+	it("surfaces a notice when the requested timeout exceeds eval's ceiling", async () => {
+		const tool = new EvalTool(makeSession());
+		const result = await tool.execute("call-clamp-notice", {
+			language: "js",
+			code: "print('ok');",
+			timeout: 99_999, // eval max is 3600s
+		});
+
+		expect(result.details?.notice).toContain("Timeout clamped to 3600s (requested 99999s; allowed range 1-3600s).");
+	});
+
+	it("emits no clamp notice for an in-range timeout", async () => {
+		const tool = new EvalTool(makeSession());
+		const result = await tool.execute("call-inrange-timeout", {
+			language: "js",
+			code: "print('ok');",
+			timeout: 15,
+		});
+
+		expect(result.details?.notice ?? "").not.toContain("clamped");
+	});
+
+	it("emits no clamp notice when the timeout is disabled (0)", async () => {
+		const tool = new EvalTool(makeSession());
+		const result = await tool.execute("call-zero-timeout-notice", {
+			language: "js",
+			code: "print('ok');",
+			timeout: 0,
+		});
+
+		expect(result.details?.notice ?? "").not.toContain("clamped");
 	});
 
 	it("reports a dead JS worker instead of waiting for the cell timeout", async () => {

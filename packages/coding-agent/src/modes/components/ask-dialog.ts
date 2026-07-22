@@ -18,13 +18,14 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
+import { clampLow, formatCount } from "@veyyon/utils";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
 	ExtensionAskDialogSubmitResult,
 } from "../../extensibility/extensions";
 import { getTabBarTheme } from "../shared";
+import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
 import { getMarkdownTheme, highlightCode, theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
@@ -138,7 +139,11 @@ function questionTabLabel(question: ExtensionAskDialogQuestion, index: number): 
 
 function renderQuestionTitle(question: ExtensionAskDialogQuestion, width: number): string[] {
 	const mdTheme = getMarkdownTheme();
-	const questionText = renderInlineMarkdown(replaceTabs(question.question), mdTheme, t => theme.fg("text", t));
+	// The agent is asking, so the question itself carries the living `ask` hue:
+	// the same theme token the `await` breath paints, sourced from ONE place so a
+	// rebrand owns it. This is the visible "your turn" — the prompt reads green.
+	const askToken = activityColorToken("ask");
+	const questionText = renderInlineMarkdown(replaceTabs(question.question), mdTheme, t => theme.fg(askToken, t));
 	const wrapped = wrapTextWithAnsi(questionText, Math.max(1, width));
 	if (wrapped.length <= MAX_HEADER_ROWS) return wrapped;
 	return [
@@ -338,6 +343,10 @@ export class AskDialogComponent implements Component {
 				timedOut: false,
 			};
 		});
+		// The dialog appearing IS the agent yielding the turn: flip the living
+		// status to `ask` so any concurrent shimmer surface reads the green
+		// "your turn" breath. `dispose()` returns it to rest.
+		setShimmerActivity("ask");
 		if (options.timeout && options.timeout > 0) {
 			this.#countdown = new CountdownTimer(
 				options.timeout,
@@ -358,6 +367,9 @@ export class AskDialogComponent implements Component {
 	dispose(): void {
 		this.#closed = true;
 		this.#countdown?.dispose();
+		// The user answered (or it timed out): drop the `ask` breath back to rest.
+		// The next agent turn's `agent_start` flips it to `thinking`.
+		setShimmerActivity("idle");
 	}
 
 	setOnRequestRender(callback: () => void): void {
@@ -706,7 +718,7 @@ export class AskDialogComponent implements Component {
 			}
 			return { lines, scrollOffset: list.scrollOffset, indicator: list.indicator };
 		}
-		const previewLines = this.#renderPreviewPane(preview, width, Math.max(3, Math.min(8, Math.floor(maxRows * 0.4))));
+		const previewLines = this.#renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
 		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];

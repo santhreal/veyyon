@@ -425,8 +425,8 @@ export const APPEARANCE_SETTINGS = {
 
 	"display.shimmer": {
 		type: "enum",
-		values: ["classic", "kitt", "disabled"] as const,
-		default: "classic",
+		values: ["classic", "kitt", "living", "disabled"] as const,
+		default: "disabled",
 		ui: {
 			tab: "appearance",
 			group: "Display",
@@ -435,8 +435,25 @@ export const APPEARANCE_SETTINGS = {
 			options: [
 				{ value: "classic", label: "Classic", description: "Soft cosine wave sweeping across the text" },
 				{ value: "kitt", label: "KITT Scanner", description: "Knight Rider 1982 red light bouncing left-right" },
+				{
+					value: "living",
+					label: "Living",
+					description: "Motion and color change with what the agent is doing: thinking, streaming, running a tool, error",
+				},
 				{ value: "disabled", label: "Disabled", description: "No animation; static muted text" },
 			],
+		},
+	},
+
+	"display.subagentInbox": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Subagent Inbox (experimental)",
+			description:
+				"opencode-style split: a live per-agent sidebar plus the focused agent's detail pane, instead of the modal agent hub. Experimental; off by default while the layout is refined.",
 		},
 	},
 

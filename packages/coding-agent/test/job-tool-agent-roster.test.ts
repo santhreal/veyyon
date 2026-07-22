@@ -11,6 +11,7 @@ import { AsyncJobManager } from "@veyyon/coding-agent/async";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { makeToolSession } from "./helpers/tool-session";
 
 const managers: AsyncJobManager[] = [];
 
@@ -25,7 +26,7 @@ function createToolSession(options: {
 	registry?: AgentRegistry;
 	agentId?: string;
 }): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: process.cwd(),
 		hasUI: false,
 		settings: {
@@ -36,7 +37,7 @@ function createToolSession(options: {
 		getAgentId: () => options.agentId ?? null,
 		asyncJobManager: options.manager,
 		agentRegistry: options.registry,
-	} as unknown as ToolSession;
+	});
 }
 
 function registerRunningSub(registry: AgentRegistry, id: string, parentId = "Main"): void {

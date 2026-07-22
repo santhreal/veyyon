@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent, type AgentMessage } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
+import * as ai from "@veyyon/ai";
 import type { TextContent } from "@veyyon/ai";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -126,7 +127,7 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 		vi.restoreAllMocks();
 	});
 
-	async function createHarness(strategy: "context-full" | "snapcompact" = "context-full"): Promise<Harness> {
+	async function createHarness(strategy: "summary" = "summary"): Promise<Harness> {
 		const observedCalls: ObservedPromptCall[] = [];
 		const waiters: Array<{
 			predicate: (call: ObservedPromptCall) => boolean;
@@ -152,10 +153,9 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 			"todo.eager": "default",
 			"todo.reminders": false,
 		});
-		// Settings.isolated() migrates the legacy "context-full" token to "handoff" on
-		// load (migrated configs store handoff|snap only). Force the raw legacy value via
-		// a runtime override so auto-compaction takes the in-session context-full engine
-		// action instead of a full LLM handoff, matching agent-session-handoff.test.ts.
+		// The `summary` strategy takes the in-session context-full engine action
+		// (in-place LLM summarization) instead of a full LLM handoff, matching
+		// agent-session-handoff.test.ts.
 		settings.override("compaction.strategy", strategy as never);
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
@@ -243,17 +243,22 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 		expect(continuation.messageTexts.some(text => text.includes(`MUST read \`${planUrl}\``))).toBe(true);
 	});
 
-	it("re-injects the approved plan reference after snapcompact auto-compaction", async () => {
-		const { session, sessionManager, observedCalls, waitForCall } = await createHarness("snapcompact");
+	it("re-injects the approved plan reference after summary auto-compaction", async () => {
+		const { session, sessionManager, observedCalls, waitForCall } = await createHarness("summary");
 
-		const planUrl = "local://approved-snapcompact-plan.md";
-		const planMarker = "SNAPCOMPACT-PLAN-REINJECTION-MARKER";
-		writePlanFile(sessionManager, planUrl, `# Approved Snapcompact Plan\n\n${planMarker}\n`);
+		const planUrl = "local://approved-summary-plan.md";
+		const planMarker = "SUMMARY-PLAN-REINJECTION-MARKER";
+		writePlanFile(sessionManager, planUrl, `# Approved Summary Plan\n\n${planMarker}\n`);
 
 		session.setPlanReferencePath(planUrl);
 		session.markPlanReferenceSent();
 
-		await session.prompt("continue executing the approved snapcompact plan");
+		// Unlike the stubbed-compaction cases, this exercises the REAL summary
+		// (context-full) compaction path end to end; mock only the LLM summarize
+		// call so it completes without a network request.
+		vi.spyOn(ai, "completeSimple").mockResolvedValue(createAssistantResponse("summarized plan history"));
+
+		await session.prompt("continue executing the approved summary plan");
 		const firstCall = observedCalls[0];
 		expect(firstCall).toBeDefined();
 		expect(firstCall.messageTexts.some(text => text.includes(planMarker))).toBe(false);

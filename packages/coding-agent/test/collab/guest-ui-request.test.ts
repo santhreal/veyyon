@@ -11,7 +11,7 @@
  * drives a real CollabGuestLink over the in-memory relay so every guest→host
  * frame is observable.
  */
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn, vi } from "bun:test";
 import { generateRoomKey, importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
@@ -258,6 +258,12 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 			prefill?: string,
 			dialogOptions?: ExtensionUIDialogOptions,
 		): Promise<string | undefined> => presentStub({ kind: "editor", title, prefill, dialogOptions }),
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 
 	const guest = new CollabGuestLink(ctx);
@@ -480,6 +486,12 @@ function makeHostContext(): InteractiveModeContext {
 		ui: { requestRender: () => {} },
 		showStatus: () => {},
 		collabHost: undefined,
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 }
 
@@ -591,6 +603,12 @@ describe("collab proto handshake (#4049)", () => {
 		const ctx = {
 			settings: { get: () => "" },
 			sessionManager: { getSessionFile: () => null },
+			// Required members of the context. Omitting them used to be tolerated by
+			// `?.()` calls in the controller, which meant production silently skipped
+			// the composer refresh and the welcome dismissal whenever either was
+			// missing. The calls are unconditional now, so the stub supplies them.
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 		const guest = new CollabGuestLink(ctx);
 		try {

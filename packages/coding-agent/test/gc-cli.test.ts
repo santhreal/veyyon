@@ -100,6 +100,40 @@ async function agePath(file: string, ageDays = 1): Promise<void> {
 	await fs.utimes(file, ts, ts);
 }
 
+const SESSION_SUFFIX = ".jsonl";
+
+// A subagent's session transcript lives inside its parent's artifacts directory,
+// which is the parent session file's path with the ".jsonl" suffix stripped:
+//   <sessions>/<project>/<parentId>.jsonl        -> parent transcript
+//   <sessions>/<project>/<parentId>/<childId>.jsonl -> nested subagent transcript
+// This mirrors the on-disk layout the runtime writes for spawned subagents.
+async function writeNestedTranscript(
+	parentSessionFile: string,
+	childId: string,
+	options: { status: "complete" | "pending"; blobRef?: string; ageDays?: number } = { status: "complete" },
+): Promise<string> {
+	const artifactsDir = parentSessionFile.slice(0, -SESSION_SUFFIX.length);
+	await fs.mkdir(artifactsDir, { recursive: true });
+	const file = path.join(artifactsDir, `${childId}${SESSION_SUFFIX}`);
+	const lines = [
+		JSON.stringify({ type: "session", version: 3, id: childId, timestamp: "2026-01-01T00:00:00.000Z", cwd: "/tmp" }),
+	];
+	if (options.blobRef) {
+		lines.push(JSON.stringify({ type: "message", message: { role: "user", content: options.blobRef } }));
+	}
+	if (options.status === "complete") {
+		lines.push(JSON.stringify({ type: "message", message: { role: "assistant", content: [] } }));
+	} else {
+		lines.push(JSON.stringify({ type: "message", message: { role: "user", content: "waiting" } }));
+	}
+	await Bun.write(file, `${lines.join("\n")}\n`);
+	if (options.ageDays !== undefined) {
+		const ts = new Date(Date.now() - options.ageDays * 86_400_000);
+		await fs.utimes(file, ts, ts);
+	}
+	return file;
+}
+
 async function writeConfig(agentDir: string, body: string): Promise<void> {
 	await fs.mkdir(agentDir, { recursive: true });
 	await Bun.write(path.join(agentDir, "config.yml"), body);
@@ -156,6 +190,44 @@ describe("runGcCommand blob sweep", () => {
 		expect(result.blobs?.deleted).toBe(1);
 		expect(await Bun.file(orphan).exists()).toBe(false);
 		expect(await Bun.file(referenced).exists()).toBe(true);
+	});
+
+	test("--apply keeps a blob referenced by a blobtext: text ref (DATALOSS-3 regression)", async () => {
+		// WHY: DATALOSS-2 externalizes oversized text to `blobtext:sha256:<hash>` refs,
+		// stored in the same blob dir as image `blob:sha256:` blobs. GC's reference
+		// scanner must recognize BOTH prefixes; before the fix its regex matched only
+		// `blob:sha256:`, so a live session's externalized-text blob looked unreferenced
+		// and was deleted after the grace window — silently destroying the exact large
+		// tool result the externalization was meant to preserve. This pins the text ref
+		// as a first-class reference that protects its blob from the sweep.
+		const textHash = hashFor("externalized-text");
+		const textBlob = await writeBlob(root, textHash, "the full large tool result");
+		await agePath(textBlob);
+		await writeSession(root, "project", "session-text", "complete", {
+			blobRef: `blobtext:sha256:${textHash}`,
+		});
+
+		const result = await runGcCommand({ flags: { agentDir: root, blobs: true, apply: true } });
+
+		expect(result.blobs?.referenced).toBe(1);
+		expect(result.blobs?.wouldDelete).toBe(0);
+		expect(result.blobs?.deleted).toBe(0);
+		expect(await Bun.file(textBlob).exists()).toBe(true);
+	});
+
+	test("--apply deletes an unreferenced text blob once no session points at it", async () => {
+		// WHY: the flip side — a genuinely orphaned `blobtext:` blob (no session ref)
+		// must still be collectable, so recognizing the prefix does not accidentally
+		// pin every text blob forever. Only referenced blobs are protected.
+		const orphanTextHash = hashFor("orphan-text");
+		const orphanTextBlob = await writeBlob(root, orphanTextHash, "no session references this");
+		await agePath(orphanTextBlob);
+
+		const result = await runGcCommand({ flags: { agentDir: root, blobs: true, apply: true } });
+
+		expect(result.blobs?.wouldDelete).toBe(1);
+		expect(result.blobs?.deleted).toBe(1);
+		expect(await Bun.file(orphanTextBlob).exists()).toBe(false);
 	});
 
 	test("--apply keeps fresh unreferenced blobs out of sweep candidates", async () => {
@@ -737,6 +809,101 @@ describe("runGcCommand cold-session archive", () => {
 
 		expect(result.blobs?.wouldDelete).toBe(1);
 		expect(await Bun.file(referenced).exists()).toBe(true);
+	});
+});
+
+describe("runGcCommand subagent-transcript retention (GRAN-7)", () => {
+	// GRAN-0 requires MAXIMUM GRANULARITY of the session record "including subagents
+	// everything": a spawned subagent's full transcript, and every large blob it
+	// externalized, must survive GC exactly as the parent's own record does. These
+	// tests lock the three retention contracts that make that true at the GC layer.
+	// (The fourth contract — a parent is not archived while a child transcript is
+	// still live — is locked separately by "skips archiving parent sessions with
+	// live nested sessions" above; it is not duplicated here.)
+
+	test("keeps a blob referenced only inside a nested subagent transcript", async () => {
+		// WHY: the blob reference scan walks sessions recursively (**/*.jsonl), so a
+		// blob referenced ONLY by a child subagent's transcript — never by the parent
+		// — must still count as referenced. If the scan stopped at top-level session
+		// files, a subagent's externalized tool output (an image it read, a large
+		// result it captured) would look orphaned and be swept after the grace window,
+		// silently destroying part of the subagent record we are required to preserve.
+		const subagentBlobHash = hashFor("subagent-only-blob");
+		const subagentBlob = await writeBlob(root, subagentBlobHash, "image bytes only the subagent saw");
+		await agePath(subagentBlob);
+		// Parent references NO blobs; only the nested child transcript points at it.
+		const parent = await writeSession(root, "project", "parent", "complete");
+		await writeNestedTranscript(parent, "child-agent", {
+			status: "complete",
+			blobRef: `blob:sha256:${subagentBlobHash}`,
+		});
+
+		const result = await runGcCommand({ flags: { agentDir: root, blobs: true, apply: true } });
+
+		expect(result.blobs?.referenced).toBe(1);
+		expect(result.blobs?.wouldDelete).toBe(0);
+		expect(result.blobs?.deleted).toBe(0);
+		expect(await Bun.file(subagentBlob).exists()).toBe(true);
+	});
+
+	test("keeps an externalized-text blob referenced only inside a nested subagent transcript", async () => {
+		// WHY: a subagent's oversized tool result is externalized to a `blobtext:` ref
+		// (DATALOSS-2) stored in the child transcript. The recursive scan plus the
+		// dual-prefix regex must together protect it: the subagent's largest, most
+		// study-relevant outputs are exactly the ones that get externalized, so losing
+		// them would gut the backtest fidelity GRAN-0 demands.
+		const subagentTextHash = hashFor("subagent-externalized-text");
+		const subagentTextBlob = await writeBlob(root, subagentTextHash, "the subagent's full large tool result");
+		await agePath(subagentTextBlob);
+		const parent = await writeSession(root, "project", "parent", "complete");
+		await writeNestedTranscript(parent, "child-agent", {
+			status: "complete",
+			blobRef: `blobtext:sha256:${subagentTextHash}`,
+		});
+
+		const result = await runGcCommand({ flags: { agentDir: root, blobs: true, apply: true } });
+
+		expect(result.blobs?.referenced).toBe(1);
+		expect(result.blobs?.wouldDelete).toBe(0);
+		expect(result.blobs?.deleted).toBe(0);
+		expect(await Bun.file(subagentTextBlob).exists()).toBe(true);
+	});
+
+	test("archives an old parent as ONE session and moves its subagent transcript with it", async () => {
+		// WHY: two contracts at once. (1) A nested subagent transcript is never counted
+		// or archived as an independent session — only top-level project dirs are
+		// enumerated as sessions — so a parent with one child archives as exactly ONE
+		// unit, not two. (2) Archiving the parent relocates its artifacts directory,
+		// carrying the child transcript into the archive alongside it, so the subagent
+		// record stays co-located with the parent instead of being stranded or dropped.
+		const parent = await writeSession(root, "project", "parent", "complete", { ageDays: 90 });
+		const nested = await writeNestedTranscript(parent, "child-agent", { status: "complete", ageDays: 90 });
+
+		const result = await runGcCommand({
+			flags: {
+				agentDir: root,
+				archive: true,
+				coldArchiveAfterDays: 30,
+				retainNewestGlobal: 0,
+				retainNewestPerCwd: 0,
+				apply: true,
+			},
+		});
+
+		// Exactly one session archived — the child transcript was NOT treated as its own.
+		expect(result.archive?.archived).toBe(1);
+		expect(result.archive?.scanned).toBe(1);
+		// The live copies of both parent and child transcript are gone from the hot tree.
+		expect(await Bun.file(parent).exists()).toBe(false);
+		expect(await Bun.file(nested).exists()).toBe(false);
+		// The parent landed compressed in the archive with its real id inside.
+		const archivedParent = path.join(root, "archive", "sessions", "project", "parent.jsonl.gz");
+		expect(await Bun.file(archivedParent).exists()).toBe(true);
+		expect(new TextDecoder().decode(gunzipSync(await Bun.file(archivedParent).bytes()))).toContain('"parent"');
+		// The child transcript travelled with it, preserved uncompressed in the moved artifacts dir.
+		const archivedChild = path.join(archivedParent.slice(0, -".jsonl.gz".length), "child-agent.jsonl");
+		expect(await Bun.file(archivedChild).exists()).toBe(true);
+		expect(await Bun.file(archivedChild).text()).toContain('"child-agent"');
 	});
 });
 

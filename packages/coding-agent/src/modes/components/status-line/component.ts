@@ -4,7 +4,13 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { resolveThresholdTokens } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
+import {
+	formatClock,
+	formatDuration,
+	getProjectDir,
+	scopedTimeoutSignal,
+	withScopedTimeoutSignal,
+} from "@veyyon/utils";
 import { isCompactionStrategyOff } from "../../../config/compaction-strategy";
 import { settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
@@ -27,6 +33,13 @@ import type {
 	StatusLineSegmentOptions,
 	StatusLineSettings,
 } from "./types";
+
+/**
+ * Gap between the location group and the total-elapsed clock. Deliberately
+ * wider than the standard `  ·  ` separator and dot-free, so the clock reads
+ * as its own quiet zone at the end of the line rather than one more segment.
+ */
+const SESSION_CLOCK_GAP = "      ";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Context-usage memo
@@ -214,6 +227,9 @@ function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 interface ActiveMeter {
 	activeMs: number;
 	activeStartedAt: number | null;
+	/** Duration of the most recently COMPLETED run window — what the location
+	 * line's "Worked for …" readout shows once the agent yields. */
+	lastRunMs: number;
 	sessionFile: string | undefined;
 }
 
@@ -420,6 +436,7 @@ export class StatusLineComponent implements Component {
 		const meter = this.#meter();
 		meter.activeMs = 0;
 		meter.activeStartedAt = null;
+		meter.lastRunMs = 0;
 	}
 
 	/**
@@ -444,8 +461,23 @@ export class StatusLineComponent implements Component {
 	markActivityEnd(): void {
 		const meter = this.#meter();
 		if (meter.activeStartedAt === null) return;
-		meter.activeMs += Math.max(0, Date.now() - meter.activeStartedAt);
+		const windowMs = Math.max(0, Date.now() - meter.activeStartedAt);
+		meter.activeMs += windowMs;
+		meter.lastRunMs = windowMs;
 		meter.activeStartedAt = null;
+	}
+
+	/**
+	 * Run-clock snapshot for the location line: `runningMs` is the current
+	 * run's live elapsed (null when the agent is idle), `lastRunMs` the
+	 * duration of the most recently completed run (0 before the first run).
+	 */
+	getRunClock(): { runningMs: number | null; lastRunMs: number } {
+		const meter = this.#meter();
+		return {
+			runningMs: meter.activeStartedAt === null ? null : Math.max(0, Date.now() - meter.activeStartedAt),
+			lastRunMs: meter.lastRunMs,
+		};
 	}
 
 	/**
@@ -482,7 +514,7 @@ export class StatusLineComponent implements Component {
 			}
 		}
 		if (!meter) {
-			meter = { activeMs: 0, activeStartedAt: null, sessionFile: currentFile };
+			meter = { activeMs: 0, activeStartedAt: null, lastRunMs: 0, sessionFile: currentFile };
 			this.#activeMeters.set(this.session, meter);
 		}
 		return meter;
@@ -1342,10 +1374,14 @@ export class StatusLineComponent implements Component {
 	 * `extras.locationRight` pins owner-supplied content (MCP health, the ghost
 	 * sun) at the location line's right edge.
 	 */
-	renderQuietLines(
-		width: number,
-		extras?: { locationRight?: string | null },
-	): { locationLine: string | null; capabilityLine: string | null } {
+	/**
+	 * Gather the quiet-zone segments into their three groups: location (path ·
+	 * git · pr), capability-left (model · mode …), and capability-right
+	 * (context, badges, background jobs). ONE owner for the grouping logic —
+	 * both the two-line selector layout ({@link renderQuietLines}) and the
+	 * composer's single footline ({@link renderQuietLine}) read from here.
+	 */
+	#gatherQuietSegments(width: number): { location: string[]; capLeft: string[]; capRight: string[] } {
 		const effectiveSettings = this.#resolveSettings();
 		const gitEnabled = this.#gitEnabled();
 		const leftCfg = effectiveSettings.leftSegments;
@@ -1360,9 +1396,9 @@ export class StatusLineComponent implements Component {
 		const quietOptions = {
 			...effectiveSettings.segmentOptions,
 			git: { ...effectiveSettings.segmentOptions?.git, compact: true },
-			path: { ...effectiveSettings.segmentOptions?.path, maxLength: 34 },
+			path: { ...effectiveSettings.segmentOptions?.path, maxLength: 30 },
 			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
-			context_pct: { ...effectiveSettings.segmentOptions?.context_pct, emberRamp: true },
+			context_pct: { ...effectiveSettings.segmentOptions?.context_pct, emberRamp: true, bar: true },
 		};
 		const ctx = this.#buildSegmentContext(width, quietOptions, includePath, includeContext, includeGit, includePr);
 		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
@@ -1390,13 +1426,84 @@ export class StatusLineComponent implements Component {
 			capRight.unshift(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
 		}
 		if (subagentBadge) capRight.unshift(subagentBadge);
+		return { location, capLeft, capRight };
+	}
 
+	/**
+	 * The composer's ONE metadata footline: location (path · git) on the left,
+	 * capability (model · mode · badges · context, then MCP health via
+	 * `extras.locationRight`) on the right. On narrow widths the right group
+	 * sheds parts from the end before the middle gap closes; returns null when
+	 * there is nothing to say (no empty chrome rows).
+	 */
+	/**
+	 * Join the location group and append the MODEL RUN clock with a roomy gap.
+	 * The clock is model runtime from the ONE active-processing meter (the
+	 * same accounting behind `time_spent`), never wall time since launch:
+	 * while the agent runs it ticks the current run (`…main *      0:42`);
+	 * once the run finishes it reads `Worked for 4m12s` (the completed run's
+	 * duration); before the model has ever started it says nothing at all.
+	 * Chrome, not a configurable segment — it rides the location line
+	 * whenever one renders (approved placement: next to the git branch, with
+	 * a decent amount of space). Dim; the mode's 1s heartbeat keeps the
+	 * running form ticking between agent events.
+	 */
+	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
+		const left = location.join(sep);
+		if (!left) return left;
+		const { runningMs, lastRunMs } = this.getRunClock();
+		const readout =
+			runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `Worked for ${formatDuration(lastRunMs)}` : "";
+		if (!readout) return left;
+		return `${left}${gap}${theme.fg("dim", readout)}`;
+	}
+
+	renderQuietLine(width: number, extras?: { locationRight?: string | null }): string | null {
+		const { location, capLeft, capRight } = this.#gatherQuietSegments(width);
+		const sep = theme.fg("dim", "  ·  ");
+		// One cell of right margin, always — nothing kisses the terminal edge.
+		const budget = Math.max(1, width - 1);
+		let left = this.#locationWithRunClock(location, sep);
+		const rightParts = [...capLeft, ...capRight];
+		if (extras?.locationRight) rightParts.push(extras.locationRight);
+		let right = rightParts.join(sep);
+		// The run clock is comfort chrome; the capability segments (context
+		// gauge, mode, badges) are operating data. On a tight width the clock
+		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
+		// drops entirely — so it can never squeeze a segment off the line.
+		let clockStage = 0;
+		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
+			if (clockStage === 0) {
+				clockStage = 1;
+				left = this.#locationWithRunClock(location, sep, "  ");
+				continue;
+			}
+			if (clockStage === 1) {
+				clockStage = 2;
+				left = location.join(sep);
+				continue;
+			}
+			rightParts.pop();
+			right = rightParts.join(sep);
+		}
+		if (!left && !right) return null;
+		if (left && right) {
+			return left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+		}
+		return truncateToWidth(left || right, budget);
+	}
+
+	renderQuietLines(
+		width: number,
+		extras?: { locationRight?: string | null },
+	): { locationLine: string | null; capabilityLine: string | null } {
+		const { location, capLeft, capRight } = this.#gatherQuietSegments(width);
 		const sep = theme.fg("dim", "  ·  ");
 		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);
 		let locationLine: string | null = null;
 		if (location.length > 0) {
-			const left = location.join(sep);
+			const left = this.#locationWithRunClock(location, sep);
 			const right = extras?.locationRight ?? null;
 			if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
 				locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;

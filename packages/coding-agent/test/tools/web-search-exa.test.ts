@@ -298,6 +298,26 @@ describe("searchExa", () => {
 		});
 	});
 
+	// Regression lock for the provider-consistency fix: exa was the lone list
+	// provider that never ran the shared clampNumResults, so an oversized
+	// `num_results` reached the API as `numResults` and the post-fetch slice was
+	// unbounded. searchExa now clamps to [1, 100] (the house DEFAULT/MAX, matching
+	// firecrawl's ceiling) at its shared entry, so BOTH the outbound `numResults`
+	// and the returned sources are bounded regardless of caller. If the clamp is
+	// removed or bypassed, the request count or the slice length will exceed the cap.
+	it("clamps an oversized num_results to the provider max in the outbound request", async () => {
+		await searchExa({ query: "oversized", num_results: 500, fetch: mockFetch(makeMockExaResponse()) });
+		expect(capturedRequestBody).toBeDefined();
+		expect(capturedRequestBody!.numResults).toBe(100);
+	});
+
+	it("bounds the returned sources to the requested count when the API returns more", async () => {
+		// The mock returns 3 results regardless of the request; ask for 2.
+		const result = await searchExa({ query: "slice bound", num_results: 2, fetch: mockFetch(makeMockExaResponse()) });
+		expect(result.sources).toHaveLength(2);
+		expect(result.sources.map(s => s.url)).toEqual(["https://alpha.com", "https://beta.com"]);
+	});
+
 	it("paces consecutive Exa API requests by the configured delay", async () => {
 		resetSettingsForTest();
 		resetExaSearchThrottleForTest();
@@ -497,9 +517,12 @@ describe("searchExa", () => {
 		expect(calledUrl).toContain("tools=web_search_exa");
 		expect(calledUrl).not.toContain("exaApiKey=");
 		expect(capturedRequestBody?.method).toBe("tools/call");
+		// searchExa clamps num_results at its shared entry (house convention), so an
+		// omitted count resolves to the default (10) and reaches the MCP path
+		// explicitly, matching what the REST path always sent.
 		expect(capturedRequestBody?.params).toEqual({
 			name: "web_search_exa",
-			arguments: { query: "no key" },
+			arguments: { query: "no key", num_results: 10 },
 		});
 	});
 

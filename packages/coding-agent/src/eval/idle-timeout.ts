@@ -21,8 +21,19 @@ export class IdleTimeout {
 	constructor(idleMs: number) {
 		this.#idleMs = Math.max(1, Math.floor(idleMs));
 		this.#deadlineMs = Date.now() + this.#idleMs;
+		// Bun retains an asynchronously-set abort reason on a signal only while at
+		// least one "abort" listener is registered on it. The watchdog fires abort()
+		// from a timer callback, so without this a consumer that reads signal.reason
+		// synchronously (executor-base, kernel-base, executor) rather than inside an
+		// abort handler would see undefined and misclassify a genuine idle timeout as
+		// an ordinary cancel. Anchoring a no-op listener keeps the TimeoutError reason
+		// readable for the object's whole life, so the documented contract holds.
+		this.#controller.signal.addEventListener("abort", IdleTimeout.#anchorReason);
 		this.#arm(this.#idleMs);
 	}
+
+	/** No-op abort listener whose only job is to keep {@link signal}.reason readable; see the constructor. */
+	static readonly #anchorReason = (): void => {};
 
 	/** Aborts with a `TimeoutError` reason once the active timeout window is exhausted. */
 	get signal(): AbortSignal {

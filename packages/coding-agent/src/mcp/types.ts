@@ -420,6 +420,10 @@ export function toJsonRpcError(error: unknown): JsonRpcError {
 		const code = "code" in error && typeof error.code === "number" ? error.code : -32603;
 		return { code, message: error.message };
 	}
+	if (typeof error === "string") {
+		// Preserve throw-site strings — collapsing them to "Internal error" hides the cause.
+		return { code: -32603, message: error.length > 0 ? error : "Internal error" };
+	}
 	if (typeof error === "object" && error !== null) {
 		const obj = error as Record<string, unknown>;
 		if (typeof obj.code === "number" && typeof obj.message === "string") {

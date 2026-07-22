@@ -3,6 +3,7 @@
  */
 
 import type { Api, ModelSpec } from "@veyyon/ai/types";
+import { baseUrlSchemeError } from "@veyyon/catalog/hosts";
 import { ConfigFile, deferSchema } from "./config-file";
 import {
 	type ModelsConfig,
@@ -16,6 +17,7 @@ export type ProviderValidationMode = "models-config" | "runtime-register";
 export interface ProviderValidationModel {
 	id: string;
 	api?: Api;
+	baseUrl?: string;
 	contextWindow?: number;
 	supportsTools?: boolean;
 	maxTokens?: number;
@@ -43,6 +45,19 @@ export function validateProviderConfiguration(
 ): void {
 	const hasProviderApi = !!config.api;
 	const models = config.models;
+
+	// A scheme-less baseUrl (`localhost:11434`, `192.168.1.5:8080`) passes the
+	// schema's non-empty check but is not a usable endpoint: it either throws in
+	// `new URL()` or parses to an empty hostname, so the request fails and prefix
+	// KV-cache reuse silently never engages. Reject it here, at load, with the
+	// provider named and the correction spelled out, rather than let it surface
+	// as an opaque runtime failure much later.
+	if (config.baseUrl) {
+		const schemeError = baseUrlSchemeError(config.baseUrl);
+		if (schemeError) {
+			throw new Error(`Provider ${providerName}: baseUrl ${schemeError}`);
+		}
+	}
 
 	if (models.length === 0) {
 		if (mode === "models-config") {
@@ -94,6 +109,13 @@ export function validateProviderConfiguration(
 		}
 		if (!modelDef.id) {
 			throw new Error(`Provider ${providerName}: model missing "id"`);
+		}
+		// A model may override the provider baseUrl; the same scheme rule applies.
+		if (modelDef.baseUrl) {
+			const schemeError = baseUrlSchemeError(modelDef.baseUrl);
+			if (schemeError) {
+				throw new Error(`Provider ${providerName}, model ${modelDef.id}: baseUrl ${schemeError}`);
+			}
 		}
 		if (mode === "models-config") {
 			if (modelDef.contextWindow !== undefined && modelDef.contextWindow <= 0) {

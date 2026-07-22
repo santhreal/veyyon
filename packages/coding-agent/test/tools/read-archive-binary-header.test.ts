@@ -15,6 +15,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { zip } from "@veyyon/coding-agent/utils/zip";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content
@@ -24,13 +25,13 @@ function getText(result: { content: Array<{ type: string; text?: string }> }): s
 }
 
 function createSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "read.summarize.enabled": false }),
-	} as unknown as ToolSession;
+	});
 }
 
 describe("archive in-memory read binary detection (F8)", () => {

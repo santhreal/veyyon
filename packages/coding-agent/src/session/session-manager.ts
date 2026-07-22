@@ -44,6 +44,9 @@ import {
 	type SessionMessageEntry,
 	type SessionTitleSource,
 	type SessionTreeNode,
+	type SettingsSnapshotEntry,
+	type SubagentSpawnEntry,
+	type SubagentSpawnRecord,
 	type ThinkingLevelChangeEntry,
 	TITLE_CHANGE_ENTRY_TYPE,
 	type TitleChangeEntry,
@@ -70,8 +73,6 @@ import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slo
 
 const JSONL_SUFFIX_LENGTH = ".jsonl".length;
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
-const SUPERSEDED_COMPACTION_SUMMARY = "[Superseded compaction summary elided after a newer compaction]";
-const SUPERSEDED_COMPACTION_SHORT_SUMMARY = "Superseded compaction elided";
 
 function mintSessionId(): string {
 	return Bun.randomUUIDv7();
@@ -444,7 +445,10 @@ export class SessionManager {
 	#cwdChangedCallbacks = new Set<(previous: string, next: string) => void>();
 
 	private constructor(cwd: string, sessionDir: string, persist: boolean, storage: SessionStorage) {
-		this.#cwd = cwd;
+		// The session cwd is the single authority every tool resolves against, so it
+		// must be absolute from the start; a relative seed would make later
+		// `path.resolve(this.#cwd, target)` fall back to the OS process dir.
+		this.#cwd = path.resolve(cwd);
 		this.#sessionDir = sessionDir;
 		this.#persist = persist;
 		this.#storage = storage;
@@ -559,26 +563,6 @@ export class SessionManager {
 
 	#shouldHaveSessionFile(): boolean {
 		return this.#forceFileCreation || this.#fileIsCurrent || this.#historyContainsAssistantMessage();
-	}
-
-	#elideSupersededCompactionsOnBranch(leafId: string | null): boolean {
-		if (!leafId) return false;
-		let changed = false;
-		for (const entry of this.#index.pathTo(leafId)) {
-			if (entry.type !== "compaction") continue;
-			if (
-				entry.summary === SUPERSEDED_COMPACTION_SUMMARY &&
-				entry.shortSummary === SUPERSEDED_COMPACTION_SHORT_SUMMARY &&
-				entry.preserveData === undefined
-			) {
-				continue;
-			}
-			entry.summary = SUPERSEDED_COMPACTION_SUMMARY;
-			entry.shortSummary = SUPERSEDED_COMPACTION_SHORT_SUMMARY;
-			entry.preserveData = undefined;
-			changed = true;
-		}
-		return changed;
 	}
 
 	/**
@@ -1080,7 +1064,11 @@ export class SessionManager {
 	 * artifacts on disk, update internal references, and rewrite the header cwd.
 	 */
 	async moveTo(newCwd: string, targetSessionDir?: string): Promise<void> {
-		const resolvedCwd = path.resolve(newCwd);
+		// Same single-authority rule as setCwd: a relative target resolves against
+		// the session cwd, not `process.cwd()`. (targetSessionDir is a storage path,
+		// independent of the session cwd, so it keeps the plain process-relative
+		// resolve.)
+		const resolvedCwd = path.resolve(this.#cwd, newCwd);
 		const resolvedTargetDir = targetSessionDir ? path.resolve(targetSessionDir) : undefined;
 		if (
 			resolvedCwd === path.resolve(this.#cwd) &&
@@ -1273,7 +1261,16 @@ export class SessionManager {
 	 * written. Validation (exists + isDirectory) is on by default.
 	 */
 	async setCwd(newCwd: string, options?: { validate?: boolean }): Promise<string> {
-		const resolvedCwd = path.resolve(newCwd);
+		// ONE cwd authority. A relative target resolves against THIS session's cwd,
+		// never `process.cwd()`. Bare `path.resolve(newCwd)` used the OS process dir
+		// as its hidden base, so a relative path validated (and, on the callers that
+		// pass raw input, could move to) a DIFFERENT directory than the tools, which
+		// all resolve against the session cwd via `resolveToCwd(path, session.cwd)`.
+		// That split base is what let `set_cwd home/x` report "does not exist" while
+		// bash/eval still ended up in the intended directory. `path.resolve(base,
+		// target)` returns `target` when it is absolute (base ignored) and resolves
+		// it against `base` when it is relative, which is exactly the tool contract.
+		const resolvedCwd = path.resolve(this.#cwd, newCwd);
 		const validate = options?.validate !== false;
 		if (validate) {
 			let st: fs.Stats;
@@ -1571,6 +1568,29 @@ export class SessionManager {
 		return entry.id;
 	}
 
+	/**
+	 * Append a structured parent->child index entry recording one subagent this
+	 * session spawned. The record points at the child's durable transcript and
+	 * captures its task, isolation, outcome, timing, and usage so a study/backtest
+	 * tool can enumerate a session's subagents without scraping tool-result prose.
+	 */
+	appendSubagentSpawn(record: SubagentSpawnRecord): string {
+		const entry: SubagentSpawnEntry = { type: "subagent_spawn", ...this.#freshEntryFields(), ...record };
+		this.#recordEntry(entry);
+		return entry.id;
+	}
+
+	/**
+	 * Append an effective-settings snapshot recording the resolved config that
+	 * governed the run. `kind: "full"` is the complete config written at session
+	 * start; `kind: "diff"` carries only keys that changed since the prior snapshot.
+	 */
+	appendSettingsSnapshot(values: Record<string, unknown>, kind: "full" | "diff" = "full"): string {
+		const entry: SettingsSnapshotEntry = { type: "settings_snapshot", ...this.#freshEntryFields(), kind, values };
+		this.#recordEntry(entry);
+		return entry.id;
+	}
+
 	appendCompaction<T = unknown>(
 		summary: string,
 		shortSummary: string | undefined,
@@ -1580,7 +1600,10 @@ export class SessionManager {
 		fromExtension?: boolean,
 		preserveData?: Record<string, unknown>,
 	): string {
-		const elidedSupersededCompactions = this.#elideSupersededCompactionsOnBranch(this.#index.leafId());
+		// Every compaction summary is retained verbatim on the active branch. Superseded
+		// summaries stay out of the LLM context (buildSessionContext emits only the latest
+		// compaction), but they are preserved on disk so a session can be studied in full
+		// after any number of compactions.
 		const entry: CompactionEntry<T> = {
 			type: "compaction",
 			...this.#freshEntryFields(),
@@ -1593,9 +1616,6 @@ export class SessionManager {
 			preserveData,
 		};
 		this.#recordEntry(entry);
-		if (elidedSupersededCompactions) {
-			void this.#rewriteAtomically().catch(err => this.#noteDiskFailure(err));
-		}
 		return entry.id;
 	}
 

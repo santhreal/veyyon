@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { FileEntry } from "@veyyon/coding-agent/session/session-entries";
 import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
 import { serializeTitleSlot } from "@veyyon/coding-agent/session/session-title-slot";
+import { logger } from "@veyyon/utils";
 
 // Parity contract for the ≥8MiB streaming loader (now Bun.JSONL-based): it must
 // produce the SAME entries + titleSlot as the common-path parser
@@ -149,5 +150,165 @@ describe("loadEntriesFromFileStream (Bun.JSONL parity)", () => {
 		const stream = await loadEntriesFromFileStream(missing);
 		expect(stream.entries).toEqual([]);
 		expect(stream.titleSlot).toBeUndefined();
+	});
+});
+
+/**
+ * Regression suite for the load-side silent-skip data loss.
+ *
+ * Both loaders skip a malformed JSONL record so one corrupt line cannot make a
+ * whole session unopenable. That skip used to be SILENT — a dropped entry vanished
+ * with no trace, which for a study tool is invisible data loss (Law 10). The
+ * contract here: the good entries still load AND every skip is logged loudly, on
+ * both the common (`parseSessionContent`) and streaming (`loadEntriesFromFileStream`)
+ * paths, with a final count so the operator knows how much was lost.
+ */
+describe("loud malformed-record skips on session load", () => {
+	function corruptSession(): string {
+		return [
+			JSON.stringify(HEADER),
+			JSON.stringify(msg("m1", "s1", "kept before")),
+			"{ this line is corrupt and cannot parse",
+			JSON.stringify(msg("m2", "m1", "kept after")),
+		].join("\n");
+	}
+
+	it("logs each skip and a total on the common (non-streaming) path", () => {
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const { entries } = parseSessionContent(corruptSession(), { source: "/sessions/corrupt.jsonl" });
+			// The good entries survive, in order — the corrupt line is the only casualty.
+			expect(entryIds(entries)).toEqual(["s1", "m1", "m2"]);
+
+			const messages = warn.mock.calls.map(call => String(call[0]));
+			// One per-record warning naming the loss, plus a summary count warning.
+			expect(messages.some(m => m.includes("Skipped a malformed session record"))).toBe(true);
+			const summary = warn.mock.calls.find(call => String(call[0]).includes("dropped malformed records"));
+			expect(summary).toBeDefined();
+			expect((summary?.[1] as { skipped?: number })?.skipped).toBe(1);
+			expect((summary?.[1] as { source?: string })?.source).toBe("/sessions/corrupt.jsonl");
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("logs each skip and a total on the streaming path", async () => {
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const file = await writeTemp(corruptSession());
+			const { entries } = await loadEntriesFromFileStream(file);
+			expect(entryIds(entries)).toEqual(["s1", "m1", "m2"]);
+
+			const messages = warn.mock.calls.map(call => String(call[0]));
+			expect(messages.some(m => m.includes("Skipped a malformed session record on streaming load"))).toBe(true);
+			const summary = warn.mock.calls.find(call => String(call[0]).includes("dropped malformed records"));
+			expect(summary).toBeDefined();
+			expect((summary?.[1] as { skipped?: number })?.skipped).toBe(1);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("stays silent on a clean session (no spurious warnings)", () => {
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const clean = [JSON.stringify(HEADER), JSON.stringify(msg("m1", "s1", "all good"))].join("\n");
+			parseSessionContent(clean, { source: "/sessions/clean.jsonl" });
+			const dropWarnings = warn.mock.calls.filter(call => String(call[0]).includes("malformed"));
+			expect(dropWarnings).toHaveLength(0);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	// A session with FIVE malformed lines, two of them adjacent, so the loader hits
+	// the read>0 error report (good record consumed, next record bad) repeatedly.
+	// DATALOSS-5 double-counted exactly this: the operator total would read 10, not 5.
+	function fiveCorruptSession(): string {
+		return [
+			JSON.stringify(HEADER),
+			JSON.stringify(msg("m1", "s1", "kept 1")),
+			"{ corrupt A",
+			"{ corrupt B (adjacent to A)",
+			JSON.stringify(msg("m2", "m1", "kept 2")),
+			"{ corrupt C",
+			JSON.stringify(msg("m3", "m2", "kept 3")),
+			"{ corrupt D",
+			"{ corrupt E (adjacent to D)",
+			JSON.stringify(msg("m4", "m3", "kept 4")),
+		].join("\n");
+	}
+
+	it("reports the EXACT skip count (5, not 10) with adjacent bad lines on the common path (DATALOSS-5)", () => {
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const { entries } = parseSessionContent(fiveCorruptSession(), { source: "/sessions/five.jsonl" });
+			// All four good messages survive in order; only the five bad lines are lost.
+			expect(messageIds(entries)).toEqual(["m1", "m2", "m3", "m4"]);
+			const summary = warn.mock.calls.find(call => String(call[0]).includes("dropped malformed records"));
+			// Exactly 5 — the double-count bug would have logged 10.
+			expect((summary?.[1] as { skipped?: number })?.skipped).toBe(5);
+			// And one per-record warning per real drop, not two.
+			const perRecord = warn.mock.calls.filter(call =>
+				String(call[0]).includes("Skipped a malformed session record"),
+			);
+			expect(perRecord).toHaveLength(5);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("reports the EXACT skip count (5, not 10) with adjacent bad lines on the streaming path (DATALOSS-5)", async () => {
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const file = await writeTemp(fiveCorruptSession());
+			const { entries } = await loadEntriesFromFileStream(file);
+			expect(messageIds(entries)).toEqual(["m1", "m2", "m3", "m4"]);
+			const summary = warn.mock.calls.find(call => String(call[0]).includes("dropped malformed records"));
+			expect((summary?.[1] as { skipped?: number })?.skipped).toBe(5);
+			const perRecord = warn.mock.calls.filter(call =>
+				String(call[0]).includes("Skipped a malformed session record on streaming load"),
+			);
+			expect(perRecord).toHaveLength(5);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("common and streaming paths agree on both entries and skip count (cross-path parity)", async () => {
+		// WHY: the two loaders are separate implementations of the same lenient-skip
+		// contract. They must never diverge — same survivors, same exact loss count — so
+		// which path a file takes (its size vs the 8MiB threshold) can't change what is
+		// recovered or how much loss is reported.
+		const commonWarn = spyOn(logger, "warn").mockImplementation(() => {});
+		let commonSkipped: number | undefined;
+		let commonEntries: string[] = [];
+		try {
+			const { entries } = parseSessionContent(fiveCorruptSession(), { source: "/sessions/parity.jsonl" });
+			commonEntries = entryIds(entries);
+			commonSkipped = commonWarn.mock.calls
+				.map(call => (call[1] as { skipped?: number })?.skipped)
+				.find(v => typeof v === "number");
+		} finally {
+			commonWarn.mockRestore();
+		}
+
+		const streamWarn = spyOn(logger, "warn").mockImplementation(() => {});
+		let streamSkipped: number | undefined;
+		let streamEntries: string[] = [];
+		try {
+			const file = await writeTemp(fiveCorruptSession());
+			const { entries } = await loadEntriesFromFileStream(file);
+			streamEntries = entryIds(entries);
+			streamSkipped = streamWarn.mock.calls
+				.map(call => (call[1] as { skipped?: number })?.skipped)
+				.find(v => typeof v === "number");
+		} finally {
+			streamWarn.mockRestore();
+		}
+
+		expect(streamEntries).toEqual(commonEntries);
+		expect(streamSkipped).toBe(commonSkipped);
+		expect(streamSkipped).toBe(5);
 	});
 });

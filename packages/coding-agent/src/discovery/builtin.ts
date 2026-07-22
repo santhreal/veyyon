@@ -459,7 +459,7 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 	const configDirs = await getConfigDirs(ctx);
 
 	const [discoveredResults, settingsResults] = await Promise.all([
-		Promise.all(configDirs.map(({ dir }) => discoverExtensionModulePaths(ctx, path.join(dir, "extensions")))),
+		Promise.all(configDirs.map(({ dir }) => discoverExtensionModulePaths(path.join(dir, "extensions")))),
 		Promise.all(configDirs.map(({ dir }) => readFile(path.join(dir, "settings.json")))),
 	]);
 
@@ -516,7 +516,7 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 		if (entries.length > 0) {
 			dirDiscoveryPromises.push({
-				promise: discoverExtensionModulePaths(ctx, resolvedPath),
+				promise: discoverExtensionModulePaths(resolvedPath),
 				level,
 			});
 		} else if (content !== null) {

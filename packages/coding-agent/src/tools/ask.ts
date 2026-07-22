@@ -855,15 +855,27 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 		const settingsTimeout = timeoutSeconds === 0 ? null : timeoutSeconds * 1000;
 		const timeout = planModeEnabled ? null : settingsTimeout;
 
-		// Send notification if waiting and not suppressed
-		this.#sendAskNotification();
-
+		// Validate before notifying. Buzzing the user about a question that is never
+		// going to be shown is noise, and the check used to sit after the
+		// notification.
 		if (params.questions.length === 0) {
+			// Marked as an error. The text alone said `Error:` while the result was an
+			// ordinary success, so the agent loop recorded the call as `ok` and the
+			// model was told an empty ask had worked.
 			return {
-				content: [{ type: "text" as const, text: "Error: questions must not be empty" }],
+				isError: true,
+				content: [
+					{
+						type: "text" as const,
+						text: "The ask tool was called with no questions, so nothing was shown to the user. Call it again with at least one question, or ask in your reply instead.",
+					},
+				],
 				details: {},
 			};
 		}
+
+		// Send notification if waiting and not suppressed
+		this.#sendAskNotification();
 
 		// Speak the question(s) aloud before surfacing them. Ask vocalizes in every
 		// mode — it's the assistant addressing the user — gated only by speech.enabled

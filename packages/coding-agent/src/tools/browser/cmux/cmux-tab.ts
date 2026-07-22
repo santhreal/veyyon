@@ -35,6 +35,14 @@ import {
 } from "./rpc";
 import type { CmuxSocketClient } from "./socket-client";
 
+// Default per-operation deadline (ms) for a CDP action when no active browser
+// run context supplies one, and the per-op cap where a Math.min is applied.
+// Single owner for the value every tab operation below used to inline 12 times.
+// It equals the browser tool's whole-command default (TOOL_TIMEOUTS.browser
+// .default = 30s) today, but is kept as its own constant because a per-operation
+// deadline is a different concept from the whole-tool timeout.
+const DEFAULT_OP_TIMEOUT_MS = 30_000;
+
 interface ScreenshotOptions {
 	selector?: string;
 	fullPage?: boolean;
@@ -95,6 +103,15 @@ interface CmuxResponseRecord {
 	statusText: string;
 	headers: Record<string, string>;
 	body: string;
+	/** True when the body could not be read, so `body` is "" for that reason and not because it was empty. */
+	bodyUnreadable: boolean;
+}
+
+/** What the in-page response observer failed to keep since the page loaded. */
+interface CmuxResponseLoss {
+	failed: number;
+	evicted: number;
+	bodyUnreadable: number;
 }
 
 interface ViewportOptions {
@@ -190,31 +207,62 @@ const setValue = (target, value, append = false) => {
 };
 `;
 
-const RESPONSE_OBSERVER_SCRIPT = String.raw`
+/**
+ * Installed once per page. Exported so its loss accounting can be tested
+ * directly: the three losses it now records (a record that could not be
+ * written, a record evicted from the ring buffer, a body that could not be
+ * read as text) were all silent, and a silent loss makes `waitForResponse`
+ * time out exactly as if the request had never been made.
+ */
+export const RESPONSE_OBSERVER_SCRIPT = String.raw`
 (() => {
 	const key = "__veyyonCmuxResponses";
 	if (globalThis[key]) return true;
-	const state = { nextId: 1, records: [] };
+	// state.lost counts what this observer failed to keep, so a caller that finds
+	// no match can tell "the response never arrived" apart from "the response
+	// arrived and we dropped it". Without it a dropped or evicted record makes
+	// waitForResponse time out exactly as if the request had never happened.
+	const state = { nextId: 1, records: [], lost: { failed: 0, evicted: 0, bodyUnreadable: 0 } };
 	Object.defineProperty(globalThis, key, { value: state, configurable: true });
 	const headersObject = headers => {
 		const out = {};
 		if (headers && typeof headers.forEach === "function") headers.forEach((value, name) => (out[name] = value));
 		return out;
 	};
+	// The one place a record enters the buffer, so both the fetch and the XHR path
+	// evict on the same rule and count what they drop the same way.
+	const push = record => {
+		state.records.push(record);
+		if (state.records.length > 200) {
+			const overflow = state.records.length - 200;
+			state.lost.evicted += overflow;
+			state.records.splice(0, overflow);
+		}
+	};
 	const remember = async response => {
 		try {
 			const clone = response.clone();
-			const body = await clone.text().catch(() => "");
-			state.records.push({
+			// An unreadable body is recorded as such rather than as "", which is
+			// indistinguishable from a response that genuinely had no body.
+			let bodyUnreadable = false;
+			const body = await clone.text().catch(() => {
+				bodyUnreadable = true;
+				state.lost.bodyUnreadable++;
+				return "";
+			});
+			push({
 				id: state.nextId++,
 				url: response.url,
 				status: response.status,
 				statusText: response.statusText,
 				headers: headersObject(response.headers),
 				body,
+				bodyUnreadable,
 			});
-			if (state.records.length > 200) state.records.splice(0, state.records.length - 200);
 		} catch {
+			// The page context has no logger, so the loss is recorded in the state
+			// the tool reads back instead of being swallowed here (Law 10).
+			state.lost.failed++;
 		}
 	};
 	const originalFetch = globalThis.fetch;
@@ -230,21 +278,43 @@ const RESPONSE_OBSERVER_SCRIPT = String.raw`
 		globalThis.XMLHttpRequest = function XMLHttpRequestProxy() {
 			const xhr = new OriginalXHR();
 			xhr.addEventListener("loadend", () => {
-				const rawHeaders = xhr.getAllResponseHeaders();
-				const headers = {};
-				for (const line of rawHeaders.trim().split(/[\r\n]+/)) {
-					const index = line.indexOf(":");
-					if (index > 0) headers[line.slice(0, index).trim().toLowerCase()] = line.slice(index + 1).trim();
+				try {
+					const rawHeaders = xhr.getAllResponseHeaders();
+					const headers = {};
+					for (const line of rawHeaders.trim().split(/[\r\n]+/)) {
+						const index = line.indexOf(":");
+						if (index > 0) headers[line.slice(0, index).trim().toLowerCase()] = line.slice(index + 1).trim();
+					}
+					// Reading responseText throws when responseType is arraybuffer or
+					// blob. That body is genuinely unreadable as text, which is not the
+					// same thing as an empty body, so it is recorded as unreadable
+					// rather than as "".
+					let body = "";
+					let bodyUnreadable = false;
+					try {
+						body = typeof xhr.responseText === "string" ? xhr.responseText : "";
+						if (typeof xhr.responseText !== "string") {
+							bodyUnreadable = true;
+							state.lost.bodyUnreadable++;
+						}
+					} catch {
+						bodyUnreadable = true;
+						state.lost.bodyUnreadable++;
+					}
+					push({
+						id: state.nextId++,
+						url: xhr.responseURL || "",
+						status: xhr.status,
+						statusText: xhr.statusText,
+						headers,
+						body,
+						bodyUnreadable,
+					});
+				} catch {
+					// Same as the fetch path: an event handler that throws here would
+					// drop the record with nothing anywhere to say so.
+					state.lost.failed++;
 				}
-				state.records.push({
-					id: state.nextId++,
-					url: xhr.responseURL || "",
-					status: xhr.status,
-					statusText: xhr.statusText,
-					headers,
-					body: typeof xhr.responseText === "string" ? xhr.responseText : "",
-				});
-				if (state.records.length > 200) state.records.splice(0, state.records.length - 200);
 			});
 			return xhr;
 		};
@@ -252,6 +322,16 @@ const RESPONSE_OBSERVER_SCRIPT = String.raw`
 	return true;
 })()
 `;
+
+/**
+ * The only thing a tab needs from the socket client: one request method.
+ *
+ * Depending on the whole class made `CmuxTab` untestable without an
+ * `as unknown as CmuxSocketClient` cast, which switches off checking of the
+ * stub entirely. Narrowing states honestly what the tab uses and lets a test
+ * drive the real class against a checked stub.
+ */
+export type CmuxTabClient = Pick<CmuxSocketClient, "request">;
 
 export interface RunCmuxCodeOptions {
 	code: string;
@@ -262,7 +342,7 @@ export interface RunCmuxCodeOptions {
 }
 
 export class CmuxTab {
-	readonly #client: CmuxSocketClient;
+	readonly #client: CmuxTabClient;
 	readonly #surfaceId: string;
 	#lastUrl = "about:blank";
 	#lastTitle: string | undefined;
@@ -272,7 +352,7 @@ export class CmuxTab {
 	readonly #elementRefs = new Map<number, CachedElementRef>();
 	#pageFacade: CmuxPageFacade | undefined;
 	#browserFacade: CmuxBrowserFacade | undefined;
-	constructor(opts: { client: CmuxSocketClient; surfaceId: string; url?: string; title?: string }) {
+	constructor(opts: { client: CmuxTabClient; surfaceId: string; url?: string; title?: string }) {
 		this.#client = opts.client;
 		this.#surfaceId = opts.surfaceId;
 		if (opts.url) this.#lastUrl = opts.url;
@@ -342,7 +422,7 @@ export class CmuxTab {
 	}
 
 	async goto(url: string, opts?: { waitUntil?: WaitUntil; timeoutMs?: number }): Promise<void> {
-		const timeoutMs = opts?.timeoutMs ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeoutMs ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const result = await this.#request("browser.navigate", { url }, timeoutMs);
 		const navigatedUrl = result.url;
 		this.#lastUrl = typeof navigatedUrl === "string" && navigatedUrl.length > 0 ? navigatedUrl : url;
@@ -357,7 +437,7 @@ export class CmuxTab {
 
 	async observe(opts?: ObserveOptions): Promise<Observation> {
 		void opts?.viewportOnly;
-		const timeoutMs = Math.min(this.#runContext?.timeoutMs ?? 30_000, 30_000);
+		const timeoutMs = Math.min(this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS, DEFAULT_OP_TIMEOUT_MS);
 		const [snapshot, geometry] = await Promise.all([
 			this.#request("browser.snapshot", { interactive: !opts?.includeAll, max_depth: 12 }, timeoutMs),
 			this.#readGeometry(timeoutMs),
@@ -376,7 +456,7 @@ export class CmuxTab {
 	}
 
 	async ariaSnapshot(selector?: string, opts?: AriaSnapshotOptions): Promise<string> {
-		const timeoutMs = Math.min(this.#runContext?.timeoutMs ?? 30_000, 30_000);
+		const timeoutMs = Math.min(this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS, DEFAULT_OP_TIMEOUT_MS);
 		const result = (await this.#request(
 			"browser.eval",
 			{ script: buildAriaSnapshotScript(selector, opts) },
@@ -388,7 +468,7 @@ export class CmuxTab {
 	async ref(id: string): Promise<CmuxElementHandle> {
 		const refId = /^e\d+$/.test(id.trim()) ? id.trim() : id.trim().replace(/^(?:aria-ref=|aria-ref\/|ariaref\/)/, "");
 		const selector = `aria-ref=${refId}`;
-		const timeoutMs = this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		await this.#waitForSelector(selector, timeoutMs);
 		return new CmuxElementHandle(this, selector);
 	}
@@ -437,13 +517,13 @@ export class CmuxTab {
 	}
 
 	async waitFor(selector: string, opts?: { timeout?: number }): Promise<CmuxElementHandle> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		await this.#waitForSelector(selector, timeoutMs);
 		return new CmuxElementHandle(this, selector);
 	}
 
 	async waitForSelector(selector: string, opts?: { timeout?: number }): Promise<CmuxElementHandle> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		await this.#waitForSelector(selector, timeoutMs);
 		return new CmuxElementHandle(this, selector);
 	}
@@ -561,7 +641,7 @@ export class CmuxTab {
 	}
 
 	async waitForUrl(pattern: string | RegExp, opts?: { timeout?: number }): Promise<string> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const signal = this.#runContext?.signal;
 		if (typeof pattern === "string") {
 			await this.#request("browser.wait", { url_contains: pattern, timeout_ms: timeoutMs }, timeoutMs, signal);
@@ -589,7 +669,7 @@ export class CmuxTab {
 	}
 
 	async waitForNavigation(opts?: { waitUntil?: WaitUntil; timeout?: number }): Promise<null> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const signal = this.#runContext?.signal;
 		// Cmux has no native "next navigation" wait — snapshot the current URL via a fresh
 		// `browser.url.get` (never the possibly-stale `#lastUrl`), then poll for a change
@@ -671,10 +751,9 @@ export class CmuxTab {
 		pattern: string | RegExp | ((response: CmuxResponse) => boolean | Promise<boolean>),
 		opts?: { timeout?: number },
 	): Promise<CmuxResponse> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const signal = this.#runContext?.signal;
-		await this.#installResponseObserver();
-		const startId = await this.#responseCursor();
+		const startId = await this.#installResponseObserver();
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() <= deadline) {
 			const records = await this.#responseRecordsAfter(startId);
@@ -688,12 +767,25 @@ export class CmuxTab {
 			}
 			await untilAborted(signal, () => Bun.sleep(100));
 		}
-		throw new ToolError(`tab.waitForResponse() timed out after ${timeoutMs}ms`);
+		// Report what the observer lost. A timeout with a non-zero loss count means
+		// the match may well have happened and been discarded, which is a different
+		// problem from the request never being made, and the operator cannot tell
+		// them apart without being told.
+		const loss = await this.#responseLoss();
+		const lostParts: string[] = [];
+		if (loss.failed > 0) lostParts.push(`${loss.failed} could not be recorded`);
+		if (loss.evicted > 0) lostParts.push(`${loss.evicted} were evicted from the 200-response buffer`);
+		if (loss.bodyUnreadable > 0) lostParts.push(`${loss.bodyUnreadable} had an unreadable body`);
+		const lostNote =
+			lostParts.length > 0
+				? ` Responses were lost while waiting (${lostParts.join(", ")}), so a matching response may have arrived and been discarded.`
+				: "";
+		throw new ToolError(`tab.waitForResponse() timed out after ${timeoutMs}ms.${lostNote}`);
 	}
 
 	async id(id: number): Promise<CmuxElementHandle> {
 		const ref = this.#elementRefs.get(id)?.ref ?? `@e${id}`;
-		await this.#waitForSelector(ref, this.#runContext?.timeoutMs ?? 30_000);
+		await this.#waitForSelector(ref, this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS);
 		return new CmuxElementHandle(this, ref);
 	}
 
@@ -764,7 +856,7 @@ export class CmuxTab {
 
 	async pageScreenshot(opts: ScreenshotOptions = {}): Promise<Buffer | string> {
 		if (opts.selector) await this.scrollIntoView(opts.selector);
-		const result = await this.#captureScreenshotPng(this.#runContext?.timeoutMs ?? 30_000);
+		const result = await this.#captureScreenshotPng(this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS);
 		return opts.encoding === "base64" ? result.png_base64 : Buffer.from(result.png_base64, "base64");
 	}
 
@@ -773,7 +865,7 @@ export class CmuxTab {
 		opts: { timeout?: number; polling?: number } | undefined,
 		...args: unknown[]
 	): Promise<unknown> {
-		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? 30_000;
+		const timeoutMs = opts?.timeout ?? this.#runContext?.timeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
 		const signal = this.#runContext?.signal;
 		const pollingMs = typeof opts?.polling === "number" ? opts.polling : 200;
 		const deadline = Date.now() + timeoutMs;
@@ -980,15 +1072,34 @@ export class CmuxTab {
 		throw new ToolError("Drag target must be a selector string or { x: number, y: number } point");
 	}
 
-	async #installResponseObserver(): Promise<void> {
-		await this.#evalScript<boolean>(RESPONSE_OBSERVER_SCRIPT);
-	}
-
-	async #responseCursor(): Promise<number> {
+	/**
+	 * Install the observer and read the cursor in ONE round trip.
+	 *
+	 * These were two evals, and a response that arrived between them was excluded
+	 * by the cursor and then never matched: the wait timed out as though the
+	 * request had never been made. The window is exactly one socket round trip
+	 * wide, which a page that fires its request as the wait starts hits easily.
+	 * Reading the cursor in the same expression that installs the observer closes
+	 * it, because nothing can run in the page between the two.
+	 */
+	async #installResponseObserver(): Promise<number> {
 		const value = await this.#evalScript<unknown>(
-			"(() => Math.max(0, ((globalThis.__veyyonCmuxResponses && globalThis.__veyyonCmuxResponses.nextId) || 1) - 1))()",
+			`(() => { ${RESPONSE_OBSERVER_SCRIPT.trim()}; return Math.max(0, ((globalThis.__veyyonCmuxResponses && globalThis.__veyyonCmuxResponses.nextId) || 1) - 1); })()`,
 		);
 		return numberFrom(value, 0);
+	}
+
+	/** Read the observer's loss counters. Zeroes when the observer never installed. */
+	async #responseLoss(): Promise<CmuxResponseLoss> {
+		const value = await this.#evalScript<unknown>(
+			"(() => ((globalThis.__veyyonCmuxResponses && globalThis.__veyyonCmuxResponses.lost) || {}))()",
+		);
+		const object = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+		return {
+			failed: numberFrom(object.failed, 0),
+			evicted: numberFrom(object.evicted, 0),
+			bodyUnreadable: numberFrom(object.bodyUnreadable, 0),
+		};
 	}
 
 	async #responseRecordsAfter(id: number): Promise<CmuxResponseRecord[]> {
@@ -1010,6 +1121,7 @@ export class CmuxTab {
 					Object.entries(headers as Record<string, unknown>).map(([key, value]) => [key, String(value)]),
 				),
 				body: typeof object.body === "string" ? object.body : "",
+				bodyUnreadable: object.bodyUnreadable === true,
 			});
 		}
 		return records;
@@ -1099,11 +1211,20 @@ class CmuxResponse {
 	}
 
 	async text(): Promise<string> {
+		// An unreadable body used to arrive here as "", which reads as "the server
+		// sent nothing". Saying so is the difference between a caller that knows to
+		// read the body another way and one that concludes the response was empty.
+		if (this.#record.bodyUnreadable) {
+			throw new ToolError(
+				`The body of ${this.#record.url} could not be read as text (it was consumed, or it is not text). ` +
+					`Read it in the page instead, for example with tab.evaluate(), or match on the response status and headers.`,
+			);
+		}
 		return this.#record.body;
 	}
 
 	async json(): Promise<unknown> {
-		return JSON.parse(this.#record.body);
+		return JSON.parse(await this.text());
 	}
 }
 

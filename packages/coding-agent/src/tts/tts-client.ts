@@ -12,6 +12,7 @@ import {
 	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
 import { tinyWorkerEnv } from "../tiny/title-client";
+import { TTS_WORKER_ARG } from "../worker-args";
 import { isCorruptModelCacheError, isTtsLocalModelKey, type TtsLocalModelKey } from "./models";
 import type { TtsProgressEvent, TtsWorkerInbound, TtsWorkerOutbound } from "./tts-protocol";
 
@@ -148,7 +149,6 @@ class AudioChunkChannel {
  * Hidden subcommand on the main CLI that boots the TTS worker in the spawned
  * subprocess. Kept in sync with the dispatch in `cli.ts` (Main-owned).
  */
-export const TTS_WORKER_ARG = "__veyyon_worker_tts";
 
 /**
  * Spawn the TTS worker as a subprocess. Exported for tests and the smoke probe;

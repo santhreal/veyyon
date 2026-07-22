@@ -1,0 +1,189 @@
+{
+	"cases": [
+		{
+			"id": "hashline-swap-lf-single",
+			"contract": "Single-file LF SWAP replaces the anchored line and preserves surrounding lines",
+			"surface": "hashline-apply",
+			"tags": ["positive"],
+			"input": {
+				"files": { "a.ts": "one\ntwo\nthree\n" },
+				"patchLines": ["[a.ts#TAG]", "SWAP 2.=2:", "+TWO"]
+			},
+			"expect": {
+				"files": { "a.ts": "one\nTWO\nthree\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-bad-tag-no-write",
+			"contract": "Wrong snapshot tag fails apply and leaves every file unchanged",
+			"surface": "hashline-apply",
+			"tags": ["adversarial", "negative", "regression"],
+			"input": {
+				"files": { "a.ts": "one\n", "b.ts": "two\n" },
+				"patchLines": ["[a.ts#TAG_A]", "SWAP 1.=1:", "+ONE", "[b.ts#dead]", "SWAP 1.=1:", "+TWO"],
+				"mustThrow": true
+			},
+			"expect": {
+				"files": { "a.ts": "one\n", "b.ts": "two\n" },
+				"errorContains": ""
+			}
+		},
+		{
+			"id": "hashline-noop-reject",
+			"contract": "No-op SWAP to identical content rejects without writing siblings",
+			"surface": "hashline-apply",
+			"tags": ["negative", "adversarial"],
+			"input": {
+				"files": { "a.ts": "keep\n", "b.ts": "change-me\n" },
+				"patchLines": ["[a.ts#TAG_A]", "SWAP 1.=1:", "+keep", "[b.ts#TAG_B]", "SWAP 1.=1:", "+changed"],
+				"mustThrow": true
+			},
+			"expect": {
+				"files": { "a.ts": "keep\n", "b.ts": "change-me\n" },
+				"errorContains": "no changes"
+			}
+		},
+		{
+			"id": "hashline-multifile-ok-batch",
+			"contract": "Multi-file batch applies every section when all tags match",
+			"surface": "hashline-apply",
+			"tags": ["positive"],
+			"input": {
+				"files": { "a.ts": "one\n", "b.ts": "two\n" },
+				"patchLines": ["[a.ts#TAG_A]", "SWAP 1.=1:", "+ONE", "[b.ts#TAG_B]", "SWAP 1.=1:", "+TWO"]
+			},
+			"expect": {
+				"files": { "a.ts": "ONE\n", "b.ts": "TWO\n" },
+				"sectionCount": 2
+			}
+		},
+		{
+			"id": "hashline-crlf-preserves-endings",
+			"contract": "CRLF file keeps CR between lines after a single-line SWAP",
+			"surface": "hashline-apply",
+			"tags": ["boundary", "adversarial"],
+			"input": {
+				"files": { "win.txt": "line-a\r\nline-b\r\n" },
+				"patchLines": ["[win.txt#TAG]", "SWAP 1.=1:", "+LINE-A"]
+			},
+			"expect": {
+				"files": { "win.txt": "LINE-A\r\nline-b\r\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-del-middle-range",
+			"contract": "DEL N.=M removes inclusive range and keeps neighbors",
+			"surface": "hashline-apply",
+			"tags": ["positive"],
+			"input": {
+				"files": { "a.ts": "a\nb\nc\nd\ne\n" },
+				"patchLines": ["[a.ts#TAG]", "DEL 2.=4"]
+			},
+			"expect": {
+				"files": { "a.ts": "a\ne\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-ins-head-tail",
+			"contract": "INS.HEAD and INS.TAIL sandwich existing body",
+			"surface": "hashline-apply",
+			"tags": ["positive"],
+			"input": {
+				"files": { "a.ts": "mid\n" },
+				"patchLines": ["[a.ts#TAG]", "INS.HEAD:", "+H", "INS.TAIL:", "+T"]
+			},
+			"expect": {
+				"files": { "a.ts": "H\nmid\nT\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-swap-expand-middle",
+			"contract": "SWAP single line to multi-line expands middle",
+			"surface": "hashline-apply",
+			"tags": ["positive", "boundary"],
+			"input": {
+				"files": { "a.ts": "a\nb\nc\n" },
+				"patchLines": ["[a.ts#TAG]", "SWAP 2.=2:", "+B1", "+B2", "+B3"]
+			},
+			"expect": {
+				"files": { "a.ts": "a\nB1\nB2\nB3\nc\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-unicode-swap",
+			"contract": "Unicode body replaces line exactly",
+			"surface": "hashline-apply",
+			"tags": ["adversarial"],
+			"input": {
+				"files": { "a.ts": "x\n" },
+				"patchLines": ["[a.ts#TAG]", "SWAP 1.=1:", "+日本語 ☃"]
+			},
+			"expect": {
+				"files": { "a.ts": "日本語 ☃\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-missing-tag-no-write",
+			"contract": "Section without snapshot tag rejects and leaves file unchanged",
+			"surface": "hashline-apply",
+			"tags": ["negative", "adversarial"],
+			"input": {
+				"files": { "a.ts": "stay\n" },
+				"patchLines": ["[a.ts]", "SWAP 1.=1:", "+gone"],
+				"mustThrow": true
+			},
+			"expect": {
+				"files": { "a.ts": "stay\n" },
+				"errorContains": "snapshot"
+			}
+		},
+		{
+			"id": "hashline-del-first-line",
+			"contract": "DEL 1 removes first line and keeps the rest",
+			"surface": "hashline-apply",
+			"tags": ["positive"],
+			"input": {
+				"files": { "a.ts": "first\nsecond\nthird\n" },
+				"patchLines": ["[a.ts#TAG]", "DEL 1"]
+			},
+			"expect": {
+				"files": { "a.ts": "second\nthird\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-ins-post-middle",
+			"contract": "INS.POST inserts after the named line",
+			"surface": "hashline-apply",
+			"tags": ["positive"],
+			"input": {
+				"files": { "a.ts": "a\nb\nc\n" },
+				"patchLines": ["[a.ts#TAG]", "INS.POST 2:", "+X"]
+			},
+			"expect": {
+				"files": { "a.ts": "a\nb\nX\nc\n" },
+				"sectionCount": 1
+			}
+		},
+		{
+			"id": "hashline-swap-shrink-range",
+			"contract": "SWAP multi-line range to one line shrinks the file",
+			"surface": "hashline-apply",
+			"tags": ["positive", "boundary"],
+			"input": {
+				"files": { "a.ts": "a\nb\nc\nd\n" },
+				"patchLines": ["[a.ts#TAG]", "SWAP 2.=3:", "+X"]
+			},
+			"expect": {
+				"files": { "a.ts": "a\nX\nd\n" },
+				"sectionCount": 1
+			}
+		}
+	]
+}

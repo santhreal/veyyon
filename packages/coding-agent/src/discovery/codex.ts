@@ -247,8 +247,8 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 	const projectExtensionsDir = path.join(codexDir, "extensions");
 
 	const [userPaths, projectPaths] = await Promise.all([
-		discoverExtensionModulePaths(ctx, userExtensionsDir),
-		discoverExtensionModulePaths(ctx, projectExtensionsDir),
+		discoverExtensionModulePaths(userExtensionsDir),
+		discoverExtensionModulePaths(projectExtensionsDir),
 	]);
 
 	const items = buildExtensionModuleItems(PROVIDER_ID, userPaths, projectPaths);

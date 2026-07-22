@@ -1,0 +1,143 @@
+{
+	"cases": [
+		{
+			"id": "mcp-name-simple-roundtrip",
+			"contract": "create then parse returns lowercased server and tool segments for simple names",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"server": "github",
+				"tool": "listIssues"
+			},
+			"expect": {
+				"name": "mcp__github_listissues",
+				"serverName": "github",
+				"toolName": "listissues"
+			}
+		},
+		{
+			"id": "mcp-name-strip-redundant-prefix",
+			"contract": "createMCPToolName strips a redundant server prefix from the tool name",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"adversarial"
+			],
+			"input": {
+				"server": "puppeteer",
+				"tool": "puppeteer_screenshot"
+			},
+			"expect": {
+				"name": "mcp__puppeteer_screenshot",
+				"serverName": "puppeteer",
+				"toolName": "screenshot"
+			}
+		},
+		{
+			"id": "mcp-name-empty-sanitizes-to-fallback",
+			"contract": "empty-after-sanitize parts fall back to server and tool",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"adversarial",
+				"boundary"
+			],
+			"input": {
+				"server": "!!!",
+				"tool": "@@@"
+			},
+			"expect": {
+				"name": "mcp__server_tool",
+				"serverName": "server",
+				"toolName": "tool"
+			}
+		},
+		{
+			"id": "mcp-name-hyphen-and-space",
+			"contract": "hyphens and spaces collapse to underscores; parse splits only on first underscore after mcp__",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"positive",
+				"adversarial"
+			],
+			"input": {
+				"server": "My Server",
+				"tool": "Do-Thing"
+			},
+			"expect": {
+				"name": "mcp__my_server_do_thing",
+				"serverName": "my",
+				"toolName": "server_do_thing"
+			}
+		},
+		{
+			"id": "mcp-name-colon-namespace",
+			"contract": "colon in server name sanitizes to underscore; parse takes first segment as server",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"boundary",
+				"adversarial"
+			],
+			"input": {
+				"server": "cloudflare:api",
+				"tool": "call"
+			},
+			"expect": {
+				"name": "mcp__cloudflare_api_call",
+				"serverName": "cloudflare",
+				"toolName": "api_call"
+			}
+		},
+		{
+			"id": "mcp-name-tool-underscores-kept",
+			"contract": "tool names with underscores remain multi-segment after parse",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"positive"
+			],
+			"input": {
+				"server": "gh",
+				"tool": "list_pull_requests"
+			},
+			"expect": {
+				"name": "mcp__gh_list_pull_requests",
+				"serverName": "gh",
+				"toolName": "list_pull_requests"
+			}
+		},
+		{
+			"id": "mcp-name-unicode-sanitized",
+			"contract": "non-ascii server/tool chars collapse to underscores then trim",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"adversarial"
+			],
+			"input": {
+				"server": "srv-α",
+				"tool": "do-β"
+			},
+			"expect": {
+				"name": "mcp__srv_do",
+				"serverName": "srv",
+				"toolName": "do"
+			}
+		},
+		{
+			"id": "mcp-name-double-underscore-collapse",
+			"contract": "repeated separators collapse; parse still first underscore after mcp__",
+			"surface": "mcp-tool-name",
+			"tags": [
+				"boundary"
+			],
+			"input": {
+				"server": "a__b",
+				"tool": "c"
+			},
+			"expect": {
+				"name": "mcp__a_b_c",
+				"serverName": "a",
+				"toolName": "b_c"
+			}
+		}
+	]
+}

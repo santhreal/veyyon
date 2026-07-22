@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { convertToLlm, normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
+import {
+	convertToLlm,
+	isCustomMessageContent,
+	normalizeCustomMessagePayload,
+} from "@veyyon/coding-agent/session/messages";
 import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
 import type { CustomMessageEntry, SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -53,5 +57,27 @@ describe("bare custom_message recovery", () => {
 			display: true,
 			attribution: "agent",
 		});
+	});
+});
+
+/**
+ * isCustomMessageContent is the guard normalizeCustomMessagePayload leans on to decide
+ * whether a persisted or extension-supplied `content` value is usable as-is (string or a
+ * content-part array) versus coerced to "". It had no direct test. The contract is exactly
+ * "string or array" — an object, number, null, or undefined is not custom-message content,
+ * and an empty array still counts (an empty content list is valid).
+ */
+describe("isCustomMessageContent", () => {
+	it("accepts a string or any array, including an empty array", () => {
+		expect(isCustomMessageContent("hi")).toBe(true);
+		expect(isCustomMessageContent([{ type: "text", text: "x" }])).toBe(true);
+		expect(isCustomMessageContent([])).toBe(true);
+	});
+
+	it("rejects objects, numbers, null, and undefined", () => {
+		expect(isCustomMessageContent({})).toBe(false);
+		expect(isCustomMessageContent(5)).toBe(false);
+		expect(isCustomMessageContent(null)).toBe(false);
+		expect(isCustomMessageContent(undefined)).toBe(false);
 	});
 });

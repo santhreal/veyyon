@@ -12,6 +12,7 @@ import { emptyUsage } from "@veyyon/catalog/models";
 import {
 	collapseWhitespace,
 	errorMessage,
+	getSessionsDir,
 	isRecord,
 	logger,
 	popLoopPhase,
@@ -21,6 +22,8 @@ import {
 	truncate,
 	untilAborted,
 } from "@veyyon/utils";
+import type { ArgotSession, StreamDecoder } from "argot";
+import { createSubagentStreamDecoder, expandSubagentReturn } from "../argot-wire";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -408,6 +411,8 @@ export interface ExecutorOptions {
 	parentArtifactManager?: ArtifactManager;
 	parentHindsightSessionState?: HindsightSessionState;
 	parentMnemopiSessionState?: MnemopiSessionState;
+	/** Parent session's Argot codec, forked into this subagent under `argot.subagents: inherit`. */
+	parentArgot?: ArgotSession;
 	/** Parent agent's eval executor session id. Subagents reuse it so eval state is shared. */
 	parentEvalSessionId?: string;
 	/**
@@ -940,8 +945,15 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	const outputChunks: string[] = [];
 	const finalOutputChunks: string[] = [];
 	const RECENT_OUTPUT_TAIL_BYTES = 8 * 1024;
+	// `recentOutputTail` holds the child's live output ALREADY DECODED for display,
+	// never raw handles. Streamed deltas pass through `streamDecoder` (seam 3 in the
+	// argot integration manual), which buffers a handle split across deltas so the
+	// operator never sees a raw `§handle` in the live preview; `undefined` for an
+	// `off`/unarmed child, which streams straight through.
 	let recentOutputTail = "";
 	let tailLastLineRepresentable = false;
+	let streamDecoder: StreamDecoder | undefined;
+	let streamDecoderReady = false;
 	let resolved = false;
 	let abortSent = false;
 	let abortReason: AbortReason | undefined;
@@ -963,6 +975,21 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	let budgetStopAbortPromise: Promise<void> | undefined;
 	let lastAssistantSalvageText: string | undefined;
 	let activeSessionAbortPromise: Promise<void> | undefined;
+
+	// Expand the child's own shorthand at the RETURN boundary before its raw
+	// assistant text becomes the parent's tool result. See `expandSubagentReturn`
+	// (argot-wire.ts) for why this seam exists; the only wrinkle here is that the
+	// child codec lives on the currently-attached session.
+	const expandChildOutput = (text: string): string => {
+		try {
+			return expandSubagentReturn(activeSession?.getArgotSession?.(), text);
+		} catch (error) {
+			logger.warn("Subagent return-boundary argot expansion failed", {
+				error: errorMessage(error),
+			});
+			return text;
+		}
+	};
 
 	const abortActiveSession = (): Promise<void> => {
 		const session = activeSession;
@@ -1156,6 +1183,41 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 		return message.usage;
 	};
 
+	// Lazily build the per-message stream decoder from the child's own codec, so a
+	// codec armed just before prompting is picked up. `push`/`flush`/`reset` are the
+	// only argot calls here; all handle logic lives in argot's StreamDecoder.
+	const ensureStreamDecoder = (): StreamDecoder | undefined => {
+		if (!streamDecoderReady) {
+			streamDecoder = createSubagentStreamDecoder(activeSession?.getArgotSession?.());
+			streamDecoderReady = true;
+		}
+		return streamDecoder;
+	};
+
+	// Decode one streamed delta for display. Identity when there is no codec.
+	const decodeStreamDelta = (delta: string): string => {
+		const decoder = ensureStreamDecoder();
+		if (!decoder) return delta;
+		try {
+			return decoder.push(delta);
+		} catch (error) {
+			logger.warn("Subagent stream-display argot decode failed", { error: errorMessage(error) });
+			return delta;
+		}
+	};
+
+	// Release any handle fragment the decoder is holding at end of a message.
+	const flushStreamDecoder = (): string => {
+		const decoder = streamDecoder;
+		if (!decoder) return "";
+		try {
+			return decoder.flush();
+		} catch (error) {
+			logger.warn("Subagent stream-display argot flush failed", { error: errorMessage(error) });
+			return "";
+		}
+	};
+
 	const updateRecentOutputLines = () => {
 		const lines = recentOutputTail.split("\n");
 		const filtered = lines.filter(line => line.trim());
@@ -1189,13 +1251,18 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	};
 
 	const replaceRecentOutputFromContent = (content: unknown[]) => {
+		// A full-content snapshot supersedes whatever the streaming decoder was
+		// holding, and each text block is complete, so expand it whole (seam 2/4
+		// call) rather than through the delta decoder. Drop the decoder's stale tail.
+		streamDecoder?.reset();
+		streamDecoderReady = false;
 		recentOutputTail = "";
 		for (const block of content) {
 			if (!block || typeof block !== "object") continue;
 			const record = block as { type?: unknown; text?: unknown };
 			if (record.type !== "text" || typeof record.text !== "string") continue;
 			if (!record.text) continue;
-			recentOutputTail += record.text;
+			recentOutputTail += expandChildOutput(record.text);
 			if (recentOutputTail.length > RECENT_OUTPUT_TAIL_BYTES) {
 				recentOutputTail = recentOutputTail.slice(-RECENT_OUTPUT_TAIL_BYTES);
 			}
@@ -1204,6 +1271,9 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	};
 
 	const resetRecentOutput = () => {
+		streamDecoder?.reset();
+		streamDecoder = undefined;
+		streamDecoderReady = false;
 		recentOutputTail = "";
 		tailLastLineRepresentable = false;
 		progress.recentOutput = [];
@@ -1363,7 +1433,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					}
 				).assistantMessageEvent;
 				if (assistantEvent?.type === "text_delta" && typeof assistantEvent.delta === "string") {
-					appendRecentOutputTail(assistantEvent.delta);
+					appendRecentOutputTail(decodeStreamDelta(assistantEvent.delta));
 					break;
 				}
 				if (assistantEvent && assistantEvent.type !== "text_delta") {
@@ -1388,7 +1458,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 						for (const block of messageContent) {
 							if (!isRecord(block)) continue;
 							if (block.type === "text" && typeof block.text === "string") {
-								outputChunks.push(block.text);
+								outputChunks.push(expandChildOutput(block.text));
 								continue;
 							}
 							if (block.type !== "toolCall" || typeof block.name !== "string") continue;
@@ -1396,6 +1466,16 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 								yieldCallPending = true;
 								flushProgress = true;
 							}
+						}
+						// The finalized content is authoritative and complete, so refresh
+						// the live preview from it (fully decoded); this also resolves any
+						// handle fragment the streaming decoder was still holding. If a
+						// runtime streamed only deltas with no final snapshot, flush the
+						// decoder's held tail into the preview instead.
+						if (messageContent && Array.isArray(messageContent)) {
+							replaceRecentOutputFromContent(messageContent);
+						} else {
+							appendRecentOutputTail(flushStreamDecoder());
 						}
 					}
 					if (softRequestBudget > 0 && !abortSent && !yieldCallPending) {
@@ -1475,7 +1555,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 						if (messageContent && Array.isArray(messageContent)) {
 							for (const block of messageContent) {
 								if (block.type === "text" && block.text) {
-									finalOutputChunks.push(block.text);
+									finalOutputChunks.push(expandChildOutput(block.text));
 								}
 							}
 						}
@@ -1554,7 +1634,10 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					.filter(Boolean)
 					.join("\n");
 				if (text.trim()) {
-					lastAssistantSalvageText = text;
+					// Same return-boundary rule as the streamed chunks: the salvaged
+					// last-turn text is handle-form and must expand through the child's
+					// own codec before it can become the parent's tool result.
+					lastAssistantSalvageText = expandSubagentReturn(session.getArgotSession?.(), text);
 				}
 			}
 		} catch {
@@ -2175,11 +2258,14 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		};
 	}
 
-	// Set up artifact paths and write input file upfront if artifacts dir provided
-	let subtaskSessionFile: string | undefined;
-	if (options.artifactsDir) {
-		subtaskSessionFile = path.join(options.artifactsDir, `${id}.jsonl`);
-	}
+	// Set up artifact paths and write input file upfront if artifacts dir provided.
+	// A subagent ALWAYS gets a durable session file — never an in-memory session that
+	// would silently lose its transcript (Law 10, no silent fallback). When the caller
+	// provides no artifacts dir, route the transcript to the durable sessions dir so the
+	// run stays studyable and revivable via history://<id> (GRAN-1).
+	const subtaskSessionFile: string = options.artifactsDir
+		? path.join(options.artifactsDir, `${id}.jsonl`)
+		: path.join(getSessionsDir(), `orphan-task-${id}.jsonl`);
 
 	const settings = options.settings ?? Settings.isolated();
 	const subagentSettings = createSubagentSettings(
@@ -2233,7 +2319,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	}
 
 	const modelPatterns = normalizeModelPatterns(modelOverride ?? agent.model);
-	const sessionFile = subtaskSessionFile ?? null;
+	// Always a durable file — subagents never run in-memory (see subtaskSessionFile above).
+	const sessionFile: string = subtaskSessionFile;
 	const spawnsEnv = atMaxDepth
 		? ""
 		: agent.spawns === undefined
@@ -2406,14 +2493,13 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			resolvedAt = performance.now();
 
 			const effectiveCwd = worktree ?? cwd;
-			const sessionManager = sessionFile
-				? await awaitAbortable(
-						SessionManager.open(sessionFile, undefined, undefined, {
-							initialCwd: effectiveCwd,
-							suppressBreadcrumb: true,
-						}),
-					)
-				: SessionManager.inMemory(effectiveCwd);
+			// sessionFile is always durable — a subagent never runs in-memory (GRAN-1).
+			const sessionManager = await awaitAbortable(
+				SessionManager.open(sessionFile, undefined, undefined, {
+					initialCwd: effectiveCwd,
+					suppressBreadcrumb: true,
+				}),
+			);
 			if (options.parentArtifactManager) {
 				sessionManager.adoptArtifactManager(options.parentArtifactManager);
 			}
@@ -2506,6 +2592,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				taskDepth: childDepth,
 				parentHindsightSessionState: options.parentHindsightSessionState,
 				parentMnemopiSessionState: options.parentMnemopiSessionState,
+				parentArgot: options.parentArgot,
 				parentTaskPrefix: id,
 				parentAgentId: options.parentAgentId,
 				agentId: id,
@@ -2538,7 +2625,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 
 			monitor.setActiveSession(session);
 			installRegistryStatusSync(session);
-			if (sessionFile !== null && worktree === undefined) {
+			if (worktree === undefined) {
 				// Lifecycle reviver: park closed the JSONL writer, so reopening takes
 				// the single-writer lock cleanly and restores the full message history
 				// (createAgentSession → agent.replaceMessages). Isolated runs are not

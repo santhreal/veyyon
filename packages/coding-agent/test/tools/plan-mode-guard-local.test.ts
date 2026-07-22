@@ -6,6 +6,7 @@ import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { enforcePlanModeWrite, resolvePlanPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 const ARTIFACTS_DIR = path.join(os.tmpdir(), "agent-artifacts");
 const REPO_ROOT = path.join(os.tmpdir(), "repo");
@@ -19,18 +20,21 @@ interface SessionOverrides {
 }
 
 function makeSession(overrides: SessionOverrides): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: overrides.cwd ?? REPO_ROOT,
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		settings: {
+			// Every setting falls to its own default; only the plans directory is
+			// steered. `get` is part of the stub contract so a test cannot forget it.
+			get: () => undefined,
 			getPlansDirectory: () => PLANS_DIR,
 		},
 		getArtifactsDir: () => overrides.artifactsDir ?? null,
 		getSessionId: () => overrides.sessionId ?? null,
 		getPlanModeState: () => overrides.planMode,
-	} as unknown as ToolSession;
+	});
 }
 
 describe("resolvePlanPath local:// support", () => {

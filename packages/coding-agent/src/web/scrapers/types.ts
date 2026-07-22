@@ -282,28 +282,37 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 	return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
 }
 
+/**
+ * Cached import of the (heavy) turndown module. Lazy so turndown and
+ * turndown-plugin-gfm stay off the startup graph; memoized so `createTurndown`
+ * and `normalizeTablesHtml` share a single dynamic import.
+ */
+let turndownModulePromise: Promise<typeof import("../../utils/turndown")> | undefined;
+
+function getTurndownModule(): Promise<typeof import("../../utils/turndown")> {
+	turndownModulePromise ||= import("../../utils/turndown");
+	return turndownModulePromise;
+}
+
 /** Module-level Turndown instance — built lazily on first use. */
 let turndownPromise: Promise<TurndownService> | undefined;
 
 function getTurndown(): Promise<TurndownService> {
-	turndownPromise ||= initTurndown();
+	turndownPromise ||= getTurndownModule().then(module => module.createTurndown());
 	return turndownPromise;
-}
-
-async function initTurndown(): Promise<TurndownService> {
-	// Lazy import keeps turndown/turndown-plugin-gfm off the startup graph.
-	const { createTurndown } = await import("../../utils/turndown");
-	return createTurndown();
 }
 
 /**
  * Convert HTML to markdown using Turndown with GFM support.
- * Strips script/style tags before conversion.
+ * Strips script/style tags before conversion, then normalizes tables so a
+ * `<td>`-first table (no explicit `<thead>`) still renders as a GFM table rather
+ * than being kept as a raw `<table>` blob — the same normalization the markit
+ * docx/epub converters apply.
  */
 export async function htmlToBasicMarkdown(html: string): Promise<string> {
 	const cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-	const turndown = await getTurndown();
-	return turndown.turndown(cleaned).trim();
+	const [module, turndown] = await Promise.all([getTurndownModule(), getTurndown()]);
+	return turndown.turndown(module.normalizeTablesHtml(cleaned)).trim();
 }
 
 /**

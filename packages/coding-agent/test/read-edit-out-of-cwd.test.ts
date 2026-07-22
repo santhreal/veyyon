@@ -9,6 +9,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "./helpers/tool-session";
 
 function textOutput(result: AgentToolResult<ReadToolDetails>): string {
 	return result.content
@@ -26,7 +27,7 @@ beforeAll(async () => {
 function createSession(cwd: string): ToolSession {
 	const settings = Settings.isolated();
 	settings.set("read.summarize.enabled", false);
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
@@ -34,7 +35,7 @@ function createSession(cwd: string): ToolSession {
 		getArtifactsDir: () => path.join(cwd, "artifacts"),
 		allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 		settings,
-	} as unknown as ToolSession;
+	});
 }
 
 function editOptions(session: ToolSession, input: string): ExecuteHashlineSingleOptions {

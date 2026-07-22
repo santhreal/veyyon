@@ -30,12 +30,13 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { BashToolDetails } from "@veyyon/coding-agent/tools/bash";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import { removeSyncWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "./helpers/tool-session";
 
 let artifactCounter = 0;
 
 function makeSession(cwd: string, manager: AsyncJobManager, overrides: Partial<Record<string, unknown>>): ToolSession {
 	const sessionDir = path.join(cwd, "session");
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
@@ -48,7 +49,7 @@ function makeSession(cwd: string, manager: AsyncJobManager, overrides: Partial<R
 		},
 		asyncJobManager: manager,
 		settings: Settings.isolated(overrides),
-	} as unknown as ToolSession;
+	});
 }
 
 function resultText(result: { content: Array<{ type: string }> }): string {

@@ -13,6 +13,7 @@ import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
+import { paintHotTail } from "../modes/components/follow";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { highlightCode, type Theme } from "../modes/theme/theme";
 import bashDescription from "../prompts/tools/bash.md" with { type: "text" };
@@ -52,7 +53,7 @@ import {
 } from "./render-utils";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
-import { clampTimeout, TOOL_TIMEOUTS } from "./tool-timeouts";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
 export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
 
@@ -139,7 +140,7 @@ function saveBashOriginalArtifact(session: ToolSession, originalText: string): P
 	return saveOutputArtifact(session, "bash-original", originalText);
 }
 
-const BASH_TIMEOUT_DESCRIPTION = `timeout in seconds; 0 disables the command deadline; nonzero values are clamped to ${TOOL_TIMEOUTS.bash.min}-${TOOL_TIMEOUTS.bash.max}`;
+const BASH_TIMEOUT_DESCRIPTION = describeTimeoutParam("bash", { zeroDisablesNoun: "command deadline" });
 
 const bashSchemaBase = type({
 	command: type("string").describe("command to execute"),
@@ -324,12 +325,6 @@ function extractPartialBashEnv(partialJson: string | undefined): Record<string, 
 		env[match[1]!] = unescapePartialJsonString(match[2]!);
 	}
 	return Object.keys(env).length > 0 ? env : undefined;
-}
-
-function formatTimeoutClampNotice(requestedTimeoutSec: number, effectiveTimeoutSec: number): string | undefined {
-	return requestedTimeoutSec !== effectiveTimeoutSec
-		? `Timeout clamped to ${effectiveTimeoutSec}s (requested ${requestedTimeoutSec}s; allowed range ${TOOL_TIMEOUTS.bash.min}-${TOOL_TIMEOUTS.bash.max}s).`
-		: undefined;
 }
 
 function formatWallTimeSeconds(wallTimeMs: number): string {
@@ -837,7 +832,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		{
 			command: rawCommand,
 			env: rawEnv,
-			timeout: rawTimeout = 300,
+			timeout: rawTimeout,
 			cwd,
 
 			async: asyncRequested = false,
@@ -939,7 +934,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
 		const pendingNotices: string[] = [];
 		if (timeoutSec !== undefined) {
-			const timeoutClampNotice = formatTimeoutClampNotice(requestedTimeoutSec, timeoutSec);
+			const timeoutClampNotice = formatTimeoutClampNotice("bash", requestedTimeoutSec, timeoutSec);
 			if (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);
 		}
 
@@ -1545,6 +1540,22 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 								);
 							}
 							outputLines.push(...result.visualLines);
+							// The follow, on tools: while output is still streaming, the
+							// newest visible line carries the hot trail (cooling into
+							// toolOutput). Deterministic per content, so the render cache
+							// above stays valid; sealed results never paint it.
+							if (isPartial && outputLines.length > 0) {
+								const last = outputLines.length - 1;
+								// Trim the visual-line padding first: the trail grades the
+								// newest CHARACTERS, and foreground color on trailing pad
+								// spaces is invisible (the live-frame defect this fixes).
+								outputLines[last] = paintHotTail(
+									outputLines[last]!.trimEnd(),
+									uiTheme,
+									TERMINAL.trueColor,
+									"toolOutput",
+								);
+							}
 						}
 					}
 					if (timeoutLine) outputLines.push(timeoutLine);

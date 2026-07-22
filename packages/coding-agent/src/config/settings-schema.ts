@@ -115,7 +115,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Agent",
 		"Git",
 	],
-	context: ["General", "Rules (TTSR)", "Experimental"],
+	context: ["General", "Rules (TTSR)", "Experimental", "Session instrumentation"],
 	memory: ["General", "Auto-Learn", "Mnemopi", "Hindsight"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
 	shell: ["Bash", "Eval & Runtimes"],
@@ -153,6 +153,7 @@ export type StatusLineSegmentId =
 	| "time"
 	| "session"
 	| "hostname"
+	| "profile"
 	| "cache_read"
 	| "cache_write"
 	| "cache_hit"
@@ -375,7 +376,7 @@ export type Personality = SettingValue<"personality">;
 
 export interface CompactionSettings {
 	enabled: boolean;
-	strategy: "handoff" | "snap";
+	strategy: "handoff" | "summary";
 	thresholdPercent: number;
 	thresholdTokens: number;
 	model?: string;

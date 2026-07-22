@@ -11,7 +11,12 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { expandPromptTemplate, type PromptTemplate } from "@veyyon/coding-agent/config/prompt-templates";
+import {
+	appendInlineArgsFallback,
+	expandPromptTemplate,
+	type PromptTemplate,
+	templateUsesInlineArgPlaceholders,
+} from "@veyyon/coding-agent/config/prompt-templates";
 import { expandSlashCommand, type FileSlashCommand } from "@veyyon/coding-agent/extensibility/slash-commands";
 import { parseCommandArgs, substituteArgs } from "@veyyon/coding-agent/utils/command-args";
 import { prompt } from "@veyyon/utils";
@@ -376,5 +381,61 @@ describe("renderYieldSchema", () => {
 		const rendered = await renderSubagentPrompt(undefined);
 		expect(rendered).not.toContain("result: {");
 		expect(rendered).not.toContain("Your terminal `yield` MUST use exactly this shape");
+	});
+});
+
+// ============================================================================
+// templateUsesInlineArgPlaceholders / appendInlineArgsFallback
+// ============================================================================
+
+/**
+ * When a slash-command template already places the user's arguments inline (a $ARGUMENTS / $N shell
+ * placeholder or a {{ arguments }} handlebars reference), the runner must NOT also append the raw
+ * args at the end, or they show up twice. These two helpers decide that. They had no direct test.
+ * A detection miss double-prints the args; a false positive silently drops them. These pin the two
+ * detection patterns and the append rule, including the documented consequence that a literal "$5"
+ * is read as a positional-arg placeholder (that is the cost of supporting $N positional arguments).
+ */
+describe("templateUsesInlineArgPlaceholders", () => {
+	test("detects shell-style argument placeholders", () => {
+		for (const source of ["$ARGUMENTS", "$@", "$@[0]", "$@[1:3]", "$0", "$1", "$12"]) {
+			expect(templateUsesInlineArgPlaceholders(source)).toBe(true);
+		}
+	});
+
+	test("detects handlebars argument references", () => {
+		for (const source of ["{{ arguments }}", "{{ ARGUMENTS }}", "{{args}}", "{{ arg name }}"]) {
+			expect(templateUsesInlineArgPlaceholders(source)).toBe(true);
+		}
+	});
+
+	test("returns false for templates with no argument placeholder", () => {
+		for (const source of ["plain text", "{{ other }}", "{{ variable }}", "use $ARG here", "$ARG"]) {
+			expect(templateUsesInlineArgPlaceholders(source)).toBe(false);
+		}
+	});
+
+	test("reads a literal $5 as a positional-arg placeholder (documented $N tradeoff)", () => {
+		// A dollar amount like "$5" matches the positional $N pattern, so its args are not appended.
+		// This is the accepted cost of supporting shell-style positional arguments.
+		expect(templateUsesInlineArgPlaceholders("cost $5 total")).toBe(true);
+	});
+});
+
+describe("appendInlineArgsFallback", () => {
+	test("returns the rendered text unchanged when there are no args to append", () => {
+		expect(appendInlineArgsFallback("rendered", "", false)).toBe("rendered");
+	});
+
+	test("returns the rendered text unchanged when the template already uses the args inline", () => {
+		expect(appendInlineArgsFallback("rendered", "myargs", true)).toBe("rendered");
+	});
+
+	test("returns just the args when the rendered template is empty", () => {
+		expect(appendInlineArgsFallback("", "myargs", false)).toBe("myargs");
+	});
+
+	test("appends the args after a blank line when the template does not use them inline", () => {
+		expect(appendInlineArgsFallback("rendered", "myargs", false)).toBe("rendered\n\nmyargs");
 	});
 });

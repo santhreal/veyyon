@@ -103,21 +103,6 @@ function chainCoversRange(intervals: Interval[], lowerY: number, upperY: number,
 	return false;
 }
 
-function countBridgingVLineCols(upperY: number, lowerY: number, verticals: Segment[]): number {
-	const eps = 1.5;
-	const byX = new Map<number, Interval[]>();
-	for (const seg of verticals) {
-		const rx = Math.round(seg.x1);
-		if (!byX.has(rx)) byX.set(rx, []);
-		byX.get(rx)?.push({ min: Math.min(seg.y1, seg.y2), max: Math.max(seg.y1, seg.y2) });
-	}
-	let count = 0;
-	for (const intervals of byX.values()) {
-		if (chainCoversRange(intervals, lowerY, upperY, eps)) count++;
-	}
-	return count;
-}
-
 function bridgingXSet(upperY: number, lowerY: number, verticals: Segment[]): Set<number> {
 	const eps = 1.5;
 	const xs = new Set<number>();
@@ -147,7 +132,11 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 	for (let i = 1; i < yLines.length; i++) {
 		const upperY = yLines[i - 1];
 		const lowerY = yLines[i];
-		const cols = countBridgingVLineCols(upperY, lowerY, verticals);
+		// One computation feeds both the count and (when needed) the actual x set:
+		// the number of bridging vertical-line columns is exactly the size of that
+		// set, so a single bridgingXSet call avoids recomputing chainCoversRange.
+		const bxs = bridgingXSet(upperY, lowerY, verticals);
+		const cols = bxs.size;
 		if (cols === 0) {
 			groups.push(currentGroup);
 			currentGroup = [yLines[i]];
@@ -155,7 +144,6 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 			continue;
 		}
 		if (prevBridgingCols >= MIN_RICH_BRIDGING_COLS && cols < MIN_RICH_BRIDGING_COLS) {
-			const bxs = bridgingXSet(upperY, lowerY, verticals);
 			const isOuterFrameOnly = [...bxs].every(
 				x => Math.abs(x - globalXMin) <= eps || Math.abs(x - globalXMax) <= eps,
 			);
@@ -499,7 +487,6 @@ function buildTableGrid(
 		cells,
 		warnings: [],
 		topY: yLines[0],
-		isBorderless: false,
 	});
 	// Also consume the original (unsplit) text box IDs when any of their
 	// split pieces were placed in a cell.
@@ -632,7 +619,6 @@ function buildHLineOnlyTable(
 		cells,
 		warnings: [],
 		topY: contentTopY,
-		isBorderless: false,
 	});
 	return { grid, consumedIds };
 }

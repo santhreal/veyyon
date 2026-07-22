@@ -27,6 +27,14 @@ const AGENT_STATUS_SYMBOL = {
 	aborted: "status.aborted",
 } as const;
 
+/**
+ * Canonical sort rank per status: running first (needs attention), then idle,
+ * parked, aborted. Both the Agent Hub roster and the Subagent Inbox sidebar sort
+ * by this, so the two views can never disagree on which agents float to the top.
+ * ONE-PLACE: the ordering lives here beside the color/glyph it belongs with.
+ */
+export const AGENT_STATUS_ORDER: Record<AgentStatus, number> = { running: 0, idle: 1, parked: 2, aborted: 3 };
+
 /** The color the given status is rendered in, everywhere. */
 export function agentStatusColor(status: AgentStatus): ThemeColor {
 	return AGENT_STATUS_COLOR[status];

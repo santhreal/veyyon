@@ -2,6 +2,14 @@ import { type Component, matchesKey, type OverlayFocusOwner } from "@veyyon/tui"
 import type { InteractiveModeContext } from "../types";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";
 
+/**
+ * The splash draws into the root UI and reads nothing else, so it asks for that
+ * one member instead of the 215-member `InteractiveModeContext`. See
+ * `CollabHostContext` for why: a type only the real TUI can satisfy forces every
+ * test to cast a stub into place, and a cast stub is an unchecked stub.
+ */
+export type StartupSplashContext = Pick<InteractiveModeContext, "ui">;
+
 export interface RunStartupSplashOptions {
 	readonly durationMs?: number;
 	readonly tickMs?: number;
@@ -18,7 +26,7 @@ class StartupSplashComponent implements Component, OverlayFocusOwner {
 	readonly #now: () => number;
 
 	constructor(
-		readonly ctx: InteractiveModeContext,
+		readonly ctx: StartupSplashContext,
 		options: RunStartupSplashOptions = {},
 	) {
 		this.#durationMs = options.durationMs ?? SETUP_SPLASH_MS;
@@ -85,7 +93,7 @@ class StartupSplashComponent implements Component, OverlayFocusOwner {
 }
 
 export async function runStartupSplash(
-	ctx: InteractiveModeContext,
+	ctx: StartupSplashContext,
 	options: RunStartupSplashOptions = {},
 ): Promise<void> {
 	const component = new StartupSplashComponent(ctx, options);

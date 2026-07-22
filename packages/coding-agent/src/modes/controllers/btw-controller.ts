@@ -5,6 +5,18 @@ import { copyToClipboard } from "../../utils/clipboard";
 import { BtwPanelComponent } from "../components/btw-panel";
 import type { InteractiveModeContext } from "../types";
 
+/**
+ * The slice of the interactive context this controller uses: 7 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type BtwControllerContext = Pick<
+	InteractiveModeContext,
+	"btwContainer" | "handleBtwBranch" | "session" | "sessionManager" | "showError" | "showStatus" | "ui"
+>;
+
 interface BtwRequest {
 	component: BtwPanelComponent;
 	abortController: AbortController;
@@ -43,7 +55,7 @@ export class BtwController {
 	#lastCopyText: string | undefined;
 	#copyInFlight = false;
 
-	constructor(private readonly ctx: InteractiveModeContext) {}
+	constructor(private readonly ctx: BtwControllerContext) {}
 
 	hasActiveRequest(): boolean {
 		return this.#activeRequest !== undefined;

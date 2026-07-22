@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The `snap` compaction strategy (the experimental image-archive engine that rendered discarded history to bitmap frames) and its `@veyyon/snapcompact` package. `compaction.strategy` now offers two pure-LLM strategies, `summary` (the new default) and `handoff`. Sessions compacted by the old engine still open without loss: their archived plaintext source re-attaches to the compaction summary as recovered text, and the next compaction folds it into a normal LLM summary. A stored `snap` strategy value normalizes to `summary` on load.
+
+### Fixed
+
+- Changing the working directory mid-session with `/cwd` or the agent's `set_cwd` tool now re-roots the whole session, not just the filesystem cwd. Project settings, plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing reload for the new directory, matching `/move` (minus relocating the session file). Previously only tools moved and the rest of the session stayed pinned to the original project.
+
 ## [1.0.12] - 2026-07-21
 
 ### Added

@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import {
+	formatRawSseIsoTime,
+	formatRawSseResponseComment,
 	RawSseDebugBuffer,
 	rawSseRecordLines,
 	resolveRawSseDebugBuffer,
@@ -169,5 +171,63 @@ describe("RawSseDebugBuffer", () => {
 		expect(dataLines[0]).toBe(6);
 		expect(dataLines.at(-1)).toBe(1_005);
 		expect(dataLines.every((n, idx) => n === 6 + idx)).toBe(true);
+	});
+});
+
+/**
+ * The pure record formatters were only exercised transitively through the buffer. These pin them
+ * directly: formatRawSseResponseComment is a debug-log line whose exact shape (leading ": ",
+ * space-joined key=value fields, optional fields dropped when absent) is what a human reads when
+ * diagnosing a provider response, and rawSseRecordLines is the response-vs-event dispatch.
+ */
+describe("formatRawSseIsoTime", () => {
+	it("renders a numeric epoch-ms timestamp as an ISO-8601 UTC string", () => {
+		expect(formatRawSseIsoTime(0)).toBe("1970-01-01T00:00:00.000Z");
+		expect(formatRawSseIsoTime(1710000000000)).toBe("2024-03-09T16:00:00.000Z");
+	});
+});
+
+describe("formatRawSseResponseComment", () => {
+	it("emits every present field as a space-joined key=value comment line", () => {
+		expect(
+			formatRawSseResponseComment({
+				kind: "response",
+				sequence: 1,
+				timestamp: 0,
+				status: 200,
+				provider: "anthropic",
+				model: "opus",
+				api: "messages",
+				requestId: "req-1",
+				transport: "http",
+			}),
+		).toBe(
+			": veyyon-response ts=1970-01-01T00:00:00.000Z status=200 provider=anthropic model=opus api=messages requestId=req-1 transport=http",
+		);
+	});
+
+	it("drops every optional field that is absent, keeping only ts and status", () => {
+		expect(
+			formatRawSseResponseComment({ kind: "response", sequence: 2, timestamp: 1710000000000, status: 500 }),
+		).toBe(": veyyon-response ts=2024-03-09T16:00:00.000Z status=500");
+	});
+});
+
+describe("rawSseRecordLines dispatch", () => {
+	it("formats a response record as its comment line and returns an event record's raw lines verbatim", () => {
+		expect(rawSseRecordLines({ kind: "response", sequence: 3, timestamp: 0, status: 204 })).toEqual([
+			": veyyon-response ts=1970-01-01T00:00:00.000Z status=204",
+		]);
+		expect(
+			rawSseRecordLines({
+				kind: "event",
+				sequence: 4,
+				timestamp: 0,
+				event: "message",
+				raw: ["a", "b"],
+				truncated: false,
+				originalChars: 2,
+			}),
+		).toEqual(["a", "b"]);
 	});
 });

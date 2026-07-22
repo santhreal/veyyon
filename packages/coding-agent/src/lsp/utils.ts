@@ -13,6 +13,8 @@ import type {
 	DiagnosticSeverity,
 	DocumentSymbol,
 	Location,
+	Position,
+	Range,
 	SymbolInformation,
 	SymbolKind,
 	TextEdit,
@@ -280,6 +282,36 @@ export function formatLocation(location: Location, cwd: string): string {
  */
 export function formatPosition(line: number, col: number): string {
 	return `${line}:${col}`;
+}
+
+// =============================================================================
+// Position and Range Ordering
+// =============================================================================
+
+/**
+ * Compare two positions in document order. Returns a negative number when `a`
+ * precedes `b`, zero when they are the same position, and a positive number
+ * when `a` follows `b`. This is the single owner of LSP position ordering, so
+ * `edits.ts` (overlap detection) and `index.ts` (range containment) agree by
+ * construction.
+ */
+export function comparePosition(a: Position, b: Position): number {
+	return a.line === b.line ? a.character - b.character : a.line - b.line;
+}
+
+/** True when two positions point at the same line and character. */
+export function positionsEqual(a: Position, b: Position): boolean {
+	return a.line === b.line && a.character === b.character;
+}
+
+/** True when two ranges have identical start and end positions. */
+export function rangesEqual(a: Range, b: Range): boolean {
+	return positionsEqual(a.start, b.start) && positionsEqual(a.end, b.end);
+}
+
+/** True when `position` falls within `range`, inclusive of both endpoints. */
+export function rangeContainsPosition(range: Range, position: Position): boolean {
+	return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
 }
 
 // =============================================================================

@@ -104,6 +104,13 @@ const CONDITIONS: Record<string, () => boolean> = {
 			return false;
 		}
 	},
+	argotEnabled: () => {
+		try {
+			return Settings.instance.get("argot.enabled") === true;
+		} catch {
+			return false;
+		}
+	},
 	hindsightActive: () => {
 		try {
 			return Settings.instance.get("memory.backend") === "hindsight";
@@ -205,6 +212,16 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	if (schemaType === "record") {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
+		return { ...base, type: "text" };
+	}
+
+	// Arrays edit as a text control: a string array (the common case, e.g.
+	// `argot.models`) shows and edits as a comma-separated list; an object array
+	// (e.g. `bashInterceptor.patterns`) round-trips as JSON. The selector's
+	// text-save path (#setSettingValue) splits/parses back to an array by the
+	// schema type, so a `ui`-annotated array is reachable instead of silently
+	// dropped. Arrays with no `ui` block are still TOML/CLI-only, as before.
+	if (schemaType === "array") {
 		return { ...base, type: "text" };
 	}
 

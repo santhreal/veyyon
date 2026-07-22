@@ -85,17 +85,6 @@ describe("settings layout", () => {
 		expect(SETTINGS_SCHEMA.personality.ui.options).toBe("runtime");
 	});
 
-	it("exposes snapcompact.shape under context Experimental", () => {
-		const def = getSettingsForTab("context").find(item => item.path === "snapcompact.shape");
-		expect(def).toMatchObject({
-			path: "snapcompact.shape",
-			tab: "context",
-			group: "Experimental",
-			label: "Snapcompact Shape",
-		});
-		expect(SETTINGS_SCHEMA["snapcompact.shape"].values).toContain("silver16-bw");
-	});
-
 	it("exposes advisor sub-settings under the model Advisor group", () => {
 		const advisorDependentPaths: SettingPath[] = ["advisor.subagents", "advisor.syncBacklog", "advisor.immuneTurns"];
 		for (const path of advisorDependentPaths) {

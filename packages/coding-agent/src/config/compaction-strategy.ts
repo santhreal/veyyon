@@ -1,22 +1,31 @@
 /**
- * User-facing compaction strategy (`handoff` | `snap`) and legacy normalization.
+ * User-facing compaction strategy (`handoff` | `summary`) and legacy normalization.
+ *
+ * Two pure-LLM strategies remain:
+ *   - `summary`  — summarize the transcript in place and continue the same
+ *                  session (engine action `context-full`). This is the default
+ *                  and the successor to the removed image-archive `snap` mode.
+ *   - `handoff`  — generate a session transfer and continue in a new session.
  */
 
 /** Stored compaction strategy after migration / schema validation. */
-export type CompactionStrategySetting = "handoff" | "snap";
+export type CompactionStrategySetting = "handoff" | "summary";
 
 /** Engine action selected from a normalized user strategy. */
-export type CompactionEngineAction = "handoff" | "snapcompact" | "context-full";
+export type CompactionEngineAction = "handoff" | "context-full";
 
-const LEGACY_SNAP = new Set(["snap", "snapcompact"]);
-/** Legacy in-session strategies folded into handoff (LLM summarize / session transfer). */
-const LEGACY_HANDOFF = new Set(["handoff", "context-full", "shake"]);
+/**
+ * Legacy in-session strategies folded into `summary` (LLM summarize in place).
+ * `snap`/`snapcompact` were the removed image-archive engine; they now degrade
+ * to a standard LLM summary. `shake`/`context-full` were always summary paths.
+ */
+const LEGACY_SUMMARY = new Set(["summary", "snap", "snapcompact", "context-full", "shake"]);
 
-/** Normalize any persisted or runtime strategy token to `handoff` | `snap`. */
+/** Normalize any persisted or runtime strategy token to `handoff` | `summary`. */
 export function normalizeCompactionStrategy(value: string | undefined): CompactionStrategySetting {
-	if (value && LEGACY_SNAP.has(value)) return "snap";
-	if (value && LEGACY_HANDOFF.has(value)) return "handoff";
-	return "snap";
+	if (value === "handoff") return "handoff";
+	if (value && LEGACY_SUMMARY.has(value)) return "summary";
+	return "summary";
 }
 
 /** Map a normalized strategy to the compaction engine action for auto-compaction. */
@@ -24,7 +33,6 @@ export function compactionStrategyToEngineAction(
 	strategy: CompactionStrategySetting,
 	options?: { reason?: "overflow" | "threshold" | "idle" | "incomplete"; suppressHandoff?: boolean },
 ): CompactionEngineAction {
-	if (strategy === "snap") return "snapcompact";
 	if (strategy === "handoff" && options?.reason !== "overflow" && !options?.suppressHandoff) return "handoff";
 	return "context-full";
 }
@@ -34,8 +42,6 @@ export function resolveCompactionEngineAction(
 	rawStrategy: string | undefined,
 	options?: { reason?: "overflow" | "threshold" | "idle" | "incomplete"; suppressHandoff?: boolean },
 ): CompactionEngineAction {
-	if (rawStrategy === "context-full" || rawStrategy === "shake") return "context-full";
-	if (rawStrategy === "snapcompact") return "snapcompact";
 	return compactionStrategyToEngineAction(normalizeCompactionStrategy(rawStrategy), options);
 }
 
@@ -49,7 +55,7 @@ export function isThresholdCompactionDisabled(enabled: boolean, strategy: string
 	return !enabled || strategy === "off";
 }
 
-/** Migrate a legacy strategy value to the stored `handoff` | `snap` enum. */
+/** Migrate a legacy strategy value to the stored `handoff` | `summary` enum. */
 export function migrateCompactionStrategyValue(value: unknown): CompactionStrategySetting | undefined {
 	if (typeof value !== "string") return undefined;
 	return normalizeCompactionStrategy(value);
@@ -62,7 +68,6 @@ export function toAgentCompactionSettings(
 		model?: string;
 	},
 ): import("@veyyon/agent-core/compaction").CompactionSettings {
-	const raw = settings.strategy;
-	const strategy = raw === "snap" ? "snapcompact" : raw;
+	const strategy = normalizeCompactionStrategy(settings.strategy);
 	return { ...settings, strategy } as import("@veyyon/agent-core/compaction").CompactionSettings;
 }

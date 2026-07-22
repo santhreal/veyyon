@@ -1,11 +1,11 @@
 /**
- * Startup changelog contracts:
+ * Startup update-notice contracts:
  *
- * - First-run/untrusted marker states persist the current version without
- *   replaying historical markdown.
- * - Returning users only see a bounded startup slice (latest unseen releases,
- *   capped by source bytes), while explicit full changelog rendering remains
- *   unbounded.
+ * - Startup never prints release notes. It prints at most one line naming the
+ *   version that landed; `/changelog` opens the notes on the web.
+ * - The notice fires exactly once per upgrade, driven by the marker the
+ *   previous run wrote.
+ * - A fresh install and a downgrade both record the version silently.
  * - The last-seen marker is a plain file in the agent dir.
  */
 
@@ -17,12 +17,11 @@ import * as path from "node:path";
 import { removeWithRetries } from "@veyyon/utils";
 import {
 	type ChangelogEntry,
-	RECENT_CHANGELOG_ENTRY_LIMIT,
+	compareVersions,
+	decideUpdateNotice,
+	parseChangelog,
+	parseChangelogVersion,
 	readLastChangelogVersion,
-	renderChangelogEntries,
-	STARTUP_CHANGELOG_FULL_HINT,
-	STARTUP_CHANGELOG_MAX_BYTES,
-	selectStartupChangelog,
 	writeLastChangelogVersion,
 } from "../../src/utils/changelog";
 
@@ -36,12 +35,6 @@ const hasPtyHarness =
 	(await Bun.file("/usr/bin/timeout").exists());
 const PTY_STARTUP_OUTPUT_CEILING = 512 * 1024;
 
-function release(major: number, minor: number, patch: number, body: string): ChangelogEntry {
-	const heading = `## [${major}.${minor}.${patch}] - 2026-07-11`;
-	const content = `${heading}\n\n${body.trimEnd()}`;
-	return { major, minor, patch, content };
-}
-
 async function withTempAgentDir<T>(callback: (agentDir: string) => Promise<T>): Promise<T> {
 	const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-changelog-marker-"));
 	try {
@@ -52,121 +45,63 @@ async function withTempAgentDir<T>(callback: (agentDir: string) => Promise<T>): 
 	}
 }
 
-describe("selectStartupChangelog", () => {
-	const currentVersion = CURRENT_VERSION;
-	const history = [
-		release(2, 0, 0, "### Added\n\n- Current release."),
-		release(1, 9, 0, "### Added\n\n- Previous release."),
-		release(1, 8, 0, "### Added\n\n- Older release."),
-	];
+describe("decideUpdateNotice", () => {
+	test("announces the running version when the marker is an older release", () => {
+		const decision = decideUpdateNotice("1.9.0", "2.0.0");
 
-	test("treats missing, empty, malformed, and unreadable-equivalent markers as first run", () => {
-		const invalidMarkers: Array<{ name: string; value: string | undefined }> = [
-			{ name: "missing or unreadable marker", value: undefined },
-			{ name: "empty marker", value: "" },
-			{ name: "malformed marker", value: "not-a-semver" },
-			{ name: "incomplete marker", value: "1.9" },
-			{ name: "whitespace-padded marker", value: " 1.9.0 " },
-		];
-
-		for (const marker of invalidMarkers) {
-			const selection = selectStartupChangelog(history, marker.value, currentVersion);
-			expect(selection.markdown).toBeUndefined();
-			expect(selection.persistCurrentVersion).toBe(true);
-			expect(selection.truncated).toBe(false);
-			expect(selection.selectedEntries).toBe(0);
-		}
+		expect(decision.installedVersion).toBe("2.0.0");
+		expect(decision.persistCurrentVersion).toBe(true);
 	});
 
-	test("does not render or rewrite when the marker already matches the current version", () => {
-		const selection = selectStartupChangelog(history, currentVersion, currentVersion);
+	test("says nothing on an ordinary restart", () => {
+		const decision = decideUpdateNotice(CURRENT_VERSION, CURRENT_VERSION);
 
-		expect(selection.markdown).toBeUndefined();
-		expect(selection.persistCurrentVersion).toBe(false);
-		expect(selection.truncated).toBe(false);
-		expect(selection.selectedEntries).toBe(0);
+		expect(decision.installedVersion).toBeUndefined();
+		// Nothing changed, so there is no reason to rewrite the marker.
+		expect(decision.persistCurrentVersion).toBe(false);
 	});
 
-	test("selects at most the three newest unseen releases for an older marker", () => {
-		const selection = selectStartupChangelog(
-			[
-				release(1, 0, 5, "### Added\n\n- Unseen five."),
-				release(1, 0, 4, "### Added\n\n- Unseen four."),
-				release(1, 0, 3, "### Added\n\n- Unseen three."),
-				release(1, 0, 2, "### Added\n\n- Unseen two."),
-				release(1, 0, 1, "### Added\n\n- Unseen one."),
-				release(1, 0, 0, "### Added\n\n- Already seen."),
-			],
-			"1.0.0",
-			"1.0.5",
-		);
+	test("stays quiet on a fresh install but records the version", () => {
+		// No marker means nobody has run this before. That is not an update, and
+		// greeting a new user with news about a release they never ran is wrong.
+		const decision = decideUpdateNotice(undefined, CURRENT_VERSION);
 
-		expect(selection.persistCurrentVersion).toBe(true);
-		expect(selection.truncated).toBe(false);
-		expect(selection.selectedEntries).toBe(RECENT_CHANGELOG_ENTRY_LIMIT);
-		expect(selection.markdown?.match(/## \[(\d+\.\d+\.\d+)\]/)?.[1]).toBe("1.0.5");
-		expect(selection.markdown).toContain("## [1.0.5]");
-		expect(selection.markdown).toContain("## [1.0.4]");
-		expect(selection.markdown).toContain("## [1.0.3]");
-		expect(selection.markdown).not.toContain("## [1.0.2]");
-		expect(selection.markdown).not.toContain("## [1.0.1]");
-		expect(selection.markdown).not.toContain("## [1.0.0]");
+		expect(decision.installedVersion).toBeUndefined();
+		expect(decision.persistCurrentVersion).toBe(true);
 	});
 
-	test("caps one oversized startup release and appends the full-changelog hint", () => {
-		const selection = selectStartupChangelog(
-			[release(2, 0, 0, `### Added\n\n- ${"x".repeat(STARTUP_CHANGELOG_MAX_BYTES * 2)}\nTAIL-ONE-RELEASE`)],
-			"1.0.0",
-			"2.0.0",
-		);
+	test("stays quiet on a downgrade and records the version", () => {
+		// Re-announcing every launch would be worse than saying nothing, so the
+		// marker moves down to match what is actually running.
+		const decision = decideUpdateNotice("3.0.0", "2.0.0");
 
-		expect(selection.persistCurrentVersion).toBe(true);
-		expect(selection.selectedEntries).toBe(1);
-		expect(selection.truncated).toBe(true);
-		expect(selection.markdown).toContain(STARTUP_CHANGELOG_FULL_HINT);
-		expect(selection.markdown).not.toContain("TAIL-ONE-RELEASE");
-		expect(Buffer.byteLength(selection.markdown ?? "")).toBeLessThanOrEqual(STARTUP_CHANGELOG_MAX_BYTES);
+		expect(decision.installedVersion).toBeUndefined();
+		expect(decision.persistCurrentVersion).toBe(true);
 	});
 
-	test("caps aggregate startup releases that exceed the byte budget and appends the full-changelog hint", () => {
-		const halfBudgetBody = "x".repeat(Math.ceil(STARTUP_CHANGELOG_MAX_BYTES / 2));
-		const selection = selectStartupChangelog(
-			[
-				release(1, 0, 4, `### Added\n\n- Four ${halfBudgetBody}\nTAIL-FOUR`),
-				release(1, 0, 3, `### Added\n\n- Three ${halfBudgetBody}\nTAIL-THREE`),
-				release(1, 0, 2, `### Added\n\n- Two ${halfBudgetBody}\nTAIL-TWO`),
-				release(1, 0, 1, "### Added\n\n- Already seen."),
-			],
-			"1.0.1",
-			"1.0.4",
-		);
+	test("treats an unreadable marker as a fresh install", () => {
+		const decision = decideUpdateNotice("not-a-version", CURRENT_VERSION);
 
-		expect(selection.persistCurrentVersion).toBe(true);
-		expect(selection.selectedEntries).toBe(RECENT_CHANGELOG_ENTRY_LIMIT);
-		expect(selection.truncated).toBe(true);
-		expect(selection.markdown?.match(/## \[(\d+\.\d+\.\d+)\]/)?.[1]).toBe("1.0.4");
-		expect(selection.markdown).toContain(STARTUP_CHANGELOG_FULL_HINT);
-		expect(selection.markdown).not.toContain("TAIL-THREE");
-		expect(Buffer.byteLength(selection.markdown ?? "")).toBeLessThanOrEqual(STARTUP_CHANGELOG_MAX_BYTES);
+		expect(decision.installedVersion).toBeUndefined();
+		expect(decision.persistCurrentVersion).toBe(true);
 	});
-});
 
-describe("renderChangelogEntries", () => {
-	test("renders complete history when no maxBytes cap is passed", () => {
-		const largeBody = "y".repeat(STARTUP_CHANGELOG_MAX_BYTES);
-		const rendered = renderChangelogEntries([
-			release(3, 0, 0, `### Added\n\n- Third ${largeBody}\nEND-THIRD`),
-			release(2, 0, 0, `### Added\n\n- Second ${largeBody}\nEND-SECOND`),
-			release(1, 0, 0, `### Added\n\n- First ${largeBody}\nEND-FIRST`),
-		]);
+	test("does not advance the marker for a non-release build", () => {
+		// Advancing to a dev/prerelease string would swallow the notice for the
+		// next real release.
+		const decision = decideUpdateNotice("1.9.0", "2.0.0-dev.3");
 
-		expect(rendered.markdown.match(/## \[(\d+\.\d+\.\d+)\]/)?.[1]).toBe("1.0.0");
-		expect(rendered.truncated).toBe(false);
-		expect(rendered.markdown).toContain("END-FIRST");
-		expect(rendered.markdown).toContain("END-SECOND");
-		expect(rendered.markdown).toContain("END-THIRD");
-		expect(rendered.markdown).not.toContain(STARTUP_CHANGELOG_FULL_HINT);
-		expect(Buffer.byteLength(rendered.markdown)).toBeGreaterThan(STARTUP_CHANGELOG_MAX_BYTES);
+		expect(decision.installedVersion).toBeUndefined();
+		expect(decision.persistCurrentVersion).toBe(false);
+	});
+
+	test("announces once, then stays quiet on the next launch", () => {
+		const first = decideUpdateNotice("1.9.0", CURRENT_VERSION);
+		expect(first.installedVersion).toBe(CURRENT_VERSION);
+
+		// The first launch persisted the version, so the second sees a matching marker.
+		const second = decideUpdateNotice(CURRENT_VERSION, CURRENT_VERSION);
+		expect(second.installedVersion).toBeUndefined();
 	});
 });
 
@@ -180,6 +115,56 @@ describe("last changelog marker", () => {
 			expect(await readLastChangelogVersion(agentDir)).toBe(CURRENT_VERSION);
 			expect(await Bun.file(path.join(agentDir, "last-changelog-version")).text()).toBe(CURRENT_VERSION);
 		});
+	});
+});
+
+/**
+ * compareVersions, parseChangelogVersion, and parseChangelog are the version math and
+ * CHANGELOG scanner that decideUpdateNotice and `/changelog` build on. They had no
+ * direct coverage. A regression in the scanner would let a `## Unreleased` section (or
+ * intro prose above the first release) leak into the rendered notes, and a loose
+ * version parse would let a dev/prerelease string be treated as a real release.
+ */
+describe("compareVersions", () => {
+	const v = (major: number, minor: number, patch: number): ChangelogEntry => ({ major, minor, patch, content: "" });
+	test("orders by major, then minor, then patch", () => {
+		expect(compareVersions(v(2, 0, 0), v(1, 9, 9))).toBe(1);
+		expect(compareVersions(v(1, 1, 0), v(1, 2, 0))).toBe(-1);
+		expect(compareVersions(v(1, 2, 3), v(1, 2, 3))).toBe(0);
+		expect(compareVersions(v(1, 2, 5), v(1, 2, 4))).toBe(1);
+	});
+});
+
+describe("parseChangelogVersion", () => {
+	test("parses a strict x.y.z string and rejects everything else", () => {
+		expect(parseChangelogVersion("3.4.5")).toEqual({ major: 3, minor: 4, patch: 5, content: "" });
+		expect(parseChangelogVersion("3.4")).toBeUndefined();
+		expect(parseChangelogVersion("1.2.3-dev")).toBeUndefined();
+		expect(parseChangelogVersion(undefined)).toBeUndefined();
+	});
+});
+
+describe("parseChangelog", () => {
+	test("collects each ## [x.y.z] block and drops content outside a version heading", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-changelog-parse-"));
+		try {
+			const changelogPath = path.join(dir, "CHANGELOG.md");
+			await fs.writeFile(
+				changelogPath,
+				"# Changelog\n\nintro dropped\n\n## [1.2.0] - 2026\n- feat A\n- feat B\n\n## Unreleased\nignored\n\n## [1.1.0]\n- fix C\n",
+			);
+			expect(await parseChangelog(changelogPath)).toEqual([
+				{ major: 1, minor: 2, patch: 0, content: "## [1.2.0] - 2026\n- feat A\n- feat B" },
+				{ major: 1, minor: 1, patch: 0, content: "## [1.1.0]\n- fix C" },
+			]);
+			expect(await parseChangelog(path.join(dir, "does-not-exist.md"))).toEqual([]);
+		} finally {
+			await removeWithRetries(dir);
+		}
+	});
+
+	test("returns [] for an undefined path", async () => {
+		expect(await parseChangelog(undefined)).toEqual([]);
 	});
 });
 
@@ -223,11 +208,15 @@ describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () =>
 
 				expect(exitCode).toBe(124);
 				expect(Buffer.byteLength(output)).toBeLessThan(PTY_STARTUP_OUTPUT_CEILING);
-				// The changelog is gone from the CLI entirely — no version headers, no
-				// "What's New", no full-changelog hint, regardless of any legacy config.
+				// The changelog body is gone from the CLI entirely — no version
+				// headers, no "What's New", and no pointer at a `/changelog full`
+				// subcommand that does not exist.
 				expect(output).not.toContain("## [");
 				expect(output).not.toContain("What's New");
-				expect(output).not.toContain(STARTUP_CHANGELOG_FULL_HINT);
+				expect(output).not.toContain("/changelog full");
+				// A fresh agent dir has no marker, so this is a first install: it
+				// records the version silently rather than announcing an update.
+				expect(output).not.toContain("Updated to");
 				expect(stderr).not.toContain("Cannot find module");
 			} finally {
 				await removeWithRetries(root);

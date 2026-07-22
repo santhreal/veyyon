@@ -27,6 +27,8 @@ import {
 	logger,
 	MAIN_CONFIG_FILENAMES,
 	procmgr,
+	type QuarantinedFile,
+	quarantineUnparseableFile,
 	setWorktreesDir,
 	withFileLock,
 } from "@veyyon/utils";
@@ -62,6 +64,14 @@ export * from "./settings-schema";
 export interface RawSettings {
 	[key: string]: unknown;
 }
+
+/**
+ * A settings file that failed to parse, and where its bytes were preserved.
+ *
+ * An alias for the shared shape rather than a second declaration of it, so the
+ * settings layer and the keybindings layer describe the same thing one way.
+ */
+export type QuarantinedSettingsFile = QuarantinedFile;
 
 export interface SettingsOptions {
 	/** Current working directory for project settings discovery */
@@ -240,6 +250,8 @@ export class Settings {
 	#configOverlay: RawSettings = {};
 	/** Runtime overrides (not persisted) */
 	#overrides: RawSettings = {};
+	/** Settings files that could not be parsed, and where their bytes were kept. */
+	#quarantined: QuarantinedSettingsFile[] = [];
 	/** Merged view (global + project + overrides) */
 	#merged: RawSettings = {};
 	/** Cached resolved values from the merged view, including defaults/path scoping */
@@ -390,6 +402,17 @@ export class Settings {
 					: undefined;
 		this.#resolvedCache.set(path, resolved);
 		return resolved as SettingValue<P>;
+	}
+
+	/**
+	 * Settings files that could not be parsed during this session's load.
+	 *
+	 * Empty in the normal case. A non-empty list means the session is running
+	 * without those files' settings, and a caller with a user-visible surface
+	 * should say so: the log alone is not somewhere anyone looks.
+	 */
+	get quarantinedFiles(): readonly QuarantinedSettingsFile[] {
+		return this.#quarantined;
 	}
 
 	/**
@@ -591,6 +614,24 @@ export class Settings {
 			}
 		}
 		return result as unknown as GroupTypeMap[G];
+	}
+
+	/**
+	 * Resolve every known setting to its effective value, keyed by dotted path.
+	 *
+	 * This is the complete config that governed a run — compaction strategy,
+	 * reserve tokens, advisor/subagent config, tool config, and every other
+	 * Tier-A knob — captured as one flat map. A session records this at start so a
+	 * later study/backtest can reproduce the exact configuration the run used,
+	 * not merely guess it from current defaults. Keys are sorted for stable,
+	 * diffable output.
+	 */
+	getEffectiveSnapshot(): Record<string, unknown> {
+		const result: Record<string, unknown> = {};
+		for (const key of (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).sort()) {
+			result[key] = this.get(key);
+		}
+		return result;
 	}
 
 	/**
@@ -807,8 +848,23 @@ export class Settings {
 			}
 			return this.#migrateRawSettings(parsed as RawSettings);
 		} catch (error) {
-			logger.warn("Settings: failed to load", { path: filePath, error: String(error) });
+			await this.#quarantineUnparseableSettings(filePath, content, error);
 			return {};
+		}
+	}
+
+	/**
+	 * Preserve a settings file we could not parse, and remember it for the UI.
+	 *
+	 * The preserving itself lives in `@veyyon/utils` because keybindings has the
+	 * same hazard; what is specific here is recording the file so
+	 * {@link quarantinedFiles} can report it at startup.
+	 */
+	async #quarantineUnparseableSettings(filePath: string, content: string, error: unknown): Promise<void> {
+		const quarantinePath = await quarantineUnparseableFile(filePath, content, error);
+		if (!quarantinePath) return;
+		if (!this.#quarantined.some(entry => entry.path === filePath)) {
+			this.#quarantined.push({ path: filePath, quarantinePath });
 		}
 	}
 
@@ -984,6 +1040,13 @@ export class Settings {
 		}
 		delete raw.lastChangelogVersion;
 
+		// collapseChangelog gated how much of the changelog startup dumped into the
+		// terminal. Startup no longer prints release notes at all — it prints one
+		// line and `/changelog` opens them on the web — so the old key has no
+		// behavior left to control. Drop it rather than leave a toggle that does
+		// nothing; `startup.updateNotice` governs the line that replaced it.
+		delete raw.collapseChangelog;
+
 		// ask.timeout: ms -> seconds (if value > 1000, it's old ms format)
 		if (raw.ask && typeof (raw.ask as Record<string, unknown>).timeout === "number") {
 			const oldValue = (raw.ask as Record<string, unknown>).timeout as number;
@@ -1068,7 +1131,7 @@ export class Settings {
 			raw["edit.mode"] = "hashline";
 		}
 
-		// compaction.strategy: collapse legacy strategies to handoff|snap; off disables compaction.
+		// compaction.strategy: collapse legacy strategies to handoff|summary; off disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
 			if (typeof current !== "string") return undefined;
@@ -1133,13 +1196,11 @@ export class Settings {
 			raw.cycleOrder = cycleOrder.filter(role => role !== "default");
 		}
 
-		// snapcompact.systemPrompt: boolean -> scoped enum.
-		const snapcompactObj = raw.snapcompact as Record<string, unknown> | undefined;
-		if (snapcompactObj && typeof snapcompactObj.systemPrompt === "boolean") {
-			snapcompactObj.systemPrompt = snapcompactObj.systemPrompt ? "all" : "none";
-		}
-		if (typeof raw["snapcompact.systemPrompt"] === "boolean") {
-			raw["snapcompact.systemPrompt"] = raw["snapcompact.systemPrompt"] ? "all" : "none";
+		// The snapcompact image-archive engine was removed; drop any persisted
+		// snapcompact.* settings so schema validation does not trip on stale keys.
+		delete raw.snapcompact;
+		for (const key of Object.keys(raw)) {
+			if (key.startsWith("snapcompact.")) delete raw[key];
 		}
 
 		// inlineToolDescriptors: boolean -> enum (auto | on | off). The old
@@ -1636,16 +1697,36 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 	},
 	symbolPreset: value => {
 		if (typeof value === "string" && (value === "unicode" || value === "nerd" || value === "ascii")) {
-			setSymbolPreset(value).catch(err => {
-				logger.warn("Settings: symbolPreset hook failed", { preset: value, error: String(err) });
-			});
+			setSymbolPreset(value)
+				.then(result => {
+					// The preset applied, but re-rendering the committed theme fell
+					// back — record which theme is actually on screen now.
+					if (result.fellBack) {
+						logger.warn("Settings: symbolPreset applied but the theme fell back", {
+							preset: value,
+							error: result.error,
+						});
+					}
+				})
+				.catch(err => {
+					logger.warn("Settings: symbolPreset hook failed", { preset: value, error: String(err) });
+				});
 		}
 	},
 	colorBlindMode: value => {
 		if (typeof value === "boolean") {
-			setColorBlindMode(value).catch(err => {
-				logger.warn("Settings: colorBlindMode hook failed", { enabled: value, error: String(err) });
-			});
+			setColorBlindMode(value)
+				.then(result => {
+					if (result.fellBack) {
+						logger.warn("Settings: colorBlindMode applied but the theme fell back", {
+							enabled: value,
+							error: result.error,
+						});
+					}
+				})
+				.catch(err => {
+					logger.warn("Settings: colorBlindMode hook failed", { enabled: value, error: String(err) });
+				});
 		}
 	},
 	"provider.appendOnlyContext": value => {

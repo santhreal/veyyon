@@ -6,6 +6,7 @@ import {
 	canonicalSnapshotKey,
 	getFileSnapshotStore,
 	parseSeenLinesFromHashlineBody,
+	recordSeenLinesFromBody,
 } from "@veyyon/coding-agent/edit/file-snapshot-store";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 
@@ -92,5 +93,59 @@ describe("parseSeenLinesFromHashlineBody", () => {
 	it("tolerates grep `*`/space match markers before the line number (search/ast-grep output)", () => {
 		const body = ["*73:matched line", " 74:context line", "…", " 75:more context"].join("\n");
 		expect(parseSeenLinesFromHashlineBody(body)).toEqual([73, 74, 75]);
+	});
+});
+
+/**
+ * recordSeenLinesFromBody is the wiring that turns a displayed hashline body into the snapshot's
+ * seen-line set: it parses the body's `NN:` prefixes, optionally prunes column-truncated lines the
+ * model only partially saw, and merges the survivors into the snapshot the read minted. It had no
+ * direct test. The contracts pinned here are the ones the patcher's seen-line guard depends on:
+ *   - the parsed line numbers land in the snapshot's `seenLines` set under its tag;
+ *   - `excludedLines` removes exactly those column-truncated lines before recording, so a partially
+ *     shown line is NOT marked seen (the guard must keep rejecting edits against it);
+ *   - a body with no numbered rows records nothing (best-effort no-op, seenLines stays undefined);
+ *   - an unknown/aged-out tag is a silent no-op, never a throw.
+ * A regression that skipped the exclusion or recorded under the wrong tag would let the patcher accept
+ * an edit anchored on a line the model never fully read.
+ */
+describe("recordSeenLinesFromBody", () => {
+	const seedSnapshot = (): { session: SessionOwner; key: string; tag: string } => {
+		const session: SessionOwner = {};
+		const store = getFileSnapshotStore(session);
+		// A stable absolute path that need not exist on disk: canonicalSnapshotKey
+		// falls back to the input, and the store keys purely off that string.
+		const absPath = "/snap-seen/only.ts";
+		const key = canonicalSnapshotKey(absPath);
+		const tag = store.record(key, "l1\nl2\nl3\n");
+		return { session, key, tag };
+	};
+
+	const seenFor = (session: SessionOwner, key: string, tag: string): number[] => {
+		const set = getFileSnapshotStore(session).byHash(key, tag)?.seenLines;
+		return set ? [...set].sort((a, b) => a - b) : [];
+	};
+
+	it("merges the body's parsed line numbers into the snapshot's seenLines under its tag", () => {
+		const { session, key, tag } = seedSnapshot();
+		recordSeenLinesFromBody(session, "/snap-seen/only.ts", tag, ["10:x", "11:y", "12:z"].join("\n"));
+		expect(seenFor(session, key, tag)).toEqual([10, 11, 12]);
+	});
+
+	it("prunes column-truncated lines listed in excludedLines before recording", () => {
+		const { session, key, tag } = seedSnapshot();
+		recordSeenLinesFromBody(session, "/snap-seen/only.ts", tag, ["20:a", "21:b"].join("\n"), new Set([21]));
+		expect(seenFor(session, key, tag)).toEqual([20]);
+	});
+
+	it("records nothing when the body has no numbered rows", () => {
+		const { session, key, tag } = seedSnapshot();
+		recordSeenLinesFromBody(session, "/snap-seen/only.ts", tag, "no numbered rows here");
+		expect(getFileSnapshotStore(session).byHash(key, tag)?.seenLines).toBeUndefined();
+	});
+
+	it("is a silent no-op for an unknown tag", () => {
+		const { session } = seedSnapshot();
+		expect(() => recordSeenLinesFromBody(session, "/snap-seen/only.ts", "deadbeef", "5:x")).not.toThrow();
 	});
 });

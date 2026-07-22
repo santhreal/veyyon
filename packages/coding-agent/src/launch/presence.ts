@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, postmortem } from "@veyyon/utils";
+import { isEnoent, isProcessAlive, postmortem } from "@veyyon/utils";
 import { daemonRuntimeDir } from "./paths";
 
 const CLIENTS_DIR = "clients";
@@ -68,12 +68,8 @@ export async function hasLiveDaemonProjectPresence(runtimeDir: string): Promise<
 				await fs.rm(presencePath, { force: true });
 				continue;
 			}
-			try {
-				process.kill(decoded.pid, 0);
-				live = true;
-			} catch {
-				await fs.rm(presencePath, { force: true });
-			}
+			if (isProcessAlive(decoded.pid)) live = true;
+			else await fs.rm(presencePath, { force: true });
 		} catch (error) {
 			if (!isEnoent(error)) await fs.rm(presencePath, { force: true });
 		}

@@ -3,8 +3,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { Settings } from "../../config/settings";
+import type { LocalProtocolOptions } from "../../internal-urls";
 import { AgentProtocolHandler } from "../../internal-urls/agent-protocol";
 import { resetRegisteredArtifactDirsForTests } from "../../internal-urls/registry-helpers";
+import type { MCPManager } from "../../mcp";
 import type { PlanModeState } from "../../plan-mode/state";
 import { AgentRegistry } from "../../registry/agent-registry";
 import type { AgentSession } from "../../session/agent-session";
@@ -51,6 +53,9 @@ interface SessionOptions {
 	settings?: Settings;
 	outputManager?: AgentOutputManager;
 	planMode?: boolean;
+	mcpManager?: MCPManager;
+	localProtocolOptions?: LocalProtocolOptions;
+	agentId?: string;
 }
 
 function makeSession(options: SessionOptions = {}): ToolSession {
@@ -83,6 +88,9 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 						planFilePath: path.join(options.cwd ?? process.cwd(), "plan.md"),
 					}) satisfies PlanModeState
 			: undefined,
+		mcpManager: options.mcpManager,
+		localProtocolOptions: options.localProtocolOptions,
+		getAgentId: options.agentId !== undefined ? () => options.agentId as string : undefined,
 	};
 }
 
@@ -309,6 +317,29 @@ describe("runEvalAgent", () => {
 		expect(firstOptions.modelOverride).toEqual(["p/override"]);
 		expect(secondOptions.outputSchema).toBeUndefined();
 		expect(secondOptions.outputSchemaOverridesAgent).toBeUndefined();
+	});
+
+	it("forwards session-scoped MCP, local protocol options, and the parent agent id", async () => {
+		// A bridge subagent must run inside the parent's MCP surface and local-protocol
+		// (artifacts/session) scope, and carry the parent agent id, so its own tool calls
+		// and agent:// URLs resolve against the same session. A regression that dropped any
+		// of these would silently sandbox the child away from the parent's resources.
+		mockAgents([taskAgent]);
+		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
+		const mcpManager = { sentinel: "mcp" } as unknown as MCPManager;
+		const localProtocolOptions: LocalProtocolOptions = {
+			getArtifactsDir: () => "/tmp/parent-artifacts",
+			getSessionId: () => "parent-session",
+		};
+		const session = makeSession({ mcpManager, localProtocolOptions, agentId: "BridgeParent" });
+
+		await runEvalAgent({ prompt: "do work", agent: "task" }, { session });
+
+		expect(runSpy).toHaveBeenCalledTimes(1);
+		const options = runSpy.mock.calls[0]?.[0];
+		expect(options?.mcpManager).toBe(mcpManager);
+		expect(options?.localProtocolOptions).toBe(localProtocolOptions);
+		expect(options?.parentAgentId).toBe("BridgeParent");
 	});
 
 	it("forces LSP off for bridge subagents even when task.enableLsp is on", async () => {

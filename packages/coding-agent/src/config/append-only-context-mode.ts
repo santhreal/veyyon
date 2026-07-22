@@ -1,4 +1,4 @@
-import { hostMatchesUrl } from "@veyyon/catalog/hosts";
+import { hasLocalLoopbackBaseUrl, hostMatchesUrl } from "@veyyon/catalog/hosts";
 
 /** Provider metadata needed to resolve append-only context mode. */
 export interface AppendOnlyContextModel {
@@ -17,39 +17,6 @@ export interface AppendOnlyContextModel {
  * step (see `agent-loop.ts` `streamAssistantResponse` fallback path).
  */
 const LOCAL_INFERENCE_PROVIDERS = new Set(["ollama", "ollama-cloud", "lm-studio", "llama.cpp"]);
-
-/** True when `baseUrl` resolves to a loopback or RFC1918 host — covers
- * llama.cpp/vLLM/sglang servers registered under a user-defined provider id
- * via `models.yaml`. Built-in local provider ids (`ollama`, `lm-studio`,
- * `llama.cpp`) are already handled by `LOCAL_INFERENCE_PROVIDERS`.
- * Substring match on the parsed hostname only; ports, paths, and unparseable
- * URLs return false.
- */
-function hasLocalLoopbackBaseUrl(baseUrl: string | undefined): boolean {
-	if (!baseUrl) return false;
-	let hostname: string;
-	try {
-		hostname = new URL(baseUrl).hostname.toLowerCase();
-	} catch {
-		return false;
-	}
-	if (
-		hostname === "localhost" ||
-		hostname === "127.0.0.1" ||
-		hostname === "0.0.0.0" ||
-		hostname === "::1" ||
-		hostname === "[::1]"
-	) {
-		return true;
-	}
-	// RFC1918 private IPv4 ranges.
-	if (/^10\./.test(hostname)) return true;
-	if (/^192\.168\./.test(hostname)) return true;
-	if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) return true;
-	// Common ".local" mDNS hostnames used for home-LAN llama.cpp boxes.
-	if (hostname.endsWith(".local")) return true;
-	return false;
-}
 
 function shouldAutoEnableAppendOnlyContext(model: AppendOnlyContextModel | null | undefined): boolean {
 	if (!model) return false;

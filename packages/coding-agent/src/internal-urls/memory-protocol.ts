@@ -4,7 +4,7 @@ import { errorMessage, getAgentDir, isEnoent } from "@veyyon/utils";
 import { getMemoryRoot } from "../memories";
 import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessionState } from "../mnemopi/state";
 import { AgentRegistry } from "../registry/agent-registry";
-import { buildDirectoryResource } from "./filesystem-resource";
+import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { validateRelativePath } from "./skill-protocol";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
@@ -34,9 +34,7 @@ function memoryRootsForContext(context?: ResolveContext): string[] {
 }
 
 function ensureWithinRoot(targetPath: string, rootPath: string): void {
-	if (targetPath !== rootPath && !targetPath.startsWith(`${rootPath}${path.sep}`)) {
-		throw new Error("memory:// URL escapes memory root");
-	}
+	ensureWithinRootShared(targetPath, rootPath, "memory");
 }
 
 function toMemoryValidationError(error: unknown): Error {

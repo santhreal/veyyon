@@ -268,8 +268,8 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 	const projectPluginsDir = getProjectPath(ctx, "opencode", "plugins");
 
 	const [userPaths, projectPaths] = await Promise.all([
-		userPluginsDir ? discoverExtensionModulePaths(ctx, userPluginsDir) : Promise.resolve([]),
-		projectPluginsDir ? discoverExtensionModulePaths(ctx, projectPluginsDir) : Promise.resolve([]),
+		userPluginsDir ? discoverExtensionModulePaths(userPluginsDir) : Promise.resolve([]),
+		projectPluginsDir ? discoverExtensionModulePaths(projectPluginsDir) : Promise.resolve([]),
 	]);
 
 	const items = buildExtensionModuleItems(PROVIDER_ID, userPaths, projectPaths);

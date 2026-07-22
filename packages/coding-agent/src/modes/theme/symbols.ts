@@ -22,6 +22,8 @@ export type SymbolKey =
 	| "status.disabled"
 	| "status.enabled"
 	| "status.running"
+	| "status.connecting"
+	| "status.active"
 	| "status.shadowed"
 	| "status.aborted"
 	| "status.done"
@@ -31,6 +33,8 @@ export type SymbolKey =
 	| "nav.expand"
 	| "nav.collapse"
 	| "nav.back"
+	| "nav.prev"
+	| "nav.next"
 	// Tree Connectors
 	| "tree.branch"
 	| "tree.last"
@@ -99,6 +103,7 @@ export type SymbolKey =
 	| "icon.output"
 	| "icon.throughput"
 	| "icon.host"
+	| "icon.profile"
 	| "icon.session"
 	| "icon.package"
 	| "icon.warning"
@@ -233,17 +238,24 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"status.info": "ⓘ",
 	"status.pending": "⏳",
 	"status.disabled": "⦸",
-	"status.enabled": "●",
+	// House block style (see docs/internal/tui-design-language.md "Blockiness"):
+	// a bare presence marker is a square, not a circle. `▪` = present/on/done,
+	// `▫` = shadowed/auto. Kept distinct from the `■`/`□` checkbox squares.
+	"status.enabled": "▪",
 	"status.running": "⟳",
-	"status.shadowed": "○",
+	"status.connecting": "◌",
+	"status.active": "●",
+	"status.shadowed": "▫",
 	"status.aborted": "⏹",
-	"status.done": "•",
+	"status.done": "▪",
 	// Navigation
 	"nav.cursor": "›",
 	"nav.selected": "›",
 	"nav.expand": "▸",
 	"nav.collapse": "▾",
 	"nav.back": "⟵",
+	"nav.prev": "◂",
+	"nav.next": "▸",
 	// Tree
 	"tree.branch": "├─",
 	"tree.last": "└─",
@@ -324,11 +336,12 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.output": "⤴",
 	"icon.throughput": "",
 	"icon.host": "",
+	"icon.profile": "",
 	"icon.session": "",
 	"icon.package": "",
 	"icon.warning": "!",
 	"icon.rewind": "↶",
-	"icon.auto": "⟲",
+	"icon.auto": "∞",
 	"icon.fast": "",
 	"icon.extensionSkill": "*",
 	"icon.extensionTool": "",
@@ -343,20 +356,27 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.mic": "",
 	// Compaction divider
 	"icon.camera": "",
-	// Thinking levels
-	"thinking.minimal": "o min",
-	"thinking.low": "◔ low",
-	"thinking.medium": "◑ med",
-	"thinking.high": "◒ high",
-	"thinking.xhigh": "◕ xhigh",
-	"thinking.max": "◉ max",
+	// Thinking levels: an eighth-block level gauge (▁▂▃▅▆█), so reasoning effort
+	// reads as rising magnitude rather than as filling quadrant circles. The
+	// Plain text labels, no leading bar glyph: the block bars (▁▂▃▅▆█) rendered
+	// as stray solid rectangles next to the word and read as artifacts, not a
+	// scale. `glyphOf`/`thinkingGlyph` split on the first space, so with no glyph
+	// they return the label itself — the compact chip shows the word instead.
+	"thinking.minimal": "min",
+	"thinking.low": "low",
+	"thinking.medium": "med",
+	"thinking.high": "high",
+	"thinking.xhigh": "xhigh",
+	"thinking.max": "max",
 	"thinking.autoPending": "⟳",
 	// Checkboxes
 	"checkbox.checked": "■",
 	"checkbox.unchecked": "□",
-	// Radio (single-choice)
-	"radio.selected": "◉",
-	"radio.unselected": "○",
+	// Radio (single-choice): squared to match the house block style, and kept
+	// visually distinct from the `■`/`□` checkbox — `▣` is a square-in-square so
+	// a selected radio never reads as a checked box.
+	"radio.selected": "▣",
+	"radio.unselected": "□",
 	// Formatting
 	"format.bullet": "•",
 	"format.dash": "—",
@@ -420,8 +440,10 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tab.tools": "",
 	"tab.memory": "",
 	"tab.tasks": "",
+	// icon-light doctrine applies to Global too — the lone 🌐 emoji among ten
+	// bare labels read as a glitch, not an accent.
 	"tab.providers": "",
-	"tab.global": "🌐",
+	"tab.global": "",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "❐",
 	"tool.edit": "✎",
@@ -468,6 +490,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"status.enabled": "\uf111",
 	// pick:  | alt:   
 	"status.running": "\uf110",
+	"status.connecting": "\uf10c",
+	"status.active": "\uf111",
 	// pick:  (nf-fa-circle_o, pairs with status.enabled's nf-fa-circle) | alt: ◐ ◑
 	"status.shadowed": "\uf10c",
 	// pick:  | alt:  
@@ -483,6 +507,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"nav.expand": "\uf0da",
 	// pick:  | alt:  
 	"nav.collapse": "\uf0d7",
+	"nav.prev": "\uf0d9",
+	"nav.next": "\uf0da",
 	// pick:  | alt:  
 	"nav.back": "\uf060",
 	// Tree Connectors (same as unicode)
@@ -614,6 +640,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"icon.throughput": "\uf0e4",
 	// pick:  | alt:  
 	"icon.host": "\uf109",
+	"icon.profile": "",
+	// pick:  | alt: 
 	// pick:  | alt:  
 	"icon.session": "\uf550",
 	// pick:  | alt: 
@@ -623,7 +651,7 @@ export const NERD_SYMBOLS: SymbolMap = {
 	// pick:  | alt:  ↺
 	"icon.rewind": "\uf0e2",
 	// pick: 󰁨 | alt:   
-	"icon.auto": "\u{f0068}",
+	"icon.auto": "\u{f06e4}",
 	"icon.fast": "\uf0e7",
 	"icon.extensionSkill": "\uf0eb",
 	// pick:  | alt:  
@@ -733,7 +761,9 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"tab.memory": "󰧑",
 	"tab.tasks": "󰐱",
 	"tab.providers": "󰖟",
-	"tab.global": "🌐",
+	// mdi-earth: single-cell like every other tab glyph — the emoji 🌐 was the
+	// one double-width cell in the column and broke label alignment.
+	"tab.global": "\u{F01E7}",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "\uEA7F",
 	"tool.edit": "\uEA73",
@@ -772,6 +802,8 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"status.disabled": "[ ]",
 	"status.enabled": "[x]",
 	"status.running": "[~]",
+	"status.connecting": "o",
+	"status.active": "*",
 	"status.shadowed": "[/]",
 	"status.aborted": "[-]",
 	"status.done": "*",
@@ -781,6 +813,8 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"nav.expand": "+",
 	"nav.collapse": "-",
 	"nav.back": "<-",
+	"nav.prev": "<",
+	"nav.next": ">",
 	// Tree Connectors
 	"tree.branch": "|--",
 	"tree.last": "'--",
@@ -849,6 +883,7 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"icon.cacheMiss": "!",
 	"icon.input": "in:",
 	"icon.host": "host",
+	"icon.profile": "prof",
 	"icon.session": "id",
 	"icon.package": "[P]",
 	"icon.warning": "[!]",

@@ -4,6 +4,7 @@ import {
 	buildCopyTargets,
 	type CopySource,
 	type CopyTarget,
+	extractBlocks,
 	extractCodeBlocks,
 	extractLastCommand,
 	extractQuoteBlocks,
@@ -31,6 +32,52 @@ function assistantCalls(toolCalls: Array<{ name: string; arguments: Record<strin
 		content: toolCalls.map((tc, i) => ({ type: "toolCall", id: `tc-${i}`, name: tc.name, arguments: tc.arguments })),
 	} as unknown as AgentMessage;
 }
+
+/**
+ * extractBlocks is the shared markdown grammar under extractCodeBlocks and
+ * extractQuoteBlocks: it returns fenced-code and `>`-quoted blocks in one
+ * document-ordered array. The split filter functions hide two grammar rules that
+ * only a direct test can pin: (1) code and quote blocks interleave in true
+ * document order; (2) a fence MASKS its body so a `>` line inside code is not a
+ * quote, while an UNCLOSED fence is demoted to ordinary text (so `>` lines after
+ * it parse as quotes again). Also pins fence-language trimming, the single
+ * optional-space strip after `>`, and blank-line quote flushing.
+ */
+describe("extractBlocks", () => {
+	it("interleaves code and quote blocks in document order", () => {
+		expect(extractBlocks("> q1\n```ts\ncode\n```\n> q2")).toEqual([
+			{ kind: "quote", text: "q1" },
+			{ kind: "code", lang: "ts", code: "code" },
+			{ kind: "quote", text: "q2" },
+		]);
+	});
+
+	it("masks a `>` line inside a fenced block so it is code, not a quote", () => {
+		expect(extractBlocks("```\n> not a quote\n```")).toEqual([{ kind: "code", lang: "", code: "> not a quote" }]);
+	});
+
+	it("demotes an unclosed fence to ordinary text so later `>` lines parse as quotes", () => {
+		// The opener has no closing fence, so it (and its body) are dropped as plain
+		// text and the trailing `> real quote` is recognized as a quote block.
+		expect(extractBlocks("```ts\nstuff\n> real quote")).toEqual([{ kind: "quote", text: "real quote" }]);
+	});
+
+	it("trims the fence info string and preserves an empty body", () => {
+		expect(extractBlocks("```  python  \nx\n```")).toEqual([{ kind: "code", lang: "python", code: "x" }]);
+		expect(extractBlocks("```\n```")).toEqual([{ kind: "code", lang: "", code: "" }]);
+	});
+
+	it("strips one optional space after `>` and keeps the rest verbatim", () => {
+		expect(extractBlocks("> spaced\n>nospace")).toEqual([{ kind: "quote", text: "spaced\nnospace" }]);
+	});
+
+	it("flushes into separate quote blocks when a non-quote line intervenes", () => {
+		expect(extractBlocks("> a\n\n> b")).toEqual([
+			{ kind: "quote", text: "a" },
+			{ kind: "quote", text: "b" },
+		]);
+	});
+});
 
 describe("extractCodeBlocks", () => {
 	it("captures the language id and strips the trailing newline", () => {

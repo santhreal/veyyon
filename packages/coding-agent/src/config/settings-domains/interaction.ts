@@ -175,7 +175,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Setup Wizard",
-			description: "Show newly added onboarding steps once per setup version",
+			description: "Run onboarding on first install and after each major version update",
 		},
 	},
 
@@ -207,14 +207,27 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
-	collapseChangelog: {
+	// Depends on startup.checkUpdate: the check is what finds the release to
+	// install, so turning the check off turns automatic updating off with it.
+	"startup.autoUpdate": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "interaction",
 			group: "Startup & Updates",
-			label: "Collapse Changelog",
-			description: "Show condensed changelog after updates",
+			label: "Automatic Updates",
+			description: "Install a newer version in the background; it takes effect on the next launch",
+		},
+	},
+
+	"startup.updateNotice": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "interaction",
+			group: "Startup & Updates",
+			label: "Update Notice",
+			description: "Show a one-line notice on the first launch after an update",
 		},
 	},
 

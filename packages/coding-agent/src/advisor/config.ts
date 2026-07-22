@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, isRecord, logger } from "@veyyon/utils";
+import { isEnoent, isRecord, logger, quarantineUnparseableFile } from "@veyyon/utils";
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
@@ -213,6 +213,11 @@ export async function resolveAdvisorConfigEditPath(
  * Load one `WATCHDOG.yml` file for editing — raw, un-merged, un-expanded. Missing,
  * unparseable, or schema-invalid files yield an empty doc (never throws) so the
  * editor opens cleanly on a fresh or broken file.
+ *
+ * A broken file is preserved before it is treated as empty. Opening the editor on
+ * an empty doc and saving it deletes the file outright (see
+ * {@link saveWatchdogConfigFile}), so without the copy a single syntax error plus
+ * one visit to the editor destroyed every advisor the user had configured.
  */
 export async function loadWatchdogConfigFile(filePath: string): Promise<WatchdogConfigDoc> {
 	let text: string;
@@ -227,13 +232,18 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 	try {
 		parsed = YAML.parse(text);
 	} catch (err) {
-		logger.warn("Advisor config: failed to parse for edit", { path: filePath, error: String(err) });
+		await quarantineUnparseableFile(filePath, text, err);
 		return { advisors: [] };
 	}
-	if (!isRecord(parsed)) return { advisors: [] };
+	if (!isRecord(parsed)) {
+		await quarantineUnparseableFile(filePath, text, new Error("expected a YAML mapping"));
+		return { advisors: [] };
+	}
 	const result = watchdogYamlSchema(parsed);
 	if (result instanceof type.errors) {
-		logger.warn("Advisor config: invalid schema for edit", { path: filePath, error: result.summary });
+		// Schema-invalid is the same hazard as unparseable: the editor shows an
+		// empty doc, and saving it removes the file. Keep the bytes.
+		await quarantineUnparseableFile(filePath, text, new Error(result.summary));
 		return { advisors: [] };
 	}
 	return {

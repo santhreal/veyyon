@@ -6,10 +6,9 @@ import type { ConventionalAnalysis } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
 import { runMapPhase } from "./map-phase";
 import { runReducePhase } from "./reduce-phase";
-import { estimateTokens } from "./utils";
+import { estimateTokens, MAX_FILE_TOKENS } from "./utils";
 
 const MIN_FILES_FOR_MAP_REDUCE = 4;
-const MAX_FILE_TOKENS = 50_000;
 
 export interface MapReduceSettings {
 	enabled?: boolean;

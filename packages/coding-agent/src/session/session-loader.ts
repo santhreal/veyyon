@@ -1,9 +1,15 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { getBlobsDir, isEnoent, parseJsonlLenient } from "@veyyon/utils";
-import { BlobStore, isBlobRef, resolveImageData, resolveImageDataUrl } from "./blob-store";
+import { getBlobsDir, isEnoent, logger, parseJsonlLenient } from "@veyyon/utils";
+import {
+	BlobStore,
+	isBlobRef,
+	isTextBlobRef,
+	resolveImageData,
+	resolveImageDataUrl,
+	resolveTextBlobRef,
+} from "./blob-store";
 import { buildSessionContext } from "./session-context";
 import {
-	type CompactionEntry,
 	type FileEntry,
 	type RawFileEntry,
 	SESSION_TITLE_SLOT_BYTES,
@@ -22,8 +28,6 @@ import {
 } from "./session-title-slot";
 
 const STREAM_LOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
-const ELIDED_COMPACTION_SUMMARY = "[Superseded compaction summary elided during session load]";
-const ELIDED_COMPACTION_SHORT_SUMMARY = "Superseded compaction elided";
 
 function splitTitleSlot(content: string): { body: string; slot: SessionTitleUpdate | undefined } {
 	const slot = titleUpdateFromSlot(parseTitleSlotFromContent(content));
@@ -49,56 +53,37 @@ function foldTitleSlot(entries: FileEntry[], slot: SessionTitleUpdate | undefine
 	return entries;
 }
 
-/** Parse session JSONL while stripping and folding the optional fixed title slot. */
-export function parseSessionContent(content: string): {
+/**
+ * Parse session JSONL while stripping and folding the optional fixed title slot.
+ *
+ * A malformed record is skipped so one corrupt line cannot make a whole session
+ * unopenable, but the skip is NEVER silent: each dropped record is logged loudly
+ * with its offset so a lost entry is visible when studying the session later,
+ * rather than vanishing without a trace.
+ */
+export function parseSessionContent(
+	content: string,
+	context?: { source?: string },
+): {
 	entries: FileEntry[];
 	titleSlot: SessionTitleUpdate | undefined;
 } {
 	const { body, slot } = splitTitleSlot(content);
-	const entries = parseJsonlLenient<RawFileEntry>(body) as FileEntry[];
+	let skipped = 0;
+	const entries = parseJsonlLenient<RawFileEntry>(body, {
+		onSkip: skip => {
+			skipped += 1;
+			logger.warn("Skipped a malformed session record on load (data lost)", {
+				source: context?.source,
+				offset: skip.offset,
+				snippet: skip.snippet,
+			});
+		},
+	}) as FileEntry[];
+	if (skipped > 0) {
+		logger.warn("Session load dropped malformed records", { source: context?.source, skipped });
+	}
 	return { entries: foldTitleSlot(entries, slot), titleSlot: slot };
-}
-
-function elideCompactionSummary(entry: CompactionEntry | undefined): boolean {
-	if (!entry) return false;
-	if (
-		entry.summary === ELIDED_COMPACTION_SUMMARY &&
-		entry.shortSummary === ELIDED_COMPACTION_SHORT_SUMMARY &&
-		entry.preserveData === undefined
-	) {
-		return false;
-	}
-	entry.summary = ELIDED_COMPACTION_SUMMARY;
-	entry.shortSummary = ELIDED_COMPACTION_SHORT_SUMMARY;
-	entry.preserveData = undefined;
-	return true;
-}
-
-function collectActiveBranchIds(entries: FileEntry[]): Set<string> {
-	const byId = new Map<string, SessionEntry>();
-	for (const entry of entries) {
-		const id = (entry as SessionEntry).id;
-		if (typeof id === "string") byId.set(id, entry as SessionEntry);
-	}
-	const branchIds = new Set<string>();
-	let cursor = entries[entries.length - 1] as SessionEntry | undefined;
-	while (cursor && typeof cursor.id === "string" && !branchIds.has(cursor.id)) {
-		branchIds.add(cursor.id);
-		const parentId = cursor.parentId;
-		cursor = parentId ? byId.get(parentId) : undefined;
-	}
-	return branchIds;
-}
-
-function elideSupersededCompactionEntries(entries: FileEntry[]): void {
-	const branchIds = collectActiveBranchIds(entries);
-	let previousCompaction: CompactionEntry | undefined;
-	for (const entry of entries) {
-		if (entry.type !== "compaction") continue;
-		if (!branchIds.has(entry.id)) continue;
-		elideCompactionSummary(previousCompaction);
-		previousCompaction = entry;
-	}
 }
 
 /** Exported for testing — the ≥8MiB streaming path (works on any file size). */
@@ -109,6 +94,7 @@ export async function loadEntriesFromFileStream(filePath: string): Promise<{
 	const entries: FileEntry[] = [];
 	let titleSlot: SessionTitleUpdate | undefined;
 	let sawFirstLine = false;
+	let skipped = 0;
 	// Byte buffer (NOT a decoded string): multibyte UTF-8 sequences that straddle
 	// a stream-chunk boundary stay intact, and Bun.JSONL.parseChunk accepts typed
 	// arrays directly. Only the unconsumed remainder is held (≤ one record + a
@@ -124,9 +110,23 @@ export async function loadEntriesFromFileStream(filePath: string): Promise<{
 				for (const value of values) entries.push(value as FileEntry);
 			}
 			if (error) {
-				// Malformed record: skip past the next newline and continue.
+				// `read > 0` means parseChunk consumed good record(s) (already pushed
+				// above) and the error belongs to the NEXT record — `read` points at the
+				// delimiter before it. Skip past the delimiter WITHOUT counting: the
+				// malformed record resurfaces at the head (`read === 0`) on the next pass,
+				// where it is counted and logged exactly once. Counting here as well is
+				// what double-reported every malformed line. The skip is never silent
+				// (Law 10) — it is logged loudly at the head, with a final total below.
+				const isHeadError = read === 0;
 				const nextNewline = buffer.indexOf(0x0a, read);
 				if (nextNewline === -1) break; // rest of the bad line not yet received
+				if (isHeadError) {
+					skipped += 1;
+					logger.warn("Skipped a malformed session record on streaming load (data lost)", {
+						source: filePath,
+						snippet: decoder.decode(buffer.subarray(0, Math.min(nextNewline, 200))),
+					});
+				}
 				buffer = buffer.subarray(nextNewline + 1);
 				continue;
 			}
@@ -174,6 +174,9 @@ export async function loadEntriesFromFileStream(filePath: string): Promise<{
 		throw err;
 	}
 
+	if (skipped > 0) {
+		logger.warn("Session streaming load dropped malformed records", { source: filePath, skipped });
+	}
 	return { entries: foldTitleSlot(entries, titleSlot), titleSlot };
 }
 
@@ -209,13 +212,12 @@ export async function loadEntriesFromFile(
 		loaded =
 			storage instanceof FileSessionStorage && stat.size >= STREAM_LOAD_THRESHOLD_BYTES
 				? await loadEntriesFromFileStream(filePath)
-				: parseSessionContent(await storage.readText(filePath));
+				: parseSessionContent(await storage.readText(filePath), { source: filePath });
 	} catch (err) {
 		if (isEnoent(err)) return [];
 		throw err;
 	}
 	const { entries } = loaded;
-	elideSupersededCompactionEntries(entries);
 
 	// Validate session header
 	if (entries.length === 0) return entries;
@@ -247,7 +249,17 @@ async function resolvePersistedBlobRefs(value: unknown, blobStore: BlobStore, ke
 	}
 
 	if (Array.isArray(value)) {
-		await Promise.all(value.map(item => resolvePersistedBlobRefs(item, blobStore, key)));
+		await Promise.all(
+			value.map(async (item, index) => {
+				// A string child is resolved here, at the parent, because the recursive call
+				// receives the string by value and cannot rewrite the slot it lives in.
+				if (typeof item === "string") {
+					if (isTextBlobRef(item)) value[index] = await resolveTextBlobRef(blobStore, item);
+					return;
+				}
+				await resolvePersistedBlobRefs(item, blobStore, key);
+			}),
+		);
 		return;
 	}
 
@@ -257,8 +269,17 @@ async function resolvePersistedBlobRefs(value: unknown, blobStore: BlobStore, ke
 		value.image_url = await resolveImageDataUrl(blobStore, value.image_url);
 	}
 
+	const target = value as Record<string, unknown>;
 	await Promise.all(
-		Object.entries(value).map(([childKey, item]) => resolvePersistedBlobRefs(item, blobStore, childKey)),
+		Object.entries(target).map(async ([childKey, item]) => {
+			// Externalized text (large tool results, text blocks) is a plain `blobtext:`
+			// string value at an arbitrary key; restore the full content in place.
+			if (typeof item === "string") {
+				if (isTextBlobRef(item)) target[childKey] = await resolveTextBlobRef(blobStore, item);
+				return;
+			}
+			await resolvePersistedBlobRefs(item, blobStore, childKey);
+		}),
 	);
 }
 

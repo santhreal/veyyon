@@ -9,6 +9,8 @@ import type { ToolSession } from "../../tools";
 import { ToolAbortError, ToolError } from "../../tools/tool-errors";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { safeSend as safeSendIpc } from "../../utils/ipc";
+import { JS_EVAL_PROCESS_ARG, JS_EVAL_WORKER_ARG } from "../../worker-args";
+import { attachSessionOwner } from "../executor-base";
 import { shouldDetachKernel } from "../py/spawn-options";
 import { callSessionTool, type JsStatusEvent } from "./tool-bridge";
 import { WorkerCore } from "./worker-core";
@@ -58,6 +60,16 @@ interface JsSession {
 	worker: WorkerHandle;
 	state: "alive" | "dead";
 	pending: Map<string, PendingRun>;
+	/**
+	 * Agent-session owners keeping this VM context alive. A context is disposed
+	 * when its LAST owner detaches (see {@link disposeVmContextsByOwner}), mirroring
+	 * the python/ruby/julia kernels. Without this, the JS eval subprocess was never
+	 * reaped on session end (it has no by-owner or postmortem disposal), so
+	 * `__veyyon_worker_js_eval_process` leaked across sessions (BACKLOG GRAN-11).
+	 */
+	ownerIds: Set<string>;
+	/** True while the only owner is the fallback `sessionKey` (no real owner attached yet). */
+	hasFallbackOwner: boolean;
 }
 
 const sessions = new Map<string, JsSession>();
@@ -71,7 +83,6 @@ const resettingSessions = new Map<string, Promise<void>>();
 // SIGILL/SIGSEGV. Callers that pass a larger per-cell budget still dominate.
 const WORKER_INIT_TIMEOUT_MS = 15_000;
 const WORKER_CLOSE_TIMEOUT_MS = 1_000;
-const JS_EVAL_PROCESS_ARG = "__veyyon_worker_js_eval_process";
 // Active graceful-close grace period before a worker that ack'd `close` but never
 // emitted its `close` event is force-terminated. Defaults to the production floor;
 // tests override it (and restore it) to exercise the close-timeout -> terminate
@@ -108,6 +119,12 @@ export async function executeInVmContext(options: {
 	filename: string;
 	timeoutMs?: number;
 	runState: VmRunState;
+	/**
+	 * Agent-session that owns this context. When set, the context is reaped when
+	 * that owner's session ends (see {@link disposeVmContextsByOwner}); when unset,
+	 * the context falls back to being owned by its own `sessionKey`.
+	 */
+	ownerId?: string;
 }): Promise<{ value: unknown }> {
 	if (options.reset) {
 		// Coalesce concurrent resets: an existing in-flight reset already
@@ -138,6 +155,9 @@ export async function executeInVmContext(options: {
 		{ cwd: options.cwd, sessionId: options.sessionId, localRoots: options.localRoots },
 		options.timeoutMs,
 	);
+	// Record which agent session owns this context so it can be reaped on that
+	// session's end (ONE PLACE with py/rb/jl via the shared attachSessionOwner).
+	attachSessionOwner(session, options.sessionId, options.ownerId);
 	return await runOnce(session, options);
 }
 
@@ -162,6 +182,32 @@ export async function disposeAllVmContexts(): Promise<void> {
 }
 
 /**
+ * Dispose the JS VM contexts owned by `ownerId`, reaping the underlying eval
+ * worker/subprocess. A context is killed only when `ownerId` is its LAST owner;
+ * a context shared by another live owner just drops this owner. Mirrors
+ * {@link disposeKernelSessionsByOwner} for python so a session's end reaps its JS
+ * eval worker too, instead of leaking `__veyyon_worker_js_eval_process` for the
+ * life of the parent process (BACKLOG GRAN-11).
+ */
+export async function disposeVmContextsByOwner(ownerId: string): Promise<void> {
+	const toKill: JsSession[] = [];
+	for (const session of [...sessions.values()]) {
+		if (!session.ownerIds.has(ownerId)) continue;
+		if (session.ownerIds.size === 1) {
+			toKill.push(session);
+			continue;
+		}
+		session.ownerIds.delete(ownerId);
+	}
+	for (const session of toKill) {
+		if (sessions.get(session.sessionKey) === session) sessions.delete(session.sessionKey);
+	}
+	await Promise.all(
+		toKill.map(session => killSession(session, new ToolError("JS context disposed"), { force: false })),
+	);
+}
+
+/**
  * Smoke probe: spawn the JS evaluator through the worker-host entry and prove
  * it answers the `init` handshake in a real isolated subprocess (not the inline
  * fallback). Catches silent process-load and init-message regressions
@@ -178,6 +224,8 @@ export async function smokeTestJsEvalWorker(): Promise<void> {
 		worker,
 		state: "alive",
 		pending: new Map(),
+		ownerIds: new Set(),
+		hasFallbackOwner: false,
 	};
 	try {
 		await initWorker(session, { cwd: process.cwd(), sessionId: "smoke" }, WORKER_INIT_TIMEOUT_MS);
@@ -265,6 +313,8 @@ async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, tim
 			worker,
 			state: "alive",
 			pending: new Map(),
+			ownerIds: new Set(),
+			hasFallbackOwner: false,
 		};
 		// Init headroom is the fixed infrastructure floor; the caller's per-cell timeout
 		// dominates when larger so users can grant more by raising `timeout` on a cell.
@@ -505,7 +555,7 @@ function spawnBunWorker(): WorkerHandle {
 	try {
 		const hostEntry = workerHostEntry();
 		const worker = hostEntry
-			? new Worker(hostEntry, { type: "module", argv: ["__veyyon_worker_js_eval"] })
+			? new Worker(hostEntry, { type: "module", argv: [JS_EVAL_WORKER_ARG] })
 			: new Worker(new URL("./worker-entry.ts", import.meta.url).href, { type: "module" });
 		return wrapBunWorker(worker);
 	} catch (err) {

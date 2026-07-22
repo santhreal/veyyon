@@ -28,7 +28,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { errorMessage } from "@veyyon/utils";
+import { clampLow, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -1406,7 +1406,7 @@ export class ModelHubComponent implements Component {
 			if (overSidebar) {
 				// Wheel pans the sidebar viewport; picking a scope is click/keys only.
 				const maxScroll = Math.max(0, this.#entries.length - this.#splitRowCount);
-				this.#sidebarScroll = Math.max(0, Math.min(this.#sidebarScroll + event.wheel, maxScroll));
+				this.#sidebarScroll = clampLow(this.#sidebarScroll + event.wheel, 0, maxScroll);
 				this.#sidebarHover = this.#sidebarEntryIndexAt(contentLine);
 			} else if (overBody) {
 				if (entry.kind === "roles" && this.#assigning === null) {
@@ -1496,7 +1496,7 @@ export class ModelHubComponent implements Component {
 			const annotation = entry.annotation ?? "";
 			longest = Math.max(longest, visibleWidth(entry.label) + visibleWidth(annotation) + 5);
 		}
-		return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, longest));
+		return clampLow(longest, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
 	}
 
 	#renderSidebar(width: number, rows: number): string[] {
@@ -1515,7 +1515,7 @@ export class ModelHubComponent implements Component {
 			}
 			this.#sidebarFollowActive = false;
 		}
-		this.#sidebarScroll = Math.max(0, Math.min(this.#sidebarScroll, Math.max(0, this.#entries.length - rows)));
+		this.#sidebarScroll = clampLow(this.#sidebarScroll, 0, Math.max(0, this.#entries.length - rows));
 
 		const lines: string[] = [];
 		for (let i = this.#sidebarScroll; i < Math.min(this.#entries.length, this.#sidebarScroll + rows); i++) {
@@ -1872,7 +1872,7 @@ export class ModelHubComponent implements Component {
 
 		if (strip.kind === "roleName") {
 			const label = theme.fg("accent", "New role name:");
-			const inputWidth = Math.max(8, Math.min(32, width - visibleWidth("New role name:") - 24));
+			const inputWidth = clampLow(width - visibleWidth("New role name:") - 24, 8, 32);
 			const inputLine = strip.input.render(inputWidth)[0] ?? "";
 			return truncateToWidth(`${label} ${inputLine} ${theme.fg("dim", "(letters, digits, - and _)")}`, width);
 		}

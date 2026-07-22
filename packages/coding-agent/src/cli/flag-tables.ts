@@ -31,6 +31,9 @@
  */
 
 import type { ConfiguredThinkingLevel } from "../thinking";
+// approval-modes.ts is intentionally free of runtime deps (no @veyyon/utils), so
+// importing it here does not violate the bootstrap-race IMPORT RULE above.
+import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "../tools/approval-modes";
 import type { Args } from "./args";
 import { CliUsageError } from "./usage-error";
 
@@ -224,13 +227,12 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 		result.skills = value.split(",").map(s => s.trim());
 	},
 	"--approval-mode": (result, value, deps) => {
-		const valid = new Set(["plan", "ask", "auto-edit", "yolo", "always-ask", "write"]);
-		if (valid.has(value)) {
-			result.approvalMode = value as typeof result.approvalMode;
+		if (isKnownApprovalMode(value)) {
+			result.approvalMode = value;
 		} else {
 			deps.logger.warn("Invalid value passed to --approval-mode", {
 				value,
-				validValues: [...valid],
+				validValues: [...APPROVAL_MODE_VALUES],
 			});
 		}
 	},
@@ -345,11 +347,18 @@ export function flagConsumesValue(flag: string, next: string | undefined): boole
 	// `--flag=value` carries its own value inline.
 	if (flag.startsWith("--") && flag.includes("=")) return false;
 	if (next === undefined) return false;
-	// Known string flags consume any successor, even a flag-looking one
+	const valueLike = !next.startsWith("-");
+	// Extension-shadowable string flags (`--plan`) accept only a value-like
+	// successor: a flag-looking successor stays a fresh flag (`--plan --profile
+	// work`), matching both this set's docstring and profile-bootstrap's
+	// needsBoundaryAfterGlobalStrip so subcommand detection and the launch
+	// parser agree on the boundary. Checked BEFORE STRING_VALUE_FLAGS because
+	// these flags are also string setters, so the broader branch would otherwise
+	// shadow the value-like gate and swallow the next flag as the plan value.
+	if (EXTENSION_SHADOWABLE_STRING_FLAGS.has(flag)) return valueLike;
+	// Other known string flags consume any successor, even a flag-looking one
 	// (`--system-prompt --foo` ⇒ the system prompt is literally `--foo`).
 	if (STRING_VALUE_FLAGS.has(flag)) return true;
-	const valueLike = !next.startsWith("-");
-	if (EXTENSION_SHADOWABLE_STRING_FLAGS.has(flag)) return valueLike;
 	if (OPTIONAL_VALUE_FLAGS.has(flag)) {
 		const config = OPTIONAL_FLAGS[flag];
 		return valueLike && !(config.rejectEmpty === true && next.length === 0);

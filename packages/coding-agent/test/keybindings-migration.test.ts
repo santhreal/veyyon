@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { KeybindingsManager, profileHasKeybindingsFile } from "@veyyon/coding-agent/config/keybindings";
 import { matchesAppFollowUp } from "@veyyon/coding-agent/modes/utils/keybinding-matchers";
 import { type KeybindingsConfig, setKeybindings } from "@veyyon/tui";
 import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/utils";
@@ -24,6 +24,25 @@ describe("KeybindingsManager.create", () => {
 
 	afterEach(() => {
 		setKeybindings(KeybindingsManager.inMemory());
+	});
+
+	it("preserves an unparseable keybindings.yml instead of losing the user's map", async () => {
+		// REGRESSION, data loss. A hand-edited keybindings.yml with a syntax error
+		// used to load as "no config" with only a debug log, and the migration
+		// writer would then put defaults on disk in its place. The user's whole
+		// custom map disappeared at the moment they were fixing the file by hand.
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-corrupt-"));
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+		const broken = ["fork: ctrl+f", "selectConfirm: enter: extra"].join("\n");
+		await Bun.write(ymlPath, broken);
+
+		try {
+			KeybindingsManager.create(agentDir);
+
+			expect(await Bun.file(`${ymlPath}.corrupt`).text()).toBe(broken);
+		} finally {
+			await removeWithRetries(agentDir);
+		}
 	});
 
 	it("migrates legacy keybinding JSON to YAML during create", async () => {
@@ -354,6 +373,47 @@ describe("KeybindingsManager.create", () => {
 			// The file is complete and parses to the exact migrated config.
 			const written = YAML.parse(await Bun.file(ymlPath).text());
 			expect(written).toEqual({ "app.session.fork": "ctrl+f" });
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+});
+
+/**
+ * profileHasKeybindingsFile is the discovery predicate that decides whether a profile directory
+ * already carries a user keybindings file. It accepts three names: the current keybindings.yml, the
+ * alternate keybindings.yaml spelling, and the legacy keybindings.json. It had no direct test. A
+ * regression that dropped any one of these names would make the profile look empty and silently
+ * overwrite the user's real bindings with defaults (the same data-loss class the migration tests
+ * above guard). An empty directory must report false.
+ */
+describe("profileHasKeybindingsFile", () => {
+	it("returns false for a directory with no keybindings file", async () => {
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-kb-none-"));
+		try {
+			expect(profileHasKeybindingsFile(agentDir)).toBe(false);
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+
+	it("recognizes each accepted filename: keybindings.yml, keybindings.yaml, and legacy keybindings.json", async () => {
+		for (const filename of ["keybindings.yml", "keybindings.yaml", "keybindings.json"]) {
+			const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-kb-one-"));
+			try {
+				await Bun.write(path.join(agentDir, filename), "fork: ctrl+f\n");
+				expect(profileHasKeybindingsFile(agentDir)).toBe(true);
+			} finally {
+				await removeWithRetries(agentDir);
+			}
+		}
+	});
+
+	it("does not treat an unrelated file as a keybindings file", async () => {
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-kb-other-"));
+		try {
+			await Bun.write(path.join(agentDir, "settings.yml"), "x: 1\n");
+			expect(profileHasKeybindingsFile(agentDir)).toBe(false);
 		} finally {
 			await removeWithRetries(agentDir);
 		}

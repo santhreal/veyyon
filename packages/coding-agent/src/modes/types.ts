@@ -5,7 +5,7 @@ import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } fro
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import type { KeybindingsManager } from "../config/keybindings";
-import type { Settings } from "../config/settings";
+import type { QuarantinedSettingsFile, Settings } from "../config/settings";
 import type {
 	AutocompleteProviderFactory,
 	ExtensionAskDialogQuestion,
@@ -260,6 +260,16 @@ export interface InteractiveModeContext {
 	clearPinnedError(): void;
 	showWarning(message: string): void;
 	showNewVersionNotification(newVersion: string): void;
+	/** One line confirming an update landed, on the first launch after it. */
+	showUpdateInstalledNotification(installedVersion: string): void;
+	showUpdateReadyNotification(newVersion: string): void;
+	showUpdateFailedNotification(newVersion: string, error: string): void;
+	/** `marketplace.autoUpdate: notify` found plugin updates the user can install. */
+	showPluginUpdatesNotification(count: number): void;
+	/** `marketplace.autoUpdate: auto` installed plugin updates in the background. */
+	showPluginUpdatesInstalledNotification(count: number): void;
+	/** Report settings files that could not be parsed and are therefore ignored. */
+	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void;
 	clearEditor(): void;
 	/** Restore keyboard focus to whatever currently owns the editor slot (the
 	 *  editor itself, or a hook selector/input/editor pushed into it while a
@@ -337,7 +347,7 @@ export interface InteractiveModeContext {
 	handleAdvisorStatusCommand(): Promise<void>;
 	handleJobsCommand(): Promise<void>;
 	handleUsageCommand(reports?: UsageReport[] | null): Promise<void>;
-	handleChangelogCommand(showFull?: boolean): Promise<void>;
+	handleChangelogCommand(): Promise<void>;
 	handleHotkeysCommand(): void;
 	handleToolsCommand(): void;
 	handleContextCommand(): void;

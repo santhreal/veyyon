@@ -116,7 +116,15 @@ export function toSearchSources(
  * Returns `null` when the response does not match a known quota/auth signal,
  * leaving the caller to throw its provider-specific fallback error.
  */
-const CREDIT_BODY_PATTERN = /credits?\s*(?:exhausted|exceeded)|quota|insufficient/i;
+// Credit/quota exhaustion phrasing varies across providers ("credits are
+// exhausted", "you have exhausted your credits", "credit limit exceeded", "out of
+// credits"), so match the strong standalone signals (quota / insufficient /
+// exhausted / depleted / out of credits) plus "credit(s)" within a short window of
+// exhausted/exceeded/depleted in either order. The short window and the deliberate
+// omission of a bare "exceeded"/"credits" keep benign bodies ("you have 5 credits
+// left", "rate limit exceeded", "credits: 42 remaining") from misclassifying.
+const CREDIT_BODY_PATTERN =
+	/quota|insufficient|exhausted|depleted|out\s+of\s+credits?|credits?[\s\S]{0,20}?(?:exhausted|exceeded|depleted)|(?:exhausted|exceeded|depleted)[\s\S]{0,20}?credits?/i;
 
 export function classifyProviderHttpError(
 	provider: SearchProviderId,

@@ -9,15 +9,20 @@
 
 import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 import { isRecord } from "@veyyon/utils";
+import type { ApprovalMode, AutonomyLevel } from "./approval-modes";
+import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "./approval-modes";
 
 export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
+// Re-export the zero-dependency mode set so tool code keeps one import site.
+export {
+	APPROVAL_MODE_VALUES,
+	type ApprovalMode,
+	type AutonomyLevel,
+	isKnownApprovalMode,
+	type LegacyApprovalMode,
+} from "./approval-modes";
 
 export type ApprovalPolicy = "allow" | "deny" | "prompt";
-
-/** Shipped autonomy ladder (A2). Legacy omp names remain accepted in config/CLI. */
-export type AutonomyLevel = "plan" | "ask" | "auto-edit" | "yolo";
-export type LegacyApprovalMode = "always-ask" | "write";
-export type ApprovalMode = AutonomyLevel | LegacyApprovalMode;
 
 export interface ApprovalResolutionOptions {
 	/** When plan-mode session is active, write-tier tools may run (plan-file guard at execute). */
@@ -61,7 +66,17 @@ const AUTONOMY_MAX_TIER: Record<AutonomyLevel, ToolTier> = {
 
 const DEFAULT_PROMPT_TRUNCATE_CHARS = 2000;
 
-/** Map stored setting / CLI values to the shipped autonomy ladder. */
+/**
+ * Map a stored setting / CLI value to the shipped autonomy ladder.
+ *
+ * `undefined` (no configured mode) maps to `yolo`, the documented product
+ * default for a fresh install. An unrecognized NON-EMPTY value (a hand-edited
+ * config typo like `askk`) FAILS CLOSED to `ask` — never to `yolo`. Mapping a
+ * typo to yolo would silently turn a user's intended safety setting into
+ * auto-approve-everything; a security control must fail closed, not open. The
+ * typo is surfaced loudly by the startup config check (see
+ * `validateApprovalModeSetting`), so this is not a silent fallback.
+ */
 export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
 	switch (mode) {
 		case "plan":
@@ -74,9 +89,27 @@ export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
 			return "auto-edit";
 		case "yolo":
 			return "yolo";
-		default:
+		case undefined:
 			return "yolo";
+		default:
+			return "ask";
 	}
+}
+
+/**
+ * Validate a stored `tools.approvalMode` value. Returns a loud warning string
+ * when the value is a non-empty string that is not a recognized mode (so the
+ * caller can surface it at startup); `undefined` when the value is absent or
+ * valid. Keeps the "fail closed on a typo" decision (see `normalizeApprovalMode`)
+ * visible to the operator instead of silently applying `ask`.
+ */
+export function validateApprovalModeSetting(configured: unknown): string | undefined {
+	if (configured === undefined || configured === null) return undefined;
+	if (isKnownApprovalMode(configured)) return undefined;
+	return (
+		`tools.approvalMode is set to an unrecognized value (${JSON.stringify(configured)}); ` +
+		`falling back to "ask" (safe). Valid values: ${APPROVAL_MODE_VALUES.join(", ")}.`
+	);
 }
 
 /** Best-effort conversion of an arbitrary user-supplied value to a policy. */

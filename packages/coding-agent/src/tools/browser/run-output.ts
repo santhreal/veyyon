@@ -1,4 +1,5 @@
 import type { ImageContent, TextContent } from "@veyyon/ai";
+import { stringifyJsonSafe, tryParseJson } from "@veyyon/utils";
 import type { JsDisplayOutput } from "../../eval/js/shared/types";
 
 /**
@@ -53,24 +54,41 @@ export class RunOutput {
 	}
 }
 
-/** JSON.stringify that never throws (cycles/BigInt → String(value)). */
+/**
+ * Render a value as JSON for a run's display output.
+ *
+ * Delegates to the shared owner in `@veyyon/utils`. This used to be one of five
+ * hand-rolled copies that all ended in `String(value)`, so a cyclic or bigint
+ * value displayed as the literal text `[object Object]` (see `stringifyJsonSafe`).
+ */
 export function safeJsonStringify(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+	return stringifyJsonSafe(value, 2);
 }
 
-/** Pass a return value across the run boundary: structured-cloneable as-is, else JSON round-trip, else String. */
+/**
+ * Pass a return value across the run boundary: structured-cloneable as-is, else
+ * a JSON round trip.
+ *
+ * The last resort used to be `String(value)`, which hands back `[object Object]`
+ * as though it were the value the caller returned. A string that cannot be told
+ * apart from a real result is worse than a visibly failed one, so an
+ * unrepresentable value now comes back as the same `[unserializable ...]` marker
+ * `safeJsonStringify` produces, which names the type and the reason.
+ */
 export function cloneSafe(value: unknown): unknown {
 	if (value === undefined) return undefined;
 	try {
 		structuredClone(value);
 		return value;
 	} catch {}
-	try {
-		return JSON.parse(JSON.stringify(value)) as unknown;
-	} catch {}
-	return String(value);
+	// The shared renderer, so a value that survives here comes back with its
+	// functions and symbols named rather than dropped on the floor.
+	const rendered = stringifyJsonSafe(value);
+	if (!rendered.startsWith("[unserializable ")) {
+		const parsed = tryParseJson<unknown>(rendered);
+		if (parsed !== null) return parsed;
+	}
+	// Primitives always survive one of the paths above, so anything here is an
+	// object that cannot cross the boundary at all.
+	return typeof value === "object" || typeof value === "function" ? safeJsonStringify(value) : String(value);
 }

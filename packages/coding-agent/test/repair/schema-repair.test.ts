@@ -1,9 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import type { Tool, ToolCall } from "@veyyon/ai/types";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import {
 	detectAmbiguousRequiredStringRepair,
 	detectStrictUnknownKeyRepair,
+	formatRepairCoachingHints,
+	isToolCallRepairDisabled,
 	MAX_REPAIR_INPUT_BYTES,
 	planAliasKeyRepairs,
 	repairToolCallArguments,
@@ -276,5 +278,47 @@ describe("schema repair — strict unknown-key mode (U4-01)", () => {
 		expect(outcome.status).not.toBe("unrepairable");
 		if (outcome.status === "unrepairable") return;
 		expect(outcome.arguments).toMatchObject({ path: "/tmp/a.txt", content: "hello" });
+	});
+});
+
+/**
+ * formatRepairCoachingHints turns the hint list into the model-visible block appended to a
+ * repaired tool result, and isToolCallRepairDisabled reads the kill switch. Neither had a
+ * test, yet the first decides what the model reads back after a repair and the second gates
+ * the whole repair pass. Pinned so a regression cannot silently drop the coaching header,
+ * mangle the bullet format, or misread the env flag.
+ */
+describe("formatRepairCoachingHints", () => {
+	it("returns undefined for an empty hint list so nothing is appended", () => {
+		expect(formatRepairCoachingHints([])).toBeUndefined();
+	});
+
+	it("prefixes a header and renders each hint as a dash bullet on its own line", () => {
+		expect(formatRepairCoachingHints(["fixed a"])).toBe("[Tool argument repair]\n- fixed a");
+		expect(formatRepairCoachingHints(["a", "b"])).toBe("[Tool argument repair]\n- a\n- b");
+	});
+});
+
+describe("isToolCallRepairDisabled", () => {
+	const original = process.env.VEYYON_REPAIR_DISABLE;
+	afterEach(() => {
+		if (original === undefined) delete process.env.VEYYON_REPAIR_DISABLE;
+		else process.env.VEYYON_REPAIR_DISABLE = original;
+	});
+
+	it("treats 1/true/yes (case- and whitespace-insensitive) as disabled", () => {
+		for (const value of ["1", "true", "YES", " yes ", "TrUe"]) {
+			process.env.VEYYON_REPAIR_DISABLE = value;
+			expect(isToolCallRepairDisabled()).toBe(true);
+		}
+	});
+
+	it("treats unset, empty, and any other value as enabled", () => {
+		delete process.env.VEYYON_REPAIR_DISABLE;
+		expect(isToolCallRepairDisabled()).toBe(false);
+		for (const value of ["", "0", "no"]) {
+			process.env.VEYYON_REPAIR_DISABLE = value;
+			expect(isToolCallRepairDisabled()).toBe(false);
+		}
 	});
 });

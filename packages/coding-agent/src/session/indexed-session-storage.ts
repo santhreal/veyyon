@@ -1,4 +1,4 @@
-import { toError } from "@veyyon/utils";
+import { enoentError, toError } from "@veyyon/utils";
 import type {
 	SessionStorage,
 	SessionStorageStat,
@@ -48,15 +48,6 @@ interface EnqueueOptions {
 }
 
 const RESOLVED = Promise.resolve();
-
-function enoent(p: string): NodeJS.ErrnoException {
-	const err = new Error(`ENOENT: no such file, '${p}'`) as NodeJS.ErrnoException;
-	err.code = "ENOENT";
-	err.errno = -2;
-	err.path = p;
-	err.syscall = "open";
-	return err;
-}
 
 function matchesGlob(name: string, pattern: string): boolean {
 	if (pattern === "*") return true;
@@ -146,7 +137,7 @@ export class IndexedSessionStorage implements SessionStorage {
 	async updateSessionTitle(path: string, title: SessionTitleUpdate): Promise<void> {
 		await this.#awaitPath(path);
 		const previous = this.#index.get(path);
-		if (!previous) throw enoent(path);
+		if (!previous) throw enoentError(path);
 		const mtimeMs = this.#allocMtimeMs();
 		const next = {
 			...previous,
@@ -176,7 +167,7 @@ export class IndexedSessionStorage implements SessionStorage {
 
 	statSync(path: string): SessionStorageStat {
 		const entry = this.#index.get(path);
-		if (!entry) throw enoent(path);
+		if (!entry) throw enoentError(path);
 		return {
 			size: entry.size,
 			mtimeMs: entry.mtimeMs,
@@ -203,17 +194,17 @@ export class IndexedSessionStorage implements SessionStorage {
 
 	async readText(path: string): Promise<string> {
 		const entry = this.#index.get(path);
-		if (!entry) throw enoent(path);
+		if (!entry) throw enoentError(path);
 		await this.#awaitPath(path);
 		const content = await this.#backend.readFull(path);
-		if (content === null) throw enoent(path);
+		if (content === null) throw enoentError(path);
 		const title = titleUpdateForIndex(entry);
 		return title ? overlayTitleSlotContent(content, title) : content;
 	}
 
 	async readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]> {
 		const entry = this.#index.get(path);
-		if (!entry) throw enoent(path);
+		if (!entry) throw enoentError(path);
 		const prefixLimit = normalizeByteLimit(prefixBytes);
 		const suffixLimit = normalizeByteLimit(suffixBytes);
 		if (prefixLimit === 0 && suffixLimit === 0) return ["", ""];
@@ -279,7 +270,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		await this.#awaitPath(src);
 		await this.#awaitPath(dst);
 		const entry = this.#index.get(src);
-		if (!entry) throw enoent(src);
+		if (!entry) throw enoentError(src);
 		const dstPrevious = this.#index.get(dst);
 		this.#index.delete(src);
 		this.#index.set(dst, { ...entry });
@@ -296,7 +287,7 @@ export class IndexedSessionStorage implements SessionStorage {
 	async unlink(path: string): Promise<void> {
 		await this.#awaitPath(path);
 		const previous = this.#index.get(path);
-		if (!previous) throw enoent(path);
+		if (!previous) throw enoentError(path);
 		this.#index.delete(path);
 		try {
 			await this.#enqueuePath(path, () => this.#backend.remove([path]), { trackDrain: false });
@@ -309,7 +300,7 @@ export class IndexedSessionStorage implements SessionStorage {
 	async deleteSessionWithArtifacts(sessionPath: string): Promise<void> {
 		await this.#awaitPath(sessionPath);
 		const sessionEntry = this.#index.get(sessionPath);
-		if (!sessionEntry) throw enoent(sessionPath);
+		if (!sessionEntry) throw enoentError(sessionPath);
 
 		const artifactsDir = sessionPath.slice(0, -6);
 		const prefix = artifactsDir.endsWith("/") ? artifactsDir : `${artifactsDir}/`;

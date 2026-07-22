@@ -28,7 +28,13 @@ import {
 	getAuthBrokerTokenFilePath,
 	resolveAuthBrokerConfig as resolveAuthBrokerConfigShared,
 } from "@veyyon/ai/auth-broker/discover";
-import { getAgentDir, getSharedAuthDir, readGlobalProfileSharingSafe } from "@veyyon/utils";
+import {
+	getAgentDbPath,
+	getAgentDir,
+	getLegacyPerProfileSharedAuthDirs,
+	getSharedAuthDir,
+	readGlobalProfileSharingSafe,
+} from "@veyyon/utils";
 import { resolveConfigValue } from "../config/resolve-config-value";
 import type { AuthStorage } from "./auth-storage";
 
@@ -93,10 +99,19 @@ export function discoverAuthStorage(
 	options?: Omit<DiscoverAuthStorageOptions, "agentDir" | "configValueResolver" | "storeAgentDir">,
 ): Promise<AuthStorage> {
 	const storeAgentDir = readGlobalProfileSharingSafe() ? getSharedAuthDir() : undefined;
+	// When seeding the shared store on first run, look past the current profile's
+	// store: promote from any legacy per-profile `shared-auth` dir too (the old
+	// location of the shared store before it moved to the global root), so a user
+	// who updates across that move recovers orphaned logins instead of appearing
+	// logged out. Current per-profile store first, then legacy dirs.
+	const seedSourceDbPaths = storeAgentDir
+		? [getAgentDbPath(agentDir), ...getLegacyPerProfileSharedAuthDirs().map(dir => getAgentDbPath(dir))]
+		: undefined;
 	return discoverAuthStorageShared({
 		...options,
 		agentDir,
 		storeAgentDir,
+		seedSourceDbPaths,
 		configValueResolver: resolveConfigValue,
 	});
 }

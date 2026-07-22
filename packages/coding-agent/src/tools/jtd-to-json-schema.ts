@@ -148,15 +148,18 @@ export function isJTDSchema(schema: unknown): boolean {
 
 	const obj = schema as Record<string, unknown>;
 
-	// JTD-specific keywords
-	if ("elements" in obj) return true;
-	if ("values" in obj) return true;
-	if ("optionalProperties" in obj) return true;
-	if ("discriminator" in obj) return true;
-	if ("ref" in obj) return true;
+	// Keyword detection uses OWN-property checks, never `in`: `in` walks the
+	// prototype chain, so `"values" in []` is true (Array.prototype.values) and any
+	// array would be mis-detected as a JTD values-form schema. A JTD keyword only
+	// counts when it is an own property of the schema object.
+	if (Object.hasOwn(obj, "elements")) return true;
+	if (Object.hasOwn(obj, "values")) return true;
+	if (Object.hasOwn(obj, "optionalProperties")) return true;
+	if (Object.hasOwn(obj, "discriminator")) return true;
+	if (Object.hasOwn(obj, "ref")) return true;
 
 	// JTD type primitives (JSON Schema doesn't have int32, float64, etc.)
-	if ("type" in obj) {
+	if (Object.hasOwn(obj, "type")) {
 		const jtdPrimitives = ["timestamp", "float32", "float64", "int8", "uint8", "int16", "uint16", "int32", "uint32"];
 		if (jtdPrimitives.includes(obj.type as string)) {
 			return true;
@@ -164,7 +167,7 @@ export function isJTDSchema(schema: unknown): boolean {
 	}
 
 	// JTD properties form without type: "object" (JSON Schema requires it)
-	if ("properties" in obj && !("type" in obj)) {
+	if (Object.hasOwn(obj, "properties") && !Object.hasOwn(obj, "type")) {
 		return true;
 	}
 

@@ -1,0 +1,116 @@
+{
+	"cases": [
+		{
+			"id": "unwrap-plain-path",
+			"contract": "Non-bracketed paths pass through unchanged",
+			"surface": "unwrap-hashline-header",
+			"tags": ["positive", "negative"],
+			"input": { "path": "src/a.ts" },
+			"expect": { "path": "src/a.ts" }
+		},
+		{
+			"id": "unwrap-bracket-path",
+			"contract": "Strict [path] headers unwrap to the inner path",
+			"surface": "unwrap-hashline-header",
+			"tags": ["positive"],
+			"input": { "path": "[src/a.ts]" },
+			"expect": { "path": "src/a.ts" }
+		},
+		{
+			"id": "unwrap-bracket-tag",
+			"contract": "Strict [path#XXXX] headers unwrap when the tag is 4 hex digits",
+			"surface": "unwrap-hashline-header",
+			"tags": ["positive"],
+			"input": { "path": "[src/a.ts#ab12]" },
+			"expect": { "path": "src/a.ts" }
+		},
+		{
+			"id": "unwrap-refuse-nonhex-tag",
+			"contract": "Non-hex tags leave the original string wrapped so downstream errors surface",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "negative"],
+			"input": { "path": "[src/a.ts#zzzz]" },
+			"expect": { "path": "[src/a.ts#zzzz]" }
+		},
+		{
+			"id": "unwrap-refuse-short-tag",
+			"contract": "Short tags leave the original string wrapped",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "boundary"],
+			"input": { "path": "[src/a.ts#abc]" },
+			"expect": { "path": "[src/a.ts#abc]" }
+		},
+		{
+			"id": "unwrap-selector-no-tag",
+			"contract": "Bracketed path:selector without a #TAG peels brackets only",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial"],
+			"input": { "path": "[src/a.ts:1-10]" },
+			"expect": { "path": "src/a.ts:1-10" }
+		},
+		{
+			"id": "unwrap-absolute-with-tag",
+			"contract": "Absolute paths inside a valid header unwrap to the absolute path",
+			"surface": "unwrap-hashline-header",
+			"tags": ["positive", "boundary"],
+			"input": { "path": "[/tmp/x.ts#abcd]" },
+			"expect": { "path": "/tmp/x.ts" }
+		},
+		{
+			"id": "unwrap-refuse-open-bracket",
+			"contract": "Missing closing bracket leaves the original string intact",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "negative"],
+			"input": { "path": "[src/a.ts#ab12" },
+			"expect": { "path": "[src/a.ts#ab12" }
+		},
+		{
+			"id": "unwrap-refuse-empty-path-part",
+			"contract": "Empty path part with a tag is not rewritten",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "boundary"],
+			"input": { "path": "[#ab12]" },
+			"expect": { "path": "[#ab12]" }
+		},
+		{
+			"id": "unwrap-refuse-embedded-hash",
+			"contract": "Embedded extra # in the path part is refused",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "negative"],
+			"input": { "path": "[src/a#b.ts#ab12]" },
+			"expect": { "path": "[src/a#b.ts#ab12]" }
+		},
+		{
+			"id": "unwrap-uppercase-tag",
+			"contract": "Uppercase 4-hex tags unwrap",
+			"surface": "unwrap-hashline-header",
+			"tags": ["positive"],
+			"input": { "path": "[pkg/x.ts#ABCD]" },
+			"expect": { "path": "pkg/x.ts" }
+		},
+		{
+			"id": "unwrap-windows-style-path",
+			"contract": "Backslash paths inside valid headers unwrap to the inner path",
+			"surface": "unwrap-hashline-header",
+			"tags": ["boundary"],
+			"input": { "path": "[src\\foo.ts#1234]" },
+			"expect": { "path": "src\\foo.ts" }
+		},
+		{
+			"id": "unwrap-refuse-long-tag",
+			"contract": "Tags longer than 4 hex digits leave the original string wrapped",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "boundary"],
+			"input": { "path": "[src/a.ts#abcde]" },
+			"expect": { "path": "[src/a.ts#abcde]" }
+		},
+		{
+			"id": "unwrap-empty-string",
+			"contract": "Empty string passes through unchanged",
+			"surface": "unwrap-hashline-header",
+			"tags": ["boundary"],
+			"input": { "path": "" },
+			"expect": { "path": "" }
+		}
+	]
+}

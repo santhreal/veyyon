@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getProjectDir, readJsonl, Snowflake } from "@veyyon/utils";
+import { errorMessage, getProjectDir, logger, readJsonl, Snowflake, truncate } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import { hostHasInheritableConsole } from "../../eval/py/spawn-options";
 import type {
@@ -406,8 +406,20 @@ export class StdioTransport implements MCPTransport {
 				if (!this.#connected) break;
 				try {
 					this.#handleMessage(line as JsonRpcMessage);
-				} catch {
-					// Skip malformed lines
+				} catch (error) {
+					// A dropped line is not always harmless: if it was the RESPONSE to a
+					// pending request, that request now waits until its timeout with no
+					// explanation, and the operator sees an MCP tool that hangs. The
+					// loop still continues, because one bad line should not kill a
+					// working server, but the line no longer disappears (Law 10).
+					logger.warn("Ignored an unreadable message from an MCP server", {
+						server: this.config.command,
+						error: errorMessage(error),
+						// Truncated: a server can emit an arbitrarily large line, and the log
+						// is for identifying WHICH message was lost, not for reproducing it.
+						line: truncate(String(JSON.stringify(line) ?? line), 500),
+						fix: "If a tool call from this server hangs, this is likely why. Check the server's own logs.",
+					});
 				}
 			}
 		} catch (error) {
@@ -429,15 +441,28 @@ export class StdioTransport implements MCPTransport {
 			while (this.#connected) {
 				const { done, value } = await reader.read();
 				if (done) break;
-				// Log stderr but don't treat as error - servers use it for logging
 				const text = decoder.decode(value, { stream: true });
 				if (text.trim()) {
-					// Could expose via onStderr callback if needed
-					// For now, silent - MCP spec says clients MAY capture/ignore
+					// This used to be decoded and then discarded, with a comment saying
+					// "For now, silent". An MCP server's stderr is where it explains why
+					// it is failing, so discarding it left the operator debugging a
+					// misbehaving server with nothing at all to go on. The MCP spec says
+					// a client MAY ignore stderr; that is permission, not a reason.
+					//
+					// It goes to debug rather than warn on purpose: servers use stderr
+					// for ordinary logging too, so this is diagnostic output, not a
+					// report of something wrong. The distinction matters because a
+					// chatty server would otherwise fill the log with false alarms.
+					logger.debug("MCP server stderr", { server: this.config.command, text: text.trimEnd() });
 				}
 			}
-		} catch {
-			// Ignore stderr read errors
+		} catch (error) {
+			// Losing the stderr stream means losing the only window into the server's
+			// own diagnostics, so the loss itself is worth one line.
+			logger.debug("Stopped reading an MCP server's stderr", {
+				server: this.config.command,
+				error: errorMessage(error),
+			});
 		} finally {
 			reader.releaseLock();
 		}

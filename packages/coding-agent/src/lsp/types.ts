@@ -1,5 +1,6 @@
 import type { ptree } from "@veyyon/utils";
 import { type } from "arktype";
+import { describeTimeoutParam } from "../tools/tool-timeouts";
 
 // =============================================================================
 // Tool Schema
@@ -14,7 +15,7 @@ export const lspSchema = type({
 	query: "string?",
 	new_name: "string?",
 	apply: "boolean?",
-	timeout: "number?",
+	"timeout?": type("number").describe(describeTimeoutParam("lsp")),
 	payload: "string?",
 });
 

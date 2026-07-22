@@ -181,6 +181,7 @@ describe("session exit diagnostics", () => {
 			getDraftText: () => "",
 			beginDispose: () => activeSession.beginDispose(),
 			saveDraft: async () => {},
+			flushSettings: async () => {},
 			disposeSession: reason => activeSession.dispose({ reason }),
 		});
 

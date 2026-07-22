@@ -31,6 +31,7 @@ import { MemoryReflectTool } from "@veyyon/coding-agent/tools/memory-reflect";
 import { MemoryRetainTool } from "@veyyon/coding-agent/tools/memory-retain";
 import { resetMemoryForTests } from "@veyyon/mnemopi";
 import { TempDir } from "@veyyon/utils";
+import { makeToolSession } from "./helpers/tool-session";
 
 // Mnemopi is lazy-loaded at runtime; preload it so the sync construction in
 // registerMnemopiState() and getMnemopiScopedDbPaths() can resolve the module.
@@ -73,7 +74,7 @@ function makeConfig(overrides: Partial<HindsightConfig> = {}): HindsightConfig {
 }
 
 function makeSession(settings: Settings, sessionId: string | null = TEST_SESSION_ID): ToolSession {
-	return {
+	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
 		settings,
@@ -82,7 +83,7 @@ function makeSession(settings: Settings, sessionId: string | null = TEST_SESSION
 		getSessionSpawns: () => null,
 		getHindsightSessionState: () => (sessionId === TEST_SESSION_ID ? registeredState : undefined),
 		getMnemopiSessionState: () => (sessionId === TEST_SESSION_ID ? registeredMnemopiState : undefined),
-	} as unknown as ToolSession;
+	});
 }
 
 interface RegisterStateOptions {

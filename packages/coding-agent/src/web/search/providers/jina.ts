@@ -8,6 +8,7 @@
 import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
+import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -83,11 +84,9 @@ export async function searchJina(params: JinaSearchParams): Promise<SearchRespon
 		});
 	}
 
-	const limitedSources = params.num_results ? sources.slice(0, params.num_results) : sources;
-
 	return {
 		provider: "jina",
-		sources: limitedSources,
+		sources: applyResultLimit(sources, params.num_results),
 	};
 }
 

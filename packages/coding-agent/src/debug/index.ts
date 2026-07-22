@@ -35,6 +35,32 @@ import { collectSystemInfo, formatSystemInfo } from "./system-info";
 import { collectTerminalState, formatTerminalState } from "./terminal-info";
 
 /** Debug menu options */
+/**
+ * The slice of the interactive context the debug selector uses.
+ *
+ * 15 members of 215. Naming them is what makes this surface reachable from a
+ * test without an `as unknown as InteractiveModeContext` cast, which is the
+ * only reason those casts exist (see `CollabHostContext`).
+ */
+export type DebugSelectorContext = Pick<
+	InteractiveModeContext,
+	| "editor"
+	| "handleDebugTranscriptCommand"
+	| "hideThinkingBlock"
+	| "planModeEnabled"
+	| "present"
+	| "session"
+	| "sessionManager"
+	| "showDebugSelector"
+	| "showError"
+	| "showHookConfirm"
+	| "showStatus"
+	| "showWarning"
+	| "statusContainer"
+	| "toolOutputExpanded"
+	| "ui"
+>;
+
 const DEBUG_MENU_ITEMS: SelectItem[] = [
 	{ value: "open-artifacts", label: "Open: artifact folder", description: "Open session artifacts in file manager" },
 	{ value: "performance", label: "Report: performance issue", description: "Profile CPU, reproduce, then bundle" },
@@ -76,7 +102,7 @@ export class DebugSelectorComponent {
 	#inner: ModalSelectListComponent;
 
 	constructor(
-		private ctx: InteractiveModeContext,
+		private ctx: DebugSelectorContext,
 		onDone: () => void,
 	) {
 		this.#inner = new ModalSelectListComponent(
@@ -584,7 +610,7 @@ export class DebugSelectorComponent {
 /**
  * Show the debug selector.
  */
-export function showDebugSelector(ctx: InteractiveModeContext, done: () => void): DebugSelectorComponent {
+export function showDebugSelector(ctx: DebugSelectorContext, done: () => void): DebugSelectorComponent {
 	const selector = new DebugSelectorComponent(ctx, done);
 	return selector;
 }

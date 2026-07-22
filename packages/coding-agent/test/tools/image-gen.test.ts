@@ -7,9 +7,32 @@ import {
 	getImageGenTools,
 	getImageGenToolsWithRegistry,
 	imageGenTool,
+	isImageProviderPreference,
 	setPreferredImageProvider,
 } from "@veyyon/coding-agent/tools/image-gen";
 import { removeWithRetries } from "@veyyon/utils";
+
+/**
+ * isImageProviderPreference guards the persisted image-provider setting so an unknown or
+ * non-string value never reaches provider selection. It had no test. The allowed set is
+ * fixed (auto, antigravity, gemini, openai, openrouter, xai); anything else, including a
+ * near-miss casing or a non-string, must be rejected.
+ */
+describe("isImageProviderPreference", () => {
+	it("accepts every known provider preference", () => {
+		for (const value of ["auto", "antigravity", "gemini", "openai", "openrouter", "xai"]) {
+			expect(isImageProviderPreference(value)).toBe(true);
+		}
+	});
+
+	it("rejects unknown strings, wrong casing, and non-string values", () => {
+		expect(isImageProviderPreference("Gemini")).toBe(false);
+		expect(isImageProviderPreference("stability")).toBe(false);
+		expect(isImageProviderPreference("")).toBe(false);
+		expect(isImageProviderPreference(undefined)).toBe(false);
+		expect(isImageProviderPreference(3)).toBe(false);
+	});
+});
 
 const originalOpenRouterKey = Bun.env.OPENROUTER_API_KEY;
 const generatedImagePaths: string[] = [];

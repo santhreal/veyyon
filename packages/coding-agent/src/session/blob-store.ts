@@ -4,6 +4,13 @@ import * as path from "node:path";
 import { errorMessage, isEnoent, logger } from "@veyyon/utils";
 
 const BLOB_PREFIX = "blob:sha256:";
+/**
+ * Reference prefix for externalized UTF-8 text (large tool results, text blocks).
+ * Distinct from {@link BLOB_PREFIX} so the load path knows to decode the bytes as
+ * UTF-8 rather than base64. The two prefixes are disjoint: `"blobtext:…"` does not
+ * start with `"blob:…"`, and vice versa.
+ */
+const TEXT_BLOB_PREFIX = "blobtext:sha256:";
 
 export interface BlobPutOptions {
 	/** Optional file extension for a sidecar hardlink/copy that OS openers can type-detect. */
@@ -188,6 +195,60 @@ export function parseBlobRef(data: string): string | null {
 /** Identify provider transport image data URLs so persistence can externalize and restore them losslessly. */
 export function isImageDataUrl(data: string): boolean {
 	return data.startsWith("data:image/") && data.includes(";base64,");
+}
+
+/** True when a string is an externalized-text blob reference (`blobtext:sha256:…`). */
+export function isTextBlobRef(data: string): boolean {
+	return data.startsWith(TEXT_BLOB_PREFIX);
+}
+
+/** Extract the SHA-256 hash from a text blob reference, or `null` for a non-ref. */
+export function parseTextBlobRef(data: string): string | null {
+	if (!data.startsWith(TEXT_BLOB_PREFIX)) return null;
+	return data.slice(TEXT_BLOB_PREFIX.length);
+}
+
+/**
+ * Externalize an oversized UTF-8 text string to the blob store, returning a
+ * `blobtext:` reference. Session persistence uses this to keep very large tool
+ * results and text blocks out of the JSONL line without losing a byte: the full
+ * content is recoverable on load via {@link resolveTextBlobRef}. Content-addressed,
+ * so identical large strings are stored once. Synchronous (`putSync`) so the bytes
+ * are in the page cache before the referencing line is written, matching the
+ * OOM-safe image path.
+ */
+export function externalizeTextSync(blobStore: BlobStore, text: string): string {
+	if (isTextBlobRef(text)) return text;
+	const { hash } = blobStore.putSync(Buffer.from(text, "utf8"));
+	return `${TEXT_BLOB_PREFIX}${hash}`;
+}
+
+/**
+ * Resolve a `blobtext:` reference back to its original UTF-8 string. Non-refs pass
+ * through unchanged. A missing blob logs a warning and returns the reference as-is
+ * rather than crashing the load.
+ */
+export async function resolveTextBlobRef(blobStore: BlobStore, data: string): Promise<string> {
+	const hash = parseTextBlobRef(data);
+	if (!hash) return data;
+	const buffer = await blobStore.get(hash);
+	if (!buffer) {
+		logger.warn("Blob not found for persisted text reference", { hash });
+		return data;
+	}
+	return buffer.toString("utf8");
+}
+
+/** Synchronous variant of {@link resolveTextBlobRef}. */
+export function resolveTextBlobRefSync(blobStore: BlobStore, data: string): string {
+	const hash = parseTextBlobRef(data);
+	if (!hash) return data;
+	const buffer = blobStore.getSync(hash);
+	if (!buffer) {
+		logger.warn("Blob not found for persisted text reference", { hash });
+		return data;
+	}
+	return buffer.toString("utf8");
 }
 
 /**

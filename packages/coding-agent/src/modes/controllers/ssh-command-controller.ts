@@ -18,8 +18,17 @@ import {
 	showCommandMessage,
 } from "./command-controller-shared";
 
+/**
+ * The slice of the interactive context this controller uses: 2 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type SshCommandControllerContext = Pick<InteractiveModeContext, "present" | "session" | "showError">;
+
 export class SSHCommandController {
-	constructor(private ctx: InteractiveModeContext) {}
+	constructor(private ctx: SshCommandControllerContext) {}
 
 	/**
 	 * Handle /ssh command and route to subcommands

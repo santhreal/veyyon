@@ -42,7 +42,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import type { AssistantMessage, Model } from "@veyyon/ai";
-import { getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils";
+import { clampLow, getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils";
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../capability";
 import { Settings } from "../../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
@@ -938,7 +938,7 @@ export class AcpAgent implements Agent {
 			case SPEECH_MODELS_LIST_METHOD:
 				return buildAcpSpeechModelsCatalog();
 			case "_veyyon/sessions/listAll": {
-				const limit = typeof params.limit === "number" ? Math.max(1, Math.min(5000, params.limit as number)) : 1000;
+				const limit = typeof params.limit === "number" ? clampLow(params.limit as number, 1, 5000) : 1000;
 				const sessions = await SessionManager.listAll();
 				const sorted = sessions.sort((l, r) => r.modified.getTime() - l.modified.getTime()).slice(0, limit);
 				return {
@@ -977,7 +977,7 @@ export class AcpAgent implements Agent {
 			case "_veyyon/chats/byCwd": {
 				const cwd = typeof params.cwd === "string" ? (params.cwd as string) : undefined;
 				if (!cwd) throw new Error("cwd required");
-				const limit = typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit as number)) : 100;
+				const limit = typeof params.limit === "number" ? clampLow(params.limit as number, 1, 500) : 100;
 				const sessions = await SessionManager.list(cwd);
 				const sorted = sessions.sort((l, r) => r.modified.getTime() - l.modified.getTime()).slice(0, limit);
 				return { sessions: sorted.map(s => this.#toSessionInfo(s)) };

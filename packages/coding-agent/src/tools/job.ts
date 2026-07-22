@@ -439,7 +439,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		if (running.length > 0) {
 			lines.push(`## Still Running (${running.length})\n`);
 			for (const j of running) {
-				lines.push(`- \`${j.id}\` [${j.type}] — ${j.label}`);
+				lines.push(`- \`${j.id}\` [${j.type}] — ${j.label} (up ${formatDuration(j.durationMs)})`);
 			}
 		}
 

@@ -100,3 +100,25 @@ export class ToolResultBuilder<TDetails extends DetailsWithMeta> {
 export function toolResult<TDetails extends DetailsWithMeta>(details?: TDetails): ToolResultBuilder<TDetails> {
 	return new ToolResultBuilder(details);
 }
+
+/**
+ * Prepend a notice line to an already-built tool result so it reaches the agent.
+ * Reuses the result's first text block when present, otherwise inserts a new
+ * one, and leaves details/isError/useless untouched. Use this to surface a
+ * cross-cutting notice (for example a clamped timeout) from a wrapper that sits
+ * above many per-action result builders, so the message rides on every path.
+ */
+export function prependResultNotice<TDetails>(
+	result: AgentToolResult<TDetails>,
+	notice: string,
+): AgentToolResult<TDetails> {
+	const content = [...result.content];
+	const firstText = content.findIndex(block => block.type === "text");
+	if (firstText >= 0) {
+		const block = content[firstText] as TextContent;
+		content[firstText] = { ...block, text: `${notice}\n\n${block.text}` };
+	} else {
+		content.unshift({ type: "text", text: notice });
+	}
+	return { ...result, content };
+}

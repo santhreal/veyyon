@@ -1020,7 +1020,7 @@ describe("remote compaction setting", () => {
 			})
 			.join("\n");
 
-		expect(promptText).toContain("Previous snapcompact archive source text:");
+		expect(promptText).toContain("Recovered source text from a prior compaction archive:");
 		expect(promptText).toContain("Archived snapcompact source");
 		expect(result.preserveData).toEqual({ otherState: "keep-me" });
 	});
@@ -1295,21 +1295,34 @@ describe("buildSessionContext", () => {
 		expect((loaded.messages[0] as any).summary).toContain("Summary of 1,a,2,b");
 	});
 
-	it("re-attaches snapcompact frames from preserveData as compaction summary images", () => {
+	// The removed image-archive engine stored the full source under `text`
+	// alongside its (now-defunct) image frames. On rebuild that source must be
+	// recovered as a single text block and the frames must NEVER rehydrate as
+	// images — recovering the text is lossless, and re-imaging old frames is the
+	// oversized-payload hazard the removal eliminated.
+	it("recovers a legacy frame archive as a compaction summary text block, never as images", () => {
 		const u1 = createMessageEntry(createUserMessage("1"));
 		const a1 = createMessageEntry(createAssistantMessage("a"));
 		const u2 = createMessageEntry(createUserMessage("2"));
 		const frame = { data: "ZmFrZQ==", mimeType: "image/png", cols: 64, rows: 40, chars: 4 };
 		const compaction: CompactionEntry = {
 			...createCompactionEntry("Filmed summary", u2.id),
-			preserveData: { snapcompact: { frames: [frame], totalChars: 4, truncatedChars: 0 } },
+			preserveData: {
+				snapcompact: { frames: [frame], totalChars: 12, truncatedChars: 0, text: "Archived body" },
+			},
 		};
 		const u3 = createMessageEntry(createUserMessage("3"));
 
 		const loaded = buildSessionContext([u1, a1, u2, compaction, u3]);
-		const summaryMessage = loaded.messages[0] as { role: string; images?: unknown };
+		const summaryMessage = loaded.messages[0] as {
+			role: string;
+			images?: unknown;
+			blocks?: Array<{ type: string; text?: string }>;
+		};
 		expect(summaryMessage.role).toBe("compactionSummary");
-		expect(summaryMessage.images).toEqual([{ type: "image", data: "ZmFrZQ==", mimeType: "image/png" }]);
+		expect(summaryMessage.images ?? []).toEqual([]);
+		expect(summaryMessage.blocks?.every(block => block.type === "text")).toBe(true);
+		expect(summaryMessage.blocks?.map(block => block.text ?? "").join("")).toContain("Archived body");
 	});
 
 	it("transcript option keeps full history with every compaction inline at its position", () => {
@@ -1320,7 +1333,9 @@ describe("buildSessionContext", () => {
 		const frame = { data: "ZmFrZQ==", mimeType: "image/png", cols: 64, rows: 40, chars: 4 };
 		const compact2: CompactionEntry = {
 			...createCompactionEntry("Second summary", u2.id),
-			preserveData: { snapcompact: { frames: [frame], totalChars: 4, truncatedChars: 0 } },
+			preserveData: {
+				snapcompact: { frames: [frame], totalChars: 12, truncatedChars: 0, text: "Archived body" },
+			},
 		};
 		const u3 = createMessageEntry(createUserMessage("3"));
 		const entries: SessionEntry[] = [u1, a1, compact1, u2, compact2, u3];
@@ -1336,11 +1351,16 @@ describe("buildSessionContext", () => {
 			"user",
 		]);
 		const first = transcript.messages[2] as { summary: string };
-		const second = transcript.messages[4] as { summary: string; images?: unknown };
+		const second = transcript.messages[4] as {
+			summary: string;
+			images?: unknown;
+			blocks?: Array<{ type: string; text?: string }>;
+		};
 		expect(first.summary).toContain("First summary");
 		expect(second.summary).toContain("Second summary");
-		// Snapcompact frames ride along in the transcript too.
-		expect(second.images).toEqual([{ type: "image", data: "ZmFrZQ==", mimeType: "image/png" }]);
+		// A legacy frame archive rides along in the transcript as recovered text, never as images.
+		expect(second.images ?? []).toEqual([]);
+		expect(second.blocks?.map(block => block.text ?? "").join("")).toContain("Archived body");
 
 		// LLM context is untouched by the option: latest compaction replaces history.
 		const llm = buildSessionContext(entries);

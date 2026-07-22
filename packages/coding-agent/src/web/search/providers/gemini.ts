@@ -18,6 +18,7 @@ import { fetchWithRetry } from "@veyyon/utils";
 
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
+import { sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -510,6 +511,21 @@ async function callGeminiDeveloperSearch(
 /**
  * Executes a web search using Google Gemini with Google Search grounding.
  */
+/**
+ * Did the model actually run a web search? A grounded Gemini/antigravity response
+ * carries at least one grounding signal: a source, a citation, or a search query
+ * the model issued. When the model answers conversationally WITHOUT searching (a
+ * plain greeting to a query like "test"), it returns text but NONE of those. This
+ * is the discriminator the caller uses to fail loud instead of surfacing that
+ * ungrounded chatter as if it were a search result (BACKLOG DOG-R2-3, Law 10: no
+ * silent fallback — a search that did not search must not look like it did).
+ */
+export function geminiPerformedSearch(
+	result: Pick<GeminiSearchResult, "sources" | "citations" | "searchQueries">,
+): boolean {
+	return result.sources.length > 0 || result.citations.length > 0 || result.searchQueries.length > 0;
+}
+
 export async function searchGemini(params: GeminiSearchParams): Promise<SearchResponse> {
 	const selectedModel = resolveGeminiSearchModel(params.geminiModel);
 	const seed = await findGeminiAuth(params.authStorage, params.sessionId, params.signal);
@@ -573,10 +589,22 @@ export async function searchGemini(params: GeminiSearchParams): Promise<SearchRe
 		);
 	}
 
+	// Fail loud when the model answered without searching. Returning `result.answer`
+	// here would surface a conversational greeting as a "search result" — the exact
+	// dogfood failure where `web_search test` came back as an Antigravity chat reply.
+	if (!geminiPerformedSearch(result) && result.answer.trim()) {
+		throw new SearchProviderError(
+			"gemini",
+			"Gemini returned an answer without performing a web search (no grounding sources, citations, or search queries). The model responded conversationally instead of searching; verify that Google Search grounding is enabled for this endpoint and model.",
+			502,
+		);
+	}
+
 	let sources = result.sources;
 
-	if (params.num_results && sources.length > params.num_results) {
-		sources = sources.slice(0, params.num_results);
+	const limit = sanitizeResultLimit(params.num_results);
+	if (limit !== undefined && sources.length > limit) {
+		sources = sources.slice(0, limit);
 	}
 
 	return {

@@ -2,12 +2,16 @@ import { describe, expect, it } from "bun:test";
 import type { AgentTool, ToolApproval } from "@veyyon/agent-core";
 import { LSP_READONLY_ACTIONS } from "@veyyon/coding-agent/lsp";
 import {
+	APPROVAL_MODE_VALUES,
 	type ApprovalMode,
 	formatApprovalPrompt,
+	isKnownApprovalMode,
+	normalizeApprovalMode,
 	requiresApproval,
 	resolveApproval,
 	type ToolTier,
 	truncateForPrompt,
+	validateApprovalModeSetting,
 } from "@veyyon/coding-agent/tools/approval";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import { DEBUG_READONLY_ACTIONS } from "@veyyon/coding-agent/tools/debug";
@@ -360,5 +364,67 @@ describe("resolveApproval precedence — fail-closed matrix (HSL-4)", () => {
 		expect(resolveApproval(tool("w", "write"), {}, "plan", {}, { planModeActive: true }).policy).toBe("prompt");
 		// exec is still hard-denied even with planModeActive.
 		expect(resolveApproval(tool("x", "exec"), {}, "plan", {}, { planModeActive: true }).policy).toBe("deny");
+	});
+});
+
+describe("normalizeApprovalMode fails closed on an invalid mode (never yolo)", () => {
+	// A hand-edited config typo must not silently become the least-safe mode.
+	// undefined = no configured value = the documented product default (yolo);
+	// any unrecognized non-empty string fails CLOSED to ask.
+	it("maps the shipped ladder and legacy aliases exactly", () => {
+		expect(normalizeApprovalMode("plan")).toBe("plan");
+		expect(normalizeApprovalMode("ask")).toBe("ask");
+		expect(normalizeApprovalMode("always-ask")).toBe("ask");
+		expect(normalizeApprovalMode("auto-edit")).toBe("auto-edit");
+		expect(normalizeApprovalMode("write")).toBe("auto-edit");
+		expect(normalizeApprovalMode("yolo")).toBe("yolo");
+	});
+
+	it("keeps yolo as the product default only for an absent value", () => {
+		expect(normalizeApprovalMode(undefined)).toBe("yolo");
+	});
+
+	it("fails closed to ask for a typo, never yolo", () => {
+		// The exact reported hazard: `askk`/`Ask`/trailing space must not open up.
+		for (const typo of ["askk", "Ask", "ask ", "auto_edit", "safe", ""]) {
+			expect(normalizeApprovalMode(typo)).toBe("ask");
+			expect(normalizeApprovalMode(typo)).not.toBe("yolo");
+		}
+	});
+});
+
+describe("approval mode value set is the one source of truth", () => {
+	it("recognizes every accepted mode and rejects typos", () => {
+		for (const mode of APPROVAL_MODE_VALUES) {
+			expect(isKnownApprovalMode(mode)).toBe(true);
+		}
+		expect(isKnownApprovalMode("askk")).toBe(false);
+		expect(isKnownApprovalMode(undefined)).toBe(false);
+		expect(isKnownApprovalMode(42)).toBe(false);
+	});
+
+	it("includes the shipped ladder and both legacy aliases", () => {
+		expect([...APPROVAL_MODE_VALUES].sort()).toEqual(
+			["always-ask", "ask", "auto-edit", "plan", "write", "yolo"].sort(),
+		);
+	});
+});
+
+describe("validateApprovalModeSetting surfaces a config typo loudly", () => {
+	it("returns no warning for an absent or valid value", () => {
+		expect(validateApprovalModeSetting(undefined)).toBeUndefined();
+		expect(validateApprovalModeSetting(null)).toBeUndefined();
+		for (const mode of APPROVAL_MODE_VALUES) {
+			expect(validateApprovalModeSetting(mode)).toBeUndefined();
+		}
+	});
+
+	it("returns an actionable warning naming the bad value, the safe fallback, and valid options", () => {
+		const warning = validateApprovalModeSetting("askk");
+		expect(warning).toBeDefined();
+		expect(warning).toContain("askk");
+		expect(warning).toContain("ask");
+		expect(warning).toContain("yolo"); // listed among valid values
+		expect(warning).toContain("plan");
 	});
 });

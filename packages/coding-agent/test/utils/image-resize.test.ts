@@ -1,5 +1,90 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { resizeImage } from "@veyyon/coding-agent/utils/image-resize";
+import type { ResizedImage } from "@veyyon/coding-agent/utils/image-resize";
+import { formatDimensionNote, resizeImage } from "@veyyon/coding-agent/utils/image-resize";
+
+/**
+ * formatDimensionNote is the coordinate-mapping hint appended to a downscaled image so
+ * the model can translate pixel coordinates back to the original. It had no test. It must
+ * emit nothing when the image was not resized, when any dimension is missing/zero, or when
+ * the displayed size equals the original; otherwise it reports both sizes and the exact
+ * width scale factor (original/displayed, two decimals). A wrong or missing note silently
+ * misaligns every coordinate the model produces.
+ */
+describe("formatDimensionNote", () => {
+	const base: Omit<ResizedImage, "originalWidth" | "originalHeight" | "width" | "height" | "wasResized"> = {
+		buffer: new Uint8Array(),
+		mimeType: "image/png",
+		get data() {
+			return "";
+		},
+	};
+
+	it("reports both sizes and the width scale factor for a downscaled image", () => {
+		expect(
+			formatDimensionNote({
+				...base,
+				originalWidth: 2000,
+				originalHeight: 1000,
+				width: 1000,
+				height: 500,
+				wasResized: true,
+			}),
+		).toBe(
+			"[Image: original 2000x1000, displayed at 1000x500. Multiply coordinates by 2.00 to map to original image.]",
+		);
+		expect(
+			formatDimensionNote({
+				...base,
+				originalWidth: 1500,
+				originalHeight: 900,
+				width: 500,
+				height: 300,
+				wasResized: true,
+			}),
+		).toBe(
+			"[Image: original 1500x900, displayed at 500x300. Multiply coordinates by 3.00 to map to original image.]",
+		);
+	});
+
+	it("emits no note when the image was not resized", () => {
+		expect(
+			formatDimensionNote({
+				...base,
+				originalWidth: 2000,
+				originalHeight: 1000,
+				width: 2000,
+				height: 1000,
+				wasResized: false,
+			}),
+		).toBeUndefined();
+	});
+
+	it("emits no note when the displayed size equals the original", () => {
+		expect(
+			formatDimensionNote({
+				...base,
+				originalWidth: 100,
+				originalHeight: 100,
+				width: 100,
+				height: 100,
+				wasResized: true,
+			}),
+		).toBeUndefined();
+	});
+
+	it("emits no note when any dimension is missing or zero", () => {
+		expect(
+			formatDimensionNote({
+				...base,
+				originalWidth: 0,
+				originalHeight: 1000,
+				width: 1000,
+				height: 500,
+				wasResized: true,
+			}),
+		).toBeUndefined();
+	});
+});
 
 // 1x1 red PNG (69 bytes) — used as a Bun.Image seed to synthesize larger fixtures
 // without checking binary blobs into the repo.

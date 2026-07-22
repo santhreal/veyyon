@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	DEFAULT_FUZZY_THRESHOLD,
 	EditTool,
@@ -13,11 +13,17 @@ import {
 import { writethroughNoop } from "@veyyon/coding-agent/lsp";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./helpers/settings-test-state";
+import { makeToolSession } from "./helpers/tool-session";
 
 // ─── Minimal ToolSession stub ────────────────────────────────────────────────
 
 function makeSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
@@ -27,7 +33,7 @@ function makeSession(cwd: string): ToolSession {
 		getArtifactsDir: () => null,
 		getSessionId: () => null,
 		getPlanModeState: () => undefined,
-	} as unknown as ToolSession;
+	});
 }
 
 const noopBeginDeferred = (_p: string) => ({
@@ -39,15 +45,17 @@ const noopBeginDeferred = (_p: string) => ({
 // ─── Setup / teardown ────────────────────────────────────────────────────────
 
 let tempDir: string;
+let settingsState: SettingsTestState | undefined;
 
 beforeEach(async () => {
-	resetSettingsForTest();
+	settingsState = beginSettingsTest();
 	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-edit-diff-"));
 	await Settings.init({ inMemory: true, cwd: tempDir });
 });
 
 afterEach(async () => {
-	resetSettingsForTest();
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 	await removeWithRetries(tempDir);
 });
 

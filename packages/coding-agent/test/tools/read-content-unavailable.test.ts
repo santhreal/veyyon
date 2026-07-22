@@ -15,15 +15,16 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { zip } from "@veyyon/coding-agent/utils/zip";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 function createSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		settings: Settings.isolated({ "read.summarize.enabled": false }),
-	} as unknown as ToolSession;
+	});
 }
 
 function unavailable(result: { details?: unknown }): { reason: string } | undefined {

@@ -201,10 +201,15 @@ export function normalizeForFuzzy(line: string): string {
 	const trimmed = line.trim();
 	if (trimmed.length === 0) return "";
 
+	// Fold the same curly-quote and dash ranges as normalizeUnicode so straight
+	// and smart punctuation compare equal. The ranges cover the COMMON smart
+	// quotes (U+201C/U+201D “ ”, U+2018/U+2019 ‘ ’) that an earlier hand-listed
+	// class silently omitted, plus the low/reversed-9 variants, guillemets, and
+	// the full dash range including U+2015 ―.
 	return trimmed
-		.replace(/[""„‟«»]/g, '"')
-		.replace(/[''‚‛`´]/g, "'")
-		.replace(/[‐‑‒–—−]/g, "-")
+		.replace(/[“-‟«»]/g, '"')
+		.replace(/[‘-‛`´]/g, "'")
+		.replace(/[‐-―−]/g, "-")
 		.replace(/[ \t]+/g, " ");
 }
 

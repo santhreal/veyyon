@@ -899,6 +899,16 @@ interface ResolvedSqliteReadPath {
 type SuffixMatchCache = Map<string, { absolutePath: string; displayPath: string } | null>;
 
 /**
+ * Filesystem path(s) a read call targets, for the cwd boundary (cwd-boundary.ts).
+ * Just the `path` arg — a selector suffix is left attached (it cannot introduce
+ * `../` traversal), and URL/ssh/internal targets are filtered by the boundary.
+ */
+export function readFilesystemTargets(args: unknown): string[] {
+	const path = (args as { path?: unknown }).path;
+	return typeof path === "string" ? [path] : [];
+}
+
+/**
  * Read tool implementation.
  *
  * Reads files with support for images, converted documents (via markit), and text.
@@ -908,6 +918,10 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	readonly name = "read";
 	readonly approval = (args: unknown): ToolTier =>
 		pathTargetsSsh(String((args as { path?: unknown }).path ?? "")) ? "exec" : "read";
+	// The cwd boundary reads this to gate out-of-cwd reads in non-yolo modes. A
+	// `:selector` suffix is left attached (it cannot traverse); URLs/ssh/internal
+	// schemes are filtered by the boundary itself. See cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => readFilesystemTargets(args);
 	readonly label = "Read";
 	readonly loadMode = "essential";
 	readonly description: string;

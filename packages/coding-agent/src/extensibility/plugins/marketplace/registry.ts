@@ -5,23 +5,34 @@
  *   - marketplaces.json under getConfigRootDir() — which catalogs the user has added
  *   - installed_plugins.json under getPluginsDir() — which plugins are installed
  *
- * Read/write functions accept explicit file paths so callers control the
- * location. Path helpers compute the default paths from the dir singleton.
+ * This module owns the MARKETPLACES registry (marketplaces.json). The INSTALLED
+ * plugins registry (installed_plugins.json) is owned by `../installed-registry`
+ * and re-exported here so marketplace callers keep a single `./registry` import
+ * surface. Read/write functions accept explicit file paths so callers control
+ * the location. Path helpers compute the default paths from the dir singleton.
  *
- * Both use atomic write (tmp + rename) via the canonical atomicWriteFile owner,
- * which handles the Windows rename-clobber fallback and fsync durability.
+ * Writes use atomic write (tmp + rename) via the canonical `atomicWriteJson`
+ * owner in `@veyyon/utils`, which handles the Windows rename-clobber fallback
+ * and fsync durability.
  */
 
 import * as path from "node:path";
 
-import { atomicWriteFile, getConfigRootDir, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
+import { atomicWriteJson, getConfigRootDir, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
 
-import type {
-	InstalledPluginEntry,
-	InstalledPluginsRegistry,
-	MarketplaceRegistryEntry,
-	MarketplacesRegistry,
-} from "./types";
+import type { MarketplaceRegistryEntry, MarketplacesRegistry } from "./types";
+
+// ── Installed plugins registry (re-exported from the single owner) ────
+export {
+	addInstalledPlugin,
+	collectReferencedPaths,
+	getInstalledPlugin,
+	getInstalledPluginsRegistryPath,
+	getPluginsCacheDir,
+	readInstalledPluginsRegistry,
+	removeInstalledPlugin,
+	writeInstalledPluginsRegistry,
+} from "../installed-registry";
 
 // ── Path helpers ─────────────────────────────────────────────────────
 
@@ -29,22 +40,8 @@ export function getMarketplacesRegistryPath(): string {
 	return path.join(getConfigRootDir(), "marketplaces.json");
 }
 
-export function getInstalledPluginsRegistryPath(): string {
-	return path.join(getPluginsDir(), "installed_plugins.json");
-}
-
 export function getMarketplacesCacheDir(): string {
 	return path.join(getPluginsDir(), "cache", "marketplaces");
-}
-
-export function getPluginsCacheDir(): string {
-	return path.join(getPluginsDir(), "cache", "plugins");
-}
-
-// ── Atomic write ─────────────────────────────────────────────────────
-
-async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-	await atomicWriteFile(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
 // ── Marketplaces registry ────────────────────────────────────────────
@@ -72,39 +69,6 @@ export async function writeMarketplacesRegistry(filePath: string, reg: Marketpla
 	await atomicWriteJson(filePath, reg);
 }
 
-// ── Installed plugins registry ───────────────────────────────────────
-
-function emptyInstalledPluginsRegistry(): InstalledPluginsRegistry {
-	return { version: 2, plugins: {} };
-}
-
-export async function readInstalledPluginsRegistry(filePath: string): Promise<InstalledPluginsRegistry> {
-	try {
-		const content = await Bun.file(filePath).text();
-		const data = tryParseJson<InstalledPluginsRegistry>(content);
-		if (
-			!data ||
-			typeof data !== "object" ||
-			typeof data.version !== "number" ||
-			!data.plugins ||
-			typeof data.plugins !== "object" ||
-			Array.isArray(data.plugins)
-		) {
-			logger.warn("Invalid installed plugins registry, returning empty", { path: filePath });
-			return emptyInstalledPluginsRegistry();
-		}
-		// Accept any numeric version — forward compatible reads
-		return { ...data, version: 2 };
-	} catch (err) {
-		if (isEnoent(err)) return emptyInstalledPluginsRegistry();
-		throw err;
-	}
-}
-
-export async function writeInstalledPluginsRegistry(filePath: string, reg: InstalledPluginsRegistry): Promise<void> {
-	await atomicWriteJson(filePath, reg);
-}
-
 // ── Marketplace CRUD ─────────────────────────────────────────────────
 // Pure functions that transform registry state. Caller is responsible for
 // reading, mutating, and writing back.
@@ -126,45 +90,4 @@ export function removeMarketplaceEntry(reg: MarketplacesRegistry, name: string):
 
 export function getMarketplaceEntry(reg: MarketplacesRegistry, name: string): MarketplaceRegistryEntry | undefined {
 	return reg.marketplaces.find(m => m.name === name);
-}
-
-// ── Installed plugin CRUD ────────────────────────────────────────────
-
-export function addInstalledPlugin(
-	reg: InstalledPluginsRegistry,
-	id: string,
-	entry: InstalledPluginEntry,
-): InstalledPluginsRegistry {
-	const existing = reg.plugins[id] ?? [];
-	return {
-		...reg,
-		plugins: { ...reg.plugins, [id]: [...existing, entry] },
-	};
-}
-
-export function removeInstalledPlugin(reg: InstalledPluginsRegistry, id: string): InstalledPluginsRegistry {
-	if (!(id in reg.plugins)) {
-		throw new Error(`Plugin "${id}" not found in registry`);
-	}
-	const { [id]: _, ...rest } = reg.plugins;
-	return { ...reg, plugins: rest };
-}
-
-export function getInstalledPlugin(reg: InstalledPluginsRegistry, id: string): InstalledPluginEntry[] | undefined {
-	return reg.plugins[id];
-}
-
-/**
- * Collect all installPath values referenced by any of the provided registries.
- * Use this before deleting a cached plugin directory to verify it is not still
- * referenced by another scope's registry.
- */
-export function collectReferencedPaths(...registries: InstalledPluginsRegistry[]): Set<string> {
-	return new Set(
-		registries.flatMap(r =>
-			Object.values(r.plugins)
-				.flat()
-				.map(e => e.installPath),
-		),
-	);
 }

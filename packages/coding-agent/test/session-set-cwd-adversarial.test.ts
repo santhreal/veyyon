@@ -91,4 +91,46 @@ describe("setCwd adversarial cases", () => {
 		expect(resolveToCwd("b.txt", session.cwd)).toBe(path.join(path.resolve(next), "b.txt"));
 		expect(resolveToCwd("a.txt", session.cwd)).toBe(path.join(path.resolve(next), "a.txt"));
 	});
+
+	it("setCwd to the same directory is a no-op success returning that path", async () => {
+		const start = makeTempDir("@pi-adv-same-");
+		const manager = SessionManager.inMemory(start);
+		const resolved = await manager.setCwd(start, { validate: true });
+		expect(resolved).toBe(path.resolve(start));
+		expect(manager.getCwd()).toBe(path.resolve(start));
+	});
+
+	it("setCwd into a nested child directory succeeds and updates getCwd", async () => {
+		const start = makeTempDir("@pi-adv-nested-");
+		const child = path.join(start, "child");
+		fs.mkdirSync(child, { recursive: true });
+		const manager = SessionManager.inMemory(start);
+		const resolved = await manager.setCwd(child, { validate: true });
+		expect(resolved).toBe(path.resolve(child));
+		expect(manager.getCwd()).toBe(path.resolve(child));
+	});
+
+	it("setCwd back to the previous directory after a nested change", async () => {
+		const start = makeTempDir("@pi-adv-back-");
+		const child = path.join(start, "sub");
+		fs.mkdirSync(child, { recursive: true });
+		const manager = SessionManager.inMemory(start);
+		await manager.setCwd(child, { validate: true });
+		expect(manager.getCwd()).toBe(path.resolve(child));
+		await manager.setCwd(start, { validate: true });
+		expect(manager.getCwd()).toBe(path.resolve(start));
+	});
+
+	it("failed setCwd leaves getCwd unchanged after a prior successful change", async () => {
+		const start = makeTempDir("@pi-adv-fail-leave-");
+		const good = path.join(start, "good");
+		fs.mkdirSync(good, { recursive: true });
+		const manager = SessionManager.inMemory(start);
+		await manager.setCwd(good, { validate: true });
+		const before = manager.getCwd();
+		await expect(
+			manager.setCwd(path.join(start, "missing-dir"), { validate: true }),
+		).rejects.toThrow(/Directory does not exist/);
+		expect(manager.getCwd()).toBe(before);
+	});
 });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, ProviderPayload, Usage } from "@veyyon/ai";
-import { BlobStore } from "@veyyon/coding-agent/session/blob-store";
-import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { BlobStore, isTextBlobRef } from "@veyyon/coding-agent/session/blob-store";
+import type { FileEntry, SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { resolveBlobRefsInEntries } from "@veyyon/coding-agent/session/session-loader";
 import { prepareEntryForPersistence } from "@veyyon/coding-agent/session/session-persistence";
 import { TempDir } from "@veyyon/utils";
 
@@ -129,30 +130,50 @@ describe("session atomic reasoning persistence", () => {
 		expect(redactedThinking.data.endsWith(truncationNotice)).toBe(false);
 	});
 
-	it("still truncates oversized UNSIGNED thinking and text blocks", () => {
+	it("externalizes oversized UNSIGNED thinking and text blocks losslessly instead of truncating", async () => {
+		// WHY (DATALOSS-2): unsigned oversized reasoning/text carries no exact-bytes
+		// binding, so it used to be TRUNCATED to ~500k + a notice — permanently losing
+		// the tail from the study record. The new contract externalizes it to a
+		// `blobtext:` ref (small on the JSONL line) and restores the full content on
+		// load. This test asserts both: the persisted line holds a ref (not truncated
+		// text and NOT the truncation notice), and the load restores every byte.
 		using tempDir = TempDir.createSync("@pi-session-atomic-unsigned-");
 		const blobStore = new BlobStore(tempDir.path());
 
-		const message = persistedAssistant(
-			assistantEntry(
-				[
-					{ type: "thinking", thinking: "y".repeat(600_000) },
-					{ type: "text", text: "z".repeat(600_000) },
-				],
-				undefined,
-			),
-			blobStore,
+		const bigThinking = `${"y".repeat(600_000)}#thinking-tail#`;
+		const bigText = `${"z".repeat(600_000)}#text-tail#`;
+		const entry = assistantEntry(
+			[
+				{ type: "thinking", thinking: bigThinking },
+				{ type: "text", text: bigText },
+			],
+			undefined,
 		);
+		const message = persistedAssistant(entry, blobStore);
 
 		const thinking = message.content[0];
 		if (thinking?.type !== "thinking") throw new Error("Expected thinking block");
-		expect(thinking.thinking.length).toBeLessThan(600_000);
-		expect(thinking.thinking.endsWith(truncationNotice)).toBe(true);
+		expect(isTextBlobRef(thinking.thinking)).toBe(true);
+		expect(thinking.thinking.endsWith(truncationNotice)).toBe(false);
 
 		const text = message.content[1];
 		if (text?.type !== "text") throw new Error("Expected text block");
-		expect(text.text.length).toBeLessThan(600_000);
-		expect(text.text.endsWith(truncationNotice)).toBe(true);
+		expect(isTextBlobRef(text.text)).toBe(true);
+
+		// Load restores the full original content, tail and all — no data lost.
+		const loaded: FileEntry[] = [structuredClone(prepareEntryForPersistence(entry, blobStore))];
+		await resolveBlobRefsInEntries(loaded, blobStore);
+		const restored = loaded[0];
+		if (restored.type !== "message" || restored.message.role !== "assistant") {
+			throw new Error("Expected restored assistant message");
+		}
+		const restoredThinking = restored.message.content[0];
+		const restoredText = restored.message.content[1];
+		if (restoredThinking?.type !== "thinking" || restoredText?.type !== "text") {
+			throw new Error("Expected restored thinking + text blocks");
+		}
+		expect(restoredThinking.thinking).toBe(bigThinking);
+		expect(restoredText.text).toBe(bigText);
 	});
 
 	it("survives a full JSONL string round-trip for signed thinking", () => {

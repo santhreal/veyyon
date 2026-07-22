@@ -20,6 +20,12 @@ export interface JsExecutorOptions {
 	onStatus?: (event: JsStatusEvent) => void;
 	signal?: AbortSignal;
 	sessionId: string;
+	/**
+	 * Agent session that owns this eval context, so it is reaped when that session
+	 * ends (mirrors the python/ruby/julia kernels). Unset falls back to per-context
+	 * ownership. Without this the JS eval worker leaked across sessions (GRAN-11).
+	 */
+	kernelOwnerId?: string;
 	reset?: boolean;
 	sessionFile?: string;
 	artifactPath?: string;
@@ -98,6 +104,7 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 		await executeInVmContext({
 			sessionKey: options.sessionId,
 			sessionId: options.sessionId,
+			ownerId: options.kernelOwnerId,
 			cwd: options.cwd ?? options.session.cwd,
 			session: options.session,
 			localRoots: options.localRoots,

@@ -1100,10 +1100,27 @@ function extractFileHeader(diffText: string): string {
 	return headerLines.join("\n");
 }
 
+/**
+ * Filter a file's hunks to the requested 1-based indices. Each index is floored and
+ * clamped to at least 1, matching the operator-facing 1-based numbering (`hunk.index`
+ * is 0-based, so `hunk.index + 1` is the displayed number). This is the single owner
+ * of index-based hunk selection, shared by the internal selector below and the
+ * `git_hunk` custom tool. The empty-list default (all vs. none) is left to each
+ * caller, because those two callers legitimately disagree: the internal selector
+ * treats an empty index list as "no hunks", while the tool treats "no indices given"
+ * as "the whole file".
+ */
+export function selectHunksByIndices<H extends { index: number }>(
+	hunks: readonly H[],
+	indices: readonly number[],
+): H[] {
+	const wanted = new Set(indices.map(v => Math.max(1, Math.floor(v))));
+	return hunks.filter(hunk => wanted.has(hunk.index + 1));
+}
+
 function selectHunks(file: FileHunks, selector: HunkSelection["hunks"]): FileHunks["hunks"] {
 	if (selector.type === "indices") {
-		const wanted = new Set(selector.indices.map(v => Math.max(1, Math.floor(v))));
-		return file.hunks.filter(hunk => wanted.has(hunk.index + 1));
+		return selectHunksByIndices(file.hunks, selector.indices);
 	}
 	if (selector.type === "lines") {
 		const start = Math.floor(selector.start);

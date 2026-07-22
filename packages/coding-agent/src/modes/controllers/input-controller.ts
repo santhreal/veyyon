@@ -527,12 +527,9 @@ export class InputController {
 			if (wasBashMode !== this.ctx.isBashMode || wasPythonMode !== this.ctx.isPythonMode) {
 				this.ctx.updateEditorBorderColor();
 			}
-			// Optional: many controller-level tests mock a partial InteractiveModeContext
-			// without the composer bar wired up.
-			this.ctx.refreshComposerShortcuts?.();
-			// The first real keystroke ends the hero moment (UI-10). Guarded the
-			// same way for partial test contexts.
-			if (text.length > 0) this.ctx.dismissWelcome?.();
+			this.ctx.refreshComposerShortcuts();
+			// The first real keystroke ends the hero moment (UI-10).
+			if (text.length > 0) this.ctx.dismissWelcome();
 		};
 	}
 

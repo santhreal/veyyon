@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import browserDescription from "../prompts/tools/browser.md" with { type: "text" };
 import type { ToolSession } from "../sdk";
@@ -14,8 +14,8 @@ import { saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import { resolveToCwd } from "./path-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
-import { toolResult } from "./tool-result";
-import { clampTimeout } from "./tool-timeouts";
+import { prependResultNotice, toolResult } from "./tool-result";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
 export {
 	type AriaSnapshotOptions,
@@ -51,7 +51,7 @@ const browserSchema = type({
 	),
 	"dialogs?": type("'accept' | 'dismiss'").describe("auto-handle dialogs"),
 	"code?": type("string").describe("js body to run in tab"),
-	"timeout?": type("number").describe("timeout in seconds"),
+	"timeout?": type("number").describe(describeTimeoutParam("browser")),
 	"all?": type("boolean").describe("close every tab"),
 	"kill?": type("boolean").describe("also kill spawned-app browsers"),
 });
@@ -193,19 +193,28 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			throwIfAborted(signal);
 			const timeoutSeconds = clampTimeout("browser", params.timeout);
 			const timeoutMs = timeoutSeconds * 1000;
+			// A clamp changes the budget the agent asked for; surface it on the
+			// result rather than applying it silently (Law 10). Each action builds
+			// its own result, so prepend the notice once around the dispatch.
+			const clampNotice = formatTimeoutClampNotice("browser", params.timeout, timeoutSeconds);
 			const name = params.name ?? DEFAULT_TAB_NAME;
 			const details: BrowserToolDetails = { action: params.action, name };
 
+			let result: AgentToolResult<BrowserToolDetails>;
 			switch (params.action) {
 				case "open":
-					return await this.#open(name, params, details, timeoutMs, signal);
+					result = await this.#open(name, params, details, timeoutMs, signal);
+					break;
 				case "close":
-					return await this.#close(name, params, details, signal);
+					result = await this.#close(name, params, details, signal);
+					break;
 				case "run":
-					return await this.#run(name, params, details, timeoutMs, signal);
+					result = await this.#run(name, params, details, timeoutMs, signal);
+					break;
 				default:
 					throw new ToolError(`Unsupported action: ${(params as BrowserParams).action}`);
 			}
+			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} catch (error) {
 			if (error instanceof ToolAbortError) throw error;
 			if (error instanceof Error && error.name === "AbortError") {
@@ -395,9 +404,5 @@ function sameBrowserKind(a: BrowserKind, b: BrowserKind): boolean {
 
 function stringifyReturnValue(value: unknown): string {
 	if (typeof value === "string") return value;
-	try {
-		return JSON.stringify(value, null, 2) ?? String(value);
-	} catch {
-		return String(value);
-	}
+	return stringifyJsonSafe(value, 2);
 }

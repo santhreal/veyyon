@@ -5,9 +5,11 @@
  * rule of the same name overrides a bundled default (first-wins dedup).
  */
 import { describe, expect, it } from "bun:test";
+import { prompt } from "@veyyon/utils";
 import { getCapability } from "@veyyon/coding-agent/capability";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
 import type { LoadContext } from "@veyyon/coding-agent/capability/types";
+import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
 // Register all discovery providers as a side effect.
 import "@veyyon/coding-agent/discovery";
 import { TtsrManager, type TtsrMatchContext } from "@veyyon/coding-agent/export/ttsr";
@@ -63,6 +65,73 @@ describe("builtin-defaults rule provider", () => {
 	it("preserves a per-rule interruptMode override from frontmatter", async () => {
 		const rules = await loadBuiltinRules();
 		expect(rules.find(r => r.name === "ts-set-map")?.interruptMode).toBe("never");
+	});
+
+	it("cwd-reroot fires on an absolute foreign path in a navigation call, not on relative/URI/edit calls", async () => {
+		const rules = await loadBuiltinRules();
+		const rule = rules.find(r => r.name === "cwd-reroot");
+		if (!rule) throw new Error("cwd-reroot rule missing");
+
+		const manager = new TtsrManager();
+		expect(manager.addRule(rule)).toBe(true);
+
+		// A read/grep/glob call carrying a deep absolute path (the shape produced only
+		// when reaching into another project) fires the nudge on each nav tool.
+		const foreign =
+			'{"path":"/media/mukund-thiru/SanthData/Santh/software/keyhog/crates/cli/src/subcommands/calibrate_autoroute.rs:1-260"}';
+		for (const toolName of ["read", "grep", "glob", "ast_grep"]) {
+			manager.resetBuffer();
+			expect(
+				manager.checkDelta(foreign, { source: "tool", toolName }).map(r => r.name),
+				toolName,
+			).toEqual(["cwd-reroot"]);
+		}
+
+		// In-cwd work uses short RELATIVE paths, which carry no leading slash and never fire.
+		for (const relative of [
+			'{"path":"src/tools/read.ts"}',
+			'{"path":"packages/coding-agent/src/tools/read.ts:1-40"}',
+		]) {
+			manager.resetBuffer();
+			expect(manager.checkDelta(relative, { source: "tool", toolName: "read" }), relative).toEqual([]);
+		}
+
+		// Internal URIs (scheme://a/b/c/d) look path-like but must not fire: the leading
+		// slashes sit after a scheme colon or a word char, never after a real delimiter.
+		for (const uri of ['{"path":"skill://a/b/c/d/e"}', '{"path":"mcp://server/tool/a/b/c"}']) {
+			manager.resetBuffer();
+			expect(manager.checkDelta(uri, { source: "tool", toolName: "read" }), uri).toEqual([]);
+		}
+
+		// Out of scope: an edit call embedding an absolute path in its content is not a
+		// navigation call and must not trip the re-root nudge.
+		manager.resetBuffer();
+		expect(manager.checkDelta(foreign, { source: "tool", toolName: "edit", filePaths: ["src/foo.ts"] })).toEqual([]);
+	});
+
+	// Regression for BUG-CWD-REROOT-ARGOT-LEAK-DEFAULT: bundled rules are ALWAYS
+	// active (they gate on a TTSR condition, never on a feature flag), but argot is
+	// experimental and `argot.enabled` defaults to false, so the argot_load tool is
+	// not even registered by default. A rule that mentions argot MUST wrap that
+	// mention in a `{{#if argot}}` gate, which #getTtsrInjectionContent resolves
+	// against the live `argot.enabled` flag before injecting the body. So with the
+	// flag OFF the rendered body must carry no argot mention at all (no dead advice
+	// to call a tool that does not exist); an ungated `argot` in a rule body is the
+	// leak this guards against.
+	describe("bundled rules never leak argot advice when argot is off", () => {
+		it("every rule body rendered with argot=false contains no argot mention", () => {
+			const leaks = BUILTIN_RULE_SOURCES.filter(
+				({ content }) => /argot/i.test(prompt.render(content, { argot: false })),
+			).map(r => r.name);
+			expect(leaks).toEqual([]);
+		});
+
+		it("cwd-reroot's argot_load advice appears only when argot is on (the gate actually passes content through)", () => {
+			const cwdReroot = BUILTIN_RULE_SOURCES.find(r => r.name === "cwd-reroot");
+			if (!cwdReroot) throw new Error("cwd-reroot rule missing");
+			expect(prompt.render(cwdReroot.content, { argot: false })).not.toMatch(/argot_load/);
+			expect(prompt.render(cwdReroot.content, { argot: true })).toContain("argot_load");
+		});
 	});
 
 	it("fires the no-test-timers rule on real timers in *.test.ts but not plain *.ts", async () => {

@@ -13,6 +13,18 @@ import { createMCPProxyTools, createSubagentSettings } from "../../task/executor
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
 import type { InteractiveModeContext } from "../types";
 
+/**
+ * The slice of the interactive context this controller uses: 7 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type TanCommandControllerContext = Pick<
+	InteractiveModeContext,
+	"mcpManager" | "rebuildChatFromMessages" | "session" | "sessionManager" | "settings" | "showError" | "showStatus"
+>;
+
 const TAN_LABEL_PREVIEW_LENGTH = 80;
 
 function previewWork(work: string): string {
@@ -29,7 +41,7 @@ async function removeCloneSession(cloneFile: string): Promise<void> {
 }
 
 export class TanCommandController {
-	constructor(private readonly ctx: InteractiveModeContext) {}
+	constructor(private readonly ctx: TanCommandControllerContext) {}
 
 	async start(work: string): Promise<void> {
 		const trimmedWork = work.trim();

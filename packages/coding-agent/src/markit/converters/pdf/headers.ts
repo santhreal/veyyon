@@ -25,7 +25,7 @@ const BOTTOM_ZONE_MAX_Y = 80;
 /**
  * Minimum consecutive pages a text must appear on to be considered a
  * running header/footer. Catches both document-wide headers (appearing
- * on every page) and chapter-specific headers (appearing on 4+ consecutive
+ * on every page) and chapter-specific headers (appearing on 8+ consecutive
  * pages within a chapter).
  */
 const MIN_CONSECUTIVE_PAGES = 8;

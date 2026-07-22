@@ -2,8 +2,13 @@ import { afterEach, describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { setExcludedSearchProviders } from "@veyyon/coding-agent/web/search/provider";
 import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
-import { searchPublicWeb } from "@veyyon/coding-agent/web/search/providers/public";
-import { SearchProviderError, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
+import {
+	dedupKey,
+	type MergedSource,
+	mergeSources,
+	searchPublicWeb,
+} from "@veyyon/coding-agent/web/search/providers/public";
+import { SearchProviderError, type SearchProviderId, type SearchSource } from "@veyyon/coding-agent/web/search/types";
 
 const fakeAuthStorage = {
 	async getApiKey() {
@@ -194,5 +199,92 @@ describe("Public Web aggregate provider", () => {
 			expect(error).toBeInstanceOf(SearchProviderError);
 			expect(error).toMatchObject({ provider: "public", status: 400 });
 		}
+	});
+});
+
+// The aggregate's HTML-scraping engines can never emit an author/publishedDate,
+// so the enrichment merges below are unreachable through searchPublicWeb's
+// fixtures. These unit tests exercise the merge accumulator directly (an
+// exported test seam) so the field-level merge rules are pinned with real
+// values instead of only being covered end-to-end.
+describe("dedupKey (canonical cross-engine URL key)", () => {
+	it("drops a leading www, a trailing slash, and the fragment while preserving the query", () => {
+		// All four spellings of the same page must collapse to one key.
+		const canonical = dedupKey("https://example.com/page?q=1");
+		expect(dedupKey("https://www.example.com/page?q=1")).toBe(canonical);
+		expect(dedupKey("https://example.com/page/?q=1")).toBe(canonical);
+		expect(dedupKey("https://EXAMPLE.com/page?q=1#section")).toBe(canonical);
+		expect(canonical).toBe("example.com/page?q=1");
+	});
+
+	it("keeps distinct queries and distinct paths separate", () => {
+		expect(dedupKey("https://example.com/page?q=1")).not.toBe(dedupKey("https://example.com/page?q=2"));
+		expect(dedupKey("https://example.com/a")).not.toBe(dedupKey("https://example.com/b"));
+	});
+
+	it("does not strip the single root slash", () => {
+		// A bare host keeps its "/" path; only a trailing slash on a longer path drops.
+		expect(dedupKey("https://example.com/")).toBe("example.com/");
+	});
+
+	it("returns the raw string for an unparseable URL instead of throwing", () => {
+		expect(dedupKey("not a url")).toBe("not a url");
+	});
+});
+
+describe("mergeSources (cross-engine field consolidation)", () => {
+	function src(overrides: Partial<SearchSource> & { url: string }): SearchSource {
+		return { title: overrides.url, ...overrides };
+	}
+
+	it("fills author from a lower-ranked engine when the best-ranked one lacked it", () => {
+		// Regression lock: author used to be the one optional field mergeSources did
+		// not fill (publishedDate and ageSeconds were), so a duplicate URL that only
+		// a second engine annotated with an author dropped that author silently.
+		const merged = new Map<string, MergedSource>();
+		mergeSources(merged, [src({ url: "https://example.com/x", author: undefined })]);
+		mergeSources(merged, [src({ url: "https://example.com/x", author: "Jane Doe" })]);
+		const entry = merged.get(dedupKey("https://example.com/x"));
+		expect(entry?.source.author).toBe("Jane Doe");
+		expect(entry?.engines).toBe(2);
+	});
+
+	it("does not overwrite an author already present on the best-ranked engine", () => {
+		const merged = new Map<string, MergedSource>();
+		mergeSources(merged, [src({ url: "https://example.com/x", author: "First Author" })]);
+		mergeSources(merged, [src({ url: "https://example.com/x", author: "Second Author" })]);
+		expect(merged.get(dedupKey("https://example.com/x"))?.source.author).toBe("First Author");
+	});
+
+	it("fills publishedDate and ageSeconds the same way author is filled", () => {
+		const merged = new Map<string, MergedSource>();
+		mergeSources(merged, [src({ url: "https://example.com/x" })]);
+		mergeSources(merged, [src({ url: "https://example.com/x", publishedDate: "2024-01-01", ageSeconds: 42 })]);
+		const entry = merged.get(dedupKey("https://example.com/x"));
+		expect(entry?.source.publishedDate).toBe("2024-01-01");
+		expect(entry?.source.ageSeconds).toBe(42);
+	});
+
+	it("counts cross-engine consensus and adopts the better-ranked engine's title and url", () => {
+		const merged = new Map<string, MergedSource>();
+		// Engine A ranks the shared URL second (rank 1); engine B ranks it first (rank 0).
+		mergeSources(merged, [
+			src({ url: "https://a.example/one" }),
+			src({ url: "https://example.com/shared", title: "A title" }),
+		]);
+		mergeSources(merged, [src({ url: "https://www.example.com/shared/", title: "B title" })]);
+		const entry = merged.get(dedupKey("https://example.com/shared"));
+		expect(entry?.engines).toBe(2);
+		expect(entry?.bestRank).toBe(0);
+		// The better-ranked (rank 0) engine's title/url win.
+		expect(entry?.source.title).toBe("B title");
+		expect(entry?.source.url).toBe("https://www.example.com/shared/");
+	});
+
+	it("keeps the longest snippet regardless of which engine ranked the URL best", () => {
+		const merged = new Map<string, MergedSource>();
+		mergeSources(merged, [src({ url: "https://example.com/x", snippet: "short" })]);
+		mergeSources(merged, [src({ url: "https://example.com/x", snippet: "a considerably longer snippet" })]);
+		expect(merged.get(dedupKey("https://example.com/x"))?.source.snippet).toBe("a considerably longer snippet");
 	});
 });

@@ -46,7 +46,6 @@ export type WorkerInitPayload =
 	| {
 			mode: "headless";
 			browserWSEndpoint: string;
-			safeDir: string;
 			viewport?: { width: number; height: number; deviceScaleFactor?: number };
 			dialogs?: "accept" | "dismiss";
 			url?: string;
@@ -56,7 +55,6 @@ export type WorkerInitPayload =
 	| {
 			mode: "attach";
 			browserWSEndpoint: string;
-			safeDir: string;
 			targetId: string;
 			dialogs?: "accept" | "dismiss";
 			/**

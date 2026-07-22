@@ -1,12 +1,17 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AssistantMessage, ToolCall, Usage } from "@veyyon/ai";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import type { TUI } from "@veyyon/tui";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./helpers/settings-test-state";
 
 const TOOL_CALL_A_ID = "toolu_mixed_text_order_a";
 const TOOL_CALL_B_ID = "toolu_mixed_text_order_b";
@@ -90,24 +95,33 @@ function createFixture() {
 		showPinnedError: vi.fn(),
 		clearTransientSessionUi: vi.fn(),
 		lastAssistantUsage: zeroUsage(),
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
 	} as unknown as InteractiveModeContext;
 
 	return { controller: new EventController(ctx), chatContainer };
 }
 
 describe("EventController mixed assistant text/tool rendering", () => {
+	let settingsState: SettingsTestState | undefined;
+
 	beforeAll(async () => {
 		await initTheme(false);
 	});
 
 	beforeEach(async () => {
-		resetSettingsForTest();
+		settingsState = beginSettingsTest();
 		await Settings.init({ inMemory: true, overrides: { "display.smoothStreaming": false } });
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-		resetSettingsForTest();
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
 	});
 
 	it("renders assistant text segments in order around two tool results from one mixed message", async () => {

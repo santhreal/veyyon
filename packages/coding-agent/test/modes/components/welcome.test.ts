@@ -4,6 +4,7 @@ import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { pickWeightedTip, WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
+import { setProfile } from "@veyyon/utils";
 
 function plain(lines: readonly string[]): string {
 	return lines.map(line => stripVTControlCharacters(line)).join("\n");
@@ -171,6 +172,40 @@ describe("WelcomeComponent hero layout", () => {
 		// At width 40 the tip budget is ~30 columns and the shortest shipped tip
 		// is 35 chars, so every tip wraps; the wrap must keep the final word.
 		expect(plain(welcome.render(40))).toContain(lastWord);
+	});
+});
+
+describe("WelcomeComponent profile indicator", () => {
+	beforeAll(async () => {
+		await Settings.init({ inMemory: true });
+		await initTheme(false, "unicode", false, "titanium", "light");
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		// Return to the default profile so the shared process-global cannot leak.
+		setProfile(undefined);
+	});
+
+	it("names the active profile on the metadata line for a named sandbox", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.99);
+		setProfile("work");
+		const lines = new WelcomeComponent("1.2.3", "gpt-5", "openai")
+			.render(120)
+			.map(line => stripVTControlCharacters(line));
+		const metaIdx = lines.findIndex(line => line.includes("v1.2.3") && line.includes("gpt-5"));
+		expect(metaIdx).toBeGreaterThanOrEqual(0);
+		// The profile leads the metadata line, ahead of the version and model.
+		expect(lines[metaIdx]).toMatch(/work\s+·\s+v1\.2\.3/);
+	});
+
+	it("stays silent on the built-in default profile so the vanilla hero is unchanged", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.99);
+		setProfile(undefined);
+		const frame = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai").render(120));
+		// No stray profile token: the metadata line is exactly version · model.
+		expect(frame).not.toMatch(/default\s+·\s+v1\.2\.3/);
+		expect(frame).toContain("v1.2.3 · gpt-5 · openai");
 	});
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import { completionBudgetReport, GoalRuntime } from "@veyyon/coding-agent/goals/runtime";
 import type { Goal, GoalModeState, GoalTokenUsage } from "@veyyon/coding-agent/goals/state";
-import { GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
+import { buildGoalToolResponse, GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 
 function createUsage(overrides: Partial<GoalTokenUsage> = {}): GoalTokenUsage {
@@ -317,5 +317,53 @@ describe("GoalTool", () => {
 		expect(result.details?.op).toBe("drop");
 		expect(result.details?.goal?.status).toBe("dropped");
 		expect(harness.getState()).toBeUndefined();
+	});
+});
+
+/**
+ * buildGoalToolResponse assembles the structured payload the goal tool returns: the goal itself, its
+ * remaining token budget, and — only when explicitly requested AND the goal is complete — the final
+ * budget report. It had no direct test. The gating is the load-bearing part:
+ *   - a null/undefined goal yields {goal:null, remainingTokens:null, completionBudgetReport:null};
+ *   - remainingTokens is budget-minus-used, null when there is no budget, and floored at 0 when usage
+ *     overran the budget (never a negative "remaining");
+ *   - the completion report appears ONLY when includeCompletionReport is set AND status is "complete":
+ *     an active goal with the flag, or a complete goal without the flag, both report null.
+ * A regression that leaked the report for an active goal, or dropped it for a completed one, would
+ * misreport budget usage to the user at exactly the wrong moment.
+ */
+describe("buildGoalToolResponse", () => {
+	it("returns all-null fields for a null goal", () => {
+		expect(buildGoalToolResponse(null)).toEqual({
+			goal: null,
+			remainingTokens: null,
+			completionBudgetReport: null,
+		});
+	});
+
+	it("computes remainingTokens as budget minus used, null without a budget", () => {
+		expect(buildGoalToolResponse(createGoal({ tokensUsed: 4 })).remainingTokens).toBeNull();
+		expect(buildGoalToolResponse(createGoal({ tokenBudget: 10, tokensUsed: 4 })).remainingTokens).toBe(6);
+	});
+
+	it("floors remainingTokens at 0 when usage overran the budget", () => {
+		expect(buildGoalToolResponse(createGoal({ tokenBudget: 3, tokensUsed: 5 })).remainingTokens).toBe(0);
+	});
+
+	it("includes the completion report only for a complete goal when the flag is set", () => {
+		const complete = createGoal({ status: "complete", tokenBudget: 10, tokensUsed: 4, timeUsedSeconds: 7 });
+		expect(buildGoalToolResponse(complete, { includeCompletionReport: true }).completionBudgetReport).toBe(
+			"Goal achieved. Report final budget usage to the user: tokens used: 4 of 10; time used: 7 seconds.",
+		);
+	});
+
+	it("omits the completion report for a complete goal when the flag is unset", () => {
+		const complete = createGoal({ status: "complete", tokenBudget: 10 });
+		expect(buildGoalToolResponse(complete).completionBudgetReport).toBeNull();
+	});
+
+	it("omits the completion report for an active goal even when the flag is set", () => {
+		const active = createGoal({ status: "active", tokenBudget: 10 });
+		expect(buildGoalToolResponse(active, { includeCompletionReport: true }).completionBudgetReport).toBeNull();
 	});
 });

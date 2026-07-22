@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/ai";
+import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
 
 export const CURRENT_SESSION_VERSION = 3;
 
@@ -145,6 +145,8 @@ export interface TitleChangeEntry extends SessionEntryBase {
 declare module "@veyyon/agent-core/compaction/entries" {
 	interface CustomCompactionSessionEntries {
 		titleChange: TitleChangeEntry;
+		subagentSpawn: SubagentSpawnEntry;
+		settingsSnapshot: SettingsSnapshotEntry;
 	}
 }
 
@@ -177,6 +179,69 @@ export interface SessionInitEntry extends SessionEntryBase {
 	spawns?: string;
 	/** The agent's `readSummarize` setting (`false` = read summarization disabled); absent uses the session default. */
 	readSummarize?: boolean;
+}
+
+/**
+ * The payload a parent records for one subagent it spawned. Separated from the
+ * entry so the task tool can hand a plain record to the session without knowing
+ * the SessionEntryBase id/parentId/timestamp bookkeeping.
+ */
+export interface SubagentSpawnRecord {
+	/** The subagent's id — matches its transcript filename stem and `history://<agentId>`. */
+	agentId: string;
+	/** Agent definition name (e.g. "task", "reviewer"). */
+	agentName: string;
+	/** The exact task text handed to the subagent. */
+	task: string;
+	/** Absolute path to the subagent's durable transcript (`<artifactsDir>/<agentId>.jsonl`). */
+	sessionFile: string;
+	/** Isolation mode the subagent ran under ("none", "worktree", "branch", ...). */
+	isolation: string;
+	/** Terminal status: "completed" | "failed" | "cancelled". */
+	status: "completed" | "failed" | "cancelled";
+	/** Process exit code (0 = success). */
+	exitCode: number;
+	/** Wall-clock duration of the subagent run, in milliseconds. */
+	durationMs: number;
+	/** Aggregated token/cost usage, when known. */
+	usage?: Usage;
+	/** Terminal error message, when the run failed. */
+	error?: string;
+}
+
+/**
+ * Structured parent->child index entry: one per subagent a session spawned.
+ *
+ * Purpose: make a session's subagent tree navigable without scraping tool-result
+ * prose or scanning a sibling directory. Each entry points at the child's durable
+ * transcript (`sessionFile`) and records its task, isolation, outcome, timing, and
+ * usage — enough to enumerate and study every subagent of a run ("including
+ * subagents, everything"). The authoritative per-subagent record remains the child
+ * transcript this entry points to; this entry is the navigable index over them.
+ */
+export interface SubagentSpawnEntry extends SessionEntryBase, SubagentSpawnRecord {
+	type: "subagent_spawn";
+}
+
+/**
+ * Effective-settings snapshot: the complete resolved config that governed the run.
+ *
+ * Purpose: make a session backtest-reproducible. The record captures every Tier-A
+ * setting AS RESOLVED at session start (compaction strategy, reserve tokens,
+ * advisor/subagent config, tool config, sampling knobs, ...) keyed by dotted path,
+ * so a later study can reproduce the exact configuration the run used rather than
+ * guessing from current defaults. Interactive changes to the few settings that
+ * change mid-run (model, thinking level, service tier, mode, MCP selection) are
+ * already captured by their own dedicated change entries; this snapshot fills the
+ * gap for the static governing config. `kind` distinguishes the full start-of-run
+ * snapshot from any later partial diff carrying only changed keys.
+ */
+export interface SettingsSnapshotEntry extends SessionEntryBase {
+	type: "settings_snapshot";
+	/** "full" = complete effective config at start; "diff" = only keys changed since the prior snapshot. */
+	kind: "full" | "diff";
+	/** Resolved setting values keyed by dotted setting path (for "diff", only the changed keys). */
+	values: Record<string, unknown>;
 }
 
 /** Mode change entry - tracks agent mode transitions (e.g. plan mode). */
@@ -225,6 +290,8 @@ export type SessionEntry =
 	| TtsrInjectionEntry
 	| MCPToolSelectionEntry
 	| SessionInitEntry
+	| SubagentSpawnEntry
+	| SettingsSnapshotEntry
 	| ModeChangeEntry;
 
 /** Raw logical file entry after loaders strip any fixed-width title slot. */

@@ -12,6 +12,7 @@
  * the change via a normal steering message.
  */
 import { agentPauseGate } from "@veyyon/agent-core";
+import { formatClock } from "@veyyon/utils";
 import {
 	type Component,
 	centerLine,
@@ -59,16 +60,6 @@ const BODY_LINES = [
 	"In-flight calls finish; nothing new starts until you resume.",
 ] as const;
 const RESUME_HINT = "esc · enter · space — resume";
-
-/** Live hold clock, seconds-precise: `0:07`, `12:34`, `1:02:03`. */
-function formatClock(ms: number): string {
-	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-	const seconds = totalSeconds % 60;
-	const minutes = Math.floor(totalSeconds / 60) % 60;
-	const hours = Math.floor(totalSeconds / 3600);
-	if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-	return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
 
 /**
  * Paint the pause scene as exactly `height` rows, vertically centered.

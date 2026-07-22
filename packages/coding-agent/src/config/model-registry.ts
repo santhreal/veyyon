@@ -67,6 +67,13 @@ import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
 import type { ConfigError, ConfigFile } from "./config-file";
 import {
+	commandFailureReason,
+	configCommandPolicy,
+	isConfigValueCommand,
+	parseConfigValueCommand,
+	resolveEnvOrLiteral,
+} from "./config-value-resolution";
+import {
 	DISCOVERY_DEFAULT_MAX_TOKENS,
 	type DiscoveryContext,
 	type DiscoveryProviderConfig,
@@ -266,36 +273,47 @@ interface CustomModelsResult {
 	found: boolean;
 }
 
-const commandValueCache = new Map<string, string>();
-// Failed `!command` resolutions (non-zero exit, empty stdout) are negative-cached
-// with a TTL instead of forever: a transient failure (locked password manager,
-// network hiccup) must not disable the key until process restart, but re-running
-// the command on every resolution would restore the execSync storm this cache
-// exists to prevent. One probe per TTL window bounds both.
-const COMMAND_FAILURE_RETRY_MS = 30_000;
-const commandFailureRetryAt = new Map<string, number>();
+const COMMAND_TIMEOUT_MS = 10_000;
 
-function isCommandConfigValue(valueConfig: string | undefined): valueConfig is string {
-	return valueConfig?.startsWith("!") === true;
-}
-
+/**
+ * Run a `!command` synchronously and return its trimmed stdout, or `undefined`
+ * on any failure. The caching, back-off and report-once policy is shared with
+ * the async resolver through `configCommandPolicy`, so both paths cache
+ * successes and back off failures identically; only the execution differs.
+ */
 function resolveCommandConfig(command: string): string | undefined {
-	const cached = commandValueCache.get(command);
+	const cached = configCommandPolicy.getCached(command);
 	if (cached !== undefined) return cached;
-	const retryAt = commandFailureRetryAt.get(command);
-	if (retryAt !== undefined && Date.now() < retryAt) return undefined;
+	if (configCommandPolicy.isBackedOff(command)) return undefined;
 	try {
-		const stdout = execSync(command, { encoding: "utf8", timeout: 10_000, windowsHide: true });
+		// stderr is captured rather than inherited so a failure can be explained.
+		// It is deliberately kept apart from stdout, which carries the secret and
+		// must never be reported (see `reportUnresolvedConfigValue`).
+		const stdout = execSync(command, {
+			encoding: "utf8",
+			timeout: COMMAND_TIMEOUT_MS,
+			windowsHide: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 		const trimmed = stdout.trim();
 		if (trimmed.length === 0) {
-			commandFailureRetryAt.set(command, Date.now() + COMMAND_FAILURE_RETRY_MS);
+			// Succeeded and printed nothing, which is the more confusing failure:
+			// the command looks fine when run by hand if it writes its value
+			// somewhere other than stdout.
+			configCommandPolicy.recordFailure(command, undefined, commandFailureReason.emptyOutput);
 			return undefined;
 		}
-		commandFailureRetryAt.delete(command);
-		commandValueCache.set(command, trimmed);
+		configCommandPolicy.recordSuccess(command, trimmed);
 		return trimmed;
-	} catch {
-		commandFailureRetryAt.set(command, Date.now() + COMMAND_FAILURE_RETRY_MS);
+	} catch (error) {
+		const failure = error as { status?: number; signal?: string; stderr?: Buffer | string };
+		const reason =
+			failure.signal === "SIGTERM"
+				? commandFailureReason.timedOut(COMMAND_TIMEOUT_MS)
+				: typeof failure.status === "number"
+					? commandFailureReason.exited(failure.status)
+					: commandFailureReason.spawnFailed(errorMessage(error));
+		configCommandPolicy.recordFailure(command, undefined, reason, failure.stderr?.toString());
 		return undefined;
 	}
 }
@@ -310,10 +328,9 @@ interface CommandApiKeyResolution {
  * checked first and the input falls back to a literal value.
  */
 function resolveConfigValue(valueConfig: string): string | undefined {
-	if (valueConfig.startsWith("!")) return resolveCommandConfig(valueConfig.slice(1).trim());
-	const envValue = Bun.env[valueConfig];
-	if (envValue) return envValue;
-	return valueConfig;
+	const command = parseConfigValueCommand(valueConfig);
+	if (command === null) return resolveEnvOrLiteral(valueConfig);
+	return resolveCommandConfig(command);
 }
 
 type HeaderSource = Record<string, string> | undefined;
@@ -766,7 +783,7 @@ export class ModelRegistry {
 
 	#resolveCommandBackedApiKey(provider: string): CommandApiKeyResolution {
 		const keyConfig = this.#customProviderApiKeys.get(provider);
-		if (!isCommandConfigValue(keyConfig)) return { configured: false };
+		if (!isConfigValueCommand(keyConfig)) return { configured: false };
 		const value = resolveConfigValue(keyConfig);
 		if (value) {
 			this.authStorage.setConfigApiKey(provider, value);
@@ -781,7 +798,7 @@ export class ModelRegistry {
 		const resolved = resolveConfigValue(keyConfig);
 		if (resolved) {
 			this.authStorage.setConfigApiKey(provider, resolved);
-		} else if (isCommandConfigValue(keyConfig)) {
+		} else if (isConfigValueCommand(keyConfig)) {
 			this.authStorage.removeConfigApiKey(provider);
 		}
 	}
@@ -1959,7 +1976,7 @@ export class ModelRegistry {
 	hasConfiguredAuth(model: Model<Api>): boolean {
 		const keyConfig = this.#customProviderApiKeys.get(model.provider);
 		return (
-			isCommandConfigValue(keyConfig) ||
+			isConfigValueCommand(keyConfig) ||
 			this.#keylessProviders.has(model.provider) ||
 			this.authStorage.hasAuth(model.provider)
 		);

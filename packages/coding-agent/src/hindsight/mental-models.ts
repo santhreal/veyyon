@@ -416,8 +416,5 @@ function longestCommonSubsequence(a: string[], b: string[]): string[] {
 /** Awaited only by the first-turn race in `beforeAgentStartPrompt`. */
 export const MENTAL_MODEL_FIRST_TURN_DEADLINE_MS = 1500;
 
-/** Cache TTL: re-list models on `agent_end` once this many ms have elapsed. */
-export const MENTAL_MODEL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-
 /** Need-only export of the raw seed list for tests. */
 export const builtinSeedsForTest: ReadonlyArray<Readonly<RawSeed>> = BUILTIN_SEEDS;

@@ -60,6 +60,53 @@ import {
 	splitAssistantMessageToolTimeline,
 } from "./transcript-render-helpers";
 
+/**
+ * The slice of the interactive context this uses: 34 members of the 215
+ * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
+ * test construct one without the `as unknown as InteractiveModeContext` cast the
+ * full interface forces (see `CollabHostContext`).
+ */
+export type UiHelpersContext = Pick<
+	InteractiveModeContext,
+	| "addMessageToChat"
+	| "chatContainer"
+	| "compactionQueuedMessages"
+	| "editor"
+	| "effectiveHideThinkingBlock"
+	| "eventController"
+	| "fileSlashCommands"
+	| "focusedAgentId"
+	| "getUserMessageText"
+	| "initialChatRendered"
+	| "isKnownSlashCommand"
+	| "keybindings"
+	| "lastAssistantUsage"
+	| "lastStatusSpacer"
+	| "lastStatusText"
+	| "pendingBashComponents"
+	| "pendingMessagesContainer"
+	| "pendingPythonComponents"
+	| "pendingTools"
+	| "present"
+	| "proseOnlyThinking"
+	| "recordLocalSubmission"
+	| "refreshComposerShortcuts"
+	| "renderSessionContext"
+	| "resetTranscript"
+	| "session"
+	| "settings"
+	| "showError"
+	| "showStatus"
+	| "skillCommands"
+	| "statusLine"
+	| "toolOutputExpanded"
+	| "ui"
+	| "updateEditorBorderColor"
+	| "updatePendingMessagesDisplay"
+	| "viewSession"
+	| "withLocalSubmission"
+>;
+
 type TextBlock = { type: "text"; text: string };
 interface RenderInitialMessagesOptions {
 	preserveExistingChat?: boolean;
@@ -84,7 +131,7 @@ function imageLinksForMessage(
 }
 
 export class UiHelpers {
-	constructor(private ctx: InteractiveModeContext) {}
+	constructor(private ctx: UiHelpersContext) {}
 
 	/** Extract text content from a user message */
 	getUserMessageText(message: Message): string {
@@ -704,6 +751,60 @@ export class UiHelpers {
 		this.ctx.present([new Spacer(1), new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0)]);
 	}
 
+	/**
+	 * One line confirming an update landed, shown on the first launch after it.
+	 * Deliberately not the release notes: `/changelog` opens them on the web,
+	 * which stays current without the terminal rendering or bounding anything.
+	 */
+	showUpdateInstalledNotification(installedVersion: string): void {
+		const block = new TranscriptBlock();
+		block.addChild(
+			new Text(
+				theme.fg("accent", `Updated to ${APP_NAME} ${installedVersion}`) +
+					theme.fg("dim", " · run ") +
+					theme.fg("accent", "/changelog") +
+					theme.fg("dim", " for release notes"),
+				1,
+				0,
+			),
+		);
+		this.ctx.present(block);
+	}
+
+	showUpdateReadyNotification(newVersion: string): void {
+		// An automatic update finished writing the new binary. It cannot affect the
+		// process already running, so say what the user has to do about it.
+		const block = new TranscriptBlock();
+		block.addChild(
+			new Text(
+				theme.fg("accent", `${APP_NAME} ${newVersion} installed`) + theme.fg("dim", " · restart to use it"),
+				1,
+				0,
+			),
+		);
+		this.ctx.present(block);
+	}
+
+	showUpdateFailedNotification(newVersion: string, error: string): void {
+		// An automatic update that fails must say so. Staying quiet would pin you to
+		// an old version with nothing to notice and nothing to act on (Law 10).
+		this.ctx.showError(
+			`Automatic update to ${APP_NAME} ${newVersion} failed: ${error}\nRun \`${APP_NAME} update\` to retry, or turn off Automatic Updates in /settings.`,
+		);
+	}
+
+	showUnparseableSettingsNotification(files: readonly { path: string; quarantinePath: string }[]): void {
+		// The session is running without these files' settings. Saying nothing
+		// would let a user spend a session wondering why their configuration
+		// stopped applying (Law 10). The rescued copy is named so the fix is
+		// obvious: correct the syntax, or copy the old file back over.
+		const lines = files.map(file => `  ${file.path}\n    original kept at ${file.quarantinePath}`).join("\n");
+		this.ctx.showError(
+			`Could not read your settings, so this session is using defaults for them:\n${lines}\n` +
+				"Fix the syntax in the file above, or copy the preserved file back over it.",
+		);
+	}
+
 	showNewVersionNotification(newVersion: string): void {
 		// A single quiet line, not a warning box: the update is good news, not an
 		// alarm. Points at `/changelog` (which opens the web release notes).
@@ -716,6 +817,41 @@ export class UiHelpers {
 					theme.fg("dim", " · ") +
 					theme.fg("accent", "/changelog") +
 					theme.fg("dim", " for what's new"),
+				1,
+				0,
+			),
+		);
+		this.ctx.present(block);
+	}
+
+	showPluginUpdatesNotification(count: number): void {
+		// `marketplace.autoUpdate: notify` promises a notification. It used to write
+		// a debug log line, which no user sees, so the setting's own description was
+		// false. Same quiet single line as the version notice, pointing at the
+		// command that applies the updates.
+		const plural = count === 1 ? "update" : "updates";
+		const block = new TranscriptBlock();
+		block.addChild(
+			new Text(
+				theme.fg("accent", `${count} plugin ${plural} available`) +
+					theme.fg("dim", " · run ") +
+					theme.fg("accent", "/plugins") +
+					theme.fg("dim", " to install"),
+				1,
+				0,
+			),
+		);
+		this.ctx.present(block);
+	}
+
+	showPluginUpdatesInstalledNotification(count: number): void {
+		// The `auto` half. Installing plugins behind the user's back with no line in
+		// the transcript is the same silent-change problem in the other direction.
+		const plural = count === 1 ? "plugin" : "plugins";
+		const block = new TranscriptBlock();
+		block.addChild(
+			new Text(
+				theme.fg("accent", `Updated ${count} ${plural}`) + theme.fg("dim", " · restart to load the new versions"),
 				1,
 				0,
 			),
@@ -758,9 +894,7 @@ export class UiHelpers {
 		}
 		// Every call site here follows a queue mutation (enqueue/dequeue/clear/restore),
 		// so this is the one choke point where the composer's queue chip needs refreshing.
-		// Optional: many controller-level tests mock a partial InteractiveModeContext
-		// without the composer bar wired up.
-		this.ctx.refreshComposerShortcuts?.();
+		this.ctx.refreshComposerShortcuts();
 	}
 
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void {

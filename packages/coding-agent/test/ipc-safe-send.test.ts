@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { safeSend } from "@veyyon/coding-agent/utils/ipc";
+import { isThenable, safeSend } from "@veyyon/coding-agent/utils/ipc";
 
 /**
  * Contract for issue #2997: `safeSend` wraps `Subprocess.send()` so neither a
@@ -52,5 +52,47 @@ describe("safeSend", () => {
 		// Drain the microtask queue so a stray rejection would surface.
 		await Promise.resolve();
 		await Promise.resolve();
+	});
+});
+
+/**
+ * isThenable is the promise-detection guard safeSend and the IPC layer use to decide whether a
+ * send result needs a `.catch` attached (an async rejection to swallow) versus a plain synchronous
+ * return. It had no direct test. It must accept a real Promise, a bare thenable object, AND a
+ * callable that also carries a `then` (functions are objects), while rejecting null/undefined
+ * (the `!= null` guard), plain objects, and an object whose `then` is not callable. A regression
+ * that treated a non-thenable as thenable would attach `.catch` to `undefined` and throw; one that
+ * missed a real thenable would let its rejection escape to `unhandledRejection`.
+ */
+describe("isThenable", () => {
+	// Attach the property through a variable key so the identifier `then` never
+	// appears statically (biome's noThenProperty lint rejects a literal `then`).
+	const thenKey = "then";
+	const withThen = (value: unknown): Record<string, unknown> => {
+		const target: Record<string, unknown> = {};
+		target[thenKey] = value;
+		return target;
+	};
+
+	it("accepts a real Promise, a bare thenable object, and a callable carrying then", () => {
+		expect(isThenable(Promise.resolve(1))).toBe(true);
+		expect(isThenable(withThen(() => {}))).toBe(true);
+		const callableThenable = Object.assign(() => {}, {}) as (() => void) & Record<string, unknown>;
+		callableThenable[thenKey] = () => {};
+		expect(isThenable(callableThenable)).toBe(true);
+	});
+
+	it("rejects null and undefined", () => {
+		expect(isThenable(null)).toBe(false);
+		expect(isThenable(undefined)).toBe(false);
+	});
+
+	it("rejects a plain object and a primitive", () => {
+		expect(isThenable({})).toBe(false);
+		expect(isThenable(5)).toBe(false);
+	});
+
+	it("rejects an object whose then is not a function", () => {
+		expect(isThenable(withThen(5))).toBe(false);
 	});
 });

@@ -1,5 +1,6 @@
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
+import { escapeMarkdownTableCell } from "./markdown-table";
 
 type TurndownListParent = {
 	nodeName: string;
@@ -21,6 +22,23 @@ export function createTurndown(): TurndownService {
 		bulletListMarker: "-",
 	});
 	turndown.use(gfm);
+	// turndown-plugin-gfm's tableCell rule emits `content` verbatim: it does not
+	// escape a literal `|` (which would open a phantom column and shift every
+	// later cell) and does not collapse a `<br>`-derived newline (which breaks the
+	// row entirely). turndown core's own escaper omits `|` too, so nothing catches
+	// it upstream. Override the rule to route the cell body through the canonical
+	// escapeMarkdownTableCell before re-applying the plugin's own prefix/suffix
+	// (leading `| ` on the first cell, ` ` otherwise, trailing ` |`). The `---`
+	// alignment separators are generated inside the plugin's tableRow rule, not
+	// through this rule, so they stay untouched.
+	turndown.addRule("tableCell", {
+		filter: ["th", "td"],
+		replacement(content, node) {
+			const index = Array.prototype.indexOf.call(node.parentNode?.childNodes ?? [], node);
+			const prefix = index === 0 ? "| " : " ";
+			return `${prefix}${escapeMarkdownTableCell(content)} |`;
+		},
+	});
 	// GFM spec uses ~~ (double tilde), not ~ (single)
 	turndown.addRule("strikethrough", {
 		filter: ["del", "s", "strike"],

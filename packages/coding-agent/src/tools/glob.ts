@@ -15,6 +15,7 @@ import { type TruncationResult, truncateHead } from "../session/streaming-output
 import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
+import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { applyListLimit } from "./list-limit";
 import { formatFullOutputReference, type OutputMeta } from "./output-meta";
 import {
@@ -128,6 +129,12 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 		},
 	];
 	readonly strict = true;
+
+	// A glob reads directory listings/contents under each pattern's base dir, so an
+	// out-of-cwd base must prompt in non-yolo modes like a point read does. Reduce
+	// the `path` (semicolon-delimited patterns) to each fixed search base. See
+	// cwd-boundary.ts.
+	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
 
 	readonly #customOps?: GlobOperations;
 	readonly #rootPathAlias: boolean;

@@ -10,9 +10,11 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	buildSearchDateQualifier,
 	GithubTool,
+	parsePositiveDecimalInt,
 	parsePrUnifiedDiff,
 	parseSearchDateBound,
 	resolveDefaultRepoMemoized,
+	resolveTailLimit,
 } from "@veyyon/coding-agent/tools/gh";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getAgentDir, hashPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
@@ -228,6 +230,84 @@ async function expectedWorktreePath(home: string, primaryRoot: string, localBran
 	const segment = `${prNumber}-${hashPath(primaryRoot)}`;
 	return fs.realpath(path.join(home, ".veyyon", "profiles", "default", "wt", segment));
 }
+
+/**
+ * parsePositiveDecimalInt guards the numeric arguments (PR/issue numbers, counts) parsed off GitHub
+ * CLI/URL input. It had no direct test. It must accept ONLY a plain run of decimal digits that
+ * denotes a safe positive integer, and return undefined for everything else, so a malformed or
+ * hostile value fails closed to "unset" rather than becoming NaN, a float, or an unsafe integer
+ * downstream. These pin the accept path and each rejection: empty/undefined, zero, whitespace,
+ * negatives, decimals, scientific notation, non-digits, and values past Number.MAX_SAFE_INTEGER.
+ */
+describe("parsePositiveDecimalInt", () => {
+	it("accepts a plain run of decimal digits denoting a positive integer", () => {
+		expect(parsePositiveDecimalInt("5")).toBe(5);
+		expect(parsePositiveDecimalInt("12")).toBe(12);
+		// Leading zeros are still a valid digit run and parse to their value.
+		expect(parsePositiveDecimalInt("01")).toBe(1);
+	});
+
+	it("returns undefined for empty or missing input", () => {
+		expect(parsePositiveDecimalInt(undefined)).toBeUndefined();
+		expect(parsePositiveDecimalInt("")).toBeUndefined();
+	});
+
+	it("returns undefined for zero", () => {
+		expect(parsePositiveDecimalInt("0")).toBeUndefined();
+	});
+
+	it("returns undefined for anything that is not a bare digit run", () => {
+		expect(parsePositiveDecimalInt(" 5 ")).toBeUndefined();
+		expect(parsePositiveDecimalInt("-1")).toBeUndefined();
+		expect(parsePositiveDecimalInt("1.5")).toBeUndefined();
+		expect(parsePositiveDecimalInt("1e3")).toBeUndefined();
+		expect(parsePositiveDecimalInt("abc")).toBeUndefined();
+	});
+
+	it("returns undefined for a digit run past the safe-integer range rather than losing precision", () => {
+		expect(parsePositiveDecimalInt("99999999999999999999")).toBeUndefined();
+	});
+});
+
+/**
+ * resolveTailLimit turns the `tail` tool argument into the line count handed to tailLogLines, which
+ * does `lines.slice(-tail)`. Its output MUST be a positive integer: `slice(-0)` is `slice(0)`, so a
+ * returned 0 would dump the ENTIRE CI log where a tiny tail was requested. Regression for
+ * FINDING-GH-RESOLVETAILLIMIT-FRACTIONAL-ZERO: a fractional request in (0,1) like 0.5 passed the
+ * `<= 0` guard yet floored to 0. These pin the default, integer passthrough, MAX clamp, the
+ * never-below-1 floor (the bug), the floor-down of larger fractionals, and the strict throws.
+ */
+describe("resolveTailLimit", () => {
+	it("returns the default of 15 when no tail is supplied", () => {
+		expect(resolveTailLimit(undefined)).toBe(15);
+	});
+
+	it("passes a positive integer through and clamps to the max of 200", () => {
+		expect(resolveTailLimit(15)).toBe(15);
+		expect(resolveTailLimit(1)).toBe(1);
+		expect(resolveTailLimit(200)).toBe(200);
+		expect(resolveTailLimit(999)).toBe(200);
+	});
+
+	it("never floors a positive fractional tail below 1 (the slice(-0) full-log footgun)", () => {
+		// 0.5 is positive (passes the guard) but Math.floor(0.5) === 0 would make tailLogLines emit
+		// the whole log. The floored count must be clamped up to at least one line.
+		expect(resolveTailLimit(0.5)).toBe(1);
+		expect(resolveTailLimit(0.001)).toBe(1);
+	});
+
+	it("floors a fractional tail of 1 or more down to whole lines", () => {
+		expect(resolveTailLimit(1.9)).toBe(1);
+		expect(resolveTailLimit(15.9)).toBe(15);
+	});
+
+	it("throws for zero, negatives, and non-finite tails", () => {
+		expect(() => resolveTailLimit(0)).toThrow("tail must be a positive number");
+		expect(() => resolveTailLimit(-1)).toThrow("tail must be a positive number");
+		expect(() => resolveTailLimit(Number.NaN)).toThrow("tail must be a positive number");
+		expect(() => resolveTailLimit(Number.POSITIVE_INFINITY)).toThrow("tail must be a positive number");
+	});
+});
 
 describe("parsePrUnifiedDiff", () => {
 	it("parses quoted diff headers instead of falling back to unknown paths", () => {

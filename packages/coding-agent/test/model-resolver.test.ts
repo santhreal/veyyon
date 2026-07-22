@@ -9,6 +9,8 @@ import {
 	fallbackForUnavailableDefault,
 	filterAvailableModelsByEnabledPatterns,
 	formatModelSelectorValue,
+	formatModelString,
+	formatModelStringWithRouting,
 	parseModelPattern,
 	parseModelString,
 	pickDefaultAvailableModel,
@@ -19,6 +21,7 @@ import {
 	resolveModelOverride,
 	resolveModelRoleValue,
 	resolveModelScope,
+	resolveProviderModelReference,
 	resolveRoleSelectionWithInherit,
 } from "@veyyon/coding-agent/config/model-resolver";
 import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@veyyon/coding-agent/config/model-roles";
@@ -1526,6 +1529,43 @@ describe("provider routing selector (@upstream)", () => {
 	});
 });
 
+/**
+ * formatModelString and formatModelStringWithRouting are the display/round-trip side of
+ * the @upstream routing selector. formatModelString is the bare "provider/id"; the
+ * routing variant appends "@<upstream>" ONLY when the model pins exactly one upstream on
+ * the matching aggregator host (a routing with zero or several upstreams, or a non-string
+ * / empty slug, is not a stable single-route selector and must not be rendered). Neither
+ * had a test; a regression here would print an unroutable selector or drop the pin.
+ */
+describe("formatModelString / formatModelStringWithRouting", () => {
+	const routed = parseModelPattern("openrouter/z-ai/glm-4.7@cerebras", allModels).model;
+	const plain = parseModelPattern("openrouter/z-ai/glm-4.7", allModels).model;
+
+	test("formatModelString renders the bare provider/id with no routing", () => {
+		expect(formatModelString(routed as Model<Api>)).toBe("openrouter/z-ai/glm-4.7");
+		expect(formatModelString(plain as Model<Api>)).toBe("openrouter/z-ai/glm-4.7");
+	});
+
+	test("formatModelStringWithRouting round-trips a single-upstream pin", () => {
+		expect(formatModelStringWithRouting(routed as Model<Api>)).toBe("openrouter/z-ai/glm-4.7@cerebras");
+	});
+
+	test("formatModelStringWithRouting omits the @upstream when the model has no routing", () => {
+		expect(formatModelStringWithRouting(plain as Model<Api>)).toBe("openrouter/z-ai/glm-4.7");
+	});
+
+	test("formatModelStringWithRouting renders no @ when the routing is not a single upstream", () => {
+		const withCompat = (only: unknown): Model<Api> =>
+			({ ...(routed as Model<Api>), compat: { openRouterRouting: { only } } }) as unknown as Model<Api>;
+		// Zero, several, empty-string, and non-array `only` values are all unstable
+		// single-route selectors, so the bare id is rendered instead of a broken @slug.
+		expect(formatModelStringWithRouting(withCompat([]))).toBe("openrouter/z-ai/glm-4.7");
+		expect(formatModelStringWithRouting(withCompat(["a", "b"]))).toBe("openrouter/z-ai/glm-4.7");
+		expect(formatModelStringWithRouting(withCompat([""]))).toBe("openrouter/z-ai/glm-4.7");
+		expect(formatModelStringWithRouting(withCompat("cerebras"))).toBe("openrouter/z-ai/glm-4.7");
+	});
+});
+
 describe("filterAvailableModelsByEnabledPatterns", () => {
 	const models = mockModels as Model[];
 	test("returns all models when patterns is empty", () => {
@@ -1924,5 +1964,60 @@ describe("formatModelSelectorValue <-> parseModelString round-trip (HSL-3)", () 
 		expect(parseModelString("")).toBeUndefined();
 		expect(parseModelString("noprovider")).toBeUndefined();
 		expect(parseModelString(":high")).toBeUndefined();
+	});
+});
+
+/**
+ * resolveProviderModelReference maps a (provider, modelId) pair from persisted config or a wire
+ * request onto a concrete catalog Model. It had no direct test. It is the gate that decides whether
+ * a configured "provider/model" reference is honored, silently dropped, or (worse) resolved to the
+ * wrong model when two entries collide. These pin the case-insensitive/trimmed exact match, the
+ * empty-input and no-match guards, that a wrong provider never cross-matches, the retired
+ * "-thinking" variant collapsing to its logical model, and that an ambiguous duplicate resolves to
+ * undefined rather than guessing.
+ */
+describe("resolveProviderModelReference", () => {
+	const mk = (provider: string, id: string): Model<Api> =>
+		buildModel({
+			id,
+			name: id,
+			api: "anthropic-messages",
+			provider,
+			baseUrl: "https://example.com",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 1000,
+			maxTokens: 100,
+		}) as Model<Api>;
+
+	const models = [mk("anthropic", "claude-sonnet-4-5"), mk("openai", "gpt-5"), mk("openrouter", "x/y")];
+
+	test("resolves an exact provider+model match, case-insensitively and trimmed", () => {
+		expect(resolveProviderModelReference("anthropic", "claude-sonnet-4-5", models)?.id).toBe("claude-sonnet-4-5");
+		expect(resolveProviderModelReference("  ANTHROPIC ", "  Claude-Sonnet-4-5 ", models)?.id).toBe(
+			"claude-sonnet-4-5",
+		);
+	});
+
+	test("returns undefined for empty provider or empty model id", () => {
+		expect(resolveProviderModelReference("", "gpt-5", models)).toBeUndefined();
+		expect(resolveProviderModelReference("openai", "", models)).toBeUndefined();
+	});
+
+	test("returns undefined for an unknown model and never cross-matches a different provider", () => {
+		expect(resolveProviderModelReference("openai", "nope", models)).toBeUndefined();
+		expect(resolveProviderModelReference("openai", "claude-sonnet-4-5", models)).toBeUndefined();
+	});
+
+	test("collapses a retired -thinking variant id to its logical model", () => {
+		expect(resolveProviderModelReference("anthropic", "claude-sonnet-4-5-thinking", models)?.id).toBe(
+			"claude-sonnet-4-5",
+		);
+	});
+
+	test("returns undefined for an ambiguous duplicate rather than guessing", () => {
+		const duplicates = [mk("anthropic", "dupe"), mk("anthropic", "dupe")];
+		expect(resolveProviderModelReference("anthropic", "dupe", duplicates)).toBeUndefined();
 	});
 });

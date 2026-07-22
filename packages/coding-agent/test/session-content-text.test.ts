@@ -104,11 +104,8 @@ describe("content-text source lock", () => {
 	// spans the nested parens of a `.filter((b): b is TextContent => ...)` guard.
 	// Exempt files own a genuinely different contract (see EXEMPT below).
 	const FLATTEN_CHAIN = /\.filter\([\s\S]{0,90}?\.type === "text"[\s\S]{0,170}?\.join\(/;
-	// snapcompact-inline.ts voids the whole result when any image is present
-	// (a tool result with an image cannot be snapcompacted to text), so it is not
-	// the per-block "drop or placeholder" contract contentText offers.
 	// content-text.ts is the owner itself.
-	const EXEMPT = new Set(["content-text.ts", "snapcompact-inline.ts"]);
+	const EXEMPT = new Set(["content-text.ts"]);
 
 	it("catches the flatten chain but not an unrelated filter", () => {
 		expect(

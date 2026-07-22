@@ -75,6 +75,57 @@ export const PROFILE_COPY_ITEMS: readonly ProfileCopyItem[] = [
 
 const IDENTITY_DIRS = PROFILE_COPY_ITEMS.flatMap(item => item.dirs ?? []);
 
+/**
+ * A curated starting configuration for a new profile, seeded onto a blank tree
+ * instead of copied from an existing profile. `veyyon profile new <name> --from
+ * <preset>` writes the preset's settings through the Settings singleton (the one
+ * place that produces schema-correct config YAML), so a preset key that is not a
+ * real setting fails loudly rather than writing a dead key.
+ */
+export interface ProfilePreset {
+	displayName: string;
+	description: string;
+	/** Setting keys → values, applied in order. Each must be a real settings-schema key. */
+	settings: Record<string, unknown>;
+}
+
+/**
+ * Built-in presets. `dev` is our own study profile: it turns session
+ * instrumentation up to `ultra` (dense per-tool-call timing, output weight, and
+ * args fingerprints — see captureToolCallMetrics) and enables Argot, the
+ * experimental token-shorthand codec. Both are safe with any model, so a fresh
+ * `dev` profile runs without extra configuration. Vision-only experiments
+ * and role-model features (advisor, prewalk) are left off
+ * because they need a vision or extra-role model to be useful; enable them per
+ * session once those models are configured.
+ */
+export const PROFILE_PRESETS: Record<string, ProfilePreset> = {
+	dev: {
+		displayName: "Dev (study)",
+		description: "Ultra-rich session instrumentation and Argot on, for studying sessions in depth.",
+		settings: {
+			"session.instrumentation": "ultra",
+			"argot.enabled": true,
+		},
+	},
+};
+
+/** Preset names, for CLI help and `--from` validation. */
+export const PROFILE_PRESET_NAMES = Object.keys(PROFILE_PRESETS);
+
+async function applyPresetSettings(agentDir: string, preset: ProfilePreset): Promise<void> {
+	const { Settings } = await import("../config/settings");
+	const settings = await Settings.loadIsolated({ agentDir });
+	settings.set("profile.displayName", preset.displayName);
+	for (const [key, value] of Object.entries(preset.settings)) {
+		// `set` validates against the schema; an unknown key or wrong-typed value
+		// throws here, which is what we want — a broken preset never ships a
+		// half-written config.
+		settings.set(key as Parameters<typeof settings.set>[0], value as never);
+	}
+	await settings.flush();
+}
+
 async function directorySize(root: string): Promise<number> {
 	let total = 0;
 	const walk = async (dir: string): Promise<void> => {
@@ -101,7 +152,9 @@ async function directorySize(root: string): Promise<number> {
 
 function resolveSeedAgentDir(from: ProfileSeedSource | undefined): string | undefined {
 	const source = from ?? "default";
-	if (source === "blank") return undefined;
+	// A preset seeds a blank tree (settings are written afterward), so it has no
+	// source agent dir to copy from.
+	if (source === "blank" || source in PROFILE_PRESETS) return undefined;
 	if (source === "default") {
 		return path.join(getProfileRootDir(undefined), "agent");
 	}
@@ -276,6 +329,7 @@ export async function createProfile(
 
 	const rootDir = getProfileRootDir(normalized);
 	const agentDir = path.join(rootDir, "agent");
+	const preset = from !== undefined ? PROFILE_PRESETS[from] : undefined;
 	const seedAgentDir = resolveSeedAgentDir(from);
 
 	// Build the whole profile tree in a staging sibling dir and rename it into
@@ -305,6 +359,13 @@ export async function createProfile(
 	} catch (error) {
 		await removeWithRetries(stagingRoot).catch(() => {});
 		throw error;
+	}
+
+	// Preset settings are written into the final agent dir after the rename, so a
+	// failed settings write leaves a real (if plain) profile rather than a torn
+	// staging tree. The settings singleton locks + atomically writes the config.
+	if (preset) {
+		await applyPresetSettings(agentDir, preset);
 	}
 
 	return { name: normalized, rootDir, agentDir };

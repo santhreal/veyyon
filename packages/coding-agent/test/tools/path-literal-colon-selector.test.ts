@@ -14,6 +14,7 @@ import {
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
 import { GrepTool } from "../../src/tools/grep";
+import { makeToolSession } from "../helpers/tool-session";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content
@@ -326,7 +327,7 @@ describe("leading-colon path recovery (issue #5508)", () => {
 	});
 
 	function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
-		return {
+		return makeToolSession({
 			cwd: tmpDir,
 			hasUI: false,
 			enableLsp: false,
@@ -341,7 +342,7 @@ describe("leading-colon path recovery (issue #5508)", () => {
 				"edit.mode": "patch",
 			}),
 			...overrides,
-		} as unknown as ToolSession;
+		});
 	}
 
 	it("strips a leading colon before an absolute path in resolveToCwd", () => {

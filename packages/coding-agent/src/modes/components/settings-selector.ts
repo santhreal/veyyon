@@ -1,7 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Effort, Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import type { ShapeTarget } from "@veyyon/snapcompact";
 import {
 	type Component,
 	Container,
@@ -28,7 +27,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { resolveModelRoleValue } from "../../config/model-resolver";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
@@ -68,7 +67,6 @@ import {
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
-import { SnapcompactShapePreview } from "./snapcompact-shape-preview";
 import { getPreset } from "./status-line/presets";
 
 /**
@@ -200,8 +198,8 @@ class SelectSubmenu extends Container {
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to go back"), 0, 0));
 
-		// Footer (e.g. the snapcompact shape preview) below the interactive rows,
-		// so the list never shifts while browsing.
+		// Optional footer component below the interactive rows, so the list never
+		// shifts while browsing.
 		if (footer) {
 			this.addChild(new Spacer(1));
 			this.addChild(footer);
@@ -288,7 +286,7 @@ class ProviderLimitsSubmenu extends Container {
 				? []
 				: [{ value: "__clear_all", label: "Clear all limits", description: "Make every provider unlimited" }];
 		const items = [...providerItems, ...clearItem];
-		this.#selectList = new SelectList(items, Math.min(Math.max(items.length, 1), 12), getSelectListTheme());
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
 			if (item.value === "__clear_all") {
 				settings.set("providers.maxInFlightRequests", {});
@@ -397,7 +395,7 @@ class ModelRolesSubmenu extends Container {
 						: (info.unsetLabel ?? ROLE_INHERIT_LABEL),
 			};
 		});
-		this.#selectList = new SelectList(items, Math.min(Math.max(items.length, 1), 12), getSelectListTheme());
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
 			this.#showModelPicker(item.value);
 		};
@@ -632,8 +630,8 @@ export interface SettingsRuntimeContext {
 	providers: string[];
 	/** Working directory for plugins tab */
 	cwd: string;
-	/** Active model (api + id); resolves what the snapcompact `auto` shape maps to. */
-	model?: ShapeTarget;
+	/** Active model (api + id) for settings previews that resolve model context. */
+	model?: Model;
 	/** Shared TUI image budget (graphics ids + transmit-once) for image previews. */
 	imageBudget?: ImageBudget;
 	/** Schedules a re-render after async preview work completes. */
@@ -1378,7 +1376,7 @@ export class SettingsSelectorComponent implements Component {
 		// Preview handlers
 		let onPreview: ((value: string) => void | Promise<void>) | undefined;
 		let onPreviewCancel: (() => void) | undefined;
-		let footer: Component | undefined;
+		const footer: Component | undefined = undefined;
 
 		const activeThemeBeforePreview = getCurrentThemeName() ?? currentValue;
 		if (def.path === "theme.dark" || def.path === "theme.light") {
@@ -1418,14 +1416,6 @@ export class SettingsSelectorComponent implements Component {
 				const separator = settings.get("statusLine.separator");
 				this.callbacks.onStatusLinePreview?.({ separator });
 			};
-		} else if (def.path === "snapcompact.shape") {
-			const shapePreview = new SnapcompactShapePreview(currentValue, {
-				model: this.context.model,
-				imageBudget: this.context.imageBudget,
-				requestRender: this.context.requestRender,
-			});
-			onPreview = value => shapePreview.setValue(value);
-			footer = shapePreview;
 		}
 
 		// Provide status line preview for theme selection
@@ -1586,6 +1576,12 @@ export class SettingsSelectorComponent implements Component {
 
 	#formatTextInputEditValue(_path: SettingPath, value: unknown): string {
 		if (value === undefined || value === null) return "";
+		// A string array edits as a comma-separated list (friendly for model ids,
+		// segment names, and the like); a non-string array (objects) round-trips as
+		// JSON so it is not silently flattened. #setSettingValue parses both back.
+		if (Array.isArray(value)) {
+			return value.every(item => typeof item === "string") ? value.join(", ") : JSON.stringify(value);
+		}
 		if (typeof value === "object") return JSON.stringify(value);
 		return String(value);
 	}
@@ -1612,6 +1608,31 @@ export class SettingsSelectorComponent implements Component {
 				parsed = validateProviderMaxInFlightRequests(parsed);
 			}
 			settings.set(path, parsed as never);
+		} else if (schemaType === "array") {
+			// A leading `[` is treated as explicit JSON (object arrays and edited
+			// JSON round-trips); anything else is a comma-separated list, trimmed with
+			// empties dropped, so an empty box clears the array to []. This mirrors
+			// #formatTextInputEditValue, so display and save round-trip.
+			const trimmed = value.trim();
+			let arr: unknown[];
+			if (trimmed === "") {
+				arr = [];
+			} else if (trimmed.startsWith("[")) {
+				let json: unknown;
+				try {
+					json = JSON.parse(trimmed);
+				} catch {
+					throw new Error(`Invalid JSON array for ${path}`);
+				}
+				if (!Array.isArray(json)) throw new Error(`Expected a JSON array for ${path}`);
+				arr = json;
+			} else {
+				arr = trimmed
+					.split(",")
+					.map(entry => entry.trim())
+					.filter(entry => entry.length > 0);
+			}
+			settings.set(path, arr as never);
 		} else if (typeof currentValue === "number") {
 			settings.set(path, Number(value) as never);
 		} else if (typeof currentValue === "boolean") {
@@ -1715,7 +1736,7 @@ export class SettingsSelectorComponent implements Component {
 
 		if (advancedTotal > 0) {
 			const expanded = this.#isAdvancedExpanded(tabId);
-			const arrow = expanded ? "▾" : "▸";
+			const arrow = expanded ? theme.nav.collapse : theme.nav.expand;
 			items.push({
 				id: advancedToggleId(tabId),
 				label: `${arrow} Advanced (${advancedTotal})`,

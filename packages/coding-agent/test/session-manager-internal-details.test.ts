@@ -12,7 +12,11 @@
  * `__`-prefixed fields not in the allowlist) is preserved verbatim.
  */
 import { describe, expect, it } from "bun:test";
-import { type SkillPromptDetails, stripInternalDetailsFields } from "@veyyon/coding-agent/session/messages";
+import {
+	readQueueChipText,
+	type SkillPromptDetails,
+	stripInternalDetailsFields,
+} from "@veyyon/coding-agent/session/messages";
 import type { CustomMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 
@@ -126,5 +130,26 @@ describe("SessionManager.appendCustomMessageEntry (allowlist strip + persistence
 		for (const key of Object.keys(input)) {
 			expect(Object.hasOwn(result as object, key)).toBe(true);
 		}
+	});
+});
+
+/**
+ * readQueueChipText is the read side of the same `__queueChipText` internal field that
+ * stripInternalDetailsFields removes before persistence: it safely pulls that transient
+ * queue-chip label out of an unknown `details` blob for rendering. It had no test. A
+ * regression that stopped guarding the type would let a non-string (or a null details blob)
+ * flow into the chip renderer as a real label.
+ */
+describe("readQueueChipText", () => {
+	it("returns the string value when __queueChipText is a present string", () => {
+		expect(readQueueChipText({ __queueChipText: "queued (3)" })).toBe("queued (3)");
+	});
+
+	it("returns undefined when the field is absent, non-string, or details is not an object", () => {
+		expect(readQueueChipText({ other: 1 })).toBeUndefined();
+		expect(readQueueChipText({ __queueChipText: 5 })).toBeUndefined();
+		expect(readQueueChipText(null)).toBeUndefined();
+		expect(readQueueChipText(undefined)).toBeUndefined();
+		expect(readQueueChipText("queued (3)")).toBeUndefined();
 	});
 });

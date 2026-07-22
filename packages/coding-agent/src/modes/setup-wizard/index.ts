@@ -1,11 +1,10 @@
 import type { Settings } from "../../config/settings";
 import { CURRENT_SETUP_VERSION } from "../setup-version";
-import type { InteractiveModeContext } from "../types";
 import { glyphSetupScene } from "./scenes/glyph";
 import { importSetupScene } from "./scenes/import";
 import { providersSetupScene } from "./scenes/providers";
 import { themeSetupScene } from "./scenes/theme";
-import type { SetupScene } from "./scenes/types";
+import type { SetupScene, SetupWizardContext } from "./scenes/types";
 import { SetupWizardComponent } from "./wizard-overlay";
 
 export type { SetupScene, SetupSceneController, SetupSceneHost, SetupSceneResult } from "./scenes/types";
@@ -26,6 +25,12 @@ export interface SetupSceneSelectionOptions {
 	skipEnv?: string;
 	setupWizardEnabled?: boolean;
 	force?: boolean;
+	/**
+	 * The current onboarding generation (app major). Defaults to
+	 * {@link CURRENT_SETUP_VERSION}; injectable so tests can simulate a major
+	 * bump without rebuilding the app version.
+	 */
+	currentVersion?: number;
 }
 
 function setupSkipEnvEnabled(value: string | undefined): boolean {
@@ -34,23 +39,38 @@ function setupSkipEnvEnabled(value: string | undefined): boolean {
 	return normalized !== "" && normalized !== "0" && normalized !== "false" && normalized !== "no";
 }
 
+/**
+ * Scenes to run for onboarding, or `[]` to skip it.
+ *
+ * Onboarding runs in full (every eligible scene) only when the stored generation
+ * is behind the current app major — a fresh install (stored 0) or a MAJOR update
+ * (1.x -> 2.0). A minor/patch update leaves `storedVersion === currentVersion`,
+ * so nothing runs. `minVersion` is a per-scene floor: the app major the scene was
+ * introduced in, so a scene staged for a future major stays hidden until then.
+ * `force` (the `veyyon setup` command) ignores the generation gate but still
+ * requires a TTY.
+ */
 export async function selectSetupScenes(
 	storedVersion: number,
 	scenes: readonly SetupScene[],
-	ctx?: InteractiveModeContext,
+	ctx?: SetupWizardContext,
 	options: SetupSceneSelectionOptions = {},
 ): Promise<SetupScene[]> {
 	const isTTY = options.isTTY ?? (process.stdin.isTTY && process.stdout.isTTY);
 	if (!isTTY) return [];
+	const currentVersion = options.currentVersion ?? CURRENT_SETUP_VERSION;
 	if (!options.force) {
 		if (options.resuming) return [];
 		if (setupSkipEnvEnabled(options.skipEnv ?? Bun.env.VEYYON_SKIP_SETUP)) return [];
 		if (options.setupWizardEnabled === false) return [];
+		// Onboard only when the stored generation is behind the current app major.
+		// A minor/patch update (stored === current) never re-onboards.
+		if (storedVersion >= currentVersion) return [];
 	}
 
 	const selected: SetupScene[] = [];
 	for (const scene of scenes) {
-		if (!options.force && scene.minVersion <= storedVersion) continue;
+		if (!options.force && scene.minVersion > currentVersion) continue;
 		if (scene.shouldRun) {
 			if (!ctx) continue;
 			if (!(await scene.shouldRun(ctx))) continue;
@@ -74,7 +94,7 @@ export interface RunSetupWizardOptions {
 }
 
 export async function runSetupWizard(
-	ctx: InteractiveModeContext,
+	ctx: SetupWizardContext,
 	scenes: readonly SetupScene[] = ALL_SCENES,
 	options: RunSetupWizardOptions = {},
 ): Promise<void> {

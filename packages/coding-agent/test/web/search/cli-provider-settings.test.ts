@@ -6,7 +6,12 @@ import {
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "@veyyon/coding-agent/web/search/provider";
-import { __resetDirsFromEnvForTests, setAgentDir, TempDir } from "@veyyon/utils";
+import { setAgentDir, TempDir } from "@veyyon/utils";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../helpers/settings-test-state";
 import { runSearchCommand } from "../../../src/cli/web-search-cli";
 
 const WEB_SEARCH_ENV_KEYS = [
@@ -27,11 +32,8 @@ const WEB_SEARCH_ENV_KEYS = [
 	"XAI_API_KEY",
 ] as const;
 
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const originalVeyyonProfile = process.env.VEYYON_PROFILE;
-const originalPiProfile = process.env.VEYYON_PROFILE;
-
 let tempAgentDir: TempDir | undefined;
+let settingsState: SettingsTestState | undefined;
 let originalEnv: Partial<Record<(typeof WEB_SEARCH_ENV_KEYS)[number], string | undefined>> = {};
 let originalExitCode: typeof process.exitCode;
 
@@ -39,11 +41,6 @@ function responseUrl(input: string | Request | URL): string {
 	if (typeof input === "string") return input;
 	if (input instanceof URL) return input.toString();
 	return input.url;
-}
-
-function restoreEnv(key: string, value: string | undefined): void {
-	if (value === undefined) delete process.env[key];
-	else process.env[key] = value;
 }
 
 function makeFetchMock(): typeof fetch {
@@ -73,6 +70,7 @@ function makeFetchMock(): typeof fetch {
 }
 
 beforeEach(async () => {
+	settingsState = beginSettingsTest();
 	originalEnv = Object.fromEntries(WEB_SEARCH_ENV_KEYS.map(key => [key, process.env[key]]));
 	for (const key of WEB_SEARCH_ENV_KEYS) delete process.env[key];
 	process.env.JINA_API_KEY = "test-jina-key";
@@ -80,7 +78,6 @@ beforeEach(async () => {
 	originalExitCode = process.exitCode;
 	process.exitCode = undefined;
 
-	resetSettingsForTest();
 	setPreferredSearchProvider("auto");
 	setExcludedSearchProviders([]);
 	tempAgentDir = TempDir.createSync("@veyyon-search-cli-");
@@ -97,24 +94,24 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	vi.restoreAllMocks();
-	resetSettingsForTest();
 	setPreferredSearchProvider("auto");
 	setExcludedSearchProviders([]);
 	// Bun retains the last numeric process.exitCode across an undefined
 	// reassignment, so a captured-undefined original must coerce to 0 or a
 	// mid-test failure code would leak into the runner's exit status.
 	process.exitCode = originalExitCode ?? 0;
-	for (const key of WEB_SEARCH_ENV_KEYS) {
-		restoreEnv(key, originalEnv[key]);
-	}
-	restoreEnv("VEYYON_CODING_AGENT_DIR", originalAgentDir);
-	restoreEnv("VEYYON_PROFILE", originalVeyyonProfile);
-	restoreEnv("VEYYON_PROFILE", originalPiProfile);
-	__resetDirsFromEnvForTests();
 	if (tempAgentDir) {
 		await tempAgentDir.remove();
 		tempAgentDir = undefined;
 	}
+	// Restore search API env keys the suite deleted, then full settings restore.
+	for (const key of WEB_SEARCH_ENV_KEYS) {
+		const value = originalEnv[key];
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 });
 
 describe("runSearchCommand provider settings", () => {

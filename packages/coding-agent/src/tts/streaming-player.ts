@@ -249,7 +249,11 @@ export class StreamingAudioPlayer {
 				}
 			}
 		} catch (error) {
-			logger.debug("tts: streaming player drain failed", {
+			// warn, not debug. Reaching here means speech stopped part-way through a
+			// sentence and nothing further will be spoken. The user hears silence and
+			// has no way to tell that from the agent simply having finished, so the
+			// one place that knows has to say so.
+			logger.warn("tts: playback stopped early because the streaming player failed", {
 				error: errorMessage(error),
 			});
 		}

@@ -1,12 +1,12 @@
 import { formatNumber } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/theme";
 
-export type ContextUsageLevel = "normal" | "warning" | "purple" | "error";
+export type ContextUsageLevel = "normal" | "warning" | "high" | "error";
 
 const CONTEXT_WARNING_PERCENT_THRESHOLD = 50;
 const CONTEXT_WARNING_TOKEN_THRESHOLD = 150_000;
-const CONTEXT_PURPLE_PERCENT_THRESHOLD = 70;
-const CONTEXT_PURPLE_TOKEN_THRESHOLD = 270_000;
+const CONTEXT_HIGH_PERCENT_THRESHOLD = 70;
+const CONTEXT_HIGH_TOKEN_THRESHOLD = 270_000;
 const CONTEXT_ERROR_PERCENT_THRESHOLD = 90;
 const CONTEXT_ERROR_TOKEN_THRESHOLD = 500_000;
 
@@ -35,10 +35,8 @@ export function getContextUsageLevel(contextPercent: number, contextWindow: numb
 		return "error";
 	}
 
-	if (
-		reachesThreshold(contextPercent, contextWindow, CONTEXT_PURPLE_PERCENT_THRESHOLD, CONTEXT_PURPLE_TOKEN_THRESHOLD)
-	) {
-		return "purple";
+	if (reachesThreshold(contextPercent, contextWindow, CONTEXT_HIGH_PERCENT_THRESHOLD, CONTEXT_HIGH_TOKEN_THRESHOLD)) {
+		return "high";
 	}
 
 	if (
@@ -76,7 +74,7 @@ export function getContextUsageThemeColor(level: ContextUsageLevel): ThemeColor 
 	switch (level) {
 		case "error":
 			return "error";
-		case "purple":
+		case "high":
 			return "thinkingHigh";
 		case "warning":
 			return "warning";

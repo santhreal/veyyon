@@ -2,14 +2,22 @@
  * Web/export palette — the veyyon brand identity shared by the collab-web live
  * client (`share.veyyon.dev/`) and every public HTML export / share viewer (`/s/<id>`).
  *
- * Why this exists separately from `modes/theme/dark.json`: the `dark` theme is
- * the **default TUI theme** — its amber accent (`#febc38`) drives the terminal
- * status line, syntax highlighting, thinking levels, and bash/python mode
- * colors for every veyyon user. The public web artifacts want the collab-web
- * black/silver/ember identity instead (pitch-black ground, silver structure,
- * the single ember-sun accent), so they pin this palette rather than inheriting
- * the TUI's. Editing `dark.json` to repurpose it for the web would repaint
- * every terminal; this file keeps the two surfaces decoupled.
+ * Why this exists separately from `modes/theme/dark.json`: both surfaces are now
+ * silver-on-black, so the split is no longer about ground color. Two things keep
+ * them apart:
+ *
+ *   1. Accent. `dark.json` resolves `accent` to silver (`#B8BDC7`), which reads
+ *      correctly in a terminal where the accent also carries syntax and thinking
+ *      roles. The web artifacts lead with the ember sun (`#f0862e`) as a rare
+ *      accent against silver structure, per `docs/brand-system.md`.
+ *   2. Token model. The web palette needs alpha-bearing OKLCH tokens (`--border`,
+ *      `--ring`, `--accent-muted`) for translucent hairlines and focus rings. The
+ *      TUI theme schema has no concept of alpha, so those cannot round-trip
+ *      through `dark.json` at all.
+ *
+ * Editing `dark.json` to repurpose it for the web would repaint every terminal
+ * and still could not express the alpha tokens; this file keeps the two
+ * surfaces decoupled.
  *
  * Token layout — emitted as CSS custom properties on `:root`:
  *   • Legacy export names consumed by `template.css` / `template.js`
@@ -30,6 +38,14 @@
  * the standard OKLab→linear-sRGB→gamma path); if the live client palette
  * changes, regenerate those from there.
  */
+/**
+ * Base background an export derives `--body-bg`/`--container-bg`/`--info-bg` from
+ * when the selected theme does not define `userMessageBg`. Every shipped theme
+ * defines it, so this only applies to user-authored themes; it stays on the brand
+ * ground rather than inventing an off-brand tint.
+ */
+export const EXPORT_FALLBACK_BASE_BG = "#000000";
+
 export const WEB_EXPORT_PALETTE = {
 	// --- collab-web-native aliases (tv- bridge) ---
 	// Pitch-black ground everywhere; hierarchy comes from silver hairlines,

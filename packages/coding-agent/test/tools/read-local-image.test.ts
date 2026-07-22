@@ -16,6 +16,7 @@ import { InternalUrlRouter, LocalProtocolHandler, parseInternalUrl } from "@veyy
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 // 1x1 transparent PNG — small enough to pass through image loading untouched.
 const TINY_PNG = Buffer.from(
@@ -26,14 +27,14 @@ const TINY_PNG = Buffer.from(
 function makeSession(testDir: string): ToolSession {
 	const sessionFile = path.join(testDir, "session.jsonl");
 	const artifactsDir = sessionFile.slice(0, -6);
-	return {
+	return makeToolSession({
 		cwd: testDir,
 		hasUI: false,
 		getSessionFile: () => sessionFile,
 		getArtifactsDir: () => artifactsDir,
 		getSessionSpawns: () => null,
 		settings: Settings.isolated({ "images.autoResize": false }),
-	} as unknown as ToolSession;
+	});
 }
 
 function joinText(content: Array<{ type: string; text?: string }>): string {

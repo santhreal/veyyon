@@ -23,6 +23,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
+import { makeToolSession } from "./helpers/tool-session";
 
 // ---------------------------------------------------------------------------
 // Shared setup
@@ -47,8 +48,8 @@ function makeFakeTool(name: string): AgentTool & { executeCalls: number } {
 	return tool;
 }
 
-function makeToolSession(bridge: ClientBridge): ToolSession {
-	return {
+function sessionWithBridge(bridge: ClientBridge): ToolSession {
+	return makeToolSession({
 		cwd: tempDir.path(),
 		hasUI: false,
 		getSessionFile: () => null,
@@ -59,7 +60,7 @@ function makeToolSession(bridge: ClientBridge): ToolSession {
 		getSessionId: () => null,
 		getPlanModeState: () => undefined,
 		getClientBridge: () => bridge,
-	} as unknown as ToolSession;
+	});
 }
 
 /** Build a minimal ClientBridge whose requestPermission resolves to the given outcome. */
@@ -410,7 +411,7 @@ it("apply_patch custom-wire delete requests ACP permission through agent dispatc
 			return { outcome: "selected", optionId: "allow_once", kind: "allow_once" };
 		},
 	};
-	const editTool = new EditTool(makeToolSession(bridge));
+	const editTool = new EditTool(sessionWithBridge(bridge));
 	session = await createSessionWithMockModel([editTool as AgentTool], bridge, [
 		{
 			content: [

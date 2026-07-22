@@ -48,8 +48,8 @@ export interface PublicWebDeadlines {
 	hardMs?: number;
 }
 
-/** Accumulator for one deduplicated URL across engines. */
-interface MergedSource {
+/** Accumulator for one deduplicated URL across engines. Exported as a test seam. */
+export interface MergedSource {
 	source: SearchSource;
 	/** Number of engines that returned this URL — the primary ranking signal. */
 	engines: number;
@@ -64,7 +64,7 @@ interface MergedSource {
  * leading `www.`, path without a trailing slash, query preserved, fragment
  * dropped. Engines disagree on exactly these variations for the same page.
  */
-function dedupKey(rawUrl: string): string {
+export function dedupKey(rawUrl: string): string {
 	try {
 		const url = new URL(rawUrl);
 		const host = url.hostname.toLowerCase().replace(/^www\./, "");
@@ -76,8 +76,8 @@ function dedupKey(rawUrl: string): string {
 	}
 }
 
-/** Merge one engine's ranked sources into the accumulator map. */
-function mergeSources(merged: Map<string, MergedSource>, sources: readonly SearchSource[]): void {
+/** Merge one engine's ranked sources into the accumulator map. Exported as a test seam. */
+export function mergeSources(merged: Map<string, MergedSource>, sources: readonly SearchSource[]): void {
 	for (const [rank, source] of sources.entries()) {
 		const key = dedupKey(source.url);
 		const existing = merged.get(key);
@@ -97,6 +97,10 @@ function mergeSources(merged: Map<string, MergedSource>, sources: readonly Searc
 		}
 		existing.source.publishedDate ??= source.publishedDate;
 		existing.source.ageSeconds ??= source.ageSeconds;
+		// Fill the author the same way as the other optional enrichment fields, so
+		// a lower-ranked engine that carries an author the best-ranked one lacked
+		// still contributes it instead of being silently dropped.
+		existing.source.author ??= source.author;
 	}
 }
 

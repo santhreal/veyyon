@@ -493,7 +493,7 @@ export function markdownToPhases(md: string): { phases: TodoPhase[]; errors: str
 	return { phases, errors };
 }
 
-function formatSummary(phases: TodoPhase[], errors: string[], readOnly = false): string {
+function formatSummary(phases: TodoPhase[], errors: string[], readOnly = false, op?: TodoOperation): string {
 	const tasks = phases.flatMap(phase => phase.tasks);
 	if (tasks.length === 0) {
 		if (errors.length > 0) return `Errors: ${errors.join("; ")}`;
@@ -545,8 +545,12 @@ function formatSummary(phases: TodoPhase[], errors: string[], readOnly = false):
 		}`,
 	);
 	for (const phase of phases) {
-		lines.push(`  ${phase.name}:`);
+		const completedCount = phase.tasks.filter(task => task.status === "completed").length;
+		const hideCompleted = !readOnly && op !== "view" && op !== "init" && completedCount > 0;
+		const completedSuffix = hideCompleted ? ` (${completedCount} completed)` : "";
+		lines.push(`  ${phase.name}${completedSuffix}:`);
 		for (const task of phase.tasks) {
+			if (task.status === "completed" && hideCompleted) continue;
 			const checkbox = task.status === "completed" ? "[X]" : "[ ]";
 			const tag = task.status === "in_progress" ? " (in progress)" : task.status === "abandoned" ? " (dropped)" : "";
 			lines.push(`    - ${checkbox} ${task.content}${tag}`);
@@ -643,7 +647,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		if (completedTasks.length > 0) details.completedTasks = completedTasks;
 
 		return {
-			content: [{ type: "text", text: formatSummary(effective, errors, readOnly) }],
+			content: [{ type: "text", text: formatSummary(effective, errors, readOnly, params.op) }],
 			details,
 			isError: errors.length > 0 ? true : undefined,
 		};

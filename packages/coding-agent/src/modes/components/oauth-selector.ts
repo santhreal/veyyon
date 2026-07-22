@@ -1,6 +1,7 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProviderInfo } from "@veyyon/ai/oauth/types";
 import {
+	clampLow,
 	type Component,
 	extractPrintableText,
 	fuzzyFilter,
@@ -295,7 +296,7 @@ export class OAuthSelectorComponent implements Component {
 		const startIndex =
 			total <= maxVisible
 				? 0
-				: Math.max(0, Math.min(this.#selectedIndex - Math.floor(maxVisible / 2), total - maxVisible));
+				: clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 		const endIndex = Math.min(startIndex + maxVisible, total);
 		this.#scrollStart = startIndex;
 		this.#visibleCount = endIndex - startIndex;
@@ -426,7 +427,7 @@ export class OAuthSelectorComponent implements Component {
 	/** Move the selection one step for a wheel notch (clamped, no wrap). */
 	handleWheel(delta: -1 | 1): void {
 		if (this.#filteredProviders.length === 0) return;
-		const next = Math.max(0, Math.min(this.#selectedIndex + delta, this.#filteredProviders.length - 1));
+		const next = clampLow(this.#selectedIndex + delta, 0, this.#filteredProviders.length - 1);
 		if (next === this.#selectedIndex) return;
 		this.#selectedIndex = next;
 		this.#statusMessage = undefined;

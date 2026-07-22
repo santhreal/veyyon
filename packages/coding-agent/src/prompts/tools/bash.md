@@ -54,7 +54,7 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 {{#if asyncEnabled}}
 # Timeout and async
 
-- `timeout` is seconds; nonzero values are clamped to `1..3600` and the process is killed on elapse. Set `timeout: 0` only for finite commands whose completion is cancellation-owned.
+- `timeout` is seconds; default 300; nonzero values are clamped to `1..3600` and the process is killed on elapse. Set `timeout: 0` only for finite commands whose completion is cancellation-owned.
 - `async: true` defers only reporting; it does NOT extend a nonzero timeout.
 {{#if hasLaunch}}- Need a service, watcher, debugger, REPL, or later stdin? MUST use `launch`. NEVER use `cmd &`, `nohup`, or async bash as a process supervisor.{{else}}- Need a long-running process or >3600s run? Use an external process supervisor; avoid detached shell jobs you cannot later observe or stop.{{/if}}
 {{/if}}

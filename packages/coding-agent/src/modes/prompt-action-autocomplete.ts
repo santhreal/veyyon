@@ -9,6 +9,7 @@ import {
 	subsequenceScore,
 } from "@veyyon/tui";
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
+import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/builtin-registry";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { applyEmojiCompletion, getEmojiSuggestions, isEmojiPrefix, tryEmojiInlineReplace } from "./emoji-autocomplete";
 import { getGithubRefContext, getGithubRefSuggestions } from "./github-ref-autocomplete";
@@ -98,7 +99,9 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 
 	constructor(commands: SlashCommand[], basePath: string, actions: PromptActionDefinition[]) {
 		this.#commands = commands;
-		this.#baseProvider = new CombinedAutocompleteProvider(commands, basePath);
+		this.#baseProvider = new CombinedAutocompleteProvider(commands, basePath, {
+			categoryOrder: BUILTIN_SLASH_COMMAND_CATEGORY_ORDER,
+		});
 		this.#basePath = basePath;
 		this.#actions = actions;
 	}

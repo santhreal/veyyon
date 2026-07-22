@@ -17,6 +17,7 @@
  * sidebar, g/G + PgUp/PgDn scroll, and the external-editor key opens the plan.
  */
 import {
+	clampLow,
 	type Component,
 	Ellipsis,
 	Input,
@@ -46,7 +47,7 @@ import {
 } from "./modal-shell";
 import { fit } from "./overlay-box";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
-import { renderSegmentTrack } from "./segment-track";
+import { renderSliderLines } from "./segment-track";
 
 /** Title shown in the ModalShell chrome. */
 const OVERLAY_TITLE = "Plan Review";
@@ -183,7 +184,7 @@ export class PlanReviewOverlay implements Component {
 		this.#selectedIndex = this.#coerceIndex(options.initialIndex ?? 0);
 		if (options.slider && options.slider.segments.length > 0) {
 			this.#slider = options.slider;
-			this.#sliderIndex = Math.max(0, Math.min(options.slider.index, options.slider.segments.length - 1));
+			this.#sliderIndex = clampLow(options.slider.index, 0, options.slider.segments.length - 1);
 		} else {
 			this.#sliderIndex = 0;
 		}
@@ -245,7 +246,7 @@ export class PlanReviewOverlay implements Component {
 	#coerceIndex(index: number): number {
 		const max = this.#options.length - 1;
 		if (max < 0) return -1;
-		const clamped = Math.max(0, Math.min(index, max));
+		const clamped = clampLow(index, 0, max);
 		if (!this.#disabled.has(clamped)) return clamped;
 		for (let i = clamped + 1; i <= max; i++) if (!this.#disabled.has(i)) return i;
 		for (let i = clamped - 1; i >= 0; i--) if (!this.#disabled.has(i)) return i;
@@ -265,7 +266,7 @@ export class PlanReviewOverlay implements Component {
 		if (max < 0) return;
 		let index = this.#selectedIndex;
 		while (true) {
-			const next = Math.max(0, Math.min(index + delta, max));
+			const next = clampLow(index + delta, 0, max);
 			if (next === index) return;
 			index = next;
 			if (!this.#disabled.has(index)) {
@@ -279,7 +280,7 @@ export class PlanReviewOverlay implements Component {
 	#moveSlider(delta: number): void {
 		const slider = this.#slider;
 		if (!slider) return;
-		const next = Math.max(0, Math.min(slider.segments.length - 1, this.#sliderIndex + delta));
+		const next = clampLow(this.#sliderIndex + delta, 0, slider.segments.length - 1);
 		if (next === this.#sliderIndex) return;
 		this.#sliderIndex = next;
 		slider.onChange?.(next);
@@ -549,7 +550,7 @@ export class PlanReviewOverlay implements Component {
 
 	#moveTocCursor(delta: number): void {
 		if (this.#toc.length === 0) return;
-		const next = Math.max(0, Math.min(this.#toc.length - 1, this.#tocCursor + delta));
+		const next = clampLow(this.#tocCursor + delta, 0, this.#toc.length - 1);
 		if (next === this.#tocCursor) return;
 		this.#tocCursor = next;
 		this.#scrubBodyToToc();
@@ -678,15 +679,7 @@ export class PlanReviewOverlay implements Component {
 	#renderSliderLines(): string[] {
 		const slider = this.#slider;
 		if (!slider) return [];
-		const active = this.#sliderIndex;
-		const track = renderSegmentTrack(slider.segments, active);
-		const leftArrow = theme.fg(active > 0 ? "accent" : "dim", "◂");
-		const rightArrow = theme.fg(active < slider.segments.length - 1 ? "accent" : "dim", "▸");
-		const caption = slider.caption ? `${theme.fg("dim", slider.caption)}  ` : "";
-		const trackLine = `${caption}${leftArrow}  ${track}  ${rightArrow}`;
-		const detail = slider.segments[active]?.detail;
-		if (!detail) return [trackLine];
-		return [trackLine, `  ${theme.fg("dim", "↳")} ${theme.fg("muted", detail)}`];
+		return renderSliderLines(slider.segments, this.#sliderIndex, slider.caption);
 	}
 
 	#renderOptionLines(): string[] {
@@ -777,7 +770,7 @@ export class PlanReviewOverlay implements Component {
 	}
 
 	#sidebarWidthFor(width: number): number {
-		return Math.max(18, Math.min(30, Math.round(width * 0.24)));
+		return clampLow(Math.round(width * 0.24), 18, 30);
 	}
 
 	/** Body-content width left over for a sidebar of `sidebarWidth` columns
@@ -806,7 +799,7 @@ export class PlanReviewOverlay implements Component {
 		const total = this.#toc.length;
 		let start = 0;
 		if (total > slots) {
-			start = Math.max(0, Math.min(this.#tocCursor - Math.floor(slots / 2), total - slots));
+			start = clampLow(this.#tocCursor - Math.floor(slots / 2), 0, total - slots);
 		}
 		for (let r = 0; r < slots; r++) {
 			const p = start + r;

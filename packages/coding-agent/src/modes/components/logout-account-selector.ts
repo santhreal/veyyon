@@ -1,4 +1,12 @@
-import { type Component, matchesKey, padding, routeSgrMouseInput, ScrollView, type SgrMouseEvent } from "@veyyon/tui";
+import {
+	clampLow,
+	type Component,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	ScrollView,
+	type SgrMouseEvent,
+} from "@veyyon/tui";
 import type { LogoutAccount } from "../../slash-commands/helpers/logout";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
@@ -60,7 +68,7 @@ export class LogoutAccountSelectorComponent implements Component {
 		const startIndex =
 			total <= maxVisible
 				? 0
-				: Math.max(0, Math.min(this.#selectedIndex - Math.floor(maxVisible / 2), total - maxVisible));
+				: clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 		const endIndex = Math.min(startIndex + maxVisible, total);
 
 		const rows: string[] = [];

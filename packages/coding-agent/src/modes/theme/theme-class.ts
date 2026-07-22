@@ -6,7 +6,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
 import { colorLuma, logger, relativeLuminance } from "@veyyon/utils";
-import chalk from "chalk";
 import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
 import {
 	SPINNER_FRAMES,
@@ -151,6 +150,13 @@ export class Theme {
 	readonly statusLineLuminance: number | undefined;
 	/** WCAG relative luminance of the status-line background — basis for accent contrast. */
 	readonly #statusLineContrastLuminance: number | undefined;
+	/**
+	 * The theme's terminal ground as `#RRGGBB`, or undefined when the theme
+	 * declares none. This is the color the painted-ground feature
+	 * (`tui.paintGround`) sets as the terminal background, derived from the
+	 * theme's `export.pageBg` and validated to a 6-digit hex at construction.
+	 */
+	readonly #groundHex: string | undefined;
 	constructor(
 		fgColors: Record<ThemeColor, string | number>,
 		bgColors: Record<ThemeBg, string | number>,
@@ -158,7 +164,9 @@ export class Theme {
 		private readonly symbolPreset: SymbolPreset,
 		symbolOverrides: Partial<Record<SymbolKey, string>>,
 		spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>> = {},
+		groundHex: string | undefined = undefined,
 	) {
+		this.#groundHex = groundHex;
 		this.statusLineLuminance = colorLuma(bgColors.statusLineBg);
 		this.#statusLineContrastLuminance = relativeLuminance(bgColors.statusLineBg);
 		const slIsLight = this.statusLineLuminance !== undefined && this.statusLineLuminance > 0.5;
@@ -229,6 +237,17 @@ export class Theme {
 	}
 
 	/**
+	 * The theme's terminal ground color as `#RRGGBB`, or undefined when the theme
+	 * declares none. The painted-ground consumer (`tui.paintGround`) uses this as
+	 * the OSC 11 background color; a theme without a ground returns undefined and
+	 * the consumer inherits the terminal's own background rather than inventing a
+	 * color the theme never chose.
+	 */
+	getGroundHex(): string | undefined {
+		return this.#groundHex;
+	}
+
+	/**
 	 * Get all foreground and background theme colors as CSS hex strings.
 	 * Skips colors resolved to the default terminal color (unstyled).
 	 */
@@ -295,24 +314,32 @@ export class Theme {
 		return `${ansi}${text}\x1b[49m`; // Reset only background color
 	}
 
+	// Text attributes emit raw SGR pairs, NEVER chalk: chalk's level
+	// auto-detection returned 0 under bun-in-tmux and silently stripped every
+	// bold/italic in the live TUI (markdown **emphasis** rendered as plain
+	// text, the wordmark lost its weight) while the theme's own raw truecolor
+	// escapes painted fine. The theme already IS the terminal-capability
+	// authority here; a second detector that can quietly disagree is a silent
+	// fallback (Law 10). Each attribute closes with its specific off-code so
+	// nesting inside colored spans survives.
 	bold(text: string): string {
-		return chalk.bold(text);
+		return `\x1b[1m${text}\x1b[22m`;
 	}
 
 	italic(text: string): string {
-		return chalk.italic(text);
+		return `\x1b[3m${text}\x1b[23m`;
 	}
 
 	underline(text: string): string {
-		return chalk.underline(text);
+		return `\x1b[4m${text}\x1b[24m`;
 	}
 
 	strikethrough(text: string): string {
-		return chalk.strikethrough(text);
+		return `\x1b[9m${text}\x1b[29m`;
 	}
 
 	inverse(text: string): string {
-		return chalk.inverse(text);
+		return `\x1b[7m${text}\x1b[27m`;
 	}
 
 	getFgAnsi(color: ThemeColor): string {
@@ -428,6 +455,8 @@ export class Theme {
 			disabled: this.#symbols["status.disabled"],
 			enabled: this.#symbols["status.enabled"],
 			running: this.#symbols["status.running"],
+			connecting: this.#symbols["status.connecting"],
+			active: this.#symbols["status.active"],
 			shadowed: this.#symbols["status.shadowed"],
 			aborted: this.#symbols["status.aborted"],
 			done: this.#symbols["status.done"],
@@ -441,6 +470,8 @@ export class Theme {
 			expand: this.#symbols["nav.expand"],
 			collapse: this.#symbols["nav.collapse"],
 			back: this.#symbols["nav.back"],
+			prev: this.#symbols["nav.prev"],
+			next: this.#symbols["nav.next"],
 		};
 	}
 
@@ -536,6 +567,7 @@ export class Theme {
 			output: this.#symbols["icon.output"],
 			throughput: this.#symbols["icon.throughput"],
 			host: this.#symbols["icon.host"],
+			profile: this.#symbols["icon.profile"],
 			session: this.#symbols["icon.session"],
 			package: this.#symbols["icon.package"],
 			warning: this.#symbols["icon.warning"],
