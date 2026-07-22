@@ -91,6 +91,24 @@ describe("pi.typebox compatibility shim", () => {
 			expect(safeParse(schema, "12:00:00 123").success).toBe(false);
 			expect(safeParse(schema, "12:00").success).toBe(false);
 		});
+
+		it("accepts any number of fractional-second digits, per RFC 3339", () => {
+			// REGRESSION: the fraction group was fixed at `\d{3}`, so it accepted only
+			// exactly three digits and rejected valid RFC 3339 times with a shorter or
+			// longer fraction. `time-secfrac` is a dot followed by one or more digits.
+			expect(safeParse(schema, "12:00:00.5").success).toBe(true);
+			expect(safeParse(schema, "12:00:00.12").success).toBe(true);
+			expect(safeParse(schema, "12:00:00.123456").success).toBe(true);
+			expect(safeParse(schema, "12:00:00.5Z").success).toBe(true);
+			expect(safeParse(schema, "12:00:00.123456+05:30").success).toBe(true);
+		});
+
+		it("rejects a fractional dot with no digits after it", () => {
+			// The fraction is optional, but once the dot appears at least one digit is
+			// required: a bare trailing dot is not a valid time.
+			expect(safeParse(schema, "12:00:00.").success).toBe(false);
+			expect(safeParse(schema, "12:00:00.Z").success).toBe(false);
+		});
 	});
 
 	describe("string format: ipv6", () => {
