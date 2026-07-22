@@ -7,8 +7,13 @@ import type { ConversionResult, Converter, StreamInfo } from "../types";
 const EXTENSIONS = [".epub"];
 const MIMETYPES = ["application/epub", "application/epub+zip", "application/x-epub+zip"];
 
-/** A metadata value: a bare string, or a node carrying `#text` and/or array children. */
-type MetaValue = string | MetaNode;
+/**
+ * A metadata value. fast-xml-parser number-parses tag text by default, so a bare
+ * value can arrive as a string, a number ("1984"), or a boolean ("true"); when
+ * the element carries attributes it is instead a node with `#text` and/or array
+ * children.
+ */
+type MetaValue = string | number | boolean | MetaNode;
 interface MetaNode {
 	"#text"?: string;
 	[index: number]: MetaValue;
@@ -121,9 +126,16 @@ export class EpubConverter implements Converter {
 	}
 
 	getText(node: MetaValue | undefined): string | undefined {
-		if (!node) return undefined;
+		if (node == null) return undefined;
 		if (typeof node === "string") return node;
-		if (node["#text"]) return String(node["#text"]);
+		// fast-xml-parser number-parses tag text by default, so a purely numeric
+		// value like the title "1984" or a year-only `dc:date` arrives as a number
+		// (or, for "true"/"false", a boolean). Stringify it rather than dropping it;
+		// the old `typeof === "string"`-only path silently lost such metadata.
+		if (typeof node === "number" || typeof node === "boolean") return String(node);
+		// Guard the `#text` read with a null check, not truthiness: a `#text` of the
+		// number 0 or the string "0" is a real value that a truthiness test discards.
+		if (node["#text"] != null) return String(node["#text"]);
 		if (Array.isArray(node)) return this.getText(node[0]);
 		return undefined;
 	}
