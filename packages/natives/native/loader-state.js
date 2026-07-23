@@ -618,12 +618,29 @@ function installNativeTokioRuntime(bindings) {
 }
 
 
+/**
+ * GitHub releases "latest download" base for this package's OWN repository,
+ * derived from `package.json`'s `repository.url` so the owner/repo lives in
+ * exactly one place (the package manifest) and can never drift to a fork's repo.
+ * veyyon's native `.node` assets are published to `santhreal/veyyon` releases,
+ * NOT to any upstream — a hardcoded upstream URL here sent users to download a
+ * different project's binaries. Fail closed to the correct repo, never upstream,
+ * if the manifest URL is ever missing or unparseable.
+ */
+function releasesDownloadBase() {
+	const raw = typeof packageJson.repository === "string" ? packageJson.repository : packageJson.repository?.url;
+	const match = typeof raw === "string" ? raw.match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?/i) : null;
+	const slug = match ? `${match[1]}/${match[2]}` : "santhreal/veyyon";
+	return `https://github.com/${slug}/releases/latest/download`;
+}
+
 function buildHelpMessage(ctx) {
 	if (ctx.isCompiledBinary) {
 		const expectedPaths = ctx.addonFilenames.map(filename => `  ${path.join(ctx.versionedDir, filename)}`).join("\n");
+		const downloadBase = releasesDownloadBase();
 		const downloadHints = ctx.addonFilenames
 			.map(filename => {
-				const downloadUrl = `https://github.com/can1357/oh-my-pi/releases/latest/download/${filename}`;
+				const downloadUrl = `${downloadBase}/${filename}`;
 				const targetPath = path.join(ctx.versionedDir, filename);
 				return `  curl -fsSL "${downloadUrl}" -o "${targetPath}"`;
 			})

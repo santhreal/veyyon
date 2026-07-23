@@ -7,8 +7,7 @@
  * acquire slots for their own turns. Holding the slot across the parent's
  * full conversation deadlocks any spawn tree whose width exceeds
  * `maxConcurrency` because the parents wait for children that wait for
- * slots the parents are holding (issue
- * [#3749](https://github.com/can1357/oh-my-pi/issues/3749)).
+ * slots the parents are holding.
  */
 
 import type { StreamFn } from "@veyyon/agent-core";

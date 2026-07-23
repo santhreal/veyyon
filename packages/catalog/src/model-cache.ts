@@ -49,8 +49,7 @@ let sharedDbPath: string | null = null;
 
 function openDb(resolvedPath: string): Database {
 	const db = new Database(resolvedPath, { create: true });
-	// Install the busy handler BEFORE any lock-taking statement. See
-	// https://github.com/can1357/oh-my-pi/issues/2421.
+	// Install the busy handler BEFORE any lock-taking statement.
 	db.run("PRAGMA busy_timeout = 3000");
 	db.run("PRAGMA journal_mode = WAL");
 	db.run(`

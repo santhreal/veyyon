@@ -26,10 +26,24 @@ const RUNTIME_SRC = [
 	"packages/agent/src",
 ] as const;
 
-async function scanRuntimeSrc(pattern: RegExp, allow: (rel: string) => boolean): Promise<string[]> {
+/**
+ * Hand-authored native loader shims. These are committed `.js` (not `src/*.ts`),
+ * so the RUNTIME_SRC `.ts` scan never saw them — which is exactly how a
+ * `can1357/oh-my-pi/releases/latest/download` URL shipped in the natives loader,
+ * telling users to fetch veyyon's OWN `.node` assets from a fork's repo. Scanned
+ * for upstream release/download infra below so that leak class can't come back.
+ */
+const NATIVE_LOADER_SRC = ["packages/natives/native"] as const;
+
+async function scanTrees(
+	trees: readonly string[],
+	globPattern: string,
+	pattern: RegExp,
+	allow: (rel: string) => boolean,
+): Promise<string[]> {
 	const hits: string[] = [];
-	for (const tree of RUNTIME_SRC) {
-		const glob = new Glob("**/*.ts");
+	for (const tree of trees) {
+		const glob = new Glob(globPattern);
 		for await (const rel of glob.scan({ cwd: `${ROOT}/${tree}` })) {
 			if (rel.endsWith(".test.ts") || rel.includes("__tests__/")) continue;
 			const full = `${tree}/${rel}`;
@@ -39,6 +53,10 @@ async function scanRuntimeSrc(pattern: RegExp, allow: (rel: string) => boolean):
 		}
 	}
 	return hits.sort();
+}
+
+async function scanRuntimeSrc(pattern: RegExp, allow: (rel: string) => boolean): Promise<string[]> {
+	return scanTrees(RUNTIME_SRC, "**/*.ts", pattern, allow);
 }
 
 describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
@@ -79,6 +97,35 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		const allow = (rel: string) => allowed.has(rel);
 		const hits = await scanRuntimeSrc(banned, allow);
 		expect(hits).toEqual([]);
+	});
+
+	it("no runtime source names the upstream author or points at upstream release infra", async () => {
+		// The upstream author's username (`can1357`) has no legitimate use in
+		// runtime source: every occurrence was an inherited breadcrumb — a bare
+		// upstream issue-tracker link in a comment, or (worse) inside a user-facing
+		// error hint string. `oh-my-pi/releases` is the release/download infra that
+		// shipped in the natives loader telling users to fetch veyyon's OWN `.node`
+		// assets from a fork's repo. Both are banned across runtime `.ts` AND the
+		// hand-authored native `.js` loaders (previously unscanned — that gap is
+		// exactly how the download URL leaked). The `oh-my-pi` token alone stays
+		// allowed for the legacy-pi-compat scope aliases (frozen keepers, §8).
+		const banned = /can1357|oh-my-pi\/releases/;
+		const hits = [
+			...(await scanTrees(RUNTIME_SRC, "**/*.ts", banned, () => false)),
+			...(await scanTrees(NATIVE_LOADER_SRC, "**/*.{js,ts}", banned, () => false)),
+		].sort();
+		expect(hits).toEqual([]);
+	});
+
+	it("the natives loader points its download help at santhreal/veyyon, not a fork", async () => {
+		// Locks the actual fix: the loader's release-download base is derived from
+		// the package's own repository.url (santhreal/veyyon), so a stale upstream
+		// URL can never re-appear in the "download manually" help a user sees when
+		// the native addon fails to load.
+		const src = await Bun.file(`${ROOT}/packages/natives/native/loader-state.js`).text();
+		expect(src).toContain("releasesDownloadBase");
+		expect(src).toContain('"santhreal/veyyon"');
+		expect(src).not.toMatch(/can1357|oh-my-pi\/releases/);
 	});
 
 	it("theme JSONs carry no upstream schema URLs", async () => {
