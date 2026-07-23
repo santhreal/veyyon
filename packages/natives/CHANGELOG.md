@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-07-23
+
 ### Fixed
 
 - The build now refuses to embed a native addon built for a different version than the package. A `.node` left stale by a version bump (or one CPU variant rebuilt at a different version than another) used to ship inside the compiled binary and then fail to load at first use, bricking the CLI on exactly the machines that selected that variant. That mismatch is now caught at build time with a clear message instead of in your terminal.

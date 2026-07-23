@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/agent-core",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "General-purpose agent with transport abstraction, state management, and attachment support",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
