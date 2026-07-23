@@ -17,6 +17,22 @@
 			"expect": { "default": "inherit", "isolated": "inherit" }
 		},
 		{
+			"id": "settings-tier-anthropic-default-none",
+			"contract": "Default tier.anthropic is none on an empty isolated config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "tier.anthropic" },
+			"expect": { "default": "none", "isolated": "none" }
+		},
+		{
+			"id": "settings-tier-google-default-none",
+			"contract": "Default tier.google is none on an empty isolated config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "tier.google" },
+			"expect": { "default": "none", "isolated": "none" }
+		},
+		{
 			"id": "settings-override-tier-openai-priority",
 			"contract": "Isolated override sets tier.openai to priority",
 			"surface": "settings-override",
@@ -58,6 +74,44 @@
 				"path": "tools.approvalMode"
 			},
 			"expect": { "value": "ask" }
+		},
+		{
+			"id": "settings-override-argot-enabled-true",
+			"contract": "Isolated override can enable argot.enabled against its false default",
+			"surface": "settings-override",
+			"tags": ["positive", "adversarial"],
+			"input": {
+				"overrides": { "argot.enabled": true },
+				"path": "argot.enabled"
+			},
+			"expect": { "value": true }
+		},
+		{
+			"id": "settings-compaction-enabled-exists",
+			"contract": "compaction.enabled is a real schema path",
+			"surface": "settings-path-exists",
+			"tags": ["boundary"],
+			"input": { "path": "compaction.enabled" },
+			"expect": { "exists": true }
+		},
+		{
+			"id": "settings-nested-fake-path-absent",
+			"contract": "A nested fake path under a real domain is not in the schema",
+			"surface": "settings-path-exists",
+			"tags": ["negative", "adversarial"],
+			"input": { "path": "tools.approvalMode.notARealChild" },
+			"expect": { "exists": false }
+		},
+		{
+			"id": "settings-override-speech-enabled-true",
+			"contract": "Isolated override can enable speech.enabled against its false default",
+			"surface": "settings-override",
+			"tags": ["positive"],
+			"input": {
+				"overrides": { "speech.enabled": true },
+				"path": "speech.enabled"
+			},
+			"expect": { "value": true }
 		}
 	]
 }

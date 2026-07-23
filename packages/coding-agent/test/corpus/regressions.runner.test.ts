@@ -19,7 +19,12 @@ import {
 	resolveApproval,
 	type ToolApproval,
 } from "@veyyon/coding-agent/tools/approval";
-import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
+import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
+import {
+	cwdEscapingTargets,
+	formatCwdBoundaryReason,
+	searchPathFilesystemTargets,
+} from "@veyyon/coding-agent/tools/cwd-boundary";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
 import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
 import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
@@ -395,6 +400,18 @@ function runGlobSearchBase(c: CorpusCase): void {
 	expect(globSearchBase(input.pattern)).toBe(exp.base);
 }
 
+function runNormalizeRoots(c: CorpusCase): void {
+	const input = c.input as { roots: string[] };
+	const exp = c.expect as { roots: string[] };
+	expect(normalizeRoots(input.roots)).toEqual(exp.roots);
+}
+
+function runCwdBoundaryReason(c: CorpusCase): void {
+	const input = c.input as { cwd: string; escaping: string[] };
+	const exp = c.expect as { text: string };
+	expect(formatCwdBoundaryReason(input.cwd, input.escaping)).toBe(exp.text);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -491,6 +508,12 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "glob-search-base":
 			runGlobSearchBase(c);
+			return;
+		case "normalize-roots":
+			runNormalizeRoots(c);
+			return;
+		case "cwd-boundary-reason":
+			runCwdBoundaryReason(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);
