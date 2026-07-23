@@ -128,6 +128,34 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		expect(src).not.toMatch(/can1357|oh-my-pi\/releases/);
 	});
 
+	it("every @veyyon/* package manifest is authored by santhreal, never an upstream/placeholder name", async () => {
+		// The published author identity of veyyon's OWN packages is `santhreal`
+		// (the user's explicit decision). Two foreign names had leaked in: the
+		// upstream fork author `Can Boluk` across most manifests, and a
+		// zero-footprint placeholder `Derek Rynd` on @veyyon/swarm-extension. This
+		// scans every workspace package manifest so neither — nor any other
+		// non-santhreal author — can reappear when a package is added or bumped.
+		const glob = new Glob("packages/*/package.json");
+		const offenders: Array<{ pkg: string; author: unknown }> = [];
+		let scanned = 0;
+		for await (const rel of glob.scan({ cwd: ROOT })) {
+			const manifest = (await Bun.file(`${ROOT}/${rel}`).json()) as { name?: string; author?: unknown };
+			if (typeof manifest.name !== "string" || !manifest.name.startsWith("@veyyon/")) continue;
+			scanned++;
+			if (manifest.author !== "santhreal") offenders.push({ pkg: manifest.name, author: manifest.author });
+		}
+		expect(scanned).toBeGreaterThan(10);
+		expect(offenders).toEqual([]);
+	});
+
+	it("the workspace Cargo.toml is authored by santhreal", async () => {
+		const cargo = await Bun.file(`${ROOT}/Cargo.toml`).text();
+		// The [workspace.package] authors array must be exactly santhreal — no
+		// leftover upstream `Can Boluk`.
+		expect(cargo).toMatch(/authors\s*=\s*\[\s*"santhreal"\s*\]/);
+		expect(cargo).not.toContain("Can Boluk");
+	});
+
 	it("theme JSONs carry no upstream schema URLs", async () => {
 		const themeRoot = `${ROOT}/packages/coding-agent/src/modes/theme`;
 		const glob = new Glob("**/*.json");
