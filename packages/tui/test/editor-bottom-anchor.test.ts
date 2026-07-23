@@ -94,6 +94,48 @@ describe("editor bottom anchor on transient prompt collapse", () => {
 		}
 	});
 
+	it("re-anchors even when the transcript still overflows the viewport after collapse", async () => {
+		// The exact user scenario of 2026-07-22: a long transcript (frame much
+		// taller than the viewport), a tall transient prompt scrolling rows
+		// into scrollback, then collapse. frameLength stays > height, so a gate
+		// limited to `frameLength <= height` never fires and the editor floats
+		// mid-screen above a blank slab. The prompt must stay anchored always;
+		// a few duplicated rows in native history are the accepted price.
+		const height = 10;
+		const term = new VirtualTerminal(40, height, 1_000);
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		const transcript = new Transcript();
+		const editor = new Editor();
+		tui.addChild(transcript);
+		tui.addChild(editor);
+		tui.setFocus(editor);
+
+		// 30 transcript rows + editor: the frame far overflows the viewport.
+		transcript.lines = rows("hist-", 30);
+
+		try {
+			tui.start();
+			await scheduler.drain(term);
+
+			// Tall transient prompt: frame 30 + 8 = 38, so hist rows commit.
+			editor.lines = [...rows("prompt-", 7), "> "];
+			tui.requestRender();
+			await scheduler.drain(term);
+
+			// Collapse back to the one-line editor: frame 31 > height 10.
+			editor.lines = ["> "];
+			tui.requestRender();
+			await scheduler.drain(term);
+
+			const view = viewportText(term);
+			expect(view[height - 1]).toBe(">");
+		} finally {
+			tui.stop();
+			await term.flush();
+		}
+	});
+
 	it("keeps the editor anchored across repeated grow/collapse cycles", async () => {
 		const height = 10;
 		const term = new VirtualTerminal(40, height, 1_000);
