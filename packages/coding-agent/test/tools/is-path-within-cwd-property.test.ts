@@ -7,12 +7,7 @@ import { isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/path-u
  */
 
 describe("isPathWithinCwd property-style", () => {
-	const cwds = [
-		"/home/user/project",
-		"/tmp/w",
-		"/var/lib/app/data",
-		"/Users/x/code/repo",
-	];
+	const cwds = ["/home/user/project", "/tmp/w", "/var/lib/app/data", "/Users/x/code/repo"];
 
 	it("cwd is always within itself", () => {
 		for (const cwd of cwds) {

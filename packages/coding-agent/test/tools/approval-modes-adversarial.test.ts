@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import {
-	APPROVAL_MODE_VALUES,
-	isKnownApprovalMode,
-} from "@veyyon/coding-agent/tools/approval-modes";
-import {
-	normalizeApprovalMode,
-	validateApprovalModeSetting,
-} from "@veyyon/coding-agent/tools/approval";
+import { normalizeApprovalMode, validateApprovalModeSetting } from "@veyyon/coding-agent/tools/approval";
+import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "@veyyon/coding-agent/tools/approval-modes";
 
 /**
  * Approval mode normalization fails closed: typos never become yolo.

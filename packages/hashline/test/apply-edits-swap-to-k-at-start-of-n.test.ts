@@ -10,10 +10,7 @@ describe("applyEdits expand first of n to k", () => {
 			it(`n=${n} k=${k}`, () => {
 				const base = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 				const body = Array.from({ length: k }, (_, i) => `+E${i}`).join("\n");
-				const { text: out } = applyEdits(
-					base.join("\n"),
-					parsePatch(`SWAP 1.=1:\n${body}`).edits,
-				);
+				const { text: out } = applyEdits(base.join("\n"), parsePatch(`SWAP 1.=1:\n${body}`).edits);
 				const mid = Array.from({ length: k }, (_, i) => `E${i}`);
 				expect(out).toBe([...mid, ...base.slice(1)].join("\n"));
 			});

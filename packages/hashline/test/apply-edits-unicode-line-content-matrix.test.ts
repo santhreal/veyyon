@@ -31,10 +31,7 @@ describe("applyEdits unicode content matrix", () => {
 	it("multi-line unicode file full replace", () => {
 		const base = UNICODES.join("\n");
 		const body = UNICODES.map(u => `+${u}${u}`).join("\n");
-		const { text } = applyEdits(
-			base,
-			parsePatch(`SWAP 1.=${UNICODES.length}:\n${body}`).edits,
-		);
+		const { text } = applyEdits(base, parsePatch(`SWAP 1.=${UNICODES.length}:\n${body}`).edits);
 		expect(text).toBe(UNICODES.map(u => `${u}${u}`).join("\n"));
 	});
 });

@@ -3,12 +3,7 @@
  * Why: formatter and parser must agree on every single-line and range header.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	formatDeleteHeader,
-	formatReplaceHeader,
-	parsePatch,
-} from "@veyyon/hashline";
+import { applyEdits, formatDeleteHeader, formatReplaceHeader, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits past 6000 format header parse apply roundtrip n100", () => {
 	const n = 100;
@@ -20,25 +15,15 @@ describe("applyEdits past 6000 format header parse apply roundtrip n100", () => 
 			it(`DEL header ${start}..${end}`, () => {
 				const header = formatDeleteHeader(start, end);
 				const { text, firstChangedLine } = applyEdits(base, parsePatch(header).edits);
-				expect(text === "" ? [] : text.split("\n")).toEqual([
-					...lines.slice(0, start - 1),
-					...lines.slice(end),
-				]);
+				expect(text === "" ? [] : text.split("\n")).toEqual([...lines.slice(0, start - 1), ...lines.slice(end)]);
 				expect(firstChangedLine).toBe(start);
 			});
 
 			it(`SWAP header ${start}..${end}`, () => {
 				const header = formatReplaceHeader(start, end);
 				const body = "+REPL";
-				const { text, firstChangedLine } = applyEdits(
-					base,
-					parsePatch(`${header}\n${body}`).edits,
-				);
-				expect(text.split("\n")).toEqual([
-					...lines.slice(0, start - 1),
-					"REPL",
-					...lines.slice(end),
-				]);
+				const { text, firstChangedLine } = applyEdits(base, parsePatch(`${header}\n${body}`).edits);
+				expect(text.split("\n")).toEqual([...lines.slice(0, start - 1), "REPL", ...lines.slice(end)]);
 				expect(firstChangedLine).toBe(start);
 			});
 		}

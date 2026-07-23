@@ -1,11 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	computeFileHash,
-} from "@veyyon/hashline";
+import { computeFileHash, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 /**
  * After a successful apply, re-recording the new content yields a new tag.

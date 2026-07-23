@@ -12,10 +12,7 @@ describe("applyEdits past 6000 commutative disjoint SWAP pairs n15", () => {
 	for (let a = 1; a <= n; a++) {
 		for (let b = a + 1; b <= n; b++) {
 			it(`SWAP ${a} and ${b}`, () => {
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${a}.=${a}:\n+A\nSWAP ${b}.=${b}:\n+B`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${a}.=${a}:\n+A\nSWAP ${b}.=${b}:\n+B`).edits);
 				const out = text.split("\n");
 				expect(out[a - 1]).toBe("A");
 				expect(out[b - 1]).toBe("B");

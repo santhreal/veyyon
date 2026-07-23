@@ -46,15 +46,7 @@ describe("normalizeTools adversarial array matrix", () => {
 	});
 
 	it("interleaved garbage preserves relative order of reals", () => {
-		const tools = [
-			real("a"),
-			null,
-			real("b"),
-			{},
-			real("c"),
-			undefined,
-			real("d"),
-		] as never;
+		const tools = [real("a"), null, real("b"), {}, real("c"), undefined, real("d")] as never;
 		expect(normalizeTools(tools, false).map(t => t.name)).toEqual(["a", "b", "c", "d"]);
 	});
 });

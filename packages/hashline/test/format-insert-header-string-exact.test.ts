@@ -12,14 +12,10 @@ describe("formatInsertHeader exact strings", () => {
 
 	for (let line = 1; line <= 5; line++) {
 		it(`PRE ${line}`, () => {
-			expect(formatInsertHeader({ kind: "before_anchor", anchor: { line } })).toBe(
-				`INS.PRE ${line}:`,
-			);
+			expect(formatInsertHeader({ kind: "before_anchor", anchor: { line } })).toBe(`INS.PRE ${line}:`);
 		});
 		it(`POST ${line}`, () => {
-			expect(formatInsertHeader({ kind: "after_anchor", anchor: { line } })).toBe(
-				`INS.POST ${line}:`,
-			);
+			expect(formatInsertHeader({ kind: "after_anchor", anchor: { line } })).toBe(`INS.POST ${line}:`);
 		});
 	}
 });

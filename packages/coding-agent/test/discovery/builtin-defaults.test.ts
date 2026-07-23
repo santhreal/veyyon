@@ -5,11 +5,11 @@
  * rule of the same name overrides a bundled default (first-wins dedup).
  */
 import { describe, expect, it } from "bun:test";
-import { prompt } from "@veyyon/utils";
 import { getCapability } from "@veyyon/coding-agent/capability";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
 import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
+import { prompt } from "@veyyon/utils";
 // Register all discovery providers as a side effect.
 import "@veyyon/coding-agent/discovery";
 import { TtsrManager, type TtsrMatchContext } from "@veyyon/coding-agent/export/ttsr";
@@ -120,8 +120,8 @@ describe("builtin-defaults rule provider", () => {
 	// leak this guards against.
 	describe("bundled rules never leak argot advice when argot is off", () => {
 		it("every rule body rendered with argot=false contains no argot mention", () => {
-			const leaks = BUILTIN_RULE_SOURCES.filter(
-				({ content }) => /argot/i.test(prompt.render(content, { argot: false })),
+			const leaks = BUILTIN_RULE_SOURCES.filter(({ content }) =>
+				/argot/i.test(prompt.render(content, { argot: false })),
 			).map(r => r.name);
 			expect(leaks).toEqual([]);
 		});
@@ -153,13 +153,19 @@ describe("builtin-defaults rule provider", () => {
 		for (const snippet of ['function f(c: import("some-sdk").Client) {}', 'type T = import("./types").Config;']) {
 			manager.resetBuffer();
 			expect(
-				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }).map(r => r.name),
+				manager
+					.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] })
+					.map(r => r.name),
 				snippet,
 			).toEqual(["ts-import-type"]);
 		}
 
 		// Runtime dynamic value imports must NOT fire (the false-positive/abort bug).
-		for (const snippet of ['const m = await import("./mod");', 'await import("node:fs");', 'return import("./lazy");']) {
+		for (const snippet of [
+			'const m = await import("./mod");',
+			'await import("node:fs");',
+			'return import("./lazy");',
+		]) {
 			manager.resetBuffer();
 			expect(
 				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }),
@@ -182,7 +188,9 @@ describe("builtin-defaults rule provider", () => {
 		for (const snippet of ["const x: any = 1;", "return v as any;"]) {
 			manager.resetBuffer();
 			expect(
-				manager.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] }).map(r => r.name),
+				manager
+					.checkDelta(snippet, { source: "tool", toolName: "write", filePaths: ["src/foo.ts"] })
+					.map(r => r.name),
 				snippet,
 			).toEqual(["ts-no-any"]);
 		}

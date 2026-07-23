@@ -2,7 +2,7 @@
  * Patch.parse recovery headers: apply_patch noise and multi-section envelopes.
  */
 import { describe, expect, it } from "bun:test";
-import { Patch, containsRecognizableHashlineOperations } from "@veyyon/hashline";
+import { containsRecognizableHashlineOperations, Patch } from "@veyyon/hashline";
 
 describe("Patch.parse recovery and envelope noise", () => {
 	it("Begin Patch envelope is stripped before first header", () => {

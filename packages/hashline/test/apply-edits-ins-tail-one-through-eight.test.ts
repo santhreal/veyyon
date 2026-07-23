@@ -14,9 +14,7 @@ describe("applyEdits INS.TAIL 1..8 rows", () => {
 		it(`with body k=${k}`, () => {
 			const body = Array.from({ length: k }, (_, i) => `+R${i}`).join("\n");
 			const { text } = applyEdits("HEAD", parsePatch(`INS.TAIL:\n${body}`).edits);
-			expect(text).toBe(
-				["HEAD", ...Array.from({ length: k }, (_, i) => `R${i}`)].join("\n"),
-			);
+			expect(text).toBe(["HEAD", ...Array.from({ length: k }, (_, i) => `R${i}`)].join("\n"));
 		});
 	}
 });

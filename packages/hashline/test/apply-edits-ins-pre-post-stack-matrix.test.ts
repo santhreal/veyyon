@@ -9,27 +9,18 @@ describe("applyEdits INS.PRE/POST stack matrix", () => {
 	const base = "a\nb\nc\nd\ne";
 
 	it("INS.POST same anchor stacks in hunk order", () => {
-		const { text } = applyEdits(
-			base,
-			parsePatch("INS.POST 2:\n+x\nINS.POST 2:\n+y").edits,
-		);
+		const { text } = applyEdits(base, parsePatch("INS.POST 2:\n+x\nINS.POST 2:\n+y").edits);
 		// Both after original line 2 (b); order is first then second insert
 		expect(text).toBe("a\nb\nx\ny\nc\nd\ne");
 	});
 
 	it("INS.PRE same anchor stacks before original", () => {
-		const { text } = applyEdits(
-			base,
-			parsePatch("INS.PRE 3:\n+p\nINS.PRE 3:\n+q").edits,
-		);
+		const { text } = applyEdits(base, parsePatch("INS.PRE 3:\n+p\nINS.PRE 3:\n+q").edits);
 		expect(text).toBe("a\nb\np\nq\nc\nd\ne");
 	});
 
 	it("INS.PRE and INS.POST around same line", () => {
-		const { text } = applyEdits(
-			base,
-			parsePatch("INS.PRE 3:\n+before\nINS.POST 3:\n+after").edits,
-		);
+		const { text } = applyEdits(base, parsePatch("INS.PRE 3:\n+before\nINS.POST 3:\n+after").edits);
 		expect(text).toBe("a\nb\nbefore\nc\nafter\nd\ne");
 	});
 

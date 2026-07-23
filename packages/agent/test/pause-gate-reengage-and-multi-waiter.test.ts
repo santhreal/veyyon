@@ -116,4 +116,3 @@ describe("AgentPauseGate multi-waiter and re-engage", () => {
 		expect(secondReleased).toBe(true);
 	});
 });
-

@@ -14,10 +14,7 @@ describe("applyEdits past 6000 firstChangedLine DEL SWAP n60", () => {
 		it(`DEL ${line} firstChangedLine=${line}`, () => {
 			const r = applyEdits(base, parsePatch(`DEL ${line}`).edits);
 			expect(r.firstChangedLine).toBe(line);
-			expect(r.text === "" ? [] : r.text.split("\n")).toEqual([
-				...lines.slice(0, line - 1),
-				...lines.slice(line),
-			]);
+			expect(r.text === "" ? [] : r.text.split("\n")).toEqual([...lines.slice(0, line - 1), ...lines.slice(line)]);
 		});
 
 		it(`SWAP ${line} firstChangedLine=${line}`, () => {

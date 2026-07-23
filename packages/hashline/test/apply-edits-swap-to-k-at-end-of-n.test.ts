@@ -10,10 +10,7 @@ describe("applyEdits expand last of n to k", () => {
 			it(`n=${n} k=${k}`, () => {
 				const base = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 				const body = Array.from({ length: k }, (_, i) => `+E${i}`).join("\n");
-				const { text: out } = applyEdits(
-					base.join("\n"),
-					parsePatch(`SWAP ${n}.=${n}:\n${body}`).edits,
-				);
+				const { text: out } = applyEdits(base.join("\n"), parsePatch(`SWAP ${n}.=${n}:\n${body}`).edits);
 				const mid = Array.from({ length: k }, (_, i) => `E${i}`);
 				expect(out).toBe([...base.slice(0, -1), ...mid].join("\n"));
 			});

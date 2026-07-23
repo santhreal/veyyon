@@ -12,10 +12,7 @@ describe("applyEdits past 6000 mixed ops one patch n12", () => {
 
 	it("DEL all odds + SWAP all evens + HEAD in one patch", () => {
 		const dels = Array.from({ length: n / 2 }, (_, i) => `DEL ${i * 2 + 1}`);
-		const swaps = Array.from(
-			{ length: n / 2 },
-			(_, i) => `SWAP ${i * 2 + 2}.=${i * 2 + 2}:\n+E${i * 2 + 2}`,
-		);
+		const swaps = Array.from({ length: n / 2 }, (_, i) => `SWAP ${i * 2 + 2}.=${i * 2 + 2}:\n+E${i * 2 + 2}`);
 		const patch = [`INS.HEAD:\n+H`, ...dels, ...swaps].join("\n");
 		const { text } = applyEdits(base, parsePatch(patch).edits);
 		// Concurrent original indices: DEL odds and SWAP evens on original,
@@ -28,10 +25,7 @@ describe("applyEdits past 6000 mixed ops one patch n12", () => {
 	});
 
 	it("INS.TAIL + multi SWAP first half", () => {
-		const swaps = Array.from(
-			{ length: 6 },
-			(_, i) => `SWAP ${i + 1}.=${i + 1}:\n+S${i + 1}`,
-		);
+		const swaps = Array.from({ length: 6 }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+S${i + 1}`);
 		const patch = [`INS.TAIL:\n+T`, ...swaps].join("\n");
 		const { text } = applyEdits(base, parsePatch(patch).edits);
 		const out = text.split("\n");

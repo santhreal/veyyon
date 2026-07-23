@@ -10,9 +10,7 @@ describe("applyEdits past 6000 INS between every line n60", () => {
 	const base = lines.join("\n");
 
 	it("POST after each", () => {
-		const hunks = Array.from({ length: n }, (_, i) => `INS.POST ${i + 1}:\n+M${i + 1}`).join(
-			"\n",
-		);
+		const hunks = Array.from({ length: n }, (_, i) => `INS.POST ${i + 1}:\n+M${i + 1}`).join("\n");
 		const out = applyEdits(base, parsePatch(hunks).edits).text.split("\n");
 		expect(out).toHaveLength(n * 2);
 		for (let i = 0; i < n; i++) {
@@ -22,9 +20,7 @@ describe("applyEdits past 6000 INS between every line n60", () => {
 	});
 
 	it("PRE before each", () => {
-		const hunks = Array.from({ length: n }, (_, i) => `INS.PRE ${i + 1}:\n+M${i + 1}`).join(
-			"\n",
-		);
+		const hunks = Array.from({ length: n }, (_, i) => `INS.PRE ${i + 1}:\n+M${i + 1}`).join("\n");
 		const out = applyEdits(base, parsePatch(hunks).edits).text.split("\n");
 		expect(out).toHaveLength(n * 2);
 		for (let i = 0; i < n; i++) {

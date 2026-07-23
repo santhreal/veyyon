@@ -6,13 +6,7 @@ import { resolveApproval } from "../src/tools/approval";
 
 describe("resolveApproval bypass vs deny", () => {
 	it("bypass allows always-ask exec", () => {
-		const r = resolveApproval(
-			{ name: "bash", approval: "exec" },
-			{},
-			"always-ask",
-			{},
-			{ bypassAllApprovals: true },
-		);
+		const r = resolveApproval({ name: "bash", approval: "exec" }, {}, "always-ask", {}, { bypassAllApprovals: true });
 		expect(r.policy).toBe("allow");
 	});
 

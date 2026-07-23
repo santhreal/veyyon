@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	requiresApproval,
-	resolveApproval,
-	truncateForPrompt,
-} from "@veyyon/coding-agent/tools/approval";
+import { requiresApproval, resolveApproval, truncateForPrompt } from "@veyyon/coding-agent/tools/approval";
 
 /**
  * resolveApproval matrix: yolo/ask/plan/always-ask × read/write/exec tiers,
@@ -44,17 +40,29 @@ describe("resolveApproval matrix adversarial", () => {
 	});
 
 	it("plan autonomy without planModeActive denies write", () => {
-		const resolved = resolveApproval(tool("write", "write"), {}, "plan", {}, {
-			planModeActive: false,
-		});
+		const resolved = resolveApproval(
+			tool("write", "write"),
+			{},
+			"plan",
+			{},
+			{
+				planModeActive: false,
+			},
+		);
 		expect(resolved.policy).toBe("deny");
 		expect((resolved.reason ?? "").toLowerCase()).toMatch(/plan/);
 	});
 
 	it("plan autonomy with planModeActive lifts write to prompt", () => {
-		const resolved = resolveApproval(tool("write", "write"), {}, "plan", {}, {
-			planModeActive: true,
-		});
+		const resolved = resolveApproval(
+			tool("write", "write"),
+			{},
+			"plan",
+			{},
+			{
+				planModeActive: true,
+			},
+		);
 		expect(resolved.policy).toBe("prompt");
 	});
 
@@ -63,16 +71,28 @@ describe("resolveApproval matrix adversarial", () => {
 	});
 
 	it("bypassAllApprovals turns prompt into allow", () => {
-		const resolved = resolveApproval(tool("write", "write"), {}, "always-ask", {}, {
-			bypassAllApprovals: true,
-		});
+		const resolved = resolveApproval(
+			tool("write", "write"),
+			{},
+			"always-ask",
+			{},
+			{
+				bypassAllApprovals: true,
+			},
+		);
 		expect(resolved.policy).toBe("allow");
 	});
 
 	it("bypassAllApprovals does not lift an explicit user deny", () => {
-		const resolved = resolveApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" }, {
-			bypassAllApprovals: true,
-		});
+		const resolved = resolveApproval(
+			tool("bash", "exec"),
+			{},
+			"yolo",
+			{ bash: "deny" },
+			{
+				bypassAllApprovals: true,
+			},
+		);
 		expect(resolved.policy).toBe("deny");
 	});
 });
@@ -87,9 +107,7 @@ describe("requiresApproval", () => {
 	});
 
 	it("throws when policy is deny", () => {
-		expect(() => requiresApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" })).toThrow(
-			/block|deny|policy/i,
-		);
+		expect(() => requiresApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" })).toThrow(/block|deny|policy/i);
 	});
 });
 

@@ -22,11 +22,7 @@ describe("Patcher session chain fresh hash matrix", () => {
 			const patcher = new Patcher({ fs, snapshots });
 
 			for (let s = 1; s <= steps; s++) {
-				const result = await patcher.apply(
-					Patch.parse(
-						`${formatHashlineHeader("c.ts", tag)}\nSWAP 1.=1:\n+v${s}`,
-					),
-				);
+				const result = await patcher.apply(Patch.parse(`${formatHashlineHeader("c.ts", tag)}\nSWAP 1.=1:\n+v${s}`));
 				text = `v${s}\n`;
 				expect(fs.get("c.ts")).toBe(text);
 				expect(result.sections[0]?.fileHash).toBe(computeFileHash(text));
@@ -43,9 +39,7 @@ describe("Patcher session chain fresh hash matrix", () => {
 		const snapshots = new InMemorySnapshotStore();
 		const tag0 = snapshots.record("c.ts", text);
 		const patcher = new Patcher({ fs, snapshots });
-		const r1 = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("c.ts", tag0)}\nSWAP 1.=1:\n+b`),
-		);
+		const r1 = await patcher.apply(Patch.parse(`${formatHashlineHeader("c.ts", tag0)}\nSWAP 1.=1:\n+b`));
 		// reuse tag0 instead of r1 hash
 		await expect(
 			patcher.apply(Patch.parse(`${formatHashlineHeader("c.ts", tag0)}\nSWAP 1.=1:\n+c`)),

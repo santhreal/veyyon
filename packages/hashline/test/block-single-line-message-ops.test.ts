@@ -2,8 +2,8 @@
  * blockSingleLineMessage exact forms for all BlockOp values.
  */
 import { describe, expect, it } from "bun:test";
-import { blockSingleLineMessage } from "../src/messages";
 import { HL_RANGE_SEP } from "../src/format";
+import { blockSingleLineMessage } from "../src/messages";
 
 describe("blockSingleLineMessage ops", () => {
 	for (const line of [1, 7, 42]) {

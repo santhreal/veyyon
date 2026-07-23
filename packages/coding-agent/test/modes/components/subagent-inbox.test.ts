@@ -23,14 +23,14 @@
  * `IrcBus.send` never reaches the mailbox — the fake seeds `inbox`/`unreadCount`
  * directly, which is all the component reads.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { afterEach, beforeAll, describe, expect, it, setSystemTime } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { IrcBus, IrcMessage } from "@veyyon/coding-agent/irc/bus";
-import { SubagentInboxComponent } from "@veyyon/coding-agent/modes/components/subagent-inbox";
 import { agentStatusGlyph } from "@veyyon/coding-agent/modes/components/agent-status-display";
-import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { SubagentInboxComponent } from "@veyyon/coding-agent/modes/components/subagent-inbox";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { visibleWidth } from "@veyyon/tui/utils";
 
 /** Strip SGR escapes so we can assert on the glyph/column geometry. */
 function strip(s: string): string {

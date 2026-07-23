@@ -67,28 +67,26 @@ describe("BashTool cwd and config fail paths", () => {
 	it("throws when cwd does not exist", async () => {
 		const tool = new BashTool(bashSession(tmpDir) as never);
 		const missing = path.join(tmpDir, "no-such-dir");
-		await expect(
-			tool.execute("b2", { command: "true", cwd: missing, timeout: 10 }),
-		).rejects.toThrow(ToolError);
-		await expect(
-			tool.execute("b2b", { command: "true", cwd: missing, timeout: 10 }),
-		).rejects.toThrow(/Working directory does not exist/);
+		await expect(tool.execute("b2", { command: "true", cwd: missing, timeout: 10 })).rejects.toThrow(ToolError);
+		await expect(tool.execute("b2b", { command: "true", cwd: missing, timeout: 10 })).rejects.toThrow(
+			/Working directory does not exist/,
+		);
 	});
 
 	it("throws when cwd is a file not a directory", async () => {
 		const filePath = path.join(tmpDir, "not-a-dir");
 		await Bun.write(filePath, "x");
 		const tool = new BashTool(bashSession(tmpDir) as never);
-		await expect(
-			tool.execute("b3", { command: "true", cwd: filePath, timeout: 10 }),
-		).rejects.toThrow(/not a directory/i);
+		await expect(tool.execute("b3", { command: "true", cwd: filePath, timeout: 10 })).rejects.toThrow(
+			/not a directory/i,
+		);
 	});
 
 	it("throws when async is requested but async.enabled is false", async () => {
 		const tool = new BashTool(bashSession(tmpDir) as never);
-		await expect(
-			tool.execute("b4", { command: "true", async: true, timeout: 10 }),
-		).rejects.toThrow(/Async bash execution is disabled/);
+		await expect(tool.execute("b4", { command: "true", async: true, timeout: 10 })).rejects.toThrow(
+			/Async bash execution is disabled/,
+		);
 	});
 
 	it("abort signal cancels a long sleep", async () => {

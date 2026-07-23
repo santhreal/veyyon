@@ -2,13 +2,7 @@
  * After REM, further anchored edit with old tag fails and stays missing.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher REM then edit fails", () => {
 	it("file stays missing after failed re-edit", async () => {

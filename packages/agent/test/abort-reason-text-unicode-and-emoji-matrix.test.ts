@@ -5,15 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { abortReasonText } from "@veyyon/agent-core/agent-loop";
 
 describe("abortReasonText unicode and emoji matrix", () => {
-	const cases = [
-		"日本語 abort",
-		"café stop",
-		"🚀 cancel",
-		"stop\u0000null",
-		"مرحبا",
-		"Здравствуй",
-		"a".repeat(1000),
-	];
+	const cases = ["日本語 abort", "café stop", "🚀 cancel", "stop\u0000null", "مرحبا", "Здравствуй", "a".repeat(1000)];
 
 	for (const msg of cases) {
 		it(`passes through ${JSON.stringify(msg).slice(0, 40)}`, () => {

@@ -27,8 +27,8 @@ import {
 	livingIntensity,
 	livingSpinnerColor,
 	motionForActivity,
-	setShimmerActivity,
 	type ShimmerActivity,
+	setShimmerActivity,
 	shimmerText,
 } from "@veyyon/coding-agent/modes/theme/shimmer";
 import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";

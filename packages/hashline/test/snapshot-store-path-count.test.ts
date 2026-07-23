@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { InMemorySnapshotStore, computeFileHash } from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore } from "@veyyon/hashline";
 
 /**
  * Snapshot store records many paths without interference.

@@ -44,9 +44,7 @@ describe("normalizeTools scale and duplicates", () => {
 	});
 
 	it("does not throw on a very large garbage-heavy list", () => {
-		const mixed = Array.from({ length: 500 }, (_, i) =>
-			i % 3 === 0 ? tool(`ok${i}`) : null,
-		);
+		const mixed = Array.from({ length: 500 }, (_, i) => (i % 3 === 0 ? tool(`ok${i}`) : null));
 		// @ts-expect-error garbage mix
 		const out = normalizeTools(mixed as never, false);
 		expect(out.length).toBeGreaterThan(100);

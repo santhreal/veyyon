@@ -3,6 +3,7 @@
  * These strings are the recovery/rejection contract models and hosts read.
  */
 import { describe, expect, it } from "bun:test";
+import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_RANGE_SEP } from "../src/format";
 import {
 	ABORT_MARKER,
 	afterInsertLandingShiftWarning,
@@ -26,17 +27,16 @@ import {
 	insertAfterBlockUnresolvedLoweredWarning,
 	MINUS_ROW_REJECTED,
 	MISMATCH_CONTEXT,
-	missingSnapshotTagMessage,
 	MOVE_TAKES_NO_BODY,
+	missingSnapshotTagMessage,
 	pathRecoveredFromTagMessage,
-	REM_TAKES_NO_BODY,
 	RECOVERY_EXTERNAL_WARNING,
 	RECOVERY_LINE_REMAP_WARNING,
 	RECOVERY_SESSION_CHAIN_WARNING,
+	REM_TAKES_NO_BODY,
 	UNRESOLVED_BLOCK_INTERNAL,
 	unseenLinesMessage,
 } from "../src/messages";
-import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_RANGE_SEP } from "../src/format";
 
 describe("message markers and static warnings", () => {
 	it("exports exact envelope markers", () => {

@@ -2,13 +2,7 @@
  * MV preserves exact content including unicode and trailing newline shapes.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher MV preserves content", () => {
 	const bodies = ["plain\n", "unicode 日本語\n", "a\nb\nc\n", ""];

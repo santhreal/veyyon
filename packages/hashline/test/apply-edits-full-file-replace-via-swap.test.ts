@@ -10,10 +10,7 @@ describe("applyEdits full file replace via SWAP", () => {
 			if (bodyLen === 0) {
 				it(`n=${n} DEL 1.=${n} clears`, () => {
 					const base = Array.from({ length: n }, (_, i) => `L${i + 1}`).join("\n");
-					const { text } = applyEdits(
-						base,
-						parsePatch(n === 1 ? "DEL 1" : `DEL 1.=${n}`).edits,
-					);
+					const { text } = applyEdits(base, parsePatch(n === 1 ? "DEL 1" : `DEL 1.=${n}`).edits);
 					expect(text).toBe("");
 				});
 				continue;
@@ -22,10 +19,7 @@ describe("applyEdits full file replace via SWAP", () => {
 				const base = Array.from({ length: n }, (_, i) => `L${i + 1}`).join("\n");
 				const body = Array.from({ length: bodyLen }, (_, i) => `B${i}`);
 				const rows = body.map(l => `+${l}`).join("\n");
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP 1.=${n}:\n${rows}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP 1.=${n}:\n${rows}`).edits);
 				expect(text).toBe(body.join("\n"));
 			});
 		}

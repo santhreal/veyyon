@@ -11,10 +11,7 @@ describe("applyEdits INS.POST grid property", () => {
 		const base = lines.join("\n");
 		for (let anchor = 1; anchor <= n; anchor++) {
 			it(`n=${n} INS.POST ${anchor}`, () => {
-				const { text } = applyEdits(
-					base,
-					parsePatch(`INS.POST ${anchor}:\n+X`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`INS.POST ${anchor}:\n+X`).edits);
 				const out = text.split("\n");
 				expect(out).toHaveLength(n + 1);
 				expect(out[anchor]).toBe("X");

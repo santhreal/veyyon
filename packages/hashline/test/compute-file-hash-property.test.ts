@@ -22,8 +22,7 @@ describe("computeFileHash property-style", () => {
 		hashes.add(computeFileHash(base));
 		for (let i = 0; i < base.length - 1; i++) {
 			if (base[i] === "\n") continue;
-			const flipped =
-				base.slice(0, i) + (base[i] === "a" ? "b" : "a") + base.slice(i + 1);
+			const flipped = base.slice(0, i) + (base[i] === "a" ? "b" : "a") + base.slice(i + 1);
 			hashes.add(computeFileHash(flipped));
 		}
 		// Not every flip is guaranteed unique under a 16-bit space, but most should differ from base.
@@ -37,9 +36,9 @@ describe("computeFileHash property-style", () => {
 	});
 
 	it("length-4 hex for multi-kilobyte bodies", () => {
-		const big = "x".repeat(50_000) + "\n";
+		const big = `${"x".repeat(50_000)}\n`;
 		const h = computeFileHash(big);
 		expect(h).toMatch(/^[0-9A-Fa-f]{4}$/);
-		expect(computeFileHash(big + "y")).not.toBe(h);
+		expect(computeFileHash(`${big}y`)).not.toBe(h);
 	});
 });

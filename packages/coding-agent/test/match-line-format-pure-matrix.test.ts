@@ -6,9 +6,7 @@ import { formatMatchLine } from "../src/tools/match-line-format";
 
 describe("formatMatchLine pure matrix", () => {
 	it("plain match", () => {
-		expect(formatMatchLine(12, "const x = 1;", true, { useHashLines: false })).toBe(
-			"*12|const x = 1;",
-		);
+		expect(formatMatchLine(12, "const x = 1;", true, { useHashLines: false })).toBe("*12|const x = 1;");
 	});
 	it("plain context", () => {
 		expect(formatMatchLine(13, "return x;", false, { useHashLines: false })).toBe(" 13|return x;");

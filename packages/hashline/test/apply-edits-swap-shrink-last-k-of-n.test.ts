@@ -11,10 +11,7 @@ describe("applyEdits shrink last k of n", () => {
 			it(`n=${n} k=${k}`, () => {
 				const base = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 				const start = n - k + 1;
-				const { text: out } = applyEdits(
-					base.join("\n"),
-					parsePatch(`SWAP ${start}.=${n}:\n+X`).edits,
-				);
+				const { text: out } = applyEdits(base.join("\n"), parsePatch(`SWAP ${start}.=${n}:\n+X`).edits);
 				expect(out).toBe([...base.slice(0, start - 1), "X"].join("\n"));
 			});
 		}

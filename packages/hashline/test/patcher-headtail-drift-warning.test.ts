@@ -3,12 +3,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	formatHashlineHeader,
 	HEADTAIL_DRIFT_WARNING,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	Patch,
 	Patcher,
-	formatHashlineHeader,
 } from "@veyyon/hashline";
 
 describe("Patcher head/tail drift", () => {
@@ -20,9 +20,7 @@ describe("Patcher head/tail drift", () => {
 		const stale = snapshots.record("f.ts", "old\n");
 		// live is different and not recorded as matching stale for content anchors
 		const patcher = new Patcher({ fs, snapshots });
-		const result = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("f.ts", stale)}\nINS.HEAD:\n+HEAD`),
-		);
+		const result = await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", stale)}\nINS.HEAD:\n+HEAD`));
 		expect(fs.get("f.ts")).toBe("HEAD\nbody\n");
 		const warnings = result.sections.flatMap(s => s.warnings ?? []);
 		expect(warnings).toContain(HEADTAIL_DRIFT_WARNING);
@@ -34,9 +32,7 @@ describe("Patcher head/tail drift", () => {
 		const snapshots = new InMemorySnapshotStore();
 		const stale = snapshots.record("f.ts", "older\n");
 		const patcher = new Patcher({ fs, snapshots });
-		const result = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("f.ts", stale)}\nINS.TAIL:\n+TAIL`),
-		);
+		const result = await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", stale)}\nINS.TAIL:\n+TAIL`));
 		expect(fs.get("f.ts")).toBe("body\nTAIL\n");
 		const warnings = result.sections.flatMap(s => s.warnings ?? []);
 		expect(warnings).toContain(HEADTAIL_DRIFT_WARNING);

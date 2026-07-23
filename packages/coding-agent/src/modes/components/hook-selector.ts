@@ -3,8 +3,8 @@
  * Displays a list of string options with keyboard navigation.
  */
 import {
-	clampLow,
 	Container,
+	clampLow,
 	Ellipsis,
 	extractPrintableText,
 	fuzzyFilter,

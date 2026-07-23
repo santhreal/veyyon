@@ -2,7 +2,7 @@
  * SnapshotStore.record return value always equals computeFileHash(fullText).
  */
 import { describe, expect, it } from "bun:test";
-import { InMemorySnapshotStore, computeFileHash } from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore } from "@veyyon/hashline";
 
 describe("record return equals computeFileHash", () => {
 	const samples = ["", "a", "a\nb", "unicode ☃", "x".repeat(100), "line\nline\n"];

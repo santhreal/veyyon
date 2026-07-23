@@ -111,8 +111,7 @@ describe("toJsonRpcError", () => {
 
 describe("MCP parseSSE extra adversarial", () => {
 	it("ignores non-data fields and still returns the data JSON", () => {
-		const text =
-			'event: message\nid: 1\ndata: {"jsonrpc":"2.0","id":3,"result":{"v":1}}\n\n';
+		const text = 'event: message\nid: 1\ndata: {"jsonrpc":"2.0","id":3,"result":{"v":1}}\n\n';
 		expect(parseSSE(text)).toEqual({ jsonrpc: "2.0", id: 3, result: { v: 1 } });
 	});
 
@@ -127,9 +126,7 @@ describe("MCP parseSSE extra adversarial", () => {
 
 describe("MCP redactUrlForLog extra", () => {
 	it("redacts multiple secret-like query keys", () => {
-		const out = redactUrlForLog(
-			"https://api.example.com/v1?api_key=AAA&token=BBB&ok=1",
-		);
+		const out = redactUrlForLog("https://api.example.com/v1?api_key=AAA&token=BBB&ok=1");
 		expect(out).not.toContain("AAA");
 		expect(out).not.toContain("BBB");
 		expect(out).toContain("api.example.com");

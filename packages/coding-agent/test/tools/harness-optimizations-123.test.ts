@@ -81,9 +81,7 @@ describe("Harness Optimization 3: Todo Compact Mutation Output", () => {
 	];
 
 	it("compacts completed tasks on 'done' operation", () => {
-		const { phases, errors } = applyOpsToPhases(samplePhases, [
-			{ op: "done", task: "Implement API" },
-		]);
+		const { phases, errors } = applyOpsToPhases(samplePhases, [{ op: "done", task: "Implement API" }]);
 		expect(errors).toHaveLength(0);
 
 		// Re-run format check via applyOpsToPhases
@@ -92,9 +90,7 @@ describe("Harness Optimization 3: Todo Compact Mutation Output", () => {
 	});
 
 	it("renders full task details on 'view' operation", () => {
-		const { phases } = applyOpsToPhases(samplePhases, [
-			{ op: "done", task: "Implement API" },
-		]);
+		const { phases } = applyOpsToPhases(samplePhases, [{ op: "done", task: "Implement API" }]);
 		const view = applyOpsToPhases(phases, [{ op: "view" }]);
 		expect(view.errors).toHaveLength(0);
 		// Phase 'Foundation' should contain all items
@@ -105,27 +101,24 @@ describe("Harness Optimization 3: Todo Compact Mutation Output", () => {
 	});
 
 	it("renders full task details on 'init' operation", () => {
-		const init = applyOpsToPhases([], [
-			{
-				op: "init",
-				list: [
-					{ phase: "Setup", items: ["Task 1", "Task 2"] },
-				],
-			},
-		]);
+		const init = applyOpsToPhases(
+			[],
+			[
+				{
+					op: "init",
+					list: [{ phase: "Setup", items: ["Task 1", "Task 2"] }],
+				},
+			],
+		);
 		expect(init.errors).toHaveLength(0);
 		expect(init.phases[0].tasks).toHaveLength(2);
 	});
 
 	it("supports 'append' and 'drop' operations with compact formatting", () => {
-		const appended = applyOpsToPhases(samplePhases, [
-			{ op: "append", phase: "Feature", items: ["Write docs"] },
-		]);
+		const appended = applyOpsToPhases(samplePhases, [{ op: "append", phase: "Feature", items: ["Write docs"] }]);
 		expect(appended.errors).toHaveLength(0);
 
-		const dropped = applyOpsToPhases(appended.phases, [
-			{ op: "drop", task: "Add tests" },
-		]);
+		const dropped = applyOpsToPhases(appended.phases, [{ op: "drop", task: "Add tests" }]);
 		expect(dropped.errors).toHaveLength(0);
 	});
 });

@@ -2,8 +2,8 @@
  * ambiguousBoundaryEchoMessage leading vs trailing exact substrings.
  */
 import { describe, expect, it } from "bun:test";
-import { ambiguousBoundaryEchoMessage } from "../src/messages";
 import { HL_RANGE_SEP } from "../src/format";
+import { ambiguousBoundaryEchoMessage } from "../src/messages";
 
 describe("ambiguousBoundaryEchoMessage sides", () => {
 	for (const count of [1, 2, 5]) {

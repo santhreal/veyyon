@@ -12,9 +12,7 @@ import { createUserMessage } from "./helpers";
  */
 
 function identityConverter(messages: AgentMessage[]): Message[] {
-	return messages.filter(
-		m => m.role === "user" || m.role === "assistant" || m.role === "toolResult",
-	) as Message[];
+	return messages.filter(m => m.role === "user" || m.role === "assistant" || m.role === "toolResult") as Message[];
 }
 
 function makeSlowTool(log: string[], delayMs: number): AgentTool {
@@ -52,13 +50,7 @@ describe("agent loop concurrent tools and abort", () => {
 		const mock = createMockModel({ responses: [{ content: ["no-tools-reply"] }] });
 		const context: AgentContext = { systemPrompt: ["Test"], messages: [], tools: [] };
 		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
-		const messages = await agentLoop(
-			[createUserMessage("hi")],
-			context,
-			config,
-			undefined,
-			mock.stream,
-		).result();
+		const messages = await agentLoop([createUserMessage("hi")], context, config, undefined, mock.stream).result();
 		const last = messages[messages.length - 1];
 		expect(last.role).toBe("assistant");
 		expect(mock.calls.length).toBe(1);
@@ -88,13 +80,7 @@ describe("agent loop concurrent tools and abort", () => {
 			tools: [makeSlowTool(log, 10)],
 		};
 		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
-		const messages = await agentLoop(
-			[createUserMessage("go")],
-			context,
-			config,
-			undefined,
-			mock.stream,
-		).result();
+		const messages = await agentLoop([createUserMessage("go")], context, config, undefined, mock.stream).result();
 		expect(log).toEqual(["start:1", "done:1"]);
 		const toolResults = messages.filter(m => m.role === "toolResult");
 		expect(toolResults.length).toBe(1);
@@ -131,13 +117,7 @@ describe("agent loop concurrent tools and abort", () => {
 		};
 		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
 		const ac = new AbortController();
-		const pending = agentLoop(
-			[createUserMessage("go")],
-			context,
-			config,
-			ac.signal,
-			mock.stream,
-		).result();
+		const pending = agentLoop([createUserMessage("go")], context, config, ac.signal, mock.stream).result();
 		// Wait until the tool has started, then abort.
 		const start = performance.now();
 		while (!log.includes("start:99") && performance.now() - start < 2000) {

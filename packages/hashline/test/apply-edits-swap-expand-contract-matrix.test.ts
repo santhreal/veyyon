@@ -14,8 +14,7 @@ describe("applyEdits SWAP expand/contract matrix", () => {
 			// k=0 means bodyless SWAP = pure delete of that line
 			it(`pos=${pos} k=${k}`, () => {
 				const h = formatReplaceHeader(pos, pos);
-				const body =
-					k === 0 ? "" : Array.from({ length: k }, (_, i) => `+E${i}`).join("\n");
+				const body = k === 0 ? "" : Array.from({ length: k }, (_, i) => `+E${i}`).join("\n");
 				const patch = body ? `${h}\n${body}` : `${h}`;
 				const { text: out } = applyEdits(text, parsePatch(patch).edits);
 				const want = [...base];

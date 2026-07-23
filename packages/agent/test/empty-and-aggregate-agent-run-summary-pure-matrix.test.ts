@@ -3,10 +3,7 @@
  * Why: multi-run rollups must not invent counts or drop coverage.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	aggregateAgentRunSummaries,
-	emptyAgentRunSummary,
-} from "@veyyon/agent-core/run-collector";
+import { aggregateAgentRunSummaries, emptyAgentRunSummary } from "@veyyon/agent-core/run-collector";
 
 describe("empty and aggregate agent run summary pure matrix", () => {
 	it("empty is stable identity", () => {

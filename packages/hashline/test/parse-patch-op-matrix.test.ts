@@ -2,7 +2,6 @@
  * parsePatch operator matrix: SWAP/DEL/INS/REM/MV exact edit shapes and rejects.
  */
 import { describe, expect, it } from "bun:test";
-import { parsePatch, parsePatchStreaming } from "../src/parser";
 import {
 	DELETE_TAKES_NO_BODY,
 	EMPTY_INSERT,
@@ -10,6 +9,7 @@ import {
 	MINUS_ROW_REJECTED,
 	REM_TAKES_NO_BODY,
 } from "../src/messages";
+import { parsePatch, parsePatchStreaming } from "../src/parser";
 
 describe("parsePatch SWAP matrix", () => {
 	it("single-line SWAP becomes delete+insert at that line", () => {
@@ -31,9 +31,7 @@ describe("parsePatch SWAP matrix", () => {
 	it("multi-line SWAP range deletes each line in range", () => {
 		const { edits } = parsePatch("SWAP 1.=3:\n+A\n+B");
 		const dels = edits.filter(e => e.kind === "delete");
-		expect(dels.map(e => (e.kind === "delete" ? e.anchor.line : -1)).sort((a, b) => a - b)).toEqual([
-			1, 2, 3,
-		]);
+		expect(dels.map(e => (e.kind === "delete" ? e.anchor.line : -1)).sort((a, b) => a - b)).toEqual([1, 2, 3]);
 		const ins = edits.filter(e => e.kind === "insert");
 		expect(ins.map(e => (e.kind === "insert" ? e.text : ""))).toEqual(["A", "B"]);
 	});
@@ -48,11 +46,9 @@ describe("parsePatch SWAP matrix", () => {
 		if (edits[0]?.kind === "delete") expect(edits[0].anchor.line).toBe(1);
 
 		const multi = parsePatch("SWAP 2.=4:");
-		expect(
-			multi.edits
-				.filter(e => e.kind === "delete")
-				.map(e => (e.kind === "delete" ? e.anchor.line : 0)),
-		).toEqual([2, 3, 4]);
+		expect(multi.edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0))).toEqual([
+			2, 3, 4,
+		]);
 		// EMPTY_REPLACE still exists as the operator-facing string for empty replace
 		// diagnostics elsewhere (block / messaging contract).
 		expect(EMPTY_REPLACE).toContain("SWAP");
@@ -73,9 +69,7 @@ describe("parsePatch DEL matrix", () => {
 
 	it("DEL N.=M deletes inclusive range", () => {
 		const { edits } = parsePatch("DEL 2.=5");
-		const lines = edits
-			.filter(e => e.kind === "delete")
-			.map(e => (e.kind === "delete" ? e.anchor.line : 0));
+		const lines = edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0));
 		expect(lines).toEqual([2, 3, 4, 5]);
 	});
 

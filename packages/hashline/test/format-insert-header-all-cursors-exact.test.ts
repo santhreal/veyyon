@@ -12,12 +12,8 @@ describe("formatInsertHeader all cursors exact", () => {
 
 	for (let line = 1; line <= 20; line++) {
 		it(`PRE/POST ${line}`, () => {
-			expect(formatInsertHeader({ kind: "before_anchor", anchor: { line } })).toBe(
-				`INS.PRE ${line}:`,
-			);
-			expect(formatInsertHeader({ kind: "after_anchor", anchor: { line } })).toBe(
-				`INS.POST ${line}:`,
-			);
+			expect(formatInsertHeader({ kind: "before_anchor", anchor: { line } })).toBe(`INS.PRE ${line}:`);
+			expect(formatInsertHeader({ kind: "after_anchor", anchor: { line } })).toBe(`INS.POST ${line}:`);
 		});
 	}
 });

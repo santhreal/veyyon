@@ -44,16 +44,15 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,
 	getArgotCacheDir,
 	removeSyncWithRetries,
 	setProfile,
-	Snowflake,
 } from "@veyyon/utils";
 import { type ArgotSession, renderPreamble } from "argot";
 

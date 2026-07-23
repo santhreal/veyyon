@@ -10,10 +10,10 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
+import { isSettingsInitialized, settings } from "../../config/settings";
 import { shimmerEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
 import { sunMark } from "./sun";
-import { isSettingsInitialized, settings } from "../../config/settings";
 import tipsText from "./tips.txt" with { type: "text" };
 
 /** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`.

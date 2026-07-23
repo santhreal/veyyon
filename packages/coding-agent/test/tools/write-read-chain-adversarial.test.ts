@@ -6,11 +6,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
@@ -127,9 +123,9 @@ describe("write→read chain adversarial", () => {
 		expect(textOf(await new ReadTool(sOpen).execute("r1", { path: filePath }))).toContain("ok");
 
 		const sPlan = session({ planEnabled: true });
-		await expect(
-			new WriteTool(sPlan).execute("w2", { path: filePath, content: "nope\n" }),
-		).rejects.toThrow(/working tree is read-only/i);
+		await expect(new WriteTool(sPlan).execute("w2", { path: filePath, content: "nope\n" })).rejects.toThrow(
+			/working tree is read-only/i,
+		);
 		expect(await Bun.file(filePath).text()).toBe("ok\n");
 		// Read still works under plan mode (read is not a tree mutation).
 		expect(textOf(await new ReadTool(sPlan).execute("r2", { path: filePath }))).toContain("ok");

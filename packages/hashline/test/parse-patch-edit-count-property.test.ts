@@ -8,9 +8,7 @@ import { parsePatch } from "@veyyon/hashline";
 describe("parsePatch edit count property", () => {
 	it("each SWAP expands to 2 edits (insert+delete)", () => {
 		for (let n = 1; n <= 10; n++) {
-			const hunks = Array.from({ length: n }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+X${i}`).join(
-				"\n",
-			);
+			const hunks = Array.from({ length: n }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+X${i}`).join("\n");
 			const { edits } = parsePatch(hunks);
 			expect(edits.length).toBe(n * 2);
 		}

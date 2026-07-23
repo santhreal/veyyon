@@ -137,7 +137,9 @@ export function createArgotSession(init: ArgotSessionInit): ArgotSession | undef
  * exactly those projects, with no walking and no guessing. Error results and
  * foreign tool results are skipped; roots are deduplicated.
  */
-export function collectArgotLoadedRoots(messages: readonly { role: string; toolName?: string; isError?: boolean; details?: unknown }[]): string[] {
+export function collectArgotLoadedRoots(
+	messages: readonly { role: string; toolName?: string; isError?: boolean; details?: unknown }[],
+): string[] {
 	const roots = new Set<string>();
 	for (const message of messages) {
 		if (message.role !== "toolResult" || message.toolName !== ARGOT_LOAD_TOOL || message.isError === true) {

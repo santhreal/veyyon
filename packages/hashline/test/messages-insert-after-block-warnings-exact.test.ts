@@ -2,10 +2,7 @@
  * insert-after-block lowering warning exact strings.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	insertAfterBlockCloserLoweredWarning,
-	insertAfterBlockUnresolvedLoweredWarning,
-} from "../src/messages";
+import { insertAfterBlockCloserLoweredWarning, insertAfterBlockUnresolvedLoweredWarning } from "../src/messages";
 
 describe("insert-after-block warning exact", () => {
 	for (const line of [1, 4, 12, 99]) {

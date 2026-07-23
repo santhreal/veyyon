@@ -13,23 +13,15 @@ describe("applyEdits past 6000 INS PRE POST matrix n20 k3", () => {
 		for (let k = 1; k <= 3; k++) {
 			it(`POST ${a} k=${k}`, () => {
 				const rows = Array.from({ length: k }, (_, i) => `+P${i + 1}`).join("\n");
-				const out = applyEdits(base, parsePatch(`INS.POST ${a}:\n${rows}`).edits).text.split(
-					"\n",
-				);
-				expect(out.slice(a, a + k)).toEqual(
-					Array.from({ length: k }, (_, i) => `P${i + 1}`),
-				);
+				const out = applyEdits(base, parsePatch(`INS.POST ${a}:\n${rows}`).edits).text.split("\n");
+				expect(out.slice(a, a + k)).toEqual(Array.from({ length: k }, (_, i) => `P${i + 1}`));
 				expect(out).toHaveLength(n + k);
 			});
 
 			it(`PRE ${a} k=${k}`, () => {
 				const rows = Array.from({ length: k }, (_, i) => `+R${i + 1}`).join("\n");
-				const out = applyEdits(base, parsePatch(`INS.PRE ${a}:\n${rows}`).edits).text.split(
-					"\n",
-				);
-				expect(out.slice(a - 1, a - 1 + k)).toEqual(
-					Array.from({ length: k }, (_, i) => `R${i + 1}`),
-				);
+				const out = applyEdits(base, parsePatch(`INS.PRE ${a}:\n${rows}`).edits).text.split("\n");
+				expect(out.slice(a - 1, a - 1 + k)).toEqual(Array.from({ length: k }, (_, i) => `R${i + 1}`));
 			});
 		}
 	}

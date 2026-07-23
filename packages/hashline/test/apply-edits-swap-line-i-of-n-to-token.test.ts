@@ -10,10 +10,7 @@ describe("applyEdits SWAP line i of n to Ti", () => {
 		const text = base.join("\n");
 		for (let i = 1; i <= n; i++) {
 			it(`n=${n} i=${i}`, () => {
-				const { text: out } = applyEdits(
-					text,
-					parsePatch(`SWAP ${i}.=${i}:\n+T${i}`).edits,
-				);
+				const { text: out } = applyEdits(text, parsePatch(`SWAP ${i}.=${i}:\n+T${i}`).edits);
 				const want = base.map((v, j) => (j + 1 === i ? `T${i}` : v));
 				expect(out).toBe(want.join("\n"));
 			});

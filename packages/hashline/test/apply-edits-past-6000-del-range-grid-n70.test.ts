@@ -14,10 +14,7 @@ describe("applyEdits past 6000 DEL range grid n70", () => {
 			it(`DEL ${start}.=${end}`, () => {
 				const header = start === end ? `DEL ${start}` : `DEL ${start}.=${end}`;
 				const { text, firstChangedLine } = applyEdits(base, parsePatch(header).edits);
-				expect(text === "" ? [] : text.split("\n")).toEqual([
-					...lines.slice(0, start - 1),
-					...lines.slice(end),
-				]);
+				expect(text === "" ? [] : text.split("\n")).toEqual([...lines.slice(0, start - 1), ...lines.slice(end)]);
 				expect(firstChangedLine).toBe(start);
 			});
 		}

@@ -7,11 +7,7 @@ import { GrepTool } from "@veyyon/coding-agent/tools/grep";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -68,9 +64,7 @@ describe("write→grep→read chain adversarial", () => {
 		const token = "UNIQUE_TOKEN_ZX9Q";
 		const body = `const x = '${token}';\n`;
 		await new WriteTool(s).execute("w", { path: file, content: body });
-		const grepText = textOf(
-			await new GrepTool(s as never).execute("g", { pattern: token, path: file }),
-		);
+		const grepText = textOf(await new GrepTool(s as never).execute("g", { pattern: token, path: file }));
 		expect(grepText).toContain(token);
 		const readText = textOf(await new ReadTool(s).execute("r", { path: file }));
 		expect(readText).toContain(token);

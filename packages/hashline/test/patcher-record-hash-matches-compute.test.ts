@@ -1,11 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	computeFileHash,
-} from "@veyyon/hashline";
+import { computeFileHash, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 /**
  * After patcher apply, re-recorded hash matches computeFileHash of new content.

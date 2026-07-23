@@ -9,8 +9,8 @@ import {
 	subsequenceScore,
 } from "@veyyon/tui";
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
-import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/builtin-registry";
 import { isSettingsInitialized, settings } from "../config/settings";
+import { BUILTIN_SLASH_COMMAND_CATEGORY_ORDER } from "../slash-commands/builtin-registry";
 import { applyEmojiCompletion, getEmojiSuggestions, isEmojiPrefix, tryEmojiInlineReplace } from "./emoji-autocomplete";
 import { getGithubRefContext, getGithubRefSuggestions } from "./github-ref-autocomplete";
 import {

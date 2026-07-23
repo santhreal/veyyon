@@ -26,11 +26,7 @@ function useTheme(preset: "unicode" | "ascii"): void {
 	setThemeInstance(createTheme(titanium, { mode: "truecolor", symbolPresetOverride: preset }));
 }
 
-const SEGMENTS = [
-	{ label: "fast", detail: "haiku tier" },
-	{ label: "base" },
-	{ label: "max", detail: "opus tier" },
-];
+const SEGMENTS = [{ label: "fast", detail: "haiku tier" }, { label: "base" }, { label: "max", detail: "opus tier" }];
 
 describe("renderSliderLines — one slider owner, preset-safe glyphs", () => {
 	beforeAll(() => useTheme("unicode"));

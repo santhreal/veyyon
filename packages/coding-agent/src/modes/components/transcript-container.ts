@@ -1,7 +1,7 @@
 import {
-	clampLow,
 	type Component,
 	Container,
+	clampLow,
 	type NativeScrollbackCommittedRows,
 	type NativeScrollbackLiveRegion,
 	type NativeScrollbackReplay,

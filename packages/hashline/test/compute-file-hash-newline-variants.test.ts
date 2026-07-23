@@ -10,7 +10,7 @@ describe("computeFileHash newline variants", () => {
 		const lf = "a\nb\n";
 		const crlf = "a\r\nb\r\n";
 		// If both normalize to same, hashes of raw differ or match depending on content.
-		expect(computeFileHash(lf)).not.toBe(computeFileHash(crlf + "x"));
+		expect(computeFileHash(lf)).not.toBe(computeFileHash(`${crlf}x`));
 		// Normalized forms match.
 		expect(computeFileHash(normalizeToLF(lf))).toBe(computeFileHash(normalizeToLF(crlf)));
 	});

@@ -13,11 +13,7 @@ import {
 import { writethroughNoop } from "@veyyon/coding-agent/lsp";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "./helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 import { makeToolSession } from "./helpers/tool-session";
 
 // ─── Minimal ToolSession stub ────────────────────────────────────────────────

@@ -12,9 +12,7 @@ describe("applyEdits past 6000 DEL line 1 to 150", () => {
 	for (let i = 1; i <= n; i++) {
 		it(`DEL ${i}`, () => {
 			const { text, firstChangedLine } = applyEdits(base, parsePatch(`DEL ${i}`).edits);
-			expect(text === "" ? [] : text.split("\n")).toEqual(
-				lines.filter((_, idx) => idx + 1 !== i),
-			);
+			expect(text === "" ? [] : text.split("\n")).toEqual(lines.filter((_, idx) => idx + 1 !== i));
 			expect(firstChangedLine).toBe(i);
 		});
 	}

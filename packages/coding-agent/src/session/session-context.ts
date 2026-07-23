@@ -1,6 +1,11 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction";
-import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily, type TextContent } from "@veyyon/ai";
+import {
+	coerceServiceTierByFamily,
+	type ProviderPayload,
+	type ServiceTierByFamily,
+	type TextContent,
+} from "@veyyon/ai";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,

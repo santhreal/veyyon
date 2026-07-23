@@ -13,8 +13,8 @@
  *  4. Single-row input never shows the whisper.
  */
 import { describe, expect, it } from "bun:test";
-import { visibleWidth } from "../src/utils";
 import { Editor } from "../src/components/editor";
+import { visibleWidth } from "../src/utils";
 import { defaultEditorTheme } from "./test-themes";
 
 const GUTTER = "  > ";
@@ -60,7 +60,10 @@ describe("Editor.setPromptGutterContinuation — the multiline whisper", () => {
 	it("never shows the whisper on a single-row input", () => {
 		const editor = makeEditor("just one line");
 		editor.setPromptGutterContinuation(WHISPER);
-		const rendered = editor.render(40).map(r => Bun.stripANSI(r)).join("\n");
+		const rendered = editor
+			.render(40)
+			.map(r => Bun.stripANSI(r))
+			.join("\n");
 		expect(rendered).not.toContain("┆");
 	});
 });

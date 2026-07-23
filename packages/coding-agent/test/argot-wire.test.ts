@@ -211,7 +211,10 @@ describe("ArgotStreamDisplayDecoder", () => {
 			{ type: "thinking", thinking: "thinking §dbconn ", thinkingSignature: "sig" },
 		] as AssistantMessage["content"]);
 		expect(out[0]).toMatchObject({ type: "text", text: "see src/db.ts " });
-		expect(out[1]).toMatchObject({ type: "thinking", thinking: "thinking packages/server/src/database/connection.ts " });
+		expect(out[1]).toMatchObject({
+			type: "thinking",
+			thinking: "thinking packages/server/src/database/connection.ts ",
+		});
 	});
 
 	it("withholds a handle at the unterminated end of stream until flush, then releases it", () => {
@@ -220,7 +223,9 @@ describe("ArgotStreamDisplayDecoder", () => {
 		// message_end (seam 2) expands wholesale, and flush releases the fragment.
 		const decoder = new ArgotStreamDisplayDecoder(loadedCodec());
 		decoder.push(0, "thinking §dbconn");
-		const held = decoder.decodeContent([{ type: "thinking", thinking: "thinking §dbconn", thinkingSignature: "s" }] as AssistantMessage["content"]);
+		const held = decoder.decodeContent([
+			{ type: "thinking", thinking: "thinking §dbconn", thinkingSignature: "s" },
+		] as AssistantMessage["content"]);
 		expect(held[0]).toMatchObject({ thinking: "thinking " });
 		decoder.flush();
 		// flush() clears state for the next message; the wholesale expansion at
@@ -231,7 +236,10 @@ describe("ArgotStreamDisplayDecoder", () => {
 		const decoder = new ArgotStreamDisplayDecoder(loadedCodec());
 		decoder.push(0, "§db");
 		const toolCall = { type: "toolCall", id: "t1", name: "read", arguments: { path: "§db" } } as const;
-		const out = decoder.decodeContent([{ type: "text", text: "§db" }, toolCall] as unknown as AssistantMessage["content"]);
+		const out = decoder.decodeContent([
+			{ type: "text", text: "§db" },
+			toolCall,
+		] as unknown as AssistantMessage["content"]);
 		expect(out[1]).toBe(toolCall);
 	});
 

@@ -13,7 +13,7 @@ describe("computeFileHash avalanche", () => {
 	it("prefix and suffix of length 100 have distinct hashes across 50 variants", () => {
 		const hashes = new Set<string>();
 		for (let i = 0; i < 50; i++) {
-			hashes.add(computeFileHash(`prefix-${i}-` + "x".repeat(100) + `\n`));
+			hashes.add(computeFileHash(`prefix-${i}-${"x".repeat(100)}\n`));
 		}
 		// 16-bit space can collide; require most unique.
 		expect(hashes.size).toBeGreaterThan(40);

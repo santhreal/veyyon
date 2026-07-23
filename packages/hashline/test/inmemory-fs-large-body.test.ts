@@ -8,7 +8,7 @@ import { InMemoryFilesystem } from "@veyyon/hashline";
 describe("InMemoryFilesystem large body", () => {
 	it("round-trips a 100k character body", () => {
 		const mem = new InMemoryFilesystem();
-		const body = "z".repeat(100_000) + "\n";
+		const body = `${"z".repeat(100_000)}\n`;
 		mem.set("big.ts", body);
 		expect(mem.get("big.ts")).toBe(body);
 		expect(mem.get("big.ts")!.length).toBe(100_001);

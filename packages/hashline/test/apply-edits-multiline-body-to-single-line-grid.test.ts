@@ -14,10 +14,7 @@ describe("applyEdits multiline body to single line grid", () => {
 			const end = start + span - 1;
 			if (end > n) continue;
 			it(`SWAP ${start}.=${end} → one row`, () => {
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${start}.=${end}:\n+ONE`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n+ONE`).edits);
 				const out = text.split("\n");
 				expect(out.length).toBe(n - span + 1);
 				expect(out[start - 1]).toBe("ONE");

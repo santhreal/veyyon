@@ -25,9 +25,7 @@ describe("Recovery uniform prefix shift matrix", () => {
 				expect(rec).not.toBeNull();
 				const out = rec!.text.split("\n");
 				// Prefix intact, target remapped to target+prefixLines
-				expect(out.slice(0, prefixLines)).toEqual(
-					Array.from({ length: prefixLines }, (_, i) => `PRE-${i}`),
-				);
+				expect(out.slice(0, prefixLines)).toEqual(Array.from({ length: prefixLines }, (_, i) => `PRE-${i}`));
 				expect(out[prefixLines + target - 1]).toBe(`NEW-${target}`);
 				// Unchanged neighbors
 				if (target > 1) expect(out[prefixLines + target - 2]).toBe(`uniq-${target - 1}`);
@@ -54,9 +52,7 @@ describe("Recovery uniform prefix shift matrix", () => {
 			});
 			expect(rec).not.toBeNull();
 			const out = rec!.text.split("\n");
-			expect(out.slice(0, prefixLines)).toEqual(
-				Array.from({ length: prefixLines }, (_, i) => `P${i}`),
-			);
+			expect(out.slice(0, prefixLines)).toEqual(Array.from({ length: prefixLines }, (_, i) => `P${i}`));
 			expect(out.slice(prefixLines)).toEqual(["row-2", "row-3", "row-4", "row-5"]);
 		});
 	}

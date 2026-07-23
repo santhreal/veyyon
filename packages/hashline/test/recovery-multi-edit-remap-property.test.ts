@@ -22,9 +22,7 @@ describe("Recovery multi-edit remap property", () => {
 			});
 			expect(rec).not.toBeNull();
 			const out = rec!.text.split("\n");
-			expect(out.slice(0, prefix)).toEqual(
-				Array.from({ length: prefix }, (_, i) => `P${i}`),
-			);
+			expect(out.slice(0, prefix)).toEqual(Array.from({ length: prefix }, (_, i) => `P${i}`));
 			expect(out.slice(prefix)).toEqual(["U2", "U3", "U4", "U5"]);
 		});
 

@@ -5,13 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { normalizeToLF, restoreLineEndings } from "../src/normalize";
 
 describe("normalize/restore pure CRLF files", () => {
-	const pureCrlf = [
-		"a\r\nb",
-		"a\r\nb\r\nc",
-		"a\r\nb\r\nc\r\n",
-		"only\r\n",
-		"\r\n",
-	];
+	const pureCrlf = ["a\r\nb", "a\r\nb\r\nc", "a\r\nb\r\nc\r\n", "only\r\n", "\r\n"];
 	for (const s of pureCrlf) {
 		it(JSON.stringify(s).slice(0, 30), () => {
 			const lf = normalizeToLF(s);

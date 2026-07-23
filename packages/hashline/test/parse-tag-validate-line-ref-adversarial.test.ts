@@ -42,15 +42,11 @@ describe("validateLineRef bounds matrix", () => {
 
 	for (const line of [0, -1, 4, 100]) {
 		it(`rejects line ${line}`, () => {
-			expect(() => validateLineRef({ line }, file)).toThrow(
-				`Line ${line} does not exist (file has 3 lines)`,
-			);
+			expect(() => validateLineRef({ line }, file)).toThrow(`Line ${line} does not exist (file has 3 lines)`);
 		});
 	}
 
 	it("empty file rejects line 1", () => {
-		expect(() => validateLineRef({ line: 1 }, [])).toThrow(
-			"Line 1 does not exist (file has 0 lines)",
-		);
+		expect(() => validateLineRef({ line: 1 }, [])).toThrow("Line 1 does not exist (file has 0 lines)");
 	});
 });

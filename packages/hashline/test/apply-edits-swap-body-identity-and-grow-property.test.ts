@@ -14,10 +14,7 @@ describe("applyEdits SWAP identity and grow property", () => {
 			it(`identity SWAP ${start}.=${end}`, () => {
 				const body = lines.slice(start - 1, end);
 				const bodyRows = body.map(l => `+${l}`).join("\n");
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${start}.=${end}:\n${bodyRows}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${bodyRows}`).edits);
 				expect(text).toBe(base);
 			});
 
@@ -25,10 +22,7 @@ describe("applyEdits SWAP identity and grow property", () => {
 				const span = end - start + 1;
 				const body = Array.from({ length: span + 2 }, (_, i) => `G${i}`);
 				const bodyRows = body.map(l => `+${l}`).join("\n");
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${start}.=${end}:\n${bodyRows}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${bodyRows}`).edits);
 				const out = text.split("\n");
 				expect(out.length).toBe(12 + 2);
 				expect(out.slice(0, start - 1)).toEqual(lines.slice(0, start - 1));

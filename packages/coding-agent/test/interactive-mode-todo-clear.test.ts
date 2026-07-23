@@ -13,11 +13,7 @@ import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import type { NativeScrollbackLiveRegion } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "./helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 function renderTodos(mode: InteractiveMode): string {
 	return Bun.stripANSI(mode.todoContainer.render(120).join("\n"));

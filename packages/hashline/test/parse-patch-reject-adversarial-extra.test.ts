@@ -2,8 +2,8 @@
  * Adversarial parsePatch rejections and edge accepts beyond the base op matrix.
  */
 import { describe, expect, it } from "bun:test";
-import { parsePatch } from "../src/parser";
 import { DELETE_TAKES_NO_BODY, EMPTY_INSERT, MINUS_ROW_REJECTED } from "../src/messages";
+import { parsePatch } from "../src/parser";
 
 describe("parsePatch adversarial rejects", () => {
 	it("minus rows in INS body reject", () => {
@@ -65,12 +65,9 @@ describe("parsePatch edge accepts", () => {
 
 	it("overlapping SWAP on same anchor rejects fail-closed", () => {
 		// Two hunks targeting the same concrete range: reject rather than guess.
-		expect(() => parsePatch("SWAP 1.=1:\n+first\nSWAP 1.=1:\n+second")).toThrow(
-			/already targeted by another hunk/,
-		);
+		expect(() => parsePatch("SWAP 1.=1:\n+first\nSWAP 1.=1:\n+second")).toThrow(/already targeted by another hunk/);
 	});
 });
-
 
 describe("parsePatch DELETE_TAKES_NO_BODY constant still matches live reject", () => {
 	it("message fragment appears on DEL+body", () => {

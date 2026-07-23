@@ -30,7 +30,7 @@ describe("Recovery duplicate line content refuse", () => {
 		const store = new InMemorySnapshotStore();
 		const orig = "uniq-a\nuniq-b\nuniq-c";
 		const h = store.record("f.ts", orig);
-		const live = "PRE\n" + orig;
+		const live = `PRE\n${orig}`;
 		const r = new Recovery(store);
 		const rec = r.tryRecover({
 			path: "f.ts",

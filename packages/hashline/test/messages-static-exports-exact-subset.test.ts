@@ -35,11 +35,7 @@ describe("messages static exports exact subset", () => {
 	}
 
 	it("recovery warnings are distinct", () => {
-		const set = new Set([
-			RECOVERY_EXTERNAL_WARNING,
-			RECOVERY_LINE_REMAP_WARNING,
-			RECOVERY_SESSION_CHAIN_WARNING,
-		]);
+		const set = new Set([RECOVERY_EXTERNAL_WARNING, RECOVERY_LINE_REMAP_WARNING, RECOVERY_SESSION_CHAIN_WARNING]);
 		expect(set.size).toBe(3);
 	});
 

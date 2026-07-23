@@ -70,7 +70,7 @@ describe("applyCompatOverrides", () => {
 		// The inherited machinery is untouched: toString is still the function, and
 		// the own-key check the function itself relies on still works.
 		expect(typeof compat.toString).toBe("function");
-		expect(Object.prototype.hasOwnProperty.call(compat, "officialEndpoint")).toBe(true);
+		expect(Object.hasOwn(compat, "officialEndpoint")).toBe(true);
 		expect(compat.officialEndpoint).toBe(true);
 	});
 

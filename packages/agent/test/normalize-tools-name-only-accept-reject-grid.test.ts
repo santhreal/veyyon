@@ -31,17 +31,17 @@ describe("normalizeTools name-only accept reject grid", () => {
 		const out = normalizeTools(tools as never);
 		// lock actual: either 1 with last description or keep both — assert real
 		expect(out.length).toBeGreaterThanOrEqual(1);
-		expect(out.every((t) => t.name === "a")).toBe(true);
+		expect(out.every(t => t.name === "a")).toBe(true);
 	});
 
 	it("preserves order of distinct names", () => {
-		const tools = ["z", "a", "m"].map((name) => ({
+		const tools = ["z", "a", "m"].map(name => ({
 			name,
 			description: name,
 			parameters: { type: "object" },
 		}));
 		const out = normalizeTools(tools as never);
-		expect(out.map((t) => t.name)).toEqual(["z", "a", "m"]);
+		expect(out.map(t => t.name)).toEqual(["z", "a", "m"]);
 	});
 
 	for (let n = 1; n <= 20; n++) {
@@ -52,7 +52,7 @@ describe("normalizeTools name-only accept reject grid", () => {
 				parameters: { type: "object" },
 			}));
 			const out = normalizeTools(tools as never);
-			expect(out.map((t) => t.name)).toEqual(tools.map((t) => t.name));
+			expect(out.map(t => t.name)).toEqual(tools.map(t => t.name));
 		});
 	}
 });

@@ -9,9 +9,7 @@ describe("applyEdits out of bounds throws matrix", () => {
 
 	for (const patch of ["DEL 4", "DEL 100", "SWAP 4.=4:\n+x", "INS.POST 4:\n+x", "INS.PRE 0:\n+x"]) {
 		it(`throws for ${JSON.stringify(patch)}`, () => {
-			expect(() => applyEdits(base, parsePatch(patch).edits)).toThrow(
-				/does not exist|Line |>= 1|Invalid/i,
-			);
+			expect(() => applyEdits(base, parsePatch(patch).edits)).toThrow(/does not exist|Line |>= 1|Invalid/i);
 		});
 	}
 

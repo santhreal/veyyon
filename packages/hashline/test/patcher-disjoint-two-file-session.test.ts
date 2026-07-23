@@ -2,13 +2,7 @@
  * Two-file session: alternate edits with refreshed hashes from prior apply results.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher two-file alternating session", () => {
 	it("edit a then b then a again with returned hashes", async () => {
@@ -21,21 +15,15 @@ describe("Patcher two-file alternating session", () => {
 		let tb = snapshots.record("b.ts", "B0\n");
 		const patcher = new Patcher({ fs, snapshots });
 
-		const r1 = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("a.ts", ta)}\nSWAP 1.=1:\n+A1`),
-		);
+		const r1 = await patcher.apply(Patch.parse(`${formatHashlineHeader("a.ts", ta)}\nSWAP 1.=1:\n+A1`));
 		ta = r1.sections[0]!.fileHash!;
 		expect(fs.get("a.ts")).toBe("A1\n");
 
-		const r2 = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("b.ts", tb)}\nSWAP 1.=1:\n+B1`),
-		);
+		const r2 = await patcher.apply(Patch.parse(`${formatHashlineHeader("b.ts", tb)}\nSWAP 1.=1:\n+B1`));
 		tb = r2.sections[0]!.fileHash!;
 		expect(fs.get("b.ts")).toBe("B1\n");
 
-		const r3 = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("a.ts", ta)}\nSWAP 1.=1:\n+A2`),
-		);
+		const r3 = await patcher.apply(Patch.parse(`${formatHashlineHeader("a.ts", ta)}\nSWAP 1.=1:\n+A2`));
 		expect(fs.get("a.ts")).toBe("A2\n");
 		expect(fs.get("b.ts")).toBe("B1\n");
 		expect(r3.sections[0]!.fileHash).toMatch(/^[0-9A-F]{4}$/);

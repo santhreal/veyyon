@@ -422,6 +422,18 @@ export const APPEARANCE_SETTINGS = {
 			advanced: true,
 		},
 	},
+	"tui.scrollIsolation": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Scroll Isolation",
+			description:
+				"Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it. While on, plain drag-select becomes Shift+drag.",
+			advanced: true,
+		},
+	},
 
 	"display.shimmer": {
 		type: "enum",

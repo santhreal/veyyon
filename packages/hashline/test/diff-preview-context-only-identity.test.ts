@@ -11,9 +11,7 @@ describe("buildCompactDiffPreview context-only", () => {
 			const p = buildCompactDiffPreview(diff);
 			expect(p.addedLines).toBe(0);
 			expect(p.removedLines).toBe(0);
-			expect(p.preview).toBe(
-				Array.from({ length: n }, (_, i) => `${i + 1}:L${i}`).join("\n"),
-			);
+			expect(p.preview).toBe(Array.from({ length: n }, (_, i) => `${i + 1}:L${i}`).join("\n"));
 		});
 	}
 });

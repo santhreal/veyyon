@@ -49,9 +49,15 @@ describe("resolveApproval tier rank property", () => {
 	it("bypassAllApprovals upgrades prompt not deny", () => {
 		const p = resolveApproval(tool("e", "exec"), {}, "ask", {}, { bypassAllApprovals: true });
 		expect(p.policy).toBe("allow");
-		const d = resolveApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" }, {
-			bypassAllApprovals: true,
-		});
+		const d = resolveApproval(
+			tool("bash", "exec"),
+			{},
+			"yolo",
+			{ bash: "deny" },
+			{
+				bypassAllApprovals: true,
+			},
+		);
 		expect(d.policy).toBe("deny");
 	});
 

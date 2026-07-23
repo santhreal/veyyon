@@ -8,7 +8,7 @@ describe("AgentPauseGate listener fire count matrix", () => {
 	it("listener receives pause then resume", () => {
 		const g = new AgentPauseGate();
 		const events: boolean[] = [];
-		g.onChange((p) => events.push(p));
+		g.onChange(p => events.push(p));
 		g.pause();
 		g.resume();
 		expect(events).toEqual([true, false]);
@@ -17,7 +17,7 @@ describe("AgentPauseGate listener fire count matrix", () => {
 	it("unsubscribe prevents further events", () => {
 		const g = new AgentPauseGate();
 		const events: boolean[] = [];
-		const unsub = g.onChange((p) => events.push(p));
+		const unsub = g.onChange(p => events.push(p));
 		g.pause();
 		unsub();
 		g.resume();
@@ -29,8 +29,8 @@ describe("AgentPauseGate listener fire count matrix", () => {
 		const g = new AgentPauseGate();
 		const a: boolean[] = [];
 		const b: boolean[] = [];
-		g.onChange((p) => a.push(p));
-		g.onChange((p) => b.push(p));
+		g.onChange(p => a.push(p));
+		g.onChange(p => b.push(p));
 		g.pause();
 		g.resume();
 		expect(a).toEqual([true, false]);
@@ -41,7 +41,7 @@ describe("AgentPauseGate listener fire count matrix", () => {
 		it(`${n} pause/resume cycles`, () => {
 			const g = new AgentPauseGate();
 			const events: boolean[] = [];
-			g.onChange((p) => events.push(p));
+			g.onChange(p => events.push(p));
 			for (let i = 0; i < n; i++) {
 				g.pause();
 				g.resume();

@@ -3,12 +3,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	MismatchError,
 	Patch,
 	Patcher,
-	formatHashlineHeader,
 } from "@veyyon/hashline";
 
 describe("Patcher prepare batch all-or-nothing", () => {

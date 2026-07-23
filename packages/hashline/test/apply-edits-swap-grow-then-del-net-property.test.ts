@@ -21,10 +21,7 @@ describe("applyEdits grow then del net property", () => {
 	for (const bodyLen of [2, 4, 6]) {
 		it(`grow line 1 to ${bodyLen} then DEL first ${bodyLen - 1}`, () => {
 			const base = "ONLY";
-			let t = apply(
-				base,
-				`SWAP 1.=1:\n${Array.from({ length: bodyLen }, (_, i) => `+B${i}`).join("\n")}`,
-			);
+			let t = apply(base, `SWAP 1.=1:\n${Array.from({ length: bodyLen }, (_, i) => `+B${i}`).join("\n")}`);
 			expect(t.split("\n")).toHaveLength(bodyLen);
 			// del all but last
 			const dels = Array.from({ length: bodyLen - 1 }, (_, i) => `DEL ${i + 1}`).join("\n");

@@ -11,23 +11,15 @@ describe("applyEdits past 6000 SWAP diagonal n20", () => {
 	const base = lines.join("\n");
 
 	it("SWAP all to D{i} in one patch", () => {
-		const hunks = Array.from(
-			{ length: n },
-			(_, i) => `SWAP ${i + 1}.=${i + 1}:\n+D${i + 1}`,
-		).join("\n");
+		const hunks = Array.from({ length: n }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+D${i + 1}`).join("\n");
 		const { text } = applyEdits(base, parsePatch(hunks).edits);
 		expect(text.split("\n")).toEqual(Array.from({ length: n }, (_, i) => `D${i + 1}`));
 	});
 
 	it("SWAP reverse content mapping", () => {
-		const hunks = Array.from(
-			{ length: n },
-			(_, i) => `SWAP ${i + 1}.=${i + 1}:\n+L${n - i}`,
-		).join("\n");
+		const hunks = Array.from({ length: n }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+L${n - i}`).join("\n");
 		const { text } = applyEdits(base, parsePatch(hunks).edits);
-		expect(text.split("\n")).toEqual(
-			Array.from({ length: n }, (_, i) => `L${n - i}`),
-		);
+		expect(text.split("\n")).toEqual(Array.from({ length: n }, (_, i) => `L${n - i}`));
 	});
 
 	it("SWAP only odd lines", () => {

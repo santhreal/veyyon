@@ -14,10 +14,9 @@ describe("applyEdits past 6000 POST then SWAP disjoint n35", () => {
 		for (let sw = 1; sw <= n; sw++) {
 			if (post === sw) continue;
 			it(`POST ${post} SWAP ${sw}`, () => {
-				const out = applyEdits(
-					base,
-					parsePatch(`INS.POST ${post}:\n+P\nSWAP ${sw}.=${sw}:\n+S`).edits,
-				).text.split("\n");
+				const out = applyEdits(base, parsePatch(`INS.POST ${post}:\n+P\nSWAP ${sw}.=${sw}:\n+S`).edits).text.split(
+					"\n",
+				);
 				const expected: string[] = [];
 				for (let i = 1; i <= n; i++) {
 					expected.push(i === sw ? "S" : lines[i - 1]!);

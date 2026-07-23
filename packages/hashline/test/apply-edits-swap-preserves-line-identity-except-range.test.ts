@@ -16,10 +16,7 @@ describe("applyEdits SWAP preserves outside range identity", () => {
 				it(`SWAP ${start}.=${end} body=${bodyLen}`, () => {
 					const body = Array.from({ length: bodyLen }, (_, i) => `NEW-${i}`);
 					const rows = body.map(l => `+${l}`).join("\n");
-					const { text } = applyEdits(
-						base,
-						parsePatch(`SWAP ${start}.=${end}:\n${rows}`).edits,
-					);
+					const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${rows}`).edits);
 					const out = text.split("\n");
 					// prefix
 					for (let i = 0; i < start - 1; i++) {

@@ -10,10 +10,7 @@ describe("applyEdits noop identity SWAP all lines", () => {
 		const base = lines.join("\n");
 		for (let line = 1; line <= n; line++) {
 			it(`n=${n} identity SWAP ${line}`, () => {
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${line}.=${line}:\n+${lines[line - 1]}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${line}.=${line}:\n+${lines[line - 1]}`).edits);
 				expect(text).toBe(base);
 			});
 		}

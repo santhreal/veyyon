@@ -2,7 +2,7 @@
  * findByHash empty store and after clear.
  */
 import { describe, expect, it } from "bun:test";
-import { InMemorySnapshotStore, computeFileHash } from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore } from "@veyyon/hashline";
 
 describe("InMemorySnapshotStore findByHash edge", () => {
 	it("empty store returns []", () => {

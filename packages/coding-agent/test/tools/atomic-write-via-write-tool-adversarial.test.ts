@@ -5,11 +5,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
@@ -59,9 +55,7 @@ describe("WriteTool concurrent same-path overwrites", () => {
 		const tool = new WriteTool(session());
 		const file = path.join(tmpDir, "race.ts");
 		const payloads = Array.from({ length: 10 }, (_, i) => `${String(i).repeat(1000)}\n`);
-		await Promise.all(
-			payloads.map((content, i) => tool.execute(`w${i}`, { path: file, content })),
-		);
+		await Promise.all(payloads.map((content, i) => tool.execute(`w${i}`, { path: file, content })));
 		const out = await Bun.file(file).text();
 		expect(payloads.includes(out)).toBe(true);
 		expect(out.length).toBe(1001);

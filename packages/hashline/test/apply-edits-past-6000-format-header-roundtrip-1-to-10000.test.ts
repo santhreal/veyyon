@@ -2,12 +2,7 @@
  * formatDeleteHeader / formatReplaceHeader round-trip for 1..10000.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	formatDeleteHeader,
-	formatReplaceHeader,
-	parsePatch,
-} from "@veyyon/hashline";
+import { applyEdits, formatDeleteHeader, formatReplaceHeader, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits past 6000 format header roundtrip 1 to 10000", () => {
 	const n = 10000;

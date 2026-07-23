@@ -7,8 +7,8 @@
  * empty-record pruning, and never-throw reads on a corrupt file.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import YAML from "yaml";
 import { readGlobalAuthBrokerSafe, writeGlobalAuthBrokerToken, writeGlobalAuthBrokerUrl } from "../src/dirs";

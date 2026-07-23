@@ -2,13 +2,7 @@
  * Patcher: SWAP then DEL with hash chain.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher SWAP then DEL session", () => {
 	it("replace middle then delete it", async () => {
@@ -17,9 +11,7 @@ describe("Patcher SWAP then DEL session", () => {
 		const snapshots = new InMemorySnapshotStore();
 		let tag = snapshots.record("f.ts", content);
 		const patcher = new Patcher({ fs, snapshots });
-		const r1 = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 2.=2:\n+B`),
-		);
+		const r1 = await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 2.=2:\n+B`));
 		expect(fs.get("f.ts")).toBe("a\nB\nc\n");
 		tag = r1.sections[0]!.fileHash!;
 		await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nDEL 2`));

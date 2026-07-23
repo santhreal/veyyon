@@ -78,7 +78,7 @@ describe("buildSessionContext legacy image-archive recovery", () => {
 		// Never image frames: exactly one recovered text block carrying the source.
 		expect(summary.images).toBeUndefined();
 		expect(summary.blocks?.map(block => block.type)).toEqual(["text"]);
-		expect((summary.blocks?.[0] as TextContent).text).toContain(LEGACY_ARCHIVE_SOURCE);
+		expect((summary.blocks![0] as TextContent).text).toContain(LEGACY_ARCHIVE_SOURCE);
 	});
 
 	it("recovers the legacy archive source as a text block in provider context summaries", () => {
@@ -88,7 +88,7 @@ describe("buildSessionContext legacy image-archive recovery", () => {
 
 		expect(summary.images).toBeUndefined();
 		expect(summary.blocks?.map(block => block.type)).toEqual(["text"]);
-		expect((summary.blocks?.[0] as TextContent).text).toContain(LEGACY_ARCHIVE_SOURCE);
+		expect((summary.blocks![0] as TextContent).text).toContain(LEGACY_ARCHIVE_SOURCE);
 	});
 });
 

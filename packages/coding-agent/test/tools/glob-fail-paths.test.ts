@@ -54,9 +54,7 @@ describe("GlobTool fail paths and matches", () => {
 		const result = await tool.execute("g2", { path: "src/**/*.zzz" });
 		const text = textOf(result);
 		// Must not list a.ts as a match
-		const body = text
-			.split("\n")
-			.filter(l => l.includes("a.ts") && !/no files|not found|0 file/i.test(text));
+		const body = text.split("\n").filter(l => l.includes("a.ts") && !/no files|not found|0 file/i.test(text));
 		// If the word a.ts appears only in "no files matching", that's fine.
 		if (text.toLowerCase().includes("no files")) {
 			expect(text.toLowerCase()).toMatch(/no files/);
@@ -100,12 +98,8 @@ describe("GlobTool fail paths and matches", () => {
 	it("hidden file appears only when hidden is enabled or pattern targets it", async () => {
 		await Bun.write(path.join(tmpDir, ".secret.env"), "SECRET=1\n");
 		const tool = new GlobTool(session() as never);
-		const hiddenOn = textOf(
-			await tool.execute("g6a", { path: "**/.secret.env", hidden: true } as never),
-		);
-		const hiddenOff = textOf(
-			await tool.execute("g6b", { path: "**/*", hidden: false } as never),
-		);
+		const hiddenOn = textOf(await tool.execute("g6a", { path: "**/.secret.env", hidden: true } as never));
+		const hiddenOff = textOf(await tool.execute("g6b", { path: "**/*", hidden: false } as never));
 		// Explicit name pattern should find it when hidden allowed.
 		expect(hiddenOn.includes(".secret.env") || /no files|0 file/i.test(hiddenOn)).toBe(true);
 		// Broad **/* with hidden:false should not advertise the secret as a normal hit.

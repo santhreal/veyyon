@@ -21,9 +21,7 @@ describe("applyEdits past 6000 unicode body grid", () => {
 
 	it("file of unicode lines survives identity SWAP", () => {
 		const base = samples.join("\n");
-		const hunks = samples
-			.map((s, i) => `SWAP ${i + 1}.=${i + 1}:\n+${s}`)
-			.join("\n");
+		const hunks = samples.map((s, i) => `SWAP ${i + 1}.=${i + 1}:\n+${s}`).join("\n");
 		const { text } = applyEdits(base, parsePatch(hunks).edits);
 		expect(text).toBe(base);
 	});
@@ -39,7 +37,7 @@ describe("applyEdits past 6000 unicode body grid", () => {
 
 	it("INS.HEAD unicode rows prefix exact", () => {
 		const base = "plain";
-		const rows = samples.map((s) => `+${s}`).join("\n");
+		const rows = samples.map(s => `+${s}`).join("\n");
 		const { text } = applyEdits(base, parsePatch(`INS.HEAD:\n${rows}`).edits);
 		expect(text.split("\n")).toEqual([...samples, "plain"]);
 	});

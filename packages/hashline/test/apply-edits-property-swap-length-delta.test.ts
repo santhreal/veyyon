@@ -14,10 +14,7 @@ describe("applyEdits property SWAP length delta", () => {
 				it(`s=${start} e=${end} b=${bodyLen}`, () => {
 					const span = end - start + 1;
 					const rows = Array.from({ length: bodyLen }, (_, i) => `+B${i}`).join("\n");
-					const { text } = applyEdits(
-						base,
-						parsePatch(`SWAP ${start}.=${end}:\n${rows}`).edits,
-					);
+					const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${rows}`).edits);
 					expect(text.split("\n").length).toBe(n - span + bodyLen);
 				});
 			}

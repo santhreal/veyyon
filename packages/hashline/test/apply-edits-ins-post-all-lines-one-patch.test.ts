@@ -10,13 +10,10 @@ describe("applyEdits INS.POST all lines one patch", () => {
 		it(`n=${n}`, () => {
 			const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 			const base = lines.join("\n");
-			const patch = Array.from(
-				{ length: n },
-				(_, i) => `INS.POST ${i + 1}:\n+X${i + 1}`,
-			).join("\n");
+			const patch = Array.from({ length: n }, (_, i) => `INS.POST ${i + 1}:\n+X${i + 1}`).join("\n");
 			const { text } = applyEdits(base, parsePatch(patch).edits);
 			const out = text.split("\n");
-			// Expected interleave: L1 X1 L2 X2 ... 
+			// Expected interleave: L1 X1 L2 X2 ...
 			const want: string[] = [];
 			for (let i = 0; i < n; i++) {
 				want.push(lines[i]!);

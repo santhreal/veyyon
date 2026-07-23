@@ -3,13 +3,7 @@
  * and apply with exact prefix/suffix preservation.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	formatDeleteHeader,
-	formatInsertHeader,
-	formatReplaceHeader,
-	parsePatch,
-} from "@veyyon/hashline";
+import { applyEdits, formatDeleteHeader, formatInsertHeader, formatReplaceHeader, parsePatch } from "@veyyon/hashline";
 
 describe("format headers roundtrip parse property", () => {
 	const n = 15;
@@ -43,27 +37,17 @@ describe("format headers roundtrip parse property", () => {
 	it("formatInsertHeader all cursor kinds", () => {
 		expect(formatInsertHeader({ kind: "bof" })).toBe("INS.HEAD:");
 		expect(formatInsertHeader({ kind: "eof" })).toBe("INS.TAIL:");
-		expect(formatInsertHeader({ kind: "before_anchor", anchor: { line: 4 } })).toBe(
-			"INS.PRE 4:",
-		);
-		expect(formatInsertHeader({ kind: "after_anchor", anchor: { line: 7 } })).toBe(
-			"INS.POST 7:",
-		);
+		expect(formatInsertHeader({ kind: "before_anchor", anchor: { line: 4 } })).toBe("INS.PRE 4:");
+		expect(formatInsertHeader({ kind: "after_anchor", anchor: { line: 7 } })).toBe("INS.POST 7:");
 	});
 
 	it("insert headers apply", () => {
-		expect(applyEdits("a\nb", parsePatch(`${formatInsertHeader({ kind: "bof" })}\n+H`).edits).text).toBe(
-			"H\na\nb",
-		);
-		expect(applyEdits("a\nb", parsePatch(`${formatInsertHeader({ kind: "eof" })}\n+T`).edits).text).toBe(
-			"a\nb\nT",
-		);
+		expect(applyEdits("a\nb", parsePatch(`${formatInsertHeader({ kind: "bof" })}\n+H`).edits).text).toBe("H\na\nb");
+		expect(applyEdits("a\nb", parsePatch(`${formatInsertHeader({ kind: "eof" })}\n+T`).edits).text).toBe("a\nb\nT");
 		expect(
 			applyEdits(
 				"a\nb\nc",
-				parsePatch(
-					`${formatInsertHeader({ kind: "after_anchor", anchor: { line: 2 } })}\n+X`,
-				).edits,
+				parsePatch(`${formatInsertHeader({ kind: "after_anchor", anchor: { line: 2 } })}\n+X`).edits,
 			).text,
 		).toBe("a\nb\nX\nc");
 	});

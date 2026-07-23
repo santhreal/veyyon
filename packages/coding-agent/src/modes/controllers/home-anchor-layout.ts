@@ -13,6 +13,10 @@ export interface HomeAnchorPort {
 	/** True while the startup hero is mounted; it gets a centring share of
 	 * the home-screen slack as top margin. */
 	hasHero(): boolean;
+	/** Rows the composer zone occupies at the frame tail. Read after every
+	 * compose to keep scroll isolation's pinned-footer region in step with
+	 * the zone's live height. */
+	composerZoneRows(): number;
 }
 
 /**
@@ -140,6 +144,9 @@ export class HomeAnchorLayout {
 	 * fill actually changed, so the steady state costs nothing.
 	 */
 	onFrameComposed(): void {
+		// Scroll isolation's pinned footer is exactly the composer zone at the
+		// frame tail; keep the engine's row count in step with every compose.
+		this.port.ui.setPinnedFooterRows(this.port.composerZoneRows());
 		if (!this.#active) return;
 		const width = this.port.ui.terminal.columns;
 		const before = this.topFill.render(width).length + this.bottomFill.render(width).length;

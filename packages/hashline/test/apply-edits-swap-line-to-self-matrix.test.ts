@@ -15,8 +15,7 @@ describe("SWAP line to self matrix", () => {
 			const lines = Array.from({ length: n }, (_, i) => `L${i}`);
 			const src = text(lines);
 			for (let k = 1; k <= n; k++) {
-				const out = applyEdits(src, parsePatch(`SWAP ${k}.=${k}:\n+${lines[k - 1]}`).edits)
-					.text;
+				const out = applyEdits(src, parsePatch(`SWAP ${k}.=${k}:\n+${lines[k - 1]}`).edits).text;
 				expect(out).toBe(src);
 			}
 		}

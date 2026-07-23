@@ -36,11 +36,11 @@ describe("parseSSE matrix", () => {
 	});
 
 	it("skips [DONE] and takes next", () => {
-		expect(parseSSE("data: [DONE]\ndata: {\"ok\":true}\n")).toEqual({ ok: true });
+		expect(parseSSE('data: [DONE]\ndata: {"ok":true}\n')).toEqual({ ok: true });
 	});
 
 	it("skips non-JSON data lines", () => {
-		expect(parseSSE("data: keep-alive\ndata: {\"n\":2}\n")).toEqual({ n: 2 });
+		expect(parseSSE('data: keep-alive\ndata: {"n":2}\n')).toEqual({ n: 2 });
 	});
 
 	it("falls back to whole-body JSON", () => {

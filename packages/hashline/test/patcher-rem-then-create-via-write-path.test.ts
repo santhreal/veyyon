@@ -4,12 +4,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	computeFileHash,
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	Patch,
 	Patcher,
-	formatHashlineHeader,
-	computeFileHash,
 } from "@veyyon/hashline";
 
 describe("Patcher after REM and create edges", () => {
@@ -55,4 +55,3 @@ describe("Patcher after REM and create edges", () => {
 		expect(fs.get("e.ts")).toBe("line");
 	});
 });
-

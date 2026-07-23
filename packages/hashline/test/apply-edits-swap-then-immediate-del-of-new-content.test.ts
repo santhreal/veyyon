@@ -15,7 +15,10 @@ describe("applyEdits SWAP then immediate DEL of new content", () => {
 			let t = apply(base, `SWAP ${line}.=${line}:\n+TEMP`);
 			expect(t.split("\n")[line - 1]).toBe("TEMP");
 			t = apply(t, `DEL ${line}`);
-			const want = base.split("\n").filter((_, i) => i + 1 !== line).join("\n");
+			const want = base
+				.split("\n")
+				.filter((_, i) => i + 1 !== line)
+				.join("\n");
 			expect(t).toBe(want);
 		});
 	}

@@ -7,11 +7,7 @@ import { executeHashlineSingle } from "@veyyon/coding-agent/edit";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -86,9 +82,7 @@ describe("write→read→multi-line SWAP adversarial", () => {
 		const file = path.join(tmpDir, "m.ts");
 		await new WriteTool(s).execute("w", { path: file, content: "L1\nL2\nL3\nL4\n" });
 		const header = textOf(await new ReadTool(s).execute("r", { path: file })).split("\n")[0]!;
-		await executeHashlineSingle(
-			editOpts(s, `${header}\nSWAP 2.=3:\n+A\n+B\n+C\n`),
-		);
+		await executeHashlineSingle(editOpts(s, `${header}\nSWAP 2.=3:\n+A\n+B\n+C\n`));
 		expect(await Bun.file(file).text()).toBe("L1\nA\nB\nC\nL4\n");
 	});
 });

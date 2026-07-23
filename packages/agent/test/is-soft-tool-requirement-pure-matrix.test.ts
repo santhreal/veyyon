@@ -3,8 +3,8 @@
  * and non-objects. Fail-closed: soft:false / missing soft / primitives are not soft.
  */
 import { describe, expect, it } from "bun:test";
-import { isSoftToolRequirement } from "@veyyon/agent-core/types";
 import type { SoftToolRequirement } from "@veyyon/agent-core/types";
+import { isSoftToolRequirement } from "@veyyon/agent-core/types";
 
 function soft(id: string): SoftToolRequirement {
 	return {

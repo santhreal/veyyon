@@ -8,13 +8,13 @@ import { $which, getProjectDir, getPythonEnvDir } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
 import { Settings, settings } from "../config/settings";
+import { formatDoctorResults, runDoctorChecks } from "../extensibility/plugins/doctor";
 import { theme } from "../modes/theme/theme";
 import { downloadSttModel, isSttModelCached } from "../stt/downloader";
 import { isSttModelKey, STT_MODEL_OPTIONS } from "../stt/models";
 import { detectRecorder, ensureRecorder } from "../stt/recorder";
 import { downloadTtsModel, isTtsLocalModelKey, isTtsModelCached, TTS_LOCAL_MODEL_OPTIONS } from "../tts";
 import { makeCoarseStepPrinter } from "./progress-line";
-import { runDoctorChecks, formatDoctorResults } from "../extensibility/plugins/doctor";
 import { selectSetupModel } from "./setup-model-picker";
 
 export type SetupComponent = "python" | "speech" | "status" | "auth" | "";
@@ -87,9 +87,6 @@ export async function runSetupCommand(cmd: SetupCommandArgs): Promise<void> {
 		case "speech":
 			await handleSpeechSetup(cmd.flags);
 			break;
-		case "status":
-		case "auth":
-		case "":
 		default:
 			await handleStatusSetup(cmd.flags);
 			break;

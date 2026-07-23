@@ -26,6 +26,7 @@ import { harborRunnerArgs, type LaunchRequest } from "./launch-args";
 // ────────────────────────────────────────────────────────────────────── config
 
 import { DEFAULT_JOBS_DIR, REPO_ROOT } from "./paths";
+
 const PKG_DIR = path.resolve(import.meta.dir, "..");
 const AGENT_DIR = path.join(PKG_DIR, "agent");
 const CODING_AGENT_DIR = path.join(REPO_ROOT, "packages", "coding-agent");

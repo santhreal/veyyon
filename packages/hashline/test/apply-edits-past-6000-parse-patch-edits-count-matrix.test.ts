@@ -39,7 +39,7 @@ describe("applyEdits past 6000 parsePatch edits count matrix", () => {
 
 	it("SWAP range 3..=5 with one body row: 1 insert + 3 deletes", () => {
 		const { edits } = parsePatch("SWAP 3.=5:\n+only");
-		expect(edits.filter((e) => e.kind === "insert")).toHaveLength(1);
-		expect(edits.filter((e) => e.kind === "delete")).toHaveLength(3);
+		expect(edits.filter(e => e.kind === "insert")).toHaveLength(1);
+		expect(edits.filter(e => e.kind === "delete")).toHaveLength(3);
 	});
 });

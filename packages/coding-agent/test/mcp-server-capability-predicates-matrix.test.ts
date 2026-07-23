@@ -25,9 +25,7 @@ describe("MCP server capability predicates matrix", () => {
 	it("resource subscriptions", () => {
 		expect(serverSupportsResourceSubscriptions({})).toBe(false);
 		expect(serverSupportsResourceSubscriptions({ resources: {} })).toBe(false);
-		expect(
-			serverSupportsResourceSubscriptions({ resources: { subscribe: true } }),
-		).toBe(true);
+		expect(serverSupportsResourceSubscriptions({ resources: { subscribe: true } })).toBe(true);
 	});
 
 	it("prompts", () => {

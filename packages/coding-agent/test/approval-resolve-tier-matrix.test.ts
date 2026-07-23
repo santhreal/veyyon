@@ -2,7 +2,7 @@
  * resolveApproval tier × mode matrix with exact policy outcomes.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval, type ApprovalMode } from "../src/tools/approval";
+import { type ApprovalMode, resolveApproval } from "../src/tools/approval";
 
 const tiers = ["read", "write", "exec"] as const;
 const modes: ApprovalMode[] = ["plan", "ask", "always-ask", "auto-edit", "write", "yolo"];
@@ -33,15 +33,9 @@ describe("resolveApproval mode×tier matrix", () => {
 	});
 
 	it("plan without planModeActive denies write and exec", () => {
-		expect(resolveApproval(tool("r", "read"), {}, "plan", {}, { planModeActive: false }).policy).toBe(
-			"allow",
-		);
-		expect(resolveApproval(tool("w", "write"), {}, "plan", {}, { planModeActive: false }).policy).toBe(
-			"deny",
-		);
-		expect(resolveApproval(tool("e", "exec"), {}, "plan", {}, { planModeActive: false }).policy).toBe(
-			"deny",
-		);
+		expect(resolveApproval(tool("r", "read"), {}, "plan", {}, { planModeActive: false }).policy).toBe("allow");
+		expect(resolveApproval(tool("w", "write"), {}, "plan", {}, { planModeActive: false }).policy).toBe("deny");
+		expect(resolveApproval(tool("e", "exec"), {}, "plan", {}, { planModeActive: false }).policy).toBe("deny");
 	});
 
 	it("user deny always wins over mode allow", () => {

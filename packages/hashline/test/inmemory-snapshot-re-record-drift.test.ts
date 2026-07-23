@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-	computeFileHash,
-} from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 /**
  * Re-record after drift creates new tag; old tag still usable for recovery.

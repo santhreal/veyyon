@@ -17,8 +17,8 @@
  * sidebar, g/G + PgUp/PgDn scroll, and the external-editor key opens the plan.
  */
 import {
-	clampLow,
 	type Component,
+	clampLow,
 	Ellipsis,
 	Input,
 	Markdown,

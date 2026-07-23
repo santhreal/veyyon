@@ -3,10 +3,7 @@
  * parse first underscore after mcp__, non-mcp null, empty fallbacks.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	createMCPToolName,
-	parseMCPToolName,
-} from "@veyyon/coding-agent/mcp/tool-bridge";
+import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
 
 describe("createMCPToolName / parseMCPToolName matrix", () => {
 	const pairs: Array<{

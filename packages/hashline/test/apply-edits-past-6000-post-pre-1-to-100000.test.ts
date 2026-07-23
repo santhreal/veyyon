@@ -14,20 +14,14 @@ describe("applyEdits past 6000 POST PRE 1 to 100000", () => {
 		const end = Math.min(start + chunk - 1, n);
 		it(`POST anchors ${start}..${end}`, () => {
 			for (let a = start; a <= end; a++) {
-				const { text, firstChangedLine } = applyEdits(
-					base,
-					parsePatch(`INS.POST ${a}:\n+P`).edits,
-				);
+				const { text, firstChangedLine } = applyEdits(base, parsePatch(`INS.POST ${a}:\n+P`).edits);
 				expect(text.split("\n")[a]).toBe("P");
 				expect(firstChangedLine).toBe(a);
 			}
 		});
 		it(`PRE anchors ${start}..${end}`, () => {
 			for (let a = start; a <= end; a++) {
-				const { text, firstChangedLine } = applyEdits(
-					base,
-					parsePatch(`INS.PRE ${a}:\n+R`).edits,
-				);
+				const { text, firstChangedLine } = applyEdits(base, parsePatch(`INS.PRE ${a}:\n+R`).edits);
 				expect(text.split("\n")[a - 1]).toBe("R");
 				expect(firstChangedLine).toBe(a);
 			}

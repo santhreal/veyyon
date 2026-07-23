@@ -4,12 +4,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	type AgentRunCoverage,
+	type AgentRunSummary,
 	aggregateAgentRunCoverage,
 	aggregateAgentRunSummaries,
 	emptyAgentRunCoverage,
 	emptyAgentRunSummary,
-	type AgentRunCoverage,
-	type AgentRunSummary,
 } from "@veyyon/agent-core/run-collector";
 
 function miniSummary(partial: {
@@ -32,7 +32,18 @@ function miniSummary(partial: {
 			ok: partial.toolOk ?? 0,
 			byName:
 				partial.toolOk !== undefined
-					? { bash: { total: partial.toolOk, ok: partial.toolOk, error: 0, skipped: 0, blocked: 0, timeout: 0, aborted: 0, totalLatencyMs: 1 } }
+					? {
+							bash: {
+								total: partial.toolOk,
+								ok: partial.toolOk,
+								error: 0,
+								skipped: 0,
+								blocked: 0,
+								timeout: 0,
+								aborted: 0,
+								totalLatencyMs: 1,
+							},
+						}
 					: {},
 		},
 		usage: {

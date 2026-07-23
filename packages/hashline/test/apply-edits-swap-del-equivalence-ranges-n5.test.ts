@@ -9,10 +9,8 @@ describe("bodyless SWAP equals DEL all ranges n=5", () => {
 	for (let start = 1; start <= 5; start++) {
 		for (let end = start; end <= 5; end++) {
 			it(`${start}.=${end}`, () => {
-				const viaSwap = applyEdits(text, parsePatch(formatReplaceHeader(start, end)).edits)
-					.text;
-				const viaDel = applyEdits(text, parsePatch(formatDeleteHeader(start, end)).edits)
-					.text;
+				const viaSwap = applyEdits(text, parsePatch(formatReplaceHeader(start, end)).edits).text;
+				const viaDel = applyEdits(text, parsePatch(formatDeleteHeader(start, end)).edits).text;
 				expect(viaSwap).toBe(viaDel);
 			});
 		}

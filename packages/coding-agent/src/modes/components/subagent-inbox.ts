@@ -17,7 +17,7 @@
  * Agent Hub until the layout is refined, so it ships behind the
  * `display.subagentInbox` flag (off by default).
  */
-import { clamp, clampLow, Container, matchesKey, padding, type TUI, visibleWidth } from "@veyyon/tui";
+import { Container, clamp, clampLow, matchesKey, padding, type TUI, visibleWidth } from "@veyyon/tui";
 import { formatAge } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import { IrcBus } from "../../irc/bus";
@@ -210,7 +210,9 @@ export class SubagentInboxComponent extends Container {
 		const left = ` ${heading}${counts ? theme.fg("dim", ` ${theme.sep.dot} ${counts}`) : ""}`;
 		const right = focused
 			? ` ${agentStatusGlyph(focused.status)} ${theme.fg("link", theme.bold(replaceTabs(focused.id)))}${
-					focused.activity ? theme.fg("dim", ` ${theme.sep.dot} ${cellText(focused.activity, Math.max(8, detailW - 20))}`) : ""
+					focused.activity
+						? theme.fg("dim", ` ${theme.sep.dot} ${cellText(focused.activity, Math.max(8, detailW - 20))}`)
+						: ""
 				}`
 			: ` ${theme.fg("dim", "no agent focused")}`;
 		return `${padCell(left, sidebarW)} ${padCell(right, detailW)}`;

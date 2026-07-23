@@ -3,8 +3,8 @@ import {
 	computeFileHash,
 	InMemorySnapshotStore,
 	parsePatch,
-	Recovery,
 	RECOVERY_SESSION_CHAIN_WARNING,
+	Recovery,
 } from "@veyyon/hashline";
 
 /**
@@ -65,9 +65,7 @@ describe("Recovery adversarial corpus", () => {
 		expect(recovered).not.toBeNull();
 		expect(recovered!.text).toContain("L2-MODEL");
 		expect(recovered!.text).toContain("L5-CHANGED");
-		expect(recovered!.warnings.some(w => w.includes(RECOVERY_SESSION_CHAIN_WARNING) || w.length > 0)).toBe(
-			true,
-		);
+		expect(recovered!.warnings.some(w => w.includes(RECOVERY_SESSION_CHAIN_WARNING) || w.length > 0)).toBe(true);
 	});
 
 	it("returns null when current text is empty but snapshot is not (hostile empty disk)", () => {
@@ -145,7 +143,7 @@ describe("Recovery adversarial corpus", () => {
 	});
 
 	it("hash of multi-line body is insensitive to object identity of the string", () => {
-		const body = ["one", "two", "three"].join("\n") + "\n";
+		const body = `${["one", "two", "three"].join("\n")}\n`;
 		const copy = body.slice();
 		expect(computeFileHash(body)).toBe(computeFileHash(copy));
 		expect(computeFileHash(body)).toHaveLength(4);

@@ -19,12 +19,8 @@ describe("isMcpConnectionStatusEvent matrix", () => {
 
 	it("failed", () => {
 		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "e" })).toBe(true);
-		expect(
-			isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "e", foreign: true }),
-		).toBe(true);
-		expect(
-			isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "e", foreign: "yes" }),
-		).toBe(false);
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "e", foreign: true })).toBe(true);
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "e", foreign: "yes" })).toBe(false);
 		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x" })).toBe(false);
 	});
 

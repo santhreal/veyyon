@@ -31,6 +31,6 @@ describe("normalizeTools name-only 100 tools matrix", () => {
 	it("filters null slots", () => {
 		const mixed = [null, tools[0], undefined, tools[1], "bad", tools[2]] as never;
 		const out = normalizeTools(mixed, false);
-		expect(out!.map((t) => t.name)).toEqual(["tool_0", "tool_1", "tool_2"]);
+		expect(out!.map(t => t.name)).toEqual(["tool_0", "tool_1", "tool_2"]);
 	});
 });

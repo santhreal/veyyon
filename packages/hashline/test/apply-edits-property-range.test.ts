@@ -67,10 +67,7 @@ describe("applyEdits SWAP range property", () => {
 describe("applyEdits insert stacking", () => {
 	it("sequential INS.POST at same original anchor: later parse order stacks", () => {
 		// Single patch with two inserts after line 1
-		const { text: out } = applyEdits(
-			"A\nB",
-			parsePatch("INS.POST 1:\n+X\nINS.POST 1:\n+Y").edits,
-		);
+		const { text: out } = applyEdits("A\nB", parsePatch("INS.POST 1:\n+X\nINS.POST 1:\n+Y").edits);
 		// Both after_anchor 1: order depends on apply semantics — assert exact
 		expect(out.split("\n")[0]).toBe("A");
 		expect(out).toContain("X");
@@ -80,10 +77,7 @@ describe("applyEdits insert stacking", () => {
 	});
 
 	it("INS.HEAD then content then INS.TAIL sandwich", () => {
-		const { text: out } = applyEdits(
-			"mid",
-			parsePatch("INS.HEAD:\n+H\nINS.TAIL:\n+T").edits,
-		);
+		const { text: out } = applyEdits("mid", parsePatch("INS.HEAD:\n+H\nINS.TAIL:\n+T").edits);
 		expect(out).toBe("H\nmid\nT");
 	});
 

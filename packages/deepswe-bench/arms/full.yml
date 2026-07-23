@@ -5,4 +5,5 @@ argot:
   enabled: true
   models:
     - gemini-2.5-flash
-  subagents: off
+    - gemini-3.6-flash
+    - claude-3-7-sonnet

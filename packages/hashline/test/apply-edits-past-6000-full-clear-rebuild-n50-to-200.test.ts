@@ -13,7 +13,7 @@ describe("applyEdits past 6000 full clear rebuild n50 to 200", () => {
 			const h0 = computeFileHash(base);
 			const empty = applyEdits(base, parsePatch(`DEL 1.=${n}`).edits).text;
 			expect(empty).toBe("");
-			const body = lines.map((l) => `+${l}`).join("\n");
+			const body = lines.map(l => `+${l}`).join("\n");
 			const back = applyEdits(empty, parsePatch(`INS.HEAD:\n${body}`).edits).text;
 			expect(back).toBe(base);
 			expect(computeFileHash(back)).toBe(h0);

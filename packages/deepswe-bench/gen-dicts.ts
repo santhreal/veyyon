@@ -45,7 +45,7 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
 			const key = arg.slice(2);
 			const next = argv[i + 1];
 			if (next === undefined || next.startsWith("--")) out[key] = true;
-			else out[key] = next, i++;
+			else (out[key] = next), i++;
 		}
 	}
 	return out;
@@ -105,7 +105,13 @@ async function genOne(task: string): Promise<DictRow> {
 		const files = collectFiles(dir);
 		const { toml, handles, dictTokens, estimatedSavings } = generateDictFromRepo(files, {});
 		if (toml) fs.writeFileSync(path.join(DICTS_DIR, `${task}.AGENTS.dict`), toml);
-		return { task, handles: handles.length, dictTokens, estimatedSavings, error: toml ? null : "no dictionary generated" };
+		return {
+			task,
+			handles: handles.length,
+			dictTokens,
+			estimatedSavings,
+			error: toml ? null : "no dictionary generated",
+		};
 	} catch (err) {
 		return { task, handles: 0, dictTokens: 0, estimatedSavings: 0, error: String(err).slice(0, 200) };
 	}
@@ -116,10 +122,16 @@ async function main(): Promise<void> {
 	const jobs = Number(args.jobs ?? "8");
 	let tasks: string[];
 	if (args.all) {
-		tasks = fs.readdirSync(TASKS_ROOT).filter(d => fs.existsSync(path.join(TASKS_ROOT, d, "task.toml"))).sort();
+		tasks = fs
+			.readdirSync(TASKS_ROOT)
+			.filter(d => fs.existsSync(path.join(TASKS_ROOT, d, "task.toml")))
+			.sort();
 	} else if (args.tasks) {
-		tasks = fs.readFileSync(path.resolve(BENCH_DIR, String(args.tasks)), "utf8")
-			.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+		tasks = fs
+			.readFileSync(path.resolve(BENCH_DIR, String(args.tasks)), "utf8")
+			.split("\n")
+			.map(l => l.trim())
+			.filter(l => l && !l.startsWith("#"));
 	} else {
 		console.error("pass --tasks <file> or --all");
 		process.exit(1);
@@ -129,15 +141,19 @@ async function main(): Promise<void> {
 
 	const queue = [...tasks];
 	const rows: DictRow[] = [];
-	await Promise.all(Array.from({ length: jobs }, async () => {
-		for (;;) {
-			const task = queue.shift();
-			if (!task) return;
-			const row = await genOne(task);
-			rows.push(row);
-			console.log(`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} dict~${row.dictTokens}tok savings~${row.estimatedSavings}tok`}`);
-		}
-	}));
+	await Promise.all(
+		Array.from({ length: jobs }, async () => {
+			for (;;) {
+				const task = queue.shift();
+				if (!task) return;
+				const row = await genOne(task);
+				rows.push(row);
+				console.log(
+					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} dict~${row.dictTokens}tok savings~${row.estimatedSavings}tok`}`,
+				);
+			}
+		}),
+	);
 
 	rows.sort((a, b) => b.estimatedSavings - a.estimatedSavings);
 	const lines = [
@@ -147,9 +163,11 @@ async function main(): Promise<void> {
 		"",
 		"| task | handles | dict tokens | estimated savings (output tok) |",
 		"|---|---|---|---|",
-		...rows.map(r => r.error
-			? `| ${r.task} | — | — | ERROR: ${r.error} |`
-			: `| ${r.task} | ${r.handles} | ${r.dictTokens} | ${r.estimatedSavings} |`),
+		...rows.map(r =>
+			r.error
+				? `| ${r.task} | — | — | ERROR: ${r.error} |`
+				: `| ${r.task} | ${r.handles} | ${r.dictTokens} | ${r.estimatedSavings} |`,
+		),
 		"",
 	];
 	fs.writeFileSync(path.join(DICTS_DIR, "report.md"), lines.join("\n"));

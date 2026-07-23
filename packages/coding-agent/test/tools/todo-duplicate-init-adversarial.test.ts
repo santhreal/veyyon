@@ -7,15 +7,18 @@ import { applyOpsToPhases } from "@veyyon/coding-agent/tools/todo";
 
 describe("todo init duplicate adversarial", () => {
 	it("duplicate phase names produce errors", () => {
-		const { phases, errors } = applyOpsToPhases([], [
-			{
-				op: "init",
-				list: [
-					{ phase: "Same", items: ["a"] },
-					{ phase: "Same", items: ["b"] },
-				],
-			},
-		]);
+		const { phases, errors } = applyOpsToPhases(
+			[],
+			[
+				{
+					op: "init",
+					list: [
+						{ phase: "Same", items: ["a"] },
+						{ phase: "Same", items: ["b"] },
+					],
+				},
+			],
+		);
 		expect(errors.some(e => /duplicate phase/i.test(e))).toBe(true);
 		// Still may construct phases; lock that errors are non-empty.
 		expect(errors.length).toBeGreaterThan(0);
@@ -23,25 +26,31 @@ describe("todo init duplicate adversarial", () => {
 	});
 
 	it("duplicate task contents across phases produce errors", () => {
-		const { errors } = applyOpsToPhases([], [
-			{
-				op: "init",
-				list: [
-					{ phase: "A", items: ["shared"] },
-					{ phase: "B", items: ["shared"] },
-				],
-			},
-		]);
+		const { errors } = applyOpsToPhases(
+			[],
+			[
+				{
+					op: "init",
+					list: [
+						{ phase: "A", items: ["shared"] },
+						{ phase: "B", items: ["shared"] },
+					],
+				},
+			],
+		);
 		expect(errors.some(e => /duplicate task/i.test(e))).toBe(true);
 	});
 
 	it("duplicate tasks within one phase produce errors", () => {
-		const { errors } = applyOpsToPhases([], [
-			{
-				op: "init",
-				list: [{ phase: "A", items: ["x", "x"] }],
-			},
-		]);
+		const { errors } = applyOpsToPhases(
+			[],
+			[
+				{
+					op: "init",
+					list: [{ phase: "A", items: ["x", "x"] }],
+				},
+			],
+		);
 		expect(errors.some(e => /duplicate task/i.test(e))).toBe(true);
 	});
 });

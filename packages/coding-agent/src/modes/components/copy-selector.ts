@@ -1,6 +1,6 @@
 import {
-	clampLow,
 	type Component,
+	clampLow,
 	matchesKey,
 	padding,
 	routeSgrMouseInput,

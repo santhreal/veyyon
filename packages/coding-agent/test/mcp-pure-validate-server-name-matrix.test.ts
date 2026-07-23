@@ -5,18 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { validateServerName } from "../src/mcp/config-writer";
 
 describe("validateServerName matrix", () => {
-	const ok = [
-		"a",
-		"github",
-		"a-b",
-		"a_b",
-		"a.b",
-		"ns:svc",
-		"cloudflare:cloudflare-api",
-		"A1",
-		"x.y.z",
-		"tool_1",
-	];
+	const ok = ["a", "github", "a-b", "a_b", "a.b", "ns:svc", "cloudflare:cloudflare-api", "A1", "x.y.z", "tool_1"];
 	for (const name of ok) {
 		it(`accept ${JSON.stringify(name)}`, () => {
 			expect(validateServerName(name)).toBeUndefined();

@@ -70,8 +70,8 @@ describe("atomicWriteFile contracts", () => {
 
 	it("concurrent writers leave one of the full payloads, not a mix", async () => {
 		const file = path.join(tmpDir, "race.txt");
-		const a = "A".repeat(4096) + "\n";
-		const b = "B".repeat(4096) + "\n";
+		const a = `${"A".repeat(4096)}\n`;
+		const b = `${"B".repeat(4096)}\n`;
 		await Promise.all([atomicWriteFile(file, a), atomicWriteFile(file, b)]);
 		const out = await Bun.file(file).text();
 		expect(out === a || out === b).toBe(true);

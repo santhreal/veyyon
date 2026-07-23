@@ -21,15 +21,13 @@ const opaque = [
 describe("applyEdits past 6000 json and code body opaque", () => {
 	it("identity multi-SWAP of opaque file", () => {
 		const base = opaque.join("\n");
-		const hunks = opaque
-			.map((line, i) => `SWAP ${i + 1}.=${i + 1}:\n+${line}`)
-			.join("\n");
+		const hunks = opaque.map((line, i) => `SWAP ${i + 1}.=${i + 1}:\n+${line}`).join("\n");
 		const { text } = applyEdits(base, parsePatch(hunks).edits);
 		expect(text).toBe(base);
 	});
 
 	it("HEAD inserts keyword-like rows as content", () => {
-		const rows = opaque.map((l) => `+${l}`).join("\n");
+		const rows = opaque.map(l => `+${l}`).join("\n");
 		const { text } = applyEdits("Z", parsePatch(`INS.HEAD:\n${rows}`).edits);
 		expect(text.split("\n")).toEqual([...opaque, "Z"]);
 	});

@@ -2,8 +2,8 @@
  * pathRecoveredFromTagMessage exact fragments.
  */
 import { describe, expect, it } from "bun:test";
-import { pathRecoveredFromTagMessage } from "../src/messages";
 import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "../src/format";
+import { pathRecoveredFromTagMessage } from "../src/messages";
 
 describe("pathRecoveredFromTagMessage exact", () => {
 	it("names authored and resolved paths", () => {

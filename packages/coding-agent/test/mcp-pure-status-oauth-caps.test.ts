@@ -4,17 +4,21 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
-	isMcpConnectionStatusEvent,
-	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
-	sanitizeMcpStatusError,
-} from "../src/mcp/startup-events";
-import { hasMcpAuthorizationHeader, mcpOAuthCredentialIdsForServerUrl, selectMcpOAuthRefreshMaterial } from "../src/mcp/oauth-credentials";
-import {
 	serverSupportsPrompts,
 	serverSupportsResourceSubscriptions,
 	serverSupportsResources,
 	serverSupportsTools,
 } from "../src/mcp/client";
+import {
+	hasMcpAuthorizationHeader,
+	mcpOAuthCredentialIdsForServerUrl,
+	selectMcpOAuthRefreshMaterial,
+} from "../src/mcp/oauth-credentials";
+import {
+	isMcpConnectionStatusEvent,
+	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
+	sanitizeMcpStatusError,
+} from "../src/mcp/startup-events";
 import type { MCPServerCapabilities } from "../src/mcp/types";
 
 describe("MCP_CONNECTION_STATUS_EVENT_CHANNEL", () => {
@@ -42,7 +46,9 @@ describe("isMcpConnectionStatusEvent", () => {
 	it("accepts failed with optional foreign flag", () => {
 		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "boom" })).toBe(true);
 		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "boom", foreign: true })).toBe(true);
-		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "boom", foreign: "yes" })).toBe(false);
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "boom", foreign: "yes" })).toBe(
+			false,
+		);
 		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x" })).toBe(false);
 	});
 
@@ -85,12 +91,10 @@ describe("hasMcpAuthorizationHeader / oauth id helpers", () => {
 		expect(
 			hasMcpAuthorizationHeader({ type: "http", url: "https://x", headers: { Authorization: "Bearer t" } }),
 		).toBe(true);
-		expect(
-			hasMcpAuthorizationHeader({ type: "sse", url: "https://x", headers: { authorization: "Bearer t" } }),
-		).toBe(true);
-		expect(hasMcpAuthorizationHeader({ type: "http", url: "https://x", headers: { "X-Api-Key": "k" } })).toBe(
-			false,
+		expect(hasMcpAuthorizationHeader({ type: "sse", url: "https://x", headers: { authorization: "Bearer t" } })).toBe(
+			true,
 		);
+		expect(hasMcpAuthorizationHeader({ type: "http", url: "https://x", headers: { "X-Api-Key": "k" } })).toBe(false);
 		expect(hasMcpAuthorizationHeader({ type: "http", url: "https://x" })).toBe(false);
 	});
 

@@ -9,10 +9,7 @@ describe("applyEdits concurrent disjoint DEL and SWAP", () => {
 		it(`n=${n}`, () => {
 			const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 			const base = lines.join("\n");
-			const { text } = applyEdits(
-				base,
-				parsePatch(`DEL 1\nSWAP ${n}.=${n}:\n+Z`).edits,
-			);
+			const { text } = applyEdits(base, parsePatch(`DEL 1\nSWAP ${n}.=${n}:\n+Z`).edits);
 			const out = text.split("\n");
 			expect(out[0]).toBe("L2");
 			expect(out[out.length - 1]).toBe("Z");

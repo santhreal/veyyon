@@ -13,7 +13,7 @@ describe("computeFileHash special characters", () => {
 		"\r\n",
 		"\t",
 		"a\0b",
-		"\\\"",
+		'\\"',
 		"🙂🎉",
 		"éüñ",
 		"a".repeat(1),

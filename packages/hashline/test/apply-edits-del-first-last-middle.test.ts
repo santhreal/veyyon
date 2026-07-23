@@ -26,9 +26,7 @@ describe("applyEdits DEL first/last/middle by file size", () => {
 			const mid = Math.ceil(n / 2);
 			it(`n=${n} DEL mid=${mid}`, () => {
 				const { text } = applyEdits(body(n), parsePatch(`DEL ${mid}`).edits);
-				const want = Array.from({ length: n }, (_, i) => String(i + 1)).filter(
-					(_, i) => i + 1 !== mid,
-				);
+				const want = Array.from({ length: n }, (_, i) => String(i + 1)).filter((_, i) => i + 1 !== mid);
 				expect(text).toBe(want.join("\n"));
 			});
 		}

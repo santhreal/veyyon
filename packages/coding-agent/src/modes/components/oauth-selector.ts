@@ -1,8 +1,8 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProviderInfo } from "@veyyon/ai/oauth/types";
 import {
-	clampLow,
 	type Component,
+	clampLow,
 	extractPrintableText,
 	fuzzyFilter,
 	matchesKey,
@@ -294,9 +294,7 @@ export class OAuthSelectorComponent implements Component {
 		const total = this.#filteredProviders.length;
 		const maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
 		const startIndex =
-			total <= maxVisible
-				? 0
-				: clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
+			total <= maxVisible ? 0 : clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 		const endIndex = Math.min(startIndex + maxVisible, total);
 		this.#scrollStart = startIndex;
 		this.#visibleCount = endIndex - startIndex;

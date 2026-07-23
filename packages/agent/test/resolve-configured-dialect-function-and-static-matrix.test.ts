@@ -3,10 +3,7 @@
  * Why: dialect selection must prefer configured then VEYYON_DIALECT.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	resolveConfiguredDialect,
-	resolveOwnedDialectFromEnv,
-} from "@veyyon/agent-core/agent-loop";
+import { resolveConfiguredDialect, resolveOwnedDialectFromEnv } from "@veyyon/agent-core/agent-loop";
 
 const model = { id: "m", provider: "openai", api: "openai-completions" } as never;
 

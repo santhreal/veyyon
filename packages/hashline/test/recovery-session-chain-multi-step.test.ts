@@ -2,12 +2,7 @@
  * Multi-step session recovery: v0→v1→v2 content chain, stale tags from each version.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-	RECOVERY_SESSION_CHAIN_WARNING,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, RECOVERY_SESSION_CHAIN_WARNING, Recovery } from "@veyyon/hashline";
 
 describe("Recovery multi-step session chain", () => {
 	it("tag from v0 still remaps after two session advances", () => {
@@ -32,9 +27,7 @@ describe("Recovery multi-step session chain", () => {
 		expect(result.text.split("\n")).toContain("BNEW");
 		expect(result.text.split("\n")).toContain("PRE");
 		expect(result.text.split("\n")).toContain("D");
-		expect(result.warnings.some(w => w.includes("Recovered") || w === RECOVERY_SESSION_CHAIN_WARNING)).toBe(
-			true,
-		);
+		expect(result.warnings.some(w => w.includes("Recovered") || w === RECOVERY_SESSION_CHAIN_WARNING)).toBe(true);
 	});
 
 	it("tag from middle version remaps on latest", () => {

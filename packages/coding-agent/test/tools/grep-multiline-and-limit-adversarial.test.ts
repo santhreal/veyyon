@@ -46,9 +46,7 @@ describe("GrepTool multiline and unicode adversarial", () => {
 
 	it("matches unicode identifier", async () => {
 		const tool = new GrepTool(session() as never);
-		const text = textOf(
-			await tool.execute("g1", { pattern: "名前", path: path.join(tmpDir, "u.ts") }),
-		);
+		const text = textOf(await tool.execute("g1", { pattern: "名前", path: path.join(tmpDir, "u.ts") }));
 		expect(text).toContain("名前");
 		expect(text.includes("const name = 2") && !text.includes("名前")).toBe(false);
 	});
@@ -61,18 +59,14 @@ describe("GrepTool multiline and unicode adversarial", () => {
 
 	it("reports multiple alpha lines from dup.ts", async () => {
 		const tool = new GrepTool(session() as never);
-		const text = textOf(
-			await tool.execute("g3", { pattern: "alpha", path: path.join(tmpDir, "dup.ts") }),
-		);
+		const text = textOf(await tool.execute("g3", { pattern: "alpha", path: path.join(tmpDir, "dup.ts") }));
 		const alphaHits = text.split("\n").filter(l => l.includes("alpha")).length;
 		expect(alphaHits).toBeGreaterThanOrEqual(3);
 	});
 
 	it("regex alternation matches either branch", async () => {
 		const tool = new GrepTool(session() as never);
-		const text = textOf(
-			await tool.execute("g4", { pattern: "alpha|beta", path: path.join(tmpDir, "dup.ts") }),
-		);
+		const text = textOf(await tool.execute("g4", { pattern: "alpha|beta", path: path.join(tmpDir, "dup.ts") }));
 		expect(text).toContain("alpha");
 		expect(text).toContain("beta");
 	});

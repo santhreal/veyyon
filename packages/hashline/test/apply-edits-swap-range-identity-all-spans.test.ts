@@ -16,10 +16,7 @@ describe("applyEdits SWAP range identity all spans", () => {
 					.slice(start - 1, end)
 					.map(l => `+${l}`)
 					.join("\n");
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${start}.=${end}:\n${body}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${body}`).edits);
 				expect(text).toBe(base);
 			});
 		}

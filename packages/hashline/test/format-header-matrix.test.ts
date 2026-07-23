@@ -67,9 +67,9 @@ describe("format headers round-trip through parsePatch", () => {
 
 	it("formatDeleteHeader parses as delete", () => {
 		const { edits } = parsePatch(formatDeleteHeader(3, 5));
-		expect(
-			edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0)),
-		).toEqual([3, 4, 5]);
+		expect(edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0))).toEqual([
+			3, 4, 5,
+		]);
 	});
 
 	it("formatInsertHeader parses matching cursor", () => {

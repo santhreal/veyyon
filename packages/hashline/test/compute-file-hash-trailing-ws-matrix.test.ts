@@ -10,14 +10,14 @@ describe("computeFileHash trailing whitespace", () => {
 		it(`spaces on ${JSON.stringify(base).slice(0, 20)}`, () => {
 			const withSpaces = base
 				.split("\n")
-				.map(l => (l.length ? l + "  " : l))
+				.map(l => (l.length ? `${l}  ` : l))
 				.join("\n");
 			expect(computeFileHash(withSpaces)).toBe(computeFileHash(base));
 		});
 		it(`tabs on ${JSON.stringify(base).slice(0, 20)}`, () => {
 			const withTabs = base
 				.split("\n")
-				.map(l => (l.length ? l + "\t" : l))
+				.map(l => (l.length ? `${l}\t` : l))
 				.join("\n");
 			expect(computeFileHash(withTabs)).toBe(computeFileHash(base));
 		});

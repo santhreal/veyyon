@@ -12,9 +12,7 @@ describe("formatDeleteHeader round-trip ranges 1..5", () => {
 				if (start === end) expect(h).toBe(`DEL ${start}`);
 				else expect(h).toBe(`DEL ${start}.=${end}`);
 				const { edits } = parsePatch(h);
-				const lines = edits
-					.filter(e => e.kind === "delete")
-					.map(e => (e.kind === "delete" ? e.anchor.line : 0));
+				const lines = edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0));
 				const want = Array.from({ length: end - start + 1 }, (_, i) => start + i);
 				expect(lines).toEqual(want);
 			});

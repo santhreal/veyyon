@@ -16,9 +16,7 @@ describe("applyEdits past 6000 commutative disjoint DEL pairs n15", () => {
 				const seq1 = applyEdits(base, parsePatch(`DEL ${b}`).edits).text;
 				const seq = applyEdits(seq1, parsePatch(`DEL ${a}`).edits).text;
 				expect(multi).toBe(seq);
-				expect(multi === "" ? [] : multi.split("\n")).toEqual(
-					lines.filter((_, i) => i + 1 !== a && i + 1 !== b),
-				);
+				expect(multi === "" ? [] : multi.split("\n")).toEqual(lines.filter((_, i) => i + 1 !== a && i + 1 !== b));
 			});
 		}
 	}

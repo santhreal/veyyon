@@ -14,9 +14,7 @@ describe("SWAP every line one patch", () => {
 		for (const n of [5, 10]) {
 			const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 			const src = text(lines);
-			const hunks = lines
-				.map((_, i) => `SWAP ${i + 1}.=${i + 1}:\n+X${i + 1}`)
-				.join("\n");
+			const hunks = lines.map((_, i) => `SWAP ${i + 1}.=${i + 1}:\n+X${i + 1}`).join("\n");
 			const out = applyEdits(src, parsePatch(hunks).edits).text;
 			const result = out.split("\n").filter((l, i, a) => i < a.length - 1 || l);
 			expect(result).toEqual(Array.from({ length: n }, (_, i) => `X${i + 1}`));

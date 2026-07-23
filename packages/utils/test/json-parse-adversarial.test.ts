@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	classifyJsonPrefix,
-	parseJsonWithRepair,
-	parseStreamingJson,
-	repairJson,
-} from "@veyyon/utils/json-parse";
+import { classifyJsonPrefix, parseJsonWithRepair, parseStreamingJson, repairJson } from "@veyyon/utils/json-parse";
 
 /**
  * JSON repair / streaming parse contracts used by tool-call argument streams.

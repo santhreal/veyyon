@@ -14,10 +14,7 @@ describe("applyEdits property hash stable under identity ops", () => {
 			let t = base;
 			for (let i = 0; i < lines.length; i++) {
 				const line = i + 1;
-				t = applyEdits(
-					t,
-					parsePatch(`SWAP ${line}.=${line}:\n+${lines[i]}`).edits,
-				).text;
+				t = applyEdits(t, parsePatch(`SWAP ${line}.=${line}:\n+${lines[i]}`).edits).text;
 			}
 			expect(t).toBe(base);
 			expect(computeFileHash(t)).toBe(h0);

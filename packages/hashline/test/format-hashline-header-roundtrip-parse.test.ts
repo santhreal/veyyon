@@ -2,7 +2,7 @@
  * formatHashlineHeader + Patch.parse path/hash identity.
  */
 import { describe, expect, it } from "bun:test";
-import { formatHashlineHeader, Patch, computeFileHash } from "@veyyon/hashline";
+import { computeFileHash, formatHashlineHeader, Patch } from "@veyyon/hashline";
 
 describe("formatHashlineHeader Patch.parse identity", () => {
 	const paths = ["a.ts", "src/foo/bar.ts", "pkg-name/x.tsx", "under_score.ts"];

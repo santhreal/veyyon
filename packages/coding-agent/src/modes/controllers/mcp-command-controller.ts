@@ -1384,7 +1384,9 @@ export class MCPCommandController {
 			if (relevantDisabled.length > 0) {
 				lines.push(theme.fg("accent", "Disabled") + theme.fg("muted", " (discovered servers):"));
 				for (const name of relevantDisabled) {
-					lines.push(`  ${theme.fg("accent", name)}${theme.fg("warning", ` ${theme.status.connecting} disabled`)}`);
+					lines.push(
+						`  ${theme.fg("accent", name)}${theme.fg("warning", ` ${theme.status.connecting} disabled`)}`,
+					);
 				}
 				lines.push("");
 			}

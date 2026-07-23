@@ -12,10 +12,7 @@ describe("applyEdits past 6000 POST then DEL same line n40", () => {
 
 	for (let a = 1; a <= n; a++) {
 		it(`POST+DEL ${a}`, () => {
-			const out = applyEdits(
-				base,
-				parsePatch(`INS.POST ${a}:\n+P\nDEL ${a}`).edits,
-			).text.split("\n");
+			const out = applyEdits(base, parsePatch(`INS.POST ${a}:\n+P\nDEL ${a}`).edits).text.split("\n");
 			const expected = [...lines.slice(0, a - 1), "P", ...lines.slice(a)];
 			expect(out).toEqual(expected);
 		});

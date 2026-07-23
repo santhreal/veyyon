@@ -11,19 +11,13 @@ describe("applyEdits past 6000 POST PRE 1 to 20000", () => {
 
 	for (let a = 1; a <= n; a++) {
 		it(`POST ${a}`, () => {
-			const { text, firstChangedLine } = applyEdits(
-				base,
-				parsePatch(`INS.POST ${a}:\n+P`).edits,
-			);
+			const { text, firstChangedLine } = applyEdits(base, parsePatch(`INS.POST ${a}:\n+P`).edits);
 			expect(text.split("\n")[a]).toBe("P");
 			expect(firstChangedLine).toBe(a);
 		});
 
 		it(`PRE ${a}`, () => {
-			const { text, firstChangedLine } = applyEdits(
-				base,
-				parsePatch(`INS.PRE ${a}:\n+R`).edits,
-			);
+			const { text, firstChangedLine } = applyEdits(base, parsePatch(`INS.PRE ${a}:\n+R`).edits);
 			expect(text.split("\n")[a - 1]).toBe("R");
 			expect(firstChangedLine).toBe(a);
 		});

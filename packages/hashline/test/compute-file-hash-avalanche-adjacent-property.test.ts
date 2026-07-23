@@ -6,13 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { computeFileHash } from "@veyyon/hashline";
 
 describe("computeFileHash avalanche adjacent property", () => {
-	const bases = [
-		"hello world",
-		"function main() {}\n",
-		"a\nb\nc\nd\ne",
-		"x".repeat(200),
-		"",
-	];
+	const bases = ["hello world", "function main() {}\n", "a\nb\nc\nd\ne", "x".repeat(200), ""];
 
 	for (const base of bases) {
 		it(`single char flip changes hash for ${JSON.stringify(base).slice(0, 40)}`, () => {

@@ -91,9 +91,7 @@ describe("SelectList match highlighting", () => {
 	it("never routes the selected row through matchHighlight", () => {
 		const list = new SelectList(ITEMS, 2, makeTheme(true));
 		type(list, "th");
-		const selectedRow = list
-			.render(60)
-			.find(r => r.includes("[SEL]"));
+		const selectedRow = list.render(60).find(r => r.includes("[SEL]"));
 		expect(selectedRow).toBeDefined();
 		expect(selectedRow).not.toContain(HIT_OPEN);
 	});

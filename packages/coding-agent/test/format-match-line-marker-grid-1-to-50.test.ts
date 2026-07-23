@@ -8,27 +8,19 @@ import { formatMatchLine } from "../src/tools/match-line-format";
 describe("formatMatchLine marker grid 1 to 50", () => {
 	for (let n = 1; n <= 50; n++) {
 		it(`line ${n} match hashline`, () => {
-			expect(formatMatchLine(n, "body", true, { useHashLines: true })).toBe(
-				`*${n}:body`,
-			);
+			expect(formatMatchLine(n, "body", true, { useHashLines: true })).toBe(`*${n}:body`);
 		});
 
 		it(`line ${n} context hashline`, () => {
-			expect(formatMatchLine(n, "body", false, { useHashLines: true })).toBe(
-				` ${n}:body`,
-			);
+			expect(formatMatchLine(n, "body", false, { useHashLines: true })).toBe(` ${n}:body`);
 		});
 
 		it(`line ${n} match plain`, () => {
-			expect(formatMatchLine(n, "body", true, { useHashLines: false })).toBe(
-				`*${n}|body`,
-			);
+			expect(formatMatchLine(n, "body", true, { useHashLines: false })).toBe(`*${n}|body`);
 		});
 
 		it(`line ${n} context plain`, () => {
-			expect(formatMatchLine(n, "body", false, { useHashLines: false })).toBe(
-				` ${n}|body`,
-			);
+			expect(formatMatchLine(n, "body", false, { useHashLines: false })).toBe(` ${n}|body`);
 		});
 	}
 

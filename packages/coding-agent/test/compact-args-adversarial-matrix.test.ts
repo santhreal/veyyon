@@ -3,11 +3,7 @@
  * (soft + remote). Unknown first token is full instructions (backward compat).
  */
 import { describe, expect, it } from "bun:test";
-import {
-	COMPACT_MODES,
-	findCompactMode,
-	parseCompactArgs,
-} from "@veyyon/coding-agent/session/compact-modes";
+import { COMPACT_MODES, findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 
 describe("parseCompactArgs adversarial matrix", () => {
 	for (const mode of ["soft", "remote"] as const) {

@@ -6,10 +6,7 @@ import { describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { isUnexpectedStopCandidate } from "@veyyon/coding-agent/session/unexpected-stop-classifier";
 
-function msg(
-	stopReason: AssistantMessage["stopReason"],
-	content: AssistantMessage["content"],
-): AssistantMessage {
+function msg(stopReason: AssistantMessage["stopReason"], content: AssistantMessage["content"]): AssistantMessage {
 	return {
 		role: "assistant",
 		provider: "mock",
@@ -23,9 +20,7 @@ function msg(
 
 describe("isUnexpectedStopCandidate pure matrix", () => {
 	it("true for text-only stop", () => {
-		expect(
-			isUnexpectedStopCandidate(msg("stop", [{ type: "text", text: "I should continue." }])),
-		).toBe(true);
+		expect(isUnexpectedStopCandidate(msg("stop", [{ type: "text", text: "I should continue." }]))).toBe(true);
 	});
 
 	it("true when text mixed with empty thinking", () => {
@@ -40,9 +35,7 @@ describe("isUnexpectedStopCandidate pure matrix", () => {
 	});
 
 	it("false when only whitespace text", () => {
-		expect(isUnexpectedStopCandidate(msg("stop", [{ type: "text", text: "  \n\t" }]))).toBe(
-			false,
-		);
+		expect(isUnexpectedStopCandidate(msg("stop", [{ type: "text", text: "  \n\t" }]))).toBe(false);
 		expect(isUnexpectedStopCandidate(msg("stop", [{ type: "text", text: "" }]))).toBe(false);
 	});
 
@@ -59,9 +52,7 @@ describe("isUnexpectedStopCandidate pure matrix", () => {
 
 	for (const reason of ["length", "aborted", "error", "toolUse"] as const) {
 		it(`false for stopReason=${reason}`, () => {
-			expect(
-				isUnexpectedStopCandidate(msg(reason as never, [{ type: "text", text: "hi" }])),
-			).toBe(false);
+			expect(isUnexpectedStopCandidate(msg(reason as never, [{ type: "text", text: "hi" }]))).toBe(false);
 		});
 	}
 
@@ -70,8 +61,6 @@ describe("isUnexpectedStopCandidate pure matrix", () => {
 	});
 
 	it("false for thinking-only stop", () => {
-		expect(
-			isUnexpectedStopCandidate(msg("stop", [{ type: "thinking", thinking: "ponder" }])),
-		).toBe(false);
+		expect(isUnexpectedStopCandidate(msg("stop", [{ type: "thinking", thinking: "ponder" }]))).toBe(false);
 	});
 });

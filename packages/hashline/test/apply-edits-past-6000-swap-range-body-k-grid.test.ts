@@ -21,10 +21,7 @@ describe("applyEdits past 6000 SWAP range body k grid", () => {
 	for (const [start, end] of ranges) {
 		for (let k = 0; k <= 6; k++) {
 			it(`SWAP ${start}.=${end} k=${k}`, () => {
-				const rows =
-					k === 0
-						? ""
-						: Array.from({ length: k }, (_, i) => `+B${i + 1}`).join("\n");
+				const rows = k === 0 ? "" : Array.from({ length: k }, (_, i) => `+B${i + 1}`).join("\n");
 				const patch = k === 0 ? `SWAP ${start}.=${end}:\n` : `SWAP ${start}.=${end}:\n${rows}`;
 				const { text, firstChangedLine } = applyEdits(base, parsePatch(patch).edits);
 				const body = k === 0 ? [] : Array.from({ length: k }, (_, i) => `B${i + 1}`);

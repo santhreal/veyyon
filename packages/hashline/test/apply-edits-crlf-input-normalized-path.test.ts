@@ -4,13 +4,7 @@
  * pre-normalized.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	normalizeToLF,
-	parsePatch,
-	restoreLineEndings,
-	detectLineEnding,
-} from "@veyyon/hashline";
+import { applyEdits, detectLineEnding, normalizeToLF, parsePatch, restoreLineEndings } from "@veyyon/hashline";
 
 describe("applyEdits CRLF via normalize path", () => {
 	it("normalize → apply → restore roundtrip", () => {

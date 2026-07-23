@@ -2,12 +2,7 @@
  * formatDeleteHeader / formatReplaceHeader round-trip parse+apply for 1..80.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	formatDeleteHeader,
-	formatReplaceHeader,
-	parsePatch,
-} from "@veyyon/hashline";
+import { applyEdits, formatDeleteHeader, formatReplaceHeader, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits past 6000 format header roundtrip 1 to 80", () => {
 	const n = 80;
@@ -19,9 +14,7 @@ describe("applyEdits past 6000 format header roundtrip 1 to 80", () => {
 			const header = formatDeleteHeader(i);
 			expect(header).toBe(`DEL ${i}`);
 			const { text } = applyEdits(base, parsePatch(header).edits);
-			expect(text === "" ? [] : text.split("\n")).toEqual(
-				lines.filter((_, j) => j + 1 !== i),
-			);
+			expect(text === "" ? [] : text.split("\n")).toEqual(lines.filter((_, j) => j + 1 !== i));
 		});
 
 		it(`SWAP format ${i}`, () => {

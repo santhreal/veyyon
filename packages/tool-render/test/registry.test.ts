@@ -104,4 +104,3 @@ describe("@veyyon/tool-render registry", () => {
 		expect(stripAnsi("plain\x1b[31mred\x1b[0m")).toBe("plainred");
 	});
 });
-
