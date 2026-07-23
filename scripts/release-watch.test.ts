@@ -4,7 +4,7 @@
  * workflow (ci.yml, name "CI") published — and must NOT conflate an
  * independent workflow (Security/Docs) failing on the same commit with the
  * release outcome. Regression guard for the recurring "release reported failed
- * because Security was red, even though the npm publish succeeded" nuisance.
+ * because Security was red, even though the GitHub release published" nuisance.
  */
 import { describe, expect, it } from "bun:test";
 import { decideReleaseGate, type WorkflowRun } from "./release";

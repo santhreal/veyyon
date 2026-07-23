@@ -250,7 +250,7 @@ async function resolveBase(): Promise<string> {
 	return mergeBase;
 }
 
-async function discoverPackages(repoRoot: string): Promise<ChangelogPackage[]> {
+export async function discoverPackages(repoRoot: string): Promise<ChangelogPackage[]> {
 	const packages: ChangelogPackage[] = [];
 	const glob = new Glob("packages/*/package.json");
 	for await (const rel of glob.scan({ cwd: repoRoot })) {

@@ -43,8 +43,9 @@ async function originRepoSlug(): Promise<string> {
 // =============================================================================
 
 // The workflow (ci.yml `name:`) that carries the release chain
-// (release_binary → release_github → release_github_verify → release_npm). The
-// release outcome is gated on THIS workflow only: a sibling workflow
+// (release_binary → release_github → release_github_verify → release_site). The
+// GitHub release is the only publish target; there is no npm or Homebrew step.
+// The release outcome is gated on THIS workflow only: a sibling workflow
 // (Security, Docs, Checks) that fails on the same commit must neither mask a
 // successful publish nor abort the watch before the release chain finishes.
 const RELEASE_WORKFLOW_NAME = "CI";
