@@ -4,11 +4,13 @@ import {
 	coerceValue,
 	getArrayItemSchema,
 	getObjectProperties,
+	getOwnArg,
 	isArraySchema,
 	isObjectSchema,
 	isStringOnlySchema,
 	mintToolCallId,
 	partialSuffixOverlapAny,
+	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
 import dialectPrompt from "./pi-native.md" with { type: "text" };
@@ -359,10 +361,10 @@ function coerceAttrs(
 	const out: Record<string, unknown> = {};
 	for (const attr of attrs) {
 		if (attr.value === null) {
-			out[attr.key] = true;
+			setToolArg(out, attr.key, true);
 			continue;
 		}
-		out[attr.key] = coerceValue(attr.value, properties?.[attr.key]);
+		setToolArg(out, attr.key, coerceValue(attr.value, properties?.[attr.key]));
 	}
 	return out;
 }
@@ -393,7 +395,7 @@ function finalizeCall(call: OpenCall): Record<string, unknown> {
 	const args: Record<string, unknown> = { ...call.attrs };
 	if (call.bodyMode === "elements") {
 		const members = parseMembers(call.body, call.shape?.properties);
-		for (const key in members) args[key] = members[key];
+		for (const key of Object.keys(members)) setToolArg(args, key, getOwnArg(members, key));
 		return args;
 	}
 	// Inline body (or an all-whitespace body, which contributes nothing).
@@ -416,6 +418,36 @@ interface ParsedElement {
 }
 
 /**
+ * Fold a flat list of parsed sibling elements into an arguments record. Repeated
+ * sibling names collapse into an array; a name whose schema is array-typed is an
+ * array even with a single occurrence; every other name keeps its scalar value.
+ * Model-supplied names route through {@link setToolArg}/{@link getOwnArg} so a
+ * literal `__proto__` (or `constructor`/`prototype`) lands as a safe own property
+ * instead of mutating the record's prototype. This is the single owner of the
+ * fold rule; both the top-level body parser and the nested-object parser use it.
+ */
+function foldParsedElements(
+	entries: readonly ParsedElement[],
+	properties: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	const counts = new Map<string, number>();
+	for (const entry of entries) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+	for (const entry of entries) {
+		const schema = properties?.[entry.name];
+		const isArray = schema !== undefined ? isArraySchema(schema) : (counts.get(entry.name) ?? 0) >= 2;
+		if (isArray) {
+			const existing = getOwnArg(out, entry.name);
+			if (Array.isArray(existing)) existing.push(entry.value);
+			else setToolArg(out, entry.name, [entry.value]);
+		} else {
+			setToolArg(out, entry.name, entry.value);
+		}
+	}
+	return out;
+}
+
+/**
  * Recursive element-form parser (runs on the complete body at call close).
  * Repeated sibling names fold into arrays; schema-typed arrays are arrays even
  * with one occurrence; scalar bodies coerce by the parameter's schema type.
@@ -431,21 +463,7 @@ function parseMembers(text: string, properties: Record<string, unknown> | undefi
 		entries.push({ name: parsed.name, value: parsed.value });
 		pos = parsed.end;
 	}
-	const out: Record<string, unknown> = {};
-	const counts = new Map<string, number>();
-	for (const entry of entries) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
-	for (const entry of entries) {
-		const schema = properties?.[entry.name];
-		const isArray = schema !== undefined ? isArraySchema(schema) : (counts.get(entry.name) ?? 0) >= 2;
-		if (isArray) {
-			const existing = out[entry.name];
-			if (Array.isArray(existing)) existing.push(entry.value);
-			else out[entry.name] = [entry.value];
-		} else {
-			out[entry.name] = entry.value;
-		}
-	}
-	return out;
+	return foldParsedElements(entries, properties);
 }
 
 interface ElementParse {
@@ -539,21 +557,7 @@ function parseObjectBody(
 	while (pos < text.length) {
 		while (pos < text.length && /\s/.test(text[pos]!)) pos++;
 		if (text.startsWith(closer, pos)) {
-			const out: Record<string, unknown> = {};
-			const counts = new Map<string, number>();
-			for (const entry of entries) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
-			for (const entry of entries) {
-				const schema = properties?.[entry.name];
-				const isArray = schema !== undefined ? isArraySchema(schema) : (counts.get(entry.name) ?? 0) >= 2;
-				if (isArray) {
-					const existing = out[entry.name];
-					if (Array.isArray(existing)) existing.push(entry.value);
-					else out[entry.name] = [entry.value];
-				} else {
-					out[entry.name] = entry.value;
-				}
-			}
-			return { value: out, end: pos + closer.length };
+			return { value: foldParsedElements(entries, properties), end: pos + closer.length };
 		}
 		if (pos >= text.length) break;
 		const parsed = parseElementAt(text, pos, properties);

@@ -1,5 +1,5 @@
 import type { Message, ToolCall } from "../types";
-import { mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { mintToolCallId, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import dialectPrompt from "./gemini.md" with { type: "text" };
 import { assistantTranscriptParts, collectToolResultRun, joinUserBodies, messageContentText } from "./rendering";
@@ -277,7 +277,7 @@ function parsePyArgs(text: string): Record<string, unknown> {
 		if (eq === -1) continue; // positional args are not part of the convention
 		const key = trimmed.slice(0, eq).trim();
 		if (!/^[A-Za-z_]\w*$/.test(key)) continue;
-		out[key] = parsePyValue(trimmed.slice(eq + 1).trim());
+		setToolArg(out, key, parsePyValue(trimmed.slice(eq + 1).trim()));
 	}
 	return out;
 }
@@ -318,7 +318,7 @@ function parseDict(t: string): Record<string, unknown> {
 		if (colon === -1) continue;
 		const keyRaw = trimmed.slice(0, colon).trim();
 		const key = stringPrefixLength(keyRaw) !== undefined ? decodeString(keyRaw) : keyRaw;
-		out[key] = parsePyValue(trimmed.slice(colon + 1).trim());
+		setToolArg(out, key, parsePyValue(trimmed.slice(colon + 1).trim()));
 	}
 	return out;
 }

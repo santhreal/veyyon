@@ -73,7 +73,9 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 	readonly approval = "write" as const;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const raw = (args as Partial<ArgotFolderInput>).folder_path;
-		return [`Folder: ${typeof raw === "string" && raw.trim() !== "" ? raw : "(missing)"}`];
+		const trimmed = typeof raw === "string" ? raw.trim() : "";
+		const resolved = trimmed ? resolveToCwd(trimmed, this.#session.cwd) : "(missing)";
+		return [`Folder: ${trimmed || "(missing)"}${trimmed && resolved !== trimmed ? ` (${resolved})` : ""}`];
 	};
 	readonly description =
 		"Load a folder's Argot shorthand so you can write its long paths and identifiers as short `§handle` tokens. Resolves the folder to its own project (nearest .git or .argot), reads or builds that project's dictionary, and teaches you its handles. Load the narrowest folder that is your work unit, not a parent holding many projects. Every handle expands losslessly, so this only saves tokens.";
