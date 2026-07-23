@@ -144,7 +144,7 @@ describe("findStaleAddon on adversarial fakes", () => {
 		];
 		const stale = findStaleAddon(addons, "1.0.18");
 		expect(stale?.filename).toBe("veyyon_natives.linux-x64-baseline.node");
-		expect(stale?.expected).toBe("__veyyonNativesV1_0_18");
+		expect(stale?.expected).toBe("__veyyonNativesV1_0_19");
 		expect(stale?.builtFor).toEqual(["__veyyonNativesV1_0_17"]);
 	});
 
@@ -160,7 +160,7 @@ describe("staleAddonMessage", () => {
 	it("names the stale file, the version it was built for, and the version expected", () => {
 		const stale = {
 			filename: "veyyon_natives.linux-x64-baseline.node",
-			expected: "__veyyonNativesV1_0_18",
+			expected: "__veyyonNativesV1_0_19",
 			builtFor: ["__veyyonNativesV1_0_17"],
 		};
 		const message = staleAddonMessage(stale, "1.0.18");
@@ -168,12 +168,12 @@ describe("staleAddonMessage", () => {
 		expect(message).toContain("veyyon_natives.linux-x64-baseline.node");
 		expect(message).toContain("__veyyonNativesV1_0_17");
 		expect(message).toContain("1.0.18");
-		expect(message).toContain("__veyyonNativesV1_0_18");
+		expect(message).toContain("__veyyonNativesV1_0_19");
 		expect(message).toContain("bun --cwd=packages/natives run build");
 	});
 
 	it("says 'no version sentinel' when the binary carried none", () => {
-		const stale = { filename: "veyyon_natives.darwin-arm64.node", expected: "__veyyonNativesV1_0_18", builtFor: [] };
+		const stale = { filename: "veyyon_natives.darwin-arm64.node", expected: "__veyyonNativesV1_0_19", builtFor: [] };
 		expect(staleAddonMessage(stale, "1.0.18")).toContain("no version sentinel");
 	});
 });
