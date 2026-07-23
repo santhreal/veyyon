@@ -1,0 +1,88 @@
+{
+	"cases": [
+		{
+			"id": "rpc-builder-success-echoes-id",
+			"contract": "rpcSuccessResponse echoes the request id and marks success true",
+			"surface": "rpc-success-builder",
+			"tags": ["positive"],
+			"input": { "id": "id1", "command": "get_state", "data": { "ok": true } },
+			"expect": {
+				"id": "id1",
+				"type": "response",
+				"command": "get_state",
+				"success": true,
+				"data": { "ok": true }
+			}
+		},
+		{
+			"id": "rpc-builder-success-undefined-id",
+			"contract": "rpcSuccessResponse preserves an undefined id as null in corpus compare",
+			"surface": "rpc-success-builder",
+			"tags": ["boundary"],
+			"input": { "command": "abort", "data": null },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "abort",
+				"success": true,
+				"data": null
+			}
+		},
+		{
+			"id": "rpc-builder-error-echoes-id",
+			"contract": "rpcErrorResponse echoes id and carries the exact error string",
+			"surface": "rpc-error-builder",
+			"tags": ["positive"],
+			"input": { "id": "id1", "command": "abort", "message": "boom" },
+			"expect": {
+				"id": "id1",
+				"type": "response",
+				"command": "abort",
+				"success": false,
+				"error": "boom"
+			}
+		},
+		{
+			"id": "rpc-builder-error-undefined-id",
+			"contract": "rpcErrorResponse drops undefined id for parse-style failures",
+			"surface": "rpc-error-builder",
+			"tags": ["boundary", "regression"],
+			"input": { "command": "parse", "message": "x" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "parse",
+				"success": false,
+				"error": "x"
+			}
+		},
+		{
+			"id": "rpc-builder-unknown-drops-id",
+			"contract": "rpcUnknownCommandResponse always uses undefined id and Unknown command text",
+			"surface": "rpc-unknown-builder",
+			"tags": ["adversarial", "regression"],
+			"input": { "commandType": "nope" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "nope",
+				"success": false,
+				"error": "Unknown command: nope"
+			}
+		},
+		{
+			"id": "rpc-builder-unknown-empty-type",
+			"contract": "rpcUnknownCommandResponse formats an empty command type literally",
+			"surface": "rpc-unknown-builder",
+			"tags": ["boundary", "adversarial"],
+			"input": { "commandType": "" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "",
+				"success": false,
+				"error": "Unknown command: "
+			}
+		}
+	]
+}
