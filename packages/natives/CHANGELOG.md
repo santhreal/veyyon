@@ -1,8 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
 > **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Every version entry **at or below `16.5.2`** is inherited upstream oh-my-pi release history — not a veyyon release (see [UPSTREAM.md](../../UPSTREAM.md)). Veyyon's own release line starts at **`1.0.0`**.
 
-## [Unreleased]
+## [1.0.13] - 2026-07-23
 
 ### Removed
 

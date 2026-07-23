@@ -1,26 +1,25 @@
 # Changelog
 
-> **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Every version entry **at or below `16.5.2`** is inherited upstream oh-my-pi release history — not a veyyon release (see [UPSTREAM.md](../../UPSTREAM.md)). Veyyon's own release line starts at **`1.0.0`**.
-
 ## [Unreleased]
 
-### Changed
+> **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Every version entry **at or below `16.5.2`** is inherited upstream oh-my-pi release history — not a veyyon release (see [UPSTREAM.md](../../UPSTREAM.md)). Veyyon's own release line starts at **`1.0.0`**.
 
-- The editor now renders one blank cell between the cursor and ghost hint text (placeholder or autocomplete hint), in all three cursor modes: software glyph, hardware cursor marker, and cursor override. The hint previously started flush against the cursor cell, so the cursor sat visually on top of the hint's first character. When the width budget cannot fit any hint text, the hint and the gap are dropped together.
+## [1.0.13] - 2026-07-23
 
 ### Added
 
 - Overflowing select lists now show a key legend on their status row (`Type to search · ↑↓ move · ↵ select · esc close`). The legend rides the existing row, never adds one, and the live search query survives truncation ahead of it.
 - `Box.setHugContent(hug)`: an opt-in that shrinks a box (and its border rule) to its widest child line instead of padding every row to the given width. The given width stays the wrap limit. Raw trailing-space padding from children is ignored when measuring; bg-painted padding is preserved.
 - `MarkdownTheme.codeBlockFence`, an optional hook that fully replaces a fenced code block's opening and closing rows (receiving the language and position). Absent, the literal ``` markers render through `codeBlockBorder` exactly as before. Applies to both the top-level and list-nested code render paths.
+- Scroll isolation: `TUI.setScrollIsolation(enabled)` plus `setPinnedFooterRows(rows)` give the host an opencode/grok-style scroll model. While enabled the engine captures wheel/button mouse reports (1000h+1006h, never 1003h motion flood), wheel-up freezes the transcript region on an older frame slice, and the pinned footer stays live at the viewport bottom. Commits freeze while a frozen view is active so held rows backfill exactly once through the ordinary seam rewrite on resume; following resumes on wheel-down to the tail, `scrollToLiveTail()`, resize/full paints, and visible overlays. `virtualScrollActive`/`virtualScrollNewRows` feed the host's scroll indicator. Native terminal scrollback remains the default; enabling trades plain drag-select for Shift+drag.
+
+### Changed
+
+- The editor now renders one blank cell between the cursor and ghost hint text (placeholder or autocomplete hint), in all three cursor modes: software glyph, hardware cursor marker, and cursor override. The hint previously started flush against the cursor cell, so the cursor sat visually on top of the hint's first character. When the width budget cannot fit any hint text, the hint and the gap are dropped together.
 
 ### Fixed
 
 - Fixed the editor ungluing from the viewport bottom when a tall transient block collapses without a committed-prefix resync (the ask dialog's inline "type your own" prompt shrinking back to the one-line editor). `windowTop` floored at `#committedRows` and stranded the editor mid-screen with a blank slab underneath. The tail re-anchor now fires whenever the live tail below the committed boundary underfills the viewport while the focused cursor sits in it, re-showing the frame tail and accepting a few duplicated rows in native history over a floating editor.
-
-### Added
-
-- Scroll isolation: `TUI.setScrollIsolation(enabled)` plus `setPinnedFooterRows(rows)` give the host an opencode/grok-style scroll model. While enabled the engine captures wheel/button mouse reports (1000h+1006h, never 1003h motion flood), wheel-up freezes the transcript region on an older frame slice, and the pinned footer stays live at the viewport bottom. Commits freeze while a frozen view is active so held rows backfill exactly once through the ordinary seam rewrite on resume; following resumes on wheel-down to the tail, `scrollToLiveTail()`, resize/full paints, and visible overlays. `virtualScrollActive`/`virtualScrollNewRows` feed the host's scroll indicator. Native terminal scrollback remains the default; enabling trades plain drag-select for Shift+drag.
 
 ## [16.5.2] - 2026-07-14
 
