@@ -2,12 +2,12 @@
  * Contextual shortcut chip band under the composer (Grok ShortcutsBar dialect).
  * Same chip renderer as ModalShell footers — one grammar for overlays and session.
  */
-import { type Component } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
 import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
-import { layoutShortcutRows, type ModalShortcut, renderModalShortcuts } from "./modal-shell";
+import { layoutShortcutRows, type ModalShortcut } from "./modal-shell";
 
 export type ComposerContext = {
 	/** Agent is streaming / tools running. */

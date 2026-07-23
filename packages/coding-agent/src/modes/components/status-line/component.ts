@@ -4,13 +4,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { resolveThresholdTokens } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import {
-	formatClock,
-	formatDuration,
-	getProjectDir,
-	scopedTimeoutSignal,
-	withScopedTimeoutSignal,
-} from "@veyyon/utils";
+import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { isCompactionStrategyOff } from "../../../config/compaction-strategy";
 import { settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";

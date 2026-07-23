@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import { getProjectDir, setProjectDir } from "../src/dirs";
+import { scanShippedSourceLines } from "./support/scan-shipped-source";
 
 /**
  * The working directory has exactly one owner: `setProjectDir`, which moves the
@@ -57,20 +58,11 @@ describe("single-owner lock", () => {
 		// and names the file so it can be re-pointed at setProjectDir.
 		//
 		// Anchored at the repo root, not cwd: a cwd-relative scan finds nothing when
-		// the suite runs from inside a package and would pass without checking.
+		// the suite runs from inside a package and would pass without checking. The
+		// scan is a self-contained file walk (no external `rg`, which is absent on
+		// GitHub-hosted runners and used to throw here, red-lining the release gate).
 		const repoRoot = path.resolve(import.meta.dir, "..", "..", "..");
-		const scan = Bun.spawnSync({
-			cmd: ["rg", "--line-number", "--glob", "packages/**/src/**/*.ts", String.raw`process\.chdir\(`, "."],
-			cwd: repoRoot,
-		});
-		// rg exits 1 when it matches nothing and 2 on a real error (no rg, bad
-		// glob). Only the first is a pass; the second must not read as one.
-		expect(scan.exitCode).toBeLessThan(2);
-
-		const hits = scan.stdout
-			.toString()
-			.split("\n")
-			.filter(line => line.trim().length > 0)
+		const hits = scanShippedSourceLines(repoRoot, /process\.chdir\(/)
 			// The owner itself.
 			.filter(line => !line.includes("packages/utils/src/dirs.ts"))
 			// The JS eval sandbox hands `chdir` to code running in a separate process,
