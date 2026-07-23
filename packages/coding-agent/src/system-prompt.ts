@@ -168,6 +168,58 @@ async function runGpuProbe(cmd: string[]): Promise<string | null> {
 	}
 }
 
+/**
+ * Pick the best GPU device name from `lspci` default-format output, or null if
+ * none is present. Exported for unit testing.
+ *
+ * lspci lines are `<slot> <class>: <device>`, e.g.
+ * `01:00.0 VGA compatible controller: NVIDIA Corporation Device 2b85 (rev a1)`.
+ * The slot (`01:00.0`) contains colons but never a colon-SPACE, so the first
+ * `": "` is always the class/device separator; the device name is everything
+ * after it. Splitting on a bare `":"` (as an earlier version did) kept the slot
+ * tail and class text, so the prompt showed
+ * `00.0 VGA compatible controller: NVIDIA ...` instead of the device name.
+ *
+ * Among candidates, discrete GPUs (NVIDIA/AMD) outrank an unknown adapter,
+ * which outranks Intel integrated; BMC/server display adapters are skipped. The
+ * sort is stable, so ties keep lspci enumeration order.
+ */
+export function selectGpuFromLspci(output: string): string | null {
+	const gpus: Array<{ name: string; priority: number }> = [];
+	for (const line of output.split("\n")) {
+		if (!/(VGA|3D|Display)/i.test(line)) continue;
+		const sep = line.indexOf(": ");
+		const name = sep >= 0 ? line.slice(sep + 2).trim() : line.trim();
+		const nameLower = name.toLowerCase();
+		// Skip BMC/server management adapters. Real lspci names read
+		// `Matrox Electronics Systems Ltd. MGA G200e`, so the model token is
+		// `MGA G200` with a space: match `mga\s*g200` (the earlier `matrox g200` /
+		// `mgag200` patterns never matched real output and let the BMC adapter
+		// through as the reported GPU).
+		if (/aspeed|mga\s*g200/i.test(name)) continue;
+		// Prioritize discrete GPUs
+		let priority = 0;
+		if (
+			nameLower.includes("nvidia") ||
+			nameLower.includes("geforce") ||
+			nameLower.includes("quadro") ||
+			nameLower.includes("rtx")
+		) {
+			priority = 3;
+		} else if (nameLower.includes("amd") || nameLower.includes("radeon") || nameLower.includes("rx ")) {
+			priority = 3;
+		} else if (nameLower.includes("intel")) {
+			priority = 1;
+		} else {
+			priority = 2;
+		}
+		gpus.push({ name, priority });
+	}
+	if (gpus.length === 0) return null;
+	gpus.sort((a, b) => b.priority - a.priority);
+	return gpus[0].name;
+}
+
 async function getGpuModel(): Promise<string | null> {
 	switch (process.platform) {
 		case "win32": {
@@ -176,36 +228,7 @@ async function getGpuModel(): Promise<string | null> {
 		}
 		case "linux": {
 			const output = await runGpuProbe(["lspci"]);
-			if (!output) return null;
-			const gpus: Array<{ name: string; priority: number }> = [];
-			for (const line of output.split("\n")) {
-				if (!/(VGA|3D|Display)/i.test(line)) continue;
-				const parts = line.split(":");
-				const name = parts.length > 1 ? parts.slice(1).join(":").trim() : line.trim();
-				const nameLower = name.toLowerCase();
-				// Skip BMC/server management adapters
-				if (/aspeed|matrox g200|mgag200/i.test(name)) continue;
-				// Prioritize discrete GPUs
-				let priority = 0;
-				if (
-					nameLower.includes("nvidia") ||
-					nameLower.includes("geforce") ||
-					nameLower.includes("quadro") ||
-					nameLower.includes("rtx")
-				) {
-					priority = 3;
-				} else if (nameLower.includes("amd") || nameLower.includes("radeon") || nameLower.includes("rx ")) {
-					priority = 3;
-				} else if (nameLower.includes("intel")) {
-					priority = 1;
-				} else {
-					priority = 2;
-				}
-				gpus.push({ name, priority });
-			}
-			if (gpus.length === 0) return null;
-			gpus.sort((a, b) => b.priority - a.priority);
-			return gpus[0].name;
+			return output ? selectGpuFromLspci(output) : null;
 		}
 		default:
 			return null;
