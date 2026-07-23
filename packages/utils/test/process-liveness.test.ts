@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import { isProcessAlive } from "../src/process-liveness";
+import { scanShippedSourceLines } from "./support/scan-shipped-source";
 
 describe("isProcessAlive", () => {
 	test("reports this process as alive", () => {
@@ -76,27 +77,13 @@ describe("single-owner lock", () => {
 		// copies disagreed on EPERM. If a new one appears, this fails and points at
 		// the file so it can be re-pointed at the owner instead.
 		// Anchored at the repo root, not cwd: a cwd-relative scan finds nothing when
-		// the suite runs from inside a package and would pass without checking.
+		// the suite runs from inside a package and would pass without checking. The
+		// scan is a self-contained file walk (no external `rg`, which is absent on
+		// GitHub-hosted runners and used to throw here, red-lining the release gate).
 		const repoRoot = path.resolve(import.meta.dir, "..", "..", "..");
-		const scan = Bun.spawnSync({
-			cmd: [
-				"rg",
-				"--line-number",
-				"--glob",
-				"packages/**/src/**/*.ts",
-				String.raw`process\.kill\([^,)]+,\s*0\)`,
-				".",
-			],
-			cwd: repoRoot,
-		});
-		// rg exits 1 when it matches nothing and 2 on a real error (no rg, bad
-		// glob). Only the first is a pass; the second must not read as one.
-		expect(scan.exitCode).toBeLessThan(2);
-		const hits = scan.stdout
-			.toString()
-			.split("\n")
-			.filter(line => line.trim().length > 0)
-			.filter(line => !line.includes("process-liveness.ts"));
+		const hits = scanShippedSourceLines(repoRoot, /process\.kill\([^,)]+,\s*0\)/).filter(
+			line => !line.includes("process-liveness.ts"),
+		);
 
 		expect(hits).toEqual([]);
 	});
