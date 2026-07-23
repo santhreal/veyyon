@@ -32,7 +32,7 @@ import { buildModel } from "@veyyon/catalog/build";
  *  must detach the abort listener). */
 function startH2Server(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
 	const server = http2.createServer();
-	server.on("stream", stream => {
+	server.on("stream", (stream: http2.ServerHttp2Stream) => {
 		stream.respond({ ":status": 200, "content-type": "application/connect+proto" });
 		// No body: the client sees a clean end and the round settles.
 		stream.end();
