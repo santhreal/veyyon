@@ -108,8 +108,13 @@ export type SettingDef =
  * config key: the value lives in the `default` model-role slot, read/written via
  * `settings.getModelRole("default")` / `setModelRole`. Kept as a shared const so
  * the def, the item builder, and the change handler all agree on the id.
+ *
+ * Typed as {@link SettingPath} at this single definition (rather than cast at
+ * each use) so `def.path === DEFAULT_MODEL_SETTING_ID` comparisons and the
+ * item-builder `unshift` both typecheck against the real path union. The id is
+ * intentionally not one of the schema-derived paths; the cast records that.
  */
-export const DEFAULT_MODEL_SETTING_ID = "defaultModel";
+export const DEFAULT_MODEL_SETTING_ID = "defaultModel" as SettingPath;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Condition Functions
@@ -276,7 +281,7 @@ export function getAllSettingDefs(): SettingDef[] {
 	// from the schema. Placed first so it heads the model tab's "Models" group —
 	// the top of the tab, where "what model do I start on?" is looked for.
 	defs.unshift({
-		path: DEFAULT_MODEL_SETTING_ID as SettingPath,
+		path: DEFAULT_MODEL_SETTING_ID,
 		type: "defaultModel",
 		tab: "model",
 		group: "Models",
