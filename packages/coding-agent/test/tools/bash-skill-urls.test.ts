@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import { type ResolveContext, resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
-import { expandInternalUrls, expandSkillUrls } from "@veyyon/coding-agent/tools/bash-skill-urls";
+import { expandInternalUrls, expandSkillUrls, resolveSkillUrlToPath } from "@veyyon/coding-agent/tools/bash-skill-urls";
 import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
 
 function shellEscape(p: string): string {
@@ -357,5 +357,85 @@ describe("expandInternalUrls", () => {
 			getSessionId: () => "session-1",
 		};
 		await expect(expandInternalUrls(command, { skills: [], localOptions })).resolves.toBe(command);
+	});
+});
+
+/**
+ * Direct unit tests for the exported resolveSkillUrlToPath primitive. The
+ * expand* tests above exercise it through shell-quoting, which hides the raw
+ * resolved path and never reaches the namespaced-skill or URL-suffix branches.
+ * These assert the exact absolute path (and the exact security refusals) so the
+ * traversal guard and the longest-prefix skill match can never regress silently.
+ */
+describe("resolveSkillUrlToPath", () => {
+	const skills = [
+		createSkill("brainstorm", "/base/brainstorm"),
+		// A namespaced skill whose own name contains a colon. The URL parser must
+		// not split the name on that colon, and a trailing `:suffix` must still be
+		// peeled by longest-prefix match against the registered names.
+		createSkill("plugin:review", "/base/plugin-review"),
+	];
+
+	it("resolves a bare skill:// URL to the skill base directory", () => {
+		expect(resolveSkillUrlToPath("skill://brainstorm", skills)).toBe(path.resolve("/base/brainstorm"));
+	});
+
+	it("treats a lone trailing slash as the base directory, not a sub-path", () => {
+		expect(resolveSkillUrlToPath("skill://brainstorm/", skills)).toBe(path.resolve("/base/brainstorm"));
+	});
+
+	it("joins a relative file path under the base directory", () => {
+		expect(resolveSkillUrlToPath("skill://brainstorm/sub/dir/file.txt", skills)).toBe(
+			path.resolve("/base/brainstorm/sub/dir/file.txt"),
+		);
+	});
+
+	it("matches a namespaced skill name that itself contains a colon", () => {
+		expect(resolveSkillUrlToPath("skill://plugin:review", skills)).toBe(path.resolve("/base/plugin-review"));
+		expect(resolveSkillUrlToPath("skill://plugin:review/README.md", skills)).toBe(
+			path.resolve("/base/plugin-review/README.md"),
+		);
+	});
+
+	it("peels a colon suffix after a namespaced skill via longest-prefix match", () => {
+		// `plugin:review:1-5` must bind the skill `plugin:review` and carry `1-5`
+		// as the path suffix, not fail to find a skill named `plugin:review:1-5`.
+		expect(resolveSkillUrlToPath("skill://plugin:review:1-5", skills)).toBe(
+			path.resolve("/base/plugin-review/1-5"),
+		);
+	});
+
+	it("percent-decodes an encoded space in the path", () => {
+		expect(resolveSkillUrlToPath("skill://brainstorm/a%20b.md", skills)).toBe(
+			path.resolve("/base/brainstorm/a b.md"),
+		);
+	});
+
+	it("strips a query string and fragment before resolving", () => {
+		expect(resolveSkillUrlToPath("skill://brainstorm?foo=1#frag", skills)).toBe(path.resolve("/base/brainstorm"));
+	});
+
+	it("refuses a literal .. traversal (fail closed)", () => {
+		expect(() => resolveSkillUrlToPath("skill://brainstorm/../../etc/passwd", skills)).toThrow(ToolError);
+		expect(() => resolveSkillUrlToPath("skill://brainstorm/../../etc/passwd", skills)).toThrow(
+			"Path traversal (..) is not allowed in skill:// URLs",
+		);
+	});
+
+	it("refuses a percent-encoded traversal (%2f and %2e both decoded before the check)", () => {
+		// A guard that only inspected the raw, still-encoded path would be bypassed
+		// by these; decoding must happen first so the `..` is seen and rejected.
+		expect(() => resolveSkillUrlToPath("skill://brainstorm/..%2f..%2fetc", skills)).toThrow(ToolError);
+		expect(() => resolveSkillUrlToPath("skill://brainstorm/%2e%2e/x", skills)).toThrow(ToolError);
+	});
+
+	it("throws for an unknown skill and lists the available names", () => {
+		expect(() => resolveSkillUrlToPath("skill://nope", skills)).toThrow(
+			"Unknown skill: nope. Available: brainstorm, plugin:review",
+		);
+	});
+
+	it("throws for a skill:// URL with no skill name", () => {
+		expect(() => resolveSkillUrlToPath("skill://", skills)).toThrow(ToolError);
 	});
 });
