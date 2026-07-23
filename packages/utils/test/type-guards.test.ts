@@ -1,6 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import {
 	asRecord,
 	errorMessage,
@@ -11,6 +9,7 @@ import {
 	toError,
 	trimmedString,
 } from "../src/type-guards";
+import { collectPackageSources, type PackageSource } from "./support/package-sources";
 
 describe("isRecord / asRecord", () => {
 	it("accepts plain objects only", () => {
@@ -95,7 +94,6 @@ describe("trimmedString / finiteNumber", () => {
 // found copies that accepted arrays; the errorMessage sweep found seven
 // byte-identical copies). Convert a file, remove its entry — a stale entry
 // fails the lock so each list can only shrink.
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 const OWNER = "utils/src/type-guards.ts";
 
 // launch/protocol.ts is a deliberately dependency-free cross-process protocol
@@ -246,79 +244,26 @@ function hasNegatedInlineIsRecord(text: string): boolean {
 	return false;
 }
 
-async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			// `argot` is vendored standalone SDK code (src/argot/constants.ts): kept
-			// byte-for-byte in sync with santhreal/argot, it cannot import
-			// @veyyon/utils, so it carries its own util copies by design — skip like vendor.
-			if (
-				entry.name === "node_modules" ||
-				entry.name === "dist" ||
-				entry.name === "vendor" ||
-				entry.name === "argot"
-			)
-				continue;
-			await walk(full, out, includeTests);
-		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
-			out.push(full);
-		}
-	}
-}
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources). Production scans src only; the test-code
+// check scans test too, because a hand-rolled guard in a test helper is still a
+// second definition that drifts and the src-only scan never saw it (three
+// test-local isRecord copies had slipped in exactly there).
+//
+// Every lock test below needs the same (rel, text) pairs, so the walk and the
+// reads happen exactly once per tree and are memoized: re-walking + re-reading
+// the whole monorepo per test made each `it` a ~5s full scan that timed out
+// under CI's parallel load. Reading once turns six scans into one.
+let sourceCache: Promise<PackageSource[]> | undefined;
+let testCache: Promise<PackageSource[]> | undefined;
 
-// `dirs` names the per-package subdirectories to scan. Production scans src
-// only; the test-code check scans test too, because a hand-rolled guard in a
-// test helper is still a second definition that drifts and the src-only scan
-// never saw it (three test-local isRecord copies had slipped in exactly there).
-async function collectFiles(dirs: readonly string[], includeTests: boolean): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		// argot is a standalone published package (its only dependency is smol-toml);
-		// it cannot import @veyyon/utils and carries its own util copies by design, so
-		// exclude the whole package from the ownership scan. The walk's dir-name skip
-		// only catches nested vendored `src/argot/` copies, never this package root.
-		if (pkg.name === "argot") continue;
-		for (const sub of dirs) {
-			try {
-				await walk(path.join(PACKAGES_DIR, pkg.name, sub), files, includeTests);
-			} catch {
-				// Package without that subdirectory (assets-only) — nothing to scan.
-			}
-		}
-	}
-	return files;
-}
-
-// One file's path (repo-relative, forward-slashed) plus its contents. Every
-// lock test below needs the same (rel, text) pairs, so the walk and the reads
-// happen exactly once per tree and are memoized: re-walking + re-reading the
-// whole monorepo per test made each `it` a ~5s full scan that timed out under
-// CI's parallel load. Reading once turns six scans into one.
-type SourceFile = { rel: string; text: string };
-
-async function readAll(files: string[]): Promise<SourceFile[]> {
-	const out: SourceFile[] = [];
-	for (const file of files) {
-		out.push({
-			rel: path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/"),
-			text: await readFile(file, "utf8"),
-		});
-	}
-	return out;
-}
-
-let sourceCache: Promise<SourceFile[]> | undefined;
-let testCache: Promise<SourceFile[]> | undefined;
-
-function sourceFiles(): Promise<SourceFile[]> {
-	sourceCache ??= collectFiles(["src"], false).then(readAll);
+function sourceFiles(): Promise<PackageSource[]> {
+	sourceCache ??= collectPackageSources({ dirs: ["src"] });
 	return sourceCache;
 }
 
-function testFiles(): Promise<SourceFile[]> {
-	testCache ??= collectFiles(["test"], true).then(readAll);
+function testFiles(): Promise<PackageSource[]> {
+	testCache ??= collectPackageSources({ dirs: ["test"], includeTests: true });
 	return testCache;
 }
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
+import { collectPackageSources } from "./support/package-sources";
 
 // Repo-wide source lock: bare `AbortSignal.timeout(ms)` keeps its backing timer
 // armed for the full window after the guarded operation settles — under load
@@ -16,45 +15,17 @@ const GRANDFATHERED = new Set([
 	"ai/src/utils/idle-iterator.ts",
 ]);
 
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
-
-async function walk(dir: string, out: string[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-			out.push(full);
-		}
-	}
-}
-
-async function sourceFiles(): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		const src = path.join(PACKAGES_DIR, pkg.name, "src");
-		try {
-			await walk(src, files);
-		} catch {
-			// Package without a src/ directory (assets-only) — nothing to scan.
-		}
-	}
-	return files;
-}
-
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources).
 describe("scoped-timeout source lock", () => {
 	it("no production source arms a bare AbortSignal.timeout outside the grandfathered set", async () => {
 		const offenders: string[] = [];
 		const cleared: string[] = [];
 		const seen = new Set<string>();
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file);
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			// scoped-timeout.ts is the one legitimate owner of the raw call.
-			if (rel === path.join("utils", "src", "scoped-timeout.ts")) continue;
-			const src = await readFile(file, "utf-8");
-			if (!src.includes("AbortSignal.timeout(")) continue;
+			if (rel === "utils/src/scoped-timeout.ts") continue;
+			if (!text.includes("AbortSignal.timeout(")) continue;
 			seen.add(rel);
 			if (!GRANDFATHERED.has(rel)) offenders.push(rel);
 		}

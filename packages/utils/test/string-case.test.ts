@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { titleCaseSentence, titleCaseWords } from "../src/string-case";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("titleCaseWords", () => {
 	it("uppercases the first letter of every word", () => {
@@ -43,39 +42,17 @@ describe("titleCaseSentence", () => {
 // Repo-wide source lock: titleCaseWords/titleCaseSentence have exactly ONE
 // owner, packages/utils/src/string-case.ts. Both known local copies (todo.ts,
 // todo-command-controller.ts) were converted when this lock landed, so no
-// grandfathered set — any new local definition fails outright.
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
-
+// grandfathered set — any new local definition fails outright. The monorepo
+// walk + skip-set is shared with every other source-ownership lock (see
+// ./support/package-sources).
 const LOCAL_DEF = /function\s+titleCase(?:Words|Sentence)?\s*\(/;
-
-async function walk(dir: string, out: string[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-			out.push(full);
-		}
-	}
-}
 
 describe("titleCase source lock", () => {
 	it("no production source defines a local titleCase variant outside utils/src/string-case.ts", async () => {
 		const offenders: string[] = [];
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			const files: string[] = [];
-			try {
-				await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
-			} catch {
-				// Package without a src/ directory (assets-only) — nothing to scan.
-			}
-			for (const file of files) {
-				const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-				if (rel === "utils/src/string-case.ts") continue;
-				if (LOCAL_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
-			}
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (rel === "utils/src/string-case.ts") continue;
+			if (LOCAL_DEF.test(text)) offenders.push(rel);
 		}
 		expect(offenders, "local titleCase copies — import from @veyyon/utils instead").toEqual([]);
 	});

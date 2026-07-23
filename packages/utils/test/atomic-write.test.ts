@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
-import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith, atomicWriteJson } from "../src/atomic-write";
 import { TempDir } from "../src/temp";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("atomicWriteFile", () => {
 	let dir: TempDir;
@@ -333,52 +333,14 @@ const RENAME_CALL = /\brename(?:Sync)?\s*\(/;
 // unrelated call in directory-migration code) from matching.
 const TEMP_TOKEN = /\.tmp\b/;
 
-const ATOMIC_PACKAGES_DIR = path.join(import.meta.dir, "../..");
-
-async function walkTsSources(dir: string, out: string[]): Promise<void> {
-	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []); // [] = no such src/ subtree
-	for (const entry of entries) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			// `argot` is vendored standalone SDK code (src/argot/constants.ts): kept
-			// byte-for-byte in sync with santhreal/argot, it cannot import
-			// @veyyon/utils, so it carries its own util copies by design — skip like vendor.
-			if (
-				entry.name === "node_modules" ||
-				entry.name === "dist" ||
-				entry.name === "vendor" ||
-				entry.name === "argot"
-			)
-				continue;
-			await walkTsSources(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-			out.push(full);
-		}
-	}
-}
-
-async function productionSources(): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(ATOMIC_PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		// argot is a standalone published package (its only dependency is smol-toml);
-		// it cannot import @veyyon/utils and carries its own atomic-write copy by
-		// design (src/cache.ts), so exclude the whole package root here. The walk's
-		// dir-name skip only catches nested vendored `src/argot/` copies.
-		if (pkg.name === "argot") continue;
-		await walkTsSources(path.join(ATOMIC_PACKAGES_DIR, pkg.name, "src"), files);
-	}
-	return files;
-}
-
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources). This lock scans production src only.
 describe("atomic-write source lock", () => {
 	it("no production source hand-rolls temp-file + rename outside the owner", async () => {
 		const offenders: string[] = [];
 		const seen = new Set<string>();
-		for (const file of await productionSources()) {
-			const rel = path.relative(ATOMIC_PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			if (rel === ATOMIC_OWNER) continue;
-			const text = await readFile(file, "utf8");
 			if (RENAME_CALL.test(text) && TEMP_TOKEN.test(text)) {
 				seen.add(rel);
 				if (!HANDROLLED_ATOMIC_ALLOWED.has(rel)) offenders.push(rel);
