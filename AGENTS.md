@@ -1,5 +1,16 @@
 # Development Rules
 
+## NEVER verify UI with tmux (BINDING — the user's explicit, repeated order)
+
+Do not use tmux captures to judge, verify, or "live-verify" any visual change. Ever. The user has said this repeatedly and it keeps being violated. Why it fails: tmux renders on a pure-black default ground, strips or distorts styling in `capture-pane`, and hides exactly the class of bugs that matter (explicit dark background fills looked invisible in tmux and shipped as black slabs on the user's grey terminal — 2026-07-22). A tmux dump is not evidence; treating it as evidence has caused shipped regressions.
+
+What counts as visual evidence instead:
+1. **Real-render image proofs**: render the actual shipped component off-screen and rasterize to PNG/SVG on BOTH a grey ground (`#1e2127`-class) and a black ground, then look at the image (see the `*-shot.ts` harness pattern; the 10-minute rule's differential applies — before/after, both grounds).
+2. **String/ANSI assertions** in tests that pin exact bytes, colors, and widths.
+3. **The user's own screenshots** are ground truth; when they contradict any other signal, they win.
+
+Any background fill, color, spacing, or motion change verified only through tmux is UNVERIFIED and must not be called done.
+
 ## Default Context
 
 This repo contains multiple packages, but **`packages/coding-agent/`** is the primary focus. Unless otherwise specified, assume work refers to this package.
@@ -325,8 +336,29 @@ Runs entirely on GitHub-hosted runners (`ubuntu-22.04`, `macos-14`, and the OS
 matrix — no self-hosted dependency). On an ordinary `main` push it builds/caches the
 native addons and runs the full test matrix. When `HEAD` carries a `v*` release tag
 (see below), the same run additionally builds the per-platform binaries, then
-publishes: **GitHub release** (all binaries + `.sha256`), **npm** packages, and the
-**Homebrew** formula.
+publishes: the **GitHub release** (all binaries + `.sha256`) and redeploys
+`veyyon.dev/changelog`. That is the whole published surface — see Distribution.
+
+## Distribution — GitHub only (no npm, ever; no cargo yet)
+
+Veyyon ships through **exactly two** channels and no others:
+
+1. **`curl -fsSL https://get.veyyon.dev | sh`** — the installer and the auto-updater both
+   talk to **veyyon.dev**, which serves the prebuilt, self-contained binary and links a
+   short `vey` command. veyyon.dev **propagates automatically from GitHub Releases**
+   (`github.com/santhreal/veyyon/releases`), which is the upstream it mirrors; a user or
+   the running binary only ever reaches veyyon.dev.
+2. **`git clone` + build from source** (`bun setup` / `bun dev`) — for contributors and
+   anyone who wants to drive the workspace.
+
+There is **no npm package and there never will be**. There is **no `cargo publish`
+yet** (maybe one day; not now). Do not add, document, or assume an npm / bun-global /
+Homebrew / mise / crates.io install or update path for veyyon itself — treat any such
+reference as a defect to remove. The install/update endpoint is **veyyon.dev**; the
+upstream source of "what versions exist" is the **GitHub Releases** it propagates from;
+the only install methods are the release **binary** (served via veyyon.dev) and a
+source **checkout**. (Extensions and the SDK are a separate matter: an extension may
+still `npm install` its own dependencies — that is not veyyon's own distribution.)
 
 ## Releasing
 
