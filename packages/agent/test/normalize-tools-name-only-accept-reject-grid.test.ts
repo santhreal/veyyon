@@ -7,7 +7,7 @@ import { normalizeTools } from "@veyyon/agent-core/agent-loop";
 
 describe("normalizeTools name-only accept reject grid", () => {
 	it("empty list stays empty", () => {
-		expect(normalizeTools([])).toEqual([]);
+		expect(normalizeTools([], false)).toEqual([]);
 	});
 
 	it("tool with name and parameters kept", () => {
@@ -18,7 +18,7 @@ describe("normalizeTools name-only accept reject grid", () => {
 				parameters: { type: "object", properties: {} },
 			},
 		];
-		const out = normalizeTools(tools as never);
+		const out = normalizeTools(tools as never, false);
 		expect(out).toHaveLength(1);
 		expect(out[0]!.name).toBe("bash");
 	});
@@ -28,7 +28,7 @@ describe("normalizeTools name-only accept reject grid", () => {
 			{ name: "a", description: "1", parameters: { type: "object" } },
 			{ name: "a", description: "2", parameters: { type: "object" } },
 		];
-		const out = normalizeTools(tools as never);
+		const out = normalizeTools(tools as never, false);
 		// lock actual: either 1 with last description or keep both — assert real
 		expect(out.length).toBeGreaterThanOrEqual(1);
 		expect(out.every(t => t.name === "a")).toBe(true);
@@ -40,7 +40,7 @@ describe("normalizeTools name-only accept reject grid", () => {
 			description: name,
 			parameters: { type: "object" },
 		}));
-		const out = normalizeTools(tools as never);
+		const out = normalizeTools(tools as never, false);
 		expect(out.map(t => t.name)).toEqual(["z", "a", "m"]);
 	});
 
@@ -51,7 +51,7 @@ describe("normalizeTools name-only accept reject grid", () => {
 				description: `d${i}`,
 				parameters: { type: "object" },
 			}));
-			const out = normalizeTools(tools as never);
+			const out = normalizeTools(tools as never, false);
 			expect(out.map(t => t.name)).toEqual(tools.map(t => t.name));
 		});
 	}

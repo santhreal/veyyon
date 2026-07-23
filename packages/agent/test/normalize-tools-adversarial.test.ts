@@ -23,31 +23,28 @@ function tool(name: string) {
 
 describe("normalizeTools adversarial", () => {
 	it("returns empty array for empty input", () => {
-		expect(normalizeTools([])).toEqual([]);
+		expect(normalizeTools([], false)).toEqual([]);
 	});
 
 	it("preserves tool names in order", () => {
 		const tools = [tool("a"), tool("b"), tool("c")];
-		const out = normalizeTools(tools as never);
+		const out = normalizeTools(tools as never, false);
 		expect(out.map(t => t.name)).toEqual(["a", "b", "c"]);
 	});
 
 	it("filters null/undefined/object-without-name without throwing", () => {
 		const good = tool("keep");
-		// @ts-expect-error intentional garbage mixed with a real tool
 		const out = normalizeTools([null, undefined, {}, { name: 1 }, good] as never, false);
 		expect(out.map(t => t.name)).toEqual(["keep"]);
 	});
 
 	it("returns empty when every entry is invalid", () => {
-		// @ts-expect-error intentional garbage
 		const out = normalizeTools([null, undefined, {}] as never, false);
 		expect(out).toEqual([]);
 	});
 
 	it("preserves a single valid tool among sparse holes", () => {
 		const keep = tool("only");
-		// @ts-expect-error intentional sparse garbage
 		const out = normalizeTools([undefined, null, keep, null] as never, false);
 		expect(out).toHaveLength(1);
 		expect(out[0]!.name).toBe("only");
@@ -62,13 +59,12 @@ describe("normalizeTools adversarial", () => {
 				return { content: [{ type: "text" as const, text: "x" }], details: {} };
 			},
 		};
-		// @ts-expect-error intentional missing name
 		const out = normalizeTools([nameless, tool("named")] as never, false);
 		expect(out.map(t => t.name)).toEqual(["named"]);
 	});
 
 	it("keeps tools with duplicate names in input order (no silent dedupe inventing order)", () => {
-		const out = normalizeTools([tool("dup"), tool("dup"), tool("other")] as never);
+		const out = normalizeTools([tool("dup"), tool("dup"), tool("other")] as never, false);
 		const names = out.map(t => t.name);
 		// Either keep both dups in order or dedupe left-to-right — must include other.
 		expect(names.includes("other")).toBe(true);
@@ -78,7 +74,6 @@ describe("normalizeTools adversarial", () => {
 
 	it("does not throw on a tool with empty-string name", () => {
 		const emptyName = tool("");
-		// @ts-expect-error empty name is adversarial
 		const out = normalizeTools([emptyName, tool("ok")] as never, false);
 		// Empty name may be dropped or kept; must never throw and must keep ok.
 		expect(out.some(t => t.name === "ok")).toBe(true);

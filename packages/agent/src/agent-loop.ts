@@ -676,6 +676,21 @@ const normalizedToolsCache = new WeakMap<
 	{ key: string; result: Context["tools"] }
 >();
 
+// Overloads: a defined tool list normalizes to a defined tool list (the body only
+// returns `undefined` for a falsy input), so callers passing a real array do not
+// have to null-check the result.
+export function normalizeTools(
+	tools: NonNullable<AgentContext["tools"]>,
+	injectIntent: boolean,
+	exampleDialect?: Dialect,
+	pruneDescriptions?: boolean,
+): NonNullable<Context["tools"]>;
+export function normalizeTools(
+	tools: AgentContext["tools"],
+	injectIntent: boolean,
+	exampleDialect?: Dialect,
+	pruneDescriptions?: boolean,
+): Context["tools"];
 export function normalizeTools(
 	tools: AgentContext["tools"],
 	injectIntent: boolean,
