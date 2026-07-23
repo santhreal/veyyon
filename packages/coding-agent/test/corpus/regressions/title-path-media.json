@@ -1,0 +1,160 @@
+{
+	"cases": [
+		{
+			"id": "title-slot-roundtrip-user",
+			"contract": "serializeTitleSlot produces a 256-byte line that parses back to the same title metadata",
+			"surface": "title-slot-roundtrip",
+			"tags": ["positive", "regression"],
+			"input": {
+				"title": "Hello",
+				"source": "user",
+				"updatedAt": "2020-01-02T03:04:05.000Z"
+			},
+			"expect": {
+				"byteLength": 256,
+				"title": "Hello",
+				"source": "user",
+				"updatedAt": "2020-01-02T03:04:05.000Z",
+				"padLength": 153
+			}
+		},
+		{
+			"id": "title-slot-roundtrip-auto",
+			"contract": "An auto-sourced title slot round-trips with source auto",
+			"surface": "title-slot-roundtrip",
+			"tags": ["positive"],
+			"input": {
+				"title": "Auto",
+				"source": "auto",
+				"updatedAt": "2021-06-15T12:00:00.000Z"
+			},
+			"expect": {
+				"byteLength": 256,
+				"title": "Auto",
+				"source": "auto",
+				"updatedAt": "2021-06-15T12:00:00.000Z",
+				"padLength": 154
+			}
+		},
+		{
+			"id": "title-slot-parse-garbage",
+			"contract": "A non-JSON title line parses to null",
+			"surface": "parse-title-slot-line",
+			"tags": ["negative", "adversarial"],
+			"input": { "line": "not a slot" },
+			"expect": { "title": null }
+		},
+		{
+			"id": "title-slot-parse-legacy-incomplete",
+			"contract": "A title object missing updatedAt and pad is rejected",
+			"surface": "parse-title-slot-line",
+			"tags": ["adversarial", "negative"],
+			"input": { "line": "{\"type\":\"title\",\"v\":1,\"title\":\"x\"}" },
+			"expect": { "title": null }
+		},
+		{
+			"id": "ast-edit-targets-paths",
+			"contract": "astEditFilesystemTargets returns string paths from the paths array",
+			"surface": "ast-edit-filesystem-targets",
+			"tags": ["positive"],
+			"input": { "args": { "paths": ["/a.ts", "/b.ts"] } },
+			"expect": { "targets": ["/a.ts", "/b.ts"] }
+		},
+		{
+			"id": "ast-edit-targets-filters-non-strings",
+			"contract": "Non-string path entries are filtered out of ast-edit targets",
+			"surface": "ast-edit-filesystem-targets",
+			"tags": ["adversarial", "boundary"],
+			"input": { "args": { "paths": ["/a.ts", 1, null, "/b"] } },
+			"expect": { "targets": ["/a.ts", "/b"] }
+		},
+		{
+			"id": "ast-edit-targets-path-singular-ignored",
+			"contract": "A singular path field is ignored; only paths arrays count",
+			"surface": "ast-edit-filesystem-targets",
+			"tags": ["adversarial", "negative"],
+			"input": { "args": { "path": "/a.ts" } },
+			"expect": { "targets": [] }
+		},
+		{
+			"id": "windows-drive-alias-win32",
+			"contract": "On win32, /c/Users/x becomes C:\\Users\\x",
+			"surface": "normalize-windows-drive",
+			"tags": ["positive"],
+			"input": { "filePath": "/c/Users/x", "platform": "win32" },
+			"expect": { "path": "C:\\Users\\x" }
+		},
+		{
+			"id": "windows-drive-alias-linux-passthrough",
+			"contract": "On linux, /c/Users/x passes through unchanged",
+			"surface": "normalize-windows-drive",
+			"tags": ["negative", "boundary"],
+			"input": { "filePath": "/c/Users/x", "platform": "linux" },
+			"expect": { "path": "/c/Users/x" }
+		},
+		{
+			"id": "windows-drive-alias-d-win32",
+			"contract": "On win32, /d/foo becomes D:\\foo",
+			"surface": "normalize-windows-drive",
+			"tags": ["positive", "boundary"],
+			"input": { "filePath": "/d/foo", "platform": "win32" },
+			"expect": { "path": "D:\\foo" }
+		},
+		{
+			"id": "normalize-local-scheme-file",
+			"contract": "normalizeLocalScheme leaves a file:// URL unchanged",
+			"surface": "normalize-local-scheme",
+			"tags": ["positive"],
+			"input": { "filePath": "file:///tmp/a" },
+			"expect": { "path": "file:///tmp/a" }
+		},
+		{
+			"id": "normalize-local-scheme-abs",
+			"contract": "An absolute filesystem path passes through normalizeLocalScheme",
+			"surface": "normalize-local-scheme",
+			"tags": ["positive"],
+			"input": { "filePath": "/tmp/a" },
+			"expect": { "path": "/tmp/a" }
+		},
+		{
+			"id": "media-duration-zero",
+			"contract": "Zero seconds formats as 0:00",
+			"surface": "format-media-duration",
+			"tags": ["boundary"],
+			"input": { "seconds": 0 },
+			"expect": { "text": "0:00" }
+		},
+		{
+			"id": "media-duration-minute",
+			"contract": "Sixty-five seconds formats as 1:05",
+			"surface": "format-media-duration",
+			"tags": ["positive"],
+			"input": { "seconds": 65 },
+			"expect": { "text": "1:05" }
+		},
+		{
+			"id": "media-duration-hour",
+			"contract": "3661 seconds formats as 1:01:01",
+			"surface": "format-media-duration",
+			"tags": ["positive", "boundary"],
+			"input": { "seconds": 3661 },
+			"expect": { "text": "1:01:01" }
+		},
+		{
+			"id": "iso-date-valid",
+			"contract": "formatIsoDate keeps the YYYY-MM-DD prefix of an ISO timestamp",
+			"surface": "format-iso-date",
+			"tags": ["positive"],
+			"input": { "value": "2020-01-02T03:04:05Z" },
+			"expect": { "text": "2020-01-02" }
+		},
+		{
+			"id": "iso-date-undefined",
+			"contract": "formatIsoDate of undefined yields an empty string",
+			"surface": "format-iso-date",
+			"tags": ["boundary", "negative"],
+			"input": {},
+			"expect": { "text": "" }
+		}
+	]
+}

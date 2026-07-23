@@ -20,7 +20,13 @@ import {
 	type ToolApproval,
 } from "@veyyon/coding-agent/tools/approval";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
+import {
+	parseTitleSlotLine,
+	serializeTitleSlot,
+	titleUpdateFromSlot,
+} from "@veyyon/coding-agent/session/session-title-slot";
 import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
+import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/ast-edit";
 import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
@@ -37,6 +43,8 @@ import {
 	formatPathRelativeToCwd,
 	globSearchBase,
 	isPathWithinCwd,
+	normalizeLocalScheme,
+	normalizeWindowsDriveAliasPath,
 	parseFindPattern,
 	parseLineRangeChunk,
 	parseLineRanges,
@@ -51,6 +59,7 @@ import {
 	type ToolWithTimeout,
 } from "@veyyon/coding-agent/tools/tool-timeouts";
 import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
+import { formatIsoDate, formatMediaDuration } from "@veyyon/coding-agent/web/scrapers/types";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
@@ -658,6 +667,65 @@ function runGetPriorityInfo(c: CorpusCase): void {
 	expect(getPriorityInfo(input.priority)).toEqual(c.expect);
 }
 
+function runTitleSlotRoundtrip(c: CorpusCase): void {
+	const input = c.input as { title: string; source: "user" | "auto"; updatedAt: string };
+	const exp = c.expect as {
+		byteLength: number;
+		title: string;
+		source: string;
+		updatedAt: string;
+		padLength: number;
+	};
+	const line = serializeTitleSlot(input);
+	expect(Buffer.byteLength(line, "utf-8")).toBe(exp.byteLength);
+	const slot = parseTitleSlotLine(line);
+	expect(slot?.title).toBe(exp.title);
+	expect(slot?.source).toBe(exp.source);
+	expect(slot?.updatedAt).toBe(exp.updatedAt);
+	expect(slot?.pad.length).toBe(exp.padLength);
+	expect(titleUpdateFromSlot(slot)).toEqual({
+		title: exp.title,
+		source: exp.source,
+		updatedAt: exp.updatedAt,
+	});
+}
+
+function runParseTitleSlotLine(c: CorpusCase): void {
+	const input = c.input as { line: string };
+	const exp = c.expect as { title: string | null };
+	expect(nullishToNull(parseTitleSlotLine(input.line)?.title)).toBe(exp.title);
+}
+
+function runAstEditFilesystemTargets(c: CorpusCase): void {
+	const input = c.input as { args: unknown };
+	const exp = c.expect as { targets: string[] };
+	expect(astEditFilesystemTargets(input.args)).toEqual(exp.targets);
+}
+
+function runNormalizeWindowsDrive(c: CorpusCase): void {
+	const input = c.input as { filePath: string; platform: NodeJS.Platform };
+	const exp = c.expect as { path: string };
+	expect(normalizeWindowsDriveAliasPath(input.filePath, input.platform)).toBe(exp.path);
+}
+
+function runNormalizeLocalScheme(c: CorpusCase): void {
+	const input = c.input as { filePath: string };
+	const exp = c.expect as { path: string };
+	expect(normalizeLocalScheme(input.filePath)).toBe(exp.path);
+}
+
+function runFormatMediaDuration(c: CorpusCase): void {
+	const input = c.input as { seconds: number };
+	const exp = c.expect as { text: string };
+	expect(formatMediaDuration(input.seconds)).toBe(exp.text);
+}
+
+function runFormatIsoDate(c: CorpusCase): void {
+	const input = c.input as { value?: string };
+	const exp = c.expect as { text: string };
+	expect(formatIsoDate(input.value)).toBe(exp.text);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -829,6 +897,27 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "get-priority-info":
 			runGetPriorityInfo(c);
+			return;
+		case "title-slot-roundtrip":
+			runTitleSlotRoundtrip(c);
+			return;
+		case "parse-title-slot-line":
+			runParseTitleSlotLine(c);
+			return;
+		case "ast-edit-filesystem-targets":
+			runAstEditFilesystemTargets(c);
+			return;
+		case "normalize-windows-drive":
+			runNormalizeWindowsDrive(c);
+			return;
+		case "normalize-local-scheme":
+			runNormalizeLocalScheme(c);
+			return;
+		case "format-media-duration":
+			runFormatMediaDuration(c);
+			return;
+		case "format-iso-date":
+			runFormatIsoDate(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);
