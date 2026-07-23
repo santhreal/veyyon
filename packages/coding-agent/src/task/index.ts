@@ -296,19 +296,20 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
 /**
  * Resolve the ExecutorOptions.cwd for a spawn.
  * Default / `"inherit"` uses the parent's live session cwd at spawn time.
- * An explicit path must be absolute, exist, and be a directory.
+ * A relative path resolves against the parent's cwd (like `cd libs/scanner`
+ * from where the parent agent is), and an absolute path is used as-is. Either
+ * way the result must exist and be a directory (fail closed).
  */
 export async function resolveSpawnCwd(raw: string | undefined, parentCwd: string): Promise<string> {
 	const trimmed = typeof raw === "string" ? raw.trim() : "";
 	if (!trimmed || trimmed === "inherit") {
 		return parentCwd;
 	}
-	if (!path.isAbsolute(trimmed)) {
-		throw new Error(
-			`task cwd must be absolute or "inherit" (got relative path: ${trimmed}). Pass an absolute directory path.`,
-		);
-	}
-	const resolved = path.resolve(trimmed);
+	// A relative cwd is resolved against the parent agent's live cwd rather than
+	// rejected: spawning a subagent in `libs/scanner/rulec` from the parent should
+	// behave like a `cd` there. Absolute paths already point where they point.
+	// This adds no new reach an absolute path did not already allow.
+	const resolved = path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(parentCwd, trimmed);
 	try {
 		const st = await fs.stat(resolved);
 		if (!st.isDirectory()) {
@@ -316,7 +317,10 @@ export async function resolveSpawnCwd(raw: string | undefined, parentCwd: string
 		}
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("task cwd")) throw err;
-		throw new Error(`task cwd does not exist: ${resolved}`);
+		// Name the relative input and what it resolved against, so a wrong parent
+		// cwd is diagnosable instead of showing only the joined absolute path.
+		const context = path.isAbsolute(trimmed) ? "" : ` (resolved from relative "${trimmed}" against ${parentCwd})`;
+		throw new Error(`task cwd does not exist: ${resolved}${context}`);
 	}
 	if (!(await directoryExists(resolved))) {
 		throw new Error(`task cwd does not exist: ${resolved}`);
