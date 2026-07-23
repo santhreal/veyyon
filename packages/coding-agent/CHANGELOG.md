@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the "continue where you left off" shortlist ordering sessions nondeterministically when several were last active in the same moment. Ties now fall back to the recorded start time, then the file path, for a stable order across runs.
+
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes
