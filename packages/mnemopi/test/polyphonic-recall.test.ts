@@ -117,6 +117,32 @@ describe("PolyphonicRecallEngine", () => {
 		}
 	});
 
+	// Regression: the engine once carried a frozen `voiceWeights` field (vector
+	// 0.35, graph 0.25, fact 0.25, temporal 0.15) surfaced via getStats as
+	// `voice_weights`, implying weighted fusion. But combineVoices is pure RRF
+	// and never applied those weights, so the reported weights misrepresented
+	// scoring. These assertions lock the honest contract: getStats advertises no
+	// voice weights, and a rank-1 hit contributes the same `1 / (RRF_K + 1)`
+	// regardless of which voice found it. If a per-voice weight is ever
+	// reintroduced without wiring it into the score, the equality below breaks.
+	it("fuses voices with unweighted RRF and reports no voice weights", () => {
+		const beam = makeBeam();
+		try {
+			const engine = seedPolyphonicFixture(beam);
+
+			expect(Object.keys(engine.getStats()).sort()).toEqual(["consolidation_stats", "graph_stats", "vector_stats"]);
+
+			const results = engine.recall("Alice recent", [1, 0], 10);
+			// m2's vector voice and m3's temporal voice each rank first for their
+			// voice, so both contribute exactly 1/61 despite different voice
+			// identities. Weighted fusion would have made these 0.35/61 vs 0.15/61.
+			expect(results.find(result => result.id === "m2")?.voice_scores.vector).toBe(1 / 61);
+			expect(results.find(result => result.id === "m3")?.voice_scores.temporal).toBe(1 / 61);
+		} finally {
+			closeQuietly(beam.db);
+		}
+	});
+
 	it("honors per-voice gates without producing fake-success results", () => {
 		const beam = makeBeam();
 		try {

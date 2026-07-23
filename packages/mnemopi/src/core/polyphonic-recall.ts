@@ -183,12 +183,6 @@ export class PolyphonicRecallEngine {
 	readonly consolidator: VeracityConsolidator;
 	readonly sessionId: string;
 	readonly channelId: string | null;
-	readonly voiceWeights: Readonly<Record<PolyphonicVoice, number>> = Object.freeze({
-		vector: 0.35,
-		graph: 0.25,
-		fact: 0.25,
-		temporal: 0.15,
-	});
 
 	constructor(options: PolyphonicEngineOptions = {}) {
 		this.dbPath = options.dbPath ?? ":memory:";
@@ -448,6 +442,11 @@ export class PolyphonicRecallEngine {
 		}
 		return selected;
 	}
+	// Fusion is pure Reciprocal Rank Fusion: each voice contributes
+	// `1 / (RRF_K + rank)` by its own ranking, with no per-voice weighting (see
+	// {@link combineVoices}). getStats therefore reports no voice weights; a
+	// `voice_weights` field once lived here but never reached the score, so it
+	// only misrepresented how ranking works.
 	getStats(): Record<string, JsonValue> {
 		let embeddedRows = 0;
 		if (tableExists(this.db, "memory_embeddings")) {
@@ -457,12 +456,6 @@ export class PolyphonicRecallEngine {
 			embeddedRows = row.count;
 		}
 		return {
-			voice_weights: {
-				vector: this.voiceWeights.vector,
-				graph: this.voiceWeights.graph,
-				fact: this.voiceWeights.fact,
-				temporal: this.voiceWeights.temporal,
-			},
 			vector_stats: { embedded_rows: embeddedRows },
 			graph_stats: this.graph.getStats() as unknown as Record<string, JsonValue>,
 			consolidation_stats: this.consolidator.getStats() as unknown as Record<string, JsonValue>,
