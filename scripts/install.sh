@@ -228,7 +228,18 @@ do_uninstall() {
     done
     if has bun; then bun remove -g "$PACKAGE" >/dev/null 2>&1 && ok "removed global $PACKAGE" || true; fi
     src="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
-    if [ -d "$src" ]; then rm -rf "$src" && { ok "removed source checkout $src"; removed=1; }; fi
+    if [ -d "$src" ]; then
+        # Never rm -rf a checkout that holds uncommitted edits or unpushed local
+        # branches (e.g. a `veyyon-local-*` preservation branch carrying the
+        # user's AGENTS.md). Move it aside so uninstall can never destroy work
+        # the installer did not create; only a pristine tree is deleted outright.
+        if src_has_local_work "$src"; then
+            move_aside_existing_src "$src"
+            removed=1
+        else
+            rm -rf "$src" && { ok "removed source checkout $src"; removed=1; }
+        fi
+    fi
     for sh in bash zsh fish; do
         out=$(completions_dir_for "$sh")
         for name in "$BIN_NAME" "_$BIN_NAME" "$BIN_NAME.fish"; do
@@ -331,6 +342,24 @@ move_aside_existing_src() {
     backup="$src.bak-$stamp"
     mv "$src" "$backup" || die "refusing to clone: could not move existing $src aside to $backup"
     warn "moved existing $src aside to $backup (nothing was deleted)"
+}
+
+# Report (exit 0) whether a source checkout holds work the installer did not
+# create and must not delete on uninstall: uncommitted edits, or commits on any
+# local branch that live on no remote (this includes the `veyyon-local-*`
+# preservation branches from a prior update, so a preserved AGENTS.md is never
+# silently `rm -rf`'d out from under the user by `--uninstall`). A non-git but
+# non-empty tree is also treated as local work (user files / partial checkout).
+# Exit 1 means the tree is pristine and safe to remove outright.
+src_has_local_work() {
+    src="${1:-$VEYYON_SRC_DIR}"
+    [ -d "$src" ] || return 1
+    if [ ! -d "$src/.git" ]; then
+        [ -n "$(ls -A "$src" 2>/dev/null)" ] && return 0 || return 1
+    fi
+    [ -n "$( cd "$src" 2>/dev/null && git status --porcelain 2>/dev/null )" ] && return 0
+    [ -n "$( cd "$src" 2>/dev/null && git log --branches --not --remotes --oneline 2>/dev/null )" ] && return 0
+    return 1
 }
 
 fetch_source_tree() {
