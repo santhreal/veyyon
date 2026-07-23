@@ -219,6 +219,16 @@ function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+// Per-package bun-test args applied in every mode. hashline's large-base scale
+// suites (`apply-edits-past-6000-*`) do an O(range) operation per sampled anchor
+// — a `DEL 1.=k` prefix delete expands to k edits — so a single `it` can run a
+// few seconds on a slow CI runner, above bun's 5s per-test default. A larger
+// per-test timeout gives those legitimately-heavy tests headroom without masking
+// a hang: the ci-test-ts 600s bucket watchdog still bounds the whole run.
+const workspacePackageExtraArgs: Record<string, string[]> = {
+	"packages/hashline": ["--timeout", "20000"],
+};
+
 function workspaceTestCommand(
 	pkg: string,
 	parallel: number,
@@ -228,10 +238,11 @@ function workspaceTestCommand(
 	// `--smol` runs the test process with a smaller heap. The native/TUI/integration
 	// bucket asks for it because those suites load the native addon and browser-ish
 	// modules; without it a fat single invocation can OOM-kill (reported as exit 137).
+	const perPackageArgs = workspacePackageExtraArgs[pkg] ?? [];
 	return {
 		label: pkg,
 		cwd: pkg,
-		command: ["bun", "test", ...(smol ? ["--smol"] : []), `--parallel=${parallel}`, ...extraArgs],
+		command: ["bun", "test", ...(smol ? ["--smol"] : []), `--parallel=${parallel}`, ...perPackageArgs, ...extraArgs],
 	};
 }
 

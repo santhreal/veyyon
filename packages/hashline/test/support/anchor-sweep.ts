@@ -21,8 +21,17 @@
 /** Bases at or below this size are swept exhaustively; larger bases are sampled. */
 export const EXHAUSTIVE_MAX = 4000;
 
-/** Number of evenly spaced interior probes taken on a large (sampled) base. */
-export const INTERIOR_SAMPLES = 60;
+/**
+ * Number of evenly spaced interior probes taken on a large (sampled) base.
+ *
+ * Kept small (a few dozen) on purpose: some suites do an O(range) operation per
+ * anchor — a `DEL 1.=k` prefix delete expands to k edits — so the per-`it` cost
+ * is the number of anchors times that. On a slow CI runner ~66 anchors of a
+ * 60000-line prefix delete crossed bun's 5s per-test timeout; a smaller sample
+ * keeps every large-base `it` comfortably under it while still probing both ends
+ * and the interior.
+ */
+export const INTERIOR_SAMPLES = 16;
 
 /**
  * The 1-based anchors to exercise for a base of `n` lines: `1..n` in full when
