@@ -1,0 +1,8 @@
+{
+ "scenario": "apply-error-duplicate-range-hunks",
+ "patch": "[src/a.ts#2543]\nSWAP 2.=2:\n+first\nSWAP 2.=2:\n+second\n",
+ "error": "line 3: anchor line 2 is already targeted by another hunk on line 1. Issue ONE hunk per range; payload is only the final desired content, never a before/after pair.",
+ "filesystem": {
+  "src/a.ts": "one\ntwo\nthree\n"
+ }
+}

@@ -1,0 +1,182 @@
+{
+ "schemaVersion": 1,
+ "module": "hashline/normalize",
+ "function": "detectLineEnding",
+ "vectors": [
+  {
+   "name": "empty defaults to LF",
+   "input": [
+    ""
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "no line endings defaults to LF",
+   "input": [
+    "abc"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "pure LF",
+   "input": [
+    "a\nb"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "pure CRLF",
+   "input": [
+    "a\r\nb"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "first ending wins - LF before CRLF",
+   "input": [
+    "a\nb\r\nc"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "first ending wins - CRLF before LF",
+   "input": [
+    "a\r\nb\nc"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "lone CR is not an ending",
+   "input": [
+    "a\rb"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: lf at start, nothing",
+   "input": [
+    "\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: lf at start, then lf",
+   "input": [
+    "\ny\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: lf at start, then crlf",
+   "input": [
+    "\ny\r\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: crlf at start, nothing",
+   "input": [
+    "\r\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: crlf at start, then lf",
+   "input": [
+    "\r\ny\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: crlf at start, then crlf",
+   "input": [
+    "\r\ny\r\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: bare-cr at start, nothing",
+   "input": [
+    "\r"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: bare-cr at start, then lf",
+   "input": [
+    "\ry\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: bare-cr at start, then crlf",
+   "input": [
+    "\ry\r\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: lf after content, nothing",
+   "input": [
+    "x\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: lf after content, then lf",
+   "input": [
+    "x\ny\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: lf after content, then crlf",
+   "input": [
+    "x\ny\r\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: crlf after content, nothing",
+   "input": [
+    "x\r\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: crlf after content, then lf",
+   "input": [
+    "x\r\ny\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: crlf after content, then crlf",
+   "input": [
+    "x\r\ny\r\n"
+   ],
+   "expected": "\r\n"
+  },
+  {
+   "name": "decision: bare-cr after content, nothing",
+   "input": [
+    "x\r"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: bare-cr after content, then lf",
+   "input": [
+    "x\ry\n"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "decision: bare-cr after content, then crlf",
+   "input": [
+    "x\ry\r\n"
+   ],
+   "expected": "\r\n"
+  }
+ ]
+}

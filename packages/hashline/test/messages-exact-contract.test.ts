@@ -30,7 +30,6 @@ import {
 	MOVE_TAKES_NO_BODY,
 	pathRecoveredFromTagMessage,
 	REM_TAKES_NO_BODY,
-	REPLACE_PAIR_COALESCED_WARNING,
 	RECOVERY_EXTERNAL_WARNING,
 	RECOVERY_LINE_REMAP_WARNING,
 	RECOVERY_SESSION_CHAIN_WARNING,
@@ -57,7 +56,6 @@ describe("message markers and static warnings", () => {
 		expect(MOVE_TAKES_NO_BODY).toContain("`MV");
 		expect(MINUS_ROW_REJECTED).toContain("`-` rows are not valid");
 		expect(BARE_BODY_AUTO_PIPED_WARNING).toContain("Auto-prefixed bare body");
-		expect(REPLACE_PAIR_COALESCED_WARNING).toContain("Two hunks targeted the same range");
 	});
 
 	it("exports exact recovery and drift warnings", () => {

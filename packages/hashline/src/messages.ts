@@ -42,12 +42,6 @@ export const END_PATCH_MARKER = "*** End Patch";
  */
 export const ABORT_MARKER = "*** Abort";
 
-/** Two consecutive hunks targeted the exact same concrete range. */
-export const REPLACE_PAIR_COALESCED_WARNING = `Two hunks targeted the same range; kept only the second. One \`SWAP N${HL_RANGE_SEP}M:\` hunk per range — the body is the final content, never old+new.`;
-
-/** Bare bodyless hunk followed by an overlapping concrete hunk. */
-`Dropped a bare hunk overlapped by the concrete hunk after it. One \`SWAP N${HL_RANGE_SEP}M:\` hunk per range — the body is the final content, never old+new.`;
-
 /** Bare body rows auto-converted to literal `+` rows. */
 export const BARE_BODY_AUTO_PIPED_WARNING =
 	"Auto-prefixed bare body row(s) with `+`. Body rows must be `+TEXT` literal lines.";

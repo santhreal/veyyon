@@ -1,0 +1,22 @@
+{
+ "scenario": "ins-pre-and-post",
+ "patch": "[src/a.ts#0063]\nINS.PRE 1:\n+first\nINS.POST 2:\n+last\n",
+ "sections": [
+  {
+   "path": "src/a.ts",
+   "op": "update",
+   "before": "alpha\nbeta\n",
+   "after": "first\nalpha\nbeta\nlast\n",
+   "persisted": "first\nalpha\nbeta\nlast\n",
+   "written": "first\nalpha\nbeta\nlast\n",
+   "fileHash": "B074",
+   "header": "[src/a.ts#B074]",
+   "firstChangedLine": 1,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/a.ts": "first\nalpha\nbeta\nlast\n"
+ }
+}

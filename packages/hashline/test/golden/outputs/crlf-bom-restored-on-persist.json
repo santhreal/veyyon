@@ -1,0 +1,22 @@
+{
+ "scenario": "crlf-bom-restored-on-persist",
+ "patch": "[src/win.ts#D988]\nSWAP 2.=2:\n+B\n",
+ "sections": [
+  {
+   "path": "src/win.ts",
+   "op": "update",
+   "before": "a\nb\nc\n",
+   "after": "a\nB\nc\n",
+   "persisted": "﻿a\r\nB\r\nc\r\n",
+   "written": "﻿a\r\nB\r\nc\r\n",
+   "fileHash": "6409",
+   "header": "[src/win.ts#6409]",
+   "firstChangedLine": 2,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/win.ts": "﻿a\r\nB\r\nc\r\n"
+ }
+}

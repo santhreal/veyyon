@@ -1,0 +1,8 @@
+{
+ "scenario": "apply-error-missing-tag",
+ "patch": "[src/a.ts]\nSWAP 1.=1:\n+ONE\n",
+ "error": "Missing hashline snapshot tag for src/a.ts; use `[src/a.ts#tag]` from your latest read/search output. To create a new file, use the write tool.",
+ "filesystem": {
+  "src/a.ts": "one\n"
+ }
+}

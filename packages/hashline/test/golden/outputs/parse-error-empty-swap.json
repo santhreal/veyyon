@@ -1,0 +1,8 @@
+{
+ "scenario": "parse-error-empty-swap",
+ "patch": "[src/a.ts#B686]\nSWAP 1.=1:\n",
+ "error": "line 1: `SWAP N.=M:` needs at least one `+TEXT` body row. To delete lines, use `DEL N.=M`.",
+ "filesystem": {
+  "src/a.ts": "one\n"
+ }
+}

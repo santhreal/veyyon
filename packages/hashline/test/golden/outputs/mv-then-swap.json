@@ -1,0 +1,22 @@
+{
+ "scenario": "mv-then-swap",
+ "patch": "[src/old.ts#0127]\nSWAP 1.=1:\n+ONE\nMV src/new.ts\n",
+ "sections": [
+  {
+   "path": "src/new.ts",
+   "op": "update",
+   "before": "one\ntwo\n",
+   "after": "ONE\ntwo\n",
+   "persisted": "ONE\ntwo\n",
+   "written": "ONE\ntwo\n",
+   "fileHash": "93E5",
+   "header": "[src/new.ts#93E5]",
+   "firstChangedLine": 1,
+   "warnings": [],
+   "moveDest": "src/new.ts"
+  }
+ ],
+ "filesystem": {
+  "src/new.ts": "ONE\ntwo\n"
+ }
+}

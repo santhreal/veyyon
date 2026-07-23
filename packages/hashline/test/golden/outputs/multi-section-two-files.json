@@ -1,0 +1,36 @@
+{
+ "scenario": "multi-section-two-files",
+ "patch": "[src/a.ts#0DEB]\nSWAP 1.=1:\n+AAA\n[src/b.ts#9561]\nSWAP 1.=1:\n+BBB\n",
+ "sections": [
+  {
+   "path": "src/a.ts",
+   "op": "update",
+   "before": "aaa\n",
+   "after": "AAA\n",
+   "persisted": "AAA\n",
+   "written": "AAA\n",
+   "fileHash": "D962",
+   "header": "[src/a.ts#D962]",
+   "firstChangedLine": 1,
+   "warnings": [],
+   "moveDest": null
+  },
+  {
+   "path": "src/b.ts",
+   "op": "update",
+   "before": "bbb\n",
+   "after": "BBB\n",
+   "persisted": "BBB\n",
+   "written": "BBB\n",
+   "fileHash": "E120",
+   "header": "[src/b.ts#E120]",
+   "firstChangedLine": 1,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/a.ts": "AAA\n",
+  "src/b.ts": "BBB\n"
+ }
+}

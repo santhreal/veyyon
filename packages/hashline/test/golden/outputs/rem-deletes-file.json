@@ -1,0 +1,20 @@
+{
+ "scenario": "rem-deletes-file",
+ "patch": "[src/gone.ts#4C09]\nREM\n",
+ "sections": [
+  {
+   "path": "src/gone.ts",
+   "op": "delete",
+   "before": "bye\n",
+   "after": "bye\n",
+   "persisted": "bye\n",
+   "written": "bye\n",
+   "fileHash": "4C09",
+   "header": "[src/gone.ts#4C09]",
+   "firstChangedLine": null,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {}
+}

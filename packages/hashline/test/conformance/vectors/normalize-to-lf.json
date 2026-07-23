@@ -1,0 +1,105 @@
+{
+ "schemaVersion": 1,
+ "module": "hashline/normalize",
+ "function": "normalizeToLF",
+ "vectors": [
+  {
+   "name": "CRLF and lone CR both become LF",
+   "input": [
+    "a\r\nb\rc\nd"
+   ],
+   "expected": "a\nb\nc\nd"
+  },
+  {
+   "name": "empty stays empty",
+   "input": [
+    ""
+   ],
+   "expected": ""
+  },
+  {
+   "name": "lone CR becomes LF",
+   "input": [
+    "\r"
+   ],
+   "expected": "\n"
+  },
+  {
+   "name": "consecutive CRLFs become consecutive LFs",
+   "input": [
+    "\r\n\r\n"
+   ],
+   "expected": "\n\n"
+  },
+  {
+   "name": "pure LF is unchanged",
+   "input": [
+    "a\nb\n"
+   ],
+   "expected": "a\nb\n"
+  },
+  {
+   "name": "edge: CR then CRLF",
+   "input": [
+    "\r\r\n"
+   ],
+   "expected": "\n\n"
+  },
+  {
+   "name": "edge: CRLF then CR",
+   "input": [
+    "\r\n\r"
+   ],
+   "expected": "\n\n"
+  },
+  {
+   "name": "edge: CR run",
+   "input": [
+    "\r\r\r"
+   ],
+   "expected": "\n\n\n"
+  },
+  {
+   "name": "edge: trailing CRs after content",
+   "input": [
+    "a\rb\r"
+   ],
+   "expected": "a\nb\n"
+  },
+  {
+   "name": "edge: mixed sample",
+   "input": [
+    "x\r\ny\rz\n"
+   ],
+   "expected": "x\ny\nz\n"
+  },
+  {
+   "name": "edge: BOM survives normalization",
+   "input": [
+    "﻿a\r\nb"
+   ],
+   "expected": "﻿a\nb"
+  },
+  {
+   "name": "edge: five CRLFs",
+   "input": [
+    "\r\n\r\n\r\n\r\n\r\n"
+   ],
+   "expected": "\n\n\n\n\n"
+  },
+  {
+   "name": "edge: property shrink: CR + LF across an empty boundary is one CRLF",
+   "input": [
+    "\n\r\n\n"
+   ],
+   "expected": "\n\n\n"
+  },
+  {
+   "name": "edge: five bare CRs",
+   "input": [
+    "\r\r\r\r\r"
+   ],
+   "expected": "\n\n\n\n\n"
+  }
+ ]
+}

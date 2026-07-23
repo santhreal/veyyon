@@ -1,0 +1,22 @@
+{
+ "scenario": "del-range",
+ "patch": "[src/a.ts#7CCB]\nDEL 2.=4\n",
+ "sections": [
+  {
+   "path": "src/a.ts",
+   "op": "update",
+   "before": "l1\nl2\nl3\nl4\nl5\n",
+   "after": "l1\nl5\n",
+   "persisted": "l1\nl5\n",
+   "written": "l1\nl5\n",
+   "fileHash": "EC5F",
+   "header": "[src/a.ts#EC5F]",
+   "firstChangedLine": 2,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/a.ts": "l1\nl5\n"
+ }
+}

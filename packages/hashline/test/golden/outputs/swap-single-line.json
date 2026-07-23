@@ -1,0 +1,22 @@
+{
+ "scenario": "swap-single-line",
+ "patch": "[src/a.ts#2543]\nSWAP 2.=2:\n+TWO\n",
+ "sections": [
+  {
+   "path": "src/a.ts",
+   "op": "update",
+   "before": "one\ntwo\nthree\n",
+   "after": "one\nTWO\nthree\n",
+   "persisted": "one\nTWO\nthree\n",
+   "written": "one\nTWO\nthree\n",
+   "fileHash": "CFBD",
+   "header": "[src/a.ts#CFBD]",
+   "firstChangedLine": 2,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/a.ts": "one\nTWO\nthree\n"
+ }
+}

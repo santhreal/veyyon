@@ -10,6 +10,7 @@ import {
 	DELETE_TAKES_NO_BODY,
 	EMPTY_BLOCK,
 	EMPTY_INSERT,
+	EMPTY_REPLACE,
 	MINUS_ROW_REJECTED,
 	MOVE_TAKES_NO_BODY,
 	REM_TAKES_NO_BODY,
@@ -410,10 +411,10 @@ export class Executor {
 			return;
 		}
 		if (payloads.length === 0) {
-			if (target.kind === "replace") {
-				for (const anchor of expandRange(target.range)) this.#pushDelete(anchor, lineNum);
-				return;
-			}
+			// A bodyless SWAP is rejected, never treated as a delete: the body is
+			// the final content, so its absence usually means a truncated stream,
+			// and silently deleting the range would be silent data loss.
+			if (target.kind === "replace") throw new Error(`line ${lineNum}: ${EMPTY_REPLACE}`);
 			throw new Error(`line ${lineNum}: ${EMPTY_INSERT}`);
 		}
 		if (target.kind === "replace") {

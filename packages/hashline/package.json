@@ -29,6 +29,7 @@
     "check:types": "tsgo -p tsconfig.json --noEmit",
     "lint": "biome lint .",
     "test": "bun test --parallel",
+    "coverage:boundary": "bun scripts/coverage-floor.ts",
     "fix": "biome check --write --unsafe .",
     "fmt": "biome format --write ."
   },
@@ -37,7 +38,8 @@
     "lru-cache": "catalog:"
   },
   "devDependencies": {
-    "@types/bun": "catalog:"
+    "@types/bun": "catalog:",
+    "fast-check": "4.9.0"
   },
   "engines": {
     "bun": ">=1.3.14"

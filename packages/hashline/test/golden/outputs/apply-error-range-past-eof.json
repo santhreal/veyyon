@@ -1,0 +1,8 @@
+{
+ "scenario": "apply-error-range-past-eof",
+ "patch": "[src/a.ts#2543]\nSWAP 99.=99:\n+X\n",
+ "error": "Line 99 does not exist (file has 4 lines)",
+ "filesystem": {
+  "src/a.ts": "one\ntwo\nthree\n"
+ }
+}
