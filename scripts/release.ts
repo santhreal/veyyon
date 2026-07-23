@@ -231,10 +231,12 @@ async function updateChangelogsForRelease(version: string): Promise<void> {
 			continue;
 		}
 
-		// Only create version entry if [Unreleased] has content
+		// Only create version entry if [Unreleased] has content. Keep the fresh
+		// [Unreleased] header exactly where the old one sat (which may be below a
+		// fork-notice blockquote) and insert the dated version section right below
+		// it — a title-anchored insert would jam [Unreleased] above the fork notice.
 		if (hasUnreleasedContent(content)) {
-			content = content.replace("## [Unreleased]", `## [${version}] - ${date}`);
-			content = content.replace(/^(# Changelog\n\n)/, `$1## [Unreleased]\n\n`);
+			content = content.replace("## [Unreleased]", `## [Unreleased]\n\n## [${version}] - ${date}`);
 		}
 
 		// Clean up any existing empty version entries
