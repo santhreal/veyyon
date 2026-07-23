@@ -21,7 +21,11 @@ Sleep 6s
 
 Type "vey setup status"
 Enter
-Sleep 6s
+Sleep 4s
+
+Type "vey plugin doctor"
+Enter
+Sleep 4s
 
 Type "vey --version"
 Enter

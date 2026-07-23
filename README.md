@@ -20,10 +20,6 @@
   <em>A coding agent with the whole workbench wired in.</em>
 </p>
 
-<p align="center">
-  <img src="assets/demo-hero.gif" width="840" alt="Veyyon documents the token-bucket rate limiter end to end on Gemini 3.6 Flash high">
-</p>
-
 Veyyon runs in your terminal and treats the machinery around your code, the language server, the debugger, the shell, the browser, as tools it can call. The model weights are the same ones you get anywhere. The harness is what changes how reliably they land a change.
 
 Multi-provider catalog · 31 built-in tools (more optional and gated) · LSP and DAP · Rust natives on every hot path · and a per-project shorthand the model writes in.
@@ -43,6 +39,8 @@ irm https://veyyon.dev/install.ps1 | iex
 ```
 
 This installs a single self-contained binary and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); re-run it any time with `veyyon setup`. To pin a version or build from a checkout: `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.12` or `--source`.
+
+Veyyon ships two ways only: the `curl` installer from veyyon.dev (a signed binary that veyyon.dev serves and propagates automatically from [GitHub Releases](https://github.com/santhreal/veyyon/releases)) or a git clone you build yourself. There is no npm package, no Homebrew tap, and no crates.io release, and Veyyon updates itself only from veyyon.dev.
 
 **From source (contributing)**
 
@@ -101,10 +99,6 @@ The fork also adds snap compaction with lossless dedup and artifact spill, share
 
 Ask it to cross-reference two files and it does not grep twice and guess. Persistent Python and Bun eval kernels stay live across the session and call agent tools (`read`, `grep`, `task`, and the rest) over a loopback bridge, so one cell can read, transform, and act.
 
-<p align="center">
-  <img src="assets/demo-ask.gif" width="820" alt="Asking about a file: Veyyon calls the read tool and answers grounded in the source">
-</p>
-
 ### 02 · Renames go through the language server, not find-and-replace
 
 Ask for a rename and the dependent files move with it. Rename and related operations route through the language server (including `workspace/willRenameFiles` where the server supports it), so references update with the edit instead of drifting.
@@ -144,10 +138,6 @@ Other agents shell out to `rg`, `grep`, `find`, and `bash`. Veyyon runs search, 
 ### 11 · Edits anchored to content hashes, not line numbers
 
 The model points an edit at a content-hash anchor from an earlier read instead of retyping the surrounding lines. A stale anchor fails verification before anything is written, so a file that moved under the agent cannot silently corrupt a patch.
-
-<p align="center">
-  <img src="assets/demo-edit.gif" width="820" alt="A hashline edit landing: read, anchored diff, and a verified write to src/utils.ts">
-</p>
 
 ### 12 · One read tool for files, URLs, and internal resources
 
@@ -370,14 +360,6 @@ The table below is a per-module breakdown that intentionally omits glue and test
 ### Interactive TUI
 
 The default surface. Tool calls render as cards; the `ask` tool shows a structured option picker. The same permission and ask surfaces route over ACP when the client advertises them.
-
-<p align="center">
-  <img src="assets/demo-commands.gif" width="820" alt="Typing / opens the slash-command palette, filtering live to model and session commands">
-</p>
-
-<p align="center">
-  <img src="assets/demo-plan.gif" width="820" alt="Plan mode explores read-only and drafts a plan while holding mutation">
-</p>
 
 ### SDK: embed in Node
 

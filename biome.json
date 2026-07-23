@@ -69,6 +69,7 @@
 			"!.wt/**/*",
 			"!packages/deepswe-bench/repo-cache/**/*",
 			"!packages/deepswe-bench/runs/**/*",
+			"!runs/**/*",
 			"!packages/deepswe-bench/deep-swe/**/*",
 			"!packages/deepswe-bench/assets/**/*"
 		]

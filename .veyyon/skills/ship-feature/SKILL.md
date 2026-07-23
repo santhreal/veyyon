@@ -66,6 +66,10 @@ Not every change needs all four artifacts. Decide by what the change touches, an
 
 When in doubt, produce the artifact. A missing proof is the exact drift this skill exists to prevent.
 
+## How Veyyon ships
+
+Veyyon is distributed two ways only: the `curl` installer from veyyon.dev, which fetches a signed binary that veyyon.dev serves and propagates automatically from GitHub Releases, and a `git clone` you build yourself. There is no npm package, no Homebrew tap, no `mise` plugin, and no crates.io release, and there never will be an npm one. Cutting a release publishes to GitHub Releases and redeploys the website; veyyon.dev then picks up the new binary. Installs and updates go through veyyon.dev; GitHub Releases is the upstream it mirrors. When you touch update or install code, that is the only version source, and any path that reaches for npm, Homebrew, `mise`, or crates.io is a defect to remove, not a channel to support. (User extensions are separate: a plugin may publish itself to npm; that is the plugin's business, not Veyyon's own distribution.)
+
 ## Done
 
 The change is tracked and shippable when:
