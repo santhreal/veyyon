@@ -173,7 +173,9 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 
 		// Probe exited 0 with valid output before bg sleep held stdout open.
 		// Captured stdout MUST be cached, not discarded as if the probe failed.
-		expect(result.cached).toEqual({ gpu: "02.0 VGA compatible controller: NVIDIA TestGPU" });
+		// selectGpuFromLspci strips the "<slot> <class>: " prefix (GPU-1), so the
+		// cached value is the clean device name, not the raw lspci line.
+		expect(result.cached).toEqual({ gpu: "NVIDIA TestGPU" });
 		expect(result.elapsedMs).toBeLessThan(2000);
 		// Budgets bun spawn/startup overhead; blocking on the descendant would
 		// take at least the 8s sleep.
