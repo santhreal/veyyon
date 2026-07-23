@@ -36,22 +36,14 @@ describe("parsePatch SWAP matrix", () => {
 		expect(ins.map(e => (e.kind === "insert" ? e.text : ""))).toEqual(["A", "B"]);
 	});
 
-	it("empty SWAP body is treated as pure delete of the range (no EMPTY_REPLACE throw)", () => {
-		// Bodyless SWAP N.=M: lowers to the same deletes as DEL N.=M rather than
-		// throwing EMPTY_REPLACE (EMPTY_REPLACE is reserved for other empty paths).
-		const { edits, warnings } = parsePatch("SWAP 1.=1:");
-		expect(warnings).toEqual([]);
-		expect(edits).toHaveLength(1);
-		expect(edits[0]?.kind).toBe("delete");
-		if (edits[0]?.kind === "delete") expect(edits[0].anchor.line).toBe(1);
-
-		const multi = parsePatch("SWAP 2.=4:");
-		expect(multi.edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0))).toEqual([
-			2, 3, 4,
-		]);
-		// EMPTY_REPLACE still exists as the operator-facing string for empty replace
-		// diagnostics elsewhere (block / messaging contract).
+	it("empty SWAP body is rejected with EMPTY_REPLACE, never lowered to a silent delete", () => {
+		// A bodyless SWAP N.=M: does NOT lower to the deletes of DEL N.=M — that was
+		// silent data loss on a truncated body. It throws EMPTY_REPLACE, whose text
+		// points the caller at DEL, for both a single line and a multi-line range.
+		expect(() => parsePatch("SWAP 1.=1:")).toThrow(EMPTY_REPLACE);
+		expect(() => parsePatch("SWAP 2.=4:")).toThrow(EMPTY_REPLACE);
 		expect(EMPTY_REPLACE).toContain("SWAP");
+		expect(EMPTY_REPLACE).toContain("DEL");
 	});
 
 	it("minus body row is rejected", () => {
