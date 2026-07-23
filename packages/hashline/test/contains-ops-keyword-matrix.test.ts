@@ -5,7 +5,19 @@ import { describe, expect, it } from "bun:test";
 import { containsRecognizableHashlineOperations } from "@veyyon/hashline";
 
 describe("containsRecognizableHashlineOperations keywords", () => {
-	const yes = ["SWAP 1.=1:", "DEL 1", "INS.HEAD:", "INS.TAIL:", "INS.POST 1:", "INS.PRE 2:", "REM", "MV x", "SWAP.BLK 1:", "DEL.BLK 1", "INS.BLK.POST 1:"];
+	const yes = [
+		"SWAP 1.=1:",
+		"DEL 1",
+		"INS.HEAD:",
+		"INS.TAIL:",
+		"INS.POST 1:",
+		"INS.PRE 2:",
+		"REM",
+		"MV x",
+		"SWAP.BLK 1:",
+		"DEL.BLK 1",
+		"INS.BLK.POST 1:",
+	];
 	const no = ["swap 1.=1:", "hello", "function f(){}", "+body", "*** Begin Patch", "[path#ABCD]", ""];
 
 	for (const line of yes) {

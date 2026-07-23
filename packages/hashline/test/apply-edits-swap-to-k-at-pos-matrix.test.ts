@@ -11,10 +11,7 @@ describe("applyEdits expand pos×k on 3-line", () => {
 		for (let k = 1; k <= 5; k++) {
 			it(`pos=${pos} k=${k}`, () => {
 				const body = Array.from({ length: k }, (_, i) => `+E${i}`).join("\n");
-				const { text: out } = applyEdits(
-					text,
-					parsePatch(`SWAP ${pos}.=${pos}:\n${body}`).edits,
-				);
+				const { text: out } = applyEdits(text, parsePatch(`SWAP ${pos}.=${pos}:\n${body}`).edits);
 				const mid = Array.from({ length: k }, (_, i) => `E${i}`);
 				const want = [...base.slice(0, pos - 1), ...mid, ...base.slice(pos)];
 				expect(out).toBe(want.join("\n"));

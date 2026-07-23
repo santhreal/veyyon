@@ -16,10 +16,7 @@ describe("applyEdits past 6000 DEL middle window n120", () => {
 			it(`DEL ${start}.=${end}`, () => {
 				const header = start === end ? `DEL ${start}` : `DEL ${start}.=${end}`;
 				const out = applyEdits(base, parsePatch(header).edits).text;
-				expect(out === "" ? [] : out.split("\n")).toEqual([
-					...lines.slice(0, start - 1),
-					...lines.slice(end),
-				]);
+				expect(out === "" ? [] : out.split("\n")).toEqual([...lines.slice(0, start - 1), ...lines.slice(end)]);
 			});
 		}
 	}

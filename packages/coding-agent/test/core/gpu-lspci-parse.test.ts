@@ -69,7 +69,9 @@ describe("selectGpuFromLspci", () => {
 		// which matches the real `Matrox ... MGA G200e` string (space between MGA
 		// and G200), so the BMC adapter was reported as the GPU. It must be skipped.
 		expect(
-			selectGpuFromLspci("07:00.0 VGA compatible controller: Matrox Electronics Systems Ltd. MGA G200e [Pilot] ServerEngines"),
+			selectGpuFromLspci(
+				"07:00.0 VGA compatible controller: Matrox Electronics Systems Ltd. MGA G200e [Pilot] ServerEngines",
+			),
 		).toBeNull();
 		expect(
 			selectGpuFromLspci("07:00.0 VGA compatible controller: Matrox Electronics Systems Ltd. MGA G200EH"),

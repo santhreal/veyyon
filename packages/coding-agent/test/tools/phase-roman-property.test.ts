@@ -40,7 +40,7 @@ describe("phaseRomanNumeral property", () => {
 		expect(formatPhaseDisplayName("Ship", 10)).toBe("X. Ship");
 		for (let i = 1; i <= 12; i++) {
 			const out = formatPhaseDisplayName("P", i);
-			expect(out.startsWith(phaseRomanNumeral(i) + ". ")).toBe(true);
+			expect(out.startsWith(`${phaseRomanNumeral(i)}. `)).toBe(true);
 			expect(out.endsWith("P")).toBe(true);
 		}
 	});

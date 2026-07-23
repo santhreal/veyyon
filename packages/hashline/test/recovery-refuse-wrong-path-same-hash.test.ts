@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 /**
  * Same content under two paths shares hash tags; recovery is still path-keyed.

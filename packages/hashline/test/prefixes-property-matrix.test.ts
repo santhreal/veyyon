@@ -2,13 +2,13 @@
  * Prefix strip helpers: opportunistic vs strict, headers, truncation notices.
  */
 import { describe, expect, it } from "bun:test";
+import { HL_FILE_HASH_LENGTH } from "../src/format";
 import {
 	hashlineParseText,
 	stripHashlinePrefixes,
 	stripNewLinePrefixes,
 	stripOneLeadingHashlinePrefix,
 } from "../src/prefixes";
-import { HL_FILE_HASH_LENGTH } from "../src/format";
 
 const tag = "A".repeat(HL_FILE_HASH_LENGTH);
 const header = `[src/foo.ts#${tag}]`;
@@ -45,12 +45,7 @@ describe("stripHashlinePrefixes strict", () => {
 	});
 
 	it("drops headers and truncation notices while stripping", () => {
-		const lines = [
-			header,
-			"1:first",
-			"2:second",
-			"[Showing lines 1-2 of 99. Use :L3 to continue]",
-		];
+		const lines = [header, "1:first", "2:second", "[Showing lines 1-2 of 99. Use :L3 to continue]"];
 		expect(stripHashlinePrefixes(lines)).toEqual(["first", "second"]);
 	});
 
@@ -87,11 +82,7 @@ describe("stripNewLinePrefixes opportunistic", () => {
 	});
 
 	it("filters truncation notices under hash strip", () => {
-		const out = stripNewLinePrefixes([
-			"1:a",
-			"2:b",
-			"[2 more lines in file. Use :L3 to continue]",
-		]);
+		const out = stripNewLinePrefixes(["1:a", "2:b", "[2 more lines in file. Use :L3 to continue]"]);
 		expect(out).toEqual(["a", "b"]);
 	});
 });

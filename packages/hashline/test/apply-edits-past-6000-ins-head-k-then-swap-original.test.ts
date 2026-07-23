@@ -13,10 +13,7 @@ describe("applyEdits past 6000 INS HEAD then SWAP original", () => {
 			const rows = Array.from({ length: k }, (_, i) => `+H${i + 1}`).join("\n");
 			const stacked = applyEdits(base, parsePatch(`INS.HEAD:\n${rows}`).edits).text;
 			const bIndex = k + 2; // H1..Hk, A, B → B at k+2
-			const swapped = applyEdits(
-				stacked,
-				parsePatch(`SWAP ${bIndex}.=${bIndex}:\n+BB`).edits,
-			).text;
+			const swapped = applyEdits(stacked, parsePatch(`SWAP ${bIndex}.=${bIndex}:\n+BB`).edits).text;
 			const out = swapped.split("\n");
 			expect(out[k]).toBe("A");
 			expect(out[k + 1]).toBe("BB");

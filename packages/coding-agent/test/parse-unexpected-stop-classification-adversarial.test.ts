@@ -6,17 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { parseUnexpectedStopClassification } from "@veyyon/coding-agent/session/unexpected-stop-classifier";
 
 describe("parseUnexpectedStopClassification adversarial matrix", () => {
-	const yes = [
-		"yes",
-		"YES",
-		"Yes",
-		"  yes",
-		"yes\n",
-		"yes please",
-		"yes, continue",
-		"YESNO",
-		"yes\nmore text",
-	];
+	const yes = ["yes", "YES", "Yes", "  yes", "yes\n", "yes please", "yes, continue", "YESNO", "yes\nmore text"];
 	for (const t of yes) {
 		it(`yes: ${JSON.stringify(t)}`, () => {
 			expect(parseUnexpectedStopClassification(t)).toBe(true);

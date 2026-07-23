@@ -2,12 +2,7 @@
  * formatDeleteHeader / formatReplaceHeader → parse → apply grid for small n.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	formatDeleteHeader,
-	formatReplaceHeader,
-	parsePatch,
-} from "@veyyon/hashline";
+import { applyEdits, formatDeleteHeader, formatReplaceHeader, parsePatch } from "@veyyon/hashline";
 
 describe("format header parse apply grid", () => {
 	const n = 8;

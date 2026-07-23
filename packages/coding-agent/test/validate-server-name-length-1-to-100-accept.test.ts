@@ -26,7 +26,28 @@ describe("validateServerName length 1 to 100 accept", () => {
 		}
 	});
 
-	const badChars = [" ", "/", "\\", "@", "#", "$", "%", "^", "&", "*", "(", ")", "[", "]", "{", "}", "!", "?", ",", ";"];
+	const badChars = [
+		" ",
+		"/",
+		"\\",
+		"@",
+		"#",
+		"$",
+		"%",
+		"^",
+		"&",
+		"*",
+		"(",
+		")",
+		"[",
+		"]",
+		"{",
+		"}",
+		"!",
+		"?",
+		",",
+		";",
+	];
 	for (const ch of badChars) {
 		it(`reject char ${JSON.stringify(ch)}`, () => {
 			expect(validateServerName(`a${ch}b`)).toMatch(/can only contain/i);

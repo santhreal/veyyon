@@ -45,8 +45,9 @@ const DEMOTED_APPEARANCE_PATHS = [
 // Keys added to the Advanced fold AFTER the spec: new experimental toggles that
 // default into Advanced (advanced: true) so the simplified 12-row appearance
 // view stays stable as the product grows. `display.subagentInbox` is the
-// experimental opencode-style agent split, off by default.
-const EXTRA_ADVANCED_APPEARANCE_PATHS = ["display.subagentInbox"] as const;
+// experimental opencode-style agent split, off by default. `tui.scrollIsolation`
+// pins the prompt while the wheel scrolls the transcript, on by default.
+const EXTRA_ADVANCED_APPEARANCE_PATHS = ["display.subagentInbox", "tui.scrollIsolation"] as const;
 
 // Everything the collapsed Advanced fold holds today: the 13 spec-demoted
 // originals plus any post-spec experimental additions. Drives the heading count.
@@ -83,7 +84,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly 12 non-advanced rows and 14 advanced rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly 12 non-advanced rows and 15 advanced rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);

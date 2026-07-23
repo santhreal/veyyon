@@ -3,8 +3,8 @@
  * Why: soft tool choice must not misfire on mode strings or soft:"true" coercion.
  */
 import { describe, expect, it } from "bun:test";
-import { isSoftToolRequirement } from "@veyyon/agent-core/types";
 import type { SoftToolRequirement } from "@veyyon/agent-core/types";
+import { isSoftToolRequirement } from "@veyyon/agent-core/types";
 
 function soft(id: string, toolName = "resolve"): SoftToolRequirement {
 	return { soft: true, id, toolName, reminder: [] };
@@ -17,9 +17,7 @@ describe("isSoftToolRequirement exact matrix", () => {
 	});
 
 	it("accepts soft:true with empty reminder", () => {
-		expect(
-			isSoftToolRequirement({ soft: true, id: "x", toolName: "t", reminder: [] }),
-		).toBe(true);
+		expect(isSoftToolRequirement({ soft: true, id: "x", toolName: "t", reminder: [] })).toBe(true);
 	});
 
 	it("soft:true alone is soft (discriminator-only)", () => {
@@ -51,8 +49,6 @@ describe("isSoftToolRequirement exact matrix", () => {
 	});
 
 	it("rejects object missing soft", () => {
-		expect(
-			isSoftToolRequirement({ id: "x", toolName: "resolve", reminder: [] } as never),
-		).toBe(false);
+		expect(isSoftToolRequirement({ id: "x", toolName: "resolve", reminder: [] } as never)).toBe(false);
 	});
 });

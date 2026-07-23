@@ -6,11 +6,11 @@ import { applyEdits, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits HTML-like body content", () => {
 	const bodies = [
-		"<div class=\"x\">",
+		'<div class="x">',
 		"</div>",
 		"<script>alert(1)</script>",
 		"<!-- comment -->",
-		"<a href=\"http://x\">link</a>",
+		'<a href="http://x">link</a>',
 	];
 	for (const body of bodies) {
 		it(JSON.stringify(body), () => {

@@ -4,12 +4,12 @@
  * No natives / no real transport.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createMCPToolName, parseMCPToolName } from "../src/mcp/tool-bridge";
-import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs, createMCPTimeout } from "../src/mcp/timeout";
-import { toJsonRpcError } from "../src/mcp/types";
-import { parseSSE, redactUrlForLog } from "../src/mcp/json-rpc";
-import { validateServerName } from "../src/mcp/config-writer";
 import { isBrowserMCPServer, validateServerConfig } from "../src/mcp/config";
+import { validateServerName } from "../src/mcp/config-writer";
+import { parseSSE, redactUrlForLog } from "../src/mcp/json-rpc";
+import { createMCPTimeout, describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../src/mcp/timeout";
+import { createMCPToolName, parseMCPToolName } from "../src/mcp/tool-bridge";
+import { toJsonRpcError } from "../src/mcp/types";
 
 const prevTimeoutEnv = Bun.env.VEYYON_MCP_TIMEOUT_MS;
 
@@ -153,12 +153,12 @@ describe("redactUrlForLog / parseSSE", () => {
 	});
 
 	it("parseSSE returns first JSON data line", () => {
-		const text = [": keep-alive", "data: {\"ok\":true,\"n\":1}", "data: {\"ok\":false}"].join("\n");
+		const text = [": keep-alive", 'data: {"ok":true,"n":1}', 'data: {"ok":false}'].join("\n");
 		expect(parseSSE(text)).toEqual({ ok: true, n: 1 });
 	});
 
 	it("parseSSE skips [DONE] and non-JSON data lines", () => {
-		const text = ["data: [DONE]", "data: not-json", "data: {\"done\":true}"].join("\n");
+		const text = ["data: [DONE]", "data: not-json", 'data: {"done":true}'].join("\n");
 		expect(parseSSE(text)).toEqual({ done: true });
 	});
 
@@ -187,9 +187,7 @@ describe("validateServerName", () => {
 describe("validateServerConfig / isBrowserMCPServer", () => {
 	it("stdio requires command", () => {
 		expect(validateServerConfig("s", { command: "npx" } as never)).toEqual([]);
-		expect(validateServerConfig("s", {} as never)).toEqual([
-			'Server "s": stdio server requires "command" field',
-		]);
+		expect(validateServerConfig("s", {} as never)).toEqual(['Server "s": stdio server requires "command" field']);
 	});
 
 	it("http/sse require url", () => {
@@ -204,16 +202,16 @@ describe("validateServerConfig / isBrowserMCPServer", () => {
 
 	it("rejects command+url conflict", () => {
 		const errors = validateServerConfig("bad", { command: "npx", url: "https://x" } as never);
-		expect(errors.some(e => e.includes("both \"command\" and \"url\""))).toBe(true);
+		expect(errors.some(e => e.includes('both "command" and "url"'))).toBe(true);
 	});
 
 	it("isBrowserMCPServer by name and package pattern", () => {
 		expect(isBrowserMCPServer("playwright", { command: "node" })).toBe(true);
 		expect(isBrowserMCPServer("puppeteer", { command: "node" })).toBe(true);
 		expect(isBrowserMCPServer("other", { command: "npx", args: ["@playwright/mcp"] })).toBe(true);
-		expect(isBrowserMCPServer("github", { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] })).toBe(
-			false,
-		);
+		expect(
+			isBrowserMCPServer("github", { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] }),
+		).toBe(false);
 		expect(isBrowserMCPServer("bb", { type: "http", url: "https://api.browserbase.com/mcp" })).toBe(true);
 	});
 });

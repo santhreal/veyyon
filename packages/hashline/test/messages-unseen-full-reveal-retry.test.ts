@@ -2,8 +2,8 @@
  * unseenLinesMessage full reveal allows same-tag retry wording.
  */
 import { describe, expect, it } from "bun:test";
-import { unseenLinesMessage } from "../src/messages";
 import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "../src/format";
+import { unseenLinesMessage } from "../src/messages";
 
 describe("unseenLinesMessage full reveal", () => {
 	it("allows straight retry", () => {

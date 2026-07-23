@@ -76,7 +76,7 @@ describe("SelectList group headers", () => {
 		const headers = rows.filter(r => r.startsWith("[HDR"));
 		expect(headers).toEqual(["[HDR session]", "[HDR modes]", "[HDR model]"]);
 		// The session header precedes both session items.
-		expect(rows.findIndex(r => r === "[HDR session]")).toBeLessThan(rows.findIndex(r => r.includes("/new")));
+		expect(rows.indexOf("[HDR session]")).toBeLessThan(rows.findIndex(r => r.includes("/new")));
 	});
 
 	it("keeps selection on items — the first row selected is /new, not a header", () => {

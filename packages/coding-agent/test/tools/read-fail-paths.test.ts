@@ -4,13 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**

@@ -464,8 +464,7 @@ export function shimmerSegments(segments: readonly ShimmerSegment[], theme: Shim
 	// per-frame cost after #4353 removed the allocation hotspot (issue #4377).
 	// Living motions (breath/wipe/blink) touch every cell, so there is no window
 	// to skip; comet/scan still evaluate cheaply over the ~60-cell working line.
-	const { lo: bandLo, hi: bandHi } =
-		mode === "living" ? { lo: 0, hi: total - 1 } : activeBand(mode, time, total);
+	const { lo: bandLo, hi: bandHi } = mode === "living" ? { lo: 0, hi: total - 1 } : activeBand(mode, time, total);
 
 	let out = "";
 	let index = 0;

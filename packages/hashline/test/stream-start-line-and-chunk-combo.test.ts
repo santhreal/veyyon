@@ -4,10 +4,7 @@
 import { describe, expect, it } from "bun:test";
 import { streamHashLines } from "../src/stream";
 
-async function collect(
-	text: string,
-	opts: { startLine: number; maxChunkLines: number },
-): Promise<string[]> {
+async function collect(text: string, opts: { startLine: number; maxChunkLines: number }): Promise<string[]> {
 	async function* bytes() {
 		yield new TextEncoder().encode(text);
 	}
@@ -23,9 +20,7 @@ describe("streamHashLines startLine×maxChunkLines", () => {
 			it(`start=${start} k=${k}`, async () => {
 				const chunks = await collect(body, { startLine: start, maxChunkLines: k });
 				const joined = chunks.join("\n");
-				const want = ["a", "b", "c", "d"]
-					.map((line, i) => `${start + i}:${line}`)
-					.join("\n");
+				const want = ["a", "b", "c", "d"].map((line, i) => `${start + i}:${line}`).join("\n");
 				expect(joined).toBe(want);
 				for (const c of chunks) {
 					expect(c.split("\n").length).toBeLessThanOrEqual(k);

@@ -6,14 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { toJsonRpcError } from "../src/mcp/types";
 
 describe("toJsonRpcError extended adversarial matrix", () => {
-	const strings = [
-		"a",
-		"x".repeat(5000),
-		"unicode 🚀",
-		"line\nbreak",
-		"tab\there",
-		" quote ",
-	];
+	const strings = ["a", "x".repeat(5000), "unicode 🚀", "line\nbreak", "tab\there", " quote "];
 	for (const [i, s] of strings.entries()) {
 		it(`string #${i}`, () => {
 			expect(toJsonRpcError(s)).toEqual({ code: -32603, message: s });

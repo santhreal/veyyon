@@ -5,7 +5,12 @@ import { describe, expect, it } from "bun:test";
 import { createMCPToolName, parseMCPToolName } from "../src/mcp/tool-bridge";
 
 describe("createMCPToolName matrix", () => {
-	const cases: Array<{ server: string; tool: string; name: string; parsed: { serverName: string; toolName: string } }> = [
+	const cases: Array<{
+		server: string;
+		tool: string;
+		name: string;
+		parsed: { serverName: string; toolName: string };
+	}> = [
 		{ server: "a", tool: "b", name: "mcp__a_b", parsed: { serverName: "a", toolName: "b" } },
 		{ server: "GH", tool: "List", name: "mcp__gh_list", parsed: { serverName: "gh", toolName: "list" } },
 		{

@@ -8,11 +8,7 @@ import { GrepTool } from "@veyyon/coding-agent/tools/grep";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -92,21 +88,13 @@ describe("write→grep→edit→grep chain adversarial", () => {
 			path: file,
 			content: `const x = '${oldTok}';\n`,
 		});
-		expect(
-			textOf(await new GrepTool(s as never).execute("g1", { pattern: oldTok, path: file })),
-		).toContain(oldTok);
+		expect(textOf(await new GrepTool(s as never).execute("g1", { pattern: oldTok, path: file }))).toContain(oldTok);
 
 		const header = textOf(await new ReadTool(s).execute("r", { path: file })).split("\n")[0]!;
-		await executeHashlineSingle(
-			editOpts(s, `${header}\nSWAP 1.=1:\n+const x = '${newTok}';\n`),
-		);
+		await executeHashlineSingle(editOpts(s, `${header}\nSWAP 1.=1:\n+const x = '${newTok}';\n`));
 		expect(await Bun.file(file).text()).toBe(`const x = '${newTok}';\n`);
-		expect(
-			textOf(await new GrepTool(s as never).execute("g2", { pattern: newTok, path: file })),
-		).toContain(newTok);
-		const oldGrep = textOf(
-			await new GrepTool(s as never).execute("g3", { pattern: oldTok, path: file }),
-		);
+		expect(textOf(await new GrepTool(s as never).execute("g2", { pattern: newTok, path: file }))).toContain(newTok);
+		const oldGrep = textOf(await new GrepTool(s as never).execute("g3", { pattern: oldTok, path: file }));
 		expect(oldGrep.includes(oldTok)).toBe(false);
 	});
 });

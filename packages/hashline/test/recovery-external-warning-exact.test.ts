@@ -5,9 +5,9 @@ import { describe, expect, it } from "bun:test";
 import {
 	InMemorySnapshotStore,
 	parsePatch,
-	Recovery,
 	RECOVERY_EXTERNAL_WARNING,
 	RECOVERY_LINE_REMAP_WARNING,
+	Recovery,
 } from "@veyyon/hashline";
 
 describe("Recovery external warning exact", () => {

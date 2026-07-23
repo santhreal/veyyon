@@ -9,10 +9,7 @@ describe("applyEdits expand each of 6 to 2", () => {
 	const text = base.join("\n");
 	for (let pos = 1; pos <= 6; pos++) {
 		it(`pos=${pos}`, () => {
-			const { text: out } = applyEdits(
-				text,
-				parsePatch(`SWAP ${pos}.=${pos}:\n+A\n+B`).edits,
-			);
+			const { text: out } = applyEdits(text, parsePatch(`SWAP ${pos}.=${pos}:\n+A\n+B`).edits);
 			const want = [...base.slice(0, pos - 1), "A", "B", ...base.slice(pos)];
 			expect(out).toBe(want.join("\n"));
 		});

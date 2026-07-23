@@ -4,12 +4,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	computeFileHash,
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	Patch,
 	Patcher,
-	formatHashlineHeader,
-	computeFileHash,
 } from "@veyyon/hashline";
 
 describe("Patcher two sections same path", () => {
@@ -48,9 +48,7 @@ describe("Patcher two sections same path", () => {
 		const snapshots = new InMemorySnapshotStore();
 		let tag = snapshots.record("f.ts", content);
 		const patcher = new Patcher({ fs, snapshots });
-		const r1 = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 1.=1:\n+v1`),
-		);
+		const r1 = await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 1.=1:\n+v1`));
 		tag = r1.sections[0]!.fileHash!;
 		await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 1.=1:\n+v2`));
 		expect(fs.get("f.ts")).toBe("v2\n");

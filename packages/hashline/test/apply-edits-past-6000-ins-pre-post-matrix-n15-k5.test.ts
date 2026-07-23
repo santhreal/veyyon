@@ -17,9 +17,7 @@ describe("applyEdits past 6000 INS PRE POST matrix n15 k5", () => {
 				const out = text.split("\n");
 				expect(out).toHaveLength(n + k);
 				expect(out.slice(0, a)).toEqual(lines.slice(0, a));
-				expect(out.slice(a, a + k)).toEqual(
-					Array.from({ length: k }, (_, i) => `P${i + 1}`),
-				);
+				expect(out.slice(a, a + k)).toEqual(Array.from({ length: k }, (_, i) => `P${i + 1}`));
 				expect(out.slice(a + k)).toEqual(lines.slice(a));
 			});
 
@@ -29,9 +27,7 @@ describe("applyEdits past 6000 INS PRE POST matrix n15 k5", () => {
 				const out = text.split("\n");
 				expect(out).toHaveLength(n + k);
 				expect(out.slice(0, a - 1)).toEqual(lines.slice(0, a - 1));
-				expect(out.slice(a - 1, a - 1 + k)).toEqual(
-					Array.from({ length: k }, (_, i) => `R${i + 1}`),
-				);
+				expect(out.slice(a - 1, a - 1 + k)).toEqual(Array.from({ length: k }, (_, i) => `R${i + 1}`));
 				expect(out.slice(a - 1 + k)).toEqual(lines.slice(a - 1));
 			});
 		}

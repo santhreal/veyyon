@@ -2,13 +2,7 @@
  * Patcher expand then contract with hash chain.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher expand then contract session", () => {
 	it("expand mid line then shrink back", async () => {
@@ -18,15 +12,11 @@ describe("Patcher expand then contract session", () => {
 		let tag = snapshots.record("f.ts", content);
 		const patcher = new Patcher({ fs, snapshots });
 
-		let r = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 2.=2:\n+B1\n+B2\n+B3`),
-		);
+		let r = await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 2.=2:\n+B1\n+B2\n+B3`));
 		expect(fs.get("f.ts")).toBe("a\nB1\nB2\nB3\nc\n");
 		tag = r.sections[0]!.fileHash!;
 
-		r = await patcher.apply(
-			Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 2.=4:\n+b`),
-		);
+		r = await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 2.=4:\n+b`));
 		expect(fs.get("f.ts")).toBe("a\nb\nc\n");
 	});
 });

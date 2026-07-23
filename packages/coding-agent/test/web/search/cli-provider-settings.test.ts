@@ -7,12 +7,8 @@ import {
 	setPreferredSearchProvider,
 } from "@veyyon/coding-agent/web/search/provider";
 import { setAgentDir, TempDir } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../../helpers/settings-test-state";
 import { runSearchCommand } from "../../../src/cli/web-search-cli";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../helpers/settings-test-state";
 
 const WEB_SEARCH_ENV_KEYS = [
 	"ANTHROPIC_API_KEY",

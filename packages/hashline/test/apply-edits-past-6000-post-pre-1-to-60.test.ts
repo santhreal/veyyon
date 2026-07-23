@@ -11,10 +11,7 @@ describe("applyEdits past 6000 POST PRE 1 to 60", () => {
 
 	for (let a = 1; a <= n; a++) {
 		it(`INS.POST ${a}`, () => {
-			const { text, firstChangedLine } = applyEdits(
-				base,
-				parsePatch(`INS.POST ${a}:\n+P`).edits,
-			);
+			const { text, firstChangedLine } = applyEdits(base, parsePatch(`INS.POST ${a}:\n+P`).edits);
 			const out = text.split("\n");
 			expect(out).toHaveLength(n + 1);
 			expect(out[a]).toBe("P");
@@ -23,10 +20,7 @@ describe("applyEdits past 6000 POST PRE 1 to 60", () => {
 		});
 
 		it(`INS.PRE ${a}`, () => {
-			const { text, firstChangedLine } = applyEdits(
-				base,
-				parsePatch(`INS.PRE ${a}:\n+R`).edits,
-			);
+			const { text, firstChangedLine } = applyEdits(base, parsePatch(`INS.PRE ${a}:\n+R`).edits);
 			const out = text.split("\n");
 			expect(out).toHaveLength(n + 1);
 			expect(out[a - 1]).toBe("R");

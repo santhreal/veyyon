@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	applyOpsToPhases,
-	markdownToPhases,
-	phasesToMarkdown,
-	type TodoPhase,
-} from "@veyyon/coding-agent/tools/todo";
+import { applyOpsToPhases, markdownToPhases, phasesToMarkdown, type TodoPhase } from "@veyyon/coding-agent/tools/todo";
 
 /**
  * phasesToMarkdown ↔ markdownToPhases round-trip over generated lists.
@@ -32,9 +27,7 @@ describe("todo markdown round-trip property", () => {
 				expect(phases).toHaveLength(nPhases);
 				for (let p = 0; p < nPhases; p++) {
 					expect(phases[p]!.name).toBe(original[p]!.name);
-					expect(phases[p]!.tasks.map(t => t.content)).toEqual(
-						original[p]!.tasks.map(t => t.content),
-					);
+					expect(phases[p]!.tasks.map(t => t.content)).toEqual(original[p]!.tasks.map(t => t.content));
 				}
 				// markdownToPhases runs normalizeInProgressTask: if nothing is
 				// in_progress, the first pending becomes in_progress. Assert that
@@ -65,24 +58,22 @@ describe("todo markdown round-trip property", () => {
 		];
 		const { phases, errors } = markdownToPhases(phasesToMarkdown(original));
 		expect(errors).toEqual([]);
-		expect(phases[0]!.tasks.map(t => t.status)).toEqual([
-			"completed",
-			"in_progress",
-			"pending",
-			"abandoned",
-		]);
+		expect(phases[0]!.tasks.map(t => t.status)).toEqual(["completed", "in_progress", "pending", "abandoned"]);
 	});
 
 	it("init then markdown round-trip preserves task texts", () => {
-		const { phases } = applyOpsToPhases([], [
-			{
-				op: "init",
-				list: [
-					{ phase: "Build", items: ["scaffold app", "wire tests"] },
-					{ phase: "Ship", items: ["tag release"] },
-				],
-			},
-		]);
+		const { phases } = applyOpsToPhases(
+			[],
+			[
+				{
+					op: "init",
+					list: [
+						{ phase: "Build", items: ["scaffold app", "wire tests"] },
+						{ phase: "Ship", items: ["tag release"] },
+					],
+				},
+			],
+		);
 		const md = phasesToMarkdown(phases);
 		const back = markdownToPhases(md);
 		expect(back.errors).toEqual([]);

@@ -10,10 +10,7 @@ describe("applyEdits HEAD+TAIL sandwich sizes", () => {
 			it(`head=${hk} tail=${tk}`, () => {
 				const head = Array.from({ length: hk }, (_, i) => `+H${i}`).join("\n");
 				const tail = Array.from({ length: tk }, (_, i) => `+T${i}`).join("\n");
-				const { text } = applyEdits(
-					"MID",
-					parsePatch(`INS.HEAD:\n${head}\nINS.TAIL:\n${tail}`).edits,
-				);
+				const { text } = applyEdits("MID", parsePatch(`INS.HEAD:\n${head}\nINS.TAIL:\n${tail}`).edits);
 				const h = Array.from({ length: hk }, (_, i) => `H${i}`);
 				const t = Array.from({ length: tk }, (_, i) => `T${i}`);
 				expect(text).toBe([...h, "MID", ...t].join("\n"));

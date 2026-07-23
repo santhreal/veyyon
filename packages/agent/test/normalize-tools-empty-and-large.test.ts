@@ -36,8 +36,6 @@ describe("normalizeTools empty and large", () => {
 		}
 		// @ts-expect-error garbage
 		const out = normalizeTools(mixed as never, false);
-		expect(out.map(t => t.name)).toEqual(
-			Array.from({ length: 50 }, (_, i) => `ok${i * 2}`),
-		);
+		expect(out.map(t => t.name)).toEqual(Array.from({ length: 50 }, (_, i) => `ok${i * 2}`));
 	});
 });

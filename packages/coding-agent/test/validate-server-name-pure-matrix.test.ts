@@ -6,17 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { validateServerName } from "@veyyon/coding-agent/mcp/config-writer";
 
 describe("validateServerName pure matrix", () => {
-	const valid = [
-		"a",
-		"github",
-		"my-server",
-		"my_server",
-		"a.b",
-		"cloudflare:cloudflare-api",
-		"s1",
-		"A1-_.",
-		"x:y:z",
-	];
+	const valid = ["a", "github", "my-server", "my_server", "a.b", "cloudflare:cloudflare-api", "s1", "A1-_.", "x:y:z"];
 
 	for (const name of valid) {
 		it(`valid: ${JSON.stringify(name)}`, () => {

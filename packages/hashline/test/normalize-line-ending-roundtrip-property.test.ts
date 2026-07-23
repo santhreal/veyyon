@@ -3,12 +3,7 @@
  * LF stays LF; CRLF files normalize then restore byte-identical for pure \r\n content.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	detectLineEnding,
-	normalizeToLF,
-	restoreLineEndings,
-	stripBom,
-} from "@veyyon/hashline";
+import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "@veyyon/hashline";
 
 describe("normalize line ending roundtrip property", () => {
 	it("detect prefers first ending", () => {

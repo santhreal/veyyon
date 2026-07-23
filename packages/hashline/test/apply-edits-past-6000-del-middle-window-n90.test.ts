@@ -15,10 +15,7 @@ describe("applyEdits past 6000 DEL middle window n90", () => {
 			it(`DEL ${s}.=${e}`, () => {
 				const header = s === e ? `DEL ${s}` : `DEL ${s}.=${e}`;
 				const { text, firstChangedLine } = applyEdits(base, parsePatch(header).edits);
-				expect(text === "" ? [] : text.split("\n")).toEqual([
-					...lines.slice(0, s - 1),
-					...lines.slice(e),
-				]);
+				expect(text === "" ? [] : text.split("\n")).toEqual([...lines.slice(0, s - 1), ...lines.slice(e)]);
 				expect(firstChangedLine).toBe(s);
 			});
 		}

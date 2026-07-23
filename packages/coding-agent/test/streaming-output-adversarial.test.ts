@@ -51,7 +51,7 @@ describe("truncateHead / truncateTail adversarial", () => {
 
 describe("truncateMiddle and byte truncators", () => {
 	it("truncateMiddle keeps head and tail when over budget", () => {
-		const lines = Array.from({ length: 50 }, (_, i) => `L${i}`).join("\n") + "\n";
+		const lines = `${Array.from({ length: 50 }, (_, i) => `L${i}`).join("\n")}\n`;
 		const result = truncateMiddle(lines, { maxLines: 10 });
 		if (result.truncated) {
 			expect(result.content).toContain("L0");
@@ -70,7 +70,7 @@ describe("truncateMiddle and byte truncators", () => {
 	});
 
 	it("truncateTailBytes keeps the end of a large string", () => {
-		const data = "a".repeat(5000) + "END";
+		const data = `${"a".repeat(5000)}END`;
 		const result = truncateTailBytes(data, 10);
 		const out = result.text;
 		expect(out.length).toBeLessThanOrEqual(10);

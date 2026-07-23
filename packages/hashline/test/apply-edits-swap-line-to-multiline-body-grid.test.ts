@@ -11,10 +11,7 @@ describe("applyEdits SWAP line to multiline body grid", () => {
 			it(`line ${line} bodyLen ${bodyLen}`, () => {
 				const body = Array.from({ length: bodyLen }, (_, i) => `M${i}`);
 				const rows = body.map(l => `+${l}`).join("\n");
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${line}.=${line}:\n${rows}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${line}.=${line}:\n${rows}`).edits);
 				const out = text.split("\n");
 				expect(out.length).toBe(5 - 1 + bodyLen);
 				expect(out.slice(line - 1, line - 1 + bodyLen)).toEqual(body);

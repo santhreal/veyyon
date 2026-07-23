@@ -2,13 +2,7 @@
  * Patcher SWAP to emoji and multi-script content.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher unicode/emoji SWAP", () => {
 	const bodies = ["🚀", "日本語", "café", "مرحبا", "Ωmega"];
@@ -18,9 +12,7 @@ describe("Patcher unicode/emoji SWAP", () => {
 			const snapshots = new InMemorySnapshotStore();
 			const tag = snapshots.record("f.ts", "old\n");
 			const patcher = new Patcher({ fs, snapshots });
-			await patcher.apply(
-				Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 1.=1:\n+${body}`),
-			);
+			await patcher.apply(Patch.parse(`${formatHashlineHeader("f.ts", tag)}\nSWAP 1.=1:\n+${body}`));
 			expect(fs.get("f.ts")).toBe(`${body}\n`);
 		});
 	}

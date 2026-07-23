@@ -9,10 +9,7 @@ describe("applyEdits identity SWAP n=4", () => {
 	const text = base.join("\n");
 	for (let i = 0; i < 4; i++) {
 		it(`line ${i + 1}`, () => {
-			const { text: out } = applyEdits(
-				text,
-				parsePatch(`SWAP ${i + 1}.=${i + 1}:\n+${base[i]}`).edits,
-			);
+			const { text: out } = applyEdits(text, parsePatch(`SWAP ${i + 1}.=${i + 1}:\n+${base[i]}`).edits);
 			expect(out).toBe(text);
 		});
 	}

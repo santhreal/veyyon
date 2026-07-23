@@ -4,13 +4,13 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	computeFileHash,
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	MismatchError,
 	Patch,
 	Patcher,
-	computeFileHash,
-	formatHashlineHeader,
 } from "@veyyon/hashline";
 
 describe("Patcher multi-section all-or-nothing", () => {

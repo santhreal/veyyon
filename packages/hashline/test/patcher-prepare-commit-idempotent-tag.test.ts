@@ -3,12 +3,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	computeFileHash,
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	Patch,
 	Patcher,
-	computeFileHash,
-	formatHashlineHeader,
 } from "@veyyon/hashline";
 
 describe("Patcher prepare+commit tag identity", () => {
@@ -18,9 +18,7 @@ describe("Patcher prepare+commit tag identity", () => {
 		const snapshots = new InMemorySnapshotStore();
 		const tag = snapshots.record("p.ts", content);
 		const patcher = new Patcher({ fs, snapshots });
-		const section = Patch.parse(
-			`${formatHashlineHeader("p.ts", tag)}\nSWAP 1.=1:\n+after`,
-		).sections[0]!;
+		const section = Patch.parse(`${formatHashlineHeader("p.ts", tag)}\nSWAP 1.=1:\n+after`).sections[0]!;
 		const prepared = await patcher.prepare(section);
 		const committed = await patcher.commit(prepared);
 		const live = fs.get("p.ts")!;

@@ -6,14 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { computeFileHash, HL_FILE_HASH_LENGTH } from "@veyyon/hashline";
 
 describe("computeFileHash trailing-ws normalize property", () => {
-	const bodies = [
-		"a",
-		"a\nb",
-		"a\nb\nc\n",
-		"line with spaces",
-		"\n\n",
-		"x\n\ny",
-	];
+	const bodies = ["a", "a\nb", "a\nb\nc\n", "line with spaces", "\n\n", "x\n\ny"];
 
 	for (const body of bodies) {
 		it(`tag length and case for ${JSON.stringify(body)}`, () => {

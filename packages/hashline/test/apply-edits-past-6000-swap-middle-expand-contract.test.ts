@@ -13,10 +13,7 @@ describe("applyEdits past 6000 SWAP middle expand contract", () => {
 	// replace lines 5..=10 (6 lines) with body of size k
 	for (let k = 0; k <= 12; k++) {
 		it(`SWAP 5.=10 body k=${k}`, () => {
-			const rows =
-				k === 0
-					? ""
-					: Array.from({ length: k }, (_, i) => `+M${i + 1}`).join("\n");
+			const rows = k === 0 ? "" : Array.from({ length: k }, (_, i) => `+M${i + 1}`).join("\n");
 			const patch = k === 0 ? "SWAP 5.=10:\n" : `SWAP 5.=10:\n${rows}`;
 			const { text, firstChangedLine } = applyEdits(base, parsePatch(patch).edits);
 			const body = k === 0 ? [] : Array.from({ length: k }, (_, i) => `M${i + 1}`);

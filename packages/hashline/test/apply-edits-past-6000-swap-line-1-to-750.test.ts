@@ -11,10 +11,7 @@ describe("applyEdits past 6000 SWAP line 1 to 750", () => {
 
 	for (let i = 1; i <= n; i++) {
 		it(`SWAP ${i}`, () => {
-			const { text, firstChangedLine } = applyEdits(
-				base,
-				parsePatch(`SWAP ${i}.=${i}:\n+X${i}`).edits,
-			);
+			const { text, firstChangedLine } = applyEdits(base, parsePatch(`SWAP ${i}.=${i}:\n+X${i}`).edits);
 			expect(text.split("\n")[i - 1]).toBe(`X${i}`);
 			expect(firstChangedLine).toBe(i);
 		});

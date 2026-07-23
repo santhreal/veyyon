@@ -76,7 +76,10 @@ describe("dedupeAlwaysApplyRules", () => {
 	});
 
 	it("checks every prompt source, dropping a rule found in a later one", () => {
-		const kept = dedupeAlwaysApplyRules([rule("a", "Rule A body")], ["first source", "wraps Rule A body inside", "Rule A body"]);
+		const kept = dedupeAlwaysApplyRules(
+			[rule("a", "Rule A body")],
+			["first source", "wraps Rule A body inside", "Rule A body"],
+		);
 		expect(kept).toEqual([]);
 	});
 

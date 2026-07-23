@@ -88,7 +88,10 @@ export function dedupeAlwaysApplyRules(
 }
 
 /** Return `source` unless its content is already verbatim-present in another source, in which case return "". Exported for unit testing. */
-export function dedupePromptSource(source: string | null | undefined, otherSources: Array<string | null | undefined>): string {
+export function dedupePromptSource(
+	source: string | null | undefined,
+	otherSources: Array<string | null | undefined>,
+): string {
 	const resolvedSource = firstNonEmpty(source);
 	if (!resolvedSource) return "";
 

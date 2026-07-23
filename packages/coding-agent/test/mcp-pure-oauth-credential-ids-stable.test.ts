@@ -5,11 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { mcpOAuthCredentialIdsForServerUrl } from "../src/mcp/oauth-credentials";
 
 describe("mcpOAuthCredentialIdsForServerUrl stable", () => {
-	const urls = [
-		"https://mcp.example.com/sse",
-		"https://api.github.com/mcp",
-		"http://localhost:3000/mcp",
-	];
+	const urls = ["https://mcp.example.com/sse", "https://api.github.com/mcp", "http://localhost:3000/mcp"];
 	for (const url of urls) {
 		it(url, () => {
 			const a = mcpOAuthCredentialIdsForServerUrl(url);

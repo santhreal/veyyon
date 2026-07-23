@@ -35,11 +35,7 @@ describe("collectEditAnchorLines unique matrix", () => {
 	});
 	it("mixed", () => {
 		expect(
-			uniq(
-				collectEditAnchorLines(
-					parsePatch("DEL 1\nINS.POST 3:\n+x\nINS.HEAD:\n+h\nSWAP 5.=5:\n+y").edits,
-				),
-			),
+			uniq(collectEditAnchorLines(parsePatch("DEL 1\nINS.POST 3:\n+x\nINS.HEAD:\n+h\nSWAP 5.=5:\n+y").edits)),
 		).toEqual([1, 3, 5]);
 	});
 });

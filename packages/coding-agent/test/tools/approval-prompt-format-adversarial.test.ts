@@ -12,11 +12,7 @@ describe("formatApprovalPrompt adversarial", () => {
 	});
 
 	it("includes a reason when provided", () => {
-		const text = formatApprovalPrompt(
-			{ name: "write", approval: "write" },
-			{ path: "/etc/x" },
-			"outside cwd",
-		);
+		const text = formatApprovalPrompt({ name: "write", approval: "write" }, { path: "/etc/x" }, "outside cwd");
 		expect(text.toLowerCase()).toMatch(/outside|cwd|reason|write/);
 		expect(text.length).toBeGreaterThan(0);
 	});
@@ -28,7 +24,7 @@ describe("formatApprovalPrompt adversarial", () => {
 	});
 
 	it("truncateForPrompt of a multi-kb string includes elision marker and prefix", () => {
-		const long = "PREFIX" + "z".repeat(10_000);
+		const long = `PREFIX${"z".repeat(10_000)}`;
 		const out = truncateForPrompt(long, 100);
 		expect(out.startsWith("PREFIX")).toBe(true);
 		expect(out).toMatch(/elided|…/);

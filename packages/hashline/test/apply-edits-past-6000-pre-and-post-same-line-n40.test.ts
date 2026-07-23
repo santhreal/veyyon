@@ -12,10 +12,7 @@ describe("applyEdits past 6000 PRE and POST same line n40", () => {
 
 	for (let a = 1; a <= n; a++) {
 		it(`PRE+POST ${a}`, () => {
-			const out = applyEdits(
-				base,
-				parsePatch(`INS.PRE ${a}:\n+B\nINS.POST ${a}:\n+A`).edits,
-			).text.split("\n");
+			const out = applyEdits(base, parsePatch(`INS.PRE ${a}:\n+B\nINS.POST ${a}:\n+A`).edits).text.split("\n");
 			const expected = [...lines.slice(0, a - 1), "B", lines[a - 1]!, "A", ...lines.slice(a)];
 			expect(out).toEqual(expected);
 		});

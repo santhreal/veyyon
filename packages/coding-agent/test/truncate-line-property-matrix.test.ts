@@ -3,10 +3,7 @@
  * wasTruncated true; otherwise identity. Default max is DEFAULT_MAX_COLUMN (512).
  */
 import { describe, expect, it } from "bun:test";
-import {
-	DEFAULT_MAX_COLUMN,
-	truncateLine,
-} from "@veyyon/coding-agent/session/streaming-output";
+import { DEFAULT_MAX_COLUMN, truncateLine } from "@veyyon/coding-agent/session/streaming-output";
 
 describe("truncateLine property matrix", () => {
 	it("identity under max", () => {

@@ -10,9 +10,7 @@ describe("parsePatch DEL range size matrix", () => {
 			it(`DEL ${start}.=${end}`, () => {
 				const header = start === end ? `DEL ${start}` : `DEL ${start}.=${end}`;
 				const { edits } = parsePatch(header);
-				const lines = edits
-					.filter(e => e.kind === "delete")
-					.map(e => (e.kind === "delete" ? e.anchor.line : 0));
+				const lines = edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0));
 				expect(lines).toEqual(Array.from({ length: end - start + 1 }, (_, i) => start + i));
 			});
 		}

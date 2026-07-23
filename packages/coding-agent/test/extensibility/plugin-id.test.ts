@@ -1,11 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-	buildPluginId,
-	isValidNameSegment,
-	parsePluginId,
-} from "@veyyon/coding-agent/extensibility/plugins/plugin-id";
 // The marketplace types module re-exports the same three symbols; importing
 // through it proves the re-export surface stays wired for `./types` consumers.
 import {
@@ -13,6 +8,7 @@ import {
 	isValidNameSegment as isValidNameSegmentViaTypes,
 	parsePluginId as parsePluginIdViaTypes,
 } from "@veyyon/coding-agent/extensibility/plugins/marketplace/types";
+import { buildPluginId, isValidNameSegment, parsePluginId } from "@veyyon/coding-agent/extensibility/plugins/plugin-id";
 
 /**
  * `plugin-id.ts` is the single owner of plugin/marketplace name-segment

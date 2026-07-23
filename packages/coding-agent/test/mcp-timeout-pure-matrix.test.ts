@@ -3,11 +3,7 @@
  * Why: timeout 0 disables; positive enables; env overrides config when valid.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	describeMCPTimeout,
-	isMCPTimeoutEnabled,
-	resolveMCPTimeoutMs,
-} from "@veyyon/coding-agent/mcp/timeout";
+import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "@veyyon/coding-agent/mcp/timeout";
 
 describe("mcp timeout pure matrix", () => {
 	it("isMCPTimeoutEnabled: >0 true, 0 false, negative false", () => {

@@ -16,37 +16,19 @@ describe("isEmptyErrorTurn block kinds matrix", () => {
 		expect(isEmptyErrorTurn(turn("error", []))).toBe(true);
 		expect(isEmptyErrorTurn(turn("error", [{ type: "text", text: "" }]))).toBe(true);
 		expect(isEmptyErrorTurn(turn("error", [{ type: "text", text: "   " }]))).toBe(true);
-		expect(
-			isEmptyErrorTurn(turn("error", [{ type: "thinking", thinking: "  " }])),
-		).toBe(true);
-		expect(
-			isEmptyErrorTurn(turn("error", [{ type: "fallback", data: "x" } as never])),
-		).toBe(true);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "thinking", thinking: "  " }]))).toBe(true);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "fallback", data: "x" } as never]))).toBe(true);
 	});
 
 	it("non-empty error turns", () => {
-		expect(
-			isEmptyErrorTurn(turn("error", [{ type: "text", text: "partial" }])),
-		).toBe(false);
-		expect(
-			isEmptyErrorTurn(turn("error", [{ type: "thinking", thinking: "r" }])),
-		).toBe(false);
-		expect(
-			isEmptyErrorTurn(
-				turn("error", [{ type: "thinking", thinking: "", thinkingSignature: "sig" }]),
-			),
-		).toBe(false);
-		expect(
-			isEmptyErrorTurn(turn("error", [{ type: "redactedThinking", data: "enc" }])),
-		).toBe(false);
-		expect(
-			isEmptyErrorTurn(
-				turn("error", [{ type: "toolCall", id: "1", name: "bash", arguments: {} }]),
-			),
-		).toBe(false);
-		expect(
-			isEmptyErrorTurn(turn("error", [{ type: "futureBlock", x: 1 } as never])),
-		).toBe(false);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "text", text: "partial" }]))).toBe(false);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "thinking", thinking: "r" }]))).toBe(false);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "thinking", thinking: "", thinkingSignature: "sig" }]))).toBe(
+			false,
+		);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "redactedThinking", data: "enc" }]))).toBe(false);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "toolCall", id: "1", name: "bash", arguments: {} }]))).toBe(false);
+		expect(isEmptyErrorTurn(turn("error", [{ type: "futureBlock", x: 1 } as never]))).toBe(false);
 	});
 
 	for (const reason of ["stop", "aborted", "length", "toolUse"]) {

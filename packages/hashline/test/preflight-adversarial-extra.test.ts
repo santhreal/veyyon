@@ -1,11 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	type WriteResult,
-} from "@veyyon/hashline";
+import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, type WriteResult } from "@veyyon/hashline";
 
 /**
  * Extra preflight adversarial cases: blocked first file, empty patch reject,
@@ -30,14 +24,10 @@ describe("hashline preflight adversarial extras", () => {
 		const files = { "a.ts": "one\n", "b.ts": "two\n" };
 		const fs = new BlockFirst(Object.entries(files));
 		const snapshots = new InMemorySnapshotStore();
-		const tags = Object.fromEntries(
-			Object.entries(files).map(([p, c]) => [p, snapshots.record(p, c)]),
-		);
+		const tags = Object.fromEntries(Object.entries(files).map(([p, c]) => [p, snapshots.record(p, c)]));
 		const patcher = new Patcher({ fs, snapshots });
 		const patch = Patch.parse(
-			[`[a.ts#${tags["a.ts"]}]`, "SWAP 1.=1:", "+ONE", `[b.ts#${tags["b.ts"]}]`, "SWAP 1.=1:", "+TWO"].join(
-				"\n",
-			),
+			[`[a.ts#${tags["a.ts"]}]`, "SWAP 1.=1:", "+ONE", `[b.ts#${tags["b.ts"]}]`, "SWAP 1.=1:", "+TWO"].join("\n"),
 		);
 		await expect(patcher.preflight(patch)).rejects.toThrow(/blocked write: a\.ts/);
 		expect(fs.get("a.ts")).toBe("one\n");
@@ -52,13 +42,7 @@ describe("hashline preflight adversarial extras", () => {
 		const patcher = new Patcher({ fs, snapshots });
 		const good = await patcher.apply(
 			Patch.parse(
-				[
-					`[del.ts#${tags["del.ts"]}]`,
-					"DEL 2",
-					`[swap.ts#${tags["swap.ts"]}]`,
-					"SWAP 1.=1:",
-					"+new",
-				].join("\n"),
+				[`[del.ts#${tags["del.ts"]}]`, "DEL 2", `[swap.ts#${tags["swap.ts"]}]`, "SWAP 1.=1:", "+new"].join("\n"),
 			),
 		);
 		expect(good.sections).toHaveLength(2);
@@ -67,15 +51,7 @@ describe("hashline preflight adversarial extras", () => {
 
 		const before = { del: fs.get("del.ts"), swap: fs.get("swap.ts") };
 		const hDel = snapshots.record("del.ts", before.del);
-		const bad = Patch.parse(
-			[
-				`[del.ts#${hDel}]`,
-				"DEL 1",
-				"[swap.ts#0000]",
-				"SWAP 1.=1:",
-				"+poison",
-			].join("\n"),
-		);
+		const bad = Patch.parse([`[del.ts#${hDel}]`, "DEL 1", "[swap.ts#0000]", "SWAP 1.=1:", "+poison"].join("\n"));
 		await expect(patcher.apply(bad)).rejects.toThrow();
 		expect(fs.get("del.ts")).toBe(before.del);
 		expect(fs.get("swap.ts")).toBe(before.swap);
@@ -93,9 +69,7 @@ describe("hashline preflight adversarial extras", () => {
 		const files = { "a.ts": "1\n", "b.ts": "2\n", "c.ts": "3\n" };
 		const fs = new FailSecond(Object.entries(files));
 		const snapshots = new InMemorySnapshotStore();
-		const tags = Object.fromEntries(
-			Object.entries(files).map(([p, c]) => [p, snapshots.record(p, c)]),
-		);
+		const tags = Object.fromEntries(Object.entries(files).map(([p, c]) => [p, snapshots.record(p, c)]));
 		const patcher = new Patcher({ fs, snapshots });
 		const patch = Patch.parse(
 			[

@@ -6,7 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { requiresApproval } from "../src/tools/approval";
 
 describe("requiresApproval yolo and ask matrix", () => {
-	const tools = ["bash", "read", "write", "edit", "grep", "glob", "fetch"].map((name) => ({
+	const tools = ["bash", "read", "write", "edit", "grep", "glob", "fetch"].map(name => ({
 		name,
 	}));
 
@@ -22,8 +22,6 @@ describe("requiresApproval yolo and ask matrix", () => {
 	}
 
 	it("userConfig deny throws", () => {
-		expect(() =>
-			requiresApproval({ name: "bash" }, {}, "yolo", { bash: "deny" }),
-		).toThrow();
+		expect(() => requiresApproval({ name: "bash" }, {}, "yolo", { bash: "deny" })).toThrow();
 	});
 });

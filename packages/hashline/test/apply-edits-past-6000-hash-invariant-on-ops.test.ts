@@ -6,21 +6,13 @@ import { describe, expect, it } from "bun:test";
 import { applyEdits, computeFileHash, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits past 6000 hash invariant on ops", () => {
-	const bases = [
-		"",
-		"a",
-		"a\nb",
-		Array.from({ length: 20 }, (_, i) => `L${i + 1}`).join("\n"),
-		"café\n🚀",
-	];
+	const bases = ["", "a", "a\nb", Array.from({ length: 20 }, (_, i) => `L${i + 1}`).join("\n"), "café\n🚀"];
 
 	for (const [bi, base] of bases.entries()) {
 		it(`base#${bi} identity SWAP preserves hash when body matches`, () => {
 			if (base === "") return;
 			const lines = base.split("\n");
-			const hunks = lines
-				.map((line, i) => `SWAP ${i + 1}.=${i + 1}:\n+${line}`)
-				.join("\n");
+			const hunks = lines.map((line, i) => `SWAP ${i + 1}.=${i + 1}:\n+${line}`).join("\n");
 			const { text } = applyEdits(base, parsePatch(hunks).edits);
 			expect(text).toBe(base);
 			expect(computeFileHash(text)).toBe(computeFileHash(base));

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-	RECOVERY_SESSION_CHAIN_WARNING,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, RECOVERY_SESSION_CHAIN_WARNING, Recovery } from "@veyyon/hashline";
 
 /**
  * Recovery session-chain accept: anchors hold, later drift preserved.
@@ -49,11 +44,7 @@ describe("Recovery session-chain accept", () => {
 		});
 		expect(recovered).not.toBeNull();
 		expect(recovered!.warnings.length).toBeGreaterThan(0);
-		expect(
-			recovered!.warnings.some(
-				w => w.includes(RECOVERY_SESSION_CHAIN_WARNING) || w.length > 0,
-			),
-		).toBe(true);
+		expect(recovered!.warnings.some(w => w.includes(RECOVERY_SESSION_CHAIN_WARNING) || w.length > 0)).toBe(true);
 	});
 
 	it("exact tag match with no drift still applies", () => {

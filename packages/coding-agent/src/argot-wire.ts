@@ -99,7 +99,7 @@ export class ArgotStreamDisplayDecoder {
 	readonly #slots = new Map<number, { decoder: StreamDecoder; decoded: string }>();
 
 	constructor(codec: ArgotSession | undefined) {
-		this.#codec = codec !== undefined && codec.loaded ? codec : undefined;
+		this.#codec = codec?.loaded ? codec : undefined;
 	}
 
 	/** Feed one streamed text/thinking delta for a content block. No-op when inert. */

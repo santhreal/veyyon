@@ -18,10 +18,10 @@
  *     static borderAccent ember, never a different color, never a half-ramp.
  */
 import { describe, expect, it } from "bun:test";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { LAVA_TUNING, lavaAnsi, lavaText } from "@veyyon/coding-agent/modes/theme/shimmer";
+import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const theme = createTheme(defaultThemes.titanium as ThemeJson, { mode: "truecolor" });
 

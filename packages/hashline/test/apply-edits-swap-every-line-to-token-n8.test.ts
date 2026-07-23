@@ -9,10 +9,7 @@ describe("applyEdits SWAP each of 8 to Ti", () => {
 	const text = base.join("\n");
 	for (let i = 1; i <= 8; i++) {
 		it(`i=${i}`, () => {
-			const { text: out } = applyEdits(
-				text,
-				parsePatch(`SWAP ${i}.=${i}:\n+T${i}`).edits,
-			);
+			const { text: out } = applyEdits(text, parsePatch(`SWAP ${i}.=${i}:\n+T${i}`).edits);
 			const want = base.map((v, j) => (j + 1 === i ? `T${i}` : v));
 			expect(out).toBe(want.join("\n"));
 		});

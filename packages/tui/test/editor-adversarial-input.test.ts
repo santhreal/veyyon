@@ -22,7 +22,7 @@ describe("Editor adversarial input", () => {
 
 	it("handles a long single paste without losing the head or tail", () => {
 		const editor = new Editor(defaultEditorTheme);
-		const body = "A".repeat(500) + "MID" + "Z".repeat(500);
+		const body = `${"A".repeat(500)}MID${"Z".repeat(500)}`;
 		editor.handleInput(body);
 		expect(editor.getText().startsWith("AAA")).toBe(true);
 		expect(editor.getText().endsWith("ZZZ")).toBe(true);

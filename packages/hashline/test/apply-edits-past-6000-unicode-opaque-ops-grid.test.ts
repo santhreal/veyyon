@@ -41,22 +41,21 @@ describe("applyEdits past 6000 unicode opaque ops grid", () => {
 
 		it(`SWAP line ${i + 1} to ZWJ family`, () => {
 			const base = samples.join("\n");
-			const out = applyEdits(base, parsePatch(`SWAP ${i + 1}.=${i + 1}:\n+👨‍👩‍👧‍👦`).edits)
-				.text.split("\n");
+			const out = applyEdits(base, parsePatch(`SWAP ${i + 1}.=${i + 1}:\n+👨‍👩‍👧‍👦`).edits).text.split("\n");
 			expect(out[i]).toBe("👨‍👩‍👧‍👦");
 		});
 	}
 
 	it("HEAD all unicode samples prefix", () => {
 		const base = "plain";
-		const body = samples.map((s) => `+${s}`).join("\n");
+		const body = samples.map(s => `+${s}`).join("\n");
 		const out = applyEdits(base, parsePatch(`INS.HEAD:\n${body}`).edits).text.split("\n");
 		expect(out).toEqual([...samples, "plain"]);
 	});
 
 	it("TAIL all unicode samples suffix", () => {
 		const base = "plain";
-		const body = samples.map((s) => `+${s}`).join("\n");
+		const body = samples.map(s => `+${s}`).join("\n");
 		const out = applyEdits(base, parsePatch(`INS.TAIL:\n${body}`).edits).text.split("\n");
 		expect(out).toEqual(["plain", ...samples]);
 	});

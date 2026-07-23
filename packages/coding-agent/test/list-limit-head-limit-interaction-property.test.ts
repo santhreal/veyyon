@@ -16,10 +16,8 @@ describe("applyListLimit head/limit interaction property", () => {
 						limit: limit as number | undefined,
 						headLimit: head as number | undefined,
 					});
-					const effectiveLimit =
-						limit !== undefined && limit > 0 ? limit : undefined;
-					const effectiveHead =
-						head !== undefined && head > 0 ? head : undefined;
+					const effectiveLimit = limit !== undefined && limit > 0 ? limit : undefined;
+					const effectiveHead = head !== undefined && head > 0 ? head : undefined;
 
 					let expected = items;
 					let limitReached: number | undefined;
@@ -43,9 +41,7 @@ describe("applyListLimit head/limit interaction property", () => {
 					}
 					if (
 						effectiveHead !== undefined &&
-						(limitReached !== undefined
-							? Math.min(n, limitReached)
-							: n) > effectiveHead
+						(limitReached !== undefined ? Math.min(n, limitReached) : n) > effectiveHead
 					) {
 						expect(r.meta.headLimit).toEqual({
 							reached: effectiveHead,

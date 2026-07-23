@@ -10,10 +10,7 @@ describe("applyEdits single-line SWAP grid", () => {
 		const base = lines.join("\n");
 		for (let line = 1; line <= n; line++) {
 			it(`n=${n} SWAP ${line}`, () => {
-				const { text } = applyEdits(
-					base,
-					parsePatch(`SWAP ${line}.=${line}:\n+X${line}`).edits,
-				);
+				const { text } = applyEdits(base, parsePatch(`SWAP ${line}.=${line}:\n+X${line}`).edits);
 				const out = text.split("\n");
 				expect(out).toHaveLength(n);
 				for (let i = 0; i < n; i++) {

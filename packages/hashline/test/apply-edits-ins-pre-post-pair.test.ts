@@ -6,10 +6,7 @@ import { applyEdits, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits INS.PRE+POST same anchor", () => {
 	it("PRE and POST line 2 sandwich original line 2", () => {
-		const { text } = applyEdits(
-			"a\nb\nc",
-			parsePatch("INS.PRE 2:\n+PRE\nINS.POST 2:\n+POST").edits,
-		);
+		const { text } = applyEdits("a\nb\nc", parsePatch("INS.PRE 2:\n+PRE\nINS.POST 2:\n+POST").edits);
 		// Both anchors are original line 2
 		expect(text.split("\n")).toContain("PRE");
 		expect(text.split("\n")).toContain("POST");

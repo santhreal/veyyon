@@ -6,11 +6,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
@@ -101,18 +97,18 @@ describe("plan-mode local:// write→read chain", () => {
 			const hit = await walk(path.join(tmpDir, "artifacts"));
 			if (hit) found = await Bun.file(hit).text();
 		}
-		expect(found === body || textOf(await read.execute("r1", { path: "local://my-plan.md" })).includes("step one")).toBe(
-			true,
-		);
+		expect(
+			found === body || textOf(await read.execute("r1", { path: "local://my-plan.md" })).includes("step one"),
+		).toBe(true);
 	});
 
 	it("still blocks tree writes while allowing a second local:// write", async () => {
 		const s = session();
 		const write = new WriteTool(s);
 		await write.execute("w1", { path: "local://notes.md", content: "n1\n" });
-		await expect(
-			write.execute("w2", { path: path.join(tmpDir, "tree.ts"), content: "nope\n" }),
-		).rejects.toThrow(/working tree is read-only/i);
+		await expect(write.execute("w2", { path: path.join(tmpDir, "tree.ts"), content: "nope\n" })).rejects.toThrow(
+			/working tree is read-only/i,
+		);
 		await write.execute("w3", { path: "local://notes.md", content: "n2\n" });
 		expect(await Bun.file(path.join(tmpDir, "tree.ts")).exists()).toBe(false);
 	});

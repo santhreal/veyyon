@@ -39,9 +39,7 @@ describe("GrepTool word-boundary style adversarial", () => {
 
 	it("pattern foo matches lines containing foo as substring", async () => {
 		const tool = new GrepTool(session() as never);
-		const text = textOf(
-			await tool.execute("g1", { pattern: "foo", path: path.join(tmpDir, "w.ts") }),
-		);
+		const text = textOf(await tool.execute("g1", { pattern: "foo", path: path.join(tmpDir, "w.ts") }));
 		expect(text).toContain("foo");
 		// foobar and barfoo also contain foo as substring.
 		expect(text.includes("foobar") || text.includes("foo")).toBe(true);
@@ -49,9 +47,7 @@ describe("GrepTool word-boundary style adversarial", () => {
 
 	it("anchored ^foo$ matches only the exact line when supported", async () => {
 		const tool = new GrepTool(session() as never);
-		const text = textOf(
-			await tool.execute("g2", { pattern: "^foo$", path: path.join(tmpDir, "w.ts") }),
-		);
+		const text = textOf(await tool.execute("g2", { pattern: "^foo$", path: path.join(tmpDir, "w.ts") }));
 		// Exact line foo should match; foobar should not appear as a match line.
 		expect(text.includes("foobar") && !text.includes("food")).toBe(false);
 		// At minimum: either exact foo hit or empty/no-match without crash.

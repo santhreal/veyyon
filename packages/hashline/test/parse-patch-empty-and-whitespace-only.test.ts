@@ -16,8 +16,6 @@ describe("parsePatch empty and whitespace", () => {
 	});
 
 	it("bare body without hunk header throws", () => {
-		expect(() => parsePatch("just some text\nnot an op")).toThrow(
-			/no preceding hunk header|payload line/i,
-		);
+		expect(() => parsePatch("just some text\nnot an op")).toThrow(/no preceding hunk header|payload line/i);
 	});
 });

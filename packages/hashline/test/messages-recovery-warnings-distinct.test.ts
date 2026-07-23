@@ -10,11 +10,7 @@ import {
 
 describe("recovery warnings distinct", () => {
 	it("three distinct Recovered banners", () => {
-		const all = [
-			RECOVERY_EXTERNAL_WARNING,
-			RECOVERY_SESSION_CHAIN_WARNING,
-			RECOVERY_LINE_REMAP_WARNING,
-		];
+		const all = [RECOVERY_EXTERNAL_WARNING, RECOVERY_SESSION_CHAIN_WARNING, RECOVERY_LINE_REMAP_WARNING];
 		expect(new Set(all).size).toBe(3);
 		for (const w of all) {
 			expect(w).toMatch(/Recovered/);

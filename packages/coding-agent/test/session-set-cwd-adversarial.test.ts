@@ -128,9 +128,9 @@ describe("setCwd adversarial cases", () => {
 		const manager = SessionManager.inMemory(start);
 		await manager.setCwd(good, { validate: true });
 		const before = manager.getCwd();
-		await expect(
-			manager.setCwd(path.join(start, "missing-dir"), { validate: true }),
-		).rejects.toThrow(/Directory does not exist/);
+		await expect(manager.setCwd(path.join(start, "missing-dir"), { validate: true })).rejects.toThrow(
+			/Directory does not exist/,
+		);
 		expect(manager.getCwd()).toBe(before);
 	});
 });

@@ -85,7 +85,9 @@ export function splitDefaultTemplate(template: string): DefaultTemplateSections 
 		searchFrom = at + banner.length;
 	}
 	const bounds = [0, ...offsets, template.length];
-	const parts = DEFAULT_TEMPLATE_SECTION_ORDER.map((key, i) => [key, template.slice(bounds[i], bounds[i + 1])] as const);
+	const parts = DEFAULT_TEMPLATE_SECTION_ORDER.map(
+		(key, i) => [key, template.slice(bounds[i], bounds[i + 1])] as const,
+	);
 	return Object.fromEntries(parts) as unknown as DefaultTemplateSections;
 }
 

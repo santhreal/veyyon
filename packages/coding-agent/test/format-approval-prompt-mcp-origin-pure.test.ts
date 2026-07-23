@@ -58,8 +58,6 @@ describe("formatApprovalPrompt MCP origin pure", () => {
 			{},
 			"why",
 		);
-		expect(body).toBe(
-			"Allow tool: mcp__s__t\nOrigin: MCP server tool\nReason: why\nd1",
-		);
+		expect(body).toBe("Allow tool: mcp__s__t\nOrigin: MCP server tool\nReason: why\nd1");
 	});
 });

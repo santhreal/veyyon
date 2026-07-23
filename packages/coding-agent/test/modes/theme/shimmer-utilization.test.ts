@@ -62,8 +62,9 @@ describe("shimmer.ts utilization — no orphaned machinery", () => {
 			const usedExternally = otherSources.some(src => new RegExp(`\\b${name}\\b`).test(src));
 			// Internal use: any reference beyond the export/declaration lines.
 			const internalRefs = [...shimmerSource.matchAll(new RegExp(`\\b${name}\\b`, "g"))].length;
-			const declRefs = [...shimmerSource.matchAll(new RegExp(`export (?:const|function|type|interface|class) ${name}\\b`, "g"))]
-				.length;
+			const declRefs = [
+				...shimmerSource.matchAll(new RegExp(`export (?:const|function|type|interface|class) ${name}\\b`, "g")),
+			].length;
 			const usedInternally = internalRefs > declRefs + (shimmerSource.includes(`@link ${name}`) ? 1 : 0);
 			if (!usedExternally && !usedInternally) orphans.push(name);
 		}

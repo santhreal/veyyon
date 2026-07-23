@@ -16,10 +16,7 @@ describe("applyEdits past 6000 DEL prefix then suffix n80", () => {
 			it(`pref=${pref} suf=${suf}`, () => {
 				const afterPref = applyEdits(base, parsePatch(`DEL 1.=${pref}`).edits).text;
 				const rem = n - pref;
-				const afterSuf = applyEdits(
-					afterPref,
-					parsePatch(`DEL ${rem - suf + 1}.=${rem}`).edits,
-				).text;
+				const afterSuf = applyEdits(afterPref, parsePatch(`DEL ${rem - suf + 1}.=${rem}`).edits).text;
 				expect(afterSuf.split("\n")).toEqual(lines.slice(pref, n - suf));
 			});
 		}

@@ -2,28 +2,19 @@
  * Single-line block resolution rejects with blockSingleLineMessage (not expanded).
  */
 import { describe, expect, it } from "bun:test";
-import {
-	type BlockResolver,
-	blockSingleLineMessage,
-	parsePatch,
-	resolveBlockEdits,
-} from "@veyyon/hashline";
+import { type BlockResolver, blockSingleLineMessage, parsePatch, resolveBlockEdits } from "@veyyon/hashline";
 
 const single: BlockResolver = ({ line }) => ({ start: line, end: line });
 
 describe("resolveBlockEdits single-line block reject", () => {
 	it("SWAP.BLK single-line span throws blockSingleLineMessage", () => {
 		const edits = parsePatch("SWAP.BLK 5:\n+x").edits;
-		expect(() => resolveBlockEdits(edits, "t", "f.ts", single)).toThrow(
-			blockSingleLineMessage(5, "replace"),
-		);
+		expect(() => resolveBlockEdits(edits, "t", "f.ts", single)).toThrow(blockSingleLineMessage(5, "replace"));
 	});
 
 	it("DEL.BLK single-line span throws for delete op", () => {
 		const edits = parsePatch("DEL.BLK 3").edits;
-		expect(() => resolveBlockEdits(edits, "t", "f.ts", single)).toThrow(
-			blockSingleLineMessage(3, "delete"),
-		);
+		expect(() => resolveBlockEdits(edits, "t", "f.ts", single)).toThrow(blockSingleLineMessage(3, "delete"));
 	});
 
 	it("drop mode skips single-line blocks without throw", () => {

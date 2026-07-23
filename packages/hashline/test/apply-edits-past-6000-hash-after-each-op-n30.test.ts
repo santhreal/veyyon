@@ -28,7 +28,7 @@ describe("applyEdits past 6000 hash after each op n30", () => {
 	it("full clear + rebuild restores hash", () => {
 		const empty = applyEdits(base, parsePatch(`DEL 1.=${n}`).edits).text;
 		expect(empty).toBe("");
-		const body = lines.map((l) => `+${l}`).join("\n");
+		const body = lines.map(l => `+${l}`).join("\n");
 		const back = applyEdits(empty, parsePatch(`INS.HEAD:\n${body}`).edits).text;
 		expect(back).toBe(base);
 		expect(computeFileHash(back)).toBe(h0);

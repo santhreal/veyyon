@@ -15,10 +15,7 @@ describe("applyEdits past 6000 SWAP range body length n40", () => {
 			for (let k = 1; k <= 5; k++) {
 				it(`SWAP ${start}.=${end} bodyK=${k}`, () => {
 					const body = Array.from({ length: k }, (_, i) => `+B${i + 1}`).join("\n");
-					const { text, firstChangedLine } = applyEdits(
-						base,
-						parsePatch(`SWAP ${start}.=${end}:\n${body}`).edits,
-					);
+					const { text, firstChangedLine } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${body}`).edits);
 					const expected = [
 						...lines.slice(0, start - 1),
 						...Array.from({ length: k }, (_, i) => `B${i + 1}`),

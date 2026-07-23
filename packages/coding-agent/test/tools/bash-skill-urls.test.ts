@@ -400,9 +400,7 @@ describe("resolveSkillUrlToPath", () => {
 	it("peels a colon suffix after a namespaced skill via longest-prefix match", () => {
 		// `plugin:review:1-5` must bind the skill `plugin:review` and carry `1-5`
 		// as the path suffix, not fail to find a skill named `plugin:review:1-5`.
-		expect(resolveSkillUrlToPath("skill://plugin:review:1-5", skills)).toBe(
-			path.resolve("/base/plugin-review/1-5"),
-		);
+		expect(resolveSkillUrlToPath("skill://plugin:review:1-5", skills)).toBe(path.resolve("/base/plugin-review/1-5"));
 	});
 
 	it("percent-decodes an encoded space in the path", () => {

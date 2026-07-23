@@ -14,7 +14,7 @@ describe("applyEdits past 6000 DEL every kth n300", () => {
 		it(`every ${k}th`, () => {
 			const targets: number[] = [];
 			for (let i = k; i <= n; i += k) targets.push(i);
-			const hunks = targets.map((t) => `DEL ${t}`).join("\n");
+			const hunks = targets.map(t => `DEL ${t}`).join("\n");
 			const out = applyEdits(base, parsePatch(hunks).edits).text;
 			const expected = lines.filter((_, i) => (i + 1) % k !== 0);
 			expect(out === "" ? [] : out.split("\n")).toEqual(expected);

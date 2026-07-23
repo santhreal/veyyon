@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 /**
  * Recovery with multi-line SWAP when only non-anchor later lines drifted.

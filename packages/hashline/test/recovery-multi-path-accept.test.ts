@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 /**
  * Independent recovery on two paths in one store with late drift each.

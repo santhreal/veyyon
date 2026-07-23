@@ -1,6 +1,7 @@
 import MODELS from "./src/models.json" with { type: "json" };
-import { collapseEffortVariantsAcrossProviders } from "./src/variant-collapse";
 import type { Api, ModelSpec } from "./src/types";
+import { collapseEffortVariantsAcrossProviders } from "./src/variant-collapse";
+
 const all = MODELS as Record<string, Record<string, unknown>>;
 for (const prov of Object.keys(all)) {
 	const slice = Object.values(all[prov] ?? {}) as ModelSpec<Api>[];

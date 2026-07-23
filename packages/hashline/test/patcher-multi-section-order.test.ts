@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-} from "@veyyon/hashline";
+import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 /**
  * Multi-section patch order: later sections apply after earlier ones.
@@ -24,9 +19,7 @@ describe("Patcher multi-section order", () => {
 			tags[p] = snapshots.record(p, body);
 		}
 		const patcher = new Patcher({ fs: mem, snapshots });
-		const src = files
-			.map(([p]) => `[${p}#${tags[p]}]\nSWAP 1.=1:\n+${p[0]!.toUpperCase()}2\n`)
-			.join("\n");
+		const src = files.map(([p]) => `[${p}#${tags[p]}]\nSWAP 1.=1:\n+${p[0]!.toUpperCase()}2\n`).join("\n");
 		await patcher.apply(Patch.parse(src));
 		expect(mem.get("a.ts")).toBe("A2\n");
 		expect(mem.get("b.ts")).toBe("B2\n");

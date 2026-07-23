@@ -2,13 +2,7 @@
  * Patcher DEL ranges with valid tags: exact remaining content.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher DEL range with tags", () => {
 	it("DEL 2.=4 on 5-line file", async () => {

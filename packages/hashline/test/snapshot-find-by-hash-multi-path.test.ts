@@ -2,7 +2,7 @@
  * findByHash returns all paths with same content hash.
  */
 import { describe, expect, it } from "bun:test";
-import { InMemorySnapshotStore, computeFileHash } from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore } from "@veyyon/hashline";
 
 describe("findByHash multi-path", () => {
 	it("two paths same content", () => {

@@ -7,9 +7,9 @@ import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/cod
 import { parseJsonPayload } from "@veyyon/coding-agent/commit/utils/analysis";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
+	type CodexAutoRedeemMode,
 	getDefault,
 	SETTINGS_SCHEMA,
-	type CodexAutoRedeemMode,
 	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
 import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
@@ -23,34 +23,39 @@ import {
 } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
 import type { RpcCommand, RpcResponse } from "@veyyon/coding-agent/modes/rpc/rpc-types";
 import {
-	type ApprovalMode,
-	type ApprovalResolutionOptions,
-	resolveApproval,
-	type ToolApproval,
-} from "@veyyon/coding-agent/tools/approval";
-import {
-	evaluateCodexAutoRedeem,
 	type CodexAutoRedeemInput,
+	evaluateCodexAutoRedeem,
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "@veyyon/coding-agent/session/codex-auto-reset";
+import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
 import {
 	parseTitleSlotLine,
 	serializeTitleSlot,
 	titleUpdateFromSlot,
 } from "@veyyon/coding-agent/session/session-title-slot";
-import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 import { formatShakeSummary, type ShakeResult } from "@veyyon/coding-agent/session/shake-types";
+import {
+	type ApprovalMode,
+	type ApprovalResolutionOptions,
+	resolveApproval,
+	type ToolApproval,
+} from "@veyyon/coding-agent/tools/approval";
 import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/ast-edit";
+import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/conflict-detect";
 import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
 	searchPathFilesystemTargets,
 } from "@veyyon/coding-agent/tools/cwd-boundary";
-import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/conflict-detect";
+import {
+	buildSearchDateQualifier,
+	parsePositiveDecimalInt,
+	parseSearchDateBound,
+	resolveTailLimit,
+} from "@veyyon/coding-agent/tools/gh";
 import { formatShortSha } from "@veyyon/coding-agent/tools/gh-format";
-import { buildSearchDateQualifier, parsePositiveDecimalInt, parseSearchDateBound, resolveTailLimit } from "@veyyon/coding-agent/tools/gh";
 import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
 import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/job";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
@@ -62,7 +67,6 @@ import {
 	stripRawOutputArtifactNotice,
 	type TruncationMeta,
 } from "@veyyon/coding-agent/tools/output-meta";
-import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
 import {
 	combineSearchGlobs,
 	expandPath,
@@ -77,7 +81,8 @@ import {
 	parseSearchPath,
 	resolveToCwd,
 } from "@veyyon/coding-agent/tools/path-utils";
-import { getPriorityInfo, isFindingPriority, type FindingPriority } from "@veyyon/coding-agent/tools/review";
+import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { type FindingPriority, getPriorityInfo, isFindingPriority } from "@veyyon/coding-agent/tools/review";
 import {
 	clampTimeout,
 	describeTimeoutParam,
@@ -493,16 +498,17 @@ function runTimeoutClampNotice(c: CorpusCase): void {
 		effectiveSec: number;
 	};
 	const exp = c.expect as { notice: string | null };
-	expect(nullishToNull(formatTimeoutClampNotice(input.tool, input.requestedSec, input.effectiveSec))).toBe(
-		exp.notice,
-	);
+	expect(nullishToNull(formatTimeoutClampNotice(input.tool, input.requestedSec, input.effectiveSec))).toBe(exp.notice);
 }
 
 function runTimeoutParamDesc(c: CorpusCase): void {
 	const input = c.input as { tool: ToolWithTimeout; zeroDisablesNoun?: string };
 	const exp = c.expect as { text: string };
 	expect(
-		describeTimeoutParam(input.tool, input.zeroDisablesNoun ? { zeroDisablesNoun: input.zeroDisablesNoun } : undefined),
+		describeTimeoutParam(
+			input.tool,
+			input.zeroDisablesNoun ? { zeroDisablesNoun: input.zeroDisablesNoun } : undefined,
+		),
 	).toBe(exp.text);
 }
 
@@ -941,9 +947,9 @@ function runBuildSearchDateQualifier(c: CorpusCase): void {
 		now: string;
 	};
 	const exp = c.expect as { qualifier: string | null };
-	expect(
-		nullishToNull(buildSearchDateQualifier(input.field, input.since, input.until, new Date(input.now))),
-	).toBe(exp.qualifier);
+	expect(nullishToNull(buildSearchDateQualifier(input.field, input.since, input.until, new Date(input.now)))).toBe(
+		exp.qualifier,
+	);
 }
 
 function runDetectLanguageId(c: CorpusCase): void {

@@ -14,15 +14,9 @@ describe("applyEdits past 6000 commutative triple DEL n20", () => {
 		for (let b = a + 1; b <= n; b++) {
 			for (let c = b + 1; c <= n; c++) {
 				it(`DEL ${a},${b},${c}`, () => {
-					const multi = applyEdits(
-						base,
-						parsePatch(`DEL ${a}\nDEL ${b}\nDEL ${c}`).edits,
-					).text;
+					const multi = applyEdits(base, parsePatch(`DEL ${a}\nDEL ${b}\nDEL ${c}`).edits).text;
 					const seq = applyEdits(
-						applyEdits(
-							applyEdits(base, parsePatch(`DEL ${c}`).edits).text,
-							parsePatch(`DEL ${b}`).edits,
-						).text,
+						applyEdits(applyEdits(base, parsePatch(`DEL ${c}`).edits).text, parsePatch(`DEL ${b}`).edits).text,
 						parsePatch(`DEL ${a}`).edits,
 					).text;
 					expect(multi).toBe(seq);

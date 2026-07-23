@@ -3,10 +3,7 @@
  * are stripped from live provider replay; other roles and assistant turns stay.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	filterProviderReplayMessages,
-	isProviderRefusalMessage,
-} from "@veyyon/agent-core/replay-policy";
+import { filterProviderReplayMessages, isProviderRefusalMessage } from "@veyyon/agent-core/replay-policy";
 import type { AssistantMessage, Message } from "@veyyon/ai";
 
 function assistant(
@@ -44,9 +41,7 @@ describe("isProviderRefusalMessage pure matrix", () => {
 
 	for (const reason of ["stop", "length", "aborted", "toolUse"] as const) {
 		it(`false for stopReason=${reason} even with refusal type`, () => {
-			expect(
-				isProviderRefusalMessage(assistant(reason as never, { type: "refusal" } as never)),
-			).toBe(false);
+			expect(isProviderRefusalMessage(assistant(reason as never, { type: "refusal" } as never))).toBe(false);
 		});
 	}
 });
@@ -67,11 +62,7 @@ describe("filterProviderReplayMessages pure matrix", () => {
 	});
 
 	it("identity when no refusals", () => {
-		const msgs = [
-			{ role: "user", content: "a", timestamp: 1 } as Message,
-			assistant("stop"),
-			assistant("length"),
-		];
+		const msgs = [{ role: "user", content: "a", timestamp: 1 } as Message, assistant("stop"), assistant("length")];
 		expect(filterProviderReplayMessages(msgs)).toEqual(msgs);
 	});
 });

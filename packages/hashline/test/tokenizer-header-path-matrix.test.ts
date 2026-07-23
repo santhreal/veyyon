@@ -2,8 +2,8 @@
  * Tokenizer.tokenize header paths with hashes.
  */
 import { describe, expect, it } from "bun:test";
-import { Tokenizer } from "../src/tokenizer";
 import { formatHashlineHeader } from "../src/format";
+import { Tokenizer } from "../src/tokenizer";
 
 const tok = new Tokenizer();
 

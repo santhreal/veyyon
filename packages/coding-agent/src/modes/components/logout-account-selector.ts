@@ -1,6 +1,6 @@
 import {
-	clampLow,
 	type Component,
+	clampLow,
 	matchesKey,
 	padding,
 	routeSgrMouseInput,
@@ -66,9 +66,7 @@ export class LogoutAccountSelectorComponent implements Component {
 		const total = this.#accounts.length;
 		const maxVisible = LOGOUT_SELECTOR_MAX_VISIBLE;
 		const startIndex =
-			total <= maxVisible
-				? 0
-				: clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
+			total <= maxVisible ? 0 : clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 		const endIndex = Math.min(startIndex + maxVisible, total);
 
 		const rows: string[] = [];

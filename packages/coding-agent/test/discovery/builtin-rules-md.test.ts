@@ -16,11 +16,7 @@ import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 // Importing discovery registers all providers as a side effect.
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 let settingsState: SettingsTestState | undefined;
 let tempDir: string;

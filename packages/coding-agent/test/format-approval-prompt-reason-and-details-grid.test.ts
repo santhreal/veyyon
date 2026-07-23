@@ -10,33 +10,23 @@ describe("formatApprovalPrompt reason and details grid", () => {
 	});
 
 	it("reason only", () => {
-		expect(formatApprovalPrompt({ name: "bash" }, {}, "why")).toBe(
-			"Allow tool: bash\nReason: why",
-		);
+		expect(formatApprovalPrompt({ name: "bash" }, {}, "why")).toBe("Allow tool: bash\nReason: why");
 	});
 
 	it("string details", () => {
-		expect(
-			formatApprovalPrompt(
-				{ name: "w", formatApprovalDetails: () => "path: /tmp" },
-				{},
-			),
-		).toBe("Allow tool: w\npath: /tmp");
+		expect(formatApprovalPrompt({ name: "w", formatApprovalDetails: () => "path: /tmp" }, {})).toBe(
+			"Allow tool: w\npath: /tmp",
+		);
 	});
 
 	it("empty string details omitted", () => {
-		expect(
-			formatApprovalPrompt({ name: "w", formatApprovalDetails: () => "" }, {}),
-		).toBe("Allow tool: w");
+		expect(formatApprovalPrompt({ name: "w", formatApprovalDetails: () => "" }, {})).toBe("Allow tool: w");
 	});
 
 	it("array details skips empties", () => {
-		expect(
-			formatApprovalPrompt(
-				{ name: "w", formatApprovalDetails: () => ["a", "", "b"] },
-				{},
-			),
-		).toBe("Allow tool: w\na\nb");
+		expect(formatApprovalPrompt({ name: "w", formatApprovalDetails: () => ["a", "", "b"] }, {})).toBe(
+			"Allow tool: w\na\nb",
+		);
 	});
 
 	it("mcp origin + reason + details", () => {
@@ -55,9 +45,7 @@ describe("formatApprovalPrompt reason and details grid", () => {
 	const tools = ["bash", "edit", "read", "write", "mcp__x__y"];
 	for (const name of tools) {
 		it(`name line for ${name}`, () => {
-			expect(formatApprovalPrompt({ name }, {}).startsWith(`Allow tool: ${name}`)).toBe(
-				true,
-			);
+			expect(formatApprovalPrompt({ name }, {}).startsWith(`Allow tool: ${name}`)).toBe(true);
 		});
 	}
 });

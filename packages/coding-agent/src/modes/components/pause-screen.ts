@@ -12,7 +12,6 @@
  * the change via a normal steering message.
  */
 import { agentPauseGate } from "@veyyon/agent-core";
-import { formatClock } from "@veyyon/utils";
 import {
 	type Component,
 	centerLine,
@@ -22,6 +21,7 @@ import {
 	type OverlayOptions,
 	TERMINAL,
 } from "@veyyon/tui";
+import { formatClock } from "@veyyon/utils";
 import { formatDurationCoarse } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";

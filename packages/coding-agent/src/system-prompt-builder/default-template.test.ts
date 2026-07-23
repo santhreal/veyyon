@@ -100,7 +100,10 @@ describe("assembleDefaultTemplate overrides", () => {
 
 	/** Overriding several sections at once composes; each lands in document order. */
 	it("applies multiple section overrides together", () => {
-		const out = assembleDefaultTemplate({ role: "ROLE\n====\nR\n", deliveryContract: "DELIVERY CONTRACT\n====\nD\n" });
+		const out = assembleDefaultTemplate({
+			role: "ROLE\n====\nR\n",
+			deliveryContract: "DELIVERY CONTRACT\n====\nD\n",
+		});
 		expect(out).toContain("\nR\n");
 		expect(out).toContain("\nD\n");
 		expect(out.indexOf("\nR\n")).toBeLessThan(out.indexOf("\nD\n"));

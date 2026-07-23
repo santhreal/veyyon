@@ -13,9 +13,9 @@ describe("parsePatch DEL keyword forms", () => {
 
 	it("DEL N.=M", () => {
 		const { edits } = parsePatch("DEL 10.=12");
-		expect(
-			edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0)),
-		).toEqual([10, 11, 12]);
+		expect(edits.filter(e => e.kind === "delete").map(e => (e.kind === "delete" ? e.anchor.line : 0))).toEqual([
+			10, 11, 12,
+		]);
 	});
 
 	it("DEL 1 is valid", () => {

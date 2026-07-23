@@ -5,11 +5,7 @@ import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { getConfigDirs } from "@veyyon/coding-agent/config";
 import { getUserPath } from "@veyyon/coding-agent/discovery/helpers";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfile, getAgentDir } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 describe("VEYYON_CONFIG_DIR", () => {
 	let settingsState: SettingsTestState | undefined;

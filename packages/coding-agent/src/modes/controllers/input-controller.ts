@@ -667,6 +667,9 @@ export class InputController {
 
 	setupEditorSubmitHandler(): void {
 		this.ctx.editor.onSubmit = async (text: string) => {
+			// Chat idiom: submitting snaps a scrolled-up transcript back to the
+			// live tail — the operator just engaged with the present.
+			this.ctx.ui.scrollToLiveTail();
 			text = text.trim();
 			const hasPendingImages = this.ctx.editor.pendingImages.length > 0;
 			if ((!isSettingsInitialized() || settings.get("emojiAutocomplete")) && text) text = expandEmoticons(text);

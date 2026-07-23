@@ -8,8 +8,8 @@ import * as path from "node:path";
 // atomic-write.ts and file-lock.ts are env-free, so importing them eagerly is safe.
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { normalizeProfileName } from "@veyyon/utils/dirs";
-import { isEnoent } from "@veyyon/utils/fs-error";
 import { withFileLock } from "@veyyon/utils/file-lock";
+import { isEnoent } from "@veyyon/utils/fs-error";
 
 export type ProfileAliasShell = "bash" | "zsh" | "fish" | "powershell" | "pwsh";
 
@@ -134,7 +134,6 @@ const POWERSHELL_RESERVED_ALIAS_NAMES: ReadonlySet<string> = new Set([
 	"while",
 	"workflow",
 ]);
-
 
 function getReservedAliasNames(shell: ProfileAliasShell): ReadonlySet<string> {
 	switch (shell) {

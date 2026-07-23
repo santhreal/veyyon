@@ -1,9 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 /**
  * Recovery when current text still matches the snapshot (no drift).

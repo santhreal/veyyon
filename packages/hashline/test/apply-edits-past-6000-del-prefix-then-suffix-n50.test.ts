@@ -13,14 +13,10 @@ describe("applyEdits past 6000 DEL prefix then suffix n50", () => {
 		for (let suf = 1; suf <= 15; suf++) {
 			if (pref + suf >= n) continue;
 			it(`prefix ${pref} then suffix ${suf}`, () => {
-				const afterPref = applyEdits(
-					base,
-					parsePatch(pref === 1 ? "DEL 1" : `DEL 1.=${pref}`).edits,
-				).text;
+				const afterPref = applyEdits(base, parsePatch(pref === 1 ? "DEL 1" : `DEL 1.=${pref}`).edits).text;
 				const remaining = n - pref;
 				const start = remaining - suf + 1;
-				const header =
-					start === remaining ? `DEL ${start}` : `DEL ${start}.=${remaining}`;
+				const header = start === remaining ? `DEL ${start}` : `DEL ${start}.=${remaining}`;
 				const final = applyEdits(afterPref, parsePatch(header).edits).text;
 				expect(final === "" ? [] : final.split("\n")).toEqual(lines.slice(pref, n - suf));
 			});

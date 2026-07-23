@@ -16,10 +16,7 @@ describe("formatApprovalPrompt reason and details matrix", () => {
 	});
 
 	it("MCP tool with approval field skips Origin", () => {
-		const out = formatApprovalPrompt(
-			{ name: "mcp__srv__tool", approval: "ask" as never },
-			{},
-		);
+		const out = formatApprovalPrompt({ name: "mcp__srv__tool", approval: "ask" as never }, {});
 		expect(out).toBe("Allow tool: mcp__srv__tool");
 	});
 
@@ -51,18 +48,12 @@ describe("formatApprovalPrompt reason and details matrix", () => {
 	});
 
 	it("empty string details omitted", () => {
-		const out = formatApprovalPrompt(
-			{ name: "bash", formatApprovalDetails: () => "" },
-			{},
-		);
+		const out = formatApprovalPrompt({ name: "bash", formatApprovalDetails: () => "" }, {});
 		expect(out).toBe("Allow tool: bash");
 	});
 
 	it("empty array entries skipped", () => {
-		const out = formatApprovalPrompt(
-			{ name: "bash", formatApprovalDetails: () => ["", "keep", ""] },
-			{},
-		);
+		const out = formatApprovalPrompt({ name: "bash", formatApprovalDetails: () => ["", "keep", ""] }, {});
 		expect(out).toBe("Allow tool: bash\nkeep");
 	});
 

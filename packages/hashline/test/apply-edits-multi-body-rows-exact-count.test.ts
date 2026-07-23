@@ -12,9 +12,7 @@ describe("applyEdits multi body rows exact count", () => {
 			const { text } = applyEdits(base, parsePatch(`SWAP 2.=4:\n${rows}`).edits);
 			const out = text.split("\n");
 			expect(out[0]).toBe("L1");
-			expect(out.slice(1, 1 + bodyLen)).toEqual(
-				Array.from({ length: bodyLen }, (_, i) => `B${i}`),
-			);
+			expect(out.slice(1, 1 + bodyLen)).toEqual(Array.from({ length: bodyLen }, (_, i) => `B${i}`));
 			expect(out[1 + bodyLen]).toBe("L5");
 			expect(out.length).toBe(2 + bodyLen);
 		});

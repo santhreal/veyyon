@@ -29,6 +29,7 @@ function makeHarness(options: {
 		transcriptChildren: options.transcriptChildren ?? 0,
 		hasHero: options.hasHero ?? false,
 		renderRequests: 0,
+		pinnedFooterRows: 0,
 	};
 	const children: Array<{ render: (width: number) => readonly string[] }> = [block(options.contentRows)];
 	const ui = {
@@ -40,11 +41,15 @@ function makeHarness(options: {
 		requestRender: () => {
 			state.renderRequests++;
 		},
+		setPinnedFooterRows: (rows: number) => {
+			state.pinnedFooterRows = rows;
+		},
 	} as unknown as TUI;
 	const port: HomeAnchorPort = {
 		ui,
 		transcriptChildCount: () => state.transcriptChildren,
 		hasHero: () => state.hasHero,
+		composerZoneRows: () => 6,
 	};
 	const layout = new HomeAnchorLayout(port);
 	// The real tree mounts both fills as root children; the remeasure walk must
@@ -157,6 +162,19 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 		expect(layout.active).toBe(false);
 		layout.onFrameComposed();
 		expect(state.renderRequests).toBe(0);
+	});
+
+	test("pushes the composer zone height to the engine's pinned footer on every compose", () => {
+		// Scroll isolation freezes the transcript region above the frame tail's
+		// pinned footer; the footer IS the composer zone, so the engine's row
+		// count must track the zone's live height on every composed frame, even
+		// after the home anchor has latched off.
+		const { layout, state } = makeHarness({ rows: 30, contentRows: 8, composedFrameRows: 8 });
+		layout.onFrameComposed();
+		expect(state.pinnedFooterRows).toBe(6);
+		layout.sync();
+		layout.onFrameComposed();
+		expect(state.pinnedFooterRows).toBe(6);
 	});
 });
 

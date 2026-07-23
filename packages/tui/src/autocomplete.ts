@@ -342,7 +342,8 @@ function buildSlashCommandCompletions(
 		// Stable partition into category-contiguous runs so SelectList renders one
 		// header per category. Score order is preserved inside each category, and
 		// untagged commands trail the tagged ones with no header of their own.
-		const rank = (g: string | undefined): number => (g === undefined ? Number.MAX_SAFE_INTEGER : (categoryOrder.get(g) ?? Number.MAX_SAFE_INTEGER));
+		const rank = (g: string | undefined): number =>
+			g === undefined ? Number.MAX_SAFE_INTEGER : (categoryOrder.get(g) ?? Number.MAX_SAFE_INTEGER);
 		ranked.sort((a, b) => rank(a.group) - rank(b.group) || b.score - a.score);
 	}
 	return ranked.map(({ score: _, ...rest }) => rest);

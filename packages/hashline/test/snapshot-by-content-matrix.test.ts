@@ -2,7 +2,7 @@
  * SnapshotStore.byContent exact text match (not hash-only).
  */
 import { describe, expect, it } from "bun:test";
-import { InMemorySnapshotStore, computeFileHash } from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore } from "@veyyon/hashline";
 
 describe("InMemorySnapshotStore byContent", () => {
 	it("finds exact text", () => {

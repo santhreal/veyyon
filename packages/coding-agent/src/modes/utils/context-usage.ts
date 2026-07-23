@@ -3,7 +3,7 @@ import type { CompactionSettings } from "@veyyon/agent-core/compaction";
 import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/agent-core/compaction";
 import type { Tool as AiTool, Model } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
-import { errorMessage, formatCount, formatNumber, logger } from "@veyyon/utils";
+import { errorMessage, formatNumber, logger } from "@veyyon/utils";
 import type { Skill } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
 import type { Tool } from "../../tools";

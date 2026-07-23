@@ -6,10 +6,10 @@ import { describe, expect, it } from "bun:test";
 import {
 	InMemorySnapshotStore,
 	parsePatch,
-	Recovery,
 	RECOVERY_EXTERNAL_WARNING,
 	RECOVERY_LINE_REMAP_WARNING,
 	RECOVERY_SESSION_CHAIN_WARNING,
+	Recovery,
 } from "@veyyon/hashline";
 
 describe("Recovery.tryRecover accept paths", () => {
@@ -60,9 +60,11 @@ describe("Recovery.tryRecover accept paths", () => {
 		if (result) {
 			expect(result.text).toContain("GAMMA");
 			expect(result.text).toContain("EXTRA");
-			expect(result.warnings.some(w => w.includes("Recovered") || w === RECOVERY_EXTERNAL_WARNING || w === RECOVERY_LINE_REMAP_WARNING)).toBe(
-				true,
-			);
+			expect(
+				result.warnings.some(
+					w => w.includes("Recovered") || w === RECOVERY_EXTERNAL_WARNING || w === RECOVERY_LINE_REMAP_WARNING,
+				),
+			).toBe(true);
 		}
 	});
 
@@ -165,4 +167,3 @@ describe("Recovery.tryRecover refuse paths", () => {
 		expect(result).toBeNull();
 	});
 });
-

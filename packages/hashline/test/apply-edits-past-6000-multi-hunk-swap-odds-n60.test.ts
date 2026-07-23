@@ -11,8 +11,8 @@ describe("applyEdits past 6000 multi-hunk SWAP odds n60", () => {
 
 	it("odds become O_i", () => {
 		const hunks = Array.from({ length: n }, (_, i) => i + 1)
-			.filter((x) => x % 2 === 1)
-			.map((x) => `SWAP ${x}.=${x}:\n+O${x}`)
+			.filter(x => x % 2 === 1)
+			.map(x => `SWAP ${x}.=${x}:\n+O${x}`)
 			.join("\n");
 		const out = applyEdits(base, parsePatch(hunks).edits).text.split("\n");
 		for (let i = 1; i <= n; i++) {

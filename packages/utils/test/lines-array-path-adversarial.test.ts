@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { batched } from "@veyyon/utils/array";
-import { expandTilde, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
 import { splitTextLines } from "@veyyon/utils/lines";
+import { expandTilde, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
 
 /**
  * Pure utils used on hot paths: line split trailing-newline rule, batched

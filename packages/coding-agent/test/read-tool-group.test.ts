@@ -8,11 +8,7 @@ import {
 	readArgsTargetInternalUrl,
 } from "@veyyon/coding-agent/modes/components/read-tool-group";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "./helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);

@@ -27,7 +27,6 @@ import {
 	setDetectedTerminalGround,
 } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { createTheme, initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { TERMINAL } from "@veyyon/tui";
 
 function channelSum(hex: string): number {
 	return [1, 3, 5].reduce((a, i) => a + Number.parseInt(hex.slice(i, i + 2), 16), 0);
@@ -144,10 +143,7 @@ describe("composer card ground derivation", () => {
 	/** Source lock, same order: no background paint may exist anywhere in the
 	 * composer chrome — no bg escape, no composerBg read, no card owner. */
 	it("composer-chrome contains no background paint at all", () => {
-		const chrome = readFileSync(
-			join(import.meta.dir, "../../../src/modes/components/composer-chrome.ts"),
-			"utf8",
-		);
+		const chrome = readFileSync(join(import.meta.dir, "../../../src/modes/components/composer-chrome.ts"), "utf8");
 		expect(chrome).not.toContain("composerCardGround");
 		expect(chrome).not.toContain("[48;2;");
 		expect(chrome).not.toContain('getBgAnsi("composerBg")');

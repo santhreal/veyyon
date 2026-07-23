@@ -2,8 +2,8 @@
  * ambiguousCloserSpareMessage singular/plural exact fragments.
  */
 import { describe, expect, it } from "bun:test";
-import { ambiguousCloserSpareMessage } from "../src/messages";
 import { HL_RANGE_SEP } from "../src/format";
+import { ambiguousCloserSpareMessage } from "../src/messages";
 
 describe("ambiguousCloserSpareMessage exact", () => {
 	it("singular", () => {

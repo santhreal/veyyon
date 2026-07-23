@@ -2,13 +2,7 @@
  * MV and line edit in one multi-hunk section if supported; else sequential apply.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher MV with line edits", () => {
 	it("line edit then MV in one section", async () => {
@@ -17,11 +11,7 @@ describe("Patcher MV with line edits", () => {
 		const snapshots = new InMemorySnapshotStore();
 		const tag = snapshots.record("from.ts", content);
 		const patcher = new Patcher({ fs, snapshots });
-		await patcher.apply(
-			Patch.parse(
-				`${formatHashlineHeader("from.ts", tag)}\nSWAP 1.=1:\n+new\nMV to.ts`,
-			),
-		);
+		await patcher.apply(Patch.parse(`${formatHashlineHeader("from.ts", tag)}\nSWAP 1.=1:\n+new\nMV to.ts`));
 		expect(fs.get("from.ts")).toBeUndefined();
 		expect(fs.get("to.ts")).toBe("new\n");
 	});

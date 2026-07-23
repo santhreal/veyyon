@@ -8,17 +8,11 @@ import {
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	sanitizeMcpStatusError,
 } from "@veyyon/coding-agent/mcp/startup-events";
-import {
-	describeMCPTimeout,
-	isMCPTimeoutEnabled,
-	resolveMCPTimeoutMs,
-} from "@veyyon/coding-agent/mcp/timeout";
+import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "@veyyon/coding-agent/mcp/timeout";
 
 describe("isMcpConnectionStatusEvent matrix", () => {
 	it("accepts connecting with string array", () => {
-		expect(
-			isMcpConnectionStatusEvent({ type: "connecting", serverNames: ["a", "b"] }),
-		).toBe(true);
+		expect(isMcpConnectionStatusEvent({ type: "connecting", serverNames: ["a", "b"] })).toBe(true);
 	});
 
 	it("accepts connected", () => {
@@ -26,9 +20,7 @@ describe("isMcpConnectionStatusEvent matrix", () => {
 	});
 
 	it("accepts failed with optional foreign", () => {
-		expect(
-			isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "boom" }),
-		).toBe(true);
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x", error: "boom" })).toBe(true);
 		expect(
 			isMcpConnectionStatusEvent({
 				type: "failed",
@@ -43,13 +35,9 @@ describe("isMcpConnectionStatusEvent matrix", () => {
 		expect(isMcpConnectionStatusEvent(null)).toBe(false);
 		expect(isMcpConnectionStatusEvent({})).toBe(false);
 		expect(isMcpConnectionStatusEvent({ type: "connecting" })).toBe(false);
-		expect(
-			isMcpConnectionStatusEvent({ type: "connecting", serverNames: [1] }),
-		).toBe(false);
+		expect(isMcpConnectionStatusEvent({ type: "connecting", serverNames: [1] })).toBe(false);
 		expect(isMcpConnectionStatusEvent({ type: "connected" })).toBe(false);
-		expect(
-			isMcpConnectionStatusEvent({ type: "failed", serverName: "x" }),
-		).toBe(false);
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "x" })).toBe(false);
 		expect(
 			isMcpConnectionStatusEvent({
 				type: "failed",

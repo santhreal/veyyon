@@ -4,10 +4,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
-	normalizeApprovalMode,
-	validateApprovalModeSetting,
 	APPROVAL_MODE_VALUES,
 	isKnownApprovalMode,
+	normalizeApprovalMode,
+	validateApprovalModeSetting,
 } from "../src/tools/approval";
 
 describe("normalizeApprovalMode", () => {

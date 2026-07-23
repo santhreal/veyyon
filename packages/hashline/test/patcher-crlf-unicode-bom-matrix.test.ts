@@ -4,14 +4,14 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
 	computeFileHash,
 	detectLineEnding,
 	formatHashlineHeader,
+	InMemoryFilesystem,
+	InMemorySnapshotStore,
 	normalizeToLF,
+	Patch,
+	Patcher,
 	restoreLineEndings,
 	stripBom,
 } from "@veyyon/hashline";
@@ -33,7 +33,7 @@ describe("Patcher CRLF file through apply (in-memory stores LF)", () => {
 
 	it("BOM is re-applied after edit when original had BOM", async () => {
 		const body = "line\n";
-		const withBom = "\uFEFF" + body;
+		const withBom = `\uFEFF${body}`;
 		const fs = new InMemoryFilesystem([["b.ts", withBom]]);
 		const snapshots = new InMemorySnapshotStore();
 		const { text: stripped } = stripBom(withBom);

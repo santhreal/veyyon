@@ -2,13 +2,7 @@
  * Patcher on unicode path and content.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	formatHashlineHeader,
-} from "@veyyon/hashline";
+import { formatHashlineHeader, InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 describe("Patcher unicode path and content", () => {
 	it("edits 日本語 path", async () => {
@@ -18,9 +12,7 @@ describe("Patcher unicode path and content", () => {
 		const snapshots = new InMemorySnapshotStore();
 		const tag = snapshots.record(path, content);
 		const patcher = new Patcher({ fs, snapshots });
-		await patcher.apply(
-			Patch.parse(`${formatHashlineHeader(path, tag)}\nSWAP 1.=1:\n+const x = 2;`),
-		);
+		await patcher.apply(Patch.parse(`${formatHashlineHeader(path, tag)}\nSWAP 1.=1:\n+const x = 2;`));
 		expect(fs.get(path)).toBe("const x = 2;\n");
 	});
 
@@ -31,9 +23,7 @@ describe("Patcher unicode path and content", () => {
 		const snapshots = new InMemorySnapshotStore();
 		const tag = snapshots.record(path, content);
 		const patcher = new Patcher({ fs, snapshots });
-		await patcher.apply(
-			Patch.parse(`${formatHashlineHeader(path, tag)}\nSWAP 1.=1:\n+🚀 ship`),
-		);
+		await patcher.apply(Patch.parse(`${formatHashlineHeader(path, tag)}\nSWAP 1.=1:\n+🚀 ship`));
 		expect(fs.get(path)).toBe("🚀 ship\n");
 	});
 });

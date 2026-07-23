@@ -43,9 +43,8 @@ export interface CreateExperimentRequest {
 }
 
 import { errorMessage, isProcessAlive } from "@veyyon/utils";
-import indexHtml from "./web/index.html";
-
 import { DEFAULT_JOBS_DIR, REPO_ROOT } from "./paths";
+import indexHtml from "./web/index.html";
 
 const PKG_DIR = path.resolve(import.meta.dir, "..");
 

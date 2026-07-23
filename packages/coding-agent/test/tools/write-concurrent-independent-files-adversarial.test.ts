@@ -5,11 +5,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
@@ -75,8 +71,8 @@ describe("WriteTool concurrent independent files", () => {
 		const s = session();
 		const tool = new WriteTool(s);
 		const file = path.join(tmpDir, "race.ts");
-		const a = "A".repeat(2000) + "\n";
-		const b = "B".repeat(2000) + "\n";
+		const a = `${"A".repeat(2000)}\n`;
+		const b = `${"B".repeat(2000)}\n`;
 		await Promise.all([
 			tool.execute("wa", { path: file, content: a }),
 			tool.execute("wb", { path: file, content: b }),

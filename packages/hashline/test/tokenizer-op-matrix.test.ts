@@ -3,13 +3,8 @@
  * and header vs payload classification.
  */
 import { describe, expect, it } from "bun:test";
+import { formatHashlineHeader, HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "../src/format";
 import { Tokenizer } from "../src/tokenizer";
-import {
-	HL_FILE_HASH_SEP,
-	HL_FILE_PREFIX,
-	HL_FILE_SUFFIX,
-	formatHashlineHeader,
-} from "../src/format";
 
 const tok = new Tokenizer();
 

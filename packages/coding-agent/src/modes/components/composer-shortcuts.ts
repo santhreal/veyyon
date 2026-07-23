@@ -4,6 +4,7 @@
  */
 import { type Component, padding, visibleWidth } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
+import { theme } from "../theme/theme";
 import { appKey } from "./keybinding-hints";
 import { type ModalShortcut, renderModalShortcuts } from "./modal-shell";
 
@@ -45,14 +46,28 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
  */
 export class ComposerShortcutsBar implements Component {
 	#shortcuts: readonly ModalShortcut[] = [];
+	// Live scroll-isolation state, read at render time so the indicator never
+	// needs a rebuild trigger from the engine's wheel handling.
+	#scrollState: (() => { active: boolean; newRows: number }) | null = null;
 
 	setShortcuts(shortcuts: readonly ModalShortcut[]): void {
 		this.#shortcuts = shortcuts;
 	}
 
+	setScrollState(source: (() => { active: boolean; newRows: number }) | null): void {
+		this.#scrollState = source;
+	}
+
 	invalidate(): void {}
 
 	render(width: number): string[] {
+		const scroll = this.#scrollState?.();
+		if (scroll?.active) {
+			const label = theme.fg("dim", `\u2193 ${scroll.newRows} new rows`) + theme.fg("muted", "  wheel down to resume");
+			const pad = Math.max(0, width - visibleWidth(label));
+			const left = Math.floor(pad / 2);
+			return [padding(left) + label + padding(pad - left)];
+		}
 		if (this.#shortcuts.length === 0 || width < 20) return [""];
 		const lines = renderModalShortcuts(this.#shortcuts, Math.max(1, width - 2));
 		return lines.map(line => {

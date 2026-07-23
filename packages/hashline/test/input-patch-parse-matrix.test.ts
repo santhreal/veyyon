@@ -2,11 +2,7 @@
  * Patch / PatchSection top-level input: headers, multi-section, fallback path, rejects.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	computeFileHash,
-	containsRecognizableHashlineOperations,
-	Patch,
-} from "@veyyon/hashline";
+import { computeFileHash, containsRecognizableHashlineOperations, Patch } from "@veyyon/hashline";
 import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "../src/format";
 
 function header(path: string, hash?: string): string {
@@ -43,13 +39,7 @@ describe("Patch.parse headers and sections", () => {
 	});
 
 	it("parses multi-section patch preserving order", () => {
-		const input = [
-			header("first.ts", "AAAA"),
-			"DEL 1",
-			header("second.ts", "BBBB"),
-			"INS.TAIL:",
-			"+x",
-		].join("\n");
+		const input = [header("first.ts", "AAAA"), "DEL 1", header("second.ts", "BBBB"), "INS.TAIL:", "+x"].join("\n");
 		const patch = Patch.parse(input);
 		expect(patch.sections.map(s => s.path)).toEqual(["first.ts", "second.ts"]);
 		expect(patch.sections[0]?.fileHash).toBe("AAAA");
@@ -82,13 +72,7 @@ describe("Patch.parse headers and sections", () => {
 	});
 
 	it("stops at End Patch envelope", () => {
-		const input = [
-			header("a.ts", "ABCD"),
-			"DEL 1",
-			"*** End Patch",
-			header("b.ts", "EF01"),
-			"DEL 2",
-		].join("\n");
+		const input = [header("a.ts", "ABCD"), "DEL 1", "*** End Patch", header("b.ts", "EF01"), "DEL 2"].join("\n");
 		const patch = Patch.parse(input);
 		expect(patch.sections.map(s => s.path)).toEqual(["a.ts"]);
 	});

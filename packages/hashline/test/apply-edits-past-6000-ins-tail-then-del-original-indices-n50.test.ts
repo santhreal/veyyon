@@ -12,9 +12,7 @@ describe("applyEdits past 6000 INS TAIL then DEL original indices n50", () => {
 
 	for (let del = 1; del <= n; del++) {
 		it(`TAIL + DEL original ${del}`, () => {
-			const out = applyEdits(base, parsePatch(`INS.TAIL:\n+T\nDEL ${del}`).edits).text.split(
-				"\n",
-			);
+			const out = applyEdits(base, parsePatch(`INS.TAIL:\n+T\nDEL ${del}`).edits).text.split("\n");
 			const expected = [...lines.filter((_, i) => i + 1 !== del), "T"];
 			expect(out).toEqual(expected);
 		});

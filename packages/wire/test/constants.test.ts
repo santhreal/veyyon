@@ -42,4 +42,3 @@ describe("collab wire constants", () => {
 		expect(DEFAULT_SHARE_URL.startsWith("https://")).toBe(true);
 	});
 });
-

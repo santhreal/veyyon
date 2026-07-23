@@ -51,9 +51,7 @@ describe("resolveConfiguredDialect pure matrix", () => {
 	it("undefined configured equals env helper", () => {
 		delete Bun.env.VEYYON_DIALECT;
 		try {
-			expect(resolveConfiguredDialect(undefined, model)).toBe(
-				resolveOwnedDialectFromEnv(undefined),
-			);
+			expect(resolveConfiguredDialect(undefined, model)).toBe(resolveOwnedDialectFromEnv(undefined));
 		} finally {
 			if (prev === undefined) delete Bun.env.VEYYON_DIALECT;
 			else Bun.env.VEYYON_DIALECT = prev;

@@ -44,9 +44,7 @@ describe("collectEditAnchorLines order matrix", () => {
 	for (const n of [1, 3, 5, 8]) {
 		it(`DEL every line 1..${n} multi-hunk`, () => {
 			const patch = Array.from({ length: n }, (_, i) => `DEL ${i + 1}`).join("\n");
-			expect(collectEditAnchorLines(parsePatch(patch).edits)).toEqual(
-				Array.from({ length: n }, (_, i) => i + 1),
-			);
+			expect(collectEditAnchorLines(parsePatch(patch).edits)).toEqual(Array.from({ length: n }, (_, i) => i + 1));
 		});
 	}
 });

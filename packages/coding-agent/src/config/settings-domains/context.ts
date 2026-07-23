@@ -313,7 +313,11 @@ export const CONTEXT_SETTINGS = {
 				"How a subagent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in subagents. fresh: the subagent loads its task's project itself through argot_load. inherit: the subagent starts from a copy of the parent's loaded shorthand.",
 			options: [
 				{ value: "off", label: "Off", description: "Subagents get no Argot shorthand" },
-				{ value: "fresh", label: "Fresh", description: "Subagent loads its task's project itself through argot_load" },
+				{
+					value: "fresh",
+					label: "Fresh",
+					description: "Subagent loads its task's project itself through argot_load",
+				},
 				{
 					value: "inherit",
 					label: "Inherit",

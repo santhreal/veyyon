@@ -8,17 +8,13 @@ import { parsePatch } from "@veyyon/hashline";
 describe("applyEdits past 6000 parse edit shape exact", () => {
 	it("DEL single → one delete with anchor.line", () => {
 		const { edits } = parsePatch("DEL 3");
-		expect(edits).toEqual([
-			{ kind: "delete", anchor: { line: 3 }, lineNum: 1, index: 0 },
-		]);
+		expect(edits).toEqual([{ kind: "delete", anchor: { line: 3 }, lineNum: 1, index: 0 }]);
 	});
 
 	it("DEL range → one delete per line inclusive", () => {
 		const { edits } = parsePatch("DEL 2.=5");
 		expect(edits).toHaveLength(4);
-		expect(edits.map((e) => (e as { anchor: { line: number } }).anchor.line)).toEqual([
-			2, 3, 4, 5,
-		]);
+		expect(edits.map(e => (e as { anchor: { line: number } }).anchor.line)).toEqual([2, 3, 4, 5]);
 		for (const e of edits) expect(e.kind).toBe("delete");
 	});
 
@@ -42,16 +38,12 @@ describe("applyEdits past 6000 parse edit shape exact", () => {
 
 	it("INS.HEAD → bof insert", () => {
 		const { edits } = parsePatch("INS.HEAD:\n+H");
-		expect(edits).toEqual([
-			{ kind: "insert", cursor: { kind: "bof" }, text: "H", lineNum: 1, index: 0 },
-		]);
+		expect(edits).toEqual([{ kind: "insert", cursor: { kind: "bof" }, text: "H", lineNum: 1, index: 0 }]);
 	});
 
 	it("INS.TAIL → eof insert", () => {
 		const { edits } = parsePatch("INS.TAIL:\n+T");
-		expect(edits).toEqual([
-			{ kind: "insert", cursor: { kind: "eof" }, text: "T", lineNum: 1, index: 0 },
-		]);
+		expect(edits).toEqual([{ kind: "insert", cursor: { kind: "eof" }, text: "T", lineNum: 1, index: 0 }]);
 	});
 
 	it("INS.PRE → before_anchor", () => {
@@ -91,7 +83,7 @@ describe("applyEdits past 6000 parse edit shape exact", () => {
 	it("INS.HEAD multi-row → one insert per body line", () => {
 		const { edits } = parsePatch("INS.HEAD:\n+A\n+B\n+C");
 		expect(edits).toHaveLength(3);
-		expect(edits.map((e) => (e as { text: string }).text)).toEqual(["A", "B", "C"]);
+		expect(edits.map(e => (e as { text: string }).text)).toEqual(["A", "B", "C"]);
 		for (const e of edits) {
 			expect(e.kind).toBe("insert");
 			expect((e as { cursor: { kind: string } }).cursor.kind).toBe("bof");

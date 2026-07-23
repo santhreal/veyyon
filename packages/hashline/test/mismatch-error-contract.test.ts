@@ -3,13 +3,8 @@
  * Tests assert exact headers, anchor context, and parse rejection shapes.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	formatFullAnchorRequirement,
-	MismatchError,
-	parseTag,
-	validateLineRef,
-} from "../src/mismatch";
 import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "../src/format";
+import { formatFullAnchorRequirement, MismatchError, parseTag, validateLineRef } from "../src/mismatch";
 
 describe("parseTag", () => {
 	it("accepts bare line numbers and decorated anchors", () => {

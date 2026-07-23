@@ -17,15 +17,18 @@ import {
 describe("applyOpsToPhases init/start/done", () => {
 	it("init creates phases and auto-starts the first actionable task", () => {
 		// normalizeInProgressTask promotes the first pending task after init.
-		const { phases, errors } = applyOpsToPhases([], [
-			{
-				op: "init",
-				list: [
-					{ phase: "Foundation", items: ["scaffold", "wire tests"] },
-					{ phase: "Ship", items: ["release"] },
-				],
-			},
-		]);
+		const { phases, errors } = applyOpsToPhases(
+			[],
+			[
+				{
+					op: "init",
+					list: [
+						{ phase: "Foundation", items: ["scaffold", "wire tests"] },
+						{ phase: "Ship", items: ["release"] },
+					],
+				},
+			],
+		);
 		expect(errors).toEqual([]);
 		expect(phases).toHaveLength(2);
 		expect(phases[0]!.name).toBe("Foundation");
@@ -37,9 +40,7 @@ describe("applyOpsToPhases init/start/done", () => {
 	});
 
 	it("start marks the matching task in_progress", () => {
-		const seeded = applyOpsToPhases([], [
-			{ op: "init", list: [{ phase: "A", items: ["one", "two"] }] },
-		]).phases;
+		const seeded = applyOpsToPhases([], [{ op: "init", list: [{ phase: "A", items: ["one", "two"] }] }]).phases;
 		const { phases, errors } = applyOpsToPhases(seeded, [{ op: "start", task: "two" }]);
 		expect(errors).toEqual([]);
 		const two = phases[0]!.tasks.find(t => t.content === "two");
@@ -49,9 +50,7 @@ describe("applyOpsToPhases init/start/done", () => {
 	});
 
 	it("done completes the in_progress or matching task", () => {
-		const seeded = applyOpsToPhases([], [
-			{ op: "init", list: [{ phase: "A", items: ["one", "two"] }] },
-		]).phases;
+		const seeded = applyOpsToPhases([], [{ op: "init", list: [{ phase: "A", items: ["one", "two"] }] }]).phases;
 		const mid = applyOpsToPhases(seeded, [{ op: "start", task: "one" }]).phases;
 		const { phases, errors } = applyOpsToPhases(mid, [{ op: "done", task: "one" }]);
 		expect(errors).toEqual([]);
@@ -59,18 +58,14 @@ describe("applyOpsToPhases init/start/done", () => {
 	});
 
 	it("rm removes a task by content", () => {
-		const seeded = applyOpsToPhases([], [
-			{ op: "init", list: [{ phase: "A", items: ["keep", "drop-me"] }] },
-		]).phases;
+		const seeded = applyOpsToPhases([], [{ op: "init", list: [{ phase: "A", items: ["keep", "drop-me"] }] }]).phases;
 		const { phases, errors } = applyOpsToPhases(seeded, [{ op: "rm", task: "drop-me" }]);
 		expect(errors).toEqual([]);
 		expect(phases[0]!.tasks.map(t => t.content)).toEqual(["keep"]);
 	});
 
 	it("start on unknown task records an error without inventing a task", () => {
-		const seeded = applyOpsToPhases([], [
-			{ op: "init", list: [{ phase: "A", items: ["only"] }] },
-		]).phases;
+		const seeded = applyOpsToPhases([], [{ op: "init", list: [{ phase: "A", items: ["only"] }] }]).phases;
 		const { phases, errors } = applyOpsToPhases(seeded, [{ op: "start", task: "missing" }]);
 		expect(errors.length).toBeGreaterThan(0);
 		expect(phases[0]!.tasks).toHaveLength(1);
@@ -78,12 +73,8 @@ describe("applyOpsToPhases init/start/done", () => {
 	});
 
 	it("append adds tasks to an existing phase", () => {
-		const seeded = applyOpsToPhases([], [
-			{ op: "init", list: [{ phase: "A", items: ["one"] }] },
-		]).phases;
-		const { phases, errors } = applyOpsToPhases(seeded, [
-			{ op: "append", phase: "A", items: ["two", "three"] },
-		]);
+		const seeded = applyOpsToPhases([], [{ op: "init", list: [{ phase: "A", items: ["one"] }] }]).phases;
+		const { phases, errors } = applyOpsToPhases(seeded, [{ op: "append", phase: "A", items: ["two", "three"] }]);
 		expect(errors).toEqual([]);
 		expect(phases[0]!.tasks.map(t => t.content)).toEqual(["one", "two", "three"]);
 	});
@@ -115,9 +106,7 @@ describe("phasesToMarkdown and markdownToPhases round-trip", () => {
 	it("markdownToPhases reports errors for garbage instead of inventing phases", () => {
 		const { phases, errors } = markdownToPhases("not a checklist at all\njust text\n");
 		// Either empty phases or errors — never invents fake task names from prose.
-		expect(phases.every(p => !p.tasks.some(t => t.content === "just text")) || errors.length >= 0).toBe(
-			true,
-		);
+		expect(phases.every(p => !p.tasks.some(t => t.content === "just text")) || errors.length >= 0).toBe(true);
 		expect(phases.flatMap(p => p.tasks).every(t => t.content !== "just text")).toBe(true);
 	});
 });

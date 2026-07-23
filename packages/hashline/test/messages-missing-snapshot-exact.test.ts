@@ -2,8 +2,8 @@
  * missingSnapshotTagMessage exact path embedding.
  */
 import { describe, expect, it } from "bun:test";
-import { missingSnapshotTagMessage } from "../src/messages";
 import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "../src/format";
+import { missingSnapshotTagMessage } from "../src/messages";
 
 describe("missingSnapshotTagMessage exact", () => {
 	const paths = ["a.ts", "src/foo.ts", "pkg/nested/x.tsx"];

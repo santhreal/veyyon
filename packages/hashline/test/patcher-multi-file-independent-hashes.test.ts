@@ -3,12 +3,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	computeFileHash,
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	Patch,
 	Patcher,
-	formatHashlineHeader,
-	computeFileHash,
 } from "@veyyon/hashline";
 
 describe("Patcher three-file independent hashes", () => {

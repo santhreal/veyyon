@@ -39,18 +39,14 @@ describe("applyEdits past 6000 collect anchor lines from patches", () => {
 	});
 
 	it("multi-hunk order is edit order", () => {
-		const lines = collectEditAnchorLines(
-			parsePatch("DEL 10\nDEL 2\nINS.PRE 5:\n+X").edits,
-		);
+		const lines = collectEditAnchorLines(parsePatch("DEL 10\nDEL 2\nINS.PRE 5:\n+X").edits);
 		expect(lines).toEqual([10, 2, 5]);
 	});
 
 	for (let n = 1; n <= 15; n++) {
 		it(`DEL 1..=${n} expands to 1..${n}`, () => {
 			const header = n === 1 ? "DEL 1" : `DEL 1.=${n}`;
-			expect(collectEditAnchorLines(parsePatch(header).edits)).toEqual(
-				Array.from({ length: n }, (_, i) => i + 1),
-			);
+			expect(collectEditAnchorLines(parsePatch(header).edits)).toEqual(Array.from({ length: n }, (_, i) => i + 1));
 		});
 	}
 });

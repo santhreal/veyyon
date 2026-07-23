@@ -5,11 +5,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -67,7 +63,7 @@ describe("read hashline stability property", () => {
 			const h2 = textOf(await tool.execute(`r2-${i}`, { path: file })).split("\n")[0]!;
 			expect(h1).toMatch(/^\[.+#[0-9A-Fa-f]{4}\]$/);
 			expect(h1).toBe(h2);
-			await Bun.write(file, body + "// changed\n");
+			await Bun.write(file, `${body}// changed\n`);
 			const h3 = textOf(await tool.execute(`r3-${i}`, { path: file })).split("\n")[0]!;
 			expect(h3).toMatch(/^\[.+#[0-9A-Fa-f]{4}\]$/);
 			expect(h3).not.toBe(h1);

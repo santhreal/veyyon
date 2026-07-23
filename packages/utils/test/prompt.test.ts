@@ -191,8 +191,8 @@ describe("helpers: arg", () => {
 
 describe("helpers: list", () => {
 	it("applies prefix, suffix, and default newline join over the array", () => {
-		expect(raw("{{#list items prefix=\"- \"}}{{this}}{{/list}}", { items: ["a", "b"] })).toBe("- a\n- b");
-		expect(raw("{{#list items suffix=\";\"}}{{this}}{{/list}}", { items: ["a", "b"] })).toBe("a;\nb;");
+		expect(raw('{{#list items prefix="- "}}{{this}}{{/list}}', { items: ["a", "b"] })).toBe("- a\n- b");
+		expect(raw('{{#list items suffix=";"}}{{this}}{{/list}}', { items: ["a", "b"] })).toBe("a;\nb;");
 	});
 
 	it("unescapes \\n and \\t in the join separator", () => {
@@ -305,7 +305,7 @@ describe("helpers: len / add / sub / not", () => {
 });
 
 describe("helpers: escapeXml / jsonStringify", () => {
-	it("escapeXml escapes & < > \" and escapes & first so entities are not double-escaped", () => {
+	it('escapeXml escapes & < > " and escapes & first so entities are not double-escaped', () => {
 		expect(raw("{{escapeXml v}}", { v: '<a href="x&y">' })).toBe("&lt;a href=&quot;x&amp;y&quot;&gt;");
 		expect(raw("{{escapeXml v}}", { v: null })).toBe("");
 	});
@@ -327,7 +327,12 @@ describe("helpers: block wrappers (xml, codeblock, table)", () => {
 	});
 
 	it("table builds a header row, separator, and one row per item", () => {
-		const out = raw('{{#table rows headers="A|B"}}{{x}}|{{y}}{{/table}}', { rows: [{ x: 1, y: 2 }, { x: 3, y: 4 }] });
+		const out = raw('{{#table rows headers="A|B"}}{{x}}|{{y}}{{/table}}', {
+			rows: [
+				{ x: 1, y: 2 },
+				{ x: 3, y: 4 },
+			],
+		});
 		expect(out).toBe("| A | B |\n| --- | --- |\n| 1|2 |\n| 3|4 |");
 	});
 

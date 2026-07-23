@@ -26,9 +26,7 @@ describe("SWAP middle expand many", () => {
 			const out = apply(src, `SWAP 2.=2:\n${body}`);
 			expect(count(out)).toBe(2 + k);
 			expect(out.startsWith("A\n")).toBe(true);
-			expect(out.endsWith("C\n") || out.includes("\nC\n") || out.trimEnd().endsWith("C")).toBe(
-				true,
-			);
+			expect(out.endsWith("C\n") || out.includes("\nC\n") || out.trimEnd().endsWith("C")).toBe(true);
 		}
 	});
 });

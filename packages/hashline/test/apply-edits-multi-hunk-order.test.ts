@@ -35,10 +35,7 @@ describe("applyEdits multi-hunk disjoint", () => {
 
 	it("three sequential single-line swaps on disjoint lines", () => {
 		const text = "L1\nL2\nL3\nL4\nL5";
-		const { text: out } = applyEdits(
-			text,
-			parsePatch("SWAP 1.=1:\n+A\nSWAP 3.=3:\n+C\nSWAP 5.=5:\n+E").edits,
-		);
+		const { text: out } = applyEdits(text, parsePatch("SWAP 1.=1:\n+A\nSWAP 3.=3:\n+C\nSWAP 5.=5:\n+E").edits);
 		expect(out).toBe("A\nL2\nC\nL4\nE");
 	});
 

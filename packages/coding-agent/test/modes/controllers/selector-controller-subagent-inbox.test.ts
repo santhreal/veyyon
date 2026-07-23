@@ -13,11 +13,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentHubOverlayComponent } from "@veyyon/coding-agent/modes/components/agent-hub";
 import { SubagentInboxComponent } from "@veyyon/coding-agent/modes/components/subagent-inbox";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 
 interface Mounted {

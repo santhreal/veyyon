@@ -6,19 +6,19 @@ import { parseSSE } from "../src/mcp/json-rpc";
 
 describe("parseSSE matrix", () => {
 	it("first JSON data line", () => {
-		expect(parseSSE("data: {\"a\":1}\ndata: {\"a\":2}")).toEqual({ a: 1 });
+		expect(parseSSE('data: {"a":1}\ndata: {"a":2}')).toEqual({ a: 1 });
 	});
 
 	it("skips DONE", () => {
-		expect(parseSSE("data: [DONE]\ndata: {\"ok\":true}")).toEqual({ ok: true });
+		expect(parseSSE('data: [DONE]\ndata: {"ok":true}')).toEqual({ ok: true });
 	});
 
 	it("skips non-json data", () => {
-		expect(parseSSE("data: not-json\ndata: {\"x\":1}")).toEqual({ x: 1 });
+		expect(parseSSE('data: not-json\ndata: {"x":1}')).toEqual({ x: 1 });
 	});
 
 	it("skips keep-alive comments", () => {
-		expect(parseSSE(": keep\ndata: {\"y\":2}")).toEqual({ y: 2 });
+		expect(parseSSE(': keep\ndata: {"y":2}')).toEqual({ y: 2 });
 	});
 
 	it("fallback full body JSON", () => {

@@ -11,8 +11,8 @@ describe("applyEdits past 6000 multi-hunk DEL odds evens n120", () => {
 	const base = lines.join("\n");
 
 	it("DEL all odds in one multi-hunk leaves only evens", () => {
-		const odds = Array.from({ length: n }, (_, i) => i + 1).filter((x) => x % 2 === 1);
-		const hunks = odds.map((x) => `DEL ${x}`).join("\n");
+		const odds = Array.from({ length: n }, (_, i) => i + 1).filter(x => x % 2 === 1);
+		const hunks = odds.map(x => `DEL ${x}`).join("\n");
 		const out = applyEdits(base, parsePatch(hunks).edits).text;
 		const expected = lines.filter((_, i) => (i + 1) % 2 === 0);
 		expect(out.split("\n")).toEqual(expected);
@@ -30,7 +30,7 @@ describe("applyEdits past 6000 multi-hunk DEL odds evens n120", () => {
 			parsePatch(Array.from({ length: n }, (_, i) => `DEL ${i + 1}`).join("\n")).edits,
 		).text;
 		expect(empty).toBe("");
-		const body = lines.map((l) => `+${l}`).join("\n");
+		const body = lines.map(l => `+${l}`).join("\n");
 		const back = applyEdits(empty, parsePatch(`INS.HEAD:\n${body}`).edits).text;
 		expect(back).toBe(base);
 	});

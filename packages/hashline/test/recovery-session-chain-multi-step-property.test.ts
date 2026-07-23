@@ -3,12 +3,7 @@
  * a second recovery step on the new head after another drift.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	applyEdits,
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 describe("Recovery session chain multi-step property", () => {
 	it("two sequential recoveries after independent prefix drifts", () => {

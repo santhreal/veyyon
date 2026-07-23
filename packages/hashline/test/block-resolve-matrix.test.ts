@@ -56,9 +56,7 @@ describe("resolveBlockEdits expansion matrix", () => {
 		const edits = parsePatch("DEL.BLK 5").edits;
 		const resolved = resolveBlockEdits(edits, "text", PATH, span(5, 8));
 		expect(resolved.every(e => e.kind === "delete")).toBe(true);
-		expect(
-			resolved.map(e => (e.kind === "delete" ? e.anchor.line : 0)),
-		).toEqual([5, 6, 7, 8]);
+		expect(resolved.map(e => (e.kind === "delete" ? e.anchor.line : 0))).toEqual([5, 6, 7, 8]);
 	});
 
 	it("SWAP.BLK expands like concrete SWAP start.=end", () => {
@@ -86,8 +84,7 @@ describe("resolveBlockEdits expansion matrix", () => {
 		const resolver: BlockResolver = ({ line }): BlockSpan =>
 			line === 1 ? { start: 1, end: 2 } : { start: 10, end: 11 };
 		resolveBlockEdits(edits, "t", PATH, resolver, {
-			onResolved: r =>
-				seen.push({ start: r.start, end: r.end, anchorLine: r.anchorLine, op: r.op }),
+			onResolved: r => seen.push({ start: r.start, end: r.end, anchorLine: r.anchorLine, op: r.op }),
 		});
 		expect(seen).toEqual([
 			{ start: 1, end: 2, anchorLine: 1, op: "replace" },

@@ -3,10 +3,7 @@
  * truncation flags; first line over byte limit yields empty head.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	truncateHead,
-	truncateTail,
-} from "@veyyon/coding-agent/session/streaming-output";
+import { truncateHead, truncateTail } from "@veyyon/coding-agent/session/streaming-output";
 
 describe("truncateHead / truncateTail matrix", () => {
 	const content = Array.from({ length: 20 }, (_, i) => `line-${i + 1}`).join("\n");

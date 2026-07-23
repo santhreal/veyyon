@@ -7,9 +7,9 @@ import {
 	computeFileHash,
 	formatHashlineHeader,
 	HL_FILE_HASH_LENGTH,
+	HL_FILE_HASH_SEP,
 	HL_FILE_PREFIX,
 	HL_FILE_SUFFIX,
-	HL_FILE_HASH_SEP,
 } from "@veyyon/hashline";
 
 describe("formatHashlineHeader + computeFileHash roundtrip matrix", () => {
@@ -22,9 +22,7 @@ describe("formatHashlineHeader + computeFileHash roundtrip matrix", () => {
 				const h = computeFileHash(body);
 				expect(h).toHaveLength(HL_FILE_HASH_LENGTH);
 				const header = formatHashlineHeader(path, h);
-				expect(header).toBe(
-					`${HL_FILE_PREFIX}${path}${HL_FILE_HASH_SEP}${h}${HL_FILE_SUFFIX}`,
-				);
+				expect(header).toBe(`${HL_FILE_PREFIX}${path}${HL_FILE_HASH_SEP}${h}${HL_FILE_SUFFIX}`);
 				expect(header.startsWith(HL_FILE_PREFIX)).toBe(true);
 				expect(header.endsWith(HL_FILE_SUFFIX)).toBe(true);
 				expect(header).toContain(h);

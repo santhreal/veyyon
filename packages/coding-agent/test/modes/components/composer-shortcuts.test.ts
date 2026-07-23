@@ -34,6 +34,22 @@ describe("composer contextual shortcuts", () => {
 		expect(idle.length).toBe(0);
 	});
 
+	// Scroll isolation indicator: while the operator is scrolled up, the band
+	// swaps chips for the new-rows readout, still exactly one row so the
+	// footer height never changes. The state is read at render time (no
+	// rebuild trigger from the engine's wheel handling).
+	it("shows the new-rows indicator while scrolled, still exactly one row", () => {
+		const bar = new ComposerShortcutsBar();
+		bar.setScrollState(() => ({ active: true, newRows: 8 }));
+		const rows = bar.render(80);
+		expect(rows.length).toBe(1);
+		const plain = stripVTControlCharacters(rows[0]!);
+		expect(plain).toContain("8 new rows");
+		expect(plain).toContain("wheel down to resume");
+		bar.setScrollState(() => ({ active: false, newRows: 0 }));
+		expect(stripVTControlCharacters(bar.render(80)[0]!).trim()).toBe("");
+	});
+
 	// Regression lock for the footer jump (user report 2026-07-22): a band
 	// that renders 0 rows idle and 1 row busy changes the composer zone's
 	// height on every busy flip, jerking the whole footer vertically. The

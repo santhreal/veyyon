@@ -11,10 +11,7 @@ describe("applyEdits SWAP identity body", () => {
 	for (let i = 0; i < base.length; i++) {
 		it(`line ${i + 1} identity`, () => {
 			const line = base[i]!;
-			const { text: out } = applyEdits(
-				text,
-				parsePatch(`SWAP ${i + 1}.=${i + 1}:\n+${line}`).edits,
-			);
+			const { text: out } = applyEdits(text, parsePatch(`SWAP ${i + 1}.=${i + 1}:\n+${line}`).edits);
 			expect(out).toBe(text);
 		});
 	}

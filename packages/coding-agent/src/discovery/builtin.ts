@@ -25,7 +25,7 @@ import { type SystemPrompt, systemPromptCapability } from "../capability/system-
 import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
-import { getGlobalAgentsPath, getProfileAgentsCandidates, getProfileAgentsPath, stripManagedGuidance } from "./agents-guidance";
+import { getGlobalAgentsPath, getProfileAgentsCandidates, stripManagedGuidance } from "./agents-guidance";
 import {
 	buildRuleFromMarkdown,
 	createSourceMeta,

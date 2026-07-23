@@ -10,9 +10,7 @@ describe("resolveEffectiveApprovalMode pure matrix", () => {
 
 	it("cliAutoApprove forces yolo regardless of config or plan", () => {
 		for (const c of configs) {
-			expect(
-				resolveEffectiveApprovalMode(c, { cliAutoApprove: true, planModeActive: true }),
-			).toBe("yolo");
+			expect(resolveEffectiveApprovalMode(c, { cliAutoApprove: true, planModeActive: true })).toBe("yolo");
 			expect(resolveEffectiveApprovalMode(c, { cliAutoApprove: true })).toBe("yolo");
 		}
 	});
@@ -32,8 +30,6 @@ describe("resolveEffectiveApprovalMode pure matrix", () => {
 	});
 
 	it("cli wins over plan when both set", () => {
-		expect(
-			resolveEffectiveApprovalMode("ask", { cliAutoApprove: true, planModeActive: true }),
-		).toBe("yolo");
+		expect(resolveEffectiveApprovalMode("ask", { cliAutoApprove: true, planModeActive: true })).toBe("yolo");
 	});
 });

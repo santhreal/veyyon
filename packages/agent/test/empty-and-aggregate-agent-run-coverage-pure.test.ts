@@ -2,10 +2,7 @@
  * emptyAgentRunCoverage / aggregateAgentRunCoverage identity monoid.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	aggregateAgentRunCoverage,
-	emptyAgentRunCoverage,
-} from "@veyyon/agent-core/run-collector";
+import { aggregateAgentRunCoverage, emptyAgentRunCoverage } from "@veyyon/agent-core/run-collector";
 
 describe("empty and aggregate agent run coverage pure", () => {
 	it("empty stable", () => {

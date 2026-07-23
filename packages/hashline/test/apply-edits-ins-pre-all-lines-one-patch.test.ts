@@ -9,10 +9,7 @@ describe("applyEdits INS.PRE all lines one patch", () => {
 		it(`n=${n}`, () => {
 			const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 			const base = lines.join("\n");
-			const patch = Array.from(
-				{ length: n },
-				(_, i) => `INS.PRE ${i + 1}:\n+X${i + 1}`,
-			).join("\n");
+			const patch = Array.from({ length: n }, (_, i) => `INS.PRE ${i + 1}:\n+X${i + 1}`).join("\n");
 			const { text } = applyEdits(base, parsePatch(patch).edits);
 			const out = text.split("\n");
 			const want: string[] = [];

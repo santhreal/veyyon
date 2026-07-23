@@ -3,16 +3,10 @@
  * Why: provider refusals must not be replayed as dialogue; other assistants stay.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	filterProviderReplayMessages,
-	isProviderRefusalMessage,
-} from "@veyyon/agent-core/replay-policy";
+import { filterProviderReplayMessages, isProviderRefusalMessage } from "@veyyon/agent-core/replay-policy";
 import type { AssistantMessage, Message } from "@veyyon/ai";
 
-function assistant(
-	stopReason: AssistantMessage["stopReason"],
-	stopType?: string,
-): AssistantMessage {
+function assistant(stopReason: AssistantMessage["stopReason"], stopType?: string): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [{ type: "text", text: "x" }],

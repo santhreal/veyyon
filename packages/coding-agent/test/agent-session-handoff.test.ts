@@ -524,7 +524,7 @@ describe("AgentSession handoff", () => {
 		if (!preserve) throw new Error("Expected previousPreserveData");
 		// The archive plaintext that compact() migrates into the summary prompt is
 		// redacted, so the raw secret never reaches the provider.
-		const archive = preserve["snapcompact"] as { text: string; textHead: string };
+		const archive = preserve.snapcompact as { text: string; textHead: string };
 		expect(archive.text).toBe(`archived ${placeholder}`);
 		expect(archive.textHead).toBe(`head ${placeholder}`);
 		expect(JSON.stringify(archive)).not.toContain(HANDOFF_SECRET);

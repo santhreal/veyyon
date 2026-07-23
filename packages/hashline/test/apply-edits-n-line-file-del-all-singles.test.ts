@@ -10,9 +10,7 @@ describe("applyEdits DEL each single line of N-line files", () => {
 		for (let i = 1; i <= n; i++) {
 			it(`n=${n} DEL ${i}`, () => {
 				const { text: out } = applyEdits(text, parsePatch(`DEL ${i}`).edits);
-				const want = Array.from({ length: n }, (_, j) => `L${j + 1}`).filter(
-					(_, j) => j + 1 !== i,
-				);
+				const want = Array.from({ length: n }, (_, j) => `L${j + 1}`).filter((_, j) => j + 1 !== i);
 				expect(out).toBe(want.join("\n"));
 			});
 		}

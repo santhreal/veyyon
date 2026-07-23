@@ -27,12 +27,7 @@ describe("resolveApproval yolo vs deny", () => {
 	});
 
 	it("user allow under always-ask for write", () => {
-		const r = resolveApproval(
-			{ name: "write", approval: "write" },
-			{},
-			"always-ask",
-			{ write: "allow" },
-		);
+		const r = resolveApproval({ name: "write", approval: "write" }, {}, "always-ask", { write: "allow" });
 		expect(r.policy).toBe("allow");
 	});
 });

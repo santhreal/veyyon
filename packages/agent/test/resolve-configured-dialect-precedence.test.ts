@@ -45,9 +45,7 @@ describe("resolveConfiguredDialect precedence", () => {
 	it("undefined configured uses env helper", () => {
 		delete Bun.env.VEYYON_DIALECT;
 		try {
-			expect(resolveConfiguredDialect(undefined, model)).toBe(
-				resolveOwnedDialectFromEnv(undefined),
-			);
+			expect(resolveConfiguredDialect(undefined, model)).toBe(resolveOwnedDialectFromEnv(undefined));
 			Bun.env.VEYYON_DIALECT = "true";
 			expect(resolveConfiguredDialect(undefined, model)).toBe("glm");
 		} finally {

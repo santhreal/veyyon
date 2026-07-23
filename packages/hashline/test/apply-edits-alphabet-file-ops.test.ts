@@ -19,10 +19,7 @@ describe("applyEdits alphabet file ops", () => {
 	});
 
 	it("SWAP first and last", () => {
-		const { text } = applyEdits(
-			base,
-			parsePatch("SWAP 1.=1:\n+z\nSWAP 26.=26:\n+a").edits,
-		);
+		const { text } = applyEdits(base, parsePatch("SWAP 1.=1:\n+z\nSWAP 26.=26:\n+a").edits);
 		const out = text.split("\n");
 		expect(out[0]).toBe("z");
 		expect(out[25]).toBe("a");

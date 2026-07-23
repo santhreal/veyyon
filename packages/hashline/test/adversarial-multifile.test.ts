@@ -1,11 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-	type WriteResult,
-} from "@veyyon/hashline";
+import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, type WriteResult } from "@veyyon/hashline";
 
 /**
  * Adversarial multi-file hashline contracts: mixed endings, unicode paths and
@@ -176,14 +170,9 @@ describe("hashline adversarial multi-file", () => {
 		const patcher = new Patcher({ fs, snapshots });
 		// a.ts swap to identical content is a no-op; b would be valid if reached.
 		const patch = Patch.parse(
-			[
-				`[a.ts#${tags["a.ts"]}]`,
-				"SWAP 1.=1:",
-				"+keep",
-				`[b.ts#${tags["b.ts"]}]`,
-				"SWAP 1.=1:",
-				"+changed",
-			].join("\n"),
+			[`[a.ts#${tags["a.ts"]}]`, "SWAP 1.=1:", "+keep", `[b.ts#${tags["b.ts"]}]`, "SWAP 1.=1:", "+changed"].join(
+				"\n",
+			),
 		);
 		await expect(patcher.apply(patch)).rejects.toThrow(/no changes/i);
 		expect(fs.get("a.ts")).toBe("keep\n");
@@ -195,9 +184,7 @@ describe("hashline adversarial multi-file", () => {
 		const body = `${bom}first\nsecond\n`;
 		const { fs, snapshots, tags } = setup({ "bom.ts": body });
 		const patcher = new Patcher({ fs, snapshots });
-		await patcher.apply(
-			Patch.parse([`[bom.ts#${tags["bom.ts"]}]`, "SWAP 2.=2:", "+SECOND"].join("\n")),
-		);
+		await patcher.apply(Patch.parse([`[bom.ts#${tags["bom.ts"]}]`, "SWAP 2.=2:", "+SECOND"].join("\n")));
 		const out = fs.get("bom.ts");
 		expect(out.startsWith(bom)).toBe(true);
 		expect(out).toBe(`${bom}first\nSECOND\n`);

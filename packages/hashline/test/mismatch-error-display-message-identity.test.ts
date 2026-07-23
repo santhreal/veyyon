@@ -2,8 +2,8 @@
  * MismatchError.displayMessage equals message; rejectionHeader arrays are exact.
  */
 import { describe, expect, it } from "bun:test";
-import { MismatchError } from "../src/mismatch";
 import { HL_FILE_HASH_SEP } from "../src/format";
+import { MismatchError } from "../src/mismatch";
 
 describe("MismatchError displayMessage identity", () => {
 	it("displayMessage === message for recognized and unrecognized", () => {

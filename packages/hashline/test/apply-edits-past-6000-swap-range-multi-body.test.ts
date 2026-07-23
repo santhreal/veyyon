@@ -11,18 +11,11 @@ describe("applyEdits past 6000 SWAP range multi body", () => {
 	for (let bodyRows = 1; bodyRows <= 8; bodyRows++) {
 		it(`SWAP 3.=5 with ${bodyRows} body rows`, () => {
 			const rows = Array.from({ length: bodyRows }, (_, i) => `+B${i + 1}`).join("\n");
-			const { text, firstChangedLine } = applyEdits(
-				base,
-				parsePatch(`SWAP 3.=5:\n${rows}`).edits,
-			);
+			const { text, firstChangedLine } = applyEdits(base, parsePatch(`SWAP 3.=5:\n${rows}`).edits);
 			const out = text.split("\n");
 			expect(out.slice(0, 2)).toEqual(["L1", "L2"]);
-			expect(out.slice(2, 2 + bodyRows)).toEqual(
-				Array.from({ length: bodyRows }, (_, i) => `B${i + 1}`),
-			);
-			expect(out.slice(2 + bodyRows)).toEqual(
-				Array.from({ length: 5 }, (_, i) => `L${i + 6}`),
-			);
+			expect(out.slice(2, 2 + bodyRows)).toEqual(Array.from({ length: bodyRows }, (_, i) => `B${i + 1}`));
+			expect(out.slice(2 + bodyRows)).toEqual(Array.from({ length: 5 }, (_, i) => `L${i + 6}`));
 			expect(out).toHaveLength(2 + bodyRows + 5);
 			expect(firstChangedLine).toBe(3);
 		});

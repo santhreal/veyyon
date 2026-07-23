@@ -6,15 +6,7 @@ import { computeFileHash, formatHashlineHeader } from "@veyyon/hashline";
  */
 
 describe("formatHashlineHeader property", () => {
-	const paths = [
-		"a.ts",
-		"src/b.ts",
-		"/abs/c.ts",
-		"deep/nested/x.ts",
-		"file-name_1.ts",
-		"日本語.ts",
-		"a.b.c.ts",
-	];
+	const paths = ["a.ts", "src/b.ts", "/abs/c.ts", "deep/nested/x.ts", "file-name_1.ts", "日本語.ts", "a.b.c.ts"];
 
 	it("always wraps as [path#hash] for many paths and contents", () => {
 		for (const p of paths) {

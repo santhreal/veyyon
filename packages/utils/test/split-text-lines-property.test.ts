@@ -16,7 +16,7 @@ describe("splitTextLines property-style", () => {
 	it("for N lines with trailing newline, length is still N", () => {
 		for (let n = 1; n <= 50; n++) {
 			const lines = Array.from({ length: n }, (_, i) => `L${i}`);
-			expect(splitTextLines(lines.join("\n") + "\n")).toEqual(lines);
+			expect(splitTextLines(`${lines.join("\n")}\n`)).toEqual(lines);
 		}
 	});
 
@@ -36,7 +36,7 @@ describe("splitTextLines property-style", () => {
 			}
 			const rejoined = parts.join("\n");
 			// Rejoin equals input without a single trailing newline difference.
-			expect(rejoined === s || rejoined + "\n" === s).toBe(true);
+			expect(rejoined === s || `${rejoined}\n` === s).toBe(true);
 		}
 	});
 });

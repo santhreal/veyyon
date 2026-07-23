@@ -2,13 +2,7 @@
  * Line-ending and BOM normalize round-trips used by the patcher write-back path.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	detectLineEnding,
-	normalizeToLF,
-	restoreLineEndings,
-	stripBom,
-	type LineEnding,
-} from "../src/normalize";
+import { detectLineEnding, type LineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../src/normalize";
 
 describe("detectLineEnding", () => {
 	it("defaults to LF when no newline present", () => {

@@ -101,7 +101,7 @@ describe("splitPromptSections: adversarial grammar", () => {
 		// fabricates a leading newline (the round-trip claim only holds for a
 		// real preamble). This asserts that observed behavior so a future change
 		// to the split cannot silently alter it.
-		expect(sections.map(s => s.text).join("\n")).toBe("\n" + noPreamble);
+		expect(sections.map(s => s.text).join("\n")).toBe(`\n${noPreamble}`);
 		// The real consumer compensates: it drops the empty preamble, so the
 		// reorder path reproduces the input with NO fabricated leading newline.
 		expect(applyPromptSectionOrder(noPreamble, ["role"])).toBe(noPreamble);
@@ -141,7 +141,11 @@ describe("splitPromptSections: adversarial grammar", () => {
 	it("round-trips exactly regardless of trailing newline", () => {
 		for (const suffix of ["", "\n", "\n\n"]) {
 			const input = RENDERED + suffix;
-			expect(splitPromptSections(input).map(s => s.text).join("\n")).toBe(input);
+			expect(
+				splitPromptSections(input)
+					.map(s => s.text)
+					.join("\n"),
+			).toBe(input);
 		}
 	});
 });
@@ -192,7 +196,13 @@ describe("applyPromptSectionOrder: reorder is a content-preserving permutation",
 	it("emits each listed section exactly at its ordered rank", () => {
 		for (const order of permutations([...PROMPT_SECTION_NAMES])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
-			const banners = { role: "ROLE", runtime: "RUNTIME", "tool-policy": "TOOL POLICY", "execution-workflow": "EXECUTION WORKFLOW", "delivery-contract": "DELIVERY CONTRACT" } as const;
+			const banners = {
+				role: "ROLE",
+				runtime: "RUNTIME",
+				"tool-policy": "TOOL POLICY",
+				"execution-workflow": "EXECUTION WORKFLOW",
+				"delivery-contract": "DELIVERY CONTRACT",
+			} as const;
 			const positions = order.map(name => result.indexOf(banners[name as keyof typeof banners]));
 			for (let i = 1; i < positions.length; i++) {
 				expect(positions[i - 1]).toBeLessThan(positions[i]);
@@ -257,7 +267,18 @@ describe("applyPromptSectionOrder: duplicate, partial, and unknown names", () =>
 	});
 
 	it("preserves both duplicated bodies even when the duplicated name is NOT in the order", () => {
-		const dupRole = ["preamble", "ROLE", "====", "role-alpha", "ROLE", "====", "role-beta", "RUNTIME", "====", "run-gamma"].join("\n");
+		const dupRole = [
+			"preamble",
+			"ROLE",
+			"====",
+			"role-alpha",
+			"ROLE",
+			"====",
+			"role-beta",
+			"RUNTIME",
+			"====",
+			"run-gamma",
+		].join("\n");
 		const result = applyPromptSectionOrder(dupRole, ["runtime"]);
 		expect(sectionMultiset(result)).toEqual(sectionMultiset(dupRole));
 		expect(result).toContain("role-alpha");

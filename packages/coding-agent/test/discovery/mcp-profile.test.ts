@@ -20,11 +20,7 @@ import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 async function writeMcpJson(dir: string, servers: Record<string, unknown>): Promise<void> {
 	await fs.mkdir(dir, { recursive: true });

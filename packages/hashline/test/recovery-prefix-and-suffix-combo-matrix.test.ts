@@ -26,13 +26,9 @@ describe("Recovery prefix+suffix combo matrix", () => {
 					});
 					expect(rec).not.toBeNull();
 					const out = rec!.text.split("\n");
-					expect(out.slice(0, pre)).toEqual(
-						Array.from({ length: pre }, (_, i) => `P${i}`),
-					);
+					expect(out.slice(0, pre)).toEqual(Array.from({ length: pre }, (_, i) => `P${i}`));
 					expect(out[pre + target - 1]).toBe("NEW");
-					expect(out.slice(out.length - suf)).toEqual(
-						Array.from({ length: suf }, (_, i) => `S${i}`),
-					);
+					expect(out.slice(out.length - suf)).toEqual(Array.from({ length: suf }, (_, i) => `S${i}`));
 				});
 			}
 		}

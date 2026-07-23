@@ -19,8 +19,7 @@ describe("applyEdits SWAP expand/shrink preserves prefix and suffix", () => {
 				// parse of SWAP with zero + rows; skip zero when it would fail parse.
 				if (bodyLen === 0) {
 					it(`DEL ${start}.=${end} prefix/suffix`, () => {
-						const patch =
-							start === end ? `DEL ${start}` : `DEL ${start}.=${end}`;
+						const patch = start === end ? `DEL ${start}` : `DEL ${start}.=${end}`;
 						const { text } = applyEdits(base, parsePatch(patch).edits);
 						const out = text.split("\n");
 						const want = [...baseLines.slice(0, start - 1), ...baseLines.slice(end)];
@@ -31,10 +30,7 @@ describe("applyEdits SWAP expand/shrink preserves prefix and suffix", () => {
 				it(`SWAP ${start}.=${end} bodyLen=${bodyLen}`, () => {
 					const body = Array.from({ length: bodyLen }, (_, i) => `B${i}`);
 					const bodyRows = body.map(l => `+${l}`).join("\n");
-					const { text } = applyEdits(
-						base,
-						parsePatch(`SWAP ${start}.=${end}:\n${bodyRows}`).edits,
-					);
+					const { text } = applyEdits(base, parsePatch(`SWAP ${start}.=${end}:\n${bodyRows}`).edits);
 					const out = text.split("\n");
 					const prefix = baseLines.slice(0, start - 1);
 					const suffix = baseLines.slice(end);

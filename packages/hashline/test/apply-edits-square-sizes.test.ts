@@ -12,9 +12,7 @@ describe("applyEdits square sizes", () => {
 			const rows = Array.from({ length: side }, (_, i) => `+H${i}`).join("\n");
 			const { text } = applyEdits(base, parsePatch(`INS.HEAD:\n${rows}`).edits);
 			expect(text.split("\n")).toHaveLength(n + side);
-			expect(text.split("\n").slice(0, side)).toEqual(
-				Array.from({ length: side }, (_, i) => `H${i}`),
-			);
+			expect(text.split("\n").slice(0, side)).toEqual(Array.from({ length: side }, (_, i) => `H${i}`));
 		});
 	}
 });

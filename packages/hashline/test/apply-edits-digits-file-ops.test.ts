@@ -14,9 +14,7 @@ describe("applyEdits digits file ops", () => {
 	});
 
 	it("SWAP all to double", () => {
-		const patch = Array.from({ length: 10 }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+${i}${i}`).join(
-			"\n",
-		);
+		const patch = Array.from({ length: 10 }, (_, i) => `SWAP ${i + 1}.=${i + 1}:\n+${i}${i}`).join("\n");
 		const { text } = applyEdits(base, parsePatch(patch).edits);
 		expect(text.split("\n")).toEqual(Array.from({ length: 10 }, (_, i) => `${i}${i}`));
 	});

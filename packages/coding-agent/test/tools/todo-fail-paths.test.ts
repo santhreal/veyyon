@@ -56,10 +56,9 @@ describe("TodoTool fail paths", () => {
 				.filter(c => c.type === "text")
 				.map(c => (c as { text: string }).text)
 				.join("");
-			expect(
-				text.includes("Implementation") ||
-					phases.some(p => JSON.stringify(p).includes("Implementation")),
-			).toBe(true);
+			expect(text.includes("Implementation") || phases.some(p => JSON.stringify(p).includes("Implementation"))).toBe(
+				true,
+			);
 		} catch (e) {
 			// Schema may differ — must fail with a message, not hang.
 			expect(String(e)).toMatch(/phase|task|todo|invalid|required|type|error/i);

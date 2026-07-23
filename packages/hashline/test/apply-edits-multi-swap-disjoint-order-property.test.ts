@@ -11,10 +11,7 @@ describe("applyEdits multi disjoint SWAP order property", () => {
 		const base = lines.join("\n");
 
 		it(`n=${n} swap first and last single lines`, () => {
-			const { text } = applyEdits(
-				base,
-				parsePatch(`SWAP 1.=1:\n+A\nSWAP ${n}.=${n}:\n+Z`).edits,
-			);
+			const { text } = applyEdits(base, parsePatch(`SWAP 1.=1:\n+A\nSWAP ${n}.=${n}:\n+Z`).edits);
 			const out = text.split("\n");
 			expect(out[0]).toBe("A");
 			expect(out[n - 1]).toBe("Z");
@@ -23,10 +20,7 @@ describe("applyEdits multi disjoint SWAP order property", () => {
 
 		it(`n=${n} swap mid pair 2 and 4`, () => {
 			if (n < 5) return;
-			const { text } = applyEdits(
-				base,
-				parsePatch("SWAP 2.=2:\n+X\nSWAP 4.=4:\n+Y").edits,
-			);
+			const { text } = applyEdits(base, parsePatch("SWAP 2.=2:\n+X\nSWAP 4.=4:\n+Y").edits);
 			const out = text.split("\n");
 			expect(out[1]).toBe("X");
 			expect(out[3]).toBe("Y");

@@ -2,8 +2,8 @@
  * Soft tool requirement + ThinkingLevel values coexist without coupling.
  */
 import { describe, expect, it } from "bun:test";
-import { isSoftToolRequirement } from "@veyyon/agent-core/types";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import { isSoftToolRequirement } from "@veyyon/agent-core/types";
 
 describe("soft tool + thinking coexistence", () => {
 	it("soft requirement not confused with thinking levels", () => {

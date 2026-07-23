@@ -14,10 +14,7 @@ describe("applyEdits past 6000 SWAP then DEL disjoint n40", () => {
 		for (let d = 1; d <= n; d++) {
 			if (s === d) continue;
 			it(`SWAP ${s} DEL ${d}`, () => {
-				const multi = applyEdits(
-					base,
-					parsePatch(`SWAP ${s}.=${s}:\n+S\nDEL ${d}`).edits,
-				).text;
+				const multi = applyEdits(base, parsePatch(`SWAP ${s}.=${s}:\n+S\nDEL ${d}`).edits).text;
 				// sequential: apply both at original indices by applying higher index first when needed
 				// multi-hunk concurrent should equal: replace s, remove d from original
 				const expected = lines

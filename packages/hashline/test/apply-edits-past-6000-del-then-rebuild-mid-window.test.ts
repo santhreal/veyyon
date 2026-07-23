@@ -20,13 +20,10 @@ describe("applyEdits past 6000 DEL then rebuild mid window", () => {
 				// rebuild deleted block via POST after line start-1
 				const body = lines
 					.slice(start - 1, end)
-					.map((l) => `+${l}`)
+					.map(l => `+${l}`)
 					.join("\n");
 				const anchor = start - 1;
-				const restored = applyEdits(
-					mid,
-					parsePatch(`INS.POST ${anchor}:\n${body}`).edits,
-				).text;
+				const restored = applyEdits(mid, parsePatch(`INS.POST ${anchor}:\n${body}`).edits).text;
 				expect(restored).toBe(base);
 			});
 		}

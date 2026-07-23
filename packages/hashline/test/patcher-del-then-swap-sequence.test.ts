@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	Patch,
-	Patcher,
-} from "@veyyon/hashline";
+import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher } from "@veyyon/hashline";
 
 /**
  * Patcher DEL then SWAP with re-record.

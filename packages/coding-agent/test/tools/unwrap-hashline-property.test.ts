@@ -11,13 +11,7 @@ function hex4(n: number): string {
 
 describe("unwrapHashlineHeaderPath property-style", () => {
 	it("valid [path#hex4] always unwraps to path for many paths", () => {
-		const paths = [
-			"a.ts",
-			"src/b.ts",
-			"/abs/c.ts",
-			"deep/nested/x.ts",
-			"file-name_1.ts",
-		];
+		const paths = ["a.ts", "src/b.ts", "/abs/c.ts", "deep/nested/x.ts", "file-name_1.ts"];
 		for (const p of paths) {
 			for (let i = 0; i < 20; i++) {
 				const tag = hex4(i * 97 + p.length);

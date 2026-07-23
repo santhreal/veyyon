@@ -22,11 +22,7 @@ import { type Skill, skillCapability } from "@veyyon/coding-agent/capability/ski
 import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 async function writeFile(filePath: string, content: string): Promise<void> {
 	await fs.mkdir(path.dirname(filePath), { recursive: true });

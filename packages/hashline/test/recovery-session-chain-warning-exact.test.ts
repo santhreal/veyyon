@@ -2,12 +2,7 @@
  * Recovery session-chain path emits RECOVERY_SESSION_CHAIN_WARNING when head !== snapshot.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	InMemorySnapshotStore,
-	parsePatch,
-	Recovery,
-	RECOVERY_SESSION_CHAIN_WARNING,
-} from "@veyyon/hashline";
+import { InMemorySnapshotStore, parsePatch, RECOVERY_SESSION_CHAIN_WARNING, Recovery } from "@veyyon/hashline";
 
 describe("Recovery session-chain warning exact", () => {
 	it("includes RECOVERY_SESSION_CHAIN_WARNING when head advanced past tagged", () => {

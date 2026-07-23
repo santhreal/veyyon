@@ -3,11 +3,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	Patch,
 	Patcher,
-	formatHashlineHeader,
 	pathRecoveredFromTagMessage,
 } from "@veyyon/hashline";
 

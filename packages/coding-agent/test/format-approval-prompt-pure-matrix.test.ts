@@ -16,10 +16,7 @@ describe("formatApprovalPrompt pure matrix", () => {
 	});
 
 	it("MCP name with explicit approval skips origin tag", () => {
-		const out = formatApprovalPrompt(
-			{ name: "mcp__github_list", approval: "prompt" as never },
-			{},
-		);
+		const out = formatApprovalPrompt({ name: "mcp__github_list", approval: "prompt" as never }, {});
 		expect(out).toBe("Allow tool: mcp__github_list");
 	});
 
@@ -60,8 +57,6 @@ describe("formatApprovalPrompt pure matrix", () => {
 			{ a: 1 },
 			"tier",
 		);
-		expect(out).toBe(
-			"Allow tool: mcp__srv_tool\nOrigin: MCP server tool\nReason: tier\narg: 1",
-		);
+		expect(out).toBe("Allow tool: mcp__srv_tool\nOrigin: MCP server tool\nReason: tier\narg: 1");
 	});
 });
