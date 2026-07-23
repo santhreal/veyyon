@@ -346,7 +346,9 @@ export class SelectList implements Component, MouseRoutable {
 			if (isSelected) {
 				return [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${truncatedDesc}`)];
 			}
-			return [prefix + this.#paintHits(truncatedValue, item.label) + this.theme.description(spacing + truncatedDesc)];
+			return [
+				prefix + this.#paintHits(truncatedValue, item.label) + this.theme.description(spacing + truncatedDesc),
+			];
 		}
 
 		if (isSelected) {
@@ -527,7 +529,12 @@ export class SelectList implements Component, MouseRoutable {
 
 	#renderStatusLine(width: number): string {
 		const query = sanitizeSingleLine(this.#filterQuery);
-		const statusText = query ? `  Search: ${query}` : "  Type to search";
+		// The key legend rides the existing status row (no extra chrome row):
+		// a picker without it read as a bare list with no visible affordances.
+		// Dense one-space separator dialect; dropped first under truncation so
+		// the live search text always survives.
+		const legend = " · ↑↓ move · ↵ select · esc close";
+		const statusText = (query ? `  Search: ${query}` : "  Type to search") + legend;
 		return this.theme.scrollInfo(truncateToWidth(statusText, Math.max(1, width - 2), Ellipsis.Omit));
 	}
 

@@ -1,5 +1,5 @@
 import type { AssistantMessage, ToolCall } from "@veyyon/ai";
-import type { ChangelogCategory, ConventionalAnalysis, ConventionalDetail } from "./types";
+import type { ChangelogCategory, ConventionalAnalysis, ConventionalDetail } from "../types";
 
 export function extractToolCall(message: AssistantMessage, name: string): ToolCall | undefined {
 	return message.content.find(content => content.type === "toolCall" && content.name === name) as ToolCall | undefined;

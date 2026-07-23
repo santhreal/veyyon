@@ -77,6 +77,10 @@ export const TRUNCATE_LENGTHS = {
 	LINE: 110,
 	/** Very short (task previews, badges) */
 	SHORT: 40,
+	/** Status-line chips (session name in the footline) — the footline shares
+	 *  one row with model, mode, path, git, and the context bar, so a chip may
+	 *  never dominate it */
+	CHIP: 24,
 	/** Idle recap status line (~40-word LLM reply) */
 	RECAP: 280,
 } as const;

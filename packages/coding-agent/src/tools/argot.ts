@@ -20,6 +20,7 @@
  */
 
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import { errorMessage } from "@veyyon/utils";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
 import { type } from "arktype";
 import { loadArgotFolder, unloadArgotFolder } from "../argot-cache";
@@ -109,7 +110,7 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		} catch (err) {
 			// A genuine conflict (two projects binding one handle name to different
 			// expansions) or a malformed cache surfaces loud, never a silent skip.
-			throw new ToolError(err instanceof Error ? err.message : String(err));
+			throw new ToolError(errorMessage(err));
 		}
 
 		if (loaded === undefined) {

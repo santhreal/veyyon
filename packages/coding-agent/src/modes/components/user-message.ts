@@ -1,4 +1,5 @@
 import { Container, Markdown } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import { imageReferenceHyperlink, renderPlaceholders } from "../image-references";
 import { highlightMagicKeywords } from "../magic-keywords";
@@ -42,7 +43,8 @@ export class UserMessageComponent extends Container {
 						? imageReferenceHyperlink(label, index, imageLinks, imageLabel)
 						: theme.fg("accent", `\x1b[1m${label}\x1b[22m`),
 			});
-		const md = new Markdown(text, 1, 1, getMarkdownTheme(), {
+		// paddingX 0: the render gutter (` › `) owns the horizontal inset.
+		const md = new Markdown(text, 0, 1, getMarkdownTheme(), {
 			bgColor,
 			color,
 		});
@@ -51,14 +53,28 @@ export class UserMessageComponent extends Container {
 	}
 
 	override render(width: number): readonly string[] {
-		const lines = super.render(width);
+		// The prompt gutter (approved composer mockups, §02 "full screen at
+		// rest"): a past prompt reads `› …` — the same glyph you typed behind,
+		// dimmed because it is history. Children render 3 columns narrower so
+		// the gutter never pushes a wrapped line past the terminal edge.
+		const lines = super.render(Math.max(1, width - 3));
 		if (lines.length === 0) {
 			return lines;
 		}
 		if (this.#zoneSource === lines && this.#zoneLines !== undefined) {
 			return this.#zoneLines;
 		}
-		const wrapped = lines.slice();
+		const gutter = ` ${theme.fg("dim", "›")} `;
+		let gutterPlaced = false;
+		const wrapped = lines.map(line => {
+			// ANSI-aware blankness: padding rows carry color codes, so a raw
+			// trim() would mistake them for content and misplace the gutter.
+			if (!gutterPlaced && stripAnsi(line).trim().length > 0) {
+				gutterPlaced = true;
+				return gutter + line;
+			}
+			return line.length > 0 ? `   ${line}` : line;
+		});
 		wrapped[0] = OSC133_ZONE_START + wrapped[0];
 		wrapped[wrapped.length - 1] = wrapped[wrapped.length - 1] + OSC133_ZONE_END;
 		this.#zoneSource = lines;

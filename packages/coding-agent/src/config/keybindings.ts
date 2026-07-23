@@ -61,6 +61,7 @@ interface AppKeybindings {
 	"app.plan.toggle": true;
 	"app.history.search": true;
 	"app.stt.toggle": true;
+	"app.bash.background": true;
 }
 
 export type AppKeybinding = keyof AppKeybindings;
@@ -98,6 +99,10 @@ export const KEYBINDINGS = {
 	"app.suspend": {
 		defaultKeys: "ctrl+z",
 		description: "Suspend application",
+	},
+	"app.bash.background": {
+		defaultKeys: "ctrl+b",
+		description: "Move the running foreground command to a background job",
 	},
 	"app.display.reset": {
 		defaultKeys: "ctrl+l",

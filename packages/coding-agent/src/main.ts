@@ -30,7 +30,7 @@ import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-fla
 import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
-import { applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
+import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
 import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
@@ -1126,7 +1126,11 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	await logger.time("initTheme:initial", initTheme);
 
 	const parsedArgs = parsed;
-	await logger.time("applyStartupCwd", applyStartupCwd, parsedArgs);
+	// Relocates away from a bare $HOME launch (before Settings.init, since
+	// discovery is cwd-relative). The announcement is deferred until after
+	// applySessionWorkdir below, so a profile session.workdir that re-roots
+	// elsewhere doesn't leave a false "Started in /tmp instead" line.
+	const autoChdirTarget = await logger.time("applyStartupCwd", applyStartupCwd, parsedArgs);
 
 	const notifs: (InteractiveModeNotify | null)[] = [];
 
@@ -1187,8 +1191,21 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	// Profile session.workdir outranks process cwd but loses to an explicit --cwd.
 	// Applied after Settings.init so the profile layer is available; re-sync `cwd`
 	// so session construction and discovery see the resolved root.
-	if (await logger.time("applySessionWorkdir", applySessionWorkdir, settingsInstance, parsedArgs.cwd)) {
+	const workdirApplied = await logger.time(
+		"applySessionWorkdir",
+		applySessionWorkdir,
+		settingsInstance,
+		parsedArgs.cwd,
+	);
+	if (workdirApplied) {
 		cwd = getProjectDir();
+	}
+	// Now that session.workdir has had its say, announce the $HOME auto-chdir —
+	// but only when it is the session's final root. If session.workdir re-rooted
+	// the session, the /tmp fallback was superseded and announcing it would be a
+	// false message (the exact autochdir-announce-vs-workdir bug).
+	if (autoChdirTarget && !workdirApplied) {
+		announceAutoChdir(os.homedir(), autoChdirTarget);
 	}
 	if (parsedArgs.approvalMode) {
 		// Runtime override (not persisted): every settings.get("tools.approvalMode") downstream

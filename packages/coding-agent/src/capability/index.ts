@@ -486,6 +486,80 @@ export function cacheStats(): { content: number; dir: number } {
 }
 
 // =============================================================================
+// Test Seam
+// =============================================================================
+
+/**
+ * Opaque snapshot of the module-level registry state. Produced by
+ * {@link captureRegistryForTests} and consumed by {@link restoreRegistryForTests}.
+ * The fields are captured by deep copy so a test can mutate the live registry and
+ * later restore it byte-identical.
+ */
+export interface RegistrySnapshot {
+	/** capability id -> a copy of that capability's providers array at capture time. */
+	readonly capabilityProviders: ReadonlyMap<string, readonly Provider<unknown>[]>;
+	readonly providerCapabilities: ReadonlyMap<string, ReadonlySet<string>>;
+	readonly providerMeta: ReadonlyMap<string, { displayName: string; description: string }>;
+	readonly disabledProviders: ReadonlySet<string>;
+	readonly importForeignConfig: boolean;
+	readonly settings: Settings | null;
+}
+
+/**
+ * Capture the entire module-level registry state so a test can restore it later.
+ *
+ * The registry keeps all state in module-level Maps/Sets that production code
+ * registers into at import time; there is no per-test instance. A hermetic test
+ * captures first, mutates freely (define capabilities, register providers, toggle
+ * disabled/foreign/settings), then restores — leaving the production-registered
+ * capabilities untouched for every other suite. Capability objects are restored by
+ * IDENTITY (only their `providers` array is reset in place) because other modules
+ * hold references to them.
+ */
+export function captureRegistryForTests(): RegistrySnapshot {
+	return {
+		capabilityProviders: new Map(Array.from(capabilities, ([id, cap]) => [id, [...cap.providers]])),
+		providerCapabilities: new Map(Array.from(providerCapabilities, ([id, set]) => [id, new Set(set)])),
+		providerMeta: new Map(Array.from(providerMeta, ([id, meta]) => [id, { ...meta }])),
+		disabledProviders: new Set(disabledProviders),
+		importForeignConfig,
+		settings,
+	};
+}
+
+/**
+ * Restore the registry to a previously captured snapshot. Capabilities defined
+ * after the snapshot are removed; surviving capabilities keep their object
+ * identity with their `providers` array reset to the captured contents. All other
+ * module-level state (provider indexes, disabled set, foreign flag, settings) is
+ * replaced wholesale.
+ */
+export function restoreRegistryForTests(snapshot: RegistrySnapshot): void {
+	for (const id of Array.from(capabilities.keys())) {
+		const captured = snapshot.capabilityProviders.get(id);
+		if (!captured) {
+			capabilities.delete(id);
+			continue;
+		}
+		const providers = capabilities.get(id)!.providers as Provider<unknown>[];
+		providers.length = 0;
+		providers.push(...captured);
+	}
+
+	providerCapabilities.clear();
+	for (const [id, set] of snapshot.providerCapabilities) providerCapabilities.set(id, new Set(set));
+
+	providerMeta.clear();
+	for (const [id, meta] of snapshot.providerMeta) providerMeta.set(id, { ...meta });
+
+	disabledProviders.clear();
+	for (const id of snapshot.disabledProviders) disabledProviders.add(id);
+
+	importForeignConfig = snapshot.importForeignConfig;
+	settings = snapshot.settings;
+}
+
+// =============================================================================
 // Re-exports
 // =============================================================================
 

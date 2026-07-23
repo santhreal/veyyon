@@ -46,13 +46,40 @@ const SESSION_CLOCK_GAP = "      ";
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Allocation-free structural size of a tool call's arguments: the sum of every
+ * nested string length plus a fixed weight per primitive and per key. Tool-call
+ * arguments come from JSON (acyclic), so a plain recursive walk is safe. This
+ * replaces a per-redraw `JSON.stringify` of the full arguments object — a
+ * streaming Write with a 100KB file body was re-serialized on every render
+ * tick just to detect in-place growth of the tail.
+ */
+function structuralTextSize(value: unknown): number {
+	if (typeof value === "string") return value.length;
+	if (typeof value === "number" || typeof value === "bigint") return 8;
+	if (typeof value === "boolean" || value === null || value === undefined) return 1;
+	if (Array.isArray(value)) {
+		let sum = 2;
+		for (const item of value) sum += 1 + structuralTextSize(item);
+		return sum;
+	}
+	if (typeof value === "object") {
+		let sum = 2;
+		for (const key in value as Record<string, unknown>) {
+			sum += key.length + 1 + structuralTextSize((value as Record<string, unknown>)[key]);
+		}
+		return sum;
+	}
+	return 1;
+}
+
+/**
  * Cheap structural fingerprint of a message's tokenizable content. O(blocks) —
  * only reads string `.length` and primitives, never copies or serializes.
  * Detects in-place growth of the streaming tail (and other in-place mutations)
  * so the cached `getContextUsage()` result is recomputed when — and only when —
- * the numbers it depends on change.
+ * the numbers it depends on change. Exported for its dedicated test suite.
  */
-function messageFingerprint(msg: AgentMessage): string {
+export function messageFingerprint(msg: AgentMessage): string {
 	const role = (msg as { role?: string }).role ?? "";
 	const ts = (msg as { timestamp?: number }).timestamp ?? 0;
 	let textLen = 0;
@@ -133,13 +160,7 @@ function messageFingerprint(msg: AgentMessage): string {
 				} else if (b.type === "toolCall") {
 					if (typeof b.name === "string") textLen += b.name.length;
 					if (b.arguments !== undefined) {
-						try {
-							textLen += JSON.stringify(b.arguments, (_key, value) =>
-								typeof value === "bigint" ? value.toString() : value,
-							).length;
-						} catch {
-							textLen += String(b.arguments).length;
-						}
+						textLen += structuralTextSize(b.arguments);
 					}
 				}
 			}

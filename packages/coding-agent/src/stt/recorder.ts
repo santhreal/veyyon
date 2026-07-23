@@ -195,6 +195,46 @@ if (Test-Path $outPath) {
 }
 `;
 
+/**
+ * Read `stdout` until `marker` appears or `timeoutMs` elapses, returning whether
+ * the marker was seen and all text read so far.
+ *
+ * The subtle correctness requirement is the timeout branch: each iteration races
+ * `reader.read()` against a deadline sleep, and when the sleep wins the read is
+ * abandoned while still pending. Releasing the reader lock then rejects that
+ * outstanding read, so the pending promise MUST be defused (`.catch`) or the
+ * rejection escapes unhandled — which, on a subprocess that produces no stdout
+ * before the deadline, would drown out the caller's clean "failed to start"
+ * diagnostic. Attaching the `.catch` does not swallow a genuine mid-loop read
+ * error: the awaited `Promise.race` still rejects and propagates in that case.
+ */
+export async function awaitStartupMarker(
+	stdout: ReadableStream<Uint8Array>,
+	marker: string,
+	timeoutMs: number,
+): Promise<{ started: boolean; output: string }> {
+	const reader = stdout.getReader();
+	const decoder = new TextDecoder();
+	let output = "";
+	const deadline = Date.now() + timeoutMs;
+
+	try {
+		while (Date.now() < deadline) {
+			const readPromise = reader.read();
+			readPromise.catch(() => {});
+			const timeoutPromise = Bun.sleep(deadline - Date.now()).then(() => ({ done: true, value: undefined }));
+			const { done, value } = await Promise.race([readPromise, timeoutPromise]);
+			if (done || !value) break;
+			output += decoder.decode(value, { stream: true });
+			if (output.includes(marker)) break;
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	return { started: output.includes(marker), output };
+}
+
 async function startPowerShellRecording(outputPath: string): Promise<RecordingHandle> {
 	// Write script to temp file — avoids quoting/escaping issues with -Command
 	const scriptPath = path.join(os.tmpdir(), `veyyon-stt-record-${Snowflake.next()}.ps1`);
@@ -210,23 +250,10 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 		fs.unlink(scriptPath).catch(() => {});
 	});
 
-	// Wait for "RECORDING" on stdout to confirm it started
-	const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
-	const decoder = new TextDecoder();
-	let output = "";
-	const deadline = Date.now() + 8000; // PowerShell + Add-Type is slow
+	// Wait for "RECORDING" on stdout to confirm it started. PowerShell + Add-Type is slow.
+	const { started, output } = await awaitStartupMarker(proc.stdout as ReadableStream<Uint8Array>, "RECORDING", 8000);
 
-	while (Date.now() < deadline) {
-		const readPromise = reader.read();
-		const timeoutPromise = Bun.sleep(deadline - Date.now()).then(() => ({ done: true, value: undefined }));
-		const { done, value } = await Promise.race([readPromise, timeoutPromise]);
-		if (done || !value) break;
-		output += decoder.decode(value, { stream: true });
-		if (output.includes("RECORDING")) break;
-	}
-	reader.releaseLock();
-
-	if (!output.includes("RECORDING")) {
+	if (!started) {
 		proc.kill();
 		await proc.exited;
 		let stderrText = "";
