@@ -24,13 +24,18 @@ Read and write from a shell with `veyyon config`:
 ```console
 $ veyyon config list                    # all settings with effective values
 $ veyyon config get tools.approvalMode
-$ veyyon config set compaction.strategy snap
+$ veyyon config set compaction.strategy summary
 $ veyyon config path                     # print the active agent directory
 ```
 
 `/settings` does the same inside a live session. Keys must match a schema path exactly
 (`theme.dark`, not `theme`).
 
+### Session Working Directory (`session.workdir` vs `set_cwd`)
+
+- **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.
+- **Ephemeral Session Re-root (`set_cwd` tool / `/set_cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
+- **Prompt Cache Protection**: Working directory changes mid-session update path resolution, but the rendered System Prompt header (`<workstation>`) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.
 ### When a settings file has a syntax error
 
 If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
@@ -125,7 +130,7 @@ Compaction compresses older history instead of truncating it. Common keys:
 | Goal | What to set |
 | --- | --- |
 | Auto-compaction threshold | `compaction.thresholdPercent` (also `compaction.thresholdTokens`) |
-| Compaction type | `compaction.strategy`: `handoff` or `snap` (schema default `snap`) |
+| Compaction type | `compaction.strategy`: `summary` or `handoff` (schema default `summary`) |
 | Compaction model | `compaction.model` (unset = interactive model) |
 | Cross-session memory backend | `memory.backend`: `off` (default), `local`, `hindsight`, `mnemopi` |
 

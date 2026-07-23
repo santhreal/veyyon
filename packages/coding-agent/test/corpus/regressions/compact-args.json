@@ -1,0 +1,68 @@
+{
+	"cases": [
+		{
+			"id": "compact-args-empty",
+			"contract": "Empty /compact args parse to an empty object",
+			"surface": "parse-compact-args",
+			"tags": ["boundary"],
+			"input": { "args": "" },
+			"expect": {}
+		},
+		{
+			"id": "compact-args-soft",
+			"contract": "A lone soft token selects soft mode with no instructions",
+			"surface": "parse-compact-args",
+			"tags": ["positive"],
+			"input": { "args": "soft" },
+			"expect": { "mode": "soft" }
+		},
+		{
+			"id": "compact-args-soft-focus",
+			"contract": "soft plus focus text yields mode soft and the focus instructions",
+			"surface": "parse-compact-args",
+			"tags": ["positive"],
+			"input": { "args": "soft keep the auth bits" },
+			"expect": { "mode": "soft", "instructions": "keep the auth bits" }
+		},
+		{
+			"id": "compact-args-remote-case",
+			"contract": "REMOTE is accepted case-insensitively as remote mode",
+			"surface": "parse-compact-args",
+			"tags": ["boundary", "positive"],
+			"input": { "args": "REMOTE" },
+			"expect": { "mode": "remote" }
+		},
+		{
+			"id": "compact-args-unknown-as-instructions",
+			"contract": "An unknown first token keeps the whole string as focus instructions",
+			"surface": "parse-compact-args",
+			"tags": ["adversarial", "regression"],
+			"input": { "args": "focus on auth" },
+			"expect": { "instructions": "focus on auth" }
+		},
+		{
+			"id": "compact-args-whitespace-only",
+			"contract": "Whitespace-only args parse like empty args",
+			"surface": "parse-compact-args",
+			"tags": ["boundary"],
+			"input": { "args": "   \t  " },
+			"expect": {}
+		},
+		{
+			"id": "find-compact-mode-soft-trim",
+			"contract": "findCompactMode trims and lowercases soft",
+			"surface": "find-compact-mode",
+			"tags": ["positive", "boundary"],
+			"input": { "name": " Soft " },
+			"expect": { "name": "soft" }
+		},
+		{
+			"id": "find-compact-mode-unknown",
+			"contract": "An unknown compact mode name resolves to null",
+			"surface": "find-compact-mode",
+			"tags": ["negative"],
+			"input": { "name": "nope" },
+			"expect": { "name": null }
+		}
+	]
+}

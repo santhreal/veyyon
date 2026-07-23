@@ -20,15 +20,31 @@ import {
 	type ToolApproval,
 } from "@veyyon/coding-agent/tools/approval";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
+import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
 	searchPathFilesystemTargets,
 } from "@veyyon/coding-agent/tools/cwd-boundary";
+import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
 import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
 import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
-import { globSearchBase, isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
+import {
+	formatPathRelativeToCwd,
+	globSearchBase,
+	isPathWithinCwd,
+	parseLineRangeChunk,
+	parseLineRanges,
+	resolveToCwd,
+} from "@veyyon/coding-agent/tools/path-utils";
+import {
+	clampTimeout,
+	describeTimeoutParam,
+	formatTimeoutClampNotice,
+	type ToolWithTimeout,
+} from "@veyyon/coding-agent/tools/tool-timeouts";
+import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
@@ -412,6 +428,96 @@ function runCwdBoundaryReason(c: CorpusCase): void {
 	expect(formatCwdBoundaryReason(input.cwd, input.escaping)).toBe(exp.text);
 }
 
+function runParsePrUrl(c: CorpusCase): void {
+	const input = c.input as { url?: string };
+	expect(parsePrUrl(input.url)).toEqual(c.expect);
+}
+
+function runParseIssueUrl(c: CorpusCase): void {
+	const input = c.input as { url?: string };
+	expect(parseIssueUrl(input.url)).toEqual(c.expect);
+}
+
+function runClampTimeout(c: CorpusCase): void {
+	const input = c.input as { tool: ToolWithTimeout; rawTimeout?: number };
+	const exp = c.expect as { seconds: number };
+	expect(clampTimeout(input.tool, input.rawTimeout)).toBe(exp.seconds);
+}
+
+function runTimeoutClampNotice(c: CorpusCase): void {
+	const input = c.input as {
+		tool: ToolWithTimeout;
+		requestedSec?: number;
+		effectiveSec: number;
+	};
+	const exp = c.expect as { notice: string | null };
+	expect(nullishToNull(formatTimeoutClampNotice(input.tool, input.requestedSec, input.effectiveSec))).toBe(
+		exp.notice,
+	);
+}
+
+function runTimeoutParamDesc(c: CorpusCase): void {
+	const input = c.input as { tool: ToolWithTimeout; zeroDisablesNoun?: string };
+	const exp = c.expect as { text: string };
+	expect(
+		describeTimeoutParam(input.tool, input.zeroDisablesNoun ? { zeroDisablesNoun: input.zeroDisablesNoun } : undefined),
+	).toBe(exp.text);
+}
+
+function runParseCompactArgs(c: CorpusCase): void {
+	const input = c.input as { args: string };
+	expect(parseCompactArgs(input.args)).toEqual(c.expect);
+}
+
+function runFindCompactMode(c: CorpusCase): void {
+	const input = c.input as { name: string };
+	const exp = c.expect as { name: string | null };
+	expect(nullishToNull(findCompactMode(input.name)?.name)).toBe(exp.name);
+}
+
+function runParseLineRangeChunk(c: CorpusCase): void {
+	const input = c.input as { sel: string };
+	const exp = c.expect as {
+		throws: boolean;
+		errorContains?: string;
+		range?: { startLine: number; endLine?: number } | null;
+	};
+	let threw: Error | null = null;
+	let range: ReturnType<typeof parseLineRangeChunk> | undefined;
+	try {
+		range = parseLineRangeChunk(input.sel);
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "").toLowerCase()).toContain(exp.errorContains.toLowerCase());
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(range ?? null).toEqual(exp.range ?? null);
+}
+
+function runParseLineRanges(c: CorpusCase): void {
+	const input = c.input as { sel: string };
+	const exp = c.expect as { ranges: Array<{ startLine: number; endLine?: number }> | null };
+	expect(parseLineRanges(input.sel)).toEqual(exp.ranges);
+}
+
+function runWriteFilesystemTargets(c: CorpusCase): void {
+	const input = c.input as { args: unknown };
+	const exp = c.expect as { targets: string[] };
+	expect(writeFilesystemTargets(input.args)).toEqual(exp.targets);
+}
+
+function runFormatPathRelative(c: CorpusCase): void {
+	const input = c.input as { filePath: string; cwd: string };
+	const exp = c.expect as { text: string };
+	expect(formatPathRelativeToCwd(input.filePath, input.cwd)).toBe(exp.text);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -514,6 +620,39 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "cwd-boundary-reason":
 			runCwdBoundaryReason(c);
+			return;
+		case "parse-pr-url":
+			runParsePrUrl(c);
+			return;
+		case "parse-issue-url":
+			runParseIssueUrl(c);
+			return;
+		case "clamp-timeout":
+			runClampTimeout(c);
+			return;
+		case "timeout-clamp-notice":
+			runTimeoutClampNotice(c);
+			return;
+		case "timeout-param-desc":
+			runTimeoutParamDesc(c);
+			return;
+		case "parse-compact-args":
+			runParseCompactArgs(c);
+			return;
+		case "find-compact-mode":
+			runFindCompactMode(c);
+			return;
+		case "parse-line-range-chunk":
+			runParseLineRangeChunk(c);
+			return;
+		case "parse-line-ranges":
+			runParseLineRanges(c);
+			return;
+		case "write-filesystem-targets":
+			runWriteFilesystemTargets(c);
+			return;
+		case "format-path-relative":
+			runFormatPathRelative(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);

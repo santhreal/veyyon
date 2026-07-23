@@ -17,7 +17,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
 1. **Handoff / compaction prompt**: `packages/agent/src/compaction/compaction.ts`
    (`renderHandoffPrompt`, `generateHandoffFromContext`), called from
    `packages/coding-agent/src/session/agent-session.ts`. Preserves task continuity across compaction
-   when `compaction.strategy` is `handoff` (the other user-facing type is `snap`; see
+   when `compaction.strategy` is `handoff` (the other user-facing type is `summary`, the default; see
    [Compaction & project memory](../handbook/src/context/compaction-memory.md)). Engineering detail:
    [`docs/internal/handoff-generation-pipeline.md`](./handoff-generation-pipeline.md).
 2. **Subagent spawn model**: `packages/coding-agent/src/task/executor.ts` (spawn, per-model
@@ -39,8 +39,12 @@ These are genuinely good patterns. Refactors must preserve behavior.
    (`packages/coding-agent/src/tools/todo.ts`) plus plan-mode guardrails
    (`packages/coding-agent/src/tools/plan-mode-guard.ts`). Agents maintain a checklist across
    multi-step work; this model is frozen and any TUI presentation work extends it without replacing it.
-
-## CUT: confusing settings / model-selection UX
+5. **Prompt Cache Stability Law (System & Workstation Prompt Caching)**: Prefix prompt caching hashes
+   from line 1 of the system prompt downwards. Never mutate or re-render system prompt templates or
+   workstation metadata (`<workstation>`, `cwd`, profile labels) mid-session before context compaction.
+   Mutating `cwd` or workstation stats mid-session invalidates the prefix cache for all remaining turns,
+   causing 100% cache-miss token inflation. Updates to workstation/profile metadata belong strictly at or
+   after context compaction (when history is re-primed and prompt cache is already reset).
 
 These are **not** keepers. Do not preserve them when condensing settings; they were already replaced by
 the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project memory](../handbook/src/context/compaction-memory.md)).
@@ -52,7 +56,7 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 2. **Silent per-role heuristic routing.** The primary model drives everything unless the plain
    subagent/compaction fields say otherwise; there is no hidden per-role auto-pick behind the scenes.
 3. **Overlapping compaction settings UX.** Condensed to three fields: threshold, type
-   (`handoff`/`snap`), model, see `packages/coding-agent/src/config/compaction-strategy.ts` and the
+   (`handoff`/`summary`), model, see `packages/coding-agent/src/config/compaction-strategy.ts` and the
    `compaction.*` group in `packages/coding-agent/src/config/settings-schema.ts`. Not a parallel
    model-picker maze.
 4. **Hosted Cloud/Ultra task-list backend types.** Out of scope for this product; do not conflate with

@@ -1,0 +1,112 @@
+{
+	"cases": [
+		{
+			"id": "line-chunk-single",
+			"contract": "A bare line number parses as an open-ended startLine with no endLine",
+			"surface": "parse-line-range-chunk",
+			"tags": ["positive"],
+			"input": { "sel": "5" },
+			"expect": { "range": { "startLine": 5 }, "throws": false }
+		},
+		{
+			"id": "line-chunk-closed",
+			"contract": "A start-end dash range parses both startLine and endLine",
+			"surface": "parse-line-range-chunk",
+			"tags": ["positive"],
+			"input": { "sel": "1-10" },
+			"expect": { "range": { "startLine": 1, "endLine": 10 }, "throws": false }
+		},
+		{
+			"id": "line-chunk-dotdot-alias",
+			"contract": "A double-dot separator is accepted as a closed range alias",
+			"surface": "parse-line-range-chunk",
+			"tags": ["positive", "boundary"],
+			"input": { "sel": "2..4" },
+			"expect": { "range": { "startLine": 2, "endLine": 4 }, "throws": false }
+		},
+		{
+			"id": "line-chunk-plus-count",
+			"contract": "A plus-count range expands to start plus count minus one",
+			"surface": "parse-line-range-chunk",
+			"tags": ["positive"],
+			"input": { "sel": "10+3" },
+			"expect": { "range": { "startLine": 10, "endLine": 12 }, "throws": false }
+		},
+		{
+			"id": "line-chunk-reversed-throws",
+			"contract": "A reversed dash range throws with end must be greater than or equal to start",
+			"surface": "parse-line-range-chunk",
+			"tags": ["adversarial", "negative"],
+			"input": { "sel": "10-1" },
+			"expect": { "throws": true, "errorContains": "end must be >= start" }
+		},
+		{
+			"id": "line-chunk-zero-throws",
+			"contract": "A zero line selector throws as 1-indexed invalid",
+			"surface": "parse-line-range-chunk",
+			"tags": ["adversarial", "boundary"],
+			"input": { "sel": "0" },
+			"expect": { "throws": true, "errorContains": "1-indexed" }
+		},
+		{
+			"id": "line-chunk-garbage-null",
+			"contract": "A non-numeric chunk returns null rather than throwing",
+			"surface": "parse-line-range-chunk",
+			"tags": ["negative", "boundary"],
+			"input": { "sel": "a-b" },
+			"expect": { "range": null, "throws": false }
+		},
+		{
+			"id": "line-ranges-merge-open-ended",
+			"contract": "An open-ended earlier chunk absorbs later ranges during merge",
+			"surface": "parse-line-ranges",
+			"tags": ["adversarial", "regression"],
+			"input": { "sel": "1-3,5,8-9" },
+			"expect": {
+				"ranges": [{ "startLine": 1, "endLine": 3 }, { "startLine": 5 }]
+			}
+		},
+		{
+			"id": "line-ranges-adjacent-singles-absorb",
+			"contract": "Bare single lines are open-ended so later singles are absorbed",
+			"surface": "parse-line-ranges",
+			"tags": ["adversarial", "boundary"],
+			"input": { "sel": "1,2,3" },
+			"expect": { "ranges": [{ "startLine": 1 }] }
+		},
+		{
+			"id": "line-ranges-closed-list",
+			"contract": "Non-overlapping closed ranges stay as separate merged entries",
+			"surface": "parse-line-ranges",
+			"tags": ["positive"],
+			"input": { "sel": "1-3,10-12" },
+			"expect": {
+				"ranges": [
+					{ "startLine": 1, "endLine": 3 },
+					{ "startLine": 10, "endLine": 12 }
+				]
+			}
+		},
+		{
+			"id": "line-ranges-spaced-chunks",
+			"contract": "Spaces around comma-separated chunks are tolerated",
+			"surface": "parse-line-ranges",
+			"tags": ["boundary", "regression"],
+			"input": { "sel": "1-3, 5-7" },
+			"expect": {
+				"ranges": [
+					{ "startLine": 1, "endLine": 3 },
+					{ "startLine": 5, "endLine": 7 }
+				]
+			}
+		},
+		{
+			"id": "line-ranges-empty-null",
+			"contract": "An empty selector string returns null",
+			"surface": "parse-line-ranges",
+			"tags": ["boundary", "negative"],
+			"input": { "sel": "" },
+			"expect": { "ranges": null }
+		}
+	]
+}

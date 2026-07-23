@@ -1,0 +1,68 @@
+{
+	"cases": [
+		{
+			"id": "write-targets-string-path",
+			"contract": "A string write path is returned as the sole filesystem target",
+			"surface": "write-filesystem-targets",
+			"tags": ["positive"],
+			"input": { "args": { "path": "/a" } },
+			"expect": { "targets": ["/a"] }
+		},
+		{
+			"id": "write-targets-unwrap-hashline",
+			"contract": "A hashline-wrapped write path unwraps before becoming a target",
+			"surface": "write-filesystem-targets",
+			"tags": ["positive", "adversarial"],
+			"input": { "args": { "path": "[/tmp/x.ts#abcd]" } },
+			"expect": { "targets": ["/tmp/x.ts"] }
+		},
+		{
+			"id": "write-targets-array-path-ignored",
+			"contract": "A non-string path array yields no write filesystem targets",
+			"surface": "write-filesystem-targets",
+			"tags": ["adversarial", "negative"],
+			"input": { "args": { "path": ["/a", "/b"] } },
+			"expect": { "targets": [] }
+		},
+		{
+			"id": "write-targets-missing-path",
+			"contract": "Missing path yields an empty write target list",
+			"surface": "write-filesystem-targets",
+			"tags": ["boundary", "negative"],
+			"input": { "args": {} },
+			"expect": { "targets": [] }
+		},
+		{
+			"id": "write-targets-blank-string-kept",
+			"contract": "A blank string path is kept as a target for downstream rejection",
+			"surface": "write-filesystem-targets",
+			"tags": ["boundary", "adversarial"],
+			"input": { "args": { "path": "  " } },
+			"expect": { "targets": ["  "] }
+		},
+		{
+			"id": "path-relative-child",
+			"contract": "A path under cwd formats as a relative child path",
+			"surface": "format-path-relative",
+			"tags": ["positive"],
+			"input": { "filePath": "/home/u/p/src/a.ts", "cwd": "/home/u/p" },
+			"expect": { "text": "src/a.ts" }
+		},
+		{
+			"id": "path-relative-outside",
+			"contract": "A path outside cwd stays absolute",
+			"surface": "format-path-relative",
+			"tags": ["negative", "adversarial"],
+			"input": { "filePath": "/etc/passwd", "cwd": "/home/u/p" },
+			"expect": { "text": "/etc/passwd" }
+		},
+		{
+			"id": "path-relative-cwd-self",
+			"contract": "The cwd path itself formats as a lone dot",
+			"surface": "format-path-relative",
+			"tags": ["boundary"],
+			"input": { "filePath": "/home/u/p", "cwd": "/home/u/p" },
+			"expect": { "text": "." }
+		}
+	]
+}
