@@ -5,12 +5,14 @@ import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { getThemeByName, initTheme, type Theme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	capParseErrors,
+	capPreviewLines,
 	dedupeParseErrors,
 	expandKeyHint,
 	formatCodeFrameLine,
 	formatDiagnostics,
 	formatErrorMessage,
 	formatExpandHint,
+	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	formatScreenshot,
@@ -446,5 +448,101 @@ describe("getLspBatchRequest", () => {
 		expect(getLspBatchRequest(ctx(0, ["edit", "write"]))).toEqual({ id: "b1", flush: false });
 		// This is the last write in the batch -> flush now.
 		expect(getLspBatchRequest(ctx(1, ["edit", "write"]))).toEqual({ id: "b1", flush: true });
+	});
+});
+
+/**
+ * `capPreviewLines` collapses a streaming command/code preview to a tail window:
+ * the LAST lines stay visible (the live edge while args stream) behind a single
+ * "… N earlier lines" marker on top. The index math is the part that breaks
+ * silently, so these pin every branch with exact strings and counts. A
+ * passthrough `fg` and literal brackets make the marker deterministic; the
+ * expand-hint suffix is a separate concern already covered above, so most cases
+ * suppress it with `expandHint: false`.
+ */
+describe("capPreviewLines", () => {
+	// fg is a passthrough so the marker text is exactly what capPreviewLines builds.
+	const plainTheme = {
+		fg: (_color: unknown, text: string) => text,
+		nav: { expand: "▸" },
+		format: { bracketLeft: "[", bracketRight: "]" },
+	} as unknown as Theme;
+
+	const lines = (n: number) => Array.from({ length: n }, (_, i) => `L${i + 1}`);
+
+	it("returns the input unchanged when it already fits within max", () => {
+		const input = lines(3);
+		expect(capPreviewLines(input, plainTheme, { max: 5, expandHint: false })).toEqual(input);
+		// Exactly at the window is still a full show, no marker.
+		expect(capPreviewLines(input, plainTheme, { max: 3, expandHint: false })).toEqual(input);
+	});
+
+	it("returns everything untouched when expanded, regardless of length or max", () => {
+		const input = lines(50);
+		expect(capPreviewLines(input, plainTheme, { max: 4, expanded: true })).toBe(input);
+	});
+
+	it("caps to exactly max output rows: one marker plus the last (max-1) lines", () => {
+		const out = capPreviewLines(lines(10), plainTheme, { max: 4, expandHint: false });
+		expect(out).toHaveLength(4); // 1 marker + 3 visible == max
+		// The tail (live edge) is kept, in order.
+		expect(out.slice(1)).toEqual(["L8", "L9", "L10"]);
+		// 10 total - 3 shown == 7 hidden, plural.
+		expect(out[0]).toBe("… 7 earlier lines");
+	});
+
+	it("keeps the newest lines, never the oldest (streaming live edge stays visible)", () => {
+		const out = capPreviewLines(lines(100), plainTheme, { max: 6, expandHint: false });
+		expect(out).toHaveLength(6);
+		expect(out.slice(1)).toEqual(["L96", "L97", "L98", "L99", "L100"]);
+		expect(out[0]).toBe("… 95 earlier lines");
+	});
+
+	it("prepends a raw prefix to the marker line only, leaving visible lines ungutter-ed", () => {
+		const out = capPreviewLines(lines(5), plainTheme, { max: 3, prefix: "│ ", expandHint: false });
+		expect(out[0]).toBe("│ … 3 earlier lines");
+		expect(out.slice(1)).toEqual(["L4", "L5"]);
+	});
+
+	it("hidden count is always >= 2 once the cap triggers for any real window (max >= 2)", () => {
+		// Property: cap requires length > max, and visible == max-1, so
+		// hidden == length-(max-1) == length-max+1 >= 2. The singular
+		// "1 earlier line" marker is therefore unreachable at any real window
+		// size (the floor is 6). Sweep a range to lock the invariant.
+		for (let max = 2; max <= 8; max++) {
+			for (let len = max + 1; len <= max + 5; len++) {
+				const out = capPreviewLines(lines(len), plainTheme, { max, expandHint: false });
+				const hidden = len - (out.length - 1);
+				expect(hidden).toBeGreaterThanOrEqual(2);
+				expect(out[0]).toBe(`… ${hidden} earlier lines`);
+			}
+		}
+	});
+
+	it("degrades to a marker-only row when max <= 1 (no room for any content line)", () => {
+		// max == 1: visible is empty, the whole preview collapses to the marker.
+		const one = capPreviewLines(lines(5), plainTheme, { max: 1, expandHint: false });
+		expect(one).toEqual(["… 5 earlier lines"]);
+		// max == 0 with a single line is the only way to reach the singular marker.
+		const singular = capPreviewLines(["only"], plainTheme, { max: 0, expandHint: false });
+		expect(singular).toEqual(["… 1 earlier line"]);
+	});
+});
+
+/**
+ * `formatMoreItems` builds the "… N more <things>" suffix for truncated lists.
+ * It guards against a non-finite count (NaN/Infinity from bad arithmetic) by
+ * flooring to 0, and pluralizes the item label. These pin both.
+ */
+describe("formatMoreItems", () => {
+	it("pluralizes the item label by count and keeps singular at exactly 1", () => {
+		expect(formatMoreItems(3, "match")).toBe("… 3 more matches");
+		expect(formatMoreItems(1, "item")).toBe("… 1 more item");
+		expect(formatMoreItems(2, "entry")).toBe("… 2 more entries");
+	});
+
+	it("floors a non-finite count to 0 rather than rendering NaN/Infinity", () => {
+		expect(formatMoreItems(Number.NaN, "file")).toBe("… 0 more files");
+		expect(formatMoreItems(Number.POSITIVE_INFINITY, "row")).toBe("… 0 more rows");
 	});
 });
