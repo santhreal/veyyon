@@ -1,0 +1,140 @@
+{
+	"cases": [
+		{
+			"id": "path-within-cwd-self",
+			"contract": "The cwd path itself is within cwd",
+			"surface": "path-within-cwd",
+			"tags": ["positive", "boundary"],
+			"input": { "resolved": "/home/user/project", "cwd": "/home/user/project" },
+			"expect": { "within": true }
+		},
+		{
+			"id": "path-within-cwd-child",
+			"contract": "A child path under cwd is within cwd",
+			"surface": "path-within-cwd",
+			"tags": ["positive"],
+			"input": { "resolved": "/home/user/project/src/a.ts", "cwd": "/home/user/project" },
+			"expect": { "within": true }
+		},
+		{
+			"id": "path-within-cwd-parent",
+			"contract": "The parent of cwd is outside cwd",
+			"surface": "path-within-cwd",
+			"tags": ["negative", "adversarial"],
+			"input": { "resolved": "/home/user", "cwd": "/home/user/project" },
+			"expect": { "within": false }
+		},
+		{
+			"id": "path-within-cwd-prefix-spoof",
+			"contract": "A sibling whose name shares a cwd prefix is outside cwd",
+			"surface": "path-within-cwd",
+			"tags": ["adversarial", "regression"],
+			"input": { "resolved": "/home/user/project-secret", "cwd": "/home/user/project" },
+			"expect": { "within": false }
+		},
+		{
+			"id": "path-within-cwd-etc",
+			"contract": "An absolute /etc path is outside a project cwd",
+			"surface": "path-within-cwd",
+			"tags": ["adversarial", "negative"],
+			"input": { "resolved": "/etc/passwd", "cwd": "/home/user/project" },
+			"expect": { "within": false }
+		},
+		{
+			"id": "path-within-cwd-root",
+			"contract": "Filesystem root is outside a project cwd",
+			"surface": "path-within-cwd",
+			"tags": ["boundary", "negative"],
+			"input": { "resolved": "/", "cwd": "/home/user/project" },
+			"expect": { "within": false }
+		},
+		{
+			"id": "resolve-to-cwd-relative",
+			"contract": "Relative paths resolve under cwd",
+			"surface": "resolve-to-cwd",
+			"tags": ["positive"],
+			"input": { "path": "src/a.ts", "cwd": "/home/user/project" },
+			"expect": { "resolved": "/home/user/project/src/a.ts" }
+		},
+		{
+			"id": "resolve-to-cwd-absolute",
+			"contract": "Absolute paths stay absolute after resolveToCwd",
+			"surface": "resolve-to-cwd",
+			"tags": ["positive"],
+			"input": { "path": "/etc/passwd", "cwd": "/home/user/project" },
+			"expect": { "resolved": "/etc/passwd" }
+		},
+		{
+			"id": "resolve-to-cwd-bare-root-alias",
+			"contract": "Bare root slash aliases to the session cwd",
+			"surface": "resolve-to-cwd",
+			"tags": ["boundary", "regression"],
+			"input": { "path": "/", "cwd": "/home/user/project" },
+			"expect": { "resolved": "/home/user/project" }
+		},
+		{
+			"id": "resolve-to-cwd-dotdot-escape",
+			"contract": "Dotdot traversal resolves to an absolute path outside cwd",
+			"surface": "resolve-to-cwd",
+			"tags": ["adversarial"],
+			"input": { "path": "../../../etc/passwd", "cwd": "/home/user/project" },
+			"expect": { "resolved": "/etc/passwd" }
+		},
+		{
+			"id": "resolve-to-cwd-dot",
+			"contract": "A lone dot resolves to cwd",
+			"surface": "resolve-to-cwd",
+			"tags": ["boundary"],
+			"input": { "path": ".", "cwd": "/home/user/project" },
+			"expect": { "resolved": "/home/user/project" }
+		},
+		{
+			"id": "glob-base-etc-starstar",
+			"contract": "globSearchBase of /etc/** is /etc",
+			"surface": "glob-search-base",
+			"tags": ["positive"],
+			"input": { "pattern": "/etc/**" },
+			"expect": { "base": "/etc" }
+		},
+		{
+			"id": "glob-base-bare-star",
+			"contract": "A bare *.ts pattern has an empty glob base",
+			"surface": "glob-search-base",
+			"tags": ["boundary"],
+			"input": { "pattern": "*.ts" },
+			"expect": { "base": "" }
+		},
+		{
+			"id": "glob-base-src-starstar",
+			"contract": "globSearchBase of src/**/*.ts is src",
+			"surface": "glob-search-base",
+			"tags": ["positive"],
+			"input": { "pattern": "src/**/*.ts" },
+			"expect": { "base": "src" }
+		},
+		{
+			"id": "glob-base-literal-file",
+			"contract": "A literal file path with no meta is its own base",
+			"surface": "glob-search-base",
+			"tags": ["positive"],
+			"input": { "pattern": "/etc/passwd" },
+			"expect": { "base": "/etc/passwd" }
+		},
+		{
+			"id": "glob-base-trimmed-whitespace",
+			"contract": "Leading and trailing whitespace is trimmed before basing",
+			"surface": "glob-search-base",
+			"tags": ["boundary", "adversarial"],
+			"input": { "pattern": "  src/**  " },
+			"expect": { "base": "src" }
+		},
+		{
+			"id": "glob-base-doublestar-only",
+			"contract": "A **/x pattern has an empty glob base (cwd-relative)",
+			"surface": "glob-search-base",
+			"tags": ["boundary"],
+			"input": { "pattern": "**/x" },
+			"expect": { "base": "" }
+		}
+	]
+}

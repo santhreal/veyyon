@@ -111,6 +111,38 @@
 			"tags": ["boundary"],
 			"input": { "path": "" },
 			"expect": { "path": "" }
+		},
+		{
+			"id": "unwrap-nested-brackets",
+			"contract": "Double-bracket headers peel only the outer pair when no tag is present",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "boundary"],
+			"input": { "path": "[[nested]]" },
+			"expect": { "path": "[nested]" }
+		},
+		{
+			"id": "unwrap-empty-brackets",
+			"contract": "Empty bracket pair is left intact rather than rewritten to empty",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "negative"],
+			"input": { "path": "[]" },
+			"expect": { "path": "[]" }
+		},
+		{
+			"id": "unwrap-etc-passwd-tagged",
+			"contract": "Absolute etc paths with a valid tag unwrap to the absolute path",
+			"surface": "unwrap-hashline-header",
+			"tags": ["adversarial", "positive"],
+			"input": { "path": "[/etc/passwd#ab12]" },
+			"expect": { "path": "/etc/passwd" }
+		},
+		{
+			"id": "unwrap-mixed-case-tag",
+			"contract": "Mixed-case 4-hex tags unwrap to the inner path",
+			"surface": "unwrap-hashline-header",
+			"tags": ["positive", "boundary"],
+			"input": { "path": "[src/a.ts#AbCd]" },
+			"expect": { "path": "src/a.ts" }
 		}
 	]
 }

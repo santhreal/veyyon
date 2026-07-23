@@ -96,6 +96,30 @@
 			"tags": ["boundary"],
 			"input": { "lineNumber": 99999, "line": "x", "isMatch": true, "useHashLines": true },
 			"expect": { "text": "*99999:x" }
+		},
+		{
+			"id": "match-line-zero-plain-context",
+			"contract": "Line number zero is emitted without padding in plain context form",
+			"surface": "match-line-format",
+			"tags": ["boundary", "adversarial"],
+			"input": { "lineNumber": 0, "line": "", "isMatch": false, "useHashLines": false },
+			"expect": { "text": " 0|" }
+		},
+		{
+			"id": "match-line-pipe-body-plain-match",
+			"contract": "Pipe characters in body stay literal under plain pipe separator",
+			"surface": "match-line-format",
+			"tags": ["adversarial"],
+			"input": { "lineNumber": 2, "line": "a|b", "isMatch": true, "useHashLines": false },
+			"expect": { "text": "*2|a|b" }
+		},
+		{
+			"id": "match-line-newline-body-preserved",
+			"contract": "Embedded newline in body is preserved exactly in the formatted line",
+			"surface": "match-line-format",
+			"tags": ["adversarial", "negative"],
+			"input": { "lineNumber": 9, "line": "a\nb", "isMatch": true, "useHashLines": true },
+			"expect": { "text": "*9:a\nb" }
 		}
 	]
 }

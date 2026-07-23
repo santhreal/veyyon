@@ -23,6 +23,7 @@ import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
 import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
 import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { globSearchBase, isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
@@ -186,7 +187,7 @@ function assertRpcFrame(
 }
 
 async function runRpcParse(c: CorpusCase): Promise<void> {
-	const input = c.input as { frame: unknown };
+	const input = c.input as { frame: unknown; variant?: string };
 	const exp = c.expect as {
 		id: string | null;
 		type: string;
@@ -199,7 +200,8 @@ async function runRpcParse(c: CorpusCase): Promise<void> {
 		rpcSuccessResponse(command.id, "prompt", { agentInvoked: false }),
 	);
 	const dispatcher = new RpcInputDispatcher({ deps });
-	dispatcher.dispatch(input.frame);
+	const frame = input.variant === "undefined" ? undefined : input.frame;
+	dispatcher.dispatch(frame);
 	expect(outputs).toHaveLength(1);
 	assertRpcFrame(outputs[0] as RpcResponse & { error?: string }, exp);
 }
@@ -375,6 +377,24 @@ function runSearchPathTargets(c: CorpusCase): void {
 	expect(targets).toEqual(exp.targets);
 }
 
+function runPathWithinCwd(c: CorpusCase): void {
+	const input = c.input as { resolved: string; cwd: string };
+	const exp = c.expect as { within: boolean };
+	expect(isPathWithinCwd(input.resolved, input.cwd)).toBe(exp.within);
+}
+
+function runResolveToCwd(c: CorpusCase): void {
+	const input = c.input as { path: string; cwd: string };
+	const exp = c.expect as { resolved: string };
+	expect(resolveToCwd(input.path, input.cwd)).toBe(exp.resolved);
+}
+
+function runGlobSearchBase(c: CorpusCase): void {
+	const input = c.input as { pattern: string };
+	const exp = c.expect as { base: string };
+	expect(globSearchBase(input.pattern)).toBe(exp.base);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -462,6 +482,15 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "search-path-targets":
 			runSearchPathTargets(c);
+			return;
+		case "path-within-cwd":
+			runPathWithinCwd(c);
+			return;
+		case "resolve-to-cwd":
+			runResolveToCwd(c);
+			return;
+		case "glob-search-base":
+			runGlobSearchBase(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);

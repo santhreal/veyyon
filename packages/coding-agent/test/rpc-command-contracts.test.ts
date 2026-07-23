@@ -225,6 +225,76 @@ describe("RPC command contracts (dispatcher)", () => {
 			success: true,
 		});
 	});
+
+	test("unknown command drops numeric-looking and UUID request ids", async () => {
+		const handleCommand = async (command: RpcCommand): Promise<RpcResponse> => {
+			const type = (command as { type: string }).type;
+			return {
+				id: undefined,
+				type: "response",
+				command: type,
+				success: false,
+				error: `Unknown command: ${type}`,
+			};
+		};
+		const { deps, outputs } = makeDeps(handleCommand);
+
+		await dispatchRpcInputFrame({ id: "12345", type: "still_not_a_command" as "abort" }, deps);
+		await dispatchRpcInputFrame(
+			{ id: "550e8400-e29b-41d4-a716-446655440000", type: "also_not_a_command" as "abort" },
+			deps,
+		);
+		await flushMicrotasks();
+
+		expect(outputs).toHaveLength(2);
+		expect(outputs[0]).toEqual({
+			id: undefined,
+			type: "response",
+			command: "still_not_a_command",
+			success: false,
+			error: "Unknown command: still_not_a_command",
+		});
+		expect(outputs[1]).toEqual({
+			id: undefined,
+			type: "response",
+			command: "also_not_a_command",
+			success: false,
+			error: "Unknown command: also_not_a_command",
+		});
+	});
+
+	test("known get_state echoes UUID and empty-string ids exactly", async () => {
+		const handleCommand = async (command: RpcCommand): Promise<RpcResponse> => {
+			if (command.type !== "get_state") throw new Error(`unexpected: ${command.type}`);
+			return {
+				id: command.id,
+				type: "response",
+				command: "get_state",
+				success: true,
+				data: emptyStateData,
+			};
+		};
+		const { deps, outputs } = makeDeps(handleCommand);
+		const uuid = "550e8400-e29b-41d4-a716-446655440000";
+
+		await dispatchRpcInputFrame({ id: uuid, type: "get_state" }, deps);
+		await dispatchRpcInputFrame({ id: "", type: "get_state" }, deps);
+
+		expect(outputs[0]).toEqual({
+			id: uuid,
+			type: "response",
+			command: "get_state",
+			success: true,
+			data: emptyStateData,
+		});
+		expect(outputs[1]).toEqual({
+			id: "",
+			type: "response",
+			command: "get_state",
+			success: true,
+			data: emptyStateData,
+		});
+	});
 });
 
 /**
