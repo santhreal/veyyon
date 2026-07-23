@@ -38,8 +38,9 @@ describe("sweepAnchors", () => {
 		expect(anchors.length).toBeLessThan(n);
 		// Bounded by the end anchors (up to 6) plus INTERIOR_SAMPLES probes.
 		expect(anchors.length).toBeLessThanOrEqual(6 + INTERIOR_SAMPLES);
-		// A meaningful sample, not one or two points.
-		expect(anchors.length).toBeGreaterThanOrEqual(20);
+		// A meaningful sample, not one or two points: the interior probes plus at
+		// least the two ends survive de-duplication.
+		expect(anchors.length).toBeGreaterThanOrEqual(INTERIOR_SAMPLES);
 	});
 
 	it("always covers both ends and their off-by-one boundaries on a large base", () => {

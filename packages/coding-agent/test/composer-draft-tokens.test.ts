@@ -11,6 +11,12 @@
  *  2. A typed draft surfaces `~N tok` with the estimator's exact number.
  *  3. Clearing the draft removes the zone again (live, not sticky).
  *  4. Whitespace-only drafts count as empty.
+ *
+ * The presence/absence checks match the exact zone marker `~<number> tok`, not
+ * the bare substring " tok": a randomly-selected welcome tip can contain the
+ * word "tokens" (e.g. "pulls live tokens over the wire"), and a " tok" substring
+ * check there flaked the empty-composer case. The zone always carries a
+ * `~<digits>` prefix, which no tip prose does.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
@@ -90,8 +96,12 @@ describe("composer draft token count (DS-6 dock)", () => {
 			.join("\n");
 	}
 
+	// The composer token zone: a `~<digits> tok` marker. Matching this (not a bare
+	// " tok" substring) keeps the checks immune to tip prose containing "tokens".
+	const TOKEN_ZONE = /~\d+ tok\b/;
+
 	it("says nothing while the composer is empty", () => {
-		expect(frame()).not.toContain(" tok");
+		expect(frame()).not.toMatch(TOKEN_ZONE);
 	});
 
 	it("shows the shared estimator's exact number for a typed draft", () => {
@@ -102,14 +112,14 @@ describe("composer draft token count (DS-6 dock)", () => {
 
 	it("removes the zone when the draft is cleared (live, not sticky)", () => {
 		mode.editor.setText("a real draft");
-		expect(frame()).toContain(" tok");
+		expect(frame()).toMatch(TOKEN_ZONE);
 		mode.editor.setText("");
-		expect(frame()).not.toContain(" tok");
+		expect(frame()).not.toMatch(TOKEN_ZONE);
 	});
 
 	it("treats whitespace-only drafts as empty", () => {
 		mode.editor.setText("   \n\t  ");
-		expect(frame()).not.toContain(" tok");
+		expect(frame()).not.toMatch(TOKEN_ZONE);
 	});
 
 	/** Menu navigation is not a draft: a bare slash-command token stays
@@ -117,8 +127,8 @@ describe("composer draft token count (DS-6 dock)", () => {
 	 * but the counter returns once the command carries argument text. */
 	it("hides the counter for a bare slash-command token, shows it once args follow", () => {
 		mode.editor.setText("/settings");
-		expect(frame()).not.toContain(" tok");
+		expect(frame()).not.toMatch(TOKEN_ZONE);
 		mode.editor.setText("/btw why does the walker collect entries eagerly");
-		expect(frame()).toContain(" tok");
+		expect(frame()).toMatch(TOKEN_ZONE);
 	});
 });
