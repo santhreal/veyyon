@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { compareVersions, enumerateChangelogVersions, mergePackageSection } from "./ci-release-notes";
 
 const FIXTURE = [
@@ -156,5 +158,21 @@ describe("mergePackageSection", () => {
 		// `### Fixed` heading by itself.
 		const merged = mergePackageSection(FIXTURE, "15.12.4", "15.13.0");
 		expect(merged).not.toMatch(/### Fixed\s*\n\s*(### |$)/);
+	});
+});
+
+describe("ci-release-notes.ts must run without a workspace install", () => {
+	it("imports no @veyyon/* workspace package (release_github does not `bun install`)", () => {
+		// The release_github job ("Publish GitHub release") checks out the repo and
+		// sets up bun but does NOT run `bun install`, so the workspace symlinks
+		// node_modules/@veyyon/* do not exist. A bare workspace import in this
+		// script crashes the job with "Cannot find module '@veyyon/...'" and blocks
+		// the publish — it did on the FIRST release_github run to complete (v1.0.20:
+		// `import { compareSemver } from "@veyyon/utils/semver"`), so nothing shipped.
+		// Cross-package helpers must be imported by relative path (semver.ts is
+		// self-contained, so a direct file import resolves with no install).
+		const src = fs.readFileSync(path.join(import.meta.dir, "ci-release-notes.ts"), "utf8");
+		const workspaceImports = [...src.matchAll(/\bfrom\s+["'](@veyyon\/[^"']+)["']/g)].map(m => m[1]);
+		expect(workspaceImports).toEqual([]);
 	});
 });
