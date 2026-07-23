@@ -138,6 +138,42 @@
 				"serverName": "a",
 				"toolName": "b_c"
 			}
+		},
+		{
+			"id": "mcp-name-leading-trailing-spaces",
+			"contract": "Leading and trailing spaces on server and tool collapse into sanitized underscored segments",
+			"surface": "mcp-tool-name",
+			"tags": ["adversarial", "boundary"],
+			"input": { "server": "  gh  ", "tool": "  list  " },
+			"expect": {
+				"name": "mcp__gh_list",
+				"serverName": "gh",
+				"toolName": "list"
+			}
+		},
+		{
+			"id": "mcp-name-numeric-segments",
+			"contract": "Digit-only server and tool names sanitize to the server/tool fallback tokens",
+			"surface": "mcp-tool-name",
+			"tags": ["boundary", "adversarial"],
+			"input": { "server": "42", "tool": "7" },
+			"expect": {
+				"name": "mcp__server_tool",
+				"serverName": "server",
+				"toolName": "tool"
+			}
+		},
+		{
+			"id": "mcp-name-dot-separator",
+			"contract": "Dots in names become underscores; parse splits on the first underscore after mcp__",
+			"surface": "mcp-tool-name",
+			"tags": ["adversarial"],
+			"input": { "server": "a.b", "tool": "c.d" },
+			"expect": {
+				"name": "mcp__a_b_c_d",
+				"serverName": "a",
+				"toolName": "b_c_d"
+			}
 		}
 	]
 }

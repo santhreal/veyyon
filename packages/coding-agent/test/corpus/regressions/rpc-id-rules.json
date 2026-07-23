@@ -94,6 +94,47 @@
 				"success": false,
 				"errorContains": "Unknown command:"
 			}
+		},
+		{
+			"id": "rpc-parse-undefined-id-undefined",
+			"contract": "Malformed undefined frames emit parse error with id undefined",
+			"surface": "rpc-parse-frame",
+			"tags": ["adversarial", "regression"],
+			"input": { "frame": null, "variant": "undefined" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "parse",
+				"success": false,
+				"errorContains": "Failed to parse command:"
+			}
+		},
+		{
+			"id": "rpc-unknown-command-numeric-looking-id",
+			"contract": "Unknown command responses drop a numeric-looking string request id",
+			"surface": "rpc-unknown-command",
+			"tags": ["adversarial", "negative"],
+			"input": { "id": "12345", "type": "still_not_a_command" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "still_not_a_command",
+				"success": false,
+				"errorContains": "Unknown command:"
+			}
+		},
+		{
+			"id": "rpc-known-command-echoes-uuid-id",
+			"contract": "Known get_state success echoes a UUID-shaped request id exactly",
+			"surface": "rpc-known-get-state",
+			"tags": ["positive", "boundary"],
+			"input": { "id": "550e8400-e29b-41d4-a716-446655440000", "type": "get_state" },
+			"expect": {
+				"id": "550e8400-e29b-41d4-a716-446655440000",
+				"type": "response",
+				"command": "get_state",
+				"success": true
+			}
 		}
 	]
 }
