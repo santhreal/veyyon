@@ -389,11 +389,26 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	console.log(`Bumping veyyon-natives version sentinel to v${version}…`);
 	const sentinelJsId = version.replace(/[^A-Za-z0-9]/g, "_");
 	const sentinelName = `__veyyonNativesV${sentinelJsId}`;
-	const sentinelFiles = [
-		"crates/veyyon-natives/src/lib.rs",
-		"packages/natives/native/index.d.ts",
-		"packages/natives/native/index.js",
-	];
+	// Discover EVERY file that references a concrete version sentinel rather than
+	// pinning a hardcoded list: the sentinel export name is version-specific by
+	// design (cross-version `.node` rejection), so any file that imports or calls
+	// it — including test harnesses like packages/tui/test/render-stress-*.ts —
+	// breaks on a bump unless the rewrite reaches it. `rg`'s pattern only matches
+	// concrete `__veyyonNativesV1_2_3` literals (the `{major}_{minor}` doc form and
+	// the `${…}` template in loader-state.js don't match), so this stays exact.
+	const sentinelFilesRaw =
+		await $`rg -l '__veyyonNativesV[A-Za-z0-9_]+' --glob '!bun.lock'`.text();
+	const sentinelFiles = sentinelFilesRaw
+		.split("\n")
+		.map(line => line.trim())
+		.filter(Boolean);
+	if (!sentinelFiles.includes("crates/veyyon-natives/src/lib.rs")) {
+		console.error(
+			"Error: could not locate the veyyon-natives version sentinel in crates/veyyon-natives/src/lib.rs. " +
+				"The `__veyyonNativesV…` literal may have been removed or renamed; restore it before releasing.",
+		);
+		process.exit(1);
+	}
 	await $`sd '__veyyonNativesV[A-Za-z0-9_]+' ${sentinelName} ${sentinelFiles}`;
 	const libRs = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
 	if (!libRs.includes(`js_name = "${sentinelName}"`)) {
