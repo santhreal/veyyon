@@ -60,6 +60,23 @@ function callsApplyEdits(src: string): boolean {
 	return /\b(applyEdits|parsePatch|formatReplaceHeader|formatDeleteHeader)\b/.test(src);
 }
 
+/**
+ * True when the file contains a raw counting loop over a seed band — the shape
+ * the `-seeds-` fuzz suites used before seedBand: `for (let <id> = <A>; <id> <=
+ * <B>; <id>++)` where the band `B - A + 1` is larger than a single sample would
+ * be (>= SEED_BAND_FLOOR). Those must go through seedBand so the per-commit gate
+ * samples them; only the scheduled soak runs the whole band.
+ */
+const SEED_BAND_FLOOR = 1000;
+function hasRawLargeSeedLoop(src: string): boolean {
+	for (const m of src.matchAll(/\bfor\s*\(\s*let\s+\w+\s*=\s*(\d+)\s*;\s*\w+\s*<=\s*(\d+)\s*;/g)) {
+		const start = Number(m[1]);
+		const end = Number(m[2]);
+		if (start >= 1 && end - start + 1 >= SEED_BAND_FLOOR) return true;
+	}
+	return false;
+}
+
 describe("large-base scale suites stay bounded", () => {
 	it("every from-1 sweep to a >=6000 bound goes through sweepAnchors", () => {
 		const offenders: string[] = [];
@@ -93,5 +110,29 @@ describe("large-base scale suites stay bounded", () => {
 			const src = readFileSync(join(TEST_DIR, name), "utf8");
 			expect(hasLargeFromOneSweep(src)).toBe(false);
 		}
+	});
+
+	it("no seed suite runs a raw large band (>=1000 seeds) — those must use seedBand", () => {
+		// The blocker that stopped the release: the large -seeds- suites looped every
+		// seed in their band (~3M total), SIGKILLing the 600s bucket. seedBand samples
+		// on the per-commit gate and runs the full band only under HASHLINE_SEED_SOAK.
+		// Small seed suites (a few dozen seeds) may still loop raw — the cost is
+		// trivial — so the guard targets only large raw bands, the shape that broke.
+		const offenders: string[] = [];
+		for (const name of listTestFiles().filter(n => n.includes("-seeds-"))) {
+			const src = readFileSync(join(TEST_DIR, name), "utf8");
+			if (hasRawLargeSeedLoop(src)) offenders.push(name);
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("finds the large seed suites it protects (guard is not vacuous)", () => {
+		// The large-band seed suites must actually be present and routed through
+		// seedBand, or the guard above would pass while protecting nothing.
+		const routed = listTestFiles().filter(name => {
+			const src = readFileSync(join(TEST_DIR, name), "utf8");
+			return name.includes("-seeds-") && src.includes("seedBand(");
+		});
+		expect(routed.length).toBeGreaterThanOrEqual(100);
 	});
 });

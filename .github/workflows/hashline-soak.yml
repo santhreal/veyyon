@@ -1,0 +1,38 @@
+# Hashline seed-fuzz soak: runs the FULL ~3,000,000-seed corpus of the
+# apply-edits-past-6000-seeds-* walks, which the per-commit gate only samples
+# (see packages/hashline/test/support/seed-band.ts). Sampling keeps the gate
+# under the 600s bucket watchdog; this scheduled job keeps the exhaustive
+# crash-fuzz coverage genuinely exercised, not merely theoretical.
+name: Hashline soak
+
+on:
+  schedule:
+    # Nightly at 08:00 UTC. Off the release path, so a slow soak never blocks a cut.
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: "hashline-soak-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  seed-soak:
+    name: Full seed corpus (HASHLINE_SEED_SOAK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HASHLINE_SEED_SOAK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Run the full seed corpus
+        # hashline is pure TypeScript (no native addon), so no build step is
+        # needed. The soak env makes seedBand yield every seed in every band.
+        run: bun test --timeout 120000 test/apply-edits-past-6000-seeds-*.test.ts test/support/seed-band.test.ts
+        working-directory: packages/hashline

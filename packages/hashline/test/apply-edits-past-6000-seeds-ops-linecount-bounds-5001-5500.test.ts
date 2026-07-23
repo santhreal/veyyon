@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { seedBand } from "./support/seed-band";
 
 function apply(text: string, patch: string): string {
 	return applyEdits(text, parsePatch(patch).edits).text;
@@ -20,7 +21,7 @@ function lcg(seed: number): () => number {
 describe("applyEdits past 6000 seeds ops linecount bounds 5001-5500", () => {
 	const ops = 40;
 	const maxLines = 3 + ops * 2; // each insert at most 1 line in this walk
-	for (let seed = 5001; seed <= 5500; seed++) {
+	for (const seed of seedBand(5001, 5500)) {
 		it(`seed=${seed}`, () => {
 			const next = lcg(seed);
 			let t = "a\nb\nc";
