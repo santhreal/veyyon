@@ -33,9 +33,16 @@ installer's job (see [deployment.md](deployment.md)).
 Run before every push:
 
 ```
-bun run check        # types + lint, TS and Rust
+bun run check        # typecheck, TS and Rust (this is the release gate)
 bun run test         # the local test suite
+bun run lint         # biome + clippy, advisory (not a release gate)
 ```
+
+`check` typechecks and runs the tests that gate a release; it does not run
+biome. Formatting and lint are advisory: run `bun run fmt` to format and
+`bun run lint` to see biome/clippy findings. Keep the tree formatted, but a
+biome finding never blocks a release the way a type error or a failing test
+does.
 
 If your change touches native paths, build the addon first: `bun run ci:build:native`.
 Testing rules and anti-patterns: [testing.md](testing.md).
