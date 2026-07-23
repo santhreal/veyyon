@@ -290,7 +290,9 @@ preserve_local_src_changes() {
     src="${1:-$VEYYON_SRC_DIR}"
     [ -d "$src/.git" ] || return 0
     [ -n "$( cd "$src" 2>/dev/null && git status --porcelain 2>/dev/null )" ] || return 0
-    stamp=$(date -u +%Y%m%d-%H%M%S)
+    # pid keeps two installer runs in the same second from colliding on the
+    # branch name (a collision would fail closed and needlessly block the update).
+    stamp=$(date -u +%Y%m%d-%H%M%S)-$$
     branch="veyyon-local-$stamp"
     (
         cd "$src" || exit 1
@@ -325,7 +327,7 @@ move_aside_existing_src() {
         rmdir "$src" 2>/dev/null || true
         return 0
     fi
-    stamp=$(date -u +%Y%m%d-%H%M%S)
+    stamp=$(date -u +%Y%m%d-%H%M%S)-$$
     backup="$src.bak-$stamp"
     mv "$src" "$backup" || die "refusing to clone: could not move existing $src aside to $backup"
     warn "moved existing $src aside to $backup (nothing was deleted)"
