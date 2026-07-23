@@ -273,33 +273,42 @@ function getVariantOverride() {
  * ABI-safe `baseline` (never SIGILL a non-AVX2 CPU) WITHOUT caching that guessed
  * verdict for every child process, and lets the caller surface it loudly.
  *
+ * This mirrors the build-time detector `classifyHostAvx2Support`
+ * (scripts/host-detect.ts) branch-for-branch; the two live on opposite sides of
+ * the build/runtime boundary and cannot share code, so their semantics MUST stay
+ * in lock-step. `native-avx2-classify.test.ts` exercises the same probe matrix
+ * against both to catch any drift.
+ *
+ * @param {{
+ *   platform: NodeJS.Platform;
+ *   arch: string;
+ *   readCpuInfo: () => string | null;
+ *   runCommand: (command: string, args: string[]) => string | null;
+ * }} probes
  * @returns {"supported" | "unsupported" | "unknown"}
  */
-function detectAvx2Support() {
-	if (process.arch !== "x64") {
+export function classifyAvx2Support(probes) {
+	if (probes.arch !== "x64") {
 		return "unsupported";
 	}
 
-	if (process.platform === "linux") {
-		try {
-			const cpuInfo = fs.readFileSync("/proc/cpuinfo", "utf8");
-			return /\bavx2\b/i.test(cpuInfo) ? "supported" : "unsupported";
-		} catch {
-			// Could not read /proc/cpuinfo (unusual mount, sandbox) — do NOT claim
-			// the CPU lacks AVX2; we simply do not know.
-			return "unknown";
-		}
+	if (probes.platform === "linux") {
+		const cpuInfo = probes.readCpuInfo();
+		// A null read means we could not inspect the CPU (unusual mount, sandbox) —
+		// do NOT claim the CPU lacks AVX2; we simply do not know.
+		if (cpuInfo === null) return "unknown";
+		return /\bavx2\b/i.test(cpuInfo) ? "supported" : "unsupported";
 	}
 
-	if (process.platform === "darwin") {
+	if (probes.platform === "darwin") {
 		// Try the absolute path before bare `sysctl`: PATH may not include
 		// `/usr/sbin` in worker/embedded spawn contexts (issue #3238).
 		let anyProbeRan = false;
 		for (const sysctlBin of ["/usr/sbin/sysctl", "sysctl"]) {
-			const leaf7 = runCommand(sysctlBin, ["-n", "machdep.cpu.leaf7_features"]);
+			const leaf7 = probes.runCommand(sysctlBin, ["-n", "machdep.cpu.leaf7_features"]);
 			if (leaf7 !== null) anyProbeRan = true;
 			if (leaf7 && /\bAVX2\b/i.test(leaf7)) return "supported";
-			const features = runCommand(sysctlBin, ["-n", "machdep.cpu.features"]);
+			const features = probes.runCommand(sysctlBin, ["-n", "machdep.cpu.features"]);
 			if (features !== null) anyProbeRan = true;
 			if (features && /\bAVX2\b/i.test(features)) return "supported";
 		}
@@ -308,8 +317,8 @@ function detectAvx2Support() {
 		return anyProbeRan ? "unsupported" : "unknown";
 	}
 
-	if (process.platform === "win32") {
-		const output = runCommand("powershell.exe", [
+	if (probes.platform === "win32") {
+		const output = probes.runCommand("powershell.exe", [
 			"-NoProfile",
 			"-NonInteractive",
 			"-Command",
@@ -320,6 +329,26 @@ function detectAvx2Support() {
 	}
 
 	return "unknown";
+}
+
+/**
+ * Detect AVX2 support on the real host, as a tri-state. Thin wrapper over
+ * {@link classifyAvx2Support} that supplies the real filesystem/spawn probes.
+ * @returns {"supported" | "unsupported" | "unknown"}
+ */
+function detectAvx2Support() {
+	return classifyAvx2Support({
+		platform: process.platform,
+		arch: process.arch,
+		readCpuInfo: () => {
+			try {
+				return fs.readFileSync("/proc/cpuinfo", "utf8");
+			} catch {
+				return null;
+			}
+		},
+		runCommand,
+	});
 }
 
 /**
