@@ -12,7 +12,7 @@ import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
 import type { SkillsSettings } from "./config/settings";
 import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
-import { ensureGlobalAgentsFile } from "./discovery/agents-guidance";
+import { ensureManagedAgentsFilesOnStartup } from "./discovery/agents-guidance";
 import { expandAtImports } from "./discovery/at-imports";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { hasObsidian } from "./internal-urls/vault-protocol";
@@ -698,9 +698,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		: logger.time("loadSystemPromptFiles", loadSystemPromptFiles, { cwd: resolvedCwd });
 	const contextFilesPromise = providedContextFiles
 		? Promise.resolve(providedContextFiles)
-		: // Seed the global ~/.veyyon/AGENTS.md with its guidance header on first
-			// run (idempotent once it exists), then load the context layers.
-			ensureGlobalAgentsFile().then(() =>
+		: // Seed the global ~/.veyyon/AGENTS.md AND the active profile's AGENTS.md
+			// with their guidance headers on first run (idempotent once they exist),
+			// then load the context layers. Both live outside the git checkout, so
+			// they survive source updates — unlike a file edited inside ~/.veyyon/src.
+			ensureManagedAgentsFilesOnStartup().then(() =>
 				logger.time("loadProjectContextFiles", loadProjectContextFiles, { cwd: resolvedCwd }),
 			);
 	const workspaceTreePromise =

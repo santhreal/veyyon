@@ -138,5 +138,76 @@ check "gh_curl falls back to GH_TOKEN" \
 check "CURL_RETRY requests retries" "$(printf '%s' "$CURL_RETRY" | grep -c -- '--retry ')" "1"
 check "CURL_RETRY avoids the newer --retry-connrefused" "$(printf '%s' "$CURL_RETRY" | grep -c -- '--retry-connrefused')" "0"
 
+# --- preserve_local_src_changes: never reset over uncommitted edits ---
+# Locks the data-loss fix: the source update path runs `git reset --hard`, which
+# used to silently discard a user's local edits to a tracked file in
+# ~/.veyyon/src (an edited AGENTS.md vanished on every update). preserve_ now
+# commits those edits to a durable `veyyon-local-<stamp>` branch first, so the
+# reset never destroys work the installer did not create. These prove the edit
+# survives an actual hard reset, that ignored build artifacts are not swept in,
+# and that a clean tree stays a no-op.
+if command -v git >/dev/null 2>&1; then
+    make_repo() { # dir — a committed checkout with a gitignore
+        d="$1"; rm -rf "$d"; mkdir -p "$d"
+        ( cd "$d" && git init -q \
+            && git config user.name t && git config user.email t@t \
+            && printf 'committed\n' > AGENTS.md \
+            && printf 'node_modules/\n' > .gitignore \
+            && git add -A && git commit -qm init )
+    }
+    backup_branch() { ( cd "$1" && git branch --list 'veyyon-local-*' | tr -d ' *' | head -1 ); }
+
+    make_repo "$SANDBOX/clean"
+    ( preserve_local_src_changes "$SANDBOX/clean" >/dev/null 2>&1 ); check "preserve is a no-op on a clean repo" "$?" "0"
+    check "clean repo gets no backup branch" "$( cd "$SANDBOX/clean" && git branch --list 'veyyon-local-*' | wc -l | tr -d ' ' )" "0"
+
+    make_repo "$SANDBOX/dirty"
+    printf 'MY LOCAL EDIT\n' > "$SANDBOX/dirty/AGENTS.md"
+    ( preserve_local_src_changes "$SANDBOX/dirty" >/dev/null 2>&1 ); check "preserve succeeds on a modified tracked file" "$?" "0"
+    bd=$(backup_branch "$SANDBOX/dirty")
+    check "preserve created exactly one backup branch" "$( cd "$SANDBOX/dirty" && git branch --list 'veyyon-local-*' | wc -l | tr -d ' ' )" "1"
+    # Simulate the update's destructive step: a hard reset discards the working edit...
+    ( cd "$SANDBOX/dirty" && git reset -q --hard HEAD )
+    check "hard reset cleared the working-tree edit" "$(cat "$SANDBOX/dirty/AGENTS.md")" "committed"
+    # ...but the exact bytes are recoverable from the backup branch.
+    check "backup branch preserves the exact edited bytes" "$( cd "$SANDBOX/dirty" && git show "$bd:AGENTS.md" )" "MY LOCAL EDIT"
+
+    make_repo "$SANDBOX/untracked"
+    printf 'brand new\n' > "$SANDBOX/untracked/notes.txt"
+    ( preserve_local_src_changes "$SANDBOX/untracked" >/dev/null 2>&1 ); check "preserve succeeds with an untracked file" "$?" "0"
+    bu=$(backup_branch "$SANDBOX/untracked")
+    check "untracked file is captured on the backup branch" "$( cd "$SANDBOX/untracked" && git show "$bu:notes.txt" )" "brand new"
+
+    make_repo "$SANDBOX/mixed"
+    printf 'real edit\n' > "$SANDBOX/mixed/AGENTS.md"
+    mkdir -p "$SANDBOX/mixed/node_modules"; printf 'junk\n' > "$SANDBOX/mixed/node_modules/x"
+    ( preserve_local_src_changes "$SANDBOX/mixed" >/dev/null 2>&1 ); check "preserve succeeds on mixed real+ignored changes" "$?" "0"
+    bm=$(backup_branch "$SANDBOX/mixed")
+    check "backup holds the real edit" "$( cd "$SANDBOX/mixed" && git show "$bm:AGENTS.md" )" "real edit"
+    check "backup does NOT sweep in gitignored node_modules" "$( cd "$SANDBOX/mixed" && git ls-tree -r --name-only "$bm" | grep -c node_modules )" "0"
+
+    make_repo "$SANDBOX/ignored-only"
+    mkdir -p "$SANDBOX/ignored-only/node_modules"; printf 'junk\n' > "$SANDBOX/ignored-only/node_modules/x"
+    ( preserve_local_src_changes "$SANDBOX/ignored-only" >/dev/null 2>&1 ); check "ignored-only change is a no-op" "$?" "0"
+    check "no backup branch for ignored-only changes" "$( cd "$SANDBOX/ignored-only" && git branch --list 'veyyon-local-*' | wc -l | tr -d ' ' )" "0"
+else
+    printf 'SKIP: git not available; preserve_local_src_changes tests skipped\n' >&2
+fi
+
+# --- move_aside_existing_src: relocate an existing tree instead of deleting it ---
+# The clone path used to `rm -rf "$VEYYON_SRC_DIR"`. A non-empty tree (user files
+# or a partial checkout with no .git) must be moved to `<dir>.bak-<stamp>`, never
+# deleted; an empty dir is simply removed so a fresh clone can proceed.
+nd="$SANDBOX/nongit"; rm -rf "$nd"; mkdir -p "$nd"; printf 'precious\n' > "$nd/keep.txt"
+( move_aside_existing_src "$nd" >/dev/null 2>&1 ); check "move_aside relocates a non-empty dir" "$?" "0"
+check "original path is cleared for a fresh clone" "$( [ -e "$nd" ] && echo present || echo gone )" "gone"
+ndbak=$(ls -d "$nd".bak-* 2>/dev/null | head -1)
+check "moved-aside backup keeps the file" "$( [ -f "$ndbak/keep.txt" ] && cat "$ndbak/keep.txt" )" "precious"
+
+ed="$SANDBOX/emptydir"; rm -rf "$ed"; mkdir -p "$ed"
+( move_aside_existing_src "$ed" >/dev/null 2>&1 ); check "move_aside removes an empty dir" "$?" "0"
+check "empty dir was removed" "$( [ -e "$ed" ] && echo present || echo gone )" "gone"
+check "empty dir left no backup" "$( ls -d "$ed".bak-* 2>/dev/null | wc -l | tr -d ' ' )" "0"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
