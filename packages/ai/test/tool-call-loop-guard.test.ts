@@ -190,6 +190,68 @@ describe("ToolCallLoopGuard", () => {
 		).toBeNull();
 	});
 
+	// A model-supplied `__proto__` argument key used to be dropped by the
+	// canonicalizer's bare `output[key] = value`, so every distinct `__proto__`
+	// argument set collapsed to the same empty canonical form and hash. That is
+	// two bugs at once: unrelated calls collide (false loop detection) and the
+	// argument summary loses the key. These pin the prototype-safe canonicalization.
+	// Build args with a REAL own, enumerable `__proto__` data property, exactly as
+	// the dialect parsers now produce (via setSafeProperty). An object LITERAL
+	// `{ __proto__: v }` would instead use the prototype-setter syntax and create no
+	// such own key, so it cannot stand in for parsed model output here.
+	function argsWithProto(value: unknown): Record<string, unknown> {
+		const args: Record<string, unknown> = {};
+		Object.defineProperty(args, "__proto__", { value, writable: true, enumerable: true, configurable: true });
+		return args;
+	}
+
+	function turn(id: string, args: Record<string, unknown>) {
+		return {
+			message: {
+				role: "assistant" as const,
+				content: [{ type: "toolCall" as const, id, name: "read", arguments: args }],
+				api: "openai-responses",
+				provider: "openai",
+				model: "test-model",
+				usage: zeroUsage,
+				stopReason: "toolUse" as const,
+				timestamp: Date.now(),
+			},
+			toolResults: [
+				{
+					role: "toolResult" as const,
+					toolCallId: id,
+					toolName: "read",
+					content: [{ type: "text" as const, text: "done" }],
+					isError: false,
+					timestamp: Date.now(),
+				},
+			],
+		};
+	}
+
+	test("does not collide two distinct __proto__ argument sets into a false repeat", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: [] });
+		// Both calls carry ONLY a `__proto__` key with different values. Pre-fix both
+		// canonicalized to `{}` and the second would falsely trip the threshold.
+		expect(guard.recordTurn(turn("a", argsWithProto("x")))).toBeNull();
+		expect(guard.recordTurn(turn("b", argsWithProto("y")))).toBeNull();
+		// A __proto__-only call must also not collide with a genuinely empty-args call.
+		expect(guard.recordTurn(turn("c", {}))).toBeNull();
+	});
+
+	test("detects a real __proto__-keyed repeat and keeps the key in the argument summary", () => {
+		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: [] });
+		expect(guard.recordTurn(turn("a", argsWithProto("x")))).toBeNull();
+		const detection = guard.recordTurn(turn("b", argsWithProto("x")));
+		// Pre-fix the summary would be "{}" because the key was dropped.
+		expect(detection).toMatchObject({
+			toolName: "read",
+			count: 2,
+			argumentsSummary: '{"__proto__":"x"}',
+		});
+	});
+
 	test("ignores exempt polling tools", () => {
 		const guard = new ToolCallLoopGuard({ threshold: 2, exemptTools: ["job"] });
 		expect(

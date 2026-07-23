@@ -33,6 +33,45 @@ export function finiteNumber(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Object keys that a plain `obj[key] = value` assignment does NOT store as a
+ * normal own property. `__proto__` routes through `Object.prototype`'s accessor:
+ * an object value REPLACES the object's prototype (the entry vanishes and the
+ * value's fields leak in as phantom inherited members) and a string value is
+ * dropped entirely. `constructor`/`prototype` are included so a caller-supplied
+ * key can never shadow those built-ins either. These are exactly the keys
+ * `JSON.parse` stores as safe own data properties rather than routing through
+ * the prototype setter.
+ */
+export const UNSAFE_OBJECT_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Assign `value` onto `target` under a dynamic, possibly-untrusted `key`, storing
+ * it as a normal own, enumerable property even when `key` is one of
+ * {@link UNSAFE_OBJECT_KEYS}. For those keys it uses `Object.defineProperty` so
+ * the value lands as an own data property under the literal name (byte-identical
+ * to how `JSON.parse` represents the same key) instead of hitting the prototype
+ * setter. Ordinary keys take the plain fast path, so this adds only a set
+ * membership test. Use this anywhere a record is built from external key strings.
+ */
+export function setSafeProperty(target: Record<string, unknown>, key: string, value: unknown): void {
+	if (UNSAFE_OBJECT_KEYS.has(key)) {
+		Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true });
+		return;
+	}
+	target[key] = value;
+}
+
+/**
+ * Read the OWN value stored under `key`, or `undefined` when there is none. A
+ * bare `target[key]` read for `key === "__proto__"` returns the inherited
+ * `Object.prototype` (never the caller's intent) even before anything is stored;
+ * this returns only what {@link setSafeProperty} actually wrote, or `undefined`.
+ */
+export function getOwnProperty(target: Record<string, unknown>, key: string): unknown {
+	return Object.hasOwn(target, key) ? target[key] : undefined;
+}
+
 /** Own-property read returning the value only when it is a string. */
 export function getStringProperty(record: Record<string, unknown>, key: string): string | undefined {
 	const value = record[key];

@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { getOwnProperty, isRecord, setSafeProperty } from "@veyyon/utils";
 import { toolWireSchema } from "../utils/schema";
 import type { InbandTool } from "./types";
 
@@ -143,47 +143,23 @@ export function recordOrEmpty(value: unknown): Record<string, unknown> {
 }
 
 /**
- * Argument names that a plain `obj[key] = value` assignment does NOT store as a
- * normal own property. `__proto__` routes through `Object.prototype`'s accessor:
- * an object value silently REPLACES the object's prototype (so the argument
- * vanishes and its fields leak in as phantom inherited members) and a string
- * value is dropped entirely. `constructor`/`prototype` are included so a
- * model-supplied key can never shadow those built-ins either.
- *
- * These names are never assigned literally by the JSON-body dialects, whose
- * arguments come from `JSON.parse` (which stores `__proto__` as a safe own data
- * property). The kv / streaming dialects build arguments key-by-key from model
- * output, so they MUST route every model-controlled write through
- * {@link setToolArg} to match that safe behavior rather than diverging into
- * prototype mutation.
- */
-const UNSAFE_ARG_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
-
-/**
- * Assign `value` onto tool-call `args` under a model-supplied `key`, storing it
- * as a normal own, enumerable property even when `key` is one of
- * {@link UNSAFE_ARG_KEYS}. For those keys it uses `Object.defineProperty` so the
- * value lands as an own data property under the literal name — byte-identical to
- * how `JSON.parse` (and thus the JSON-body dialects) represents the same key —
- * instead of hitting the prototype setter. Ordinary keys take the plain fast
- * path, so this adds only a set membership test on the hot parse path.
+ * Assign a model-supplied tool-argument key/value safely. The JSON-body dialects
+ * get their arguments from `JSON.parse`, which stores `__proto__` as an own data
+ * property; the kv / streaming dialects build arguments key-by-key from model
+ * output, so they route every model-controlled write through here to match that
+ * behavior rather than diverging into prototype mutation. Thin tool-arg-named
+ * wrapper over the shared {@link setSafeProperty}; see it for the hazard details.
  */
 export function setToolArg(args: Record<string, unknown>, key: string, value: unknown): void {
-	if (UNSAFE_ARG_KEYS.has(key)) {
-		Object.defineProperty(args, key, { value, writable: true, enumerable: true, configurable: true });
-		return;
-	}
-	args[key] = value;
+	setSafeProperty(args, key, value);
 }
 
 /**
  * Read the OWN tool-argument stored under `key`, or `undefined` when there is
- * none. A bare `args[key]` read for `key === "__proto__"` returns the inherited
- * `Object.prototype` (never the caller's intent) even before anything is stored;
- * this returns the own value {@link setToolArg} wrote, or `undefined`, so
- * accumulate-in-place parsers (array-valued keys, streaming value growth) test
- * their own prior write rather than an inherited built-in.
+ * none, so accumulate-in-place parsers (array-valued keys, streaming value
+ * growth) test their own prior write rather than an inherited built-in like
+ * `Object.prototype`. Thin wrapper over the shared {@link getOwnProperty}.
  */
 export function getOwnArg(args: Record<string, unknown>, key: string): unknown {
-	return Object.hasOwn(args, key) ? args[key] : undefined;
+	return getOwnProperty(args, key);
 }
