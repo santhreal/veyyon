@@ -14,6 +14,10 @@
 - `Box.setHugContent(hug)`: an opt-in that shrinks a box (and its border rule) to its widest child line instead of padding every row to the given width. The given width stays the wrap limit. Raw trailing-space padding from children is ignored when measuring; bg-painted padding is preserved.
 - `MarkdownTheme.codeBlockFence`, an optional hook that fully replaces a fenced code block's opening and closing rows (receiving the language and position). Absent, the literal ``` markers render through `codeBlockBorder` exactly as before. Applies to both the top-level and list-nested code render paths.
 
+### Fixed
+
+- Fixed the editor ungluing from the viewport bottom when a tall transient block collapses without a committed-prefix resync (the ask dialog's inline "type your own" prompt shrinking back to the one-line editor). `windowTop` floored at `#committedRows` and stranded the editor mid-screen with a blank slab underneath. The tail re-anchor now fires whenever the live tail below the committed boundary underfills the viewport while the focused cursor sits in it, re-showing the frame tail and accepting a few duplicated rows in native history over a floating editor.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

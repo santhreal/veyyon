@@ -1003,9 +1003,11 @@ export class TUI extends Container {
 	// geometry frames.
 	#committedPrefixAuditRows = 0;
 	// Frame row currently mapped to screen row 0. Monotonic between full
-	// paints: a shrink never re-exposes scrolled-off rows (they cannot be
-	// un-scrolled without rewriting history); live rows repaint at fixed
-	// positions with blank rows below the shrunken tail.
+	// paints, with one exception: the tail re-anchor in #doRender pulls the
+	// window back to the frame tail when a collapse would otherwise strand
+	// the focused editor above blank rows. Otherwise a shrink never
+	// re-exposes scrolled-off rows (they cannot be un-scrolled without
+	// rewriting history); live rows repaint at fixed positions.
 	#windowTopRow = 0;
 	// Exactly what is painted on the screen rows (post-composite, prepared).
 	#previousWindow: string[] = [];
@@ -2951,21 +2953,33 @@ export class TUI extends Container {
 			chunkTo = windowTop;
 		} else if (
 			frameLength <= this.#committedRows ||
-			(committedRowsResynced &&
-				frameLength - this.#committedRows < height &&
-				cursorMarkers.some(marker => marker.row >= this.#committedRows))
+			(frameLength - this.#committedRows < height &&
+				cursorMarkers.some(marker => marker.row >= this.#committedRows) &&
+				(committedRowsResynced || frameLength <= height))
 		) {
-			// Multiplexer fallback (a direct terminal takes the divergenceRebuild
-			// full paint above): either the frame shrank into the committed
-			// prefix, or a committed-prefix resync left a focused cursor tail
-			// shorter than the viewport. The latter happens when a streaming/live
-			// block had an append-only prefix committed, then collapses on
-			// abort/finalize: the audit re-anchors #committedRows at the first
-			// divergent row, but flooring windowTop there would pin the editor
-			// near the top and leave blank rows underneath. Re-show the frame
+			// Tail re-anchor (a direct terminal may instead take the
+			// divergenceRebuild full paint above when the prefix resynced):
+			// either the frame shrank into the committed prefix, or the live tail
+			// below the committed boundary no longer fills the viewport while the
+			// focused cursor sits in it. Both happen when a tall transient block
+			// collapses — a streaming reply aborting after part of its
+			// declared-final prefix reached scrollback (the audit resyncs), or a
+			// tall transient prompt (the ask dialog's inline editor) shrinking
+			// back to the one-line editor (no resync: the committed transcript
+			// rows never changed). Flooring windowTop at #committedRows would pin
+			// the editor mid-screen with blank rows underneath. Re-show the frame
 			// tail instead. The stale committed copy stays in native history;
 			// duplicating a few rows is preferable to a live editor gap —
 			// "duplication, never loss" is the ED3-unsafe fallback contract.
+			//
+			// The extra `committedRowsResynced || frameLength <= height` gate is
+			// what keeps this from stealing the ordinary autocomplete shrink: a
+			// menu closing while the transcript still overflows the viewport
+			// (frameLength > height, no resync) legitimately keeps its committed
+			// rows in scrollback and must floor at #committedRows in the else
+			// branch. We only re-anchor when the audit actually moved the commit
+			// boundary, or when the collapsed frame now fits the viewport whole,
+			// so nothing genuinely needs to stay scrolled off.
 			committedPrefixResliced = true;
 			windowTop = Math.max(0, frameLength - height);
 			chunkTo = windowTop;
