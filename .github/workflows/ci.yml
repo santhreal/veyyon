@@ -729,10 +729,18 @@ jobs:
       env:
          MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER_ID != '' && secrets.APPLE_API_KEY != '' }}
       steps:
-         - name: Download published macOS arm64 binary
+         - name: Download published macOS arm64 binary and checksum sidecar
            run: |
-              curl -fsSL -o veyyon-darwin-arm64 "https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}/veyyon-darwin-arm64"
+              base="https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}"
+              curl -fsSL -o veyyon-darwin-arm64 "$base/veyyon-darwin-arm64"
+              curl -fsSL -o veyyon-darwin-arm64.sha256 "$base/veyyon-darwin-arm64.sha256"
               chmod +x veyyon-darwin-arm64
+         - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
+           run: |
+              # install.sh refuses to install any binary whose published checksum is
+              # missing or mismatched, on every platform — so the darwin sidecar must
+              # be verified here too, not only the linux one.
+              shasum -a 256 -c veyyon-darwin-arm64.sha256
          - name: Verify published macOS arm64 binary
            run: |
               codesign -dvvv ./veyyon-darwin-arm64
