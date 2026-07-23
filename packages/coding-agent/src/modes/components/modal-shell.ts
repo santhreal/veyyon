@@ -137,7 +137,7 @@ interface ShortcutLayoutRow {
 	chips: { id?: string; clickable: boolean; offset: number; width: number }[];
 }
 
-function layoutShortcutRows(
+export function layoutShortcutRows(
 	shortcuts: readonly ModalShortcut[],
 	width: number,
 	hoveredId?: string | null,

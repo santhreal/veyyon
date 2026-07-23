@@ -2,11 +2,12 @@
  * Contextual shortcut chip band under the composer (Grok ShortcutsBar dialect).
  * Same chip renderer as ModalShell footers — one grammar for overlays and session.
  */
-import { type Component, padding, visibleWidth } from "@veyyon/tui";
+import { type Component } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
 import { theme } from "../theme/theme";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
-import { type ModalShortcut, renderModalShortcuts } from "./modal-shell";
+import { layoutShortcutRows, type ModalShortcut, renderModalShortcuts } from "./modal-shell";
 
 export type ComposerContext = {
 	/** Agent is streaming / tools running. */
@@ -38,11 +39,12 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 }
 
 /**
- * One-line centered chip band painted under the editor container. Fixed
- * height: exactly one row in every state, chips or blank. A 0/1-row band
- * changes the composer zone's height on every busy flip, jerking the whole
- * footer up and down mid-conversation (user report 2026-07-22); the zone
- * reserves this row whether or not there is a live action to surface.
+ * Contextual chip band under the composer, left-aligned at the composer
+ * rail so it sits under the footline's location group on one shared axis.
+ * Fixed height: exactly one row in every state, chips or blank. A 0/1-row
+ * band changes the composer zone's height on every busy flip, jerking the
+ * whole footer up and down mid-conversation (user report 2026-07-22); the
+ * zone reserves this row whether or not there is a live action to surface.
  */
 export class ComposerShortcutsBar implements Component {
 	#shortcuts: readonly ModalShortcut[] = [];
@@ -62,18 +64,15 @@ export class ComposerShortcutsBar implements Component {
 
 	render(width: number): string[] {
 		const scroll = this.#scrollState?.();
+		const inset = " ".repeat(COMPOSER_INSET_COLS);
 		if (scroll?.active) {
 			const label = theme.fg("dim", `\u2193 ${scroll.newRows} new rows`) + theme.fg("muted", "  wheel down to resume");
-			const pad = Math.max(0, width - visibleWidth(label));
-			const left = Math.floor(pad / 2);
-			return [padding(left) + label + padding(pad - left)];
+			return [inset + label];
 		}
 		if (this.#shortcuts.length === 0 || width < 20) return [""];
-		const lines = renderModalShortcuts(this.#shortcuts, Math.max(1, width - 2));
-		return lines.map(line => {
-			const pad = Math.max(0, width - visibleWidth(line));
-			const left = Math.floor(pad / 2);
-			return padding(left) + line + padding(pad - left);
-		});
+		// renderModalShortcuts centers within the given width; the band aligns
+		// at the rail instead, so use the raw layout rows.
+		const rows = layoutShortcutRows(this.#shortcuts, Math.max(1, width - COMPOSER_INSET_COLS));
+		return rows.map(({ styled }) => inset + styled);
 	}
 }
