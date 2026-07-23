@@ -35,7 +35,7 @@ import { formatLocalCalendarDate } from "./utils/local-date";
 import { normalizePromptPath } from "./utils/prompt-path";
 import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
-interface AlwaysApplyRule {
+export interface AlwaysApplyRule {
 	name: string;
 	content: string;
 	path: string;
@@ -55,7 +55,15 @@ function splitComparablePromptBlocks(content: string | null | undefined): string
 		.filter(block => block.length > 0);
 }
 
-function promptSourceContainsRule(source: string | null | undefined, ruleContent: string): boolean {
+/**
+ * True when every paragraph block of `ruleContent` appears as a contiguous run
+ * of blocks inside `source` (exact match after prompt normalization). Exported
+ * for unit testing; drives {@link dedupeAlwaysApplyRules} and
+ * {@link dedupePromptSource}. The match is conservative: any wording or block
+ * boundary difference means "not contained", so dedup never drops a rule that
+ * is not verbatim-present.
+ */
+export function promptSourceContainsRule(source: string | null | undefined, ruleContent: string): boolean {
 	const sourceBlocks = splitComparablePromptBlocks(source);
 	const ruleBlocks = splitComparablePromptBlocks(ruleContent);
 	if (sourceBlocks.length === 0 || ruleBlocks.length === 0 || ruleBlocks.length > sourceBlocks.length) return false;
@@ -67,7 +75,8 @@ function promptSourceContainsRule(source: string | null | undefined, ruleContent
 	return false;
 }
 
-function dedupeAlwaysApplyRules(
+/** Drop always-apply rules whose content is already verbatim-present in any prompt source. Exported for unit testing. */
+export function dedupeAlwaysApplyRules(
 	alwaysApplyRules: AlwaysApplyRule[] | undefined,
 	promptSources: Array<string | null | undefined>,
 ): AlwaysApplyRule[] {
@@ -78,7 +87,8 @@ function dedupeAlwaysApplyRules(
 	);
 }
 
-function dedupePromptSource(source: string | null | undefined, otherSources: Array<string | null | undefined>): string {
+/** Return `source` unless its content is already verbatim-present in another source, in which case return "". Exported for unit testing. */
+export function dedupePromptSource(source: string | null | undefined, otherSources: Array<string | null | undefined>): string {
 	const resolvedSource = firstNonEmpty(source);
 	if (!resolvedSource) return "";
 
