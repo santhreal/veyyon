@@ -32,7 +32,15 @@ function writeSession(
 		lines.push(JSON.stringify({ type: "message", message: { role: "user", content: opts.firstMessage } }));
 	}
 	lines.push("");
-	storage.writeTextSync(`${DIR}/${id}.jsonl`, lines.join("\n"));
+	const file = `${DIR}/${id}.jsonl`;
+	storage.writeTextSync(file, lines.join("\n"));
+	// getRecentSessions orders by file mtime (last activity). writeTextSync
+	// stamps Date.now(), which collapses these rapid writes to one millisecond
+	// and leaves the order at the mercy of sub-ms timing and the parallel
+	// list-collector's stride interleaving (that nondeterminism once flipped
+	// the shortlist to ["third task", "first task"] on CI). Pin each file's
+	// mtime to its authored `modified` so the recency order is deterministic.
+	storage.setMtimeSync(file, Date.parse(timestamp));
 }
 
 describe("getRecentSessions blank filter", () => {
