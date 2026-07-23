@@ -220,29 +220,38 @@ function removeEmptyVersionEntries(content: string): string {
 	return content.replace(/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}\s*\n(?=## \[|\s*$)/g, "");
 }
 
+/**
+ * Roll a single changelog's `## [Unreleased]` into a dated `## [version]` entry.
+ *
+ * The fresh `## [Unreleased]` header stays exactly where the old one sat, and the
+ * dated version section is inserted directly BELOW it. This matters for a
+ * changelog whose `## [Unreleased]` lives under a fork-notice blockquote (e.g.
+ * `packages/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
+ * a fresh `## [Unreleased]`) jammed `[Unreleased]` above the fork notice and left
+ * the real bullets stranded in a phantom version that never published. When
+ * `[Unreleased]` has no bullets, no version entry is created. Any pre-existing
+ * empty dated section is dropped either way. Pure so the ordering contract is
+ * pinned by a test rather than only observed after a real release runs.
+ */
+export function applyReleaseToChangelog(content: string, version: string, date: string): string {
+	if (hasUnreleasedContent(content)) {
+		content = content.replace("## [Unreleased]", `## [Unreleased]\n\n## [${version}] - ${date}`);
+	}
+	return removeEmptyVersionEntries(content);
+}
+
 async function updateChangelogsForRelease(version: string): Promise<void> {
 	const date = new Date().toISOString().split("T")[0];
 
 	for await (const changelog of changelogGlob.scan(".")) {
-		let content = await Bun.file(changelog).text();
+		const content = await Bun.file(changelog).text();
 
 		if (!content.includes("## [Unreleased]")) {
 			console.log(`  Skipping ${changelog}: no [Unreleased] section`);
 			continue;
 		}
 
-		// Only create version entry if [Unreleased] has content. Keep the fresh
-		// [Unreleased] header exactly where the old one sat (which may be below a
-		// fork-notice blockquote) and insert the dated version section right below
-		// it — a title-anchored insert would jam [Unreleased] above the fork notice.
-		if (hasUnreleasedContent(content)) {
-			content = content.replace("## [Unreleased]", `## [Unreleased]\n\n## [${version}] - ${date}`);
-		}
-
-		// Clean up any existing empty version entries
-		content = removeEmptyVersionEntries(content);
-
-		await Bun.write(changelog, content);
+		await Bun.write(changelog, applyReleaseToChangelog(content, version, date));
 		console.log(`  Updated ${changelog}`);
 	}
 }

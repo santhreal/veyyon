@@ -124,6 +124,7 @@ const repoScriptTests = [
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
 	"scripts/release-sentinel.test.ts",
+	"scripts/release-changelog.test.ts",
 	"website/tools/gen-changelog.test.ts",
 ];
 
@@ -378,6 +379,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 						"scripts/has-releasable-changes.test.ts",
 						"scripts/install-methods-coverage.test.ts",
 						"scripts/release-sentinel.test.ts",
+						"scripts/release-changelog.test.ts",
 					],
 				},
 			];
