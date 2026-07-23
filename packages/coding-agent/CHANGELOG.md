@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the automated release failing to publish the GitHub release and its install binaries. Releases now build, publish, and propagate to the install script end to end.
+
 ## [1.0.20] - 2026-07-23
 
 ### Fixed
