@@ -2,15 +2,11 @@
 
 ## [Unreleased]
 
+## [1.0.21] - 2026-07-23
+
 ### Fixed
 
 - Fixed the automated release failing to publish the GitHub release and its install binaries. Releases now build, publish, and propagate to the install script end to end.
-
-## [1.0.20] - 2026-07-23
-
-### Fixed
-
-- Fixed the "continue where you left off" shortlist ordering sessions nondeterministically when several were last active in the same moment. Ties now fall back to the recorded start time, then the file path, for a stable order across runs.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11282,6 +11278,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.20] - 2026-07-23
+
+### Fixed
+
+- Fixed the "continue where you left off" shortlist ordering sessions nondeterministically when several were last active in the same moment. Ties now fall back to the recorded start time, then the file path, for a stable order across runs.
 
 ## [1.0.15] - 2026-07-23
 
