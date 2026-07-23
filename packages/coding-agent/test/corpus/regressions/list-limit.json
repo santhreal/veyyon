@@ -412,6 +412,40 @@
 				"limitReached": null,
 				"meta": {}
 			}
+		},
+		{
+			"id": "list-limit-head-one",
+			"contract": "headLimit 1 keeps only the first item and sets head meta without limitReached",
+			"surface": "list-limit",
+			"tags": ["boundary", "positive"],
+			"input": {
+				"items": ["a", "b", "c"],
+				"options": { "headLimit": 1 }
+			},
+			"expect": {
+				"items": ["a"],
+				"limitReached": null,
+				"meta": {
+					"headLimit": { "reached": 1, "suggestion": 2 }
+				}
+			}
+		},
+		{
+			"id": "list-limit-limit-below-then-head-noop",
+			"contract": "When limit already leaves fewer items than headLimit, head meta stays unset",
+			"surface": "list-limit",
+			"tags": ["boundary", "negative"],
+			"input": {
+				"items": ["a", "b", "c", "d"],
+				"options": { "limit": 2, "headLimit": 5 }
+			},
+			"expect": {
+				"items": ["a", "b"],
+				"limitReached": 2,
+				"meta": {
+					"resultLimit": { "reached": 2, "suggestion": 4 }
+				}
+			}
 		}
 	]
 }

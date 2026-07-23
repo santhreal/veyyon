@@ -40,6 +40,60 @@
 				"command": "get_state",
 				"success": true
 			}
+		},
+		{
+			"id": "rpc-known-command-echoes-null-id",
+			"contract": "Known get_state success echoes a null request id as null",
+			"surface": "rpc-known-get-state",
+			"tags": ["boundary", "positive"],
+			"input": { "id": null, "type": "get_state" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "get_state",
+				"success": true
+			}
+		},
+		{
+			"id": "rpc-known-command-echoes-alt-id",
+			"contract": "Known get_state success echoes a distinct alternate request id",
+			"surface": "rpc-known-get-state",
+			"tags": ["positive"],
+			"input": { "id": "alt-state-99", "type": "get_state" },
+			"expect": {
+				"id": "alt-state-99",
+				"type": "response",
+				"command": "get_state",
+				"success": true
+			}
+		},
+		{
+			"id": "rpc-unknown-command-drops-id-alt",
+			"contract": "Unknown command responses drop a second distinct request id",
+			"surface": "rpc-unknown-command",
+			"tags": ["adversarial", "negative"],
+			"input": { "id": "must-not-echo", "type": "not_a_real_rpc_command" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "not_a_real_rpc_command",
+				"success": false,
+				"errorContains": "Unknown command:"
+			}
+		},
+		{
+			"id": "rpc-unknown-command-empty-type",
+			"contract": "An empty-string command type is rejected as unknown with id dropped",
+			"surface": "rpc-unknown-command",
+			"tags": ["adversarial", "boundary"],
+			"input": { "id": "empty-type-id", "type": "" },
+			"expect": {
+				"id": null,
+				"type": "response",
+				"command": "",
+				"success": false,
+				"errorContains": "Unknown command:"
+			}
 		}
 	]
 }

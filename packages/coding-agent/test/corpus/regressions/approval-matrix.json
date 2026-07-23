@@ -199,6 +199,19 @@
 				"userConfig": {}
 			},
 			"expect": { "policy": "allow", "tier": "read", "override": false }
+		},
+		{
+			"id": "approval-ask-mode-write-prompt",
+			"contract": "ask autonomy prompts on write-tier (twin of ask read-allow)",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "positive"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "ask",
+				"userConfig": {}
+			},
+			"expect": { "policy": "prompt", "tier": "write", "override": false }
 		}
 	]
 }
