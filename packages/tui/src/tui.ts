@@ -1028,6 +1028,11 @@ export class TUI extends Container {
 	// ordinary seam rewrite on resume.
 	#scrollIsolation = false;
 	#wheelTrackingActive = false;
+	// Pinned footer = the last #pinnedFooterChildCount root children (the
+	// composer zone). The row count is derived from the segment ledger after
+	// every compose — never by re-rendering the zone, which would double
+	// render side effects (accent-cache call counts, memoized quiet lines).
+	#pinnedFooterChildCount = 0;
 	#pinnedFooterRows = 0;
 	#virtualScrollTop: number | null = null;
 	// Wheel scroll step in rows per tick. Three rows reads as a calm scroll;
@@ -1246,6 +1251,13 @@ export class TUI extends Container {
 			offset += childLines.length;
 		}
 		this.#frameSegments = segments;
+		// Scroll isolation's pinned footer rows come from the segment ledger:
+		// the frame span of the last #pinnedFooterChildCount root children.
+		if (this.#pinnedFooterChildCount > 0 && segments.length >= this.#pinnedFooterChildCount) {
+			this.#pinnedFooterRows = offset - segments[segments.length - this.#pinnedFooterChildCount]!.start;
+		} else {
+			this.#pinnedFooterRows = 0;
+		}
 
 		const frame = this.#composedFrame;
 		// Defensive clamp: stable rows can never exceed what the previous
@@ -1394,10 +1406,12 @@ export class TUI extends Container {
 		return this.#scrollIsolation;
 	}
 
-	/** Rows of live footer pinned at the frame tail during scroll isolation.
-	 * The host recomputes it whenever the composer zone's height changes. */
-	setPinnedFooterRows(rows: number): void {
-		this.#pinnedFooterRows = Math.max(0, rows);
+	/** Pin the last `count` root children as scroll isolation's live footer
+	 * (the composer zone). The engine derives the footer's row count from the
+	 * compose segment ledger after every frame, so zone height changes never
+	 * need a host-side sync. */
+	setPinnedFooterChildCount(count: number): void {
+		this.#pinnedFooterChildCount = Math.max(0, count);
 	}
 
 	/** True while the transcript region shows a frozen, scrolled-up slice. */

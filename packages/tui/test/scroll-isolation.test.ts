@@ -63,7 +63,7 @@ async function setup(transcriptRows: number, height = 10): Promise<Rig> {
 	tui.addChild(editor);
 	tui.setFocus(editor);
 	tui.setScrollIsolation(true);
-	tui.setPinnedFooterRows(1);
+	tui.setPinnedFooterChildCount(1);
 	transcript.lines = rows("hist-", transcriptRows);
 	tui.start();
 	await scheduler.drain(term);
