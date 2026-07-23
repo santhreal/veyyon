@@ -1,0 +1,8 @@
+{
+ "scenario": "parse-error-del-with-body",
+ "patch": "[src/a.ts#0127]\nDEL 1.=2\n+stray\n",
+ "error": "line 2: `DEL N.=M` does not take body rows. Remove the body, or use `SWAP N.=M:`.",
+ "filesystem": {
+  "src/a.ts": "one\ntwo\n"
+ }
+}

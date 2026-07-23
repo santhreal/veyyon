@@ -1,0 +1,8 @@
+{
+ "scenario": "apply-error-unknown-tag",
+ "patch": "[src/a.ts#FFFF]\nSWAP 1.=1:\n+ONE\n",
+ "error": "Edit rejected for src/a.ts: hash #FFFF is not from this session.\nThe current file hashes to #0127. Re-read the file with `read` to copy a current [path#tag] header — never invent the tag and never reuse one from a prior session.\n\n*1:one\n 2:two\n 3:",
+ "filesystem": {
+  "src/a.ts": "one\ntwo\n"
+ }
+}

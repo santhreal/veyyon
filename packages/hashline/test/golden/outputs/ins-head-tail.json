@@ -1,0 +1,22 @@
+{
+ "scenario": "ins-head-tail",
+ "patch": "[src/a.ts#AD31]\nINS.HEAD:\n+head\nINS.TAIL:\n+tail\n",
+ "sections": [
+  {
+   "path": "src/a.ts",
+   "op": "update",
+   "before": "middle\n",
+   "after": "head\nmiddle\ntail\n",
+   "persisted": "head\nmiddle\ntail\n",
+   "written": "head\nmiddle\ntail\n",
+   "fileHash": "2357",
+   "header": "[src/a.ts#2357]",
+   "firstChangedLine": 1,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/a.ts": "head\nmiddle\ntail\n"
+ }
+}

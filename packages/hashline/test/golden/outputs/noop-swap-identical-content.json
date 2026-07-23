@@ -1,0 +1,22 @@
+{
+ "scenario": "noop-swap-identical-content",
+ "patch": "[src/a.ts#7E92]\nSWAP 1.=1:\n+same\n",
+ "sections": [
+  {
+   "path": "src/a.ts",
+   "op": "noop",
+   "before": "same\n",
+   "after": "same\n",
+   "persisted": "same\n",
+   "written": "same\n",
+   "fileHash": "7E92",
+   "header": "[src/a.ts#7E92]",
+   "firstChangedLine": null,
+   "warnings": [],
+   "moveDest": null
+  }
+ ],
+ "filesystem": {
+  "src/a.ts": "same\n"
+ }
+}

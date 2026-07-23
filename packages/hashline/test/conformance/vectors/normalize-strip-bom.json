@@ -1,0 +1,97 @@
+{
+ "schemaVersion": 1,
+ "module": "hashline/normalize",
+ "function": "stripBom",
+ "vectors": [
+  {
+   "name": "UTF-8 BOM is split off",
+   "input": [
+    "﻿abc"
+   ],
+   "expected": {
+    "bom": "﻿",
+    "text": "abc"
+   }
+  },
+  {
+   "name": "no BOM passes through",
+   "input": [
+    "abc"
+   ],
+   "expected": {
+    "bom": "",
+    "text": "abc"
+   }
+  },
+  {
+   "name": "empty input has no BOM",
+   "input": [
+    ""
+   ],
+   "expected": {
+    "bom": "",
+    "text": ""
+   }
+  },
+  {
+   "name": "BOM-only input keeps empty text",
+   "input": [
+    "﻿"
+   ],
+   "expected": {
+    "bom": "﻿",
+    "text": ""
+   }
+  },
+  {
+   "name": "interior BOM is content, not a BOM",
+   "input": [
+    "a﻿b"
+   ],
+   "expected": {
+    "bom": "",
+    "text": "a﻿b"
+   }
+  },
+  {
+   "name": "edge: double BOM strips only the first",
+   "input": [
+    "﻿﻿a"
+   ],
+   "expected": {
+    "bom": "﻿",
+    "text": "﻿a"
+   }
+  },
+  {
+   "name": "edge: BOM before CRLF content",
+   "input": [
+    "﻿a\r\nb"
+   ],
+   "expected": {
+    "bom": "﻿",
+    "text": "a\r\nb"
+   }
+  },
+  {
+   "name": "edge: space before BOM keeps it as content",
+   "input": [
+    " ﻿a"
+   ],
+   "expected": {
+    "bom": "",
+    "text": " ﻿a"
+   }
+  },
+  {
+   "name": "edge: BOM before empty line",
+   "input": [
+    "﻿\n"
+   ],
+   "expected": {
+    "bom": "﻿",
+    "text": "\n"
+   }
+  }
+ ]
+}

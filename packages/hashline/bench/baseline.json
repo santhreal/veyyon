@@ -1,0 +1,40 @@
+{
+ "capturedWith": {
+  "samples": 20,
+  "innerIters": 50
+ },
+ "cases": {
+  "splitHashlineLines/10k-lf": {
+   "minNs": 279856.54,
+   "spreadNs": 26089.920000000042
+  },
+  "splitHashlineLines/10k-crlf": {
+   "minNs": 285232.86,
+   "spreadNs": 21301.100000000035
+  },
+  "parseLid/padded": {
+   "minNs": 173.74,
+   "spreadNs": 46.28
+  },
+  "detectLineEnding/10k": {
+   "minNs": 31.86,
+   "spreadNs": 1.2000000000000028
+  },
+  "normalizeToLF/10k-mixed": {
+   "minNs": 51636.62,
+   "spreadNs": 15430.05999999999
+  },
+  "restoreLineEndings/10k-to-crlf": {
+   "minNs": 148617.62,
+   "spreadNs": 12804.920000000013
+  },
+  "stripBom/10k": {
+   "minNs": 38.68,
+   "spreadNs": 66.52000000000001
+  },
+  "applyEdits/del-mid-10k": {
+   "minNs": 222033.06,
+   "spreadNs": 34172.54000000001
+  }
+ }
+}

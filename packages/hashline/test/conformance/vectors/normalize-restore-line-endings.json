@@ -1,0 +1,135 @@
+{
+ "schemaVersion": 1,
+ "module": "hashline/normalize",
+ "function": "restoreLineEndings",
+ "vectors": [
+  {
+   "name": "LF re-encodes to CRLF",
+   "input": [
+    "a\nb",
+    "\r\n"
+   ],
+   "expected": "a\r\nb"
+  },
+  {
+   "name": "LF target is identity",
+   "input": [
+    "a\nb",
+    "\n"
+   ],
+   "expected": "a\nb"
+  },
+  {
+   "name": "empty stays empty for CRLF",
+   "input": [
+    "",
+    "\r\n"
+   ],
+   "expected": ""
+  },
+  {
+   "name": "every LF is re-encoded, including trailing",
+   "input": [
+    "a\n\n",
+    "\r\n"
+   ],
+   "expected": "a\r\n\r\n"
+  },
+  {
+   "name": "matrix: no newline -> lf",
+   "input": [
+    "a",
+    "\n"
+   ],
+   "expected": "a"
+  },
+  {
+   "name": "matrix: no newline -> crlf",
+   "input": [
+    "a",
+    "\r\n"
+   ],
+   "expected": "a"
+  },
+  {
+   "name": "matrix: single trailing LF -> lf",
+   "input": [
+    "a\n",
+    "\n"
+   ],
+   "expected": "a\n"
+  },
+  {
+   "name": "matrix: single trailing LF -> crlf",
+   "input": [
+    "a\n",
+    "\r\n"
+   ],
+   "expected": "a\r\n"
+  },
+  {
+   "name": "matrix: interior blanks -> lf",
+   "input": [
+    "a\n\nb\n",
+    "\n"
+   ],
+   "expected": "a\n\nb\n"
+  },
+  {
+   "name": "matrix: interior blanks -> crlf",
+   "input": [
+    "a\n\nb\n",
+    "\r\n"
+   ],
+   "expected": "a\r\n\r\nb\r\n"
+  },
+  {
+   "name": "matrix: pre-existing bare CR -> lf",
+   "input": [
+    "a\rb\n",
+    "\n"
+   ],
+   "expected": "a\rb\n"
+  },
+  {
+   "name": "matrix: pre-existing bare CR -> crlf",
+   "input": [
+    "a\rb\n",
+    "\r\n"
+   ],
+   "expected": "a\rb\r\n"
+  },
+  {
+   "name": "matrix: pre-existing CRLF is doubled by design -> lf",
+   "input": [
+    "a\r\nb",
+    "\n"
+   ],
+   "expected": "a\r\nb"
+  },
+  {
+   "name": "matrix: pre-existing CRLF is doubled by design -> crlf",
+   "input": [
+    "a\r\nb",
+    "\r\n"
+   ],
+   "expected": "a\r\r\nb"
+  },
+  {
+   "name": "matrix: only newlines -> lf",
+   "input": [
+    "\n\n",
+    "\n"
+   ],
+   "expected": "\n\n"
+  },
+  {
+   "name": "matrix: only newlines -> crlf",
+   "input": [
+    "\n\n",
+    "\r\n"
+   ],
+   "expected": "\r\n\r\n"
+  }
+ ]
+}

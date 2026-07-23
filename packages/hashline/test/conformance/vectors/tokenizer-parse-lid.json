@@ -1,0 +1,403 @@
+{
+ "schemaVersion": 1,
+ "module": "hashline/tokenizer",
+ "function": "parseLid",
+ "vectors": [
+  {
+   "name": "plain number",
+   "input": [
+    "5",
+    1
+   ],
+   "expected": {
+    "line": 5
+   }
+  },
+  {
+   "name": "surrounding whitespace is tolerated",
+   "input": [
+    "  12  ",
+    3
+   ],
+   "expected": {
+    "line": 12
+   }
+  },
+  {
+   "name": "large line number",
+   "input": [
+    "1234567890",
+    1
+   ],
+   "expected": {
+    "line": 1234567890
+   }
+  },
+  {
+   "name": "zero is rejected (anchors are 1-based)",
+   "input": [
+    "0",
+    2
+   ],
+   "expectedError": "line 2: expected a line number such as \"119\", \"112\", \"7\"; got \"0\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "empty anchor is rejected",
+   "input": [
+    "",
+    4
+   ],
+   "expectedError": "line 4: expected a line number such as \"119\", \"112\", \"7\"; got \"\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "trailing garbage is rejected",
+   "input": [
+    "5x",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"5x\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "two numbers are rejected",
+   "input": [
+    "12 7",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"12 7\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "leading zero is rejected",
+   "input": [
+    "05",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"05\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "accepts 1",
+   "input": [
+    "1",
+    1
+   ],
+   "expected": {
+    "line": 1
+   }
+  },
+  {
+   "name": "accepts 2",
+   "input": [
+    "2",
+    1
+   ],
+   "expected": {
+    "line": 2
+   }
+  },
+  {
+   "name": "accepts 9",
+   "input": [
+    "9",
+    1
+   ],
+   "expected": {
+    "line": 9
+   }
+  },
+  {
+   "name": "accepts 10",
+   "input": [
+    "10",
+    1
+   ],
+   "expected": {
+    "line": 10
+   }
+  },
+  {
+   "name": "accepts 42",
+   "input": [
+    "42",
+    1
+   ],
+   "expected": {
+    "line": 42
+   }
+  },
+  {
+   "name": "accepts 99",
+   "input": [
+    "99",
+    1
+   ],
+   "expected": {
+    "line": 99
+   }
+  },
+  {
+   "name": "accepts 100",
+   "input": [
+    "100",
+    1
+   ],
+   "expected": {
+    "line": 100
+   }
+  },
+  {
+   "name": "accepts 999",
+   "input": [
+    "999",
+    1
+   ],
+   "expected": {
+    "line": 999
+   }
+  },
+  {
+   "name": "accepts 1000",
+   "input": [
+    "1000",
+    1
+   ],
+   "expected": {
+    "line": 1000
+   }
+  },
+  {
+   "name": "accepts 65535",
+   "input": [
+    "65535",
+    1
+   ],
+   "expected": {
+    "line": 65535
+   }
+  },
+  {
+   "name": "accepts 100000",
+   "input": [
+    "100000",
+    1
+   ],
+   "expected": {
+    "line": 100000
+   }
+  },
+  {
+   "name": "accepts 2147483647",
+   "input": [
+    "2147483647",
+    1
+   ],
+   "expected": {
+    "line": 2147483647
+   }
+  },
+  {
+   "name": "accepts 4294967296",
+   "input": [
+    "4294967296",
+    1
+   ],
+   "expected": {
+    "line": 4294967296
+   }
+  },
+  {
+   "name": "accepts 9007199254740991",
+   "input": [
+    "9007199254740991",
+    1
+   ],
+   "expected": {
+    "line": 9007199254740991
+   }
+  },
+  {
+   "name": "padding: leading tab",
+   "input": [
+    "\t7",
+    1
+   ],
+   "expected": {
+    "line": 7
+   }
+  },
+  {
+   "name": "padding: trailing tab",
+   "input": [
+    "7\t",
+    1
+   ],
+   "expected": {
+    "line": 7
+   }
+  },
+  {
+   "name": "padding: leading spaces",
+   "input": [
+    "   7",
+    1
+   ],
+   "expected": {
+    "line": 7
+   }
+  },
+  {
+   "name": "padding: trailing spaces",
+   "input": [
+    "7   ",
+    1
+   ],
+   "expected": {
+    "line": 7
+   }
+  },
+  {
+   "name": "padding: tab both sides",
+   "input": [
+    "\t7\t",
+    1
+   ],
+   "expected": {
+    "line": 7
+   }
+  },
+  {
+   "name": "rejects \"-1\"",
+   "input": [
+    "-1",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"-1\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"+1\"",
+   "input": [
+    "+1",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"+1\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"1.5\"",
+   "input": [
+    "1.5",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"1.5\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"1e3\"",
+   "input": [
+    "1e3",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"1e3\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"0x10\"",
+   "input": [
+    "0x10",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"0x10\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"1,000\"",
+   "input": [
+    "1,000",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"1,000\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \" \"",
+   "input": [
+    " ",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \" \". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"\\t\"",
+   "input": [
+    "\t",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"\\t\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"00\"",
+   "input": [
+    "00",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"00\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"010\"",
+   "input": [
+    "010",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"010\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"5 6\"",
+   "input": [
+    "5 6",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"5 6\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"x5\"",
+   "input": [
+    "x5",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"x5\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"５\"",
+   "input": [
+    "５",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"５\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"٥\"",
+   "input": [
+    "٥",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"٥\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"5 \"",
+   "input": [
+    "5 ",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"5 \". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "rejects \"5-6\"",
+   "input": [
+    "5-6",
+    1
+   ],
+   "expectedError": "line 1: expected a line number such as \"119\", \"112\", \"7\"; got \"5-6\". Use [PATH#hash] from your latest read for file-version binding."
+  },
+  {
+   "name": "error message carries the input line number",
+   "input": [
+    "nope",
+    42
+   ],
+   "expectedError": "line 42: expected a line number such as \"119\", \"112\", \"7\"; got \"nope\". Use [PATH#hash] from your latest read for file-version binding."
+  }
+ ]
+}
