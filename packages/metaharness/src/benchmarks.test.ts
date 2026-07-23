@@ -56,6 +56,53 @@ describe("benchmark adapters", () => {
 		expect([snapshot.tokIn, snapshot.tokOut]).toEqual([100, 20]);
 	});
 
+	// The edit adapter must keep `pass`, `fail`, and `error` disjoint so
+	// `pass + error + fail === done`, matching the harbor adapter's `aggregate`
+	// contract. A prior `fail: traces.length - pass` folded errored runs into
+	// `fail`, so the shared BenchmarkSnapshot.fail field double-counted errors
+	// for edit runs while excluding them for harbor runs.
+	it("counts errored edit runs as error, not fail", () => {
+		const dir = jobDir();
+		fs.writeFileSync(
+			path.join(dir, "result.json"),
+			JSON.stringify({
+				tasks: [
+					{
+						id: "mixed",
+						name: "Mixed outcomes",
+						runs: [
+							{ runIndex: 0, success: true, duration: 10, tokens: { input: 1, output: 1, reasoning: 0 } },
+							{ runIndex: 1, success: false, duration: 10, tokens: { input: 1, output: 1, reasoning: 0 } },
+							{
+								runIndex: 2,
+								success: false,
+								error: "boom",
+								duration: 10,
+								tokens: { input: 1, output: 1, reasoning: 0 },
+							},
+						],
+					},
+				],
+				summary: {
+					totalRuns: 3,
+					successfulRuns: 1,
+					taskSuccessRate: 1 / 3,
+					editSuccessRate: 1 / 3,
+					totalTokens: { input: 3, output: 3 },
+				},
+			}),
+		);
+
+		const snapshot = readBenchmarkSnapshot("edit", dir);
+		expect(snapshot.done).toBe(3);
+		expect(snapshot.pass).toBe(1);
+		expect(snapshot.error).toBe(1);
+		// One plain fail only: the errored run is NOT also counted as a fail.
+		expect(snapshot.fail).toBe(1);
+		// The disjointness invariant the harbor adapter also upholds.
+		expect(snapshot.pass + snapshot.error + snapshot.fail).toBe(snapshot.done);
+	});
+
 	it("publishes metric definitions for every managed benchmark", () => {
 		expect(BENCHMARK_DEFINITIONS.map(definition => definition.kind)).toEqual(["harbor", "edit"]);
 		expect(BENCHMARK_DEFINITIONS.every(definition => definition.metrics.length > 0)).toBe(true);
