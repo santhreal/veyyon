@@ -38,7 +38,18 @@ function resolveEffectiveVariant(): X64Variant | null {
 	if (isCrossCompile) {
 		throw new Error("x64 cross-builds require TARGET_VARIANT=modern or TARGET_VARIANT=baseline.");
 	}
-	return detectHostAvx2Support() ? "modern" : "baseline";
+	const support = detectHostAvx2Support();
+	if (support === "unknown") {
+		// The probe could not run — do NOT silently build a baseline-only artifact
+		// on a host that may well support the faster modern build (Law 10). Warn
+		// loudly and let the developer force the variant explicitly.
+		console.warn(
+			"[build-native] warning: could not detect this host's AVX2 support; building the slower `baseline` " +
+				"x64 variant. If this host has AVX2, set TARGET_VARIANT=modern to build the faster variant.",
+		);
+		return "baseline";
+	}
+	return support === "supported" ? "modern" : "baseline";
 }
 const effectiveVariant = resolveEffectiveVariant();
 const variantSuffix = effectiveVariant ? `-${effectiveVariant}` : "";
