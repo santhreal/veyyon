@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { seedBand } from "./support/seed-band";
 
 function apply(text: string, patch: string): string {
 	return applyEdits(text, parsePatch(patch).edits).text;
@@ -18,7 +19,7 @@ function lcg(seed: number): () => number {
 }
 
 describe("applyEdits past 6000 seeds 701 through 750", () => {
-	for (let seed = 701; seed <= 750; seed++) {
+	for (const seed of seedBand(701, 750)) {
 		it(`seed=${seed}`, () => {
 			const next = lcg(seed);
 			let t = "a\nb\nc";
