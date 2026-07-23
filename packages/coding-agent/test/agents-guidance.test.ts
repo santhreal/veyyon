@@ -86,11 +86,21 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 	// user's existing lower-priority agent.md, and an existing symlink (the exact
 	// real-world case) must be left untouched.
 	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-	function withAgentDir<T>(agentDir: string, run: () => T): T {
+	const originalProfile = process.env.VEYYON_PROFILE;
+	async function withAgentDir<T>(agentDir: string, run: () => T | Promise<T>): Promise<T> {
+		// Under a named profile the dirs layer ignores VEYYON_CODING_AGENT_DIR
+		// (profile-derived dirs win), so a VEYYON_PROFILE exported in the dev
+		// shell would silently break this isolation. Clear it for the duration.
+		// The helper MUST be async: the seeded calls await internally, and a
+		// synchronous finally would restore the real agent dir (exported as
+		// VEYYON_CODING_AGENT_DIR in the dev shell) before the seed lands.
+		delete process.env.VEYYON_PROFILE;
 		setAgentDir(agentDir);
 		try {
-			return run();
+			return await run();
 		} finally {
+			if (originalProfile === undefined) delete process.env.VEYYON_PROFILE;
+			else process.env.VEYYON_PROFILE = originalProfile;
 			if (originalAgentDir === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
 			else setAgentDir(originalAgentDir);
 		}
