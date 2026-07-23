@@ -273,6 +273,25 @@ function bumpVersion(current: string, bump: "major" | "minor" | "patch"): string
 	}
 }
 
+/** The `__veyyonNativesV…` sentinel export name for a version (non-alphanumerics -> `_`). */
+export function sentinelExportName(version: string): string {
+	return `__veyyonNativesV${version.replace(/^v/, "").replace(/[^A-Za-z0-9]/g, "_")}`;
+}
+
+/**
+ * The single from->to sentinel rename a release performs: the PREVIOUS release's
+ * sentinel to the new one. A release must never blanket-replace every
+ * `__veyyonNativesV…` literal — the contract test pins historical fixtures
+ * (`versionSentinelExportFor("1.0.14")` -> `"__veyyonNativesV1_0_14"`, and
+ * V1_0_13/V16_5_2/V2_0_0_build_5) that must not track the current version, and a
+ * blanket replace bricked the native test bucket on every bump. Only the current
+ * build's sentinel (lib.rs `js_name`, its generated mirrors, and harnesses that
+ * load the current `.node`) moves; every other version literal is left alone.
+ */
+export function planSentinelRewrite(prevVersion: string, nextVersion: string): { from: string; to: string } {
+	return { from: sentinelExportName(prevVersion), to: sentinelExportName(nextVersion) };
+}
+
 /**
  * Whether this run is the release workflow rather than a workstation. Set by
  * `.github/workflows/release.yml`; deliberately its own variable and not bare
@@ -387,36 +406,35 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	// build, but bump them here too so the committed surface tracks the version
 	// without waiting for a local rebuild on the release host.
 	console.log(`Bumping veyyon-natives version sentinel to v${version}…`);
-	const sentinelJsId = version.replace(/[^A-Za-z0-9]/g, "_");
-	const sentinelName = `__veyyonNativesV${sentinelJsId}`;
-	// Discover EVERY file that references a concrete version sentinel rather than
-	// pinning a hardcoded list: the sentinel export name is version-specific by
-	// design (cross-version `.node` rejection), so any file that imports or calls
-	// it — including test harnesses like packages/tui/test/render-stress-*.ts —
-	// breaks on a bump unless the rewrite reaches it. Scan with Bun.Glob (no
-	// external `rg`/`grep` dependency — the release runner has neither) and match
-	// only concrete `__veyyonNativesV1_2_3` literals; the `{major}_{minor}` doc
-	// form and the `${…}` template in loader-state.js don't match, so this stays
-	// exact.
-	const sentinelLiteral = /__veyyonNativesV[A-Za-z0-9_]+/;
-	const sentinelGlob = new Bun.Glob(
-		"{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}",
-	);
+	// planSentinelRewrite returns ONLY the previous->new sentinel rename (see its
+	// doc: a blanket replace of every `__veyyonNativesV…` literal bricked the
+	// native test bucket every release by rewriting the contract test's historical
+	// fixtures). Discover the files that reference the previous sentinel with
+	// Bun.Glob (the release runner has no rg/grep) and rename it literally.
+	const { from: prevSentinelName, to: sentinelName } = planSentinelRewrite(latestTag, version);
+	if (prevSentinelName === sentinelName) {
+		console.error(
+			`Error: previous sentinel ${prevSentinelName} equals the new one — version ${version} is not ahead of ${latestTag}.`,
+		);
+		process.exit(1);
+	}
+	const sentinelGlob = new Bun.Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
 	const sentinelFiles: string[] = [];
 	for await (const file of sentinelGlob.scan(".")) {
 		if (file.includes("node_modules") || file.includes("/dist/")) continue;
-		if (sentinelLiteral.test(await Bun.file(file).text())) {
+		if ((await Bun.file(file).text()).includes(prevSentinelName)) {
 			sentinelFiles.push(file);
 		}
 	}
 	if (!sentinelFiles.includes("crates/veyyon-natives/src/lib.rs")) {
 		console.error(
-			"Error: could not locate the veyyon-natives version sentinel in crates/veyyon-natives/src/lib.rs. " +
-				"The `__veyyonNativesV…` literal may have been removed or renamed; restore it before releasing.",
+			`Error: could not locate the previous veyyon-natives sentinel ${prevSentinelName} in ` +
+				"crates/veyyon-natives/src/lib.rs. It must currently emit the previous release's sentinel; " +
+				"reconcile lib.rs (or the latest tag) before releasing.",
 		);
 		process.exit(1);
 	}
-	await $`sd '__veyyonNativesV[A-Za-z0-9_]+' ${sentinelName} ${sentinelFiles}`;
+	await $`sd -F ${prevSentinelName} ${sentinelName} ${sentinelFiles}`;
 	const libRs = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
 	if (!libRs.includes(`js_name = "${sentinelName}"`)) {
 		console.error(
@@ -508,13 +526,7 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		const sha = (await git(["rev-parse", "HEAD"]).text()).trim();
 		await git(["tag", "-f", tagRef]);
 		try {
-			await git([
-				"push",
-				"--atomic",
-				"origin",
-				"refs/heads/main:refs/heads/main",
-				`+${sha}:refs/tags/${tagRef}`,
-			]);
+			await git(["push", "--atomic", "origin", "refs/heads/main:refs/heads/main", `+${sha}:refs/tags/${tagRef}`]);
 			break;
 		} catch (pushErr) {
 			if (attempt >= maxPushAttempts) {
