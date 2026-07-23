@@ -257,30 +257,55 @@ function getVariantOverride() {
 	return null;
 }
 
+/**
+ * Detect AVX2 support as a TRI-STATE, never a bare boolean:
+ *   - `"supported"`   — the probe ran and the CPU has AVX2 → the `modern` variant.
+ *   - `"unsupported"` — the probe ran and the CPU lacks AVX2 → `baseline` is correct.
+ *   - `"unknown"`     — the probe could not run at all (unreadable `/proc/cpuinfo`,
+ *                       every `sysctl` spawn failed, powershell unavailable).
+ *
+ * The distinction is the whole point (Law 10: no silent fallback, and its speed
+ * bound). The old detector returned `false` for BOTH "no AVX2" and "couldn't
+ * detect", so a genuine AVX2 machine whose probe merely failed to spawn (issue
+ * #3238's worker context) was silently and permanently downgraded to the slower
+ * `baseline` binary — a correct-but-materially-slower fallback, which is exactly
+ * the banned case. Reporting `"unknown"` lets `selectCpuVariant` still pick the
+ * ABI-safe `baseline` (never SIGILL a non-AVX2 CPU) WITHOUT caching that guessed
+ * verdict for every child process, and lets the caller surface it loudly.
+ *
+ * @returns {"supported" | "unsupported" | "unknown"}
+ */
 function detectAvx2Support() {
 	if (process.arch !== "x64") {
-		return false;
+		return "unsupported";
 	}
 
 	if (process.platform === "linux") {
 		try {
 			const cpuInfo = fs.readFileSync("/proc/cpuinfo", "utf8");
-			return /\bavx2\b/i.test(cpuInfo);
+			return /\bavx2\b/i.test(cpuInfo) ? "supported" : "unsupported";
 		} catch {
-			return false;
+			// Could not read /proc/cpuinfo (unusual mount, sandbox) — do NOT claim
+			// the CPU lacks AVX2; we simply do not know.
+			return "unknown";
 		}
 	}
 
 	if (process.platform === "darwin") {
 		// Try the absolute path before bare `sysctl`: PATH may not include
 		// `/usr/sbin` in worker/embedded spawn contexts (issue #3238).
+		let anyProbeRan = false;
 		for (const sysctlBin of ["/usr/sbin/sysctl", "sysctl"]) {
 			const leaf7 = runCommand(sysctlBin, ["-n", "machdep.cpu.leaf7_features"]);
-			if (leaf7 && /\bAVX2\b/i.test(leaf7)) return true;
+			if (leaf7 !== null) anyProbeRan = true;
+			if (leaf7 && /\bAVX2\b/i.test(leaf7)) return "supported";
 			const features = runCommand(sysctlBin, ["-n", "machdep.cpu.features"]);
-			if (features && /\bAVX2\b/i.test(features)) return true;
+			if (features !== null) anyProbeRan = true;
+			if (features && /\bAVX2\b/i.test(features)) return "supported";
 		}
-		return false;
+		// A probe ran and reported no AVX2 → genuinely unsupported. No probe ran at
+		// all (every sysctl spawn failed) → unknown, not a false "unsupported".
+		return anyProbeRan ? "unsupported" : "unknown";
 	}
 
 	if (process.platform === "win32") {
@@ -290,10 +315,11 @@ function detectAvx2Support() {
 			"-Command",
 			"[System.Runtime.Intrinsics.X86.Avx2]::IsSupported",
 		]);
-		return output && output.toLowerCase() === "true";
+		if (output === null) return "unknown"; // powershell could not run
+		return output.toLowerCase() === "true" ? "supported" : "unsupported";
 	}
 
-	return false;
+	return "unknown";
 }
 
 /**
@@ -304,24 +330,34 @@ function detectAvx2Support() {
  *      context that detected at runtime. Lets child workers / subprocesses
  *      inherit the main thread's verdict instead of re-spawning `sysctl` etc.
  *      from a worker context where the spawn may fail (issue #3238).
- *   3. `detectAvx2()` — the slow path, called at most once per process.
+ *   3. `detectAvx2()` — the slow path, called at most once per process. It
+ *      returns a TRI-STATE (`"supported" | "unsupported" | "unknown"`), not a
+ *      boolean: `"unknown"` means the probe could not run, which is NOT the same
+ *      as "no AVX2". A genuine `"unsupported"` verdict caches `baseline` (the CPU
+ *      really lacks AVX2, so re-detecting is wasted); an `"unknown"` verdict
+ *      falls back to the ABI-safe `baseline` but is reported as
+ *      `source: "detect-unknown"` with `detectionFailed: true` and is NOT
+ *      cached — caching a guessed downgrade would poison every child process
+ *      that inherits `process.env`, permanently pinning the slower binary on
+ *      hardware that may well support the faster one (Law 10 speed bound).
  *
  * Non-x64 architectures return `{ variant: null }` and never set the cache.
- * When detection runs, the result is surfaced as `cacheEnvKey`/`cacheEnvValue`
- * so the caller can write `process.env` (the pure helper itself stays
- * side-effect-free, which keeps it easy to test).
+ * When a genuine detection runs, the result is surfaced as
+ * `cacheEnvKey`/`cacheEnvValue` so the caller can write `process.env` (the pure
+ * helper itself stays side-effect-free, which keeps it easy to test).
  *
  * @param {{
  *   arch: string;
  *   override: "modern" | "baseline" | null | undefined;
  *   env: Record<string, string | undefined>;
- *   detectAvx2: () => boolean;
+ *   detectAvx2: () => "supported" | "unsupported" | "unknown";
  * }} input
  * @returns {{
  *   variant: "modern" | "baseline" | null;
- *   source: "non-x64" | "override" | "cache" | "detect";
+ *   source: "non-x64" | "override" | "cache" | "detect" | "detect-unknown";
  *   cacheEnvKey?: string;
  *   cacheEnvValue?: string;
+ *   detectionFailed?: boolean;
  * }}
  */
 export function selectCpuVariant({ arch, override, env, detectAvx2 }) {
@@ -333,14 +369,24 @@ export function selectCpuVariant({ arch, override, env, detectAvx2 }) {
 	if (cached === "modern" || cached === "baseline") {
 		return { variant: cached, source: "cache" };
 	}
-	const variant = detectAvx2() ? "modern" : "baseline";
-	return {
-		variant,
-		source: "detect",
-		cacheEnvKey: VARIANT_CACHE_ENV_KEY,
-		cacheEnvValue: variant,
-	};
+	const support = detectAvx2();
+	if (support === "supported" || support === "unsupported") {
+		const variant = support === "supported" ? "modern" : "baseline";
+		return {
+			variant,
+			source: "detect",
+			cacheEnvKey: VARIANT_CACHE_ENV_KEY,
+			cacheEnvValue: variant,
+		};
+	}
+	// support === "unknown": the probe could not run. Choose the ABI-safe
+	// baseline (modern would SIGILL on a real non-AVX2 CPU), but do NOT cache
+	// this guess and flag it so the loader can warn the operator loudly instead
+	// of silently shipping a possibly-slower binary.
+	return { variant: "baseline", source: "detect-unknown", detectionFailed: true };
 }
+
+let warnedAvx2DetectionFailed = false;
 
 function resolveCpuVariant(override) {
 	const result = selectCpuVariant({
@@ -351,6 +397,19 @@ function resolveCpuVariant(override) {
 	});
 	if (result.cacheEnvKey) {
 		process.env[result.cacheEnvKey] = result.cacheEnvValue;
+	}
+	if (result.detectionFailed && !warnedAvx2DetectionFailed) {
+		warnedAvx2DetectionFailed = true;
+		try {
+			fs.writeSync(
+				2,
+				"[veyyon] warning: could not detect CPU AVX2 support; defaulting to the slower `baseline` " +
+					"native variant. If your CPU supports AVX2, set VEYYON_NATIVE_VARIANT=modern to use the " +
+					"faster build.\n",
+			);
+		} catch {
+			// stderr unavailable; the warning is best-effort but must never crash the load.
+		}
 	}
 	return result.variant;
 }
