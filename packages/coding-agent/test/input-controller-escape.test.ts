@@ -138,6 +138,7 @@ function createContext(): {
 		ui: {
 			requestRender,
 			resetDisplay,
+			scrollToLiveTail: vi.fn(),
 			addInputListener: vi.fn(listener => {
 				inputListeners.push(listener as (data: string) => { consume?: boolean; data?: string } | undefined);
 				return () => {};

@@ -132,6 +132,7 @@ async function createContext() {
 		ui: {
 			requestRender,
 			resetDisplay,
+			scrollToLiveTail: vi.fn(),
 			addInputListener,
 			addStartListener,
 			getFocused: vi.fn(() => focused),
