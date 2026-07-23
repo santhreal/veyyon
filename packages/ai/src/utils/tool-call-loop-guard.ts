@@ -1,4 +1,4 @@
-import { collapseWhitespace } from "@veyyon/utils";
+import { collapseWhitespace, setSafeProperty } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { AssistantMessage, ToolCall, ToolResultMessage } from "../types";
 
@@ -39,7 +39,11 @@ function canonicalizeToolCallValue(value: unknown): unknown {
 	const output: Record<string, unknown> = {};
 	for (const key of Object.keys(input).sort()) {
 		if (key === INTENT_FIELD || key === LEGACY_INTENT_FIELD) continue;
-		output[key] = canonicalizeToolCallValue(input[key]);
+		// A model-supplied `__proto__`/`constructor`/`prototype` key must land as an
+		// own property, else a bare assignment would drop or prototype-mutate it and
+		// distinct argument sets would collide into the same canonical hash (a false
+		// repeated-tool-call detection).
+		setSafeProperty(output, key, canonicalizeToolCallValue(input[key]));
 	}
 	return output;
 }

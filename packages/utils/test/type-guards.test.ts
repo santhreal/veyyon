@@ -4,10 +4,13 @@ import {
 	errorMessage,
 	finiteNumber,
 	getNonBlankStringProperty,
+	getOwnProperty,
 	getStringProperty,
 	isRecord,
+	setSafeProperty,
 	toError,
 	trimmedString,
+	UNSAFE_OBJECT_KEYS,
 } from "../src/type-guards";
 import { collectPackageSources, type PackageSource } from "./support/package-sources";
 
@@ -59,6 +62,73 @@ describe("getStringProperty / getNonBlankStringProperty", () => {
 		expect(getNonBlankStringProperty({ a: "" }, "a")).toBeUndefined();
 		expect(getNonBlankStringProperty({ a: "   " }, "a")).toBeUndefined();
 		expect(getNonBlankStringProperty({ a: 0 }, "a")).toBeUndefined();
+	});
+});
+
+describe("setSafeProperty / getOwnProperty (prototype-pollution-safe dynamic keys)", () => {
+	// These back every record built from external/untrusted key strings (tool-call
+	// argument parsers, canonicalizers). A bare `obj[key] = value` for the accessor
+	// keys below mutates the prototype or silently drops the write; these must make
+	// the key a plain own property, matching JSON.parse. The tests lock that in.
+
+	it("exposes exactly the three accessor-hazard keys", () => {
+		expect([...UNSAFE_OBJECT_KEYS].sort()).toEqual(["__proto__", "constructor", "prototype"]);
+	});
+
+	it("stores an object value under __proto__ as an own property without mutating the prototype", () => {
+		const target: Record<string, unknown> = {};
+		const payload = { injected: 1 };
+		setSafeProperty(target, "__proto__", payload);
+
+		expect(Object.getPrototypeOf(target)).toBe(Object.prototype);
+		expect(Object.hasOwn(target, "__proto__")).toBe(true);
+		expect(Object.getOwnPropertyDescriptor(target, "__proto__")?.value).toBe(payload);
+		expect(Object.keys(target)).toEqual(["__proto__"]);
+		expect((target as { injected?: unknown }).injected).toBeUndefined();
+	});
+
+	it("stores a string value under __proto__ that a bare assignment would silently drop", () => {
+		const target: Record<string, unknown> = {};
+		// `({})["__proto__"] = "x"` is a no-op — the prototype setter ignores strings.
+		setSafeProperty(target, "__proto__", "x");
+		expect(Object.hasOwn(target, "__proto__")).toBe(true);
+		expect(Object.getOwnPropertyDescriptor(target, "__proto__")?.value).toBe("x");
+	});
+
+	it("stores literal constructor and prototype keys as own data properties", () => {
+		const target: Record<string, unknown> = {};
+		setSafeProperty(target, "constructor", "c");
+		setSafeProperty(target, "prototype", "p");
+		expect(getOwnProperty(target, "constructor")).toBe("c");
+		expect(getOwnProperty(target, "prototype")).toBe("p");
+		expect(new Set(Object.keys(target))).toEqual(new Set(["constructor", "prototype"]));
+	});
+
+	it("uses the plain path for ordinary keys and overwrites in place", () => {
+		const target: Record<string, unknown> = {};
+		setSafeProperty(target, "a", 1);
+		setSafeProperty(target, "a", 2);
+		expect(target).toEqual({ a: 2 });
+	});
+
+	it("serializes to the same JSON as a JSON.parse'd __proto__ key", () => {
+		const built: Record<string, unknown> = {};
+		setSafeProperty(built, "__proto__", { k: "v" });
+		expect(JSON.stringify(built)).toBe(JSON.stringify(JSON.parse('{"__proto__":{"k":"v"}}')));
+	});
+
+	it("getOwnProperty returns the own value under __proto__, never the inherited prototype", () => {
+		const target: Record<string, unknown> = {};
+		expect(getOwnProperty(target, "__proto__")).toBeUndefined();
+		// The bare read would return Object.prototype here.
+		expect(target["__proto__" as keyof typeof target]).toBe(Object.prototype);
+		setSafeProperty(target, "__proto__", "stored");
+		expect(getOwnProperty(target, "__proto__")).toBe("stored");
+	});
+
+	it("getOwnProperty reads ordinary keys and reports absent ones as undefined", () => {
+		expect(getOwnProperty({ a: 5 }, "a")).toBe(5);
+		expect(getOwnProperty({}, "missing")).toBeUndefined();
 	});
 });
 
