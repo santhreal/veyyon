@@ -308,14 +308,17 @@ export class TranscriptContainer
 			if (contribution.length === 0) continue;
 			// One blank separator sits between this block and the (already
 			// collected) visible block below it.
-			if (collected.length > 0) total += 1;
+			if (collected.length > 0) total += 2;
 			collected.push(contribution);
 			total += contribution.length;
 		}
 		if (collected.length === 0) return EMPTY_TAIL;
 		const rows: string[] = [];
 		for (let k = collected.length - 1; k >= 0; k--) {
-			if (rows.length > 0) rows.push("");
+			if (rows.length > 0) {
+				rows.push("");
+				rows.push("");
+			}
 			const body = collected[k]!;
 			for (let j = 0; j < body.length; j++) rows.push(body[j]!);
 		}
@@ -462,7 +465,8 @@ export class TranscriptContainer
 			// already a plain blank (a fragment's own trailing pad), never doubling.
 			// `lines[row - 1]` is valid in both modes: reused rows are still present
 			// in the persistent array, re-pushed rows were just written.
-			const sep = row > 0 && !isPlainBlank(lines[row - 1]!) ? 1 : 0;
+			// V5 wide-air: two blank rows between blocks, doubling the rhythm.
+			const sep = row > 0 && !isPlainBlank(lines[row - 1]!) ? 2 : 0;
 
 			// The separator before the first live block stays in the committed
 			// prefix (it is deterministic once the prior block's body is
@@ -489,7 +493,7 @@ export class TranscriptContainer
 					chainStable = false;
 					lines.length = row;
 				}
-				if (sep) lines.push("");
+				for (let s = 0; s < sep; s++) lines.push("");
 				for (let j = 0; j < contribution.length; j++) lines.push(contribution[j]!);
 			}
 
