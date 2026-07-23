@@ -41,7 +41,7 @@ export class EvalExecutionComponent extends Container {
 		const headerLines = codeLines.map((line, index) =>
 			index === 0 ? `${prompt} ${line}` : `${continuation}${line}`,
 		);
-		return new Text(headerLines.join("\n"), 1, 0);
+		return new Text(headerLines.join("\n"), 2, 0);
 	}
 
 	constructor(
@@ -124,7 +124,7 @@ export class EvalExecutionComponent extends Container {
 		if (availableLines.length > 0) {
 			if (this.#expanded) {
 				const displayText = availableLines.map(line => theme.fg("muted", line)).join("\n");
-				this.#contentContainer.addChild(new Text(`\n${displayText}`, 1, 0));
+				this.#contentContainer.addChild(new Text(`\n${displayText}`, 2, 0));
 			} else {
 				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");
 				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, PREVIEW_LINES));

@@ -1043,9 +1043,13 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.addChild(new Spacer(1));
 		}
 
+		// The flexible top margin mounts above the hero AND the transcript: it
+		// centres the hero on the home screen, then (once a conversation starts)
+		// takes ALL the anchor slack so the conversation hugs the composer at
+		// the viewport bottom. Mounted unconditionally — quiet startups skip the
+		// hero, not the anchor.
+		this.ui.addChild(this.#layout.topFill);
 		if (!startupQuiet) {
-			// The centring top margin mounts before the hero block; ordering matters.
-			this.ui.addChild(this.#layout.topFill);
 			this.#welcomeController.mountHero(
 				{ version: this.#version, modelName, providerName, recentSessions },
 				{ playIntro: !options.suppressWelcomeIntro },
@@ -1647,10 +1651,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.setText("");
 		this.editor.imageLinks = undefined;
 		this.ensureLoadingAnimation();
-		// Keep the composer pinned to the viewport bottom as the conversation
-		// begins: the anchor stays live and self-collapses once output fills the
-		// viewport (see HomeAnchorLayout.sync), so the first message renders at the top of
-		// scrollback with the composer still on the bottom edge. Remeasure directly
+		// As the conversation begins the anchor slack moves ABOVE the transcript
+		// (see HomeAnchorLayout.sync): the first message renders directly above
+		// the composer at the viewport bottom and climbs as replies land, until
+		// content fills the screen and the anchor latches off. Remeasure directly
 		// — the just-added user message and the working indicator are not in the
 		// committed frame yet, so trusting the stale composed height would reserve
 		// empty-home slack on top of them and overflow, jumping the message above

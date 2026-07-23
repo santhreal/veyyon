@@ -59,7 +59,7 @@ export class BashExecutionComponent extends Container {
 		this.#loader = loader;
 
 		// Command header
-		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`$ ${command}`)), 1, 0);
+		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`$ ${command}`)), 2, 0);
 		this.#contentContainer.addChild(this.#headerText);
 		this.#contentContainer.addChild(this.#loader);
 	}
@@ -167,7 +167,7 @@ export class BashExecutionComponent extends Container {
 				const displayText = availableLines
 					.map((line, index) => (sixelLineMask?.[index] ? line : theme.fg("muted", line)))
 					.join("\n");
-				this.#contentContainer.addChild(new Text(`\n${displayText}`, 1, 0));
+				this.#contentContainer.addChild(new Text(`\n${displayText}`, 2, 0));
 			} else {
 				// Use shared visual truncation utility, recomputed per render width
 				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");

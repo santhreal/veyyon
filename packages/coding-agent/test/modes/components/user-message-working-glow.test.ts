@@ -1,40 +1,27 @@
 /**
- * The working glow on the newest user prompt.
+ * The working indicator on the newest user prompt.
  *
  * Why this suite exists: prompts rendered gray-on-gray (titanium's
  * `userMessageText` was the dim tone) and nothing indicated WHICH message the
- * agent was working on (user report, 2026-07-22). Two contracts are pinned
- * here so neither regresses silently:
- *
- * 1. Prompt text renders in the theme's bright `userMessageText` color, not
- *    the dim history tone.
- * 2. `setWorking(true)` paints the follow's sheen over the LAST content row
- *    (visible characters, never the ANSI-wrapped right padding — the glow
- *    once landed entirely on invisible trailing cells), keeps the block
- *    unfinalized so the transcript live region repaints it every frame, and
- *    `setWorking(false)` restores the exact memoized idle bytes.
+ * agent was working on (user report, 2026-07-22). The first shipped fix
+ * animated a per-frame sheen and kept the block unfinalized for the whole
+ * turn — that pinned the transcript's live-region seam open and committed a
+ * giant blank hole into the transcript (user screenshot, 2026-07-22). The
+ * indicator is therefore STATIC: an ember `›` glyph while working, bytes
+ * changing only at arm/disarm, surfaced through the block version. These
+ * tests pin both the visibility fix and the static-indicator contract so
+ * neither the gray-on-gray text nor the animated-seam regression can return.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/user-message";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 
-// The glow is truecolor-only (a loud, documented degrade elsewhere), and
-// TERMINAL.trueColor is detected from COLORTERM at tui import time — so the
-// env must be set BEFORE the module graph loads. Everything below therefore
-// imports dynamically inside beforeAll.
-process.env.COLORTERM = "truecolor";
-
-const OSC_ZONE = /\x1b\]133;[AB]\x07/g;
-
-// biome-ignore lint/suspicious/noExplicitAny: resolved in beforeAll after COLORTERM is pinned
-let UserMessageComponent: any;
-
-describe("UserMessageComponent working glow", () => {
+describe("UserMessageComponent working indicator", () => {
 	beforeAll(async () => {
-		const { Settings } = await import("@veyyon/coding-agent/config/settings");
-		const themeMod = await import("@veyyon/coding-agent/modes/theme/theme");
 		await Settings.init({ inMemory: true });
-		themeMod.setThemeInstance((await themeMod.getThemeByName("titanium"))!);
-		({ UserMessageComponent } = await import("@veyyon/coding-agent/modes/components/user-message"));
+		setThemeInstance((await getThemeByName("titanium"))!);
 	});
 
 	/** Locks the visibility fix: prompt text carries titanium's bright silver
@@ -47,67 +34,73 @@ describe("UserMessageComponent working glow", () => {
 		expect(content).not.toContain("\x1b[38;2;86;95;119mfix");
 	});
 
-	/** The moving sheen is wall-clock driven, so a working prompt must return a
-	 * FRESH array every render — reference-stable rows would let the
-	 * transcript's identity reuse freeze the first frame of the glow. */
-	it("returns fresh row arrays while working and memoized rows when idle", () => {
+	/** While working, the `›` glyph turns ember (titanium borderAccent #F0862E
+	 * → 38;2;240;134;46); idle it is dim. This is the whole indicator — any
+	 * richer per-frame treatment re-opens the seam regression. */
+	it("turns the gutter glyph ember while working and dim when idle", () => {
 		const component = new UserMessageComponent("run the tests");
+		const idleRow = component.render(60).find(row => stripAnsi(row).includes("›"))!;
+		expect(idleRow).toContain("\x1b[38;2;86;95;119m›");
+		component.setWorking(true);
+		const workRow = component.render(60).find(row => stripAnsi(row).includes("›"))!;
+		expect(workRow).toContain("\x1b[38;2;240;134;46m›");
+	});
+
+	/** The block must stay FINALIZED at all times: an unfinalized block near
+	 * the transcript top pins the live-region seam open and commits a blank
+	 * hole (the shipped regression this suite exists to lock out). The
+	 * component must not even define the finalization hook. */
+	it("never reports itself unfinalized, working or not", () => {
+		const component = new UserMessageComponent("hello") as unknown as {
+			isTranscriptBlockFinalized?: () => boolean;
+			setWorking(on: boolean): void;
+		};
+		expect(component.isTranscriptBlockFinalized).toBeUndefined();
+	});
+
+	/** Arm/disarm is a post-finalize mutation, so it must bump the block
+	 * version — that is what lets an already-committed prompt repaint its
+	 * glyph instead of replaying stale bytes. Setting the same state twice
+	 * must NOT bump (a no-op toggle would churn the committed-prefix audit). */
+	it("bumps the block version exactly once per state change", () => {
+		const component = new UserMessageComponent("hello");
+		const v0 = component.getTranscriptBlockVersion();
+		component.setWorking(true);
+		const v1 = component.getTranscriptBlockVersion();
+		expect(v1).toBe(v0 + 1);
+		component.setWorking(true);
+		expect(component.getTranscriptBlockVersion()).toBe(v1);
+		component.setWorking(false);
+		expect(component.getTranscriptBlockVersion()).toBe(v1 + 1);
+	});
+
+	/** Rows must be reference-stable WITHIN a state (the transcript's identity
+	 * reuse depends on it) and rebuilt across a state change. A fresh array
+	 * every frame was the animated regression's signature. */
+	it("returns reference-stable rows within a state, fresh rows across states", () => {
+		const component = new UserMessageComponent("ship it");
 		const idleA = component.render(60);
-		const idleB = component.render(60);
-		expect(idleB).toBe(idleA);
+		expect(component.render(60)).toBe(idleA);
 		component.setWorking(true);
 		const workA = component.render(60);
-		const workB = component.render(60);
-		expect(workB).not.toBe(workA);
+		expect(workA).not.toBe(idleA);
+		expect(component.render(60)).toBe(workA);
 	});
 
-	/** The glow must land on VISIBLE characters: the painted row's sheen SGRs
-	 * (per-character truecolor mixes) must wrap the prompt's trailing text,
-	 * not the right-padding spaces. The regression this pins: padded rows end
-	 * in SGR-wrapped spaces, paintHotTail's bare-space strip never fired, and
-	 * the whole glow was invisible ink. */
-	it("paints the sheen over the prompt's visible tail characters", () => {
-		const component = new UserMessageComponent("fix the flaky auth test in ci");
-		component.setWorking(true);
-		const rows = component.render(80);
-		const content = rows.find(row => stripAnsi(row.replace(OSC_ZONE, "")).includes("ci"))!;
-		// The final visible character `i` (of "ci") must sit directly inside a
-		// truecolor SGR that is NOT the flat base silver — the gradient's tip
-		// always carries the fixed tip glow (paintHotTail tipGlow ≥ 0.5 at p=1),
-		// so it is measurably brighter than the base at every sheen phase. Take
-		// the LAST match: interior `i`s (of "in") sit mid-trail at ~base color.
-		const tips = [...content.matchAll(/\x1b\[38;2;(\d+);(\d+);(\d+)mi/g)];
-		expect(tips.length).toBeGreaterThan(0);
-		expect(tips[tips.length - 1]![0]).not.toBe("\x1b[38;2;198;203;212mi");
-	});
-
-	/** While glowing, the block must report unfinalized so the transcript keeps
-	 * it in the live (repaintable) region; the frame the turn ends it must
-	 * finalize again so history freezes into native scrollback. */
-	it("stays unfinalized while working and finalizes when the turn ends", () => {
-		const component = new UserMessageComponent("hello");
-		expect(component.isTranscriptBlockFinalized()).toBe(true);
-		component.setWorking(true);
-		expect(component.isTranscriptBlockFinalized()).toBe(false);
-		component.setWorking(false);
-		expect(component.isTranscriptBlockFinalized()).toBe(true);
-	});
-
-	/** Ending the turn must restore the EXACT idle bytes (the memoized rows),
-	 * so a finished prompt leaves no sheen residue in the transcript. */
-	it("restores byte-identical idle rows after the glow ends", () => {
+	/** Ending the turn restores byte-identical idle rows — no residue of the
+	 * working state may remain in the transcript. */
+	it("restores byte-identical idle rows after the turn ends", () => {
 		const component = new UserMessageComponent("ship it");
-		const idle = component.render(60);
+		const idle = [...component.render(60)];
 		component.setWorking(true);
 		component.render(60);
 		component.setWorking(false);
-		expect(component.render(60)).toEqual(idle);
+		expect([...component.render(60)]).toEqual(idle);
 	});
 
-	/** The OSC 133 zone markers survive the glow untouched: the painted row is
-	 * re-wrapped with the same start/end bytes, so terminal prompt-zone
-	 * navigation keeps working mid-turn. */
-	it("preserves OSC 133 zone markers on glowing rows", () => {
+	/** The OSC 133 zone markers survive the working glyph swap untouched, so
+	 * terminal prompt-zone navigation keeps working mid-turn. */
+	it("preserves OSC 133 zone markers in both states", () => {
 		const component = new UserMessageComponent("hi");
 		component.setWorking(true);
 		const rows = component.render(60);

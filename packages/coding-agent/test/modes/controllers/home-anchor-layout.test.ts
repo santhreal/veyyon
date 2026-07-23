@@ -51,7 +51,7 @@ function makeHarness(options: {
 	// skip them or it would count its own output as content.
 	children.unshift(layout.topFill);
 	children.push(layout.bottomFill);
-	return { layout, state };
+	return { layout, state, children };
 }
 
 const rowsOf = (s: { render: (w: number) => readonly string[] }) => s.render(80).length;
@@ -161,18 +161,19 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 });
 
 describe("HomeAnchorLayout.onHeroDismissed — same-frame re-anchor", () => {
-	test("resizes the bottom fill against the removed rows on this frame, not the next", () => {
+	test("re-anchors from the live children on this frame, not the next", () => {
 		// Hero centred on a 30-row terminal: top 8, bottom 14, content 8 (of
-		// which the hero block is 6). composedFrameRows = 8+14+8 = 30. Dismissing
-		// removes hero rows + top fill = 6+8 = 14 rows; the surviving content is
-		// 30-14-14(bottom) = 2 rows, so the bottom fill must become 28 to keep
-		// the composer on the bottom edge without waiting for the next compose.
-		const { layout, state } = makeHarness({ rows: 30, contentRows: 8, hasHero: true });
+		// which the hero block is 6). Dismissal unmounts the hero BEFORE the
+		// layout callback runs, so the direct remeasure sees the surviving 2
+		// content rows and the bottom fill becomes 28 to keep the composer on
+		// the bottom edge without waiting for the next compose.
+		const { layout, state, children } = makeHarness({ rows: 30, contentRows: 8, hasHero: true });
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(8);
 		expect(rowsOf(layout.bottomFill)).toBe(14);
 		state.composedFrameRows = 30;
 		state.hasHero = false;
+		children[1] = block(2);
 		layout.onHeroDismissed(14);
 		expect(rowsOf(layout.topFill)).toBe(0);
 		expect(rowsOf(layout.bottomFill)).toBe(28);
@@ -203,5 +204,47 @@ describe("HomeAnchorLayout — interactive-mode delegation (source lock)", () =>
 		expect(source).not.toContain("#homeAnchorActive");
 		expect(source).not.toContain("#topFill:");
 		expect(source).not.toContain("#bottomFill:");
+	});
+});
+
+describe("HomeAnchorLayout.sync — conversation slack routing", () => {
+	/** The core of the bottom-hugging fix: once a conversation exists, ALL the
+	 * anchor slack moves ABOVE the transcript. The old between-content fill
+	 * painted the prompt at the top and the loader at the bottom with a void of
+	 * blank rows between them; when the reply landed those rows overflowed the
+	 * screen and pushed the prompt into scrollback while the viewport was
+	 * mostly empty (user screenshots, 2026-07-22). */
+	test("with a conversation started, all slack goes above so content hugs the composer", () => {
+		const { layout } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
+		layout.sync();
+		expect(rowsOf(layout.topFill)).toBe(22);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
+	});
+
+	/** The hero split wins while the hero is still up even if a transcript
+	 * child raced in — the hero centring is what the user is looking at. */
+	test("hero centring outranks conversation routing while the hero is mounted", () => {
+		const { layout } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1, hasHero: true });
+		layout.sync();
+		expect(rowsOf(layout.topFill)).toBe(8);
+		expect(rowsOf(layout.bottomFill)).toBe(14);
+	});
+
+	/** Growth shrinks the TOP fill row-for-row: content climbs from the
+	 * composer upward, and nothing ever scrolls while free rows remain. */
+	test("conversation growth eats the top fill row-for-row until latch-off", () => {
+		const { layout, state, children } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
+		layout.sync();
+		expect(rowsOf(layout.topFill)).toBe(22);
+		children[1] = block(20);
+		layout.sync(true);
+		expect(rowsOf(layout.topFill)).toBe(10);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
+		// Content exceeds the viewport: the anchor latches off for good.
+		children[1] = block(31);
+		layout.sync(true);
+		expect(layout.active).toBe(false);
+		expect(rowsOf(layout.topFill)).toBe(0);
+		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
 });

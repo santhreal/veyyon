@@ -73,3 +73,51 @@ describe("globToolRenderer", () => {
 		expect(plain).not.toContain("incomplete");
 	});
 });
+
+describe("globToolRenderer truncation reasons", () => {
+	/** details.resultLimitReached and meta.limits.resultLimit describe the SAME
+	 * cap; both being present once rendered "truncated: limit 200 results,
+	 * limit 200 results" (user screenshot, 2026-07-22). Exactly one reason may
+	 * appear. */
+	it("emits the result-cap reason once when details and limits both carry it", async () => {
+		const theme = await getThemeByName("dark");
+		const uiTheme = theme!;
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				fileCount: 200,
+				files: Array.from({ length: 200 }, (_, i) => `src/f${i}.ts`),
+				truncated: true,
+				resultLimitReached: 200,
+				meta: { limits: { resultLimit: { reached: 200 } } },
+			},
+		};
+		const renderedLines = globToolRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { paths: "src/**" })
+			.render(240);
+		const plain = sanitizeText(renderedLines.join("\n"));
+		expect(plain).toContain("truncated: limit 200 results");
+		expect(plain.match(/limit 200 results/g)!.length).toBe(1);
+	});
+
+	/** The limits-only path (no details.resultLimitReached) must still surface
+	 * the cap — deduping may not silently drop the reason entirely. */
+	it("still emits the reason when only meta.limits carries the cap", async () => {
+		const theme = await getThemeByName("dark");
+		const uiTheme = theme!;
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				fileCount: 200,
+				files: ["src/a.ts"],
+				truncated: true,
+				meta: { limits: { resultLimit: { reached: 200 } } },
+			},
+		};
+		const renderedLines = globToolRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { paths: "src/**" })
+			.render(240);
+		const plain = sanitizeText(renderedLines.join("\n"));
+		expect(plain.match(/limit 200 results/g)!.length).toBe(1);
+	});
+});

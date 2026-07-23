@@ -8,8 +8,8 @@ import {
 	isSilentAbort,
 	isUserInterruptAbort,
 	resolveAbortLabel,
-	shouldRenderAbortReason,
 	SILENT_ABORT_MARKER,
+	shouldRenderAbortReason,
 	USER_INTERRUPT_LABEL,
 } from "@veyyon/coding-agent/session/messages";
 
@@ -69,16 +69,19 @@ describe("resolveAbortLabel pure matrix", () => {
 		expect(resolveAbortLabel({ errorMessage: "" })).toBe("Operation aborted");
 	});
 
+	/** AbortError's bare-cancel shape carries no reason beyond "aborted";
+	 * rendered verbatim it stacked into "Error: Aborted: Cancelled" in the
+	 * transcript (user screenshot, 2026-07-22). It must take the generic path. */
+	it("bare AbortError text (Aborted: Cancelled) → Operation aborted", () => {
+		expect(resolveAbortLabel({ errorMessage: "Aborted: Cancelled" })).toBe("Operation aborted");
+		// A REAL threaded reason stays verbatim — only the bare shape is generic.
+		expect(resolveAbortLabel({ errorMessage: "Aborted: Timeout" })).toBe("Aborted: Timeout");
+	});
+
 	it("retry wording singular and plural on generic path", () => {
-		expect(resolveAbortLabel({ errorMessage: SILENT_ABORT_MARKER }, 1)).toBe(
-			"Aborted after 1 retry attempt",
-		);
-		expect(resolveAbortLabel({ errorMessage: SILENT_ABORT_MARKER }, 2)).toBe(
-			"Aborted after 2 retry attempts",
-		);
-		expect(resolveAbortLabel({ errorMessage: GENERIC_ABORT_SENTINEL }, 5)).toBe(
-			"Aborted after 5 retry attempts",
-		);
+		expect(resolveAbortLabel({ errorMessage: SILENT_ABORT_MARKER }, 1)).toBe("Aborted after 1 retry attempt");
+		expect(resolveAbortLabel({ errorMessage: SILENT_ABORT_MARKER }, 2)).toBe("Aborted after 2 retry attempts");
+		expect(resolveAbortLabel({ errorMessage: GENERIC_ABORT_SENTINEL }, 5)).toBe("Aborted after 5 retry attempts");
 	});
 
 	it("retry does not rewrite custom reason", () => {

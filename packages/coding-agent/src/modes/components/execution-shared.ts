@@ -10,7 +10,6 @@
 import { type Component, Container, Loader, Text, type TUI } from "@veyyon/tui";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import { formatTruncationMetaNotice, type TruncationMeta } from "../../tools/output-meta";
-import { DynamicBorder } from "./dynamic-border";
 import { truncateToVisualLines } from "./visual-truncate";
 
 export type ExecutionStatus = "running" | "complete" | "cancelled" | "error";
@@ -19,20 +18,20 @@ export type ExecutionStatus = "running" | "complete" | "cancelled" | "error";
 export type ExecutionColorKey = "dim" | "bashMode" | "pythonMode";
 
 /**
- * Build the spacer + top border + content container + bottom border scaffold
- * that bash and eval execution components share. The caller appends the
- * header (command vs `>>>` prompt) and the returned loader to
- * `contentContainer` so per-mode order is preserved.
+ * Build the content container + loader scaffold that bash and eval execution
+ * components share. The caller appends the header (command vs `>>>` prompt)
+ * and the returned loader to `contentContainer` so per-mode order is
+ * preserved. No full-width border rules: the V1 aligned-quiet merge
+ * (user-approved 2026-07-22) sits execution blocks on the transcript's shared
+ * left rail — the mode color lives on the `$`/`>>>` header, and two
+ * full-bleed rules around two short lines read as chrome shouting over
+ * content.
  */
 export function buildExecutionFrame(
 	parent: Container,
 	ui: TUI,
 	colorKey: ExecutionColorKey,
 ): { contentContainer: Container; loader: Loader } {
-	const borderColor = (str: string) => theme.fg(colorKey, str);
-
-	parent.addChild(new DynamicBorder(borderColor));
-
 	const contentContainer = new Container();
 	parent.addChild(contentContainer);
 
@@ -44,7 +43,6 @@ export function buildExecutionFrame(
 		getSymbolTheme().spinnerFrames,
 	);
 
-	parent.addChild(new DynamicBorder(borderColor));
 	return { contentContainer, loader };
 }
 
@@ -54,7 +52,7 @@ export function buildExecutionFrame(
  */
 export function createCollapsedPreview(previewText: string, previewLines: number): Component {
 	return {
-		render: (width: number) => truncateToVisualLines(previewText, previewLines, width, 1).visualLines,
+		render: (width: number) => truncateToVisualLines(previewText, previewLines, width, 2).visualLines,
 		invalidate: () => {},
 	};
 }
@@ -87,7 +85,7 @@ export function buildStatusFooter(opts: {
 	}
 
 	if (parts.length === 0) return undefined;
-	return new Text(`\n${parts.join("\n")}`, 1, 0);
+	return new Text(`\n${parts.join("\n")}`, 2, 0);
 }
 
 /**

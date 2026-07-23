@@ -58,6 +58,18 @@ below 30 columns. Once real work starts, everything is full-bleed.
 Overlays (settings, pickers, hubs) size themselves from the modal sizing
 tokens, not ad-hoc widths.
 
+**The conversation hugs the composer.** While the viewport is not yet full,
+the home-anchor slack routes ABOVE the transcript (`home-anchor-layout.ts`):
+the first prompt renders directly above the composer at the viewport bottom
+and content climbs upward as replies land, until the screen fills and the
+anchor latches off. Never reintroduce a flexible fill BETWEEN the transcript
+and the composer once a conversation exists: that layout painted the prompt at
+the top and the loader at the bottom with a void of blank rows between, and
+when a reply landed the void overflowed the screen and pushed the prompt into
+scrollback while the viewport was mostly empty (user screenshots, 2026-07-22;
+locked by the routing tests in `home-anchor-layout.test.ts`). The hero split
+(2/5 above, rest below) and the empty-at-rest composer pin are unchanged.
+
 **Bordered cards hug their content.** A framed card (skill, extension, hook
 message) shrinks its outline to the widest line via `Box.setHugContent(true)`;
 the terminal width stays the wrap limit. A frame stretched to the terminal edge
@@ -119,7 +131,7 @@ No gratuitous animation on static content. Motion is a semantic signal (the mode
 
 ## Transcript roles
 
-Every transcript block declares its role visually, never by content alone: a past prompt carries the dim `›` gutter with BRIGHT text (titanium `userMessageText` is full silver; the dim tone made the operator's own words gray-on-gray and unreadable, user report 2026-07-22), a visible reasoning trace opens with a muted `Thinking` heading (the same word the hidden-thinking pulse uses) and renders italic in `thinkingText`, and the answer is plain primary text. The failure mode this prevents: reasoning that reads as the answer until you have read half of it. While a turn runs, the prompt being worked carries the follow's sheen (`UserMessageComponent.setWorking`, armed by the event controller from `agent_start` to `agent_end`), so the operator always sees WHICH message the agent is on; the glow ends byte-exact back at the idle rows (locked by `user-message-working-glow.test.ts`).
+Every transcript block declares its role visually, never by content alone: a past prompt carries the dim `›` gutter with BRIGHT text (titanium `userMessageText` is full silver; the dim tone made the operator's own words gray-on-gray and unreadable, user report 2026-07-22), a visible reasoning trace opens with a muted `Thinking` heading (the same word the hidden-thinking pulse uses) and renders italic in `thinkingText`, and the answer is plain primary text. The failure mode this prevents: reasoning that reads as the answer until you have read half of it. While a turn runs, the prompt being worked flips its `›` glyph to ember (`UserMessageComponent.setWorking`, armed by the event controller from `agent_start` to `agent_end`), so the operator always sees WHICH message the agent is on. The indicator is STATIC by contract: an animated per-frame paint here either pins the live-region seam open (unfinalized block near the transcript top = a committed blank hole below it — shipped regression, user screenshot 2026-07-22) or churns the committed-prefix audit. Bytes change only at arm/disarm, surfaced via `getTranscriptBlockVersion`; the turn's end restores byte-exact idle rows (locked by `user-message-working-glow.test.ts`).
 
 ## Tool-call rendering
 
@@ -165,7 +177,7 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 ## Composer and chrome
 
 - **The composer has no box. Ever.** The final ruling (user, 2026-07-22, after three shipped attempts): every painted composer ground, the absolute `#0C0E12` hex AND the OSC 11-derived raised tint AND the theme `composerBg` token, read as a gray slab on the real terminal. The composer is hairline + text + footline rendered directly on the terminal's own background; nothing paints behind the input. `CardPadRow` survives only as a blank spacer row (mount order stability) and must emit zero escape bytes; `composerCardGround()` is deleted. Regression locks: `ground-tints.test.ts` (pad row paints nothing even with a detected ground; source lock bans `48;2` and `composerBg` reads in composer-chrome) and `composer-hairline.test.ts` (editor rows carry `setRowBackground(undefined)`). Do not pitch a tinted prompt surface again; spend composer identity on the glyph morphs and the hairline instead.
-- **One left rail.** The composer content is inset `COMPOSER_INSET_COLS` (2, owned by `composer-chrome.ts`) from the terminal edge: the prompt gutter is `"  " + glyph + " "` (resolved by `resolveComposerAccents`, the one pure owner of the DS-6 glyph morph), and the metadata footline uses the same inset (`QuietZoneLine` indent). Nothing in the composer zone sits at column 0. When adding a chrome line, give it the shared inset; a flush-left line next to inset ones reads as a misalignment, not a choice.
+- **One left rail — transcript included.** Everything shares the composer inset `COMPOSER_INSET_COLS` (2, owned by `composer-chrome.ts`): the composer prompt gutter is `"  " + glyph + " "` (resolved by `resolveComposerAccents`, the one pure owner of the DS-6 glyph morph), the metadata footline uses the same inset (`QuietZoneLine` indent), and — since the V1 aligned-quiet merge (user-approved 2026-07-22) — so does the transcript: past-prompt gutters sit their `›` at column 2 (`user-message.ts`, children width-4), assistant prose and the Thinking label render at paddingX 2 (`assistant-message.ts`), and bash/eval headers, output, and footers sit at paddingX 2 with NO full-width border rules (`execution-shared.ts` builds no `DynamicBorder`; the mode color lives on the `$`/`>>>` header). Nothing sits at column 0. When adding any transcript or chrome line, give it the shared inset; a flush-left line next to inset ones reads as a misalignment, not a choice.
 - **The zone mounts in one order, from one place.** The composer zone's vertical order (working loader, hook status, hairline, air/input/air rows, metadata footline, shortcuts, one bottom-margin row) is a design contract, not incidental `addChild` sequencing. Its single owner is `mountComposerZone(ui, parts)` in `composer-chrome.ts`, which also owns `COMPOSER_BOTTOM_MARGIN_ROWS`; `interactive-mode.ts` only supplies the parts. Never mount a composer-zone row inline in the host: a second mount site is where sandwich and margin regressions come from. Locked by `composer-zone-mount.test.ts`.
 - **Derived tints are wired, not assumed.** `setDetectedTerminalGround` is fed from `terminal.onBackgroundColorChange` in interactive-mode setup (which also replays the current value on subscribe). A ground-relative color that is never fed detection silently degrades to its static fallback forever; if you add a derived-tint consumer, verify the app actually seeds the detection, not just the tests.
 - Empty composer hints `?` for shortcuts and `/` for commands.

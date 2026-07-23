@@ -889,7 +889,7 @@ export class AssistantMessageComponent extends Container {
 			if (content.type === "text" && canonicalizeMessage(content.text)) {
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const trimmed = content.text.trim();
-				const md = new Markdown(trimmed, 1, 0, getMarkdownTheme());
+				const md = new Markdown(trimmed, 2, 0, getMarkdownTheme());
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "text", lastText: trimmed });
@@ -914,11 +914,11 @@ export class AssistantMessageComponent extends Container {
 				// indistinguishable from the answer (user defect #9, 2026-07-22).
 				// Same vocabulary as the hidden-thinking pulse label.
 				if (thinkingIndex === 0) {
-					this.#thinkingLabel = new Text(theme.fg("muted", "Thinking"), 1, 0);
+					this.#thinkingLabel = new Text(theme.fg("muted", "Thinking"), 2, 0);
 					this.#contentContainer.addChild(this.#thinkingLabel);
 				}
 				// Thinking traces in thinkingText color, italic
-				const md = new Markdown(thinkingText, 1, 0, getMarkdownTheme(), {
+				const md = new Markdown(thinkingText, 2, 0, getMarkdownTheme(), {
 					color: (text: string) => theme.fg("thinkingText", text),
 					italic: true,
 				});
