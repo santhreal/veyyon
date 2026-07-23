@@ -9,12 +9,17 @@ import type { Args } from "./args";
  * When you launch from your bare home directory (and pass neither `--cwd` nor
  * `--allow-home`), rooting the session at `$HOME` would make every project-relative
  * scan walk your whole home tree, so the launch relocates to a scratch directory
- * (`~/tmp`, then `/tmp`, then `/var/tmp`, then `os.tmpdir()`).
+ * (`~/tmp`, then `/var/tmp`, then `os.tmpdir()`).
  *
- * This relocation MUST be surfaced, never silent (Law 10): a silent jump to `/tmp`
+ * This relocation MUST be surfaced, never silent (Law 10): a silent jump to `.`
  * is exactly what makes `--cwd` / `/cwd` / `session.workdir` feel broken, because a
  * user who launched "in their project" (home) lands somewhere else with no
  * explanation. The caller announces the returned target to the operator.
+ *
+ * The chain once held `.` between `~/tmp` and `/var/tmp`: it always exists, so
+ * it shadowed every later fallback, and it rooted the session at the RELATIVE
+ * path "." — $HOME with a broken base, the exact state this feature exists to
+ * avoid (set_cwd resolved "." against ".", project discovery walked nothing).
  *
  * @returns the directory relocated to, or `undefined` when no relocation happened.
  */
