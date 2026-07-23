@@ -22,6 +22,12 @@ working (ad-hoc signed, as before) in the meantime.
    - notarizes the binary via `notarytool submit --wait`.
 3. `release_github_verify` re-downloads the published arm64 asset and asserts it
    is **not** ad-hoc, passes `codesign --verify --strict`, and boots cleanly.
+4. `release_github_verify_linux` does the platform-parallel check for the
+   most common `curl | sh` target: it re-downloads the published
+   `veyyon-linux-x64` asset and its `.sha256` sidecar, verifies the checksum the
+   way `install.sh` does, then runs `--version` and `--smoke-test` in a clean
+   `HOME`. `--smoke-test` forces the core native addon to load, so a linux binary
+   that would crash on launch fails the release instead of a user's install.
 
 ### Why the entitlements are mandatory
 
