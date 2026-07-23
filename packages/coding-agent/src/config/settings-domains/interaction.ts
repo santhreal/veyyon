@@ -175,7 +175,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Setup Wizard",
-			description: "Run onboarding on first install and after each major version update",
+			description: "Run onboarding on first install only (updates never re-run it)",
 		},
 	},
 

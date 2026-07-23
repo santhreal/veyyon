@@ -4,7 +4,6 @@ import { runOnboardingSetup } from "@veyyon/coding-agent/commands/setup";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import * as realImportScan from "@veyyon/coding-agent/discovery/import-scan";
-import { setupMajorFromVersion } from "@veyyon/coding-agent/modes/setup-version";
 import {
 	ALL_SCENES,
 	CURRENT_SETUP_VERSION,
@@ -20,7 +19,6 @@ import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wi
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/coding-agent/web/search/types";
-import { version as packageVersion } from "../package.json";
 
 function fakeContextWithConfiguredModel(): InteractiveModeContext {
 	return {
@@ -81,47 +79,56 @@ describe("setup wizard scene selection", () => {
 		expect(scenes.map(scene => scene.id)).toEqual(ALL_SCENES.map(scene => scene.id));
 	});
 
-	it("derives CURRENT_SETUP_VERSION from the app major (automated, no hand-bumped integer)", () => {
-		// The onboarding generation IS the app's major semver, sourced from the
-		// shipped VERSION. A CI version bump to a new major advances the gate with
-		// no code change; nobody maintains a separate integer. Guard both the
-		// derivation and that no scene is stranded above the current major.
-		const appMajor = setupMajorFromVersion(packageVersion);
-		expect(CURRENT_SETUP_VERSION).toBe(appMajor);
-		expect(setupMajorFromVersion("2.4.9")).toBe(2);
-		expect(setupMajorFromVersion("0.9.0")).toBe(0);
-		expect(setupMajorFromVersion("garbage")).toBe(0);
+	it("pins CURRENT_SETUP_VERSION as a fixed generation, not the app version", () => {
+		// The onboarding generation is a FIXED integer, deliberately decoupled from
+		// the app version. This is the core of the first-install-only contract: if
+		// the gate tracked the app version it would advance on a release and
+		// re-onboard the whole base. It stays put so every update leaves onboarded
+		// users alone. Also guard that no scene is stranded above the gate (which
+		// would make it un-runnable) — every shipped scene must be within it.
+		expect(CURRENT_SETUP_VERSION).toBe(1);
 		expect(Math.max(...ALL_SCENES.map(scene => scene.minVersion))).toBeLessThanOrEqual(CURRENT_SETUP_VERSION);
 	});
 
-	it("re-onboards in full only on a MAJOR bump; a minor/patch update runs nothing", async () => {
+	it("never re-onboards after the first install: no update, minor or major, re-fires it", async () => {
 		const scenes = [testScene("a", 1), testScene("b", 1), testScene("c", 1)];
-		// stored 1, still on major 1 (a minor/patch update): no onboarding.
+		// An onboarded user is at the current generation. Because the production
+		// gate never moves (CURRENT_SETUP_VERSION is fixed), no update can push the
+		// stored generation behind it, so onboarding never runs again. Simulate the
+		// two update shapes the app can ship — a same-generation launch, and even a
+		// hypothetical generation ahead — and assert nothing runs in the real case.
 		expect(
-			await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), { isTTY: true, currentVersion: 1 }),
+			await selectSetupScenes(CURRENT_SETUP_VERSION, scenes, fakeContextWithConfiguredModel(), {
+				isTTY: true,
+				currentVersion: CURRENT_SETUP_VERSION,
+			}),
 		).toEqual([]);
-		// stored 1, app moved to major 2: full onboarding (every eligible scene).
-		const afterMajor = await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), {
+		// A fresh install (stored 0, below the fixed generation) is the ONE case
+		// that onboards: every eligible scene runs, exactly once.
+		const firstInstall = await selectSetupScenes(0, scenes, fakeContextWithConfiguredModel(), {
 			isTTY: true,
-			currentVersion: 2,
+			currentVersion: CURRENT_SETUP_VERSION,
 		});
-		expect(afterMajor.map(scene => scene.id)).toEqual(["a", "b", "c"]);
+		expect(firstInstall.map(scene => scene.id)).toEqual(["a", "b", "c"]);
 	});
 
-	it("hides a scene staged for a future major until that major ships", async () => {
+	it("hides a scene staged for a future generation until the gate advances to it", async () => {
+		// The per-scene minVersion floor still works as a staging mechanism, even
+		// though the production gate is fixed: a scene whose floor is above the
+		// current generation is withheld until the gate reaches it.
 		const scenes = [testScene("now", 1), testScene("future", 2)];
-		// Fresh install on major 1: the future-major scene is withheld.
-		const onMajor1 = await selectSetupScenes(0, scenes, fakeContextWithConfiguredModel(), {
+		// At generation 1: the higher-floor scene is withheld.
+		const atGen1 = await selectSetupScenes(0, scenes, fakeContextWithConfiguredModel(), {
 			isTTY: true,
 			currentVersion: 1,
 		});
-		expect(onMajor1.map(scene => scene.id)).toEqual(["now"]);
-		// Once major 2 ships, the staged scene joins the onboarding.
-		const onMajor2 = await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), {
+		expect(atGen1.map(scene => scene.id)).toEqual(["now"]);
+		// If the gate ever advances to generation 2, the staged scene joins in.
+		const atGen2 = await selectSetupScenes(1, scenes, fakeContextWithConfiguredModel(), {
 			isTTY: true,
 			currentVersion: 2,
 		});
-		expect(onMajor2.map(scene => scene.id)).toEqual(["now", "future"]);
+		expect(atGen2.map(scene => scene.id)).toEqual(["now", "future"]);
 	});
 
 	it("runs no scenes at the current setup version", async () => {

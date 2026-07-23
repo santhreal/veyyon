@@ -26,9 +26,9 @@ export interface SetupSceneSelectionOptions {
 	setupWizardEnabled?: boolean;
 	force?: boolean;
 	/**
-	 * The current onboarding generation (app major). Defaults to
-	 * {@link CURRENT_SETUP_VERSION}; injectable so tests can simulate a major
-	 * bump without rebuilding the app version.
+	 * The current onboarding generation. Defaults to
+	 * {@link CURRENT_SETUP_VERSION} (a fixed integer); injectable so tests can
+	 * exercise the generic gate at an arbitrary generation.
 	 */
 	currentVersion?: number;
 }
@@ -42,13 +42,15 @@ function setupSkipEnvEnabled(value: string | undefined): boolean {
 /**
  * Scenes to run for onboarding, or `[]` to skip it.
  *
- * Onboarding runs in full (every eligible scene) only when the stored generation
- * is behind the current app major — a fresh install (stored 0) or a MAJOR update
- * (1.x -> 2.0). A minor/patch update leaves `storedVersion === currentVersion`,
- * so nothing runs. `minVersion` is a per-scene floor: the app major the scene was
- * introduced in, so a scene staged for a future major stays hidden until then.
- * `force` (the `veyyon setup` command) ignores the generation gate but still
- * requires a TTY.
+ * Onboarding runs in full (every eligible scene) only on a FIRST install, where
+ * the stored generation (default 0) is behind the current one
+ * ({@link CURRENT_SETUP_VERSION}, a fixed integer). Once a user has onboarded,
+ * their stored generation is at or above the current one, so every later launch —
+ * including after any update, patch/minor/major — runs nothing. `minVersion` is a
+ * per-scene floor (the generation a scene was introduced in), so a scene staged
+ * for a future generation stays hidden until the gate advances to it. `force`
+ * (the `veyyon setup` command) ignores the generation gate but still requires a
+ * TTY.
  */
 export async function selectSetupScenes(
 	storedVersion: number,
@@ -63,8 +65,9 @@ export async function selectSetupScenes(
 		if (options.resuming) return [];
 		if (setupSkipEnvEnabled(options.skipEnv ?? Bun.env.VEYYON_SKIP_SETUP)) return [];
 		if (options.setupWizardEnabled === false) return [];
-		// Onboard only when the stored generation is behind the current app major.
-		// A minor/patch update (stored === current) never re-onboards.
+		// Onboard only when the stored generation is behind the current one — i.e.
+		// a first install. An onboarded user (stored >= current) never re-onboards,
+		// and because the current generation is fixed, no update moves it.
 		if (storedVersion >= currentVersion) return [];
 	}
 
