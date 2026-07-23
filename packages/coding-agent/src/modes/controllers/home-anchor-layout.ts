@@ -27,22 +27,13 @@ export class HomeAnchorLayout {
 	 * card is up so the hero sits vertically centred (UI-2). Collapses to zero
 	 * on dismissal or the first conversation turn. */
 	readonly topFill: Spacer = new Spacer(0);
-	/** Flexible spacer that pushes the composer to the viewport bottom on the
-	 * home screen (empty transcript). Once a conversation fills the viewport
-	 * this collapses to zero and the anchor latches off for good. */
+	/** Flexible spacer between the transcript and the composer on the home
+	 * screen (empty transcript), pinning the composer to the viewport bottom
+	 * while the screen is at rest. Collapses to zero once a conversation
+	 * routes the slack above the transcript. */
 	readonly bottomFill: Spacer = new Spacer(0);
-	// True until a real conversation has grown tall enough to fill the
-	// viewport. Warnings and notices in the transcript do not end the home
-	// screen, so the composer stays bottom-anchored until the user actually
-	// starts a conversation.
-	#active = true;
 
 	constructor(private readonly port: HomeAnchorPort) {}
-
-	/** True while the home-screen anchor still sizes the fills. */
-	get active(): boolean {
-		return this.#active;
-	}
 
 	/** Rows the centring top margin currently occupies (the welcome port). */
 	topFillRows(width: number): number {
@@ -62,15 +53,9 @@ export class HomeAnchorLayout {
 	 * harmless.
 	 */
 	sync(remeasure = false): void {
-		// Only anchor on the launch/home screen (an empty transcript). The anchor
-		// deliberately outlives the welcome card: the first keystroke dismisses
-		// the card but the composer must stay at the viewport bottom until a real
-		// conversation turn scrolls in.
-		if (!this.#active) {
-			this.topFill.setLines(0);
-			this.bottomFill.setLines(0);
-			return;
-		}
+		// The anchor deliberately outlives the welcome card: the first keystroke
+		// dismisses the card but the composer must stay at the viewport bottom
+		// in every conversation state, so the fills are recomputed every frame.
 		const ui = this.port.ui;
 		const width = ui.terminal.columns;
 		const rows = ui.terminal.rows;
@@ -102,18 +87,6 @@ export class HomeAnchorLayout {
 		}
 
 		const slack = Math.max(0, rows - contentExclFill);
-		// Latch the anchor off for good once a real conversation has grown tall
-		// enough to fill the viewport. Past that point output scrolls into native
-		// scrollback (composedFrameRows can then shrink again), and re-anchoring
-		// would bounce the composer back up mid-stream. The home screen itself (an
-		// empty transcript) never latches off, even on a terminal so short the hero
-		// alone fills it — there is no conversation to scroll yet.
-		if (slack <= 0 && this.port.transcriptChildCount() > 0) {
-			this.#active = false;
-			if (currentTopFill !== 0) this.topFill.setLines(0);
-			if (currentFill !== 0) this.bottomFill.setLines(0);
-			return;
-		}
 		// Slack routing is the whole design:
 		// - Hero up: 2/5 above the hero (optically centred), the rest below so
 		//   the composer sits on the viewport bottom.
@@ -121,11 +94,17 @@ export class HomeAnchorLayout {
 		//   viewport bottom while the screen is at rest.
 		// - Conversation started: ALL slack ABOVE the transcript, so the
 		//   conversation hugs the composer at the bottom like any chat surface.
-		//   The old between-content fill painted the prompt at the top and the
-		//   loader at the bottom with a void of blank rows between them; when
-		//   the reply landed, those committed blank rows overflowed the screen
-		//   and pushed the prompt into scrollback while the viewport was mostly
-		//   empty (user screenshots, 2026-07-22).
+		//
+		// No latch: the routing is recomputed every frame, so a transient tall
+		// frame (a streaming preview spike) followed by a collapse can never
+		// strand the composer mid-screen — hug-bottom puts the composer on the
+		// bottom edge whether slack is positive (fill pushes it there) or zero
+		// (the frame reaches it naturally). The old between-content fill
+		// painted the prompt at the top and the loader at the bottom with a
+		// void of blank rows between them; when the reply landed, those
+		// committed blank rows overflowed the screen and pushed the prompt
+		// into scrollback while the viewport was mostly empty (user
+		// screenshots, 2026-07-22).
 		const conversation = this.port.transcriptChildCount() > 0;
 		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);
@@ -140,7 +119,6 @@ export class HomeAnchorLayout {
 	 * fill actually changed, so the steady state costs nothing.
 	 */
 	onFrameComposed(): void {
-		if (!this.#active) return;
 		const width = this.port.ui.terminal.columns;
 		const before = this.topFill.render(width).length + this.bottomFill.render(width).length;
 		this.sync();
