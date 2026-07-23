@@ -1,0 +1,193 @@
+{
+	"cases": [
+		{
+			"id": "gallery-states-undefined",
+			"contract": "Omitting gallery states yields undefined",
+			"surface": "parse-gallery-states",
+			"tags": ["boundary"],
+			"input": {},
+			"expect": { "states": null, "throws": false }
+		},
+		{
+			"id": "gallery-states-empty",
+			"contract": "An empty states array yields undefined",
+			"surface": "parse-gallery-states",
+			"tags": ["boundary"],
+			"input": { "states": [] },
+			"expect": { "states": null, "throws": false }
+		},
+		{
+			"id": "gallery-states-canonical",
+			"contract": "Canonical streaming success error tokens are accepted in order",
+			"surface": "parse-gallery-states",
+			"tags": ["positive"],
+			"input": { "states": ["streaming", "success", "error"] },
+			"expect": { "states": ["streaming", "success", "error"], "throws": false }
+		},
+		{
+			"id": "gallery-states-aliases",
+			"contract": "done failed in progress and streaming args aliases normalize to canonical tokens",
+			"surface": "parse-gallery-states",
+			"tags": ["positive", "regression"],
+			"input": { "states": ["done", "failed", "in progress", "streaming args"] },
+			"expect": { "states": ["success", "error", "progress", "streaming"], "throws": false }
+		},
+		{
+			"id": "gallery-states-invalid-throws",
+			"contract": "An unknown gallery state throws listing the valid values",
+			"surface": "parse-gallery-states",
+			"tags": ["adversarial", "negative"],
+			"input": { "states": ["nope"] },
+			"expect": { "throws": true, "errorContains": "Invalid --state 'nope'" }
+		},
+		{
+			"id": "json-payload-object",
+			"contract": "parseJsonPayload returns a top-level JSON object",
+			"surface": "parse-json-payload",
+			"tags": ["positive"],
+			"input": { "text": "{\"a\":1}" },
+			"expect": { "value": { "a": 1 }, "throws": false }
+		},
+		{
+			"id": "json-payload-embedded",
+			"contract": "parseJsonPayload extracts the first embedded JSON object from surrounding text",
+			"surface": "parse-json-payload",
+			"tags": ["positive", "adversarial"],
+			"input": { "text": "x {\"a\":1} y" },
+			"expect": { "value": { "a": 1 }, "throws": false }
+		},
+		{
+			"id": "json-payload-missing-throws",
+			"contract": "Text with no JSON object throws No JSON payload found",
+			"surface": "parse-json-payload",
+			"tags": ["negative", "adversarial"],
+			"input": { "text": "nope" },
+			"expect": { "throws": true, "errorContains": "No JSON payload found" }
+		},
+		{
+			"id": "search-date-iso",
+			"contract": "An ISO date-only bound passes through unchanged",
+			"surface": "parse-search-date-bound",
+			"tags": ["positive"],
+			"input": { "raw": "2024-01-01", "now": "2024-06-15T12:00:00.000Z" },
+			"expect": { "value": "2024-01-01", "throws": false }
+		},
+		{
+			"id": "search-date-relative-7d",
+			"contract": "A 7d relative bound subtracts seven days from now as YYYY-MM-DD",
+			"surface": "parse-search-date-bound",
+			"tags": ["positive"],
+			"input": { "raw": "7d", "now": "2024-06-15T12:00:00.000Z" },
+			"expect": { "value": "2024-06-08", "throws": false }
+		},
+		{
+			"id": "search-date-datetime-strips-ms",
+			"contract": "An ISO datetime bound strips milliseconds for GitHub qualifier precision",
+			"surface": "parse-search-date-bound",
+			"tags": ["boundary"],
+			"input": { "raw": "2024-01-01T12:30:45.123Z", "now": "2024-06-15T12:00:00.000Z" },
+			"expect": { "value": "2024-01-01T12:30:45Z", "throws": false }
+		},
+		{
+			"id": "search-date-bogus-throws",
+			"contract": "A non-date non-duration bound throws the expected shape message",
+			"surface": "parse-search-date-bound",
+			"tags": ["adversarial", "negative"],
+			"input": { "raw": "bogus", "now": "2024-06-15T12:00:00.000Z" },
+			"expect": { "throws": true, "errorContains": "invalid date bound" }
+		},
+		{
+			"id": "search-date-empty-throws",
+			"contract": "An empty date bound throws must not be empty",
+			"surface": "parse-search-date-bound",
+			"tags": ["boundary", "negative"],
+			"input": { "raw": "  ", "now": "2024-06-15T12:00:00.000Z" },
+			"expect": { "throws": true, "errorContains": "must not be empty" }
+		},
+		{
+			"id": "search-date-qual-since",
+			"contract": "buildSearchDateQualifier with since only emits field:>=date",
+			"surface": "build-search-date-qualifier",
+			"tags": ["positive"],
+			"input": {
+				"field": "created",
+				"since": "7d",
+				"now": "2024-06-15T12:00:00.000Z"
+			},
+			"expect": { "qualifier": "created:>=2024-06-08" }
+		},
+		{
+			"id": "search-date-qual-until",
+			"contract": "buildSearchDateQualifier with until only emits field:<=date",
+			"surface": "build-search-date-qualifier",
+			"tags": ["positive"],
+			"input": {
+				"field": "updated",
+				"until": "2024-01-01",
+				"now": "2024-06-15T12:00:00.000Z"
+			},
+			"expect": { "qualifier": "updated:<=2024-01-01" }
+		},
+		{
+			"id": "search-date-qual-range",
+			"contract": "buildSearchDateQualifier with both bounds emits a .. range",
+			"surface": "build-search-date-qualifier",
+			"tags": ["positive"],
+			"input": {
+				"field": "created",
+				"since": "2024-01-01",
+				"until": "2024-02-01",
+				"now": "2024-06-15T12:00:00.000Z"
+			},
+			"expect": { "qualifier": "created:2024-01-01..2024-02-01" }
+		},
+		{
+			"id": "search-date-qual-none",
+			"contract": "buildSearchDateQualifier with neither bound returns null",
+			"surface": "build-search-date-qualifier",
+			"tags": ["boundary", "negative"],
+			"input": { "field": "created", "now": "2024-06-15T12:00:00.000Z" },
+			"expect": { "qualifier": null }
+		},
+		{
+			"id": "lang-typescript",
+			"contract": "detectLanguageId maps .ts to typescript",
+			"surface": "detect-language-id",
+			"tags": ["positive"],
+			"input": { "filePath": "a.ts" },
+			"expect": { "id": "typescript" }
+		},
+		{
+			"id": "lang-python",
+			"contract": "detectLanguageId maps .py to python",
+			"surface": "detect-language-id",
+			"tags": ["positive"],
+			"input": { "filePath": "a.py" },
+			"expect": { "id": "python" }
+		},
+		{
+			"id": "lang-unknown-plaintext",
+			"contract": "An unknown extension maps to plaintext",
+			"surface": "detect-language-id",
+			"tags": ["boundary", "negative"],
+			"input": { "filePath": "a.unknown" },
+			"expect": { "id": "plaintext" }
+		},
+		{
+			"id": "lang-makefile",
+			"contract": "A Makefile basename maps to makefile",
+			"surface": "detect-language-id",
+			"tags": ["boundary"],
+			"input": { "filePath": "Makefile" },
+			"expect": { "id": "makefile" }
+		},
+		{
+			"id": "lang-go",
+			"contract": "detectLanguageId maps .go to go",
+			"surface": "detect-language-id",
+			"tags": ["positive"],
+			"input": { "filePath": "foo.go" },
+			"expect": { "id": "go" }
+		}
+	]
+}

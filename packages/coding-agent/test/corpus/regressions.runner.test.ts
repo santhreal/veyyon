@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseGalleryStates } from "@veyyon/coding-agent/cli/gallery-cli";
 import { parseUnreleasedSection } from "@veyyon/coding-agent/commit/changelog/parse";
 import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git/diff";
+import { parseJsonPayload } from "@veyyon/coding-agent/commit/utils/analysis";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	getDefault,
@@ -48,7 +50,7 @@ import {
 } from "@veyyon/coding-agent/tools/cwd-boundary";
 import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/conflict-detect";
 import { formatShortSha } from "@veyyon/coding-agent/tools/gh-format";
-import { parsePositiveDecimalInt, resolveTailLimit } from "@veyyon/coding-agent/tools/gh";
+import { buildSearchDateQualifier, parsePositiveDecimalInt, parseSearchDateBound, resolveTailLimit } from "@veyyon/coding-agent/tools/gh";
 import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
 import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/job";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
@@ -83,6 +85,7 @@ import {
 	type ToolWithTimeout,
 } from "@veyyon/coding-agent/tools/tool-timeouts";
 import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
+import { detectLanguageId } from "@veyyon/coding-agent/utils/lang-from-path";
 import { formatIsoDate, formatMediaDuration } from "@veyyon/coding-agent/web/scrapers/types";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
 import type { CorpusCase } from "../helpers/corpus-loader";
@@ -867,6 +870,88 @@ function runExpandPath(c: CorpusCase): void {
 	expect(expandPath(input.filePath)).toBe(exp.path);
 }
 
+function runParseGalleryStates(c: CorpusCase): void {
+	const input = c.input as { states?: string[] };
+	const exp = c.expect as { throws: boolean; errorContains?: string; states?: string[] | null };
+	let threw: Error | null = null;
+	let states: ReturnType<typeof parseGalleryStates>;
+	try {
+		states = parseGalleryStates(input.states);
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "")).toContain(exp.errorContains);
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(nullishToNull(states)).toEqual(exp.states ?? null);
+}
+
+function runParseJsonPayload(c: CorpusCase): void {
+	const input = c.input as { text: string };
+	const exp = c.expect as { throws: boolean; errorContains?: string; value?: unknown };
+	let threw: Error | null = null;
+	let value: unknown;
+	try {
+		value = parseJsonPayload(input.text);
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "")).toContain(exp.errorContains);
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(value).toEqual(exp.value);
+}
+
+function runParseSearchDateBound(c: CorpusCase): void {
+	const input = c.input as { raw: string; now: string };
+	const exp = c.expect as { throws: boolean; errorContains?: string; value?: string };
+	let threw: Error | null = null;
+	let value: string | undefined;
+	try {
+		value = parseSearchDateBound(input.raw, new Date(input.now));
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "").toLowerCase()).toContain(exp.errorContains.toLowerCase());
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(value).toBe(exp.value);
+}
+
+function runBuildSearchDateQualifier(c: CorpusCase): void {
+	const input = c.input as {
+		field: string;
+		since?: string;
+		until?: string;
+		now: string;
+	};
+	const exp = c.expect as { qualifier: string | null };
+	expect(
+		nullishToNull(buildSearchDateQualifier(input.field, input.since, input.until, new Date(input.now))),
+	).toBe(exp.qualifier);
+}
+
+function runDetectLanguageId(c: CorpusCase): void {
+	const input = c.input as { filePath: string };
+	const exp = c.expect as { id: string };
+	expect(detectLanguageId(input.filePath)).toBe(exp.id);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -1104,6 +1189,21 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "expand-path":
 			runExpandPath(c);
+			return;
+		case "parse-gallery-states":
+			runParseGalleryStates(c);
+			return;
+		case "parse-json-payload":
+			runParseJsonPayload(c);
+			return;
+		case "parse-search-date-bound":
+			runParseSearchDateBound(c);
+			return;
+		case "build-search-date-qualifier":
+			runBuildSearchDateQualifier(c);
+			return;
+		case "detect-language-id":
+			runDetectLanguageId(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);
