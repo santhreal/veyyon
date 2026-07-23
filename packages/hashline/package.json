@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/hashline",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Hashline: a compact, line-anchored patch language and applier. Pluggable FS/IO so it works over disk, in-memory, or any custom backend.",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
