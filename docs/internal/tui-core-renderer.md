@@ -364,4 +364,37 @@ replay/reduce tooling).
 - [ ] New width path? Routed through the shared native engine, clamped (never
       thrown) in the hot path.
 
+## 11. Scroll isolation (virtual scroll over the append-only engine)
+
+Native scrollback scrolling moves the whole window, composer included, so
+reading history used to scroll the prompt off screen. Scroll isolation
+(`TUI.setScrollIsolation`, surfaced as `tui.scrollIsolation`, default on)
+changes the model to the opencode/grok-build one: the wheel scrolls the
+transcript region while the pinned footer stays live at the viewport
+bottom.
+
+- **Pinned footer**: the host declares the last N root children as the
+  footer (`setPinnedFooterChildCount`; the coding-agent passes the composer
+  zone count returned by `mountComposerZone`). The engine derives the
+  footer's row span from the compose segment ledger after every frame, so a
+  zone height change never needs a host-side sync and the zone is never
+  re-rendered for measurement (render side effects stay single-counted).
+- **Frozen view**: wheel-up anchors `#virtualScrollTop` (absolute frame
+  row). The window becomes `frame[viewTop, viewTop + height − footerRows)`
+  plus the live footer slice `frame[L − footerRows, L)`. Commits freeze
+  (`chunkTo = committedRows`) because a chunk's scroll would tear the
+  frozen view; the held rows backfill exactly once through the ordinary
+  seam rewrite on resume.
+- **Resume conditions**: wheel-down to the live tail, `scrollToLiveTail()`
+  (the host calls it on submit), any resize or full paint, and visible
+  overlays (overlays own the window while shown).
+- **Input**: the engine captures SGR mouse reports with 1000h+1006h (button
+  + extended coordinates), never 1003h, so idle pointer motion does not
+  flood the input queue. Non-wheel reports are swallowed while isolation is
+  active so clicks never leak raw SGR bytes into the focused component. The
+  tracking set is re-armed after alt-screen exits and torn down on stop.
+- **Tradeoff**: with the mouse captured, plain drag-select becomes
+  Shift+drag (the standard convention in mouse-capturing TUIs). The setting
+  documents this and can be switched off to return to native scrollback.
+
 *Verified against `d3e3db30` on 2026-07-23.*
