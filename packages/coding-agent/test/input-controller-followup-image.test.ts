@@ -59,7 +59,7 @@ function createContext(opts: {
 
 	const ctx = {
 		editor,
-		ui: { requestRender },
+		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		skillCommands: new Map<string, string>(),
 		session: {
 			isStreaming: opts.isStreaming,

@@ -23,7 +23,7 @@ function createContext(options?: { threshold?: number; choice?: string; artifact
 	const showHookSelector = vi.fn(async (_title: string, _options: unknown, _dialog?: unknown) => options?.choice);
 	const ctx = {
 		editor: { insertPaste, insertText, pasteText } as unknown as InteractiveModeContext["editor"],
-		ui: { requestRender } as unknown as InteractiveModeContext["ui"],
+		ui: { requestRender, scrollToLiveTail: vi.fn() } as unknown as InteractiveModeContext["ui"],
 		settings: { get: () => options?.threshold ?? 100 } as unknown as InteractiveModeContext["settings"],
 		sessionManager: {
 			getCwd: () => process.cwd(),

@@ -59,7 +59,7 @@ function makeCtx(isStreaming = false) {
 			display?: boolean;
 			streamingBehavior?: "steer" | "followUp";
 		}) => ({ ...input, cancelled: false, started: false }),
-		ui: { requestRender: vi.fn() },
+		ui: { requestRender: vi.fn(), scrollToLiveTail: vi.fn() },
 		compactionQueuedMessages: [],
 		withLocalSubmission: async (_text: string, fn: () => Promise<unknown>) => fn(),
 		updatePendingMessagesDisplay: vi.fn(),

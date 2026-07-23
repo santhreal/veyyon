@@ -92,7 +92,7 @@ function createStubInputControllerContext(opts: {
 	const queueCompactionMessage = vi.fn((_text: string, _mode: "steer" | "followUp", _images?: ImageContent[]) => {});
 	const ctx = {
 		editor,
-		ui: { requestRender },
+		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		skillCommands: opts.skillCommands,
 		session: {
 			isStreaming: opts.isStreaming,
@@ -667,7 +667,7 @@ function createStubInteractiveModeContextForUiHelpers(session: AgentSession) {
 
 	const ctx = {
 		editor,
-		ui: { requestRender },
+		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		pendingMessagesContainer,
 		session,
 		viewSession: session,
@@ -767,7 +767,7 @@ function createEventControllerFixture() {
 	const ctx = {
 		isInitialized: true,
 		init: vi.fn(async () => {}),
-		ui: { requestRender },
+		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		statusLine: { invalidate: vi.fn() },
 		updateEditorTopBorder: vi.fn(),
 		addMessageToChat,

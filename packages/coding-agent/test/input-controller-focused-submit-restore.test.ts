@@ -42,7 +42,7 @@ function createContext(opts: { pendingImages: ImageContent[]; pendingImageLinks?
 
 	const ctx = {
 		editor,
-		ui: { requestRender },
+		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		session: { isStreaming: true, isCompacting: false, extensionRunner: undefined, queuedMessageCount: 0 },
 		viewSession: { isStreaming: true, queuedMessageCount: 0, prompt, abort: vi.fn(async () => {}) },
 		focusedAgentId: "Worker",

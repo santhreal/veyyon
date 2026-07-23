@@ -31,7 +31,7 @@ function createContext(options?: {
 				options?.pendingImages?.map(() => undefined) ??
 				([] as (string | undefined)[]),
 		},
-		ui: { requestRender },
+		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		session: {
 			isStreaming: true,
 			isCompacting: false,

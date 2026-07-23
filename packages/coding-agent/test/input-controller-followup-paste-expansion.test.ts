@@ -37,7 +37,7 @@ describe("InputController.handleFollowUp paste-marker expansion", () => {
 					this.setText("");
 				},
 			},
-			ui: { requestRender: vi.fn() },
+			ui: { requestRender: vi.fn(), scrollToLiveTail: vi.fn() },
 			skillCommands: new Map<string, string>(),
 			session: {
 				isStreaming: true,
@@ -90,7 +90,7 @@ describe("InputController.handleFollowUp paste-marker expansion", () => {
 					this.setText("");
 				},
 			},
-			ui: { requestRender: vi.fn() },
+			ui: { requestRender: vi.fn(), scrollToLiveTail: vi.fn() },
 			skillCommands: new Map<string, string>(),
 			session: {
 				isStreaming: false,

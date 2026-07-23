@@ -79,7 +79,7 @@ function createContext(sessionOverride?: InteractiveModeContext["session"]) {
 
 	const ctx = {
 		editor: editor as unknown as InteractiveModeContext["editor"],
-		ui: { requestRender } as unknown as InteractiveModeContext["ui"],
+		ui: { requestRender, scrollToLiveTail: vi.fn() } as unknown as InteractiveModeContext["ui"],
 		session,
 		sessionManager: { getSessionName: () => "named-session" } as InteractiveModeContext["sessionManager"],
 		compactionQueuedMessages: [] as InteractiveModeContext["compactionQueuedMessages"],

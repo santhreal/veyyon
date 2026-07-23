@@ -17,7 +17,7 @@ function createContext(options?: { focused?: { pasteText(text: string): void } }
 	const showStatus = vi.fn();
 	const ctx = {
 		editor: { pasteText, insertText } as unknown as InteractiveModeContext["editor"],
-		ui: { requestRender, getFocused: () => options?.focused ?? null } as unknown as InteractiveModeContext["ui"],
+		ui: { requestRender, scrollToLiveTail: vi.fn(), getFocused: () => options?.focused ?? null } as unknown as InteractiveModeContext["ui"],
 		showStatus,
 		// Required members of the context. Omitting them used to be tolerated by
 		// `?.()` calls in the controller, which meant production silently skipped

@@ -42,7 +42,7 @@ function createContext() {
 
 	const ctx = {
 		editor: editor as unknown as InteractiveModeContext["editor"],
-		ui: { requestRender: vi.fn() } as unknown as InteractiveModeContext["ui"],
+		ui: { requestRender: vi.fn(), scrollToLiveTail: vi.fn() } as unknown as InteractiveModeContext["ui"],
 		session: {
 			isStreaming: false,
 			isCompacting: false,
