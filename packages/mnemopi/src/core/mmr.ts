@@ -55,9 +55,12 @@ export function mmrRerank<T extends MmrResult>(
 		if (chosen !== undefined) selected.push(chosen);
 	}
 
-	if (selected.length < limit) {
-		selected.push(...remaining.slice(0, limit - selected.length));
-	}
-
+	// No top-up from `remaining` is needed here: the loop above exits only when
+	// `remaining` is empty or `selected` has reached `limit`. Every iteration
+	// splices exactly one entry out of `remaining`, so by the time `selected`
+	// could still be short of `limit`, `remaining` is already drained. A tail
+	// `remaining.slice(...)` would therefore always be empty — the earlier form
+	// that spread it in was dead code. `selected.length` is min(defined results,
+	// limit); undefined candidates are dropped rather than padding the result.
 	return selected;
 }
