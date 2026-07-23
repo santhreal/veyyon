@@ -2400,6 +2400,9 @@ export class TUI extends Container {
 	 * currently visible tail; walking down to the tail resumes following. */
 	#handleIsolationWheel(direction: -1 | 1): void {
 		if (direction === -1) {
+			// Nothing above the live window to scroll to (short frame): stay
+			// following instead of entering a frozen state with zero new rows.
+			if (this.#windowTopRow === 0 && this.#virtualScrollTop === null) return;
 			this.#virtualScrollTop = Math.max(0, (this.#virtualScrollTop ?? this.#windowTopRow) - TUI.#WHEEL_SCROLL_ROWS);
 		} else if (this.#virtualScrollTop !== null) {
 			const next = this.#virtualScrollTop + TUI.#WHEEL_SCROLL_ROWS;
