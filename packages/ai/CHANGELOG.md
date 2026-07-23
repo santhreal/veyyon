@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed Kimi usage reporting returning empty on a first-ever launch. The device-id file the request headers depend on is now written after its parent directory is created, so a config directory that does not exist yet surfaces the real error instead of being swallowed as "usage unavailable".
+
 ## [16.5.2] - 2026-07-14
 
 ### Added
