@@ -319,7 +319,9 @@ export class AssistantMessageComponent extends Container {
 
 	override render(width: number): readonly string[] {
 		this.#lastRenderWidth = width;
-		const rows = super.render(width);
+		// V3 turn-headers: a micro-label names the speaker, then one row of air.
+		const header = ` ${theme.fg("dim", "─╴")}${theme.fg("borderAccent", "●")} ${theme.fg("dim", "veyyon")}`;
+		const rows = [header, "", ...super.render(width)];
 		// The follow's liquid glow: while this block is actively streaming, the
 		// last non-empty row's trailing characters grade up to the accent at the
 		// newest edge with a sheen band that sweeps over time (see follow.ts).

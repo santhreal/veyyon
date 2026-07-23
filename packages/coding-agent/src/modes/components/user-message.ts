@@ -64,7 +64,7 @@ export class UserMessageComponent extends Container {
 		if (this.#zoneSource === lines && this.#zoneLines !== undefined) {
 			return this.#zoneLines;
 		}
-		const gutter = ` ${theme.fg("borderAccent", "›")} `;
+		const gutter = ` ${theme.fg("dim", "›")} `;
 		let gutterPlaced = false;
 		const wrapped = lines.map(line => {
 			// ANSI-aware blankness: padding rows carry color codes, so a raw
@@ -75,6 +75,8 @@ export class UserMessageComponent extends Container {
 			}
 			return line.length > 0 ? `   ${line}` : line;
 		});
+		// V3 turn-headers: a micro-label names the speaker, then one row of air.
+		wrapped.unshift(` ${theme.fg("dim", "─╴")}${theme.fg("dim", "you")}`, "");
 		wrapped[0] = OSC133_ZONE_START + wrapped[0];
 		wrapped[wrapped.length - 1] = wrapped[wrapped.length - 1] + OSC133_ZONE_END;
 		this.#zoneSource = lines;
