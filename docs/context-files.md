@@ -21,11 +21,11 @@ The native provider is the recommended format for new projects. It reads from yo
 
 | File | Scope | Behavior |
 |---|---|---|
-| `~/.veyyon/profiles/default/agent/AGENTS.md` | User | User-level context for every session unless the `native` provider is disabled. |
+| `~/.veyyon/AGENTS.md` | Global User | Global cross-profile context for every session across all profiles. |
+| `~/.veyyon/profiles/<profile>/...` | Profile User | Active profile context. Scanned in descending priority order (first match wins; exactly 1 file loaded per profile):<br>1. `~/.veyyon/profiles/<profile>/agent/AGENTS.md` (Highest)<br>2. `~/.veyyon/profiles/<profile>/AGENTS.md`<br>3. `~/.veyyon/profiles/<profile>/agent/agent.md`<br>4. `~/.veyyon/profiles/<profile>/agent.md` (Lowest) |
 | `<ancestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and uses the **nearest** non-empty `.veyyon/AGENTS.md`. Farther native project files are not also included. |
-| `~/.veyyon/profiles/default/agent/RULES.md` | User | User-level sticky rule content. Loaded as an always-apply rule, not as a context file. |
+| `~/.veyyon/profiles/<profile>/agent/RULES.md` | User | User-level sticky rule content. Loaded as an always-apply rule, not as a context file. |
 | `<ancestor>/.veyyon/RULES.md` | Project | Project sticky rule content. Same nearest-ancestor walk-up as above. Loaded as an always-apply rule. |
-
 Two details matter:
 
 - **Walk-up to the repository root.** Discovery starts in the current working directory and climbs through each ancestor up to the repository root, stopping at the first ancestor that has a usable `.veyyon/` directory. The *nearest* match wins; ancestors above it are not loaded as native context.

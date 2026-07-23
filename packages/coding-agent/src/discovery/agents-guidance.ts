@@ -40,16 +40,22 @@ const GUIDANCE_CLOSE = "veyyon:end -->";
  * visible to whoever edits the raw file, and stripped before load.
  */
 export const GLOBAL_AGENTS_GUIDANCE = `${GUIDANCE_OPEN}
-This is your GLOBAL AGENTS.md. Instructions you write here apply to EVERY
-profile.
+# GLOBAL CROSS-PROFILE AGENTS.md
 
-Put profile-specific instructions in that profile's own AGENTS.md instead
-(~/.veyyon/profiles/<name>/agent/AGENTS.md), so the same guidance is not
-duplicated across profiles. Keep this file for rules that should hold
-everywhere.
+Instructions written here apply to EVERY profile across all workspaces.
 
-veyyon strips this note before anything is sent to the model. It is guidance
-for you, the human editing this file, not an instruction for the agent.
+DO NOT DUPLICATE INSTRUCTIONS BETWEEN THIS GLOBAL FILE AND PER-PROFILE FILES.
+
+Instruction Layers (Only 2 user-level layers exist):
+1. Global (\`~/.veyyon/AGENTS.md\`): Rules that hold across ALL profiles.
+2. Active Profile (\`~/.veyyon/profiles/<profile_name>/\`): Profile-specific rules.
+   Scanned in descending priority order (first match wins, zero per-profile duplication):
+   - ~/.veyyon/profiles/<profile_name>/agent/AGENTS.md (Highest)
+   - ~/.veyyon/profiles/<profile_name>/AGENTS.md
+   - ~/.veyyon/profiles/<profile_name>/agent/agent.md
+   - ~/.veyyon/profiles/<profile_name>/agent.md (Lowest)
+
+(Veyyon strips this guidance header automatically before sending to the model.)
 ${GUIDANCE_CLOSE}
 `;
 
@@ -57,14 +63,19 @@ ${GUIDANCE_CLOSE}
  * Header seeded into a freshly created per-profile `AGENTS.md`.
  */
 export const PROFILE_AGENTS_GUIDANCE = `${GUIDANCE_OPEN}
-This is a PROFILE-SPECIFIC AGENTS.md. Instructions you write here apply only to
-this profile.
+# PROFILE-SPECIFIC AGENTS.md
 
-Put rules that should hold across every profile in the global file instead
-(~/.veyyon/AGENTS.md), so the same guidance is not duplicated across profiles.
+Instructions written here apply ONLY to this active profile.
 
-veyyon strips this note before anything is sent to the model. It is guidance
-for you, the human editing this file, not an instruction for the agent.
+DO NOT DUPLICATE INSTRUCTIONS BETWEEN THIS PROFILE FILE AND THE GLOBAL FILE (~/.veyyon/AGENTS.md).
+
+Priority Ladder (First match wins; only 1 file is loaded per profile):
+1. ~/.veyyon/profiles/<profile_name>/agent/AGENTS.md (Highest)
+2. ~/.veyyon/profiles/<profile_name>/AGENTS.md
+3. ~/.veyyon/profiles/<profile_name>/agent/agent.md
+4. ~/.veyyon/profiles/<profile_name>/agent.md (Lowest)
+
+(Veyyon strips this guidance header automatically before sending to the model.)
 ${GUIDANCE_CLOSE}
 `;
 
@@ -101,7 +112,19 @@ export function getGlobalAgentsPath(): string {
 	return path.join(getGlobalConfigRootDir(), "AGENTS.md");
 }
 
-/** Absolute path of the active profile's AGENTS.md (`<agentDir>/AGENTS.md`). */
+/** Candidate paths for the active profile's instruction file (AGENTS.md / agent.md). */
+export function getProfileAgentsCandidates(): string[] {
+	const agentDir = getAgentDir();
+	const profileDir = path.dirname(agentDir);
+	return [
+		path.join(agentDir, "AGENTS.md"),
+		path.join(profileDir, "AGENTS.md"),
+		path.join(agentDir, "agent.md"),
+		path.join(profileDir, "agent.md"),
+	];
+}
+
+/** Absolute path of the active profile's primary AGENTS.md (`<agentDir>/AGENTS.md`). */
 export function getProfileAgentsPath(): string {
 	return path.join(getAgentDir(), "AGENTS.md");
 }

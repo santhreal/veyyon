@@ -25,7 +25,7 @@ import { type SystemPrompt, systemPromptCapability } from "../capability/system-
 import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
-import { getGlobalAgentsPath, getProfileAgentsPath, stripManagedGuidance } from "./agents-guidance";
+import { getGlobalAgentsPath, getProfileAgentsCandidates, getProfileAgentsPath, stripManagedGuidance } from "./agents-guidance";
 import {
 	buildRuleFromMarkdown,
 	createSourceMeta,
@@ -903,19 +903,20 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 		}
 	}
 
-	// Layer 2: the active profile's own AGENTS.md. Same header strip so a profile
-	// seeded with the guidance note contributes nothing until the user edits it.
-	const userPath = getProfileAgentsPath();
-	const userContent = await readFile(userPath);
-	if (userContent) {
-		const stripped = stripManagedGuidance(userContent);
-		if (stripped.trim().length > 0) {
-			items.push({
-				path: userPath,
-				content: stripped,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-			});
+	// Layer 2: the active profile's own AGENTS.md or agent.md candidates.
+	for (const candidatePath of getProfileAgentsCandidates()) {
+		const userContent = await readFile(candidatePath);
+		if (userContent) {
+			const stripped = stripManagedGuidance(userContent);
+			if (stripped.trim().length > 0) {
+				items.push({
+					path: candidatePath,
+					content: stripped,
+					level: "user",
+					_source: createSourceMeta(PROVIDER_ID, candidatePath, "user"),
+				});
+				break;
+			}
 		}
 	}
 

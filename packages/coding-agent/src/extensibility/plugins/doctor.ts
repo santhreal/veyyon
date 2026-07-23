@@ -1,39 +1,56 @@
 import { $which } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
+import { discoverAuthStorage } from "../../sdk";
 import type { DoctorCheck } from "./types";
 
 export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	const checks: DoctorCheck[] = [];
 
-	// Check external tools
-	const tools = [
-		{ name: "sd", description: "Find-replace" },
-		{ name: "sg", description: "AST-grep" },
+	// 1. Check core CLI binaries on PATH
+	const binaries = [
+		{ name: "vey", description: "Veyyon CLI alias" },
+		{ name: "veyyon", description: "Veyyon binary" },
 		{ name: "git", description: "Version control" },
 	];
 
-	for (const tool of tools) {
-		const path = $which(tool.name);
+	for (const bin of binaries) {
+		const path = $which(bin.name);
 		checks.push({
-			name: tool.name,
-			status: path ? "ok" : "warning",
-			message: path ? `Found at ${path}` : `${tool.description} not found - some features may be limited`,
+			name: bin.name,
+			status: path ? "ok" : bin.name === "git" ? "error" : "warning",
+			message: path ? `Found at ${path}` : `${bin.description} not found on PATH`,
 		});
 	}
 
-	// Check API keys
-	const apiKeys = [
-		{ name: "ANTHROPIC_API_KEY", description: "Anthropic API" },
-		{ name: "OPENAI_API_KEY", description: "OpenAI API" },
-		{ name: "EXA_API_KEY", description: "Exa search" },
-	];
+	// 2. Check provider authentication (OAuth storage + Env API keys)
+	try {
+		const authStorage = await discoverAuthStorage();
+		const providers = [
+			{ id: "google-antigravity", name: "Google Antigravity OAuth", envKey: "GEMINI_API_KEY" },
+			{ id: "openai-codex", name: "OpenAI Codex OAuth", envKey: "OPENAI_API_KEY" },
+			{ id: "anthropic", name: "Anthropic API", envKey: "ANTHROPIC_API_KEY" },
+			{ id: "kimi-code", name: "Kimi Code OAuth", envKey: "KIMI_API_KEY" },
+		];
 
-	for (const key of apiKeys) {
-		const hasKey = !!Bun.env[key.name];
+		for (const provider of providers) {
+			const hasOAuth = authStorage ? await authStorage.getOAuthAccess(provider.id) : null;
+			const hasEnvKey = !!Bun.env[provider.envKey];
+			const isAuth = !!hasOAuth || hasEnvKey;
+			checks.push({
+				name: provider.name,
+				status: isAuth ? "ok" : "warning",
+				message: isAuth
+					? hasOAuth
+						? "Authenticated via OAuth"
+						: `Configured via $${provider.envKey}`
+					: `Not signed in (run 'vey setup' or set $${provider.envKey})`,
+			});
+		}
+	} catch {
 		checks.push({
-			name: key.name,
-			status: hasKey ? "ok" : "warning",
-			message: hasKey ? "Configured" : `Not set - ${key.description} unavailable`,
+			name: "Auth Storage",
+			status: "warning",
+			message: "Could not read auth storage database",
 		});
 	}
 

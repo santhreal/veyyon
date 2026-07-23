@@ -10,6 +10,7 @@ set -e
 # local checkout with bun instead (needed only to run an unreleased ref).
 #
 # Options:
+#   --local         Install the locally compiled binary from dist/vey
 #   --source        Build and run from a git checkout with bun (installs bun if needed)
 #   --binary        Install the prebuilt binary (the default)
 #   --ref <ref>     Install a specific tag/commit/branch (implies --source)
@@ -44,6 +45,7 @@ DO_UNINSTALL=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --local) MODE="local"; shift ;;
         --source) MODE="source"; shift ;;
         --binary) MODE="binary"; shift ;;
         --uninstall) DO_UNINSTALL=1; shift ;;
@@ -318,6 +320,31 @@ install_via_bun() {
     say "done. run '$ALIAS_NAME' in any repo to launch."
 }
 
+# ---- local binary install (from local checkout build) ----
+install_local() {
+    local_bin=""
+    for candidate in "$PWD/packages/coding-agent/dist/vey" "$PWD/dist/vey" "$PWD/../coding-agent/dist/vey"; do
+        if [ -f "$candidate" ]; then local_bin="$candidate"; break; fi
+    done
+    [ -n "$local_bin" ] || die "local compiled binary not found — run 'bun scripts/build-binary.ts' in packages/coding-agent first"
+    mkdir -p "$INSTALL_DIR"
+    tmpbin="$INSTALL_DIR/.$BIN_NAME.local"
+    cp -f "$local_bin" "$tmpbin"
+    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
+    ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
+    link_alias "$INSTALL_DIR"
+    install_completions "$INSTALL_DIR/$BIN_NAME"
+    ensure_on_path "$INSTALL_DIR"
+    doctor "$INSTALL_DIR/$BIN_NAME"
+    say ""
+    say "✓ Installation complete."
+    say ""
+    say "Next steps:"
+    say "  1. Launch in any repository: $ALIAS_NAME"
+    say "  2. Connect API providers:    $ALIAS_NAME setup"
+    say "  3. Run system diagnostics:  $ALIAS_NAME plugin doctor"
+}
+
 # ---- prebuilt binary install ----
 install_binary() {
     OS="$(uname -s)"; ARCH="$(uname -m)"
@@ -367,7 +394,12 @@ install_binary() {
     ensure_on_path "$INSTALL_DIR"
     doctor "$INSTALL_DIR/$BIN_NAME"
     say ""
-    say "done. run '$ALIAS_NAME' in any repo to launch."
+    say "✓ Installation complete."
+    say ""
+    say "Next steps:"
+    say "  1. Launch in any repository: $ALIAS_NAME"
+    say "  2. Connect API providers:    $ALIAS_NAME setup"
+    say "  3. Run system diagnostics:  $ALIAS_NAME plugin doctor"
 }
 
 # ---- main ----
@@ -378,6 +410,7 @@ if [ "${VEYYON_INSTALL_SOURCED:-0}" != "1" ]; then
         do_uninstall
     else
         case "$MODE" in
+            local) install_local ;;
             source) has bun || install_bun; require_bun_version; install_via_bun ;;
             binary) install_binary ;;
             *) install_binary ;;
