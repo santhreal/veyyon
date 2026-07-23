@@ -279,9 +279,19 @@ describe("session large-text persistence — property/boundary fuzzer (DATALOSS-
 	] as const;
 
 	function randomContent(rng: () => number, minLen: number): string {
-		let out = "";
-		while (out.length < minLen) out += CHAR_POOL[Math.floor(rng() * CHAR_POOL.length)];
-		return out;
+		// Accumulate parts and join once (O(n)) rather than `out += ch` with a
+		// per-iteration `out.length` probe on the growing string: at 500k+ chars
+		// across 250 fuzz iterations the char-by-char form dominated the runtime.
+		// The RNG is consumed in the identical order, so the produced string is
+		// byte-for-byte the same — reproducibility from the seed is unchanged.
+		const parts: string[] = [];
+		let len = 0;
+		while (len < minLen) {
+			const ch = CHAR_POOL[Math.floor(rng() * CHAR_POOL.length)];
+			parts.push(ch);
+			len += ch.length;
+		}
+		return parts.join("");
 	}
 
 	/** Persist against one store, then restore against a fresh store over the same dir. */
@@ -300,6 +310,11 @@ describe("session large-text persistence — property/boundary fuzzer (DATALOSS-
 		return (loaded as ToolResultEntry).message.content as unknown as string;
 	}
 
+	// Explicit budget: 250 persist→reopen→restore cycles over ≥500KB payloads
+	// through a real hashing blob store is legitimately heavy work and must not
+	// race the 5s unit-test default (it timed out at 5010ms on a loaded runner).
+	// This does not weaken the test — all 250 iterations and the byte-for-byte
+	// assertions still run; the fuzzer just gets a timeout sized to its cost.
 	it("round-trips 250 arbitrary oversized payloads byte-for-byte through a reopened blob store", async () => {
 		// WHY: the durable proof that externalized text survives a real resume. Random
 		// content (JSON-hostile bytes, control chars, astral/ZWJ sequences) and random
@@ -316,7 +331,7 @@ describe("session large-text persistence — property/boundary fuzzer (DATALOSS-
 			expect(restored.length).toBe(content.length);
 			expect(restored).toBe(content);
 		}
-	});
+	}, 30_000);
 
 	it("externalizes iff length strictly exceeds the cap, exact at the boundary", async () => {
 		// WHY: pins the off-by-one that separates inline from externalized. At cap-2,
