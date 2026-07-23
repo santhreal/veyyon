@@ -155,6 +155,60 @@ describe("MMR reranking", () => {
 		expect(mmrRerank(results, 0.7, -3)).toEqual([]);
 	});
 
+	// The selection loop splices exactly one entry out of `remaining` per
+	// iteration and stops at `remaining empty` or `selected === limit`, so the
+	// result length is always min(results.length, limit) for defined entries.
+	// These pin that invariant, which is what makes the old "top up from the
+	// leftover `remaining`" tail branch provably dead: `remaining` is always
+	// drained by the time `selected` could still be short of `limit`.
+	it("returns exactly `limit` results when more candidates than the cap exist", () => {
+		const results = Array.from({ length: 20 }, (_, index) => ({
+			content: `distinct memory number ${index} about topic ${index}`,
+			score: 1 - index * 0.01,
+		}));
+
+		const reranked = mmrRerank(results, 0.7, 7);
+
+		expect(reranked).toHaveLength(7);
+		// The cap is honored exactly — never one short (which a broken loop that
+		// under-fills would produce) and never padded past it.
+		expect(new Set(reranked.map(result => result.content)).size).toBe(7);
+	});
+
+	it("returns every candidate (never fewer, never padded) when `limit` exceeds the pool", () => {
+		const results = [
+			{ content: "alpha entry about ships", score: 0.9 },
+			{ content: "bravo entry about trains", score: 0.8 },
+			{ content: "charlie entry about planes", score: 0.7 },
+		];
+
+		const reranked = mmrRerank(results, 0.7, 50);
+
+		// min(results.length, limit) === results.length: all three, no duplication.
+		expect(reranked).toHaveLength(3);
+		expect(new Set(reranked.map(result => result.content)).size).toBe(3);
+		expect(reranked.map(result => result.content).sort()).toEqual(results.map(result => result.content).sort());
+	});
+
+	it("selects and duplicates nothing: output is a subset permutation of the input", () => {
+		const results = [
+			{ content: "identical wording here", score: 0.9 },
+			{ content: "identical wording here", score: 0.85 },
+			{ content: "identical wording here", score: 0.8 },
+			{ content: "wholly different sentence", score: 0.6 },
+		];
+
+		const reranked = mmrRerank(results, 0.5, 10);
+
+		// Duplicate CONTENT is allowed (they are distinct records); what must never
+		// happen is the same record object appearing twice or a record vanishing.
+		expect(reranked).toHaveLength(4);
+		for (const picked of reranked) {
+			expect(results).toContain(picked);
+		}
+		expect(new Set(reranked).size).toBe(4);
+	});
+
 	it("accepts typed-array-backed custom similarity scoring", () => {
 		const results = [
 			{ content: "a", score: 0.9, vector: new Float32Array([1, 0]) },
