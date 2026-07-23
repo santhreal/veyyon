@@ -47,6 +47,54 @@
 			"tags": ["positive", "negative"],
 			"input": { "path": "bash.autoBackground.enabled" },
 			"expect": { "default": false, "isolated": false }
+		},
+		{
+			"id": "settings-compaction-enabled-default",
+			"contract": "compaction.enabled default is true on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "compaction.enabled" },
+			"expect": { "default": true, "isolated": true }
+		},
+		{
+			"id": "settings-speech-enabled-default",
+			"contract": "speech.enabled default is false on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive", "negative"],
+			"input": { "path": "speech.enabled" },
+			"expect": { "default": false, "isolated": false }
+		},
+		{
+			"id": "settings-ask-enabled-default",
+			"contract": "ask.enabled default is true on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "ask.enabled" },
+			"expect": { "default": true, "isolated": true }
+		},
+		{
+			"id": "settings-argot-enabled-default",
+			"contract": "argot.enabled default is false on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive", "negative"],
+			"input": { "path": "argot.enabled" },
+			"expect": { "default": false, "isolated": false }
+		},
+		{
+			"id": "settings-advisor-enabled-default",
+			"contract": "advisor.enabled default is false on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive", "negative"],
+			"input": { "path": "advisor.enabled" },
+			"expect": { "default": false, "isolated": false }
+		},
+		{
+			"id": "settings-autocomplete-max-visible-default",
+			"contract": "autocompleteMaxVisible default is 5 on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive", "boundary"],
+			"input": { "path": "autocompleteMaxVisible" },
+			"expect": { "default": 5, "isolated": 5 }
 		}
 	]
 }

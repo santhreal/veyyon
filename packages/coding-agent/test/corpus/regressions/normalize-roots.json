@@ -1,0 +1,82 @@
+{
+	"cases": [
+		{
+			"id": "normalize-roots-empty",
+			"contract": "An empty root list normalizes to an empty array",
+			"surface": "normalize-roots",
+			"tags": ["boundary"],
+			"input": { "roots": [] },
+			"expect": { "roots": [] }
+		},
+		{
+			"id": "normalize-roots-dedup-trailing-slash",
+			"contract": "Trailing slashes and whitespace collapse to one absolute root",
+			"surface": "normalize-roots",
+			"tags": ["positive", "boundary"],
+			"input": { "roots": ["/proj", "/proj/", " /proj "] },
+			"expect": { "roots": ["/proj"] }
+		},
+		{
+			"id": "normalize-roots-longest-first",
+			"contract": "Multiple nested roots sort longest-first so the longest prefix wins",
+			"surface": "normalize-roots",
+			"tags": ["positive", "regression"],
+			"input": { "roots": ["/a", "/a/b/c", "/a/b"] },
+			"expect": { "roots": ["/a/b/c", "/a/b", "/a"] }
+		},
+		{
+			"id": "normalize-roots-drops-relative",
+			"contract": "Relative and empty roots are dropped; bare filesystem root is dropped",
+			"surface": "normalize-roots",
+			"tags": ["adversarial", "negative"],
+			"input": { "roots": ["relative", "", "/", "src/foo"] },
+			"expect": { "roots": [] }
+		},
+		{
+			"id": "normalize-roots-keeps-absolute-only",
+			"contract": "Only absolute paths with length greater than one survive normalization",
+			"surface": "normalize-roots",
+			"tags": ["positive", "adversarial"],
+			"input": { "roots": ["/etc", "etc", "/tmp/x/", "../escape"] },
+			"expect": { "roots": ["/tmp/x", "/etc"] }
+		},
+		{
+			"id": "normalize-roots-mixed-siblings",
+			"contract": "Sibling absolute roots keep both entries sorted by length then insertion-stable length ties",
+			"surface": "normalize-roots",
+			"tags": ["boundary"],
+			"input": { "roots": ["/home/a", "/home/b"] },
+			"expect": { "roots": ["/home/a", "/home/b"] }
+		},
+		{
+			"id": "cwd-reason-single-escape",
+			"contract": "A single escaping target is named in the cwd-boundary approval reason",
+			"surface": "cwd-boundary-reason",
+			"tags": ["positive"],
+			"input": { "cwd": "/home/u/p", "escaping": ["/etc/passwd"] },
+			"expect": {
+				"text": "Path is outside the session working directory (/home/u/p): /etc/passwd. Approve to allow filesystem access outside the working directory, or set tools.approvalMode: yolo to allow it without prompting."
+			}
+		},
+		{
+			"id": "cwd-reason-multiple-escapes",
+			"contract": "Multiple escaping targets are comma-joined in the cwd-boundary reason",
+			"surface": "cwd-boundary-reason",
+			"tags": ["positive", "boundary"],
+			"input": { "cwd": "/cwd", "escaping": ["/a", "/b"] },
+			"expect": {
+				"text": "Path is outside the session working directory (/cwd): /a, /b. Approve to allow filesystem access outside the working directory, or set tools.approvalMode: yolo to allow it without prompting."
+			}
+		},
+		{
+			"id": "cwd-reason-empty-escaping",
+			"contract": "An empty escaping list still emits the reason shell with an empty target list",
+			"surface": "cwd-boundary-reason",
+			"tags": ["boundary", "adversarial"],
+			"input": { "cwd": "/cwd", "escaping": [] },
+			"expect": {
+				"text": "Path is outside the session working directory (/cwd): . Approve to allow filesystem access outside the working directory, or set tools.approvalMode: yolo to allow it without prompting."
+			}
+		}
+	]
+}

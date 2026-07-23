@@ -101,4 +101,60 @@ describe("CLI operator contracts (parseArgs)", () => {
 		expect(parsed.help).toBeFalsy();
 		expect(parsed.unrecognizedFlags).toEqual([]);
 	});
+
+	it("maps short -p/-h/-v to print/help/version", () => {
+		expect(parseArgs(["-p", "hi"]).print).toBe(true);
+		expect(parseArgs(["-p", "hi"]).messages).toEqual(["hi"]);
+		expect(parseArgs(["-h"]).help).toBe(true);
+		expect(parseArgs(["-v"]).version).toBe(true);
+		expect(parseArgs(["-h"]).unrecognizedFlags).toEqual([]);
+	});
+
+	it("sets thinking/plan/alias operator flags exactly", () => {
+		expect(parseArgs(["--hide-thinking"]).hideThinking).toBe(true);
+		expect(parseArgs(["--print-thoughts"]).printThoughts).toBe(true);
+		expect(parseArgs(["--plan-yolo"]).planYolo).toBe(true);
+		expect(parseArgs(["--alias", "lab"]).alias).toBe("lab");
+		expect(parseArgs(["--alias=lab"]).alias).toBe("lab");
+		expect(parseArgs([]).hideThinking).toBeFalsy();
+		expect(parseArgs([]).planYolo).toBeFalsy();
+	});
+
+	it("sets no-* disable flags without recording them as unknown", () => {
+		const parsed = parseArgs([
+			"--no-tools",
+			"--no-skills",
+			"--no-rules",
+			"--no-lsp",
+			"--no-extensions",
+			"--no-pty",
+			"--no-title",
+			"--no-prewalk",
+		]);
+		expect(parsed.noTools).toBe(true);
+		expect(parsed.noSkills).toBe(true);
+		expect(parsed.noRules).toBe(true);
+		expect(parsed.noLsp).toBe(true);
+		expect(parsed.noExtensions).toBe(true);
+		expect(parsed.noPty).toBe(true);
+		expect(parsed.noTitle).toBe(true);
+		expect(parsed.noPrewalk).toBe(true);
+		expect(parsed.unrecognizedFlags).toEqual([]);
+	});
+
+	it("treats --advisor as a boolean and leaves a following token as a message", () => {
+		expect(parseArgs(["--advisor"]).advisor).toBe(true);
+		expect(parseArgs(["--advisor"]).messages).toEqual([]);
+		const withToken = parseArgs(["--advisor", "devin"]);
+		expect(withToken.advisor).toBe(true);
+		expect(withToken.messages).toEqual(["devin"]);
+		expect(withToken.unrecognizedFlags).toEqual([]);
+	});
+
+	it("records short unknown flags as unrecognized without consuming the next token", () => {
+		const parsed = parseArgs(["--print", "x", "--not-real-shortish"]);
+		expect(parsed.print).toBe(true);
+		expect(parsed.messages).toEqual(["x"]);
+		expect(parsed.unrecognizedFlags).toEqual(["--not-real-shortish"]);
+	});
 });
