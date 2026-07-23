@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyEdits, parsePatch, parsePatchStreaming } from "@veyyon/hashline";
+import { applyEdits, EMPTY_REPLACE, parsePatch, parsePatchStreaming } from "@veyyon/hashline";
 
 function applyPatch(text: string, diff: string): string {
 	return applyEdits(text, parsePatch(diff).edits).text;
@@ -35,9 +35,12 @@ describe("hashline format v4", () => {
 		expect(applyPatch(text, "INS.TAIL:\n+TAIL")).toBe("a\nb\nTAIL");
 	});
 
-	it("treats an empty replace hunk as a delete and still rejects empty inserts", () => {
+	it("rejects an empty replace hunk (points at DEL) and rejects empty inserts", () => {
+		// A bodyless SWAP is never silently treated as a delete — that was silent
+		// data loss. It throws EMPTY_REPLACE directing the caller to DEL; an empty
+		// insert body is likewise rejected.
 		const text = "a\nb\nc";
-		expect(applyPatch(text, "SWAP 2.=2:")).toBe("a\nc");
+		expect(() => applyPatch(text, "SWAP 2.=2:")).toThrow(EMPTY_REPLACE);
 		expect(() => parsePatch("INS.HEAD:")).toThrow(/needs at least one/);
 	});
 
@@ -98,8 +101,10 @@ describe("hashline format v4", () => {
 		expect(result.edits).toEqual([]);
 	});
 
-	it("flushes a streaming empty replace hunk when another hunk starts", () => {
-		const result = parsePatchStreaming("SWAP 2.=2:\nINS.TAIL:\n");
-		expect(result.edits).toEqual([{ kind: "delete", anchor: { line: 2 }, lineNum: 1, index: 0 }]);
+	it("rejects a streaming empty replace hunk once the next hunk proves the body empty", () => {
+		// While a SWAP's body could still stream in it stays pending (see the test
+		// above). The moment another hunk header arrives, the body is definitively
+		// empty — and a bodyless SWAP is rejected, not flushed as a silent delete.
+		expect(() => parsePatchStreaming("SWAP 2.=2:\nINS.TAIL:\n")).toThrow(EMPTY_REPLACE);
 	});
 });

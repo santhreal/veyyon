@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyEdits, Patch, parsePatch } from "@veyyon/hashline";
+import { applyEdits, EMPTY_REPLACE, Patch, parsePatch } from "@veyyon/hashline";
 
 function applyPatch(text: string, diff: string): string {
 	return applyEdits(text, parsePatch(diff).edits).text;
@@ -178,8 +178,10 @@ describe("hashline body contracts", () => {
 		);
 	});
 
-	it("treats empty replace as delete and still rejects empty insert", () => {
-		expect(applyPatch(FILE, "SWAP 2.=2:")).toBe("a\nc\nd\ne");
+	it("rejects empty replace (points at DEL) and rejects empty insert", () => {
+		// A bodyless SWAP is not leniently downgraded to a delete — it throws
+		// EMPTY_REPLACE; deleting is DEL. An empty insert body is rejected too.
+		expect(() => applyPatch(FILE, "SWAP 2.=2:")).toThrow(EMPTY_REPLACE);
 		expect(() => parsePatch("INS.TAIL:")).toThrow(/`INS` needs/);
 	});
 

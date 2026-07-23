@@ -12,16 +12,37 @@
  * tests pin both the visibility fix and the static-indicator contract so
  * neither the gray-on-gray text nor the animated-seam regression can return.
  */
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { UserMessageComponent } from "@veyyon/coding-agent/modes/components/user-message";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { TERMINAL } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
+
+// The color assertions below pin exact 24-bit bytes (`38;2;r;g;b`). The theme
+// bakes each color to ANSI at construction using `detectColorMode()`, which
+// returns `256color` when `TERM` is `""`/`dumb`/`linux` (a CI runner) unless
+// `COLORTERM` says truecolor — so the glyph/text degrade to `38;5;n` and the
+// suite passes on a developer's truecolor terminal but fails in CI. Force
+// `COLORTERM=truecolor` BEFORE the theme is built (getThemeByName builds fresh,
+// no cache), and also flip `TERMINAL.trueColor` for any sub-path that reads that
+// second depth signal (markdown/shimmer). Restore both after.
+const trueColorHandle = TERMINAL as unknown as { trueColor: boolean };
+const originalTrueColor = trueColorHandle.trueColor;
+const originalColorterm = Bun.env.COLORTERM;
 
 describe("UserMessageComponent working indicator", () => {
 	beforeAll(async () => {
+		Bun.env.COLORTERM = "truecolor";
+		trueColorHandle.trueColor = true;
 		await Settings.init({ inMemory: true });
 		setThemeInstance((await getThemeByName("titanium"))!);
+	});
+
+	afterAll(() => {
+		trueColorHandle.trueColor = originalTrueColor;
+		if (originalColorterm === undefined) delete (Bun.env as Record<string, string | undefined>).COLORTERM;
+		else Bun.env.COLORTERM = originalColorterm;
 	});
 
 	/** Locks the visibility fix: prompt text carries titanium's bright silver

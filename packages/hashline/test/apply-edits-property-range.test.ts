@@ -2,7 +2,7 @@
  * Property matrix: applyEdits over systematic DEL/SWAP/INS ranges with exact text.
  */
 import { describe, expect, it } from "bun:test";
-import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { applyEdits, EMPTY_REPLACE, parsePatch } from "@veyyon/hashline";
 
 function lines(n: number): string {
 	return Array.from({ length: n }, (_, i) => `L${i + 1}`).join("\n");
@@ -58,8 +58,11 @@ describe("applyEdits SWAP range property", () => {
 		expect(out).toBe("ONLY");
 	});
 
-	it("SWAP empty body is pure delete of range", () => {
-		const { text: out } = applyEdits(lines(4), parsePatch("SWAP 2.=3:").edits);
+	it("SWAP empty body is rejected, not a silent range delete", () => {
+		// A bodyless SWAP throws rather than deleting the range (silent data loss);
+		// the range delete is spelled DEL 2.=3.
+		expect(() => parsePatch("SWAP 2.=3:")).toThrow(EMPTY_REPLACE);
+		const { text: out } = applyEdits(lines(4), parsePatch("DEL 2.=3").edits);
 		expect(out).toBe("L1\nL4");
 	});
 });
