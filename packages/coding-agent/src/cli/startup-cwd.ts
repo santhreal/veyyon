@@ -9,7 +9,7 @@ import type { Args } from "./args";
  * When you launch from your bare home directory (and pass neither `--cwd` nor
  * `--allow-home`), rooting the session at `$HOME` would make every project-relative
  * scan walk your whole home tree, so the launch relocates to a scratch directory
- * (`~/tmp`, then `/var/tmp`, then `os.tmpdir()`).
+ * (`~/tmp`, then `/tmp`, then `/var/tmp`, then `os.tmpdir()`).
  *
  * This relocation MUST be surfaced, never silent (Law 10): a silent jump to `.`
  * is exactly what makes `--cwd` / `/cwd` / `session.workdir` feel broken, because a
