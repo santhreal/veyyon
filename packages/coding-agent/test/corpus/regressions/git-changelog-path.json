@@ -1,0 +1,219 @@
+{
+	"cases": [
+		{
+			"id": "numstat-basic",
+			"contract": "parseNumstat maps tab-separated added deleted path rows including binary dashes as zeros",
+			"surface": "parse-numstat",
+			"tags": ["positive"],
+			"input": { "output": "10\t2\tsrc/a.ts\n-\t-\tbin/x\n" },
+			"expect": {
+				"entries": [
+					{ "path": "src/a.ts", "additions": 10, "deletions": 2 },
+					{ "path": "bin/x", "additions": 0, "deletions": 0 }
+				]
+			}
+		},
+		{
+			"id": "numstat-skips-short-rows",
+			"contract": "Rows with fewer than three tab fields are skipped",
+			"surface": "parse-numstat",
+			"tags": ["adversarial", "boundary"],
+			"input": { "output": "10\t2\n\n5\t1\tok.ts\n" },
+			"expect": {
+				"entries": [{ "path": "ok.ts", "additions": 5, "deletions": 1 }]
+			}
+		},
+		{
+			"id": "rename-brace-midpath",
+			"contract": "A mid-path rename brace keeps prefix, new name, and suffix",
+			"surface": "extract-path-from-rename",
+			"tags": ["positive", "regression"],
+			"input": { "pathPart": "a/{old => new}/x.ts" },
+			"expect": { "path": "a/new/x.ts" }
+		},
+		{
+			"id": "rename-plain",
+			"contract": "A plain path without rename arrows passes through trimmed",
+			"surface": "extract-path-from-rename",
+			"tags": ["positive"],
+			"input": { "pathPart": "plain.ts" },
+			"expect": { "path": "plain.ts" }
+		},
+		{
+			"id": "rename-arrow-full",
+			"contract": "A top-level old => new rename keeps the new path",
+			"surface": "extract-path-from-rename",
+			"tags": ["positive"],
+			"input": { "pathPart": "old.ts => new.ts" },
+			"expect": { "path": "new.ts" }
+		},
+		{
+			"id": "filediff-basic",
+			"contract": "parseFileDiffs extracts filename and add/delete counts from a unified diff",
+			"surface": "parse-file-diffs",
+			"tags": ["positive"],
+			"input": {
+				"diff": "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n"
+			},
+			"expect": {
+				"files": [
+					{ "filename": "src/a.ts", "additions": 1, "deletions": 1, "isBinary": false }
+				]
+			}
+		},
+		{
+			"id": "filediff-empty",
+			"contract": "An empty diff string yields no file sections",
+			"surface": "parse-file-diffs",
+			"tags": ["boundary", "negative"],
+			"input": { "diff": "" },
+			"expect": { "files": [] }
+		},
+		{
+			"id": "unreleased-basic",
+			"contract": "parseUnreleasedSection collects Added bullets until the next ## heading",
+			"surface": "parse-unreleased-section",
+			"tags": ["positive"],
+			"input": {
+				"content": "## Unreleased\n\n### Added\n- foo\n* bar\n\n## 1.0.0\n"
+			},
+			"expect": {
+				"throws": false,
+				"section": {
+					"startLine": 0,
+					"endLine": 6,
+					"entries": { "Added": ["foo", "bar"] }
+				}
+			}
+		},
+		{
+			"id": "unreleased-missing-throws",
+			"contract": "Missing Unreleased section throws a clear changelog error",
+			"surface": "parse-unreleased-section",
+			"tags": ["adversarial", "negative"],
+			"input": { "content": "## 1.0.0\n" },
+			"expect": {
+				"throws": true,
+				"errorContains": "No [Unreleased] section found"
+			}
+		},
+		{
+			"id": "shake-elide-parts",
+			"contract": "Elide mode summarizes dropped tool results and blocks with tokens freed",
+			"surface": "format-shake-summary",
+			"tags": ["positive"],
+			"input": {
+				"result": {
+					"mode": "elide",
+					"toolResultsDropped": 2,
+					"blocksDropped": 1,
+					"tokensFreed": 40
+				}
+			},
+			"expect": { "text": "Shook 2 tool results + 1 block (~40 tokens freed)." }
+		},
+		{
+			"id": "shake-elide-nothing",
+			"contract": "Elide mode with zero drops reports Nothing to shake",
+			"surface": "format-shake-summary",
+			"tags": ["boundary", "negative"],
+			"input": {
+				"result": {
+					"mode": "elide",
+					"toolResultsDropped": 0,
+					"blocksDropped": 0,
+					"tokensFreed": 0
+				}
+			},
+			"expect": { "text": "Nothing to shake." }
+		},
+		{
+			"id": "shake-images-none",
+			"contract": "Images mode with zero drops reports no images found",
+			"surface": "format-shake-summary",
+			"tags": ["boundary"],
+			"input": {
+				"result": {
+					"mode": "images",
+					"toolResultsDropped": 0,
+					"blocksDropped": 0,
+					"tokensFreed": 0,
+					"imagesDropped": 0
+				}
+			},
+			"expect": { "text": "No images found in this session." }
+		},
+		{
+			"id": "shake-images-dropped",
+			"contract": "Images mode reports the dropped image count",
+			"surface": "format-shake-summary",
+			"tags": ["positive"],
+			"input": {
+				"result": {
+					"mode": "images",
+					"toolResultsDropped": 0,
+					"blocksDropped": 0,
+					"tokensFreed": 0,
+					"imagesDropped": 2
+				}
+			},
+			"expect": { "text": "Dropped 2 images from this session." }
+		},
+		{
+			"id": "combine-globs-suffix-only",
+			"contract": "combineSearchGlobs with only a suffix returns the suffix",
+			"surface": "combine-search-globs",
+			"tags": ["boundary"],
+			"input": { "suffixGlob": "*.ts" },
+			"expect": { "glob": "*.ts" }
+		},
+		{
+			"id": "combine-globs-prefix-only",
+			"contract": "combineSearchGlobs with only a prefix returns the prefix",
+			"surface": "combine-search-globs",
+			"tags": ["boundary"],
+			"input": { "prefixGlob": "src" },
+			"expect": { "glob": "src" }
+		},
+		{
+			"id": "combine-globs-join",
+			"contract": "combineSearchGlobs joins prefix and suffix with a single slash and trims edges",
+			"surface": "combine-search-globs",
+			"tags": ["positive"],
+			"input": { "prefixGlob": "src/", "suffixGlob": "/**/*.ts" },
+			"expect": { "glob": "src/**/*.ts" }
+		},
+		{
+			"id": "expand-path-strip-colon-abs",
+			"contract": "expandPath strips a stray colon prefix before an absolute path",
+			"surface": "expand-path",
+			"tags": ["adversarial", "regression"],
+			"input": { "filePath": ":/tmp/x" },
+			"expect": { "path": "/tmp/x" }
+		},
+		{
+			"id": "expand-path-strip-colon-rel",
+			"contract": "expandPath strips a stray colon prefix before a relative parent path",
+			"surface": "expand-path",
+			"tags": ["adversarial"],
+			"input": { "filePath": ":../rel" },
+			"expect": { "path": "../rel" }
+		},
+		{
+			"id": "expand-path-strip-at",
+			"contract": "expandPath strips a leading @ mention prefix from an absolute path",
+			"surface": "expand-path",
+			"tags": ["adversarial"],
+			"input": { "filePath": "@/tmp/x" },
+			"expect": { "path": "/tmp/x" }
+		},
+		{
+			"id": "expand-path-passthrough",
+			"contract": "A normal absolute path passes through expandPath unchanged",
+			"surface": "expand-path",
+			"tags": ["positive"],
+			"input": { "filePath": "/tmp/x" },
+			"expect": { "path": "/tmp/x" }
+		}
+	]
+}

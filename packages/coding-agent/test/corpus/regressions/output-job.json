@@ -1,0 +1,118 @@
+{
+	"cases": [
+		{
+			"id": "output-ref-basic",
+			"contract": "formatFullOutputReference names the artifact id in the Read artifact:// notice",
+			"surface": "format-full-output-ref",
+			"tags": ["positive"],
+			"input": { "artifactId": "abc123" },
+			"expect": { "text": "Read artifact://abc123 for full output" }
+		},
+		{
+			"id": "strip-raw-artifact-hit",
+			"contract": "A trailing numeric raw-output artifact footer is stripped and its id returned",
+			"surface": "strip-raw-output-artifact",
+			"tags": ["positive", "regression"],
+			"input": { "text": "hello\n[raw output: artifact://12345]" },
+			"expect": { "text": "hello", "artifactId": "12345" }
+		},
+		{
+			"id": "strip-raw-artifact-miss",
+			"contract": "A non-matching Full output line is left intact with no artifactId",
+			"surface": "strip-raw-output-artifact",
+			"tags": ["negative", "adversarial"],
+			"input": { "text": "hello\nFull output: artifact://abc123" },
+			"expect": { "text": "hello\nFull output: artifact://abc123" }
+		},
+		{
+			"id": "strip-generated-notice-hit",
+			"contract": "A trailing Showing N of M lines notice is stripped from generated output",
+			"surface": "strip-generated-output-notice",
+			"tags": ["positive"],
+			"input": { "text": "body\n[Showing 10 of 100 lines]" },
+			"expect": { "text": "body" }
+		},
+		{
+			"id": "strip-generated-notice-miss",
+			"contract": "A parenthetical non-notice line is left intact",
+			"surface": "strip-generated-output-notice",
+			"tags": ["negative"],
+			"input": { "text": "x\n(generated output)" },
+			"expect": { "text": "x\n(generated output)" }
+		},
+		{
+			"id": "truncation-notice-head",
+			"contract": "A head truncation meta notice reports shown versus total lines",
+			"surface": "format-truncation-meta-notice",
+			"tags": ["positive"],
+			"input": {
+				"truncation": {
+					"direction": "head",
+					"totalLines": 100,
+					"outputLines": 10,
+					"totalBytes": 1000,
+					"outputBytes": 100
+				}
+			},
+			"expect": { "text": "Showing 10 of 100 lines" }
+		},
+		{
+			"id": "truncation-notice-middle",
+			"contract": "A middle truncation notice names head and tail ranges and elided middle lines",
+			"surface": "format-truncation-meta-notice",
+			"tags": ["positive", "boundary"],
+			"input": {
+				"truncation": {
+					"direction": "middle",
+					"totalLines": 100,
+					"outputLines": 20,
+					"totalBytes": 1000,
+					"outputBytes": 200,
+					"headRange": { "start": 1, "end": 10 },
+					"tailRange": { "start": 91, "end": 100 }
+				}
+			},
+			"expect": {
+				"text": "Showing lines 1-10 and 91-100 of 100; 80 middle lines (800B) elided"
+			}
+		},
+		{
+			"id": "waiting-poll-all-running",
+			"contract": "A poll with only running jobs and no cancellations is waiting",
+			"surface": "is-waiting-poll-details",
+			"tags": ["positive"],
+			"input": {
+				"details": { "jobs": [{ "status": "running" }, { "status": "running" }] }
+			},
+			"expect": { "waiting": true }
+		},
+		{
+			"id": "waiting-poll-mixed-done",
+			"contract": "A poll with any non-running job is not waiting",
+			"surface": "is-waiting-poll-details",
+			"tags": ["negative", "adversarial"],
+			"input": {
+				"details": { "jobs": [{ "status": "running" }, { "status": "done" }] }
+			},
+			"expect": { "waiting": false }
+		},
+		{
+			"id": "waiting-poll-cancelled",
+			"contract": "A poll with cancelled entries is not waiting even if jobs are running",
+			"surface": "is-waiting-poll-details",
+			"tags": ["negative", "adversarial"],
+			"input": {
+				"details": { "jobs": [{ "status": "running" }], "cancelled": ["a"] }
+			},
+			"expect": { "waiting": false }
+		},
+		{
+			"id": "waiting-poll-empty-jobs",
+			"contract": "An empty jobs list is not waiting",
+			"surface": "is-waiting-poll-details",
+			"tags": ["boundary", "negative"],
+			"input": { "details": { "jobs": [] } },
+			"expect": { "waiting": false }
+		}
+	]
+}
