@@ -10,6 +10,7 @@ import {
 	stripManagedGuidance,
 } from "@veyyon/coding-agent/discovery/agents-guidance";
 import { setAgentDir, TempDir } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
 
 describe("stripManagedGuidance", () => {
 	test("a file that is only the managed header strips to empty", () => {
@@ -162,6 +163,81 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 			expect(fs.lstatSync(agentsPath).isSymbolicLink()).toBe(true);
 			expect(fs.readlinkSync(agentsPath)).toBe(externalTarget);
 			expect(fs.readFileSync(agentsPath, "utf-8")).toBe(externalContent);
+		} finally {
+			await tempDir.remove().catch(() => {});
+		}
+	});
+});
+
+describe("managed AGENTS.md seeding surfaces genuine write failures loudly (no silent fallback)", () => {
+	// Law 10: seeding used to swallow EVERY error. EEXIST is the expected steady
+	// state and must stay silent, but a real failure (read-only home, bad path,
+	// no space) means the profile silently has no instruction file and the user
+	// has no way to know why their AGENTS.md never appeared. A genuine error must
+	// warn; EEXIST must not. These pin both halves so the swallow can't come back.
+
+	// Capture the real logger output by routing it to a console transport and
+	// intercepting the process streams for the duration of one call. This tests
+	// the actual winston emission end to end (not a spy on a binding), then puts
+	// the default file transport and the streams back exactly as they were.
+	async function captureLoggerOutput(run: () => Promise<void>): Promise<string> {
+		const chunks: string[] = [];
+		const origOut = process.stdout.write.bind(process.stdout);
+		const origErr = process.stderr.write.bind(process.stderr);
+		const sink = (s: string | Uint8Array): boolean => {
+			chunks.push(typeof s === "string" ? s : Buffer.from(s).toString("utf-8"));
+			return true;
+		};
+		logger.setTransports({ console: true, file: false });
+		(process.stdout.write as unknown) = sink;
+		(process.stderr.write as unknown) = sink;
+		try {
+			await run();
+		} finally {
+			(process.stdout.write as unknown) = origOut;
+			(process.stderr.write as unknown) = origErr;
+			logger.setTransports({ file: true });
+		}
+		return chunks.join("");
+	}
+
+	test("a genuine (non-EEXIST) write failure emits a warn naming the file, and does not throw", async () => {
+		const tempDir = TempDir.createSync("@agents-seedfail-");
+		try {
+			// Make the target's parent path traverse an existing REGULAR FILE, so the
+			// internal mkdir(dirname) fails with ENOTDIR — a non-EEXIST error that no
+			// privilege level (including root) can bypass, unlike a chmod-based deny.
+			const blocker = path.join(tempDir.path(), "blocker");
+			fs.writeFileSync(blocker, "i am a file, not a directory");
+			const agentDir = path.join(blocker, "agent");
+			const agentsPath = path.join(agentDir, "AGENTS.md");
+
+			// Must resolve, not reject: seeding is non-fatal by contract.
+			const out = await captureLoggerOutput(() => ensureProfileAgentsFileAt(agentDir));
+
+			expect(fs.existsSync(agentsPath)).toBe(false);
+			// The failure is surfaced loudly: the warn message and the exact path both appear.
+			expect(out).toContain("could not seed managed AGENTS.md");
+			expect(out).toContain(agentsPath);
+		} finally {
+			await tempDir.remove().catch(() => {});
+		}
+	});
+
+	test("EEXIST (the file already exists) stays silent — no warn on the second, steady-state call", async () => {
+		const tempDir = TempDir.createSync("@agents-seedfail-");
+		try {
+			const agentDir = tempDir.path();
+			// First call seeds the file (EEXIST does not apply yet).
+			await ensureProfileAgentsFileAt(agentDir);
+			expect(fs.existsSync(path.join(agentDir, "AGENTS.md"))).toBe(true);
+
+			// Second call hits EEXIST via the `wx` flag; that is the steady state and
+			// must NOT warn — only genuine errors are surfaced.
+			const out = await captureLoggerOutput(() => ensureProfileAgentsFileAt(agentDir));
+			expect(out).not.toContain("could not seed managed AGENTS.md");
+			// The already-seeded file is untouched.
+			expect(fs.readFileSync(path.join(agentDir, "AGENTS.md"), "utf-8")).toBe(PROFILE_AGENTS_GUIDANCE);
 		} finally {
 			await tempDir.remove().catch(() => {});
 		}
