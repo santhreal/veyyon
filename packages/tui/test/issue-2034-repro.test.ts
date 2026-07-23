@@ -1,3 +1,4 @@
+import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { chunkForConPTY, ProcessTerminal } from "@veyyon/tui/terminal";
 import { setTerminalHeadless } from "@veyyon/utils";
