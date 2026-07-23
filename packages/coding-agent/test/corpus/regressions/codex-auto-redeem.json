@@ -1,0 +1,111 @@
+{
+	"cases": [
+		{
+			"id": "codex-eval-mode-no",
+			"contract": "Mode no skips Codex auto-redeem evaluation",
+			"surface": "should-evaluate-codex-auto-redeem",
+			"tags": ["negative"],
+			"input": { "mode": "no" },
+			"expect": { "ok": false }
+		},
+		{
+			"id": "codex-eval-mode-yes",
+			"contract": "Mode yes allows Codex auto-redeem evaluation",
+			"surface": "should-evaluate-codex-auto-redeem",
+			"tags": ["positive"],
+			"input": { "mode": "yes" },
+			"expect": { "ok": true }
+		},
+		{
+			"id": "codex-eval-mode-unset",
+			"contract": "Mode unset allows Codex auto-redeem evaluation",
+			"surface": "should-evaluate-codex-auto-redeem",
+			"tags": ["positive", "boundary"],
+			"input": { "mode": "unset" },
+			"expect": { "ok": true }
+		},
+		{
+			"id": "codex-prompt-mode-unset",
+			"contract": "Only unset mode prompts for Codex auto-redeem consent",
+			"surface": "should-prompt-codex-auto-redeem",
+			"tags": ["positive"],
+			"input": { "mode": "unset" },
+			"expect": { "ok": true }
+		},
+		{
+			"id": "codex-prompt-mode-yes",
+			"contract": "Mode yes does not prompt for Codex auto-redeem consent",
+			"surface": "should-prompt-codex-auto-redeem",
+			"tags": ["negative"],
+			"input": { "mode": "yes" },
+			"expect": { "ok": false }
+		},
+		{
+			"id": "codex-prompt-mode-no",
+			"contract": "Mode no does not prompt for Codex auto-redeem consent",
+			"surface": "should-prompt-codex-auto-redeem",
+			"tags": ["negative"],
+			"input": { "mode": "no" },
+			"expect": { "ok": false }
+		},
+		{
+			"id": "codex-redeem-disabled",
+			"contract": "evaluateCodexAutoRedeem skips with disabled when autoRedeem is false",
+			"surface": "evaluate-codex-auto-redeem",
+			"tags": ["negative"],
+			"input": {
+				"nowMs": 1,
+				"provider": "openai-codex",
+				"modelId": "gpt",
+				"settings": { "autoRedeem": false, "minBlockedMinutes": 60, "keepCredits": 0 },
+				"identity": { "accountId": "a" },
+				"reports": []
+			},
+			"expect": { "redeem": false, "reason": "disabled" }
+		},
+		{
+			"id": "codex-redeem-wrong-provider",
+			"contract": "evaluateCodexAutoRedeem skips with wrong-provider for non-codex providers",
+			"surface": "evaluate-codex-auto-redeem",
+			"tags": ["adversarial", "negative"],
+			"input": {
+				"nowMs": 1,
+				"provider": "anthropic",
+				"modelId": "x",
+				"settings": { "autoRedeem": true, "minBlockedMinutes": 60, "keepCredits": 0 },
+				"identity": { "accountId": "a" },
+				"reports": []
+			},
+			"expect": { "redeem": false, "reason": "wrong-provider" }
+		},
+		{
+			"id": "codex-redeem-spark-model",
+			"contract": "evaluateCodexAutoRedeem skips spark models with spark-model",
+			"surface": "evaluate-codex-auto-redeem",
+			"tags": ["adversarial", "negative"],
+			"input": {
+				"nowMs": 1,
+				"provider": "openai-codex",
+				"modelId": "gpt-spark",
+				"settings": { "autoRedeem": true, "minBlockedMinutes": 60, "keepCredits": 0 },
+				"identity": { "accountId": "a" },
+				"reports": []
+			},
+			"expect": { "redeem": false, "reason": "spark-model" }
+		},
+		{
+			"id": "codex-redeem-no-identity",
+			"contract": "evaluateCodexAutoRedeem skips with no-identity when identity is missing",
+			"surface": "evaluate-codex-auto-redeem",
+			"tags": ["boundary", "negative"],
+			"input": {
+				"nowMs": 1,
+				"provider": "openai-codex",
+				"modelId": "gpt",
+				"settings": { "autoRedeem": true, "minBlockedMinutes": 60, "keepCredits": 0 },
+				"reports": []
+			},
+			"expect": { "redeem": false, "reason": "no-identity" }
+		}
+	]
+}

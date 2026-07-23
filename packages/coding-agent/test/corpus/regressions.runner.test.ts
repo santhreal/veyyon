@@ -1,8 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseUnreleasedSection } from "@veyyon/coding-agent/commit/changelog/parse";
+import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git/diff";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getDefault, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import {
+	getDefault,
+	SETTINGS_SCHEMA,
+	type CodexAutoRedeemMode,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
 import {
 	dispatchRpcInputFrame,
@@ -19,6 +26,12 @@ import {
 	resolveApproval,
 	type ToolApproval,
 } from "@veyyon/coding-agent/tools/approval";
+import {
+	evaluateCodexAutoRedeem,
+	type CodexAutoRedeemInput,
+	shouldEvaluateCodexAutoRedeem,
+	shouldPromptCodexAutoRedeem,
+} from "@veyyon/coding-agent/session/codex-auto-reset";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
 import {
 	parseTitleSlotLine,
@@ -26,6 +39,7 @@ import {
 	titleUpdateFromSlot,
 } from "@veyyon/coding-agent/session/session-title-slot";
 import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
+import { formatShakeSummary, type ShakeResult } from "@veyyon/coding-agent/session/shake-types";
 import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/ast-edit";
 import {
 	cwdEscapingTargets,
@@ -36,10 +50,20 @@ import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/
 import { formatShortSha } from "@veyyon/coding-agent/tools/gh-format";
 import { parsePositiveDecimalInt, resolveTailLimit } from "@veyyon/coding-agent/tools/gh";
 import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
+import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/job";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
 import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
+import {
+	formatFullOutputReference,
+	formatTruncationMetaNotice,
+	stripGeneratedOutputNotice,
+	stripRawOutputArtifactNotice,
+	type TruncationMeta,
+} from "@veyyon/coding-agent/tools/output-meta";
 import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
 import {
+	combineSearchGlobs,
+	expandPath,
 	formatPathRelativeToCwd,
 	globSearchBase,
 	isPathWithinCwd,
@@ -726,6 +750,123 @@ function runFormatIsoDate(c: CorpusCase): void {
 	expect(formatIsoDate(input.value)).toBe(exp.text);
 }
 
+function runFormatFullOutputRef(c: CorpusCase): void {
+	const input = c.input as { artifactId: string };
+	const exp = c.expect as { text: string };
+	expect(formatFullOutputReference(input.artifactId)).toBe(exp.text);
+}
+
+function runStripRawOutputArtifact(c: CorpusCase): void {
+	const input = c.input as { text: string };
+	expect(stripRawOutputArtifactNotice(input.text)).toEqual(c.expect);
+}
+
+function runStripGeneratedOutputNotice(c: CorpusCase): void {
+	const input = c.input as { text: string };
+	const exp = c.expect as { text: string };
+	expect(stripGeneratedOutputNotice(input.text)).toBe(exp.text);
+}
+
+function runFormatTruncationMetaNotice(c: CorpusCase): void {
+	const input = c.input as { truncation: TruncationMeta };
+	const exp = c.expect as { text: string };
+	expect(formatTruncationMetaNotice(input.truncation)).toBe(exp.text);
+}
+
+function runIsWaitingPollDetails(c: CorpusCase): void {
+	const input = c.input as { details: unknown };
+	const exp = c.expect as { waiting: boolean };
+	expect(isWaitingPollDetails(input.details)).toBe(exp.waiting);
+}
+
+function runShouldEvaluateCodexAutoRedeem(c: CorpusCase): void {
+	const input = c.input as { mode: CodexAutoRedeemMode };
+	const exp = c.expect as { ok: boolean };
+	expect(shouldEvaluateCodexAutoRedeem(input.mode)).toBe(exp.ok);
+}
+
+function runShouldPromptCodexAutoRedeem(c: CorpusCase): void {
+	const input = c.input as { mode: CodexAutoRedeemMode };
+	const exp = c.expect as { ok: boolean };
+	expect(shouldPromptCodexAutoRedeem(input.mode)).toBe(exp.ok);
+}
+
+function runEvaluateCodexAutoRedeem(c: CorpusCase): void {
+	const input = c.input as Omit<CodexAutoRedeemInput, "attemptedBlockKeys" | "lastAttemptAtByAccount">;
+	const frame = evaluateCodexAutoRedeem({
+		...input,
+		attemptedBlockKeys: new Set(),
+		lastAttemptAtByAccount: new Map(),
+	});
+	expect(frame).toEqual(c.expect);
+}
+
+function runParseNumstat(c: CorpusCase): void {
+	const input = c.input as { output: string };
+	const exp = c.expect as { entries: unknown[] };
+	expect(parseNumstat(input.output)).toEqual(exp.entries);
+}
+
+function runExtractPathFromRename(c: CorpusCase): void {
+	const input = c.input as { pathPart: string };
+	const exp = c.expect as { path: string };
+	expect(extractPathFromRename(input.pathPart)).toBe(exp.path);
+}
+
+function runParseFileDiffs(c: CorpusCase): void {
+	const input = c.input as { diff: string };
+	const exp = c.expect as {
+		files: Array<{ filename: string; additions: number; deletions: number; isBinary: boolean }>;
+	};
+	expect(
+		parseFileDiffs(input.diff).map(f => ({
+			filename: f.filename,
+			additions: f.additions,
+			deletions: f.deletions,
+			isBinary: f.isBinary,
+		})),
+	).toEqual(exp.files);
+}
+
+function runParseUnreleasedSection(c: CorpusCase): void {
+	const input = c.input as { content: string };
+	const exp = c.expect as { throws: boolean; errorContains?: string; section?: unknown };
+	let threw: Error | null = null;
+	let section: unknown;
+	try {
+		section = parseUnreleasedSection(input.content);
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "")).toContain(exp.errorContains);
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(section).toEqual(exp.section);
+}
+
+function runFormatShakeSummary(c: CorpusCase): void {
+	const input = c.input as { result: ShakeResult };
+	const exp = c.expect as { text: string };
+	expect(formatShakeSummary(input.result)).toBe(exp.text);
+}
+
+function runCombineSearchGlobs(c: CorpusCase): void {
+	const input = c.input as { prefixGlob?: string; suffixGlob?: string };
+	const exp = c.expect as { glob: string | null };
+	expect(nullishToNull(combineSearchGlobs(input.prefixGlob, input.suffixGlob))).toBe(exp.glob);
+}
+
+function runExpandPath(c: CorpusCase): void {
+	const input = c.input as { filePath: string };
+	const exp = c.expect as { path: string };
+	expect(expandPath(input.filePath)).toBe(exp.path);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -918,6 +1059,51 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "format-iso-date":
 			runFormatIsoDate(c);
+			return;
+		case "format-full-output-ref":
+			runFormatFullOutputRef(c);
+			return;
+		case "strip-raw-output-artifact":
+			runStripRawOutputArtifact(c);
+			return;
+		case "strip-generated-output-notice":
+			runStripGeneratedOutputNotice(c);
+			return;
+		case "format-truncation-meta-notice":
+			runFormatTruncationMetaNotice(c);
+			return;
+		case "is-waiting-poll-details":
+			runIsWaitingPollDetails(c);
+			return;
+		case "should-evaluate-codex-auto-redeem":
+			runShouldEvaluateCodexAutoRedeem(c);
+			return;
+		case "should-prompt-codex-auto-redeem":
+			runShouldPromptCodexAutoRedeem(c);
+			return;
+		case "evaluate-codex-auto-redeem":
+			runEvaluateCodexAutoRedeem(c);
+			return;
+		case "parse-numstat":
+			runParseNumstat(c);
+			return;
+		case "extract-path-from-rename":
+			runExtractPathFromRename(c);
+			return;
+		case "parse-file-diffs":
+			runParseFileDiffs(c);
+			return;
+		case "parse-unreleased-section":
+			runParseUnreleasedSection(c);
+			return;
+		case "format-shake-summary":
+			runFormatShakeSummary(c);
+			return;
+		case "combine-search-globs":
+			runCombineSearchGlobs(c);
+			return;
+		case "expand-path":
+			runExpandPath(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);
