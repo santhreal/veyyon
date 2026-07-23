@@ -107,4 +107,4 @@ from the catalog table and `OAuthProvider` from the registry.
   `registerOAuthProvider` (the `AuthStorage.login` dispatcher handles built-ins
   and extensions through the same path).
 
-*Verified against `a49ff74` on 2026-07-21.*
+*Verified against `d3e3db30` on 2026-07-23.*

@@ -53,9 +53,8 @@ describe("GlobTool fail paths and matches", () => {
 		const tool = new GlobTool(session() as never);
 		const result = await tool.execute("g2", { path: "src/**/*.zzz" });
 		const text = textOf(result);
-		// Must not list a.ts as a match
-		const body = text.split("\n").filter(l => l.includes("a.ts") && !/no files|not found|0 file/i.test(text));
-		// If the word a.ts appears only in "no files matching", that's fine.
+		// Must not list a.ts as a match. If a.ts appears only inside "no files
+		// matching" wording, that's fine.
 		if (text.toLowerCase().includes("no files")) {
 			expect(text.toLowerCase()).toMatch(/no files/);
 		} else {

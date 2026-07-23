@@ -10,4 +10,4 @@ recovery → verification. For the normal (non-incident) flows, see [releasing](
 | [secret-rotation.md](secret-rotation.md) | Rotating Apple signing secrets, the Cloudflare Pages token, or auth-broker bearer tokens. |
 | [install-rollback.md](install-rollback.md) | A published release is bad and `curl … | sh` is serving it to users. |
 
-*Verified against `7ca44d3` on 2026-07-17.*
+*Verified against `d3e3db30` on 2026-07-23.*

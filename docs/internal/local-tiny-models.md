@@ -152,4 +152,4 @@ wins that task.
   unchanged**.
 - `providers.autoThinkingModel` uses the same shipped local options as `providers.memoryModel`.
 
-*Verified against `a49ff74` on 2026-07-21.*
+*Verified against `d3e3db30` on 2026-07-23.*
