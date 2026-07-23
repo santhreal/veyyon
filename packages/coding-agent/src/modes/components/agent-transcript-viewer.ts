@@ -28,6 +28,12 @@ import type { ObservableSession, SessionObserverRegistry } from "../session-obse
 import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import type { AgentHubRemote } from "./agent-hub";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
+
+// The whole transcript sits on ONE left rail (COMPOSER_INSET_COLS); the
+// viewer's chrome rows pad to the same rail so title, body, editor, and
+// footer share one gutter.
+const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 import { agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import { DynamicBorder } from "./dynamic-border";
@@ -537,12 +543,12 @@ export class AgentTranscriptViewer implements Component {
 
 	render(width: number): readonly string[] {
 		const termHeight = process.stdout.rows || 40;
-		// `innerWidth` widths the editor/notice chrome (gutter-prefixed below).
+		// `innerWidth` widths the editor/notice chrome (rail-prefixed below).
 		// `contentWidth` widths the transcript: ScrollView reserves the last column
-		// for the scrollbar, and the transcript components carry their own 1-col left
-		// gutter — so body rows are emitted WITHOUT an extra outer space, sharing that
-		// gutter with the header/footer (which add one). Stacking both shifted the body
-		// one column right of the title.
+		// for the scrollbar, and the transcript components carry their own rail
+		// inset — so body rows are emitted WITHOUT an extra outer pad, sharing the
+		// rail with the header/footer (which pad to it). Stacking both shifted the
+		// body one column right of the title.
 		const innerWidth = Math.max(20, width - 2);
 		const contentWidth = Math.max(1, width - 1);
 		const ref = this.deps.registry.get(this.deps.agentId);
@@ -550,9 +556,9 @@ export class AgentTranscriptViewer implements Component {
 		const headerLines = this.#headerLines(ref?.status, ref?.kind, ref?.parentId);
 		const footerLines = this.#footerLines();
 		const noticeLine = this.#notice
-			? ` ${theme.fg("error", sanitizeErrorLine(this.#notice, innerWidth))}`
+			? `${RAIL_PAD}${theme.fg("error", sanitizeErrorLine(this.#notice, innerWidth))}`
 			: this.#remoteError && !this.#builder.isEmpty
-				? ` ${theme.fg("error", sanitizeErrorLine(this.#remoteError, innerWidth))}`
+				? `${RAIL_PAD}${theme.fg("error", sanitizeErrorLine(this.#remoteError, innerWidth))}`
 				: undefined;
 		const editorLines = this.#editor ? this.#editor.render(innerWidth) : [];
 
@@ -561,7 +567,7 @@ export class AgentTranscriptViewer implements Component {
 		const viewportHeight = Math.max(3, termHeight - chrome);
 
 		const contentLines = this.#builder.isEmpty
-			? [` ${theme.fg("dim", this.#placeholder(Math.max(10, contentWidth - 1)))}`]
+			? [`${RAIL_PAD}${theme.fg("dim", this.#placeholder(Math.max(10, contentWidth - 1)))}`]
 			: this.#builder.container.render(contentWidth);
 		this.#scrollView.setLines(contentLines);
 		this.#scrollView.setHeight(viewportHeight);
@@ -569,11 +575,11 @@ export class AgentTranscriptViewer implements Component {
 
 		const lines: string[] = [];
 		lines.push(...new DynamicBorder().render(width));
-		for (const headerLine of headerLines) lines.push(` ${headerLine}`);
+		for (const headerLine of headerLines) lines.push(`${RAIL_PAD}${headerLine}`);
 		lines.push(...new DynamicBorder().render(width));
 		for (const row of this.#scrollView.render(width)) lines.push(row);
 		if (noticeLine) lines.push(noticeLine);
-		for (const editorLine of editorLines) lines.push(` ${editorLine}`);
+		for (const editorLine of editorLines) lines.push(`${RAIL_PAD}${editorLine}`);
 		lines.push(...footerLines);
 		lines.push(...new DynamicBorder().render(width));
 		return lines;
@@ -592,11 +598,11 @@ export class AgentTranscriptViewer implements Component {
 	#footerLines(): string[] {
 		const lines: string[] = [];
 		const statsLine = this.#statsLine();
-		if (statsLine) lines.push(` ${statsLine}`);
+		if (statsLine) lines.push(`${RAIL_PAD}${statsLine}`);
 		const hint = this.#editor
 			? `Enter:send  Esc:close  ${this.deps.expandKeys[0] ?? "ctrl+o"}:expand  empty input → j/k:scroll  g/G:top/bottom`
 			: `Esc:close  ${this.deps.expandKeys[0] ?? "ctrl+o"}:expand  j/k:scroll  g/G:top/bottom`;
-		lines.push(` ${theme.fg("dim", hint)}`);
+		lines.push(`${RAIL_PAD}${theme.fg("dim", hint)}`);
 		return lines;
 	}
 
