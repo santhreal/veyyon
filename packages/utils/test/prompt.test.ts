@@ -119,6 +119,34 @@ describe("compile cache", () => {
 	});
 });
 
+/**
+ * The closing-brace disambiguation (`disambiguateClosingBraces`) rewrites any
+ * run of 3+ `}` so the Handlebars lexer reads it as a helper close `}}` plus
+ * literal `}`s, instead of greedily matching `}}}` as a triple-stash close.
+ * This is a deliberate tradeoff: it makes compact JSON like `{del:{{href}}}`
+ * render correctly, at the cost of NOT supporting triple-stash `{{{x}}}` (which
+ * is redundant under noEscape anyway). These lock both halves so a future edit
+ * to the regex cannot silently break the JSON case that motivated it.
+ */
+describe("compile: closing-brace disambiguation", () => {
+	it("keeps literal braces after a helper close as content", () => {
+		expect(prompt.render("{{a}}}}", { a: "X" })).toBe("X}}");
+		expect(prompt.render("{{v}}}}}", { v: "V" })).toBe("V}}}");
+	});
+
+	it("renders nested-object JSON shapes with trailing brace runs correctly", () => {
+		expect(prompt.render("{del:{{href}}}", { href: "H" })).toBe("{del:H}");
+		expect(prompt.render("{a:{b:{{v}}}}", { v: "V" })).toBe("{a:{b:V}}");
+	});
+
+	it("does not support triple-stash (unescaped) syntax, by design", () => {
+		// `{{{v}}}` is intentionally unsupported: under noEscape it is equivalent
+		// to `{{v}}`, and supporting it would reintroduce the `}}}` ambiguity that
+		// breaks JSON templates. It must throw rather than mis-render.
+		expect(() => prompt.render("{{{v}}}", { v: "<b>" })).toThrow();
+	});
+});
+
 describe("helpers: join", () => {
 	it("unescapes \\n and \\t in the separator (Handlebars string literals carry no escapes)", () => {
 		// Regression: `{{join files "\n"}}` used to emit the literal two-char `\n`
