@@ -69,7 +69,7 @@ export interface UsageLimit {
  * Populated when the provider's listing endpoint returns individual credit
  * metadata (e.g. OpenAI Codex `wham/rate-limit-reset-credits`). Callers that
  * only need the count can ignore this; display layers use `expiresAt` to show
- * when banked resets expire ([#3339](https://github.com/can1357/oh-my-pi/issues/3339)).
+ * when banked resets expire.
  */
 export interface UsageResetCreditDetail {
 	/** ISO timestamp when the credit was granted. */

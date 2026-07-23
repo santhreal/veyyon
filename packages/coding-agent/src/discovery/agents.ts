@@ -41,7 +41,7 @@ function getUserPathCandidates(ctx: LoadContext, ...segments: string[]): string[
  * user-level config and is already enumerated by {@link getUserPathCandidates}.
  * Without this guard, any cwd under `$HOME` (with no closer git repoRoot) would
  * walk up to home and yield duplicate project+user entries for the same
- * directory — see https://github.com/can1357/oh-my-pi/issues/1116.
+ * directory.
  */
 export function getProjectPathCandidates(ctx: LoadContext, ...segments: string[]): string[] {
 	const paths: string[] = [];
