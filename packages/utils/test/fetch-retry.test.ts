@@ -6,6 +6,9 @@ import {
 	isRetryableError,
 	isRetryableStatus,
 	isUnexpectedSocketCloseMessage,
+	RESET_EPOCH_MS_MIN,
+	RESET_EPOCH_S_MIN,
+	resetHeaderTargetMs,
 } from "@veyyon/utils/fetch-retry";
 
 describe("fetchWithRetry", () => {
@@ -185,6 +188,49 @@ describe("extractRetryHint", () => {
 
 	it("returns undefined for bodies without any recognized pattern", () => {
 		expect(extractRetryHint(null, "just an error")).toBeUndefined();
+	});
+});
+
+// `resetHeaderTargetMs` is the single owner of the epoch-vs-delta magnitude
+// classification shared by every rate-limit `reset`-header parser (the
+// `x-ratelimit-reset-ms` branch here in `extractRetryHint`, and `parseResetHeader`
+// in the ai package). A `reset` field overloads three shapes onto one number:
+// a Unix epoch in ms, a Unix epoch in seconds, or a plain wait delta. These
+// tests pin the exact magnitude bands and the strict `>` boundaries so the two
+// callers can never drift apart, and so a future edit that loosens a threshold
+// (e.g. `>=` instead of `>`, or a shifted power of ten) fails loudly here.
+describe("resetHeaderTargetMs", () => {
+	it("treats values above 1e12 as an absolute epoch already in milliseconds", () => {
+		// A present-day ms epoch (~1.7e12) is returned verbatim as the target instant.
+		expect(resetHeaderTargetMs(1_700_000_000_000)).toEqual({ atMs: 1_700_000_000_000 });
+	});
+
+	it("treats values in (1e9, 1e12] as an epoch in seconds and scales to milliseconds", () => {
+		// A present-day second epoch (~1.7e9) is multiplied by 1000 to reach ms.
+		expect(resetHeaderTargetMs(1_700_000_000)).toEqual({ atMs: 1_700_000_000_000 });
+	});
+
+	it("treats values at or below 1e9 as a plain wait delta, not a timestamp", () => {
+		// 1500 is a Discord-style `x-ratelimit-reset-ms` delta, kept as a delta.
+		expect(resetHeaderTargetMs(1500)).toEqual({ delta: true });
+		expect(resetHeaderTargetMs(0)).toEqual({ delta: true });
+	});
+
+	// The classification uses strict `>` against both thresholds, so a value
+	// landing exactly on a boundary falls into the LOWER band. These lock that
+	// edge so nobody silently flips a boundary to `>=`.
+	it("classifies a value exactly at RESET_EPOCH_S_MIN as a delta, not a seconds epoch", () => {
+		expect(RESET_EPOCH_S_MIN).toBe(1e9);
+		expect(resetHeaderTargetMs(RESET_EPOCH_S_MIN)).toEqual({ delta: true });
+		// One above the boundary crosses into the seconds-epoch band.
+		expect(resetHeaderTargetMs(RESET_EPOCH_S_MIN + 1)).toEqual({ atMs: (1e9 + 1) * 1000 });
+	});
+
+	it("classifies a value exactly at RESET_EPOCH_MS_MIN as a seconds epoch, not a ms epoch", () => {
+		expect(RESET_EPOCH_MS_MIN).toBe(1e12);
+		expect(resetHeaderTargetMs(RESET_EPOCH_MS_MIN)).toEqual({ atMs: 1e12 * 1000 });
+		// One above the boundary is a ms epoch returned verbatim.
+		expect(resetHeaderTargetMs(RESET_EPOCH_MS_MIN + 1)).toEqual({ atMs: 1e12 + 1 });
 	});
 });
 

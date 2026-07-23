@@ -12,6 +12,32 @@ const RETRY_DELAY_FIELD_PATTERN = /"retryDelay":\s*"([0-9.]+)(ms|s)"/i;
 const TRY_AGAIN_PATTERN = /try again in\s+~?\s*([0-9.]+)\s*(ms|sec|s|minutes?|mins?|m|hours?|hrs?|h)\b/i;
 
 /**
+ * A rate-limit `reset` header value at or above this is a Unix epoch already in
+ * milliseconds (present-day ms epochs are ~1.7e12), never a wait delta.
+ */
+export const RESET_EPOCH_MS_MIN = 1e12;
+/**
+ * A `reset` value at or above this (but below {@link RESET_EPOCH_MS_MIN}) is a
+ * Unix epoch in seconds (present-day second epochs are ~1.7e9); anything below
+ * is a plain delta in the header's own unit.
+ */
+export const RESET_EPOCH_S_MIN = 1e9;
+
+/**
+ * Disambiguate the three shapes a single rate-limit `reset` numeric field
+ * conflates (a Unix epoch in ms, a Unix epoch in seconds, or a plain wait
+ * delta) by magnitude, since a present-day epoch dwarfs any sane delta.
+ * Returns the absolute target instant in ms for the two epoch shapes, or
+ * `{ delta: true }` so the caller applies the header's own unit to the raw
+ * value. Owns the epoch/delta thresholds for every `reset`-header parser.
+ */
+export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: true } {
+	if (value > RESET_EPOCH_MS_MIN) return { atMs: value };
+	if (value > RESET_EPOCH_S_MIN) return { atMs: value * 1000 };
+	return { delta: true };
+}
+
+/**
  * Server-suggested retry delay extraction. Merges the patterns historically used
  * by the OpenAI Codex and Google Gemini retry helpers.
  *
@@ -49,10 +75,9 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 		if (rateLimitResetMs) {
 			const value = Number(rateLimitResetMs);
 			if (Number.isFinite(value) && value > 0) {
-				// > 1e12 → epoch ms; > 1e9 → epoch s; otherwise a delta in ms.
-				const targetMs = value > 1e12 ? value : value > 1e9 ? value * 1000 : undefined;
-				if (targetMs === undefined) return value;
-				const delta = targetMs - Date.now();
+				const target = resetHeaderTargetMs(value);
+				if ("delta" in target) return value; // raw value is already a delta in ms
+				const delta = target.atMs - Date.now();
 				if (delta > 0) return delta;
 			}
 		}
