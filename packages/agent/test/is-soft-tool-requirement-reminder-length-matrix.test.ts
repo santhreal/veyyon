@@ -13,7 +13,7 @@ describe("isSoftToolRequirement reminder length matrix", () => {
 					id: "x",
 					toolName: "t",
 					reminder: Array.from({ length: n }, (_, i) => `r${i}`),
-				}),
+				} as never),
 			).toBe(true);
 		});
 	}

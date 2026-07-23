@@ -49,7 +49,7 @@ describe("hashline preflight adversarial extras", () => {
 		expect(fs.get("del.ts")).toBe("a\nc\n");
 		expect(fs.get("swap.ts")).toBe("new\n");
 
-		const before = { del: fs.get("del.ts"), swap: fs.get("swap.ts") };
+		const before = { del: fs.get("del.ts")!, swap: fs.get("swap.ts")! };
 		const hDel = snapshots.record("del.ts", before.del);
 		const bad = Patch.parse([`[del.ts#${hDel}]`, "DEL 1", "[swap.ts#0000]", "SWAP 1.=1:", "+poison"].join("\n"));
 		await expect(patcher.apply(bad)).rejects.toThrow();

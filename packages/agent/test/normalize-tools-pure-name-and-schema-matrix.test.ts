@@ -23,31 +23,31 @@ function tool(name: string, description = "d"): AgentTool {
 
 describe("normalizeTools pure name/schema matrix", () => {
 	it("empty input → empty", () => {
-		expect(normalizeTools([])).toEqual([]);
+		expect(normalizeTools([], false)).toEqual([]);
 	});
 
 	it("filters non-objects and keeps order of real tools", () => {
 		const a = tool("a");
 		const b = tool("b");
-		const out = normalizeTools([null, a, "x", b, 1, undefined] as never);
+		const out = normalizeTools([null, a, "x", b, 1, undefined] as never, false);
 		expect(out.map(t => t.name)).toEqual(["a", "b"]);
 	});
 
 	it("empty description preserved when prune not forced", () => {
 		const t = tool("x", "");
-		const out = normalizeTools([t]);
+		const out = normalizeTools([t], false);
 		expect(out).toHaveLength(1);
 		expect(out[0]?.name).toBe("x");
 	});
 
 	it("duplicate names: both retained or last wins — exact shipped behavior", () => {
-		const out = normalizeTools([tool("dup"), tool("dup")]);
+		const out = normalizeTools([tool("dup"), tool("dup")], false);
 		// Document exact: normalizeTools does not dedupe by name
 		expect(out.map(t => t.name)).toEqual(["dup", "dup"]);
 	});
 
 	it("large batch preserves count of valids", () => {
 		const tools = Array.from({ length: 50 }, (_, i) => tool(`t${i}`));
-		expect(normalizeTools(tools)).toHaveLength(50);
+		expect(normalizeTools(tools, false)).toHaveLength(50);
 	});
 });

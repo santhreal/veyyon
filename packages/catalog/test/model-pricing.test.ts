@@ -15,17 +15,17 @@ import MODELS from "@veyyon/catalog/models.json" with { type: "json" };
  */
 describe("getModelPricing", () => {
 	it("calls a model with a published input price priced", () => {
-		expect(
-			getModelPricing({ id: "gpt-4o", cost: { input: 2.5, output: 10, cacheRead: 0, cacheWrite: 0, total: 0 } }),
-		).toBe("priced");
+		expect(getModelPricing({ id: "gpt-4o", cost: { input: 2.5, output: 10, cacheRead: 0, cacheWrite: 0 } })).toBe(
+			"priced",
+		);
 	});
 
 	it("calls a model priced when only the output leg is published", () => {
 		// Some catalogs publish output-only pricing. Requiring both legs would
 		// misfile those as unpriced.
-		expect(
-			getModelPricing({ id: "some-model", cost: { input: 0, output: 1.5, cacheRead: 0, cacheWrite: 0, total: 0 } }),
-		).toBe("priced");
+		expect(getModelPricing({ id: "some-model", cost: { input: 0, output: 1.5, cacheRead: 0, cacheWrite: 0 } })).toBe(
+			"priced",
+		);
 	});
 
 	it("calls a zero-cost model unpriced when nothing marks it free", () => {
@@ -33,7 +33,7 @@ describe("getModelPricing", () => {
 		expect(
 			getModelPricing({
 				id: "alibaba/qwen3-max-instruct",
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			}),
 		).toBe("unpriced");
 	});
@@ -44,7 +44,7 @@ describe("getModelPricing", () => {
 		expect(
 			getModelPricing({
 				id: "meta-llama/llama-3.3-70b-instruct:free",
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			}),
 		).toBe("free");
 	});
@@ -53,9 +53,7 @@ describe("getModelPricing", () => {
 		// The marker is a suffix, not a substring. `freedom-model` is not free and
 		// neither is anything that only mentions the word.
 		for (const id of ["freedom-model", "free-tier-preview", "gpt-free-4", "x:free-preview"]) {
-			expect(getModelPricing({ id, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } })).toBe(
-				"unpriced",
-			);
+			expect(getModelPricing({ id, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } })).toBe("unpriced");
 		}
 	});
 
@@ -65,7 +63,7 @@ describe("getModelPricing", () => {
 		expect(
 			getModelPricing({
 				id: "vendor/model:free",
-				cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 0 },
+				cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
 			}),
 		).toBe("priced");
 	});
@@ -82,7 +80,7 @@ describe("getModelPricing", () => {
  * over the heuristic in both directions, which is the whole point of adding it.
  */
 describe("getModelPricing prefers a recorded pricing fact over the id heuristic", () => {
-	const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+	const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 	it("calls a zero-cost model unpriced when discovery recorded that nothing was published", () => {
 		expect(getModelPricing({ id: "some/model", cost: zero, pricing: "unknown" })).toBe("unpriced");

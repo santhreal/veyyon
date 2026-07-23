@@ -23,7 +23,7 @@ function tool(name: string, label?: string) {
 describe("normalizeTools scale and duplicates", () => {
 	it("preserves order of 100 uniquely named tools", () => {
 		const tools = Array.from({ length: 100 }, (_, i) => tool(`t${i}`));
-		const out = normalizeTools(tools as never);
+		const out = normalizeTools(tools as never, false);
 		expect(out.map(t => t.name)).toEqual(tools.map(t => t.name));
 	});
 
@@ -31,13 +31,12 @@ describe("normalizeTools scale and duplicates", () => {
 		const a = tool("a");
 		const b = tool("b");
 		const c = tool("c");
-		// @ts-expect-error garbage
 		const out = normalizeTools([null, a, undefined, b, {}, c, null] as never, false);
 		expect(out.map(t => t.name)).toEqual(["a", "b", "c"]);
 	});
 
 	it("tools with distinct labels but same name keep both or first depending on product", () => {
-		const out = normalizeTools([tool("same", "L1"), tool("same", "L2")] as never);
+		const out = normalizeTools([tool("same", "L1"), tool("same", "L2")] as never, false);
 		expect(out.every(t => t.name === "same")).toBe(true);
 		expect(out.length).toBeGreaterThanOrEqual(1);
 		expect(out.length).toBeLessThanOrEqual(2);
@@ -45,7 +44,6 @@ describe("normalizeTools scale and duplicates", () => {
 
 	it("does not throw on a very large garbage-heavy list", () => {
 		const mixed = Array.from({ length: 500 }, (_, i) => (i % 3 === 0 ? tool(`ok${i}`) : null));
-		// @ts-expect-error garbage mix
 		const out = normalizeTools(mixed as never, false);
 		expect(out.length).toBeGreaterThan(100);
 		expect(out.every(t => typeof t.name === "string" && t.name.startsWith("ok"))).toBe(true);

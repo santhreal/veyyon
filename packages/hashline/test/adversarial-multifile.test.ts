@@ -185,7 +185,7 @@ describe("hashline adversarial multi-file", () => {
 		const { fs, snapshots, tags } = setup({ "bom.ts": body });
 		const patcher = new Patcher({ fs, snapshots });
 		await patcher.apply(Patch.parse([`[bom.ts#${tags["bom.ts"]}]`, "SWAP 2.=2:", "+SECOND"].join("\n")));
-		const out = fs.get("bom.ts");
+		const out = fs.get("bom.ts")!;
 		expect(out.startsWith(bom)).toBe(true);
 		expect(out).toBe(`${bom}first\nSECOND\n`);
 	});
@@ -217,9 +217,9 @@ describe("hashline adversarial multi-file", () => {
 
 		// Second batch: poison one tag, ensure no further mutation of the trio.
 		const before = {
-			del: fs.get("del.ts"),
-			ins: fs.get("ins.ts"),
-			rep: fs.get("rep.ts"),
+			del: fs.get("del.ts")!,
+			ins: fs.get("ins.ts")!,
+			rep: fs.get("rep.ts")!,
 		};
 		// Re-record tags from current content for a realistic follow-up batch.
 		const tags2 = {
