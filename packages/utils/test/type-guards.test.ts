@@ -275,6 +275,11 @@ async function collectFiles(dirs: readonly string[], includeTests: boolean): Pro
 	const files: string[] = [];
 	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 		if (!pkg.isDirectory()) continue;
+		// argot is a standalone published package (its only dependency is smol-toml);
+		// it cannot import @veyyon/utils and carries its own util copies by design, so
+		// exclude the whole package from the ownership scan. The walk's dir-name skip
+		// only catches nested vendored `src/argot/` copies, never this package root.
+		if (pkg.name === "argot") continue;
 		for (const sub of dirs) {
 			try {
 				await walk(path.join(PACKAGES_DIR, pkg.name, sub), files, includeTests);

@@ -361,6 +361,11 @@ async function productionSources(): Promise<string[]> {
 	const files: string[] = [];
 	for (const pkg of await readdir(ATOMIC_PACKAGES_DIR, { withFileTypes: true })) {
 		if (!pkg.isDirectory()) continue;
+		// argot is a standalone published package (its only dependency is smol-toml);
+		// it cannot import @veyyon/utils and carries its own atomic-write copy by
+		// design (src/cache.ts), so exclude the whole package root here. The walk's
+		// dir-name skip only catches nested vendored `src/argot/` copies.
+		if (pkg.name === "argot") continue;
 		await walkTsSources(path.join(ATOMIC_PACKAGES_DIR, pkg.name, "src"), files);
 	}
 	return files;
