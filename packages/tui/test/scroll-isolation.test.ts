@@ -209,9 +209,52 @@ describe("scroll isolation", () => {
 		}
 	});
 
-	it("writes wheel tracking modes on start and tears them down on stop", async () => {
-		// The mode contract: 1000h+1006h while isolation runs (never 1003h,
-		// which would flood input with motion events), fully reset on stop.
+	it("writes wheel tracking modes only while the frame overflows, and tears them down on stop", async () => {
+		// The mode contract: 1000h+1006h while a scrollable frame runs (never
+		// 1003h, which would flood input with motion events), released when the
+		// frame fits the viewport so short screens keep native drag-select,
+		// and fully reset on stop.
+		const term = new VirtualTerminal(40, 10, 1_000);
+		const originalWrite = term.write.bind(term);
+		let written = "";
+		term.write = (data: string) => {
+			written += data;
+			originalWrite(data);
+		};
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		const transcript = new Transcript();
+		transcript.lines = rows("hist-", 30);
+		tui.addChild(transcript);
+		tui.setScrollIsolation(true);
+		tui.start();
+		await scheduler.drain(term);
+		expect(written).toContain("\x1b[?1000h\x1b[?1006h");
+		expect(written).not.toContain("\x1b[?1003h");
+
+		// Shrink below the viewport: tracking releases mid-session.
+		written = "";
+		transcript.lines = rows("hist-", 5);
+		tui.requestRender();
+		await scheduler.drain(term);
+		expect(written).toContain("\x1b[?1006l\x1b[?1000l");
+
+		// Grow back: tracking re-arms.
+		written = "";
+		transcript.lines = rows("hist-", 30);
+		tui.requestRender();
+		await scheduler.drain(term);
+		expect(written).toContain("\x1b[?1000h\x1b[?1006h");
+
+		tui.stop();
+		expect(written).toContain("\x1b[?1006l\x1b[?1000l");
+		await term.flush();
+	});
+
+	it("never captures the mouse on a frame that fits the viewport", async () => {
+		// The selection-preservation contract: with nothing to scroll there is
+		// no reason to hold the mouse, so a short frame emits no tracking
+		// bytes at all and plain drag-select keeps working.
 		const term = new VirtualTerminal(40, 10, 1_000);
 		const originalWrite = term.write.bind(term);
 		let written = "";
@@ -227,10 +270,10 @@ describe("scroll isolation", () => {
 		tui.setScrollIsolation(true);
 		tui.start();
 		await scheduler.drain(term);
-		expect(written).toContain("\x1b[?1000h\x1b[?1006h");
+		expect(written).not.toContain("\x1b[?1000h");
+		expect(written).not.toContain("\x1b[?1002h");
 		expect(written).not.toContain("\x1b[?1003h");
 		tui.stop();
-		expect(written).toContain("\x1b[?1006l\x1b[?1000l");
 		await term.flush();
 	});
 });

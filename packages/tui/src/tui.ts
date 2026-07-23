@@ -1028,6 +1028,11 @@ export class TUI extends Container {
 	// ordinary seam rewrite on resume.
 	#scrollIsolation = false;
 	#wheelTrackingActive = false;
+	// True while the composed frame overflows the viewport — the only state
+	// where the wheel has something to scroll. Tracking toggles with it, so
+	// short screens keep full native drag-select; long screens trade it for
+	// Shift+drag.
+	#frameScrollable = false;
 	// Pinned footer = the last #pinnedFooterChildCount root children (the
 	// composer zone). The row count is derived from the segment ledger after
 	// every compose — never by re-rendering the zone, which would double
@@ -1436,7 +1441,8 @@ export class TUI extends Container {
 	 * Alt-screen overlays own the full tracking set while active, so this is
 	 * a no-op then; the alt-exit path re-syncs. */
 	#syncWheelTracking(): void {
-		const want = this.#scrollIsolation && !this.#stopped && this.#hasEverRendered && !this.#altActive;
+		const want =
+			this.#scrollIsolation && !this.#stopped && this.#hasEverRendered && !this.#altActive && this.#frameScrollable;
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
 		this.terminal.write(want ? MOUSE_WHEEL_TRACKING_ON : MOUSE_WHEEL_TRACKING_OFF);
@@ -2958,6 +2964,10 @@ export class TUI extends Container {
 		// #committedPrefixAuditRows). The whole frame is final when the root
 		// reports no seam (shell semantics).
 		const frameLength = rawFrame.length;
+		// Wheel tracking follows scrollability: a frame that fits the viewport
+		// has nothing to scroll, so release the mouse and restore native
+		// drag-select for short screens. Synced after the emit below.
+		this.#frameScrollable = frameLength > height;
 		const finalBoundary = clampLow(liveRegionStart ?? frameLength, 0, frameLength);
 
 		// 2. Transition state captured before any emitter runs.
@@ -3234,6 +3244,7 @@ export class TUI extends Container {
 			repaintVirtualScrollInPlace: hasVisibleOverlay || virtualScrollSlice,
 			cursorTrackingLineCount,
 		});
+		this.#syncWheelTracking();
 		for (let i = this.#committedPrefix.length; i < chunkTo; i++) {
 			this.#committedPrefix.push(rawFrame[i] ?? "");
 		}
