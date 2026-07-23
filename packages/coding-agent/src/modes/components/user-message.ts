@@ -57,14 +57,14 @@ export class UserMessageComponent extends Container {
 		// rest"): a past prompt reads `› …` — the same glyph you typed behind,
 		// dimmed because it is history. Children render 3 columns narrower so
 		// the gutter never pushes a wrapped line past the terminal edge.
-		const lines = super.render(Math.max(1, width - 4));
+		const lines = super.render(Math.max(1, width - 3));
 		if (lines.length === 0) {
 			return lines;
 		}
 		if (this.#zoneSource === lines && this.#zoneLines !== undefined) {
 			return this.#zoneLines;
 		}
-		const gutter = `  ${theme.fg("dim", "›")} `;
+		const gutter = ` ${theme.fg("borderAccent", "›")} `;
 		let gutterPlaced = false;
 		const wrapped = lines.map(line => {
 			// ANSI-aware blankness: padding rows carry color codes, so a raw
@@ -73,7 +73,7 @@ export class UserMessageComponent extends Container {
 				gutterPlaced = true;
 				return gutter + line;
 			}
-			return line.length > 0 ? `    ${line}` : line;
+			return line.length > 0 ? `   ${line}` : line;
 		});
 		wrapped[0] = OSC133_ZONE_START + wrapped[0];
 		wrapped[wrapped.length - 1] = wrapped[wrapped.length - 1] + OSC133_ZONE_END;
