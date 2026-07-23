@@ -1769,7 +1769,7 @@ function buildLsRejectedResult(path: string, reason: string) {
 	});
 }
 
-function buildGrepResultFromToolResult(
+export function buildGrepResultFromToolResult(
 	args: { pattern: string; path?: string; outputMode?: string },
 	toolResult: ToolResultMessage,
 ) {
@@ -1841,7 +1841,13 @@ function buildGrepResultFromToolResult(
 				continue;
 			}
 			const [, file, lineNumber, content] = match;
-			const isContextLine = Boolean(contextLine);
+			// A line is context only when it did NOT parse as a real match. The two
+			// regexes overlap: a genuine match line whose content contains a
+			// `-<digits>-` run (an ISO date like 2024-01-15, an index like x-1-y)
+			// ALSO satisfies the context pattern, so `Boolean(contextLine)` would
+			// mislabel that match as context and drop it from totalMatchedLines.
+			// `match` already prefers matchLine, so derive the flag from matchLine.
+			const isContextLine = matchLine === null;
 			const list = matchMap.get(file) ?? [];
 			list.push({ line: Number(lineNumber), content, isContextLine });
 			matchMap.set(file, list);
