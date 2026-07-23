@@ -59,11 +59,7 @@ export class BashExecutionComponent extends Container {
 		this.#loader = loader;
 
 		// Command header
-		this.#headerText = new Text(
-			`${theme.fg("dim", "─╴")}${theme.fg(colorKey, theme.bold(`$ ${command}`))}`,
-			1,
-			0,
-		);
+		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`$ ${command}`)), 1, 0);
 		this.#contentContainer.addChild(this.#headerText);
 		this.#contentContainer.addChild(this.#loader);
 	}
