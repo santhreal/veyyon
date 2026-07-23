@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getDefault, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
 import {
 	dispatchRpcInputFrame,
 	RpcInputDispatcher,
@@ -10,28 +13,17 @@ import {
 	rpcUnknownCommandResponse,
 } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
 import type { RpcCommand, RpcResponse } from "@veyyon/coding-agent/modes/rpc/rpc-types";
-import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getDefault, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	type ApprovalMode,
 	type ApprovalResolutionOptions,
 	resolveApproval,
+	type ToolApproval,
 } from "@veyyon/coding-agent/tools/approval";
+import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
 import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
-import {
-	enforcePlanModeWrite,
-	unwrapHashlineHeaderPath,
-} from "@veyyon/coding-agent/tools/plan-mode-guard";
-import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
-import {
-	InMemoryFilesystem,
-	InMemorySnapshotStore,
-	parsePatch,
-	Patch,
-	Patcher,
-	Recovery,
-} from "@veyyon/hashline";
+import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
 import { makeToolSession } from "../helpers/tool-session";
@@ -183,7 +175,9 @@ function assertRpcFrame(
 	},
 ): void {
 	expect(nullishToNull(frame.id)).toBe(exp.id);
-	expect(frame.type).toBe(exp.type);
+	// frame.type is the narrow "response" literal; the corpus expectation is a
+	// plain string, so widen the matcher to compare their runtime values.
+	expect(frame.type).toBe<string>(exp.type);
 	expect(frame.command).toBe(exp.command);
 	expect(frame.success).toBe(exp.success);
 	if (exp.errorContains) {
@@ -263,7 +257,7 @@ async function runRpcGetState(c: CorpusCase): Promise<void> {
 
 function runResolveApproval(c: CorpusCase): void {
 	const input = c.input as {
-		tool: { name: string; approval?: "read" | "write" | "exec" | { tier: string; override?: boolean; reason?: string } };
+		tool: { name: string; approval?: ToolApproval };
 		args: unknown;
 		mode: ApprovalMode;
 		userConfig: Record<string, unknown>;
@@ -276,8 +270,10 @@ function runResolveApproval(c: CorpusCase): void {
 		reasonContains?: string;
 	};
 	const result = resolveApproval(input.tool, input.args, input.mode, input.userConfig, input.options);
-	expect(result.policy).toBe(exp.policy);
-	expect(result.tier).toBe(exp.tier);
+	// result fields are narrow literal unions; the corpus expectations are plain
+	// strings, so widen the matchers to compare runtime values.
+	expect(result.policy).toBe<string>(exp.policy);
+	expect(result.tier).toBe<string>(exp.tier);
 	expect(result.override).toBe(exp.override);
 	if (exp.reasonContains) {
 		expect(String(result.reason ?? "")).toContain(exp.reasonContains);
@@ -287,16 +283,18 @@ function runResolveApproval(c: CorpusCase): void {
 function runSettingsGetDefault(c: CorpusCase): void {
 	const input = c.input as { path: SettingPath };
 	const exp = c.expect as { default: unknown; isolated: unknown };
-	expect(getDefault(input.path)).toBe(exp.default);
+	// Corpus expectations are `unknown`; settings values are the narrow schema
+	// union. Widen the matchers to compare their runtime values.
+	expect(getDefault(input.path)).toBe<unknown>(exp.default);
 	const settings = Settings.isolated({});
-	expect(settings.get(input.path)).toBe(exp.isolated);
+	expect(settings.get(input.path)).toBe<unknown>(exp.isolated);
 }
 
 function runSettingsOverride(c: CorpusCase): void {
 	const input = c.input as { overrides: Partial<Record<SettingPath, unknown>>; path: SettingPath };
 	const exp = c.expect as { value: unknown };
 	const settings = Settings.isolated(input.overrides);
-	expect(settings.get(input.path)).toBe(exp.value);
+	expect(settings.get(input.path)).toBe<unknown>(exp.value);
 }
 
 function runSettingsPathExists(c: CorpusCase): void {
@@ -351,6 +349,30 @@ function runHashlineRecovery(c: CorpusCase): void {
 	} else {
 		expect(recovered).toBeNull();
 	}
+}
+
+/** Point-path tool: reports a single `path` arg, matching read/write extraction. */
+function pointPathTool(): { filesystemTargets: (args: unknown) => string[] } {
+	return {
+		filesystemTargets: (args: unknown) => {
+			const a = args as { path?: unknown } | null;
+			return typeof a?.path === "string" ? [a.path] : [];
+		},
+	};
+}
+
+function runCwdEscaping(c: CorpusCase): void {
+	const input = c.input as { cwd: string; mode: "point" | "search"; args: unknown };
+	const tool = input.mode === "search" ? { filesystemTargets: searchPathFilesystemTargets } : pointPathTool();
+	const escaping = cwdEscapingTargets(tool, input.args, input.cwd);
+	const exp = c.expect as { escaping: string[] };
+	expect(escaping).toEqual(exp.escaping);
+}
+
+function runSearchPathTargets(c: CorpusCase): void {
+	const targets = searchPathFilesystemTargets(c.input);
+	const exp = c.expect as { targets: string[] };
+	expect(targets).toEqual(exp.targets);
 }
 
 function runPlanModeEnforce(c: CorpusCase): void {
@@ -434,6 +456,12 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "mcp-tool-name":
 			runMcpToolName(c);
+			return;
+		case "cwd-escaping":
+			runCwdEscaping(c);
+			return;
+		case "search-path-targets":
+			runSearchPathTargets(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);

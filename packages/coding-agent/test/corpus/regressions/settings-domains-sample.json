@@ -31,6 +31,33 @@
 			"tags": ["boundary"],
 			"input": { "path": "display.smoothStreaming" },
 			"expect": { "exists": true }
+		},
+		{
+			"id": "settings-tools-approval-mode-exists",
+			"contract": "tools.approvalMode is a real schema path",
+			"surface": "settings-path-exists",
+			"tags": ["boundary"],
+			"input": { "path": "tools.approvalMode" },
+			"expect": { "exists": true }
+		},
+		{
+			"id": "settings-unknown-path-absent",
+			"contract": "A made-up settings path is not in the schema",
+			"surface": "settings-path-exists",
+			"tags": ["negative", "adversarial"],
+			"input": { "path": "definitely.not.a.real.settings.path" },
+			"expect": { "exists": false }
+		},
+		{
+			"id": "settings-override-approval-mode-ask",
+			"contract": "Isolated override sets tools.approvalMode to ask",
+			"surface": "settings-override",
+			"tags": ["positive"],
+			"input": {
+				"overrides": { "tools.approvalMode": "ask" },
+				"path": "tools.approvalMode"
+			},
+			"expect": { "value": "ask" }
 		}
 	]
 }

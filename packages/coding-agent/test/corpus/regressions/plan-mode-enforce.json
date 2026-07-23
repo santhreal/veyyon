@@ -95,6 +95,30 @@
 				"op": "update"
 			},
 			"expect": { "throws": false }
+		},
+		{
+			"id": "plan-enforce-on-blocks-absolute-outside",
+			"contract": "Plan mode rejects absolute paths outside the local:// sandbox",
+			"surface": "plan-mode-enforce",
+			"tags": ["adversarial", "positive"],
+			"input": {
+				"planEnabled": true,
+				"target": "/etc/cron.d/evil",
+				"op": "create"
+			},
+			"expect": { "throws": true, "errorContains": "working tree is read-only" }
+		},
+		{
+			"id": "plan-enforce-on-blocks-memory-scheme",
+			"contract": "Plan mode rejects memory:// targets that are not the local sandbox",
+			"surface": "plan-mode-enforce",
+			"tags": ["adversarial", "negative"],
+			"input": {
+				"planEnabled": true,
+				"target": "memory://note",
+				"op": "update"
+			},
+			"expect": { "throws": true, "errorContains": "working tree is read-only" }
 		}
 	]
 }

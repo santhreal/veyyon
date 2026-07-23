@@ -1,0 +1,244 @@
+{
+	"cases": [
+		{
+			"id": "cwd-point-in-cwd-relative",
+			"contract": "A relative path under the session cwd does not escape the filesystem boundary",
+			"surface": "cwd-escaping",
+			"tags": ["positive", "negative"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "src/a.ts" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-point-in-cwd-absolute",
+			"contract": "An absolute path that stays inside cwd is in-bounds",
+			"surface": "cwd-escaping",
+			"tags": ["positive", "negative"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "/home/user/project/src/a.ts" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-point-absolute-etc-passwd",
+			"contract": "An absolute out-of-cwd path is flagged as escaping",
+			"surface": "cwd-escaping",
+			"tags": ["adversarial", "positive"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "/etc/passwd" }
+			},
+			"expect": { "escaping": ["/etc/passwd"] }
+		},
+		{
+			"id": "cwd-point-dotdot-traversal",
+			"contract": "A .. traversal that leaves cwd resolves to an absolute escape path",
+			"surface": "cwd-escaping",
+			"tags": ["adversarial", "regression"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "../../../etc/passwd" }
+			},
+			"expect": { "escaping": ["/etc/passwd"] }
+		},
+		{
+			"id": "cwd-point-sibling-escape",
+			"contract": "A sibling directory under the parent of cwd is outside the boundary",
+			"surface": "cwd-escaping",
+			"tags": ["adversarial"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "../sibling/x" }
+			},
+			"expect": { "escaping": ["/home/user/sibling/x"] }
+		},
+		{
+			"id": "cwd-point-bare-root-alias",
+			"contract": "A bare root slash is the workspace-root alias and stays in-bounds",
+			"surface": "cwd-escaping",
+			"tags": ["boundary", "negative"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "/" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-point-https-skipped",
+			"contract": "HTTP(S) URL targets are non-filesystem and never counted as cwd escapes",
+			"surface": "cwd-escaping",
+			"tags": ["negative", "boundary"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "https://example.com/page" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-point-ssh-skipped",
+			"contract": "ssh:// targets are non-filesystem and never counted as cwd escapes",
+			"surface": "cwd-escaping",
+			"tags": ["negative", "boundary"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "ssh://host/etc/passwd" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-point-memory-scheme-skipped",
+			"contract": "Internal memory:// schemes are non-filesystem and never counted as cwd escapes",
+			"surface": "cwd-escaping",
+			"tags": ["negative", "boundary"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "point",
+				"args": { "path": "memory://note" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-search-etc-glob-escapes",
+			"contract": "A search path whose glob base is /etc escapes the cwd boundary",
+			"surface": "cwd-escaping",
+			"tags": ["adversarial", "positive"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "search",
+				"args": { "path": "/etc/**" }
+			},
+			"expect": { "escaping": ["/etc"] }
+		},
+		{
+			"id": "cwd-search-semicolon-mixed",
+			"contract": "A semicolon-delimited search with an out-of-cwd member flags only the escape",
+			"surface": "cwd-escaping",
+			"tags": ["adversarial"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "search",
+				"args": { "path": "src;/etc" }
+			},
+			"expect": { "escaping": ["/etc"] }
+		},
+		{
+			"id": "cwd-search-bare-glob-in-bounds",
+			"contract": "A bare glob pattern with no directory prefix bases at cwd and does not escape",
+			"surface": "cwd-escaping",
+			"tags": ["negative", "boundary"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "search",
+				"args": { "path": "*.ts" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-search-relative-dir-in-bounds",
+			"contract": "A relative search directory under cwd does not escape",
+			"surface": "cwd-escaping",
+			"tags": ["negative"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "search",
+				"args": { "path": "src" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-search-omitted-path-in-bounds",
+			"contract": "Omitted search path reports no targets and therefore no escapes",
+			"surface": "cwd-escaping",
+			"tags": ["boundary", "negative"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "search",
+				"args": {}
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "cwd-point-empty-cwd-no-gate",
+			"contract": "When cwd is unknown (empty), the boundary returns no escapes",
+			"surface": "cwd-escaping",
+			"tags": ["boundary", "negative"],
+			"input": {
+				"cwd": "",
+				"mode": "point",
+				"args": { "path": "/etc/passwd" }
+			},
+			"expect": { "escaping": [] }
+		},
+		{
+			"id": "search-targets-etc-glob-base",
+			"contract": "searchPathFilesystemTargets reduces /etc/** to the fixed base /etc",
+			"surface": "search-path-targets",
+			"tags": ["positive"],
+			"input": { "path": "/etc/**" },
+			"expect": { "targets": ["/etc"] }
+		},
+		{
+			"id": "search-targets-semicolon-split",
+			"contract": "Semicolon-delimited path entries become separate search targets",
+			"surface": "search-path-targets",
+			"tags": ["positive"],
+			"input": { "path": "src;/etc" },
+			"expect": { "targets": ["src", "/etc"] }
+		},
+		{
+			"id": "search-targets-bare-glob-empty-base",
+			"contract": "A bare *.ts pattern has an empty glob base (cwd-relative)",
+			"surface": "search-path-targets",
+			"tags": ["boundary"],
+			"input": { "path": "*.ts" },
+			"expect": { "targets": [""] }
+		},
+		{
+			"id": "search-targets-omitted-empty",
+			"contract": "Missing path/paths yields an empty target list",
+			"surface": "search-path-targets",
+			"tags": ["boundary", "negative"],
+			"input": {},
+			"expect": { "targets": [] }
+		},
+		{
+			"id": "search-targets-paths-array",
+			"contract": "Legacy paths array is accepted and split like path",
+			"surface": "search-path-targets",
+			"tags": ["positive", "regression"],
+			"input": { "paths": ["/var/log", "src"] },
+			"expect": { "targets": ["/var/log", "src"] }
+		},
+		{
+			"id": "search-targets-file-path-literal",
+			"contract": "A literal file path with no glob meta is reported as itself",
+			"surface": "search-path-targets",
+			"tags": ["positive"],
+			"input": { "path": "/etc/passwd" },
+			"expect": { "targets": ["/etc/passwd"] }
+		},
+		{
+			"id": "cwd-search-passwd-file-escapes",
+			"contract": "Searching a single out-of-cwd file path escapes like a point read",
+			"surface": "cwd-escaping",
+			"tags": ["adversarial", "positive"],
+			"input": {
+				"cwd": "/home/user/project",
+				"mode": "search",
+				"args": { "path": "/etc/passwd" }
+			},
+			"expect": { "escaping": ["/etc/passwd"] }
+		}
+	]
+}

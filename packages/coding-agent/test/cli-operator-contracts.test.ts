@@ -45,4 +45,60 @@ describe("CLI operator contracts (parseArgs)", () => {
 		const parsed = parseArgs(["--print", "hi"]);
 		expect(reportUnrecognizedFlags(parsed)).toBe(false);
 	});
+
+	it("sets autoApprove for both --yolo and --auto-approve", () => {
+		expect(parseArgs(["--yolo"]).autoApprove).toBe(true);
+		expect(parseArgs(["--auto-approve"]).autoApprove).toBe(true);
+		expect(parseArgs([]).autoApprove).toBeFalsy();
+	});
+
+	it("sets dangerouslySkipPermissions only for the stronger bypass flag", () => {
+		expect(parseArgs(["--dangerously-skip-permissions"]).dangerouslySkipPermissions).toBe(true);
+		expect(parseArgs(["--yolo"]).dangerouslySkipPermissions).toBeFalsy();
+	});
+
+	it("parses --cwd and --model string values exactly", () => {
+		const cwd = parseArgs(["--cwd", "/tmp/operator-cwd"]);
+		expect(cwd.cwd).toBe("/tmp/operator-cwd");
+		expect(cwd.unrecognizedFlags).toEqual([]);
+		const model = parseArgs(["--model", "google-antigravity/gemini-3.6-flash"]);
+		expect(model.model).toBe("google-antigravity/gemini-3.6-flash");
+		expect(model.unrecognizedFlags).toEqual([]);
+	});
+
+	it("parses --profile space and equals forms", () => {
+		expect(parseArgs(["--profile", "work"]).profile).toBe("work");
+		expect(parseArgs(["--profile=lab"]).profile).toBe("lab");
+	});
+
+	it("parses --no-session and --allow-home booleans", () => {
+		expect(parseArgs(["--no-session"]).noSession).toBe(true);
+		expect(parseArgs(["--allow-home"]).allowHome).toBe(true);
+		expect(parseArgs([]).noSession).toBeFalsy();
+		expect(parseArgs([]).allowHome).toBeFalsy();
+	});
+
+	it("keeps known flags out of unrecognizedFlags while recording true unknowns", () => {
+		const clean = parseArgs(["--print", "hi", "--yolo", "--cwd", "/tmp/x"]);
+		expect(clean.unrecognizedFlags).toEqual([]);
+		expect(clean.print).toBe(true);
+		expect(clean.autoApprove).toBe(true);
+		expect(clean.cwd).toBe("/tmp/x");
+		expect(clean.messages).toEqual(["hi"]);
+
+		const mixed = parseArgs(["--yolo", "--not-a-real-veyyon-flag", "--print", "x"]);
+		expect(mixed.autoApprove).toBe(true);
+		expect(mixed.print).toBe(true);
+		expect(mixed.messages).toEqual(["x"]);
+		expect(mixed.unrecognizedFlags).toEqual(["--not-a-real-veyyon-flag"]);
+	});
+
+	it("treats arguments after -- as positional messages even when flag-shaped", () => {
+		const parsed = parseArgs(["--print", "before", "--", "--yolo", "--help"]);
+		expect(parsed.print).toBe(true);
+		expect(parsed.messages).toEqual(["before", "--yolo", "--help"]);
+		expect(parsed.autoApprove).toBeFalsy();
+		expect(parsed.help).toBeFalsy();
+		expect(parsed.unrecognizedFlags).toEqual([]);
+	});
 });

@@ -15,6 +15,38 @@
 			"tags": ["positive", "regression"],
 			"input": { "path": "tools.approvalMode" },
 			"expect": { "default": "yolo", "isolated": "yolo" }
+		},
+		{
+			"id": "settings-compaction-strategy-default",
+			"contract": "compaction.strategy default is summary on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "compaction.strategy" },
+			"expect": { "default": "summary", "isolated": "summary" }
+		},
+		{
+			"id": "settings-async-enabled-default",
+			"contract": "async.enabled default is true on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive"],
+			"input": { "path": "async.enabled" },
+			"expect": { "default": true, "isolated": true }
+		},
+		{
+			"id": "settings-display-shimmer-default",
+			"contract": "display.shimmer default is disabled on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive", "boundary"],
+			"input": { "path": "display.shimmer" },
+			"expect": { "default": "disabled", "isolated": "disabled" }
+		},
+		{
+			"id": "settings-bash-auto-background-default",
+			"contract": "bash.autoBackground.enabled default is false on empty config",
+			"surface": "settings-get-default",
+			"tags": ["positive", "negative"],
+			"input": { "path": "bash.autoBackground.enabled" },
+			"expect": { "default": false, "isolated": false }
 		}
 	]
 }
