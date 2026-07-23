@@ -86,6 +86,33 @@ function codingAgentWorkspaceClosure(): Set<string> {
 	return seen;
 }
 
+/**
+ * name -> directory basename for every workspace package under packages/, so a
+ * closure member (a package NAME) can be checked against the pack loop (which
+ * lists directory basenames).
+ */
+function packageDirsByName(): Map<string, string> {
+	const byName = new Map<string, string>();
+	for (const dir of fs.readdirSync(packagesDir)) {
+		const pkgJson = path.join(packagesDir, dir, "package.json");
+		if (!fs.existsSync(pkgJson)) continue;
+		byName.set(readManifest(dir).name, dir);
+	}
+	return byName;
+}
+
+/**
+ * Directory basenames the smoke actually packs: the shared `for pkg in ...; do`
+ * loop plus the two packages with dedicated pack steps (natives, whose host leaf
+ * and published-manifest core are packed separately, and coding-agent, packed
+ * after its published bin swap + prepack bundle).
+ */
+function packedDirs(runCi: string): Set<string> {
+	const loop = runCi.match(/for pkg in ([^;]+); do/);
+	if (!loop) throw new Error("Could not find the `for pkg in ...; do` pack loop in run-ci.sh");
+	return new Set([...loop[1].trim().split(/\s+/), "natives", "coding-agent"]);
+}
+
 /** Keys of the `pkg.overrides = { ... }` object literal written by run-ci.sh. */
 function overrideEntries(runCi: string): Array<{ name: string; tgzVar: string }> {
 	const block = runCi.match(/pkg\.overrides\s*=\s*\{([\s\S]*?)\};/);
@@ -119,6 +146,22 @@ describe("tarball-install smoke dependency coverage", () => {
 
 		const missing = closure.filter(name => !overrides.has(name));
 		expect(missing).toEqual([]);
+	});
+
+	it("packs a tarball for every workspace-topology dependency of coding-agent", () => {
+		// Overriding a dep is not enough: run-ci.sh must also PACK it, or
+		// `find_tarball` finds nothing, the `$<dep>_tgz` var is empty, and `bun add`
+		// (and the override pointing at "") falls back to the registry — the same
+		// silent coverage hole ARGOT-1 was, reached by a different door. The prior
+		// test only checked the override map; this checks the pack loop itself.
+		const dirsByName = packageDirsByName();
+		const packed = packedDirs(runCi);
+		const closure = [...codingAgentWorkspaceClosure()].sort();
+		const unpacked = closure
+			.map(name => ({ name, dir: dirsByName.get(name) }))
+			.filter(({ dir }) => dir === undefined || !packed.has(dir))
+			.map(({ name, dir }) => `${name} (packages/${dir ?? "?"})`);
+		expect(unpacked).toEqual([]);
 	});
 
 	it("keeps the override map and the `bun add` list pointing at the same tarball vars", () => {
