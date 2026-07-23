@@ -37,7 +37,7 @@
     "@veyyon/agent-core": "catalog:",
     "@veyyon/coding-agent": "catalog:",
     "@veyyon/utils": "catalog:",
-    "argot": "file:../../../../../libs/context/argot",
+    "argot": "workspace:*",
     "diff": "catalog:",
     "prettier": "catalog:",
     "regexp-tree": "catalog:",

@@ -71,7 +71,7 @@
     "@veyyon/utils": "catalog:",
     "@veyyon/wire": "catalog:",
     "@xterm/headless": "catalog:",
-    "argot": "file:../../../../../libs/context/argot",
+    "argot": "workspace:*",
     "arktype": "catalog:",
     "chalk": "catalog:",
     "diff": "catalog:",

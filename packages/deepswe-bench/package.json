@@ -4,7 +4,7 @@
 	"version": "0.1.0",
 	"description": "DeepSWE bench runner for perf-affecting veyyon features (see README.md)",
 	"dependencies": {
-		"argot": "file:../../../../../libs/context/argot"
+		"argot": "workspace:*"
 	},
 	"scripts": {
 		"bench": "bun run.ts"
