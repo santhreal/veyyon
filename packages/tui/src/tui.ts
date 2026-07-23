@@ -2954,8 +2954,7 @@ export class TUI extends Container {
 		} else if (
 			frameLength <= this.#committedRows ||
 			(frameLength - this.#committedRows < height &&
-				cursorMarkers.some(marker => marker.row >= this.#committedRows) &&
-				(committedRowsResynced || frameLength <= height))
+				cursorMarkers.some(marker => marker.row >= this.#committedRows))
 		) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
@@ -2967,19 +2966,12 @@ export class TUI extends Container {
 			// tall transient prompt (the ask dialog's inline editor) shrinking
 			// back to the one-line editor (no resync: the committed transcript
 			// rows never changed). Flooring windowTop at #committedRows would pin
-			// the editor mid-screen with blank rows underneath. Re-show the frame
-			// tail instead. The stale committed copy stays in native history;
-			// duplicating a few rows is preferable to a live editor gap —
-			// "duplication, never loss" is the ED3-unsafe fallback contract.
-			//
-			// The extra `committedRowsResynced || frameLength <= height` gate is
-			// what keeps this from stealing the ordinary autocomplete shrink: a
-			// menu closing while the transcript still overflows the viewport
-			// (frameLength > height, no resync) legitimately keeps its committed
-			// rows in scrollback and must floor at #committedRows in the else
-			// branch. We only re-anchor when the audit actually moved the commit
-			// boundary, or when the collapsed frame now fits the viewport whole,
-			// so nothing genuinely needs to stay scrolled off.
+			// the editor mid-screen with blank rows underneath — the operator's
+			// standing order is that the prompt NEVER floats, so the frame tail
+			// is re-shown even when the transcript still overflows the viewport.
+			// The stale committed copy stays in native history; duplicating a few
+			// rows is preferable to a live editor gap — "duplication, never loss"
+			// is the ED3-unsafe fallback contract.
 			committedPrefixResliced = true;
 			windowTop = Math.max(0, frameLength - height);
 			chunkTo = windowTop;
