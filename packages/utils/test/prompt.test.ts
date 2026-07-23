@@ -71,6 +71,30 @@ describe("format: structure", () => {
 		expect(prompt.format("<self/>\nx")).toBe("<self/>\nx");
 	});
 
+	/**
+	 * The blank-pop before a closing tag is deliberately NOT nesting-aware: it
+	 * fires for any top-of-line `</name>` at any depth, and even for an unbalanced
+	 * closing tag that was never opened. These goldens lock that behavior after
+	 * removing the dead `topLevelTags` bookkeeping (write-only state that tracked
+	 * open tags but never influenced output); the outputs are byte-for-byte what
+	 * the pre-removal implementation produced. A future nesting-aware change must
+	 * update these expectations on purpose, not drift into them.
+	 */
+	it("pops the blank before every closing tag regardless of nesting depth", () => {
+		expect(prompt.format("<outer>\n<inner>\nbody\n\n</inner>\n\n</outer>")).toBe(
+			"<outer>\n<inner>\nbody\n</inner>\n</outer>",
+		);
+		expect(prompt.format("<a>\n<b>\n<c>\ntext\n\n</c>\n</b>\n</a>")).toBe("<a>\n<b>\n<c>\ntext\n</c>\n</b>\n</a>");
+	});
+
+	it("pops the blank before an unbalanced closing tag that was never opened", () => {
+		expect(prompt.format("body\n\n</orphan>")).toBe("body\n</orphan>");
+	});
+
+	it("leaves a repeated same-name block and its inner blank handling intact", () => {
+		expect(prompt.format("<t>\none\n</t>\n<t>\ntwo\n\n</t>")).toBe("<t>\none\n</t>\n<t>\ntwo\n</t>");
+	});
+
 	it("keeps blank handling inside code fences verbatim", () => {
 		const input = "```\na\n\n\n\nb\n```";
 		expect(prompt.format(input)).toBe(input);
