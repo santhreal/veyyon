@@ -76,18 +76,7 @@ bun run.ts --reaggregate runs/prompt-tuning-01
 
 ---
 
-## 6. High-Throughput Feature & Prompt Eval Architecture
-
-To test prompts, config flags, and new features without burning expensive model usage or hitting rate limits:
-
-### 3-Tier Eval Pyramid
-1. **Tier 1 (Fast Local Screening):** Run `smoke.txt` (1 task) or `pilot-10.txt` on fast, low-cost models (`google-antigravity/gemini-2.5-flash` or `gemini-3.6-flash`). Runs in 1–3 minutes and filters out prompt regressions.
-2. **Tier 2 (Diverse Feature Matrix):** Run `diverse-20.txt` across 20 multi-repository tasks spanning Go, TypeScript, and Python to verify cross-language stability and token efficiency.
-3. **Tier 3 (Final Validation):** Run top-performing candidate arms on flagship models (`google-antigravity/claude-opus-4-6` or `claude-3-7-sonnet`) for final landing approval.
-
----
-
-## 7. Prompt Cache Stability Law & 3 CWD Mutation Vectors
+## 6. Prompt Cache Stability Law & 3 CWD Mutation Vectors
 - **Prefix Caching Rule:** LLM APIs hash the system prompt + conversation prefix starting from line 1.
 - **The 3 CWD Mutation Vectors:** Working directory changes occur via:
   1. *Profile Defaults (`session.workdir` setting)*: Updating it mid-session updates future session defaults without mutating live prompt headers.
