@@ -537,7 +537,13 @@ class RelaxedJson {
 		let end = i;
 		while (end > start && isWhitespace(s.charCodeAt(end - 1))) end--;
 		const word = s.slice(start, end);
-		if (NON_RECOVERABLE_BAREWORDS[word]) throw new SyntaxError(`Unexpected token at position ${start}`);
+		// Object.hasOwn, not `NON_RECOVERABLE_BAREWORDS[word]`: a bare index read
+		// resolves Object.prototype members, so an unquoted value literally named
+		// `constructor` (and, before NFKC/casing, `toString`/`valueOf`/
+		// `hasOwnProperty`) would read the inherited method (truthy) and be thrown
+		// as non-recoverable instead of recovered as the string it is. Only the
+		// five curated non-finite/undefined atoms may abort recovery.
+		if (Object.hasOwn(NON_RECOVERABLE_BAREWORDS, word)) throw new SyntaxError(`Unexpected token at position ${start}`);
 		this.#i = i;
 		return word;
 	}

@@ -156,7 +156,11 @@ export class AdvisorEmissionGuard {
 	accept(note: string): boolean {
 		const key = normalizeAdvisorNote(note);
 		if (!key) return false;
-		if (SUPPRESSED_NORMALIZED_PHRASES[key]) return false;
+		// Object.hasOwn, not `SUPPRESSED_NORMALIZED_PHRASES[key]`: a bare index read
+		// resolves Object.prototype members, so a note normalizing to `constructor`
+		// would read the inherited constructor (truthy) and be silently suppressed
+		// even though it is not in the curated filler list.
+		if (Object.hasOwn(SUPPRESSED_NORMALIZED_PHRASES, key)) return false;
 		if (this.#seen.has(key)) return false;
 		if (this.#consumedThisUpdate) return false;
 		this.#consumedThisUpdate = true;
