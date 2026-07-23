@@ -1,3 +1,12 @@
 # The extensionless /install is for humans: serve the install page. The raw
 # scripts stay at /install.sh and /install.ps1 (and get.veyyon.dev for curl).
 /install    /install.html  200
+
+# get.veyyon.dev is the `curl -fsSL https://get.veyyon.dev | sh` endpoint. It
+# deploys the same website/ tree as veyyon.dev, so its root would otherwise
+# serve the marketing index.html and `curl | sh` would pipe HTML into sh. This
+# host-scoped rewrite makes the get.veyyon.dev root serve the install script
+# instead. It is scoped to the get hostname, so veyyon.dev's root still serves
+# the site. A 200 rewrite keeps the URL and returns install.sh as the body;
+# /install.sh and /install.ps1 stay reachable directly for the -o forms.
+https://get.veyyon.dev/  /install.sh  200

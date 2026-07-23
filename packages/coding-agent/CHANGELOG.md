@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `curl -fsSL https://get.veyyon.dev | sh` serving the marketing page instead of the install script. The get.veyyon.dev root now returns install.sh, so the one-line install works again.
+
 ## [1.0.21] - 2026-07-23
 
 ### Fixed
