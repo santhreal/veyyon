@@ -8,20 +8,6 @@ import {
 	type RenderStablePrefix,
 	type ViewportTailProvider,
 } from "@veyyon/tui";
-import { theme } from "../theme/theme";
-
-// V2 ember-spine: every transcript row (and separator) hangs off one dim
-// spine at column 0, so the whole conversation reads as a single thread.
-const SPINE_WIDTH = 2;
-function spinePrefix(): string {
-	// "dim" not borderMuted: the muted hex sits at the grey ground's own value
-	// and vanishes there; dim stays a quiet step above both grounds.
-	return `${theme.fg("dim", "│")} `;
-}
-function spineRows(rows: readonly string[]): readonly string[] {
-	const prefix = spinePrefix();
-	return rows.map(r => prefix + r);
-}
 
 /**
  * A transcript block that is still mutating (a foreground tool awaiting its
@@ -318,7 +304,7 @@ export class TranscriptContainer
 		const collected: (readonly string[])[] = [];
 		let total = 0;
 		for (let i = this.children.length - 1; i >= this.#compactedChildStart && total < maxRows; i--) {
-			const contribution = spineRows(stripPlainBlankEdges(this.children[i]!.render(width - SPINE_WIDTH)));
+			const contribution = stripPlainBlankEdges(this.children[i]!.render(width));
 			if (contribution.length === 0) continue;
 			// One blank separator sits between this block and the (already
 			// collected) visible block below it.
@@ -329,7 +315,7 @@ export class TranscriptContainer
 		if (collected.length === 0) return EMPTY_TAIL;
 		const rows: string[] = [];
 		for (let k = collected.length - 1; k >= 0; k--) {
-			if (rows.length > 0) rows.push(spinePrefix());
+			if (rows.length > 0) rows.push("");
 			const body = collected[k]!;
 			for (let j = 0; j < body.length; j++) rows.push(body[j]!);
 		}
@@ -431,7 +417,7 @@ export class TranscriptContainer
 				// bump the block version; a mismatch forces a real render so the
 				// committed-prefix audit can observe and re-anchor the change.
 				previous.version === version;
-			const raw = committedReusable ? previous.rawRef : child.render(width - SPINE_WIDTH);
+			const raw = committedReusable ? previous.rawRef : child.render(width);
 			const reusable =
 				committedReusable ||
 				(previous !== undefined &&
@@ -439,7 +425,7 @@ export class TranscriptContainer
 					previous.rawRef === raw &&
 					previous.width === width &&
 					previous.generation === this.#generation);
-			const contribution = reusable ? previous.contribution : spineRows(stripPlainBlankEdges(raw));
+			const contribution = reusable ? previous.contribution : stripPlainBlankEdges(raw);
 			const compactable = finalized && version === undefined && previous?.finalized !== false;
 
 			// Empty (or stripped-to-nothing) children contribute nothing and never
@@ -503,7 +489,7 @@ export class TranscriptContainer
 					chainStable = false;
 					lines.length = row;
 				}
-				if (sep) lines.push(spinePrefix());
+				if (sep) lines.push("");
 				for (let j = 0; j < contribution.length; j++) lines.push(contribution[j]!);
 			}
 
