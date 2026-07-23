@@ -34,11 +34,70 @@ const primitiveMap: Record<JTDPrimitive, string> = {
 	uint32: "integer",
 };
 
+/**
+ * Carry a JTD `metadata.description` onto the converted JSON Schema node as a
+ * top-level `description`. JTD keeps human-facing annotations under `metadata`
+ * (see RFC 8927 §5); JSON Schema uses a top-level `description`. Dropping it
+ * silently loses the guidance a model relies on when the schema drives its
+ * output. Only a string `description` is lifted, and an existing one is never
+ * overwritten. Non-object bases (an `unknown` primitive, an array) pass through.
+ */
+function withDescription(base: unknown, raw: Record<string, unknown>): unknown {
+	if (base === null || typeof base !== "object" || Array.isArray(base)) return base;
+	const meta = raw.metadata;
+	if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return base;
+	const description = (meta as Record<string, unknown>).description;
+	if (typeof description !== "string") return base;
+	if ("description" in (base as Record<string, unknown>)) return base;
+	return { ...(base as Record<string, unknown>), description };
+}
+
+/**
+ * Honor JTD's `nullable: true` on a converted node. JTD marks a value nullable
+ * with a sibling `nullable` keyword (RFC 8927 §3.2); JSON Schema has no such
+ * keyword, so the null-ness must be folded into the shape itself. A node with a
+ * string `type` gains `"null"` in a `type` array, an array `type` gains it if
+ * absent, an `enum` gains a `null` member, and anything else (a `$ref`, a
+ * discriminator's `oneOf`) is wrapped in `anyOf` with `{ type: "null" }`.
+ * Without this the converter narrowed every nullable JTD form to a
+ * non-nullable JSON Schema, so a model's valid `null` failed validation.
+ */
+function applyNullable(base: unknown, nullable: boolean): unknown {
+	if (!nullable) return base;
+	if (base === null || typeof base !== "object" || Array.isArray(base)) {
+		return { anyOf: [base, { type: "null" }] };
+	}
+	const obj = base as Record<string, unknown>;
+	if (Array.isArray(obj.enum)) {
+		return obj.enum.includes(null) ? obj : { ...obj, enum: [...obj.enum, null] };
+	}
+	if ("type" in obj && !("anyOf" in obj) && !("oneOf" in obj) && !("allOf" in obj)) {
+		const t = obj.type;
+		if (typeof t === "string") {
+			return t === "null" ? obj : { ...obj, type: [t, "null"] };
+		}
+		if (Array.isArray(t)) {
+			return t.includes("null") ? obj : { ...obj, type: [...t, "null"] };
+		}
+	}
+	return { anyOf: [obj, { type: "null" }] };
+}
+
 function convertSchema(schema: unknown): unknown {
 	if (schema === null || typeof schema !== "object") {
 		return {};
 	}
+	const raw = schema as Record<string, unknown>;
+	const base = convertSchemaForm(schema);
+	return applyNullable(withDescription(base, raw), raw.nullable === true);
+}
 
+/**
+ * Convert a single JTD form to its JSON Schema shape, ignoring the cross-cutting
+ * `nullable` and `metadata` keywords. {@link convertSchema} wraps this to fold
+ * those in, so every form honors them in one place.
+ */
+function convertSchemaForm(schema: object): unknown {
 	// Enum form: { enum: ["a", "b"] } → { enum: ["a", "b"] }
 	if (isJTDEnum(schema)) {
 		return { enum: schema.enum };
@@ -168,6 +227,16 @@ export function isJTDSchema(schema: unknown): boolean {
 
 	// JTD properties form without type: "object" (JSON Schema requires it)
 	if (Object.hasOwn(obj, "properties") && !Object.hasOwn(obj, "type")) {
+		return true;
+	}
+
+	// JTD enum form: a bare `enum` with no `type`. JSON Schema's enum constraint
+	// almost always rides alongside a `type` (e.g. `{ type: "string", enum: [...] }`)
+	// and must stay untouched, so this only claims the type-less shape. Converting
+	// it is a no-op for the enum itself (`{ enum } → { enum }`), so nothing is ever
+	// dropped, but routing it through the converter folds sibling `nullable`/
+	// `metadata` keywords in correctly instead of leaking them unconverted.
+	if (Object.hasOwn(obj, "enum") && !Object.hasOwn(obj, "type")) {
 		return true;
 	}
 
