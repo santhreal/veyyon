@@ -52,6 +52,16 @@
         "@types/bun": "catalog:",
       },
     },
+    "packages/argot": {
+      "name": "argot",
+      "version": "1.0.12",
+      "dependencies": {
+        "smol-toml": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+      },
+    },
     "packages/catalog": {
       "name": "@veyyon/catalog",
       "version": "1.0.12",
@@ -95,7 +105,7 @@
         "@veyyon/utils": "catalog:",
         "@veyyon/wire": "catalog:",
         "@xterm/headless": "catalog:",
-        "argot": "file:../../../../../libs/context/argot",
+        "argot": "workspace:*",
         "arktype": "catalog:",
         "chalk": "catalog:",
         "diff": "catalog:",
@@ -148,7 +158,7 @@
       "name": "@veyyon/deepswe-bench",
       "version": "0.1.0",
       "dependencies": {
-        "argot": "file:../../../../../libs/context/argot",
+        "argot": "workspace:*",
       },
     },
     "packages/hashline": {
@@ -317,7 +327,7 @@
         "@veyyon/hashline": "catalog:",
         "@veyyon/tui": "catalog:",
         "@veyyon/utils": "catalog:",
-        "argot": "file:../../../../../libs/context/argot",
+        "argot": "workspace:*",
         "diff": "catalog:",
         "prettier": "catalog:",
         "regexp-tree": "catalog:",
@@ -1040,6 +1050,8 @@
 
     "anynum": ["anynum@1.0.1", "", {}, "sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A=="],
 
+    "argot": ["argot@workspace:packages/argot"],
+
     "argparse": ["argparse@1.0.10", "", { "dependencies": { "sprintf-js": "~1.0.2" } }, "sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg=="],
 
     "arkregex": ["arkregex@0.0.8", "", { "dependencies": { "@ark/util": "0.56.2" } }, "sha512-PJcx6G1kQTgLKPUbeYlYecDRaKq15AMSGVajlKFYWlPeJRQL+j3dKE6tyMs40HZ99djS1l9Vhl3ezAHy9JBIqQ=="],
@@ -1644,12 +1656,6 @@
 
     "@tailwindcss/oxide-wasm32-wasi/tslib": ["tslib@2.8.1", "", { "bundled": true }, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
-    "@veyyon/coding-agent/argot": ["argot@file:../../../libs/context/argot", { "dependencies": { "smol-toml": "^1.3.4" }, "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0" } }],
-
-    "@veyyon/deepswe-bench/argot": ["argot@file:../../../libs/context/argot", { "dependencies": { "smol-toml": "^1.3.4" }, "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0" } }],
-
-    "@veyyon/typescript-edit-benchmark/argot": ["argot@file:../../../libs/context/argot", { "dependencies": { "smol-toml": "^1.3.4" }, "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0" } }],
-
     "babel-plugin-jsx-dom-expressions/@babel/helper-module-imports": ["@babel/helper-module-imports@7.18.6", "", { "dependencies": { "@babel/types": "^7.18.6" } }, "sha512-0NFvs3VkuSYbFi1x2Vd6tKrywq+z/cLeYC/RJNFrIX/30Bf5aiGYbtvGXolEktzJH8o5E5KJ3tT+nkxuuZFVlA=="],
 
     "bun-types/@types/node": ["@types/node@26.1.1", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw=="],
@@ -1701,12 +1707,6 @@
     "@huggingface/transformers/onnxruntime-node/global-agent": ["global-agent@3.0.0", "", { "dependencies": { "boolean": "^3.0.1", "es6-error": "^4.1.1", "matcher": "^3.0.0", "roarr": "^2.15.3", "semver": "^7.3.2", "serialize-error": "^7.0.1" } }, "sha512-PT6XReJ+D07JvGoxQMkT6qji/jVNfX/h364XHZOWeRzy64sSFr+xJ5OX7LI3b4MPQzdL4H8Y8M0xzPpsVMwA8Q=="],
 
     "@huggingface/transformers/onnxruntime-node/onnxruntime-common": ["onnxruntime-common@1.24.3", "", {}, "sha512-GeuPZO6U/LBJXvwdaqHbuUmoXiEdeCjWi/EG7Y1HNnDwJYuk6WUbNXpF6luSUY8yASul3cmUlLGrCCL1ZgVXqA=="],
-
-    "@veyyon/coding-agent/argot/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@veyyon/deepswe-bench/argot/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@veyyon/typescript-edit-benchmark/argot/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "bun-types/@types/node/undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
 
