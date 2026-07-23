@@ -889,11 +889,7 @@ export class AssistantMessageComponent extends Container {
 			if (content.type === "text" && canonicalizeMessage(content.text)) {
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const trimmed = content.text.trim();
-				// V4 prompt-bar: agent prose steps back one tone so the operator's
-				// own words and the tool activity carry the visual hierarchy.
-				const md = new Markdown(trimmed, 1, 0, getMarkdownTheme(), {
-					color: (value: string) => theme.fg("muted", value),
-				});
+				const md = new Markdown(trimmed, 6, 0, getMarkdownTheme());
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "text", lastText: trimmed });
@@ -922,7 +918,7 @@ export class AssistantMessageComponent extends Container {
 					this.#contentContainer.addChild(this.#thinkingLabel);
 				}
 				// Thinking traces in thinkingText color, italic
-				const md = new Markdown(thinkingText, 1, 0, getMarkdownTheme(), {
+				const md = new Markdown(thinkingText, 6, 0, getMarkdownTheme(), {
 					color: (text: string) => theme.fg("thinkingText", text),
 					italic: true,
 				});

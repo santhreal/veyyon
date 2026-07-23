@@ -33,9 +33,7 @@ export class UserMessageComponent extends Container {
 		const keywordReset = theme.getFgAnsi("userMessageText") || "\x1b[39m";
 		const baseText = synthetic
 			? (value: string) => theme.fg("dim", value)
-			: // V4 prompt-bar: the user's words are the brightest text on screen —
-				// the hierarchy the session is organized around, not dimmed history.
-				(value: string) => theme.fg("accent", highlightMagicKeywords(value, keywordReset));
+			: (value: string) => theme.fg("userMessageText", highlightMagicKeywords(value, keywordReset));
 		const imageLabel = (value: string) => theme.fg("accent", `\x1b[1m\x1b[4m${value}\x1b[24m\x1b[22m`);
 		const color = (value: string) =>
 			renderPlaceholders(value, {
@@ -59,21 +57,24 @@ export class UserMessageComponent extends Container {
 		// rest"): a past prompt reads `› …` — the same glyph you typed behind,
 		// dimmed because it is history. Children render 3 columns narrower so
 		// the gutter never pushes a wrapped line past the terminal edge.
-		const lines = super.render(Math.max(1, width - 3));
+		const lines = super.render(Math.max(1, width - 6));
 		if (lines.length === 0) {
 			return lines;
 		}
 		if (this.#zoneSource === lines && this.#zoneLines !== undefined) {
 			return this.#zoneLines;
 		}
-		// V4 prompt-bar: an ember edge bar runs down every row of the prompt,
-		// so a user turn reads as one bright, claimed block.
-		const bar = `${theme.fg("borderAccent", "▌")}  `;
+		// V5 wide-air: the whole transcript sits on a 5-column margin.
+		const gutter = `    ${theme.fg("dim", "›")} `;
+		let gutterPlaced = false;
 		const wrapped = lines.map(line => {
-			if (stripAnsi(line).trim().length > 0) {
-				return bar + line;
+			// ANSI-aware blankness: padding rows carry color codes, so a raw
+			// trim() would mistake them for content and misplace the gutter.
+			if (!gutterPlaced && stripAnsi(line).trim().length > 0) {
+				gutterPlaced = true;
+				return gutter + line;
 			}
-			return line.length > 0 ? `${bar}${line}` : line;
+			return line.length > 0 ? `      ${line}` : line;
 		});
 		wrapped[0] = OSC133_ZONE_START + wrapped[0];
 		wrapped[wrapped.length - 1] = wrapped[wrapped.length - 1] + OSC133_ZONE_END;

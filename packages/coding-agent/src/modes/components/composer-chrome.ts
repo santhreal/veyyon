@@ -19,7 +19,7 @@ import { EMBER } from "./sun";
  * footline), in columns — the terminal realization of the design mockups'
  * horizontal composer padding. Nothing in the composer sits at column 0.
  */
-export const COMPOSER_INSET_COLS = 2;
+export const COMPOSER_INSET_COLS = 5;
 
 /** The mode/session state the composer accents are a pure function of. The
  * host resolves anything needing settings or the session (the accent ANSI);
