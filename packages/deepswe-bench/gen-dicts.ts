@@ -44,8 +44,12 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
 		if (arg.startsWith("--")) {
 			const key = arg.slice(2);
 			const next = argv[i + 1];
-			if (next === undefined || next.startsWith("--")) out[key] = true;
-			else (out[key] = next), i++;
+			if (next === undefined || next.startsWith("--")) {
+				out[key] = true;
+			} else {
+				out[key] = next;
+				i++;
+			}
 		}
 	}
 	return out;

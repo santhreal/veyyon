@@ -23,8 +23,6 @@ describe("SWAP middle half", () => {
 		for (const n of [4, 6, 8, 10, 12]) {
 			const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 			const src = text(lines);
-			const start = n / 2;
-			const end = n / 2 + 1;
 			// For n=4: lines 2-3; for n=6: lines 3-4
 			const s = Math.floor(n / 2);
 			const e = s + 1;

@@ -44,8 +44,7 @@ describe("applyEdits blank line file matrix", () => {
 		it(`n=${n} blank lines DEL all`, () => {
 			const base = Array.from({ length: n }, () => "").join("\n");
 			// for n blanks joined by \n there are n lines
-			const dels = Array.from({ length: n }, (_, i) => `DEL ${i + 1}`).join("\n");
-			// overlapping all DELs might fail; sequential
+			// overlapping all DELs might fail, so delete the first line sequentially
 			let t = base;
 			for (let i = 0; i < n; i++) {
 				t = applyEdits(t, parsePatch("DEL 1").edits).text;
