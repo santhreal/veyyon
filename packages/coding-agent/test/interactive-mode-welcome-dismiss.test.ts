@@ -118,7 +118,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		expect(wordmarks).toHaveLength(1);
 	});
 
-	it("first message renders at the top with the composer still locked to the viewport bottom", async () => {
+	it("first message hugs the composer at the viewport bottom, no void between them", async () => {
 		await mode.init({ suppressWelcomeIntro: true });
 
 		// Home screen: the composer is pinned to the viewport bottom by a large
@@ -140,21 +140,23 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		expect(rendered).toContain(marker);
 		expect(afterLines.length).toBeLessThanOrEqual(40);
 
-		// A short first message must NOT drag the composer up under it. Streaming
-		// starts at the top of scrollback and the composer stays locked to the
-		// bottom edge, with the reserved fill between them — this is the whole point
-		// of the anchor, and collapsing it on submit (the prior over-correction) is
-		// exactly the "prompt box stuck upwards" regression this guards against.
+		// Chat-surface contract: once a conversation starts, ALL slack routes above
+		// the transcript, so the message hugs the composer at the bottom like any
+		// chat surface. The old between-content fill (message at the top, composer
+		// at the bottom, a void of blank rows between them) committed those blank
+		// rows, and the landing reply pushed the prompt into scrollback (user
+		// screenshots, 2026-07-22). Assert the hug: the message sits directly
+		// above the composer zone, and the composer stays locked to the bottom.
 		const markerRow = afterLines.findIndex(line => line.includes(marker));
 		expect(markerRow).toBeGreaterThanOrEqual(0);
-		// The user message sits in the top region of the viewport.
-		expect(markerRow).toBeLessThan(8);
 		// The composer placeholder sits in the bottom region of the 40-row viewport.
 		const composerRow = afterLines.findIndex(line => line.includes("ask anything"));
 		expect(composerRow).toBeGreaterThanOrEqual(30);
-		// Concretely: the composer is far below the message, so a real fill gap
-		// separates them (the composer is anchored to the bottom, not riding up).
-		expect(composerRow - markerRow).toBeGreaterThan(20);
+		// The message is above the composer, close to it: the only rows between
+		// them are the composer zone chrome (status loader, hairline, pad rows),
+		// never a reserved void.
+		expect(markerRow).toBeLessThan(composerRow);
+		expect(composerRow - markerRow).toBeLessThanOrEqual(12);
 	});
 
 	it("latches the anchor off once the transcript fills the viewport: no reserved gap, composer on the natural bottom", async () => {
