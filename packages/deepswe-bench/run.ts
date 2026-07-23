@@ -218,6 +218,7 @@ function parseTrialResult(arm: string, task: string, jobDir: string): ArmResult 
 		result.argotLoadCalls = usage.argotLoadCalls ?? null;
 		result.assistantMsgsWithSigil = usage.assistantMsgsWithSigil ?? null;
 		result.toolCalls = usage.toolCalls ?? null;
+	} else {
 		const agent = trial.agent_result ?? {};
 		result.inputTokens = agent.n_input_tokens ?? null;
 		result.outputTokens = agent.n_output_tokens ?? null;
@@ -394,8 +395,16 @@ async function main(): Promise<void> {
 		return configPath;
 	}
 
-	async function runOne(arm: string, task: string): Promise<void> {
+	async function runOne(arm: string, task: string, attempt = 1): Promise<void> {
 		const jobName = `${arm}__${task}`;
+		const jobDir = path.join(outRoot, "jobs", jobName);
+		if (attempt > 1 && fs.existsSync(jobDir)) {
+			fs.rmSync(jobDir, { recursive: true, force: true });
+			try {
+				await Bun.spawn(["sh", "-c", `docker rm -f $(docker ps -aq --filter name=${jobName}) 2>/dev/null || true`]).exited;
+				await Bun.spawn(["docker", "network", "prune", "-f"]).exited;
+			} catch { /* best effort */ }
+		}
 		const started = Date.now();
 		const proc = Bun.spawn([pier, "run", "-c", writeJobConfig(arm, task), "-q"], {
 			cwd: path.join(BENCH_DIR, "pier_agent"),
@@ -403,32 +412,45 @@ async function main(): Promise<void> {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			proc.kill();
+		}, trialTimeoutSec * 1000);
+
 		const exitCode = await proc.exited;
+		clearTimeout(timer);
 		const stdout = await new Response(proc.stdout).text();
 		const stderr = await new Response(proc.stderr).text();
 
-		const result: ArmResult = (() => {
-			try {
-				return parseTrialResult(arm, task, path.join(outRoot, "jobs", jobName));
-			} catch (err) {
-				return {
-					arm,
-					task,
-					reward: null,
-					partial: null,
-					f2p: null,
-					p2p: null,
-					inputTokens: null,
-					outputTokens: null,
-					cacheTokens: null,
-					costUsd: null,
-					agentSeconds: null,
-					argotLoadCalls: null,
-					assistantMsgsWithSigil: null,
-					error: `${err}; pier exit ${exitCode}; ${stderr.slice(-300) || stdout.slice(-300)}`,
-				};
+		let result: ArmResult;
+		try {
+			if (timedOut) throw new Error(`trial timed out after ${trialTimeoutSec}s`);
+			result = parseTrialResult(arm, task, jobDir);
+		} catch (err) {
+			const errStr = `${err}; pier exit ${exitCode}; ${stderr.slice(-300) || stdout.slice(-300)}`;
+			if (attempt === 1 && !timedOut && (errStr.includes("Docker compose command failed") || errStr.includes("FileExistsError") || errStr.includes("ENOENT"))) {
+				console.log(`[retry] ${jobName} hit container startup collision; pruning docker network & retrying (attempt 2)...`);
+				return await runOne(arm, task, 2);
 			}
-		})();
+			result = {
+				arm,
+				task,
+				reward: null,
+				partial: null,
+				f2p: null,
+				p2p: null,
+				inputTokens: null,
+				outputTokens: null,
+				cacheTokens: null,
+				costUsd: null,
+				agentSeconds: null,
+				argotLoadCalls: null,
+				assistantMsgsWithSigil: null,
+				toolCalls: null,
+				error: errStr,
+			};
+		}
 		results.push(result);
 		const mark = result.error ? "ERROR" : result.reward === 1 ? "pass" : `reward=${result.reward}`;
 		console.log(

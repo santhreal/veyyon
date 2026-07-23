@@ -54,7 +54,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 	constructor(session: ToolSession) {
 		this.#session = session;
 		this.description = prompt.render(setCwdDescription, {
-			argot: session.getArgotSession?.() !== undefined,
+			argot: session.settings.get("argot.enabled") === true,
 		});
 	}
 

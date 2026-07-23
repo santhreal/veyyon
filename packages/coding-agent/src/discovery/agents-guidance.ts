@@ -26,6 +26,10 @@ import * as path from "node:path";
 // profile-cli.test.ts "loads no agent .env before setProfile"). dirs.ts pulls no
 // env.ts, so it is safe to import eagerly.
 import { getAgentDir, getGlobalConfigRootDir } from "@veyyon/utils/dirs";
+// Subpath imports (not the barrel) for the same dotenv reason noted above:
+// fs-error and logger pull no env.ts, so they are safe in cli.ts's eager graph.
+import { isEexist } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
 
 /** Opening sentinel of a veyyon-managed guidance block. */
 const GUIDANCE_OPEN = "<!-- veyyon:guidance";
@@ -142,10 +146,19 @@ async function ensureManagedAgentsFile(filePath: string, header: string): Promis
 		// `wx` = O_CREAT | O_EXCL: create-or-fail, never truncate an existing file,
 		// so first run seeds the header and every later boot is a no-op.
 		await fs.writeFile(filePath, header, { flag: "wx", mode: 0o644 });
-	} catch {
-		// EEXIST (the file already exists) is the steady state after first run;
-		// a genuine error (read-only home, permissions) is non-fatal — the loader
-		// simply finds no seeded file. Seeding must never block the boot path.
+	} catch (err) {
+		// EEXIST (the file already exists) is the expected steady state after the
+		// first run — swallow it silently. Any OTHER error (read-only home,
+		// permissions, no space) means the profile silently has NO instruction
+		// file and the user has no way to know why their AGENTS.md never appeared.
+		// Surface it loudly rather than swallow (no silent fallback); seeding is
+		// still non-fatal, so we warn and let the boot path continue.
+		if (!isEexist(err)) {
+			logger.warn("agents-guidance: could not seed managed AGENTS.md; profile will have no seeded instructions", {
+				filePath,
+				error: String(err),
+			});
+		}
 	}
 }
 
