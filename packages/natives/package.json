@@ -4,7 +4,7 @@
   "description": "Native Rust bindings for grep, clipboard, image processing, syntax highlighting, PTY, and shell operations via N-API",
   "type": "module",
   "homepage": "https://veyyon.dev",
-  "author": "Can Boluk",
+  "author": "santhreal",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -7,7 +7,7 @@ resolver = "3"
 version = "1.0.21"
 edition = "2024"
 license = "MIT"
-authors = ["Can Boluk"]
+authors = ["santhreal"]
 homepage = "https://veyyon.dev/"
 repository = "https://github.com/santhreal/veyyon"
 

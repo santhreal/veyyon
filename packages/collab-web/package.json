@@ -5,7 +5,7 @@
   "private": true,
   "description": "Browser guest client and local relay tools for veyyon collab live sessions",
   "homepage": "https://veyyon.dev",
-  "author": "Can Boluk",
+  "author": "santhreal",
   "license": "MIT",
   "repository": {
     "type": "git",
