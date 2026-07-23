@@ -2561,7 +2561,6 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					model || modelOverride === undefined ? undefined : `${SUBAGENT_RETRY_FALLBACK_ROLE_PREFIX}${id}`,
 				thinkingLevel: effectiveThinkingLevel,
 				toolNames,
-				outputSchema,
 				requireYieldTool: true,
 				contextFiles: options.contextFiles,
 				skills: options.skills,

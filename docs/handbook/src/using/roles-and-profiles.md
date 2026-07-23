@@ -88,10 +88,20 @@ Every profile including `default`:
 ~/.veyyon/profiles/<name>/agent/   # config.yml, sessions, MCP, skills, …
 ```
 
+### Instruction Files: Global vs Per-Profile (`AGENTS.md`)
+
+Veyyon discovers exactly **two user-level instruction layers** before every session:
+
+1. **Global User Layer (`~/.veyyon/AGENTS.md`)**: Applies across EVERY profile and workspace. Reserved for cross-profile standing rules.
+2. **Active Profile Layer (`~/.veyyon/profiles/<profile_name>/...`)**: Applies ONLY to the active profile. Scanned in **descending priority order** (first match wins; exactly 1 file loaded per profile to prevent duplication):
+   1. `~/.veyyon/profiles/<name>/agent/AGENTS.md` (Highest)
+   2. `~/.veyyon/profiles/<name>/AGENTS.md`
+   3. `~/.veyyon/profiles/<name>/agent/agent.md`
+   4. `~/.veyyon/profiles/<name>/agent.md` (Lowest)
+
 Global `~/.veyyon/config.yml` holds cross-profile keys such as `defaultProfile`.  
 Activate: `--profile`, `VEYYON_PROFILE`, `veyyon profile default <name>`, TUI `/profiles` picker or `/profile <name>` (relaunch).  
 See [Profiles](../features/profiles.md), [File locations](../reference/file-locations.md).
-
 ## Approvals
 
 `tools.approvalMode`: `plan` | `ask` | `auto-edit` | `yolo` (schema default `yolo`).  

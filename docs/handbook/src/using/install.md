@@ -75,8 +75,8 @@ On the first interactive launch, the first-run setup (or `veyyon setup`) walks y
 
 ## Updating
 
-Veyyon keeps itself current. On startup it checks the registry for a newer
-release, and if it finds one it installs it in the background:
+Veyyon keeps itself current. On startup it checks veyyon.dev for a newer
+version, and if it finds one it downloads the new binary in the background:
 
 ```text
 veyyon 1.2.0 installed · restart to use it
@@ -112,15 +112,20 @@ You can always update on demand, whichever settings are in force:
 $ veyyon update
 ```
 
-Veyyon updates through whatever installed it, whether that is Homebrew, mise,
-bun, npm, or a standalone binary. If an automatic update fails, it says so and
-tells you to retry with `veyyon update`; it never fails quietly and leaves you
-on an old version without a word.
+Veyyon is distributed only two ways, and it updates the way it was installed. A
+binary install (the `curl` installer from veyyon.dev) replaces its own binary
+with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
+release and propagates automatically from GitHub Releases, so that is the only
+place a binary ever comes from. A source checkout does not self-update the
+binary; update it with `git pull` and a rebuild (`bun setup`). There is no npm,
+Homebrew, or other package-manager channel to go through. If an automatic update
+fails, Veyyon says so and tells you to retry with `veyyon update`; it never fails
+quietly and leaves you on an old version without a word.
 
 If the same version fails to install twice, the cause is usually the machine
 rather than the release: a binary owned by another user, a read-only image, or a
-package manager that needs elevated permissions. Veyyon reports that failure and
-then leaves it alone for six hours instead of repeating it on every launch. A
+directory that needs elevated permissions to write. Veyyon reports that failure
+and then leaves it alone for six hours instead of repeating it on every launch. A
 newer release is never held back by an older one's failure, and `veyyon update`
 ignores the pause entirely, so you can always ask to see the error again:
 

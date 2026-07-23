@@ -14,10 +14,10 @@ import { isSttModelKey, STT_MODEL_OPTIONS } from "../stt/models";
 import { detectRecorder, ensureRecorder } from "../stt/recorder";
 import { downloadTtsModel, isTtsLocalModelKey, isTtsModelCached, TTS_LOCAL_MODEL_OPTIONS } from "../tts";
 import { makeCoarseStepPrinter } from "./progress-line";
+import { runDoctorChecks, formatDoctorResults } from "../extensibility/plugins/doctor";
 import { selectSetupModel } from "./setup-model-picker";
 
-export type SetupComponent = "python" | "speech";
-
+export type SetupComponent = "python" | "speech" | "status" | "auth" | "";
 export interface SetupCommandArgs {
 	component: SetupComponent;
 	flags: {
@@ -27,7 +27,7 @@ export interface SetupCommandArgs {
 }
 
 /** Canonical component list; the `setup` command's options validation imports this. */
-export const SETUP_COMPONENTS: SetupComponent[] = ["python", "speech"];
+export const SETUP_COMPONENTS: SetupComponent[] = ["python", "speech", "status", "auth", ""];
 
 const MANAGED_PYTHON_ENV = getPythonEnvDir();
 
@@ -87,7 +87,22 @@ export async function runSetupCommand(cmd: SetupCommandArgs): Promise<void> {
 		case "speech":
 			await handleSpeechSetup(cmd.flags);
 			break;
+		case "status":
+		case "auth":
+		case "":
+		default:
+			await handleStatusSetup(cmd.flags);
+			break;
 	}
+}
+
+async function handleStatusSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {
+	const checks = await runDoctorChecks();
+	if (flags.json) {
+		console.log(JSON.stringify(checks, null, 2));
+		return;
+	}
+	console.log(formatDoctorResults(checks));
 }
 
 async function handlePythonSetup(flags: { json?: boolean; check?: boolean }): Promise<void> {

@@ -34,7 +34,7 @@ $ veyyon config path                     # print the active agent directory
 ### Session Working Directory (`session.workdir` vs `set_cwd`)
 
 - **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.
-- **Ephemeral Session Re-root (`set_cwd` tool / `/set_cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
+- **Ephemeral Session Re-root (`set_cwd` tool / `/cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
 - **Prompt Cache Protection**: Working directory changes mid-session update path resolution, but the rendered System Prompt header (`<workstation>`) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.
 ### When a settings file has a syntax error
 
