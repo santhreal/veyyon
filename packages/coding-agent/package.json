@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/coding-agent",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
