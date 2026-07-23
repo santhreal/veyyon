@@ -626,6 +626,54 @@ export function nativeSentinelsInBuffer(buffer) {
 }
 
 /**
+ * The single owner of the "does this built `.node` match this package version"
+ * contract that the ship path fails closed on. Given the variant buffers about
+ * to be embedded/published and the version they must carry, return the FIRST
+ * variant whose bytes do not expose `__veyyonNativesV<version>` (i.e. it was
+ * built for a different release), or `null` when every variant is fresh.
+ *
+ * This is the exact brick the loader hits at runtime — a `.node` left stale by a
+ * version bump, or one variant rebuilt at a different version than its sibling
+ * (modern at 1.0.14 while baseline is 1.0.15) — caught at build time instead of
+ * in a user's terminal. `embed-native.ts` (compiled-binary path) is the caller;
+ * keeping the check here means the embed guard and any future CI/loader guard
+ * read the sentinel the one same way, so they can never disagree on "stale".
+ *
+ * @param {Array<{ filename: string; bytes: Buffer | Uint8Array }>} addons
+ * @param {string} version
+ * @returns {{ filename: string; expected: string; builtFor: string[] } | null}
+ */
+export function findStaleAddon(addons, version) {
+	const expected = versionSentinelExportFor(version);
+	for (const addon of addons) {
+		const sentinels = nativeSentinelsInBuffer(addon.bytes);
+		if (!sentinels.includes(expected)) {
+			return { filename: addon.filename, expected, builtFor: sentinels };
+		}
+	}
+	return null;
+}
+
+/**
+ * The loud, actionable refusal message for a stale variant found by
+ * `findStaleAddon`. One owner so the thrown text (and the version it names) is
+ * asserted by a test rather than pasted at the throw site.
+ *
+ * @param {{ filename: string; expected: string; builtFor: string[] }} stale
+ * @param {string} version
+ * @returns {string}
+ */
+export function staleAddonMessage(stale, version) {
+	const builtFor = stale.builtFor.length > 0 ? stale.builtFor.join(", ") : "no version sentinel";
+	return (
+		"Refusing to embed a stale native addon.\n" +
+		`  ${stale.filename} carries ${builtFor}, but this package is ${version} ` +
+		`(expects ${stale.expected}).\n` +
+		"  Rebuild every variant for this version first: bun --cwd=packages/natives run build"
+	);
+}
+
+/**
  * `owner/repo` for a `package.json` `repository.url`, e.g.
  * `git+https://github.com/santhreal/veyyon.git` -> `santhreal/veyyon`. Fails
  * closed to veyyon's own slug (never a fork/upstream) when the URL is missing or

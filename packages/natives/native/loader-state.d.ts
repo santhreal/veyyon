@@ -97,5 +97,17 @@ export function detectBuiltNativeVersion(bindings: Record<string, unknown>): str
 /** Every `__veyyonNativesV<major>_<minor>_<patch>` sentinel physically present in a built `.node`'s bytes, deduplicated. */
 export function nativeSentinelsInBuffer(buffer: Uint8Array): string[];
 
+export interface StaleAddon {
+	filename: string;
+	expected: string;
+	builtFor: string[];
+}
+
+/** The first variant whose bytes do not carry `__veyyonNativesV<version>`, or `null` when every variant is fresh. The ship-path (embed-native.ts) fails closed on a non-null result. */
+export function findStaleAddon(addons: Array<{ filename: string; bytes: Uint8Array }>, version: string): StaleAddon | null;
+
+/** The loud, actionable build-time refusal message for a stale variant found by `findStaleAddon`. */
+export function staleAddonMessage(stale: StaleAddon, version: string): string;
+
 /** `owner/repo` for a package.json `repository.url`; fails closed to `santhreal/veyyon` when missing or unparseable. */
 export function repoSlugFromRepositoryUrl(raw: string | null | undefined): string;
