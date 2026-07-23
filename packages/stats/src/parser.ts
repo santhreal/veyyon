@@ -101,6 +101,17 @@ function isToolResultMessage(entry: SessionEntry): entry is SessionMessageEntry 
 }
 
 /**
+ * The non-empty `parentId` of any entry, or null. Read defensively because the
+ * `{ type: string }` catch-all in {@link SessionEntry} means a value that is not
+ * a known entry shape still reaches here; a missing, empty, or non-string
+ * `parentId` yields null so the caller stops walking the chain.
+ */
+function entryParentId(entry: SessionEntry): string | null {
+	const parentId = (entry as { parentId?: unknown }).parentId;
+	return typeof parentId === "string" && parentId.length > 0 ? parentId : null;
+}
+
+/**
  * Extract plain text from a user message content payload.
  */
 /**
@@ -460,19 +471,59 @@ export async function listAllSessionFiles(): Promise<string[]> {
 }
 
 /**
- * Find a specific entry in a session file.
+ * The most turn entries `getSessionEntryWithContext` will walk back through. A
+ * normal turn is at most a few hundred entries (two per tool round plus the
+ * prompt), so this only bounds a corrupted or self-referential `parentId` chain;
+ * it is a safety cap against unbounded work, not a product-visible limit.
  */
-export async function getSessionEntry(sessionPath: string, entryId: string): Promise<SessionEntry | null> {
+const MAX_CONTEXT_ENTRIES = 500;
+
+/**
+ * Return the entry with `entryId` from a session file together with its turn
+ * context: the ancestor entries walked up the `parentId` chain, stopping at and
+ * including the nearest user prompt. Entries come back oldest-first with the
+ * requested entry last, so `context[context.length - 1]` is always that entry
+ * and `context[0]` is the triggering user message (or the oldest reachable
+ * ancestor when no user prompt is on the chain).
+ *
+ * This is what lets a request-detail view show the user prompt and the
+ * intervening tool-call/result cycle, not just the isolated assistant reply.
+ * Returns null when the id is absent or the file is missing.
+ */
+export async function getSessionEntryWithContext(
+	sessionPath: string,
+	entryId: string,
+): Promise<{ entry: SessionMessageEntry; context: SessionEntry[] } | null> {
+	const byId = new Map<string, SessionEntry>();
 	try {
 		for await (const line of readLines(Bun.file(sessionPath).stream())) {
 			const entry = parseJsonLine(line, 0, line.length);
-			if (entry && "id" in entry && entry.id === entryId) {
-				return entry;
+			if (entry && "id" in entry && typeof entry.id === "string" && entry.id.length > 0) {
+				byId.set(entry.id, entry);
 			}
 		}
 	} catch (err) {
 		if (isEnoent(err)) return null;
 		throw err;
 	}
-	return null;
+
+	const target = byId.get(entryId);
+	if (target?.type !== "message") return null;
+	const targetMsg = target as SessionMessageEntry;
+
+	const chain: SessionEntry[] = [];
+	const visited = new Set<string>();
+	let cursor: SessionEntry | undefined = target;
+	while (cursor && "id" in cursor && typeof cursor.id === "string") {
+		if (visited.has(cursor.id)) break; // guard a self-referential parentId cycle
+		visited.add(cursor.id);
+		chain.push(cursor);
+		if (isUserMessage(cursor)) break; // reached the triggering prompt for this turn
+		if (chain.length >= MAX_CONTEXT_ENTRIES) break;
+		const parentId = entryParentId(cursor);
+		cursor = parentId ? byId.get(parentId) : undefined;
+	}
+
+	chain.reverse(); // oldest-first, requested entry last
+	return { entry: targetMsg, context: chain };
 }

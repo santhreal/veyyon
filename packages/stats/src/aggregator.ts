@@ -28,20 +28,13 @@ import {
 	updateToolResults,
 	updateUserMessageLinks,
 } from "./db";
-import { getSessionEntry, listAllSessionFiles, type ParseSessionResult, parseSessionFile } from "./parser";
+import { getSessionEntryWithContext, listAllSessionFiles, type ParseSessionResult, parseSessionFile } from "./parser";
 import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so the compiled binary and npm bundle only need one
 // JavaScript entry. Standalone source `veyyon-stats` keeps using this package's
 // own sync-worker source file.
-import type {
-	BehaviorDashboardStats,
-	DashboardStats,
-	MessageStats,
-	RequestDetails,
-	SessionMessageEntry,
-	ToolDashboardStats,
-} from "./types";
+import type { BehaviorDashboardStats, DashboardStats, MessageStats, RequestDetails, ToolDashboardStats } from "./types";
 
 /**
  * Apply a freshly parsed result to the database. Runs entirely on the
@@ -459,20 +452,17 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 	const msg = getMessageById(id);
 	if (!msg) return null;
 
-	const entry = await getSessionEntry(msg.sessionFile, msg.entryId);
-	if (entry?.type !== "message") return null;
-	// The `{ type: string }` catch-all in SessionEntry keeps the literal check
-	// from narrowing; type === "message" is SessionMessageEntry by contract.
-	const messageEntry = entry as SessionMessageEntry;
+	const resolved = await getSessionEntryWithContext(msg.sessionFile, msg.entryId);
+	if (!resolved) return null;
 
-	// TODO: Get parent/context messages?
-	// For now we return the single entry which contains the assistant response.
-	// The user prompt is likely the parent.
-
+	// `context` is the turn walked back to its triggering user prompt, oldest
+	// first with the requested entry last; `output` is that requested entry's
+	// message. Callers that only want the response read `output`; callers that
+	// want the prompt and the intervening tool cycle read `messages`.
 	return {
 		...msg,
-		messages: [entry],
-		output: messageEntry.message,
+		messages: resolved.context,
+		output: resolved.entry.message,
 	};
 }
 
