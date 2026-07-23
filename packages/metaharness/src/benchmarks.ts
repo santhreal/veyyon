@@ -140,7 +140,12 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 		total: result.summary.totalRuns,
 		done: traces.length,
 		pass,
-		fail: traces.length - pass,
+		// `pass`, `fail`, and `error` are disjoint here, matching `aggregate`'s
+		// contract (pass + error + fail === done). Subtract `error` as well as
+		// `pass` so errored runs stay out of the plain-fail count; otherwise the
+		// shared BenchmarkSnapshot.fail field would count errors for the edit
+		// adapter while the harbor adapter excludes them.
+		fail: traces.length - pass - error,
 		error,
 		running: Math.max(0, result.summary.totalRuns - traces.length),
 		costUsd: 0,
