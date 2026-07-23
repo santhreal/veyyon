@@ -209,5 +209,64 @@ ed="$SANDBOX/emptydir"; rm -rf "$ed"; mkdir -p "$ed"
 check "empty dir was removed" "$( [ -e "$ed" ] && echo present || echo gone )" "gone"
 check "empty dir left no backup" "$( ls -d "$ed".bak-* 2>/dev/null | wc -l | tr -d ' ' )" "0"
 
+# --- src_has_local_work + uninstall never deletes preserved work ---
+# Locks the second half of the data-loss fix: `--uninstall` used to `rm -rf`
+# ~/.veyyon/src unconditionally, which would destroy a `veyyon-local-*`
+# preservation branch (the user's recovered AGENTS.md edits) that a prior update
+# had just saved. src_has_local_work must flag uncommitted edits, a non-git tree
+# with user files, AND unpushed local branches; uninstall must then move the tree
+# aside rather than delete it. A pristine, fully-pushed checkout is still removed.
+if command -v git >/dev/null 2>&1; then
+    make_cloned_repo() { # dir — a checkout with an origin so pushed == on-remote
+        d="$1"; rm -rf "$d" "$d.origin"
+        ( git init -q --bare "$d.origin" \
+            && git clone -q "$d.origin" "$d" \
+            && cd "$d" && git config user.name t && git config user.email t@t \
+            && printf 'committed\n' > AGENTS.md && printf 'node_modules/\n' > .gitignore \
+            && git add -A && git commit -qm init && git push -q origin HEAD:refs/heads/main \
+            && git branch -q --set-upstream-to=origin/main 2>/dev/null ) >/dev/null 2>&1
+    }
+
+    make_cloned_repo "$SANDBOX/pristine"
+    ( src_has_local_work "$SANDBOX/pristine" ); check "pristine pushed checkout reports no local work" "$?" "1"
+
+    make_cloned_repo "$SANDBOX/dirtywork"
+    printf 'MY EDIT\n' > "$SANDBOX/dirtywork/AGENTS.md"
+    ( src_has_local_work "$SANDBOX/dirtywork" ); check "uncommitted edit is flagged as local work" "$?" "0"
+
+    make_cloned_repo "$SANDBOX/branchwork"
+    # Put a real unpushed commit on a preservation branch, working tree left clean.
+    ( cd "$SANDBOX/branchwork" && git checkout -q -b veyyon-local-teststamp \
+        && printf 'preserved edit\n' > AGENTS.md && git add -A && git commit -qm wip \
+        && git checkout -q main )
+    ( src_has_local_work "$SANDBOX/branchwork" ); check "unpushed veyyon-local branch is flagged as local work" "$?" "0"
+
+    ngw="$SANDBOX/nongitwork"; rm -rf "$ngw"; mkdir -p "$ngw"; printf 'x\n' > "$ngw/file.txt"
+    ( src_has_local_work "$ngw" ); check "non-git tree with files is flagged as local work" "$?" "0"
+
+    # Full uninstall behavior: VEYYON_SRC_DIR with an unpushed preservation branch
+    # must be MOVED ASIDE (recoverable), never rm -rf'd.
+    us="$SANDBOX/uninstall-src"
+    make_cloned_repo "$us"
+    ( cd "$us" && git checkout -q -b veyyon-local-keep \
+        && printf 'RECOVER ME\n' > AGENTS.md && git add -A && git commit -qm wip \
+        && git checkout -q main )
+    ( VEYYON_SRC_DIR="$us" INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    check "uninstall did NOT delete a checkout holding unpushed work" "$( [ -e "$us" ] && echo present || echo gone )" "gone"
+    usbak=$(ls -d "$us".bak-* 2>/dev/null | head -1)
+    check "uninstall moved the checkout aside instead of deleting" "$( [ -d "$usbak/.git" ] && echo yes || echo no )" "yes"
+    check "moved-aside checkout still has the recoverable edit" \
+        "$( cd "$usbak" && git show veyyon-local-keep:AGENTS.md )" "RECOVER ME"
+
+    # A pristine, fully-pushed checkout is removed outright (normal uninstall).
+    up="$SANDBOX/uninstall-pristine"
+    make_cloned_repo "$up"
+    ( VEYYON_SRC_DIR="$up" INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    check "uninstall removes a pristine pushed checkout outright" "$( [ -e "$up" ] && echo present || echo gone )" "gone"
+    check "pristine uninstall left no move-aside backup" "$( ls -d "$up".bak-* 2>/dev/null | wc -l | tr -d ' ' )" "0"
+else
+    printf 'SKIP: git not available; src_has_local_work/uninstall tests skipped\n' >&2
+fi
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
