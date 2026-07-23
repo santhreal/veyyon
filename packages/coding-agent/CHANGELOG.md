@@ -2,12 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.15] - 2026-07-23
-
-### Fixed
-
-- The `set_cwd` tool now offers its `argot_load` follow-up tip whenever Argot is enabled for the profile, matching the setting you control, instead of only when an Argot session already happens to exist. The tip appears the first time you re-root in an Argot-enabled profile.
-
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes
@@ -11278,6 +11272,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.15] - 2026-07-23
+
+### Fixed
+
+- The `set_cwd` tool now offers its `argot_load` follow-up tip whenever Argot is enabled for the profile, matching the setting you control, instead of only when an Argot session already happens to exist. The tip appears the first time you re-root in an Argot-enabled profile.
 
 ## [1.0.14] - 2026-07-23
 
