@@ -48,7 +48,7 @@ export function buildExecutionFrame(
  */
 export function createCollapsedPreview(previewText: string, previewLines: number): Component {
 	return {
-		render: (width: number) => truncateToVisualLines(previewText, previewLines, width, 2).visualLines,
+		render: (width: number) => truncateToVisualLines(previewText, previewLines, width, 1).visualLines,
 		invalidate: () => {},
 	};
 }
@@ -81,7 +81,7 @@ export function buildStatusFooter(opts: {
 	}
 
 	if (parts.length === 0) return undefined;
-	return new Text(`\n${parts.join("\n")}`, 2, 0);
+	return new Text(`\n${parts.join("\n")}`, 1, 0);
 }
 
 /**

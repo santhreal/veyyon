@@ -228,8 +228,13 @@ export class ComposerHairline implements Component {
 		// above it on every terminal; without detection, the token fallback is
 		// the exact pre-detection rendering.
 		const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
-		const rule = theme.boxSharp.horizontal.repeat(w);
-		return [derived !== undefined ? `${derived}${rule}\x1b[39m` : theme.fg("borderMuted", rule)];
+		// V2 ember-spine: the hairline opens with a short ember run that fades
+		// into the muted rule, echoing the spine's accent without shouting.
+		const glyph = theme.boxSharp.horizontal;
+		const accentLen = Math.min(18, w);
+		const rest = glyph.repeat(Math.max(0, w - accentLen));
+		const restStyled = derived !== undefined ? `${derived}${rest}\x1b[39m` : theme.fg("borderMuted", rest);
+		return [`${theme.fg("borderAccent", glyph.repeat(accentLen))}${restStyled}`];
 	}
 
 	invalidate(): void {}
