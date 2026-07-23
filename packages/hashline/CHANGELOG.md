@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Applying a large-range edit (a `DEL` or `SWAP` spanning thousands of lines) is now linear in the file size instead of quadratic. A range delete over 30000 lines of a 60000-line file dropped from ~160ms to ~21ms; the output is unchanged.
+
 ## [16.5.0] - 2026-07-13
 
 ### Fixed

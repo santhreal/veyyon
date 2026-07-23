@@ -22,14 +22,14 @@ import {
 describe("versionSentinelExportFor", () => {
 	it("derives the exact export name the Rust addon emits for a version", () => {
 		// The one that shipped stale: 1.0.14 loader vs a 1.0.13-built .node.
-		expect(versionSentinelExportFor("1.0.14")).toBe("__veyyonNativesV1_0_16");
-		expect(versionSentinelExportFor("1.0.13")).toBe("__veyyonNativesV1_0_16");
-		expect(versionSentinelExportFor("16.5.2")).toBe("__veyyonNativesV1_0_16");
+		expect(versionSentinelExportFor("1.0.14")).toBe("__veyyonNativesV1_0_14");
+		expect(versionSentinelExportFor("1.0.13")).toBe("__veyyonNativesV1_0_13");
+		expect(versionSentinelExportFor("16.5.2")).toBe("__veyyonNativesV16_5_2");
 	});
 
 	it("replaces every non-alphanumeric char, so prerelease/build tags stay a valid symbol", () => {
-		expect(versionSentinelExportFor("1.0.0-rc.1")).toBe("__veyyonNativesV1_0_16");
-		expect(versionSentinelExportFor("2.0.0+build.5")).toBe("__veyyonNativesV1_0_16");
+		expect(versionSentinelExportFor("1.0.0-rc.1")).toBe("__veyyonNativesV1_0_0_rc_1");
+		expect(versionSentinelExportFor("2.0.0+build.5")).toBe("__veyyonNativesV2_0_0_build_5");
 	});
 
 	it("round-trips with detectBuiltNativeVersion for a clean semver", () => {
@@ -42,7 +42,7 @@ describe("versionSentinelExportFor", () => {
 
 describe("detectBuiltNativeVersion", () => {
 	it("reads the built version back from a sentinel export among other bindings", () => {
-		const bindings = { grep: () => 0, __veyyonNativesV1_0_16: () => 0, ptyOpen: () => 0 };
+		const bindings = { grep: () => 0, __veyyonNativesV1_0_13: () => 0, ptyOpen: () => 0 };
 		expect(detectBuiltNativeVersion(bindings)).toBe("1.0.13");
 	});
 
@@ -63,7 +63,7 @@ describe("nativeSentinelsInBuffer", () => {
 	}
 
 	it("finds the exact sentinel a .node was built for, past embedded NULs and newlines", () => {
-		expect(nativeSentinelsInBuffer(fakeAddon("__veyyonNativesV1_0_16"))).toEqual(["__veyyonNativesV1_0_16"]);
+		expect(nativeSentinelsInBuffer(fakeAddon("__veyyonNativesV1_0_15"))).toEqual(["__veyyonNativesV1_0_15"]);
 	});
 
 	it("returns [] for a .node that carries no version sentinel at all", () => {
@@ -72,17 +72,17 @@ describe("nativeSentinelsInBuffer", () => {
 	});
 
 	it("deduplicates a sentinel that appears more than once", () => {
-		const twice = Buffer.concat([fakeAddon("__veyyonNativesV1_0_16"), fakeAddon("__veyyonNativesV1_0_16")]);
-		expect(nativeSentinelsInBuffer(twice)).toEqual(["__veyyonNativesV1_0_16"]);
+		const twice = Buffer.concat([fakeAddon("__veyyonNativesV1_0_15"), fakeAddon("__veyyonNativesV1_0_15")]);
+		expect(nativeSentinelsInBuffer(twice)).toEqual(["__veyyonNativesV1_0_15"]);
 	});
 
 	it("surfaces the WRONG version a stale addon was built for, so the embed refusal can name it", () => {
 		// The exact brick: a `modern.node` left at 1.0.14 while the package moved to
 		// 1.0.15. The scanner reports 1.0.14; embed-native.ts sees the expected
 		// 1.0.15 sentinel is absent and refuses to embed it.
-		const stale = fakeAddon("__veyyonNativesV1_0_16");
+		const stale = fakeAddon("__veyyonNativesV1_0_14");
 		const sentinels = nativeSentinelsInBuffer(stale);
-		expect(sentinels).toEqual(["__veyyonNativesV1_0_16"]);
+		expect(sentinels).toEqual(["__veyyonNativesV1_0_14"]);
 		expect(sentinels).not.toContain(versionSentinelExportFor("1.0.15"));
 	});
 
