@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-07-23
+
 ### Added
 
 - **Modular System Prompt & DeepSWE Evaluation Infrastructure**: Added `packages/deepswe-bench` evaluation harness with candidate system prompt arms (`arms/<name>.prompt.md`), automated binary compilation, read-only credential seeding, and Pier/Docker task container sandboxing with zero user/profile side effects.
@@ -11,6 +13,7 @@
 - **Prompt Cache Stability Law & 3 CWD Mutation Vectors**: Documented the 3 working directory mutation vectors (`session.workdir` settings, `set_cwd` tool, `/cwd` slash command) and prompt cache protection rules across `docs/tools/set_cwd.md`, `docs/internal/retained-patterns.md`, and `docs/handbook/src/using/roles-and-profiles.md`.
 - The auth broker is now configurable from `/settings`: the Global tab's new Auth Broker group holds **Auth Broker URL** and a write-only **Auth Broker Token** (a stored token renders as a mask and is never echoed; enter a new value to replace it, leave the mask to keep it, clear the field to delete it). Both persist nested under `auth.broker.*` in the machine-wide `~/.veyyon/config.yml`, and broker discovery now reads that global file as a per-key fallback after the profile's own config (env vars still win). Previously these keys were file/env-only.
 - `Ctrl+B` (`app.bash.background`) moves the running foreground command to a background job. While a foreground `bash` call is waiting, the working line shows `⟦ctrl+b background⟧`; pressing it converts the run into a background job (`details.async.reason: "manual"`) whose result is still delivered automatically. When nothing is waiting the chord keeps its readline meaning (cursor left).
+
 ### Changed
 
 - Fenced code blocks in the transcript no longer show their literal ``` markers. A block opens with a short rule and its language tag (`──╴bash`) and closes with the bare rule, in the same dim tone the compaction and cache markers use. The raw backtick fences read as unrendered markdown even though the body was already syntax-highlighted.
@@ -28,10 +31,6 @@
 - The scratch-directory marker in the footline is now the quiet `▫` square and the MCP "connecting" mark is `◦` (the unfilled pair of the `●` active mark). Both previously used `◌` (U+25CC DOTTED CIRCLE), which is the placeholder glyph fonts show under combining marks and read as a rendering artifact.
 - The titanium theme no longer paints explicit black or near-black backgrounds anywhere in the terminal: user-message rows, tool output boxes, the status footline, and the composer card previously filled with `#000000`/`#0C0E12`, which assumed a pure-black terminal and rendered as harsh black slabs on any other terminal background. All of these now inherit the terminal's own ground. (Themes that do declare a `composerBg` still get the card, and its padding rows now carry the same ground as the input rows.)
 
-### Removed
-
-- The `snap` compaction strategy (the experimental image-archive engine that rendered discarded history to bitmap frames) and its `@veyyon/snapcompact` package. `compaction.strategy` now offers two pure-LLM strategies, `summary` (the new default) and `handoff`. Sessions compacted by the old engine still open without loss: their archived plaintext source re-attaches to the compaction summary as recovered text, and the next compaction folds it into a normal LLM summary. A stored `snap` strategy value normalizes to `summary` on load.
-
 ### Fixed
 
 - The repository is now self-contained: `argot` (the shorthand codec) is a workspace package at `packages/argot` instead of a `file:` dependency pointing five levels up into a monorepo path (`libs/context/argot`) that only exists on the author's machine. A fresh `git clone` and `bun setup`, and every CI job, could not run `bun install` at all because that path is absent, so nothing could be built or released from a clean checkout. The codec's public API is unchanged (consumers still `import ... from "argot"`).
@@ -46,35 +45,9 @@
 - Fixed the `AgentSession` constructor storing the configured thinking level unclamped against the session's model. A persisted `high` landing on a reasoning model with no controllable effort surface (e.g. `devin/swe-1-6`) threw `requireSupportedEffort` at the first stream of every turn; the constructor now clamps via `resolveThinkingLevelForModel`, mirroring the session-restore path (`off` preserved, supported levels kept, dial-less models forward no effort).
 - Changing the working directory mid-session with `/cwd` or the agent's `set_cwd` tool now re-roots the whole session, not just the filesystem cwd. Project settings, plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing reload for the new directory, matching `/move` (minus relocating the session file). Previously only tools moved and the rest of the session stayed pinned to the original project.
 
-## [1.0.12] - 2026-07-21
+### Removed
 
-### Added
-
-- Shared provider credentials across profiles. You sign in to a provider once and every profile reuses that login, so switching profiles no longer means re-authenticating. A machine-wide `profileSharing` toggle (default on) controls it; turn it off to keep each profile's credentials private.
-- A Global tab in `/settings` for machine-wide options (the default profile and credential sharing), backed by `~/.veyyon/config.yml`. Every configuration value is now visible and editable in the interactive settings UI and stays in sync with the config files, with no restart needed after an external edit.
-- Per-profile working directory. Each profile remembers its own working directory, the agent can change it with `setCwd`, and tasks accept a `cwd` input.
-- `/yolo` command and a `--dangerously-skip-permissions` launch flag for a full-session permission bypass.
-- `/thinking` command (with a `/effort` alias) and an interactive effort picker, plus per-model thinking effort on the compaction and subagent model roles.
-- An interactive `/profile` picker with the full verb set. New profiles seed an `AGENTS.md`, and skills load only from the active profile.
-- Argot wire compression for tool traffic, gated by a model allowlist and a context-size cutoff so it only engages where it helps.
-- Every launched subagent's model is shown across all agent surfaces.
-
-### Changed
-
-- The install and update channel is the `curl` script, which pulls the signed GitHub release binaries. npm publishing is now opt-in and off by default.
-- By default the agent loads exactly three instruction layers.
-- The compaction threshold is an absolute token amount, independent of the active model.
-- Compaction runs a lossless dedup pass on every strategy, and oversized or redundant tool results spill to a recoverable artifact instead of riding along in context on every later turn.
-- Config files (`config.yml`, `keybindings.yml`, `ssh.json`, `mcp.json`) are written atomically and serialized across processes, so an interrupted save can no longer corrupt them.
-
-### Fixed
-
-- Oversized or timed-out Bash and grep output is bounded inline and offloaded to an artifact, instead of carrying the full buffer in every later turn.
-- Outbound tool-call ids are canonicalized per provider for compatibility, and wire paths are relativized under session roots.
-- Compaction now counts retained custom and branch tokens in the keepRecent budget, and cuts past the crossing entry when keeping everything would dead-end.
-- Settings values cycle with click-then-choose rather than Left/Right.
-- Many fail-closed hardening fixes: grep on an unreadable directory, malformed plugin and marketplace manifests, unreadable context files, and project-settings discovery warnings now surface loudly instead of being swallowed, and CLI usage errors exit with the correct code.
-- The sign-in success page text sits below the sun mark, not over it.
+- The `snap` compaction strategy (the experimental image-archive engine that rendered discarded history to bitmap frames) and its `@veyyon/snapcompact` package. `compaction.strategy` now offers two pure-LLM strategies, `summary` (the new default) and `handoff`. Sessions compacted by the old engine still open without loss: their archived plaintext source re-attaches to the compaction summary as recovered text, and the next compaction folds it into a normal LLM summary. A stored `snap` strategy value normalizes to `summary` on load.
 
 ## Upstream history
 
