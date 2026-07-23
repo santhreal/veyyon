@@ -1,0 +1,100 @@
+{
+	"cases": [
+		{
+			"id": "short-sha-full",
+			"contract": "formatShortSha truncates a long hex sha to twelve characters",
+			"surface": "format-short-sha",
+			"tags": ["positive"],
+			"input": { "value": "abcdef0123456789" },
+			"expect": { "text": "abcdef012345" }
+		},
+		{
+			"id": "short-sha-short-passthrough",
+			"contract": "A sha shorter than twelve characters passes through unchanged",
+			"surface": "format-short-sha",
+			"tags": ["boundary"],
+			"input": { "value": "abc" },
+			"expect": { "text": "abc" }
+		},
+		{
+			"id": "short-sha-undefined",
+			"contract": "Undefined sha input yields null in corpus compare",
+			"surface": "format-short-sha",
+			"tags": ["boundary", "negative"],
+			"input": {},
+			"expect": { "text": null }
+		},
+		{
+			"id": "positive-int-valid",
+			"contract": "parsePositiveDecimalInt accepts a positive decimal string",
+			"surface": "parse-positive-decimal-int",
+			"tags": ["positive"],
+			"input": { "value": "12" },
+			"expect": { "value": 12 }
+		},
+		{
+			"id": "positive-int-leading-zero",
+			"contract": "A leading-zero decimal string parses to its numeric value",
+			"surface": "parse-positive-decimal-int",
+			"tags": ["boundary"],
+			"input": { "value": "01" },
+			"expect": { "value": 1 }
+		},
+		{
+			"id": "positive-int-zero-rejected",
+			"contract": "Zero is rejected as not a positive decimal int",
+			"surface": "parse-positive-decimal-int",
+			"tags": ["negative", "boundary"],
+			"input": { "value": "0" },
+			"expect": { "value": null }
+		},
+		{
+			"id": "positive-int-negative-rejected",
+			"contract": "A negative string is rejected",
+			"surface": "parse-positive-decimal-int",
+			"tags": ["negative", "adversarial"],
+			"input": { "value": "-1" },
+			"expect": { "value": null }
+		},
+		{
+			"id": "positive-int-fraction-rejected",
+			"contract": "A fractional string is rejected",
+			"surface": "parse-positive-decimal-int",
+			"tags": ["negative", "adversarial"],
+			"input": { "value": "1.5" },
+			"expect": { "value": null }
+		},
+		{
+			"id": "tail-limit-default",
+			"contract": "Omitting tail returns the default limit of 15",
+			"surface": "resolve-tail-limit",
+			"tags": ["positive"],
+			"input": {},
+			"expect": { "value": 15, "throws": false }
+		},
+		{
+			"id": "tail-limit-in-range",
+			"contract": "An in-range positive tail is returned unchanged",
+			"surface": "resolve-tail-limit",
+			"tags": ["positive"],
+			"input": { "value": 5 },
+			"expect": { "value": 5, "throws": false }
+		},
+		{
+			"id": "tail-limit-clamped-high",
+			"contract": "An oversized tail clamps down to the max of 200",
+			"surface": "resolve-tail-limit",
+			"tags": ["boundary", "adversarial"],
+			"input": { "value": 999999 },
+			"expect": { "value": 200, "throws": false }
+		},
+		{
+			"id": "tail-limit-zero-throws",
+			"contract": "A zero tail throws that tail must be a positive number",
+			"surface": "resolve-tail-limit",
+			"tags": ["adversarial", "negative"],
+			"input": { "value": 0 },
+			"expect": { "throws": true, "errorContains": "positive number" }
+		}
+	]
+}

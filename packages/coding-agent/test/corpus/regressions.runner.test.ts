@@ -26,6 +26,9 @@ import {
 	formatCwdBoundaryReason,
 	searchPathFilesystemTargets,
 } from "@veyyon/coding-agent/tools/cwd-boundary";
+import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/conflict-detect";
+import { formatShortSha } from "@veyyon/coding-agent/tools/gh-format";
+import { parsePositiveDecimalInt, resolveTailLimit } from "@veyyon/coding-agent/tools/gh";
 import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
 import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
 import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
@@ -34,10 +37,13 @@ import {
 	formatPathRelativeToCwd,
 	globSearchBase,
 	isPathWithinCwd,
+	parseFindPattern,
 	parseLineRangeChunk,
 	parseLineRanges,
+	parseSearchPath,
 	resolveToCwd,
 } from "@veyyon/coding-agent/tools/path-utils";
+import { getPriorityInfo, isFindingPriority, type FindingPriority } from "@veyyon/coding-agent/tools/review";
 import {
 	clampTimeout,
 	describeTimeoutParam,
@@ -518,6 +524,140 @@ function runFormatPathRelative(c: CorpusCase): void {
 	expect(formatPathRelativeToCwd(input.filePath, input.cwd)).toBe(exp.text);
 }
 
+function runParseSearchPath(c: CorpusCase): void {
+	expect(parseSearchPath((c.input as { path: string }).path)).toEqual(c.expect);
+}
+
+function runParseFindPattern(c: CorpusCase): void {
+	expect(parseFindPattern((c.input as { pattern: string }).pattern)).toEqual(c.expect);
+}
+
+function runRpcSuccessBuilder(c: CorpusCase): void {
+	const input = c.input as { id?: string; command: "get_state" | "abort"; data: unknown };
+	const exp = c.expect as {
+		id: string | null;
+		type: string;
+		command: string;
+		success: boolean;
+		data: unknown;
+	};
+	const frame = rpcSuccessResponse(input.id, input.command, input.data as never);
+	expect(nullishToNull(frame.id)).toBe(exp.id);
+	expect(frame.type).toBe<string>(exp.type);
+	expect(frame.command).toBe(exp.command);
+	expect(frame.success).toBe(exp.success);
+	expect(frame.data).toEqual(exp.data);
+}
+
+function runRpcErrorBuilder(c: CorpusCase): void {
+	const input = c.input as { id?: string; command: string; message: string };
+	const frame = rpcErrorResponse(input.id, input.command, input.message);
+	const exp = c.expect as {
+		id: string | null;
+		type: string;
+		command: string;
+		success: boolean;
+		error: string;
+	};
+	expect(nullishToNull(frame.id)).toBe(exp.id);
+	expect(frame.type).toBe<string>(exp.type);
+	expect(frame.command).toBe(exp.command);
+	expect(frame.success).toBe(exp.success);
+	expect(frame.error).toBe(exp.error);
+}
+
+function runRpcUnknownBuilder(c: CorpusCase): void {
+	const input = c.input as { commandType: string };
+	const frame = rpcUnknownCommandResponse(input.commandType);
+	const exp = c.expect as {
+		id: string | null;
+		type: string;
+		command: string;
+		success: boolean;
+		error: string;
+	};
+	expect(nullishToNull(frame.id)).toBe(exp.id);
+	expect(frame.type).toBe<string>(exp.type);
+	expect(frame.command).toBe(exp.command);
+	expect(frame.success).toBe(exp.success);
+	expect(frame.error).toBe(exp.error);
+}
+
+function runFormatShortSha(c: CorpusCase): void {
+	const input = c.input as { value?: string };
+	const exp = c.expect as { text: string | null };
+	expect(nullishToNull(formatShortSha(input.value))).toBe(exp.text);
+}
+
+function runParsePositiveDecimalInt(c: CorpusCase): void {
+	const input = c.input as { value?: string };
+	const exp = c.expect as { value: number | null };
+	expect(nullishToNull(parsePositiveDecimalInt(input.value))).toBe(exp.value);
+}
+
+function runResolveTailLimit(c: CorpusCase): void {
+	const input = c.input as { value?: number };
+	const exp = c.expect as { value?: number; throws: boolean; errorContains?: string };
+	let threw: Error | null = null;
+	let value: number | undefined;
+	try {
+		value = resolveTailLimit(input.value);
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "").toLowerCase()).toContain(exp.errorContains.toLowerCase());
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(value).toBe(exp.value);
+}
+
+function runParseConflictUri(c: CorpusCase): void {
+	const input = c.input as { uri: string };
+	const exp = c.expect as {
+		throws: boolean;
+		errorContains?: string;
+		parsed?: unknown;
+	};
+	let threw: Error | null = null;
+	let parsed: unknown;
+	try {
+		parsed = parseConflictUri(input.uri);
+	} catch (e) {
+		threw = e as Error;
+	}
+	if (exp.throws) {
+		expect(threw).not.toBeNull();
+		if (exp.errorContains) {
+			expect(String(threw?.message ?? "")).toContain(exp.errorContains);
+		}
+		return;
+	}
+	expect(threw).toBeNull();
+	expect(parsed ?? null).toEqual(exp.parsed ?? null);
+}
+
+function runScanConflictLines(c: CorpusCase): void {
+	const input = c.input as { lines: string[]; firstLineNumber: number };
+	const exp = c.expect as { blocks: unknown[] };
+	expect(scanConflictLines(input.lines, input.firstLineNumber)).toEqual(exp.blocks);
+}
+
+function runIsFindingPriority(c: CorpusCase): void {
+	const input = c.input as { value: unknown };
+	const exp = c.expect as { ok: boolean };
+	expect(isFindingPriority(input.value)).toBe(exp.ok);
+}
+
+function runGetPriorityInfo(c: CorpusCase): void {
+	const input = c.input as { priority: FindingPriority };
+	expect(getPriorityInfo(input.priority)).toEqual(c.expect);
+}
+
 function runPlanModeEnforce(c: CorpusCase): void {
 	const input = c.input as {
 		planEnabled: boolean;
@@ -653,6 +793,42 @@ async function runCase(c: CorpusCase): Promise<void> {
 			return;
 		case "format-path-relative":
 			runFormatPathRelative(c);
+			return;
+		case "parse-search-path":
+			runParseSearchPath(c);
+			return;
+		case "parse-find-pattern":
+			runParseFindPattern(c);
+			return;
+		case "rpc-success-builder":
+			runRpcSuccessBuilder(c);
+			return;
+		case "rpc-error-builder":
+			runRpcErrorBuilder(c);
+			return;
+		case "rpc-unknown-builder":
+			runRpcUnknownBuilder(c);
+			return;
+		case "format-short-sha":
+			runFormatShortSha(c);
+			return;
+		case "parse-positive-decimal-int":
+			runParsePositiveDecimalInt(c);
+			return;
+		case "resolve-tail-limit":
+			runResolveTailLimit(c);
+			return;
+		case "parse-conflict-uri":
+			runParseConflictUri(c);
+			return;
+		case "scan-conflict-lines":
+			runScanConflictLines(c);
+			return;
+		case "is-finding-priority":
+			runIsFindingPriority(c);
+			return;
+		case "get-priority-info":
+			runGetPriorityInfo(c);
 			return;
 		default:
 			throw new Error(`No runner for surface ${c.surface} (case ${c.id}). Add a handler or fix the corpus.`);

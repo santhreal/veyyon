@@ -1,0 +1,110 @@
+{
+	"cases": [
+		{
+			"id": "conflict-uri-numeric",
+			"contract": "conflict://N parses to a numeric id",
+			"surface": "parse-conflict-uri",
+			"tags": ["positive"],
+			"input": { "uri": "conflict://1" },
+			"expect": { "parsed": { "id": 1 }, "throws": false }
+		},
+		{
+			"id": "conflict-uri-star",
+			"contract": "conflict://* parses to a star id",
+			"surface": "parse-conflict-uri",
+			"tags": ["positive", "boundary"],
+			"input": { "uri": "conflict://*" },
+			"expect": { "parsed": { "id": "*" }, "throws": false }
+		},
+		{
+			"id": "conflict-uri-scope",
+			"contract": "conflict://N/ours parses id and scope",
+			"surface": "parse-conflict-uri",
+			"tags": ["positive"],
+			"input": { "uri": "conflict://2/ours" },
+			"expect": { "parsed": { "id": 2, "scope": "ours" }, "throws": false }
+		},
+		{
+			"id": "conflict-uri-non-conflict-null",
+			"contract": "A non-conflict http URI returns null",
+			"surface": "parse-conflict-uri",
+			"tags": ["negative"],
+			"input": { "uri": "http://x" },
+			"expect": { "parsed": null, "throws": false }
+		},
+		{
+			"id": "conflict-uri-non-numeric-throws",
+			"contract": "conflict://abc throws with the required conflict URI shape message",
+			"surface": "parse-conflict-uri",
+			"tags": ["adversarial", "negative"],
+			"input": { "uri": "conflict://abc" },
+			"expect": { "throws": true, "errorContains": "must be 'conflict://" }
+		},
+		{
+			"id": "scan-conflict-basic",
+			"contract": "scanConflictLines locates a classic three-way conflict with firstLineNumber offset",
+			"surface": "scan-conflict-lines",
+			"tags": ["positive"],
+			"input": {
+				"lines": ["<<<<<<< HEAD", "a", "=======", "b", ">>>>>>> main"],
+				"firstLineNumber": 10
+			},
+			"expect": {
+				"blocks": [
+					{
+						"startLine": 10,
+						"separatorLine": 12,
+						"endLine": 14,
+						"oursLabel": "HEAD",
+						"theirsLabel": "main",
+						"oursLines": ["a"],
+						"theirsLines": ["b"]
+					}
+				]
+			}
+		},
+		{
+			"id": "scan-conflict-none",
+			"contract": "Lines without conflict markers yield an empty block list",
+			"surface": "scan-conflict-lines",
+			"tags": ["negative", "boundary"],
+			"input": {
+				"lines": ["plain", "text"],
+				"firstLineNumber": 1
+			},
+			"expect": { "blocks": [] }
+		},
+		{
+			"id": "finding-priority-p0",
+			"contract": "P0 is a valid finding priority",
+			"surface": "is-finding-priority",
+			"tags": ["positive"],
+			"input": { "value": "P0" },
+			"expect": { "ok": true }
+		},
+		{
+			"id": "finding-priority-lowercase-rejected",
+			"contract": "Lowercase p0 is not a valid finding priority",
+			"surface": "is-finding-priority",
+			"tags": ["negative", "adversarial"],
+			"input": { "value": "p0" },
+			"expect": { "ok": false }
+		},
+		{
+			"id": "finding-priority-info-p1",
+			"contract": "getPriorityInfo for P1 returns ordinal 1 with warning styling keys",
+			"surface": "get-priority-info",
+			"tags": ["positive"],
+			"input": { "priority": "P1" },
+			"expect": { "ord": 1, "symbol": "status.warning", "color": "warning" }
+		},
+		{
+			"id": "finding-priority-info-p0",
+			"contract": "getPriorityInfo for P0 returns ordinal 0 with error styling keys",
+			"surface": "get-priority-info",
+			"tags": ["positive", "boundary"],
+			"input": { "priority": "P0" },
+			"expect": { "ord": 0, "symbol": "status.error", "color": "error" }
+		}
+	]
+}

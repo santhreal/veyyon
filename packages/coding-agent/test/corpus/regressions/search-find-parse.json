@@ -1,0 +1,76 @@
+{
+	"cases": [
+		{
+			"id": "search-path-src-starstar",
+			"contract": "src/** splits into basePath src and glob **",
+			"surface": "parse-search-path",
+			"tags": ["positive"],
+			"input": { "path": "src/**" },
+			"expect": { "basePath": "src", "glob": "**" }
+		},
+		{
+			"id": "search-path-etc-starstar",
+			"contract": "/etc/** splits into absolute basePath /etc and glob **",
+			"surface": "parse-search-path",
+			"tags": ["positive"],
+			"input": { "path": "/etc/**" },
+			"expect": { "basePath": "/etc", "glob": "**" }
+		},
+		{
+			"id": "search-path-bare-glob",
+			"contract": "A bare *.ts pattern uses cwd-relative basePath dot",
+			"surface": "parse-search-path",
+			"tags": ["boundary"],
+			"input": { "path": "*.ts" },
+			"expect": { "basePath": ".", "glob": "*.ts" }
+		},
+		{
+			"id": "search-path-selector-kept",
+			"contract": "A path with a line selector is kept as a single basePath with no glob",
+			"surface": "parse-search-path",
+			"tags": ["boundary", "adversarial"],
+			"input": { "path": "src:1-10" },
+			"expect": { "basePath": "src:1-10" }
+		},
+		{
+			"id": "search-path-scheme-kept",
+			"contract": "Scheme URLs are kept as opaque basePath values with no glob split",
+			"surface": "parse-search-path",
+			"tags": ["adversarial", "negative"],
+			"input": { "path": "memory://a" },
+			"expect": { "basePath": "memory://a" }
+		},
+		{
+			"id": "search-path-whitespace-not-trimmed",
+			"contract": "Leading spaces stay on basePath and trailing spaces stay on the glob segment",
+			"surface": "parse-search-path",
+			"tags": ["adversarial", "regression"],
+			"input": { "path": "  src/**  " },
+			"expect": { "basePath": "  src", "glob": "**  " }
+		},
+		{
+			"id": "find-pattern-literal",
+			"contract": "A literal find name becomes basePath with **/* glob and hasGlob false",
+			"surface": "parse-find-pattern",
+			"tags": ["positive"],
+			"input": { "pattern": "foo" },
+			"expect": { "basePath": "foo", "globPattern": "**/*", "hasGlob": false }
+		},
+		{
+			"id": "find-pattern-glob",
+			"contract": "A **/ glob pattern uses basePath dot and hasGlob true",
+			"surface": "parse-find-pattern",
+			"tags": ["positive"],
+			"input": { "pattern": "**/*.ts" },
+			"expect": { "basePath": ".", "globPattern": "**/*.ts", "hasGlob": true }
+		},
+		{
+			"id": "find-pattern-brace",
+			"contract": "A brace pattern is treated as a glob under basePath dot",
+			"surface": "parse-find-pattern",
+			"tags": ["boundary", "adversarial"],
+			"input": { "pattern": "{a,b}" },
+			"expect": { "basePath": ".", "globPattern": "**/{a,b}", "hasGlob": true }
+		}
+	]
+}
