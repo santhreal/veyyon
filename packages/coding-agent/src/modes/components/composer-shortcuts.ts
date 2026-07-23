@@ -37,7 +37,11 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 }
 
 /**
- * One-line centered chip band painted under the editor container.
+ * One-line centered chip band painted under the editor container. Fixed
+ * height: exactly one row in every state, chips or blank. A 0/1-row band
+ * changes the composer zone's height on every busy flip, jerking the whole
+ * footer up and down mid-conversation (user report 2026-07-22); the zone
+ * reserves this row whether or not there is a live action to surface.
  */
 export class ComposerShortcutsBar implements Component {
 	#shortcuts: readonly ModalShortcut[] = [];
@@ -49,7 +53,7 @@ export class ComposerShortcutsBar implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		if (this.#shortcuts.length === 0 || width < 20) return [];
+		if (this.#shortcuts.length === 0 || width < 20) return [""];
 		const lines = renderModalShortcuts(this.#shortcuts, Math.max(1, width - 2));
 		return lines.map(line => {
 			const pad = Math.max(0, width - visibleWidth(line));

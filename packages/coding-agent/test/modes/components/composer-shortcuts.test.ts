@@ -34,6 +34,25 @@ describe("composer contextual shortcuts", () => {
 		expect(idle.length).toBe(0);
 	});
 
+	// Regression lock for the footer jump (user report 2026-07-22): a band
+	// that renders 0 rows idle and 1 row busy changes the composer zone's
+	// height on every busy flip, jerking the whole footer vertically. The
+	// band is fixed-height: exactly one row in every state.
+	it("renders exactly one row in every state so the footer height never changes", () => {
+		const kb = KeybindingsManager.inMemory();
+		const bar = new ComposerShortcutsBar();
+		bar.setShortcuts(buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false }));
+		const idleRows = bar.render(80);
+		expect(idleRows.length).toBe(1);
+		expect(stripVTControlCharacters(idleRows[0]!).trim()).toBe("");
+		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true }));
+		const busyRows = bar.render(80);
+		expect(busyRows.length).toBe(1);
+		expect(stripVTControlCharacters(busyRows[0]!).trim()).not.toBe("");
+		// Narrow terminals keep the same one-row reservation.
+		expect(bar.render(10).length).toBe(1);
+	});
+
 	it("adds the dequeue chip only while the queue is nonempty, in any busy/draft state", () => {
 		const kb = KeybindingsManager.inMemory();
 		const noQueue = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false });
