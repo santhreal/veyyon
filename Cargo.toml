@@ -224,7 +224,7 @@ fontdue = { version = "0.9", default-features = false }
 # ──────────────────────────────────────────────────────────────────────────────
 # Data Structures - Collections
 # ──────────────────────────────────────────────────────────────────────────────
-phf = { version = "0.13", features = ["macros"] }
+phf = { version = "0.14", features = ["macros"] }
 smallvec = { version = "1.15.1", features = [
    "serde",
    "write",
