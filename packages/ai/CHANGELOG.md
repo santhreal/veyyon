@@ -2,12 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.20] - 2026-07-23
-
-### Fixed
-
-- Fixed Kimi usage reporting returning empty on a first-ever launch. The device-id file the request headers depend on is now written after its parent directory is created, so a config directory that does not exist yet surfaces the real error instead of being swallowed as "usage unavailable".
-
 ## [16.5.2] - 2026-07-14
 
 ### Added
@@ -4202,6 +4196,12 @@
 ## [1.337.0] - 2026-01-02
 
 Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mono](https://github.com/badlogic/pi-mono).
+
+## [1.0.20] - 2026-07-23
+
+### Fixed
+
+- Fixed Kimi usage reporting returning empty on a first-ever launch. The device-id file the request headers depend on is now written after its parent directory is created, so a config directory that does not exist yet surfaces the real error instead of being swallowed as "usage unavailable".
 
 ## [1.0.14] - 2026-07-23
 
