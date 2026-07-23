@@ -177,3 +177,39 @@ describe("AdvisorEmissionGuard end-to-end spam suppression", () => {
 		expect(accepted).toEqual(["Concrete-but-repeated nit: x"]);
 	});
 });
+
+/**
+ * Regression (own-key / prototype-membership class): the noise filter tested
+ * `SUPPRESSED_NORMALIZED_PHRASES[key]` with a bare index read. That set is a plain
+ * object, so a note whose normalized key collides with an `Object.prototype`
+ * member resolved the inherited value (truthy) and was silently suppressed even
+ * though it is not one of the curated filler phrases.
+ *
+ * `normalizeAdvisorNote` lowercases, so camelCase members (`toString` ->
+ * `tostring`) fold to harmless keys; the one prototype member that survives
+ * lowercasing is `constructor`. A real advisor note that normalizes to
+ * `constructor` must reach the primary, not vanish. `Object.hasOwn` fixes it.
+ */
+describe("AdvisorEmissionGuard noise filter uses own-property membership", () => {
+	it("does not suppress a note that normalizes to the prototype member name `constructor`", () => {
+		const guard = new AdvisorEmissionGuard();
+		// Sanity: it really does normalize to the bare key `constructor`.
+		expect(normalizeAdvisorNote("Constructor!")).toBe("constructor");
+		// Pre-fix this returned false (inherited Object.prototype.constructor is truthy).
+		expect(guard.accept("Constructor!")).toBe(true);
+	});
+
+	it("still suppresses the genuinely curated filler phrases", () => {
+		const guard = new AdvisorEmissionGuard();
+		expect(guard.accept("Stop.")).toBe(false);
+		expect(guard.accept("LGTM")).toBe(false);
+		expect(guard.accept("No issues")).toBe(false);
+	});
+
+	it("does not suppress camelCase prototype-member words (they fold away under lowercasing)", () => {
+		// `toString`/`valueOf`/`hasOwnProperty` lowercase to non-member keys, so they
+		// were never the reachable hazard, but they must still reach the primary.
+		const guard = new AdvisorEmissionGuard();
+		expect(guard.accept("toString")).toBe(true);
+	});
+});
