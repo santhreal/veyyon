@@ -145,8 +145,12 @@ export interface ComposerZoneParts {
  * floats the block off the terminal's bottom edge. Re-ordering any of these
  * rows is a design regression, which is why mounting lives here, testable,
  * instead of as a paste of addChild calls in the host.
+ *
+ * Returns the number of root children mounted: scroll isolation pins exactly
+ * that many children as its live footer, so the count must come from here —
+ * the one place the zone's composition can change.
  */
-export function mountComposerZone(ui: { addChild(component: Component): void }, parts: ComposerZoneParts): void {
+export function mountComposerZone(ui: { addChild(component: Component): void }, parts: ComposerZoneParts): number {
 	ui.addChild(parts.statusContainer);
 	ui.addChild(parts.statusLine);
 	ui.addChild(parts.hookWidgetsAbove);
@@ -158,6 +162,7 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
 	ui.addChild(parts.shortcuts);
 	ui.addChild(parts.hookWidgetsBelow);
 	ui.addChild(new Spacer(COMPOSER_BOTTOM_MARGIN_ROWS));
+	return 11;
 }
 
 /**

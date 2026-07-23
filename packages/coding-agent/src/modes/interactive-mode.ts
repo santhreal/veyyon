@@ -143,7 +143,6 @@ import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
 import {
-	COMPOSER_BOTTOM_MARGIN_ROWS,
 	COMPOSER_INSET_COLS,
 	ComposerHairline,
 	mountComposerZone,
@@ -767,7 +766,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			transcriptChildCount: () => this.chatContainer.children.length,
 			// Resolved lazily: the welcome controller is constructed just below.
 			hasHero: () => this.#welcomeController.hasHero,
-			composerZoneRows: () => this.#composerZoneRows(),
 		});
 		this.#welcomeController = new WelcomeController({
 			ui: this.ui,
@@ -1078,7 +1076,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// The whole composer zone (status, hairline, padded card, footline,
 		// margin) mounts in its one canonical order via mountComposerZone —
 		// the order is a design contract owned and tested in composer-chrome.
-		mountComposerZone(this.ui, {
+		const composerZoneChildren = mountComposerZone(this.ui, {
 			statusContainer: this.statusContainer,
 			statusLine: this.statusLine,
 			hookWidgetsAbove: this.hookWidgetContainerAbove,
@@ -1088,6 +1086,9 @@ export class InteractiveMode implements InteractiveModeContext {
 			shortcuts: this.composerShortcuts,
 			hookWidgetsBelow: this.hookWidgetContainerBelow,
 		});
+		// Scroll isolation pins the composer zone as the live footer; the
+		// engine derives its row span from the compose ledger every frame.
+		this.ui.setPinnedFooterChildCount(composerZoneChildren);
 		this.ui.setFocus(this.editor);
 		// Anchor the composer to the viewport bottom on the launch/home screen.
 		this.#layout.sync();
@@ -1505,29 +1506,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#isAutoSubmitBlocked(): boolean {
 		return this.session.isStreaming || this.session.isCompacting || this.session.hasPostPromptWork;
-	}
-
-	// Rows the composer zone occupies at the frame tail: the pinned footer
-	// region for scroll isolation. Mirrors mountComposerZone's order — status
-	// rows, hook widgets, hairline, pad rows, editor, footline, shortcut band,
-	// and the bottom margin — so a zone edit that forgets this count is the
-	// regression to check first when a frozen scroll view misaligns.
-	#composerZoneRows(): number {
-		const width = this.ui.terminal.columns;
-		let rows = COMPOSER_BOTTOM_MARGIN_ROWS + 2; // bottom margin + two CardPadRows
-		for (const component of [
-			this.statusContainer,
-			this.statusLine,
-			this.hookWidgetContainerAbove,
-			this.composerHairline,
-			this.editorContainer,
-			this.capabilityLine,
-			this.composerShortcuts,
-			this.hookWidgetContainerBelow,
-		]) {
-			rows += component.render(width).length;
-		}
-		return rows;
 	}
 
 	#refreshComposerShortcuts(): void {
