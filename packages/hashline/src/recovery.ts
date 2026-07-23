@@ -68,9 +68,9 @@ function collectDuplicatedValues(lines: readonly string[]): Set<string> {
 }
 
 interface AnchorNeighbors {
-	/** Nearest non-anchor line below the anchor's run, or `undefined` at the file edge. */
+	/** Nearest non-anchor line above the anchor's run (`start - 1`), or `undefined` at the file edge. */
 	before: number | undefined;
-	/** Nearest non-anchor line above the anchor's run, or `undefined` at the file edge. */
+	/** Nearest non-anchor line below the anchor's run (`end + 1`), or `undefined` at the file edge. */
 	after: number | undefined;
 }
 
