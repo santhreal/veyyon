@@ -72,6 +72,14 @@ let getDeviceId = (): string => {
 	}
 
 	const deviceId = crypto.randomUUID().replace(/-/g, "");
+	// getAgentDir() only names the config root; it does not guarantee the
+	// directory exists on disk. On a fresh host (a clean CI runner, a
+	// first-ever launch) the parent is absent, so the write below would throw
+	// ENOENT. That error used to propagate up through getKimiCommonHeaders()
+	// into the usage/OAuth request try-blocks and get swallowed as a null
+	// "usage unavailable", masking a filesystem failure as a network one.
+	// Create the parent first so the device-id file is always writable.
+	fs.mkdirSync(path.dirname(deviceIdPath), { recursive: true });
 	fs.writeFileSync(deviceIdPath, `${deviceId}\n`, { mode: 0o600 });
 	getDeviceId = () => deviceId;
 	return deviceId;

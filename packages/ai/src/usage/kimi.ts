@@ -224,11 +224,18 @@ export const kimiUsageProvider: UsageProvider = {
 
 		const baseUrl = resolveKimiBaseUrl(params.baseUrl);
 		const url = buildUsageUrl(baseUrl);
+		// Build the request headers OUTSIDE the network try. Header construction
+		// is deterministic and non-network; if it ever fails it is a real local
+		// error (a filesystem or config fault), not a "usage unavailable" signal.
+		// Keeping it inside the try would swallow such an error as a silent null
+		// (Law 10) — the exact failure mode that once masked getDeviceId's
+		// ENOENT on a fresh host. Let it surface.
+		const commonHeaders = getKimiCommonHeaders();
 		let payload: unknown;
 		try {
 			const response = await ctx.fetch(url, {
 				headers: {
-					...getKimiCommonHeaders(),
+					...commonHeaders,
 					Authorization: `Bearer ${accessToken}`,
 				},
 				signal: params.signal,
