@@ -684,42 +684,79 @@ export function repoSlugFromRepositoryUrl(raw) {
 	return match ? `${match[1]}/${match[2]}` : "santhreal/veyyon";
 }
 
-function validateLoadedBindings(ctx, bindings, candidate) {
-	if (typeof bindings[ctx.versionSentinelExport] === "function") return;
-
+/**
+ * Pure decision for a loaded native addon, keyed on whether it exposes the
+ * version sentinel this loader expects (`ctx.versionSentinelExport`). No side
+ * effects: it returns WHAT to do so the caller can perform the effect and so
+ * the decision — the exact gate a user's "native failed to load" crash hits —
+ * is testable without a real `dlopen`.
+ *
+ * Returns a discriminated result:
+ *  - `{ action: "accept" }` — sentinel present, addon matches this release.
+ *  - `{ action: "warn", builtVersion, message }` — sentinel missing in a
+ *    workspace/dev load: boot anyway (a post-pull tree keeps working until the
+ *    next `bun run build`) but surface it loudly, once (Law 10: no silent
+ *    fallback). This branch is exactly why the workspace/test env never tripped
+ *    a hard failure and the stale-native bug shipped uncaught.
+ *  - `{ action: "throw", builtVersion, message }` — sentinel missing in an
+ *    installed/compiled load: the `.node` on disk is from a different release,
+ *    so fail closed with an actionable message naming BOTH the version the
+ *    binary was built for and the version this loader expects.
+ *
+ * @param {{ versionSentinelExport: string, isWorkspaceLoad: boolean, packageVersion: string }} ctx
+ * @param {Record<string, unknown>} bindings
+ * @param {string} candidate
+ */
+export function evaluateLoadedBindings(ctx, bindings, candidate) {
+	if (typeof bindings[ctx.versionSentinelExport] === "function") {
+		return { action: "accept" };
+	}
 	// The .node on disk was built for a different package version than this
 	// loader expects (its `__veyyonNativesV*` sentinel does not match).
+	const builtVersion = detectBuiltNativeVersion(bindings);
 	if (ctx.isWorkspaceLoad) {
 		// Workspace dev (running out of `packages/natives/native/` rather than a
 		// `node_modules` install or compiled bundle): the local `.node` only gains
 		// the renamed sentinel after `bun --cwd=packages/natives run build`, so a
-		// version bump leaves it stale until the next rebuild. Boot anyway so a
-		// post-pull tree keeps working while that rebuild happens — but NEVER
-		// silently: loading a wrong-version native risks ABI/behavior drift, so
-		// surface it loudly, once, with the exact fix. (Law 10: no silent fallback;
-		// this is also why the workspace/test env never tripped a hard failure.)
+		// version bump leaves it stale until the next rebuild.
+		return {
+			action: "warn",
+			builtVersion,
+			message:
+				`[veyyon] warning: loaded a stale native addon built for @veyyon/natives@${builtVersion}, ` +
+				`but this tree is at ${ctx.packageVersion}. It may drift from the current sources. ` +
+				"Rebuild with: bun --cwd=packages/natives run build\n" +
+				`  (${candidate})\n`,
+		};
+	}
+	return {
+		action: "throw",
+		builtVersion,
+		message:
+			`Loaded ${candidate} but it was built for @veyyon/natives@${builtVersion}, not the ` +
+			`@veyyon/natives@${ctx.packageVersion} this loader expects ` +
+			`(missing version sentinel \`${ctx.versionSentinelExport}\`). The .node file on disk is from a ` +
+			"different release than this loader — reinstall to re-sync.",
+	};
+}
+
+function validateLoadedBindings(ctx, bindings, candidate) {
+	const decision = evaluateLoadedBindings(ctx, bindings, candidate);
+	if (decision.action === "accept") return;
+	if (decision.action === "warn") {
+		// Boot anyway, but NEVER silently: loading a wrong-version native risks
+		// ABI/behavior drift, so surface it loudly, once, with the exact fix.
 		if (!warnedStaleWorkspaceNative) {
 			warnedStaleWorkspaceNative = true;
-			const built = detectBuiltNativeVersion(bindings);
 			try {
-				fs.writeSync(
-					2,
-					`[veyyon] warning: loaded a stale native addon built for @veyyon/natives@${built}, ` +
-						`but this tree is at ${ctx.packageVersion}. It may drift from the current sources. ` +
-						"Rebuild with: bun --cwd=packages/natives run build\n" +
-						`  (${candidate})\n`,
-				);
+				fs.writeSync(2, decision.message);
 			} catch {
 				// stderr unavailable; the warning is best-effort but must never crash the load.
 			}
 		}
 		return;
 	}
-	throw new Error(
-		`Loaded ${candidate} but it does not expose the @veyyon/natives@${ctx.packageVersion} ` +
-			`version sentinel \`${ctx.versionSentinelExport}\`. The .node file on disk is from a different ` +
-			"release than this loader — reinstall to re-sync.",
-	);
+	throw new Error(decision.message);
 }
 
 /**
