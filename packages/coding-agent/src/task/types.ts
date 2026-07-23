@@ -250,7 +250,9 @@ export interface TaskParams {
 	/**
 	 * Working directory for this spawn.
 	 * Default / `"inherit"` = parent's live session cwd at spawn time.
-	 * An explicit absolute path must exist and be a directory.
+	 * A relative path resolves against the parent's cwd (e.g. `libs/scanner/rulec`
+	 * from where the parent agent runs); an absolute path is used as-is. Either
+	 * must exist and be a directory.
 	 */
 	cwd?: string;
 }
