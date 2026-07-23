@@ -15,7 +15,7 @@ export function renderSetupOutro(width: number, height: number, elapsedMs: numbe
 	const eased = 1 - (1 - progress) ** 2;
 	const sunset = renderSunsetField({ cols: 18, rows: 5, time: 0.3 + eased * 0.4, trueColor: TERMINAL.trueColor });
 	const wordmark = `${silverEscape(0.55)}${theme.bold(APP_NAME.split("").join(" "))}\x1b[39m`;
-	const subtitle = theme.fg("dim", "setup saved — the sun is up");
+	const subtitle = theme.fg("dim", "setup saved");
 	const content = [...sunset, "", wordmark, subtitle];
 	const start = Math.max(0, Math.floor((height - content.length) / 2));
 	const lines: string[] = Array.from({ length: height }, () => "");
