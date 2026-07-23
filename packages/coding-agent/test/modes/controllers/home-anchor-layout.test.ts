@@ -2,11 +2,11 @@
  * HomeAnchorLayout — the home-screen anchor extracted from interactive-mode
  * (ARCH-2, layout slice). These tests exist because the anchor math was
  * previously untestable inside the god-file: a regression in the slack split
- * or the latch-off rule shows up only as a composer drifting off the viewport
- * bottom or bouncing mid-stream, which no static check catches. Each rule the
- * extraction preserved (2/5 optical centring, latch-off only with a real
- * conversation, exact-frame dismissal math, change-only re-render) is pinned
- * here with exact row counts.
+ * or the re-anchor rule shows up only as a composer drifting off the viewport
+ * bottom or bouncing mid-stream, which no static check catches. Each rule
+ * (2/5 optical centring, stateless re-anchor with no permanent latch-off,
+ * exact-frame dismissal math, change-only re-render) is pinned here with
+ * exact row counts.
  */
 import { describe, expect, test } from "bun:test";
 import type { TUI } from "@veyyon/tui";
@@ -93,11 +93,13 @@ describe("HomeAnchorLayout.sync — home-screen slack", () => {
 	});
 });
 
-describe("HomeAnchorLayout — the latch-off rule", () => {
-	test("latches off for good once a real conversation fills the viewport", () => {
-		// Content taller than the terminal AND a transcript child present: the
-		// anchor must end, or scrollback growth would bounce the composer back
-		// up mid-stream when composedFrameRows later shrinks.
+describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
+	test("fills collapse while the conversation fills the viewport, and re-anchor when slack returns", () => {
+		// The 2026-07-23 glitch: a transient tall frame (a streaming preview
+		// spike) latched the anchor off for good, then the collapse left the
+		// composer stranded mid-screen above a blank slab. The anchor is
+		// stateless now: fills vanish at slack zero and return the moment the
+		// frame shrinks, so the composer hugs the bottom in every state.
 		const { layout, state } = makeHarness({
 			rows: 20,
 			contentRows: 25,
@@ -105,22 +107,21 @@ describe("HomeAnchorLayout — the latch-off rule", () => {
 			transcriptChildren: 1,
 		});
 		layout.sync();
-		expect(layout.active).toBe(false);
 		expect(rowsOf(layout.topFill)).toBe(0);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
-		// Once off, it stays off even when slack reappears (scrollback shrank
-		// the composed frame): no re-anchoring mid-conversation.
-		state.composedFrameRows = 5;
+		// The spike collapses: slack returns, and the conversation hug routing
+		// puts ALL of it above the transcript (composer stays on the bottom).
+		state.composedFrameRows = 12;
 		layout.sync();
-		expect(layout.active).toBe(false);
+		expect(rowsOf(layout.topFill)).toBe(8);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
 
-	test("an empty transcript never latches off, even on a terminal the hero alone overflows", () => {
-		// A tiny terminal where the welcome card fills every row: there is no
-		// conversation to scroll yet, so the home screen must keep anchoring
-		// (the card's dismissal will free the rows).
-		const { layout } = makeHarness({
+	test("an overflowing home screen keeps anchoring once rows free up", () => {
+		// A tiny terminal where the welcome card fills every row: fills are
+		// zero while there is no slack, and return the moment there is — the
+		// anchor never disengages permanently.
+		const { layout, state } = makeHarness({
 			rows: 10,
 			contentRows: 15,
 			composedFrameRows: 15,
@@ -128,7 +129,12 @@ describe("HomeAnchorLayout — the latch-off rule", () => {
 			hasHero: true,
 		});
 		layout.sync();
-		expect(layout.active).toBe(true);
+		expect(rowsOf(layout.topFill)).toBe(0);
+		state.composedFrameRows = 4;
+		layout.sync();
+		// Hero centring: 2/5 of the 6 slack rows above, the rest below.
+		expect(rowsOf(layout.topFill)).toBe(2);
+		expect(rowsOf(layout.bottomFill)).toBe(4);
 	});
 });
 
@@ -146,7 +152,11 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 		expect(state.renderRequests).toBe(1); // steady state: no extra render
 	});
 
-	test("is inert once the anchor latched off", () => {
+	test("keeps correcting after the viewport fills — no permanent latch-off", () => {
+		// The pre-2026-07-23 latch made onFrameComposed inert forever after one
+		// overflowing frame, so a later collapse never re-anchored (the stranded
+		// composer glitch). The correction must stay live: a shrink re-fills and
+		// requests the repaint.
 		const { layout, state } = makeHarness({
 			rows: 20,
 			contentRows: 25,
@@ -154,9 +164,11 @@ describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
 			transcriptChildren: 1,
 		});
 		layout.sync();
-		expect(layout.active).toBe(false);
+		expect(rowsOf(layout.topFill)).toBe(0);
+		state.composedFrameRows = 12;
 		layout.onFrameComposed();
-		expect(state.renderRequests).toBe(0);
+		expect(rowsOf(layout.topFill)).toBe(8);
+		expect(state.renderRequests).toBe(1);
 	});
 });
 
@@ -232,7 +244,7 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 
 	/** Growth shrinks the TOP fill row-for-row: content climbs from the
 	 * composer upward, and nothing ever scrolls while free rows remain. */
-	test("conversation growth eats the top fill row-for-row until latch-off", () => {
+	test("conversation growth eats the top fill row-for-row until the viewport fills", () => {
 		const { layout, state, children } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(22);
@@ -240,10 +252,10 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 		layout.sync(true);
 		expect(rowsOf(layout.topFill)).toBe(10);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
-		// Content exceeds the viewport: the anchor latches off for good.
+		// Content exceeds the viewport: both fills are zero — the composer is
+		// on the natural bottom, same place the fill held it.
 		children[1] = block(31);
 		layout.sync(true);
-		expect(layout.active).toBe(false);
 		expect(rowsOf(layout.topFill)).toBe(0);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
