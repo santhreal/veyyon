@@ -4,12 +4,6 @@
 
 ## [Unreleased]
 
-## [1.0.19] - 2026-07-23
-
-### Fixed
-
-- Applying a large-range edit (a `DEL` or `SWAP` spanning thousands of lines) is now linear in the file size instead of quadratic. A range delete over 30000 lines of a 60000-line file dropped from ~160ms to ~21ms; the output is unchanged.
-
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
@@ -373,3 +367,9 @@ All notable changes to this package will be documented in this file.
 - Fixed repeated patch application mutating cached `after_anchor` edits between target snapshots
 - Fixed multi-section patching to preflight write policies and reject duplicate canonical targets before any section is committed
 - Fixed mixed line-ending restoration to preserve the first newline style instead of rewriting ties to LF
+
+## [1.0.19] - 2026-07-23
+
+### Fixed
+
+- Applying a large-range edit (a `DEL` or `SWAP` spanning thousands of lines) is now linear in the file size instead of quadratic. A range delete over 30000 lines of a 60000-line file dropped from ~160ms to ~21ms; the output is unchanged.
