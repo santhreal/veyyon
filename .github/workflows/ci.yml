@@ -701,17 +701,20 @@ jobs:
               CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
               CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
            run: bunx wrangler@latest pages deploy website --project-name veyyon --branch main --commit-dirty=true
-         # get.veyyon.dev is the `curl | sh` install endpoint and the version
-         # source this release's binaries self-update from. It serves the same
-         # built website/ tree (install.sh, install.ps1), so it must redeploy on
-         # every release or the installer and auto-updater keep serving the old
-         # script. Same token/account; only the Pages project differs.
+         # get.veyyon.dev is the `curl | sh` install endpoint. It deploys a
+         # SEPARATE tree (website-get/: the two install scripts + a root rewrite
+         # to install.sh) so its root serves the script, not the marketing
+         # index.html — deploying the full website/ tree here put HTML at the get
+         # root and broke `curl -fsSL https://get.veyyon.dev | sh`. build.mjs
+         # generates website-get/. Redeploy on every release so the served
+         # install script stays current. Same token/account; only the project
+         # and the tree differ.
          - name: Deploy to Cloudflare Pages (project veyyon-get → get.veyyon.dev)
            if: ${{ env.HAS_CF_TOKEN == 'true' }}
            env:
               CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
               CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-           run: bunx wrangler@latest pages deploy website --project-name veyyon-get --branch main --commit-dirty=true
+           run: bunx wrangler@latest pages deploy website-get --project-name veyyon-get --branch main --commit-dirty=true
          - name: No deploy token — built only
            if: ${{ env.HAS_CF_TOKEN != 'true' }}
            run: |

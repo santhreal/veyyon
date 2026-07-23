@@ -15,7 +15,7 @@
  * The handbook (website/docs) is a symlink to docs/handbook/book — rebuild it
  * with `mdbook build` in docs/handbook before deploying if the docs changed.
  */
-import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,23 @@ for (const name of ["install.sh", "install.ps1"]) {
 	copyFileSync(src, dst);
 	console.log(`staged ${name}`);
 }
+
+// 3b. get.veyyon.dev is the `curl -fsSL https://get.veyyon.dev | sh` endpoint. It
+// deploys to a SEPARATE Pages project (veyyon-get) from a SEPARATE tree so its
+// root can serve install.sh while veyyon.dev's root serves the marketing site.
+// They cannot share one tree: Cloudflare Pages _redirects has no hostname
+// matching, so a `/  /install.sh 200` rewrite in the shared website/ tree would
+// also hijack veyyon.dev's homepage. This tree holds only the two install
+// scripts and a plain root rewrite, so there is no index.html to serve at the
+// root and no way to pipe HTML into sh. Gitignored build artifact; ci.yml
+// deploys website-get/ to the veyyon-get project.
+const GET = join(REPO, "website-get");
+mkdirSync(GET, { recursive: true });
+for (const name of ["install.sh", "install.ps1"]) {
+	copyFileSync(join(REPO, "scripts", name), join(GET, name));
+}
+writeFileSync(join(GET, "_redirects"), "/  /install.sh  200\n");
+console.log("staged website-get/ (get.veyyon.dev root -> install.sh)");
 
 // Sanity: the pages must not leak the old product name (only the MIT oh-my-pi
 // attribution and clearly-marked OMP_ legacy env aliases are allowed).

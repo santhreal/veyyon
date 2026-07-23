@@ -99,3 +99,6 @@ packages/natives/native/embedded-addons.*.tar.gz
 
 # Local agent scratch: Claude Code worktrees and per-machine config, never part of the repo
 .claude/
+
+# get.veyyon.dev deploy tree (build artifact from website/build.mjs)
+/website-get/
