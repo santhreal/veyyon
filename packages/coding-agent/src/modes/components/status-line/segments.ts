@@ -149,7 +149,10 @@ const modelSegment: StatusLineSegment = {
 			tail += ` ${theme.icon.fast}`;
 		}
 		if (!compact && thinkingDisplay) {
-			tail += opts.roomy ? `  ·  ${thinkingDisplay}` : `${theme.sep.dot}${thinkingDisplay}`;
+			// Roomy (quiet footline): the effort merges into the model label as
+			// ONE segment (`Model @high`) — a fake ` · ` separator made it read
+			// as two segments (operator review 2026-07-23).
+			tail += opts.roomy ? ` @${thinkingDisplay}` : `${theme.sep.dot}${thinkingDisplay}`;
 		}
 
 		// `statusLineModel` is aliased to `accent` in many themes, so the badge
