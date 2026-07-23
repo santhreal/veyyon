@@ -18,6 +18,7 @@ import { $env } from "@veyyon/utils";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "../src/discovery/antigravity";
 import { fetchCodexModels } from "../src/discovery/codex";
 import { buildGitLabDuoWorkflowFallbackModel } from "../src/discovery/gitlab-duo-workflow";
+import { isOpenAIOSeriesModelId } from "../src/identity/family";
 import { createModelManager } from "../src/model-manager";
 import prevModelsJson from "../src/models.json" with { type: "json" };
 import { toModelSpec } from "../src/provider-models/bundled-references";
@@ -461,6 +462,14 @@ async function generateModels() {
 	let allModels = applyGlobalModelsDevFallback(
 		[...bundledModelsDevModels, ...catalogProviderModels, ...gitLabDuoModels],
 		modelsDevModels,
+	);
+
+	// models.dev aggregator rows (aimlapi, kilo, nanogpt, openrouter) routinely
+	// ship OpenAI o-series entries — incl. effort-pinned ids like
+	// `o3-mini-high` — with `reasoning: false`. Every o-series model reasons by
+	// construction; a false flag hides the whole thinking surface downstream.
+	allModels = allModels.map(model =>
+		!model.reasoning && isOpenAIOSeriesModelId(model.id) ? { ...model, reasoning: true } : model,
 	);
 
 	if (!allModels.some(model => model.provider === "cloudflare-ai-gateway")) {

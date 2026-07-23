@@ -695,6 +695,13 @@ export interface MarkdownTheme {
 	code: (text: string) => string;
 	codeBlock: (text: string) => string;
 	codeBlockBorder: (text: string) => string;
+	/**
+	 * Full replacement for a fenced block's opening/closing rows. When absent,
+	 * the raw ``` markers render through {@link codeBlockBorder} (the default).
+	 * Themes use this to draw designed block chrome (a rule + language tag)
+	 * instead of literal backtick fences, which read as unrendered markdown.
+	 */
+	codeBlockFence?: (lang: string | undefined, pos: "open" | "close") => string;
 	quote: (text: string) => string;
 	quoteBorder: (text: string) => string;
 	hr: (text: string) => string;
@@ -1441,6 +1448,13 @@ export class Markdown implements Component {
 		return contentLines;
 	}
 
+	/** One fence row: the theme's designed chrome when it defines
+	 *  {@link MarkdownTheme.codeBlockFence}, else the literal ``` markers. */
+	#codeFenceRow(lang: string | undefined, pos: "open" | "close"): string {
+		if (this.#theme.codeBlockFence) return this.#theme.codeBlockFence(lang || undefined, pos);
+		return this.#theme.codeBlockBorder(pos === "open" ? `\`\`\`${lang || ""}` : "```");
+	}
+
 	#renderCodeBodyLines(token: Token, codeIndent: string): string[] {
 		const bodyLines: string[] = [];
 		const tokenText = "text" in token && typeof token.text === "string" ? token.text : "";
@@ -1768,11 +1782,11 @@ export class Markdown implements Component {
 				}
 
 				const codeIndent = padding(this.#codeBlockIndent);
-				lines.push(this.#theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
+				lines.push(this.#codeFenceRow(token.lang, "open"));
 				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
 					lines.push(bodyLine);
 				}
-				lines.push(this.#theme.codeBlockBorder("```"));
+				lines.push(this.#codeFenceRow(token.lang, "close"));
 				if (nextTokenType && nextTokenType !== "space") {
 					lines.push(""); // Add spacing after code blocks (unless space token follows)
 				}
@@ -2059,11 +2073,11 @@ export class Markdown implements Component {
 			} else if (token.type === "code") {
 				// Code block in list item
 				const codeIndent = padding(this.#codeBlockIndent);
-				lines.push({ text: this.#theme.codeBlockBorder(`\`\`\`${token.lang || ""}`), nested: false });
+				lines.push({ text: this.#codeFenceRow(token.lang, "open"), nested: false });
 				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
 					lines.push({ text: bodyLine, nested: false });
 				}
-				lines.push({ text: this.#theme.codeBlockBorder("```"), nested: false });
+				lines.push({ text: this.#codeFenceRow(token.lang, "close"), nested: false });
 			} else if (isMathToken(token)) {
 				// Display math block inside a list item: stack fractions / matrix rows.
 				const apply = styleContext?.applyText ?? ((t: string) => this.#applyDefaultStyle(t));

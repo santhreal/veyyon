@@ -1,0 +1,25 @@
+# DeepSWE Diverse-20 Benchmark Suite
+# 20 real-repository held-out tasks across Go, TypeScript, and Python.
+# Go tasks
+ytt-jsonpath-query-api
+scriggo-method-declarations
+prometheus-transactional-reload-status
+kgateway-consistent-hash-policy
+yaegi-go-embed-directives
+wazero-multi-module-snapshots
+tengo-destructuring-bindings
+# TypeScript/JS tasks
+valibot-recursive-schema-composition
+koota-deferred-mutation-buffer
+ts-pattern-match-each
+superjson-error-stack-serialization
+happy-dom-abort-pending-body-reads
+effect-sse-httpapi-streaming
+drizzle-orm-window-function-builders
+# Python tasks
+etree-xml-diff-patch
+fastapi-implicit-head-options
+httpx-streaming-json-iteration
+sqlite-utils-safe-import-checkpoints
+bandit-interprocedural-taint-checks
+textual-richlog-follow-state

@@ -34,6 +34,14 @@ export const BENCHMARK_DEFINITIONS: BenchmarkDefinition[] = [
 			{ key: "edit_success_rate", label: "Edit success", format: "percent", higherIsBetter: true },
 		],
 	},
+	{
+		kind: "deepswe",
+		label: "DeepSWE arms",
+		metrics: [
+			{ key: "reward_rate", label: "Full reward", format: "percent", higherIsBetter: true },
+			{ key: "mean_partial", label: "Mean partial", format: "percent", higherIsBetter: true },
+		],
+	},
 ];
 
 /** A normalized trace emitted by any benchmark adapter. */
@@ -160,9 +168,94 @@ function readEditSnapshot(jobDir: string): BenchmarkSnapshot {
 	};
 }
 
+interface DeepsweResultRow {
+	arm: string;
+	task: string;
+	reward: number | null;
+	partial: number | null;
+	inputTokens: number | null;
+	outputTokens: number | null;
+	cacheTokens: number | null;
+	costUsd: number | null;
+	agentSeconds: number | null;
+	toolCalls: Record<string, number> | null;
+	error: string | null;
+}
+
+interface DeepsweResult {
+	model: string;
+	arms: string[];
+	tasks: string[];
+	results: DeepsweResultRow[];
+}
+
+/**
+ * Normalize deepswe-bench's arms x tasks results.json (see
+ * packages/deepswe-bench/run.ts). One trace per (arm, task) cell: full
+ * verifier reward is a pass, an execution error is an error, anything else —
+ * including a partial reward — is a fail, so pass/fail/error stay disjoint
+ * per the shared aggregate contract. The planned grid (arms x tasks) is the
+ * total, which keeps `running` honest while the bench is mid-flight.
+ */
+function readDeepsweSnapshot(jobDir: string): BenchmarkSnapshot {
+	const file = path.join(jobDir, "results.json");
+	if (!fs.existsSync(file)) return emptySnapshot();
+	const result: DeepsweResult = JSON.parse(fs.readFileSync(file, "utf8"));
+	let tokIn = 0;
+	let tokOut = 0;
+	let tokCache = 0;
+	let costUsd = 0;
+	let partialSum = 0;
+	let partialCount = 0;
+	const traces: BenchmarkTrace[] = result.results.map(row => {
+		tokIn += row.inputTokens ?? 0;
+		tokOut += row.outputTokens ?? 0;
+		tokCache += row.cacheTokens ?? 0;
+		costUsd += row.costUsd ?? 0;
+		if (row.partial !== null) {
+			partialSum += row.partial;
+			partialCount++;
+		}
+		const status = row.error !== null ? "error" : row.reward !== null && row.reward >= 1 ? "pass" : "fail";
+		return {
+			name: `${row.task}__${row.arm}`,
+			task: row.task,
+			status,
+			reward: row.reward,
+			costUsd: row.costUsd ?? 0,
+			durationMs: Math.round((row.agentSeconds ?? 0) * 1000),
+			detail: JSON.stringify({ arm: row.arm, partial: row.partial, error: row.error, tools: row.toolCalls }),
+			tracePath: null,
+		};
+	});
+	const total = result.arms.length * result.tasks.length;
+	const pass = traces.filter(trace => trace.status === "pass").length;
+	const error = traces.filter(trace => trace.status === "error").length;
+	const done = traces.length;
+	return {
+		traces,
+		total,
+		done,
+		pass,
+		fail: done - pass - error,
+		error,
+		running: Math.max(0, total - done),
+		costUsd,
+		tokIn,
+		tokOut,
+		tokCache,
+		score: done > 0 ? pass / done : null,
+		metrics: {
+			reward_rate: done > 0 ? pass / done : null,
+			mean_partial: partialCount > 0 ? partialSum / partialCount : null,
+		},
+	};
+}
+
 /** Read and normalize the latest artifacts for a benchmark run. */
 export function readBenchmarkSnapshot(benchmark: BenchmarkKind, jobDir: string): BenchmarkSnapshot {
 	if (benchmark === "edit") return readEditSnapshot(jobDir);
+	if (benchmark === "deepswe") return readDeepsweSnapshot(jobDir);
 	const trials = readTrials(jobDir);
 	const job = readJobResult(jobDir);
 	const totals = aggregate(trials, job, job?.nTotal ?? trials.length);

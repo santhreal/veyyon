@@ -1,0 +1,87 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/text-similarity",
+ "function": "jaccardWordSimilarity",
+ "vectors": [
+  {
+   "name": "identical texts score 1",
+   "input": [
+    "alpha beta",
+    "alpha beta"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "disjoint texts score 0",
+   "input": [
+    "alpha beta",
+    "gamma delta"
+   ],
+   "expected": 0
+  },
+  {
+   "name": "comparison is case-insensitive",
+   "input": [
+    "Alpha BETA",
+    "alpha beta"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "whitespace runs and tabs split identically",
+   "input": [
+    "a\tb  c",
+    "a b c"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "empty vs text scores 0",
+   "input": [
+    "",
+    "alpha"
+   ],
+   "expected": 0
+  },
+  {
+   "name": "both empty score 0",
+   "input": [
+    "",
+    ""
+   ],
+   "expected": 0
+  },
+  {
+   "name": "duplicate words collapse to one set entry",
+   "input": [
+    "a a a b",
+    "a b"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "one-of-three overlap",
+   "input": [
+    "a b c",
+    "c d e"
+   ],
+   "expected": 0.2
+  },
+  {
+   "name": "unicode words compare whole",
+   "input": [
+    "héllo wörld",
+    "héllo there"
+   ],
+   "expected": 0.3333333333333333
+  },
+  {
+   "name": "newlines are separators",
+   "input": [
+    "a\nb",
+    "a b"
+   ],
+   "expected": 1
+  }
+ ]
+}

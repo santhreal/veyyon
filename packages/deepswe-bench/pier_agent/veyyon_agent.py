@@ -62,25 +62,18 @@ class VeyyonAgent(BaseInstalledAgent):
         return None
 
     def install_spec(self) -> AgentInstallSpec:
-        # Nothing to install at build time: the binary is uploaded at run
-        # time (no mounts exist while the image is being built).
         return AgentInstallSpec(
-            agent_name=self.name(),
-            version=self._version,
+            agent_name="veyyon",
             cache_key=f"veyyon-{self._binary_sha[:16]}-{self._arm_name}",
             steps=[InstallStep(user="agent", run="true")],
-            verification_command=None,
         )
-
     def network_allowlist(self):
-        # Allow Google OAuth/CloudCode, Anthropic, OpenAI, and OpenRouter endpoints
         return allowlist_from_urls(
             [], default_domains=[
                 ".googleapis.com", ".google.com",
                 ".anthropic.com", ".openai.com", ".openrouter.ai"
             ]
         )
-
     async def run(
         self,
         instruction: str,
@@ -171,20 +164,22 @@ class VeyyonAgent(BaseInstalledAgent):
                     )
                     cost += (usage.get("cost") or {}).get("total", 0.0) or 0.0
                     content = message.get("content") or []
+                    has_sigil = False
                     for block in content:
-                        if isinstance(block, dict):
-                            if "\u00a7" in str(block.get("text", "")):
-                                n_sigil_assistant_msgs += 1
-                                break
-                            if block.get("type") == "toolCall" and isinstance(block.get("name"), str):
-                                name = block["name"]
-                                tool_calls[name] = tool_calls.get(name, 0) + 1
+                        if not isinstance(block, dict):
+                            continue
+                        # Tool calls count once, from the model's own blocks;
+                        # the matching toolResult is the same action again.
+                        if block.get("type") == "toolCall" and isinstance(block.get("name"), str):
+                            name = block["name"]
+                            tool_calls[name] = tool_calls.get(name, 0) + 1
+                        if not has_sigil and "\u00a7" in str(block.get("text", "")):
+                            has_sigil = True
+                    if has_sigil:
+                        n_sigil_assistant_msgs += 1
                 elif role == "toolResult":
-                    t_name = message.get("toolName")
-                    if t_name == "argot_load":
+                    if message.get("toolName") == "argot_load":
                         n_argot_loads += 1
-                    if isinstance(t_name, str):
-                        tool_calls[t_name] = tool_calls.get(t_name, 0) + 1
         context.n_input_tokens = n_input
         context.n_output_tokens = n_output
         context.n_cache_tokens = n_cache

@@ -31,7 +31,7 @@ bun run.ts \
   --arms none,decode,full \
   --model google-antigravity/gemini-2.5-flash \
   --jobs 2 \
-  --out runs/argot-pilot
+  --out ../../runs/deepswe/argot-pilot
 ```
 
 Flags:
@@ -58,7 +58,7 @@ steps run at image build time (no mounts, no host network), and declaring a
 bind mount in the job config REPLACES Pier's default `/logs` mounts, which
 silently loses the trial's logs. Upload-at-run-time avoids both.
 
-A run directory `runs/<label>/` collects `jobs/` (raw Pier output, trajectories,
+A run directory (default `<repo>/runs/deepswe/<timestamp>/`, or `--out`) collects `jobs/` (raw Pier output, trajectories,
 verifier reports), `results.json` (every metric, machine-readable), and
 `report.md` (the table).
 

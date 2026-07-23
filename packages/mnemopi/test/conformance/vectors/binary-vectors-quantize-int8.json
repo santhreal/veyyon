@@ -1,0 +1,121 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/binary-vectors",
+ "function": "quantizeInt8AsArray",
+ "vectors": [
+  {
+   "name": "unit range maps to +-127",
+   "input": [
+    [
+     0,
+     1,
+     -1,
+     0.5,
+     -0.5,
+     0.25
+    ]
+   ],
+   "expected": [
+    0,
+    127,
+    -127,
+    64,
+    -64,
+    32
+   ]
+  },
+  {
+   "name": "values beyond +-1 clamp",
+   "input": [
+    [
+     2,
+     -2,
+     100,
+     -100
+    ]
+   ],
+   "expected": [
+    127,
+    -127,
+    127,
+    -127
+   ]
+  },
+  {
+   "name": "symmetric rounding at the half step",
+   "input": [
+    [
+     0.5,
+     -0.5
+    ]
+   ],
+   "expected": [
+    64,
+    -64
+   ]
+  },
+  {
+   "name": "126.5 boundary rounds half up, negated mirrors",
+   "input": [
+    [
+     0.996063,
+     -0.996063
+    ]
+   ],
+   "expected": [
+    127,
+    -127
+   ]
+  },
+  {
+   "name": "tiny values round to 0",
+   "input": [
+    [
+     1e-10,
+     -1e-10,
+     0.003
+    ]
+   ],
+   "expected": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "first step boundary",
+   "input": [
+    [
+     0.003937007874015748,
+     0.004
+    ]
+   ],
+   "expected": [
+    1,
+    1
+   ]
+  },
+  {
+   "name": "empty embedding",
+   "input": [
+    []
+   ],
+   "expected": []
+  },
+  {
+   "name": "exact integer steps",
+   "input": [
+    [
+     0.007874015748031496,
+     0.015748031496062992,
+     -0.007874015748031496
+    ]
+   ],
+   "expected": [
+    1,
+    2,
+    -1
+   ]
+  }
+ ]
+}

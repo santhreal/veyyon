@@ -78,12 +78,31 @@ export const isMimoModelIdOrName = memo((value: string): boolean => {
 	return value.toLowerCase().includes("mimo");
 });
 
-const GROK_EFFORT_CAPABLE_PREFIXES = ["grok-3-mini", "grok-4.20-multi-agent", "grok-4.3", "grok-4.5"] as const;
+/**
+ * OpenAI o-series (o1/o3/o4, incl. -mini/-pro/-preview, dated snapshots, and
+ * effort-pinned aggregator ids like `o3-mini-high`). Every o-series model
+ * reasons by construction; aggregator catalogs (models.dev rows for aimlapi,
+ * kilo, nanogpt, openrouter) routinely ship them `reasoning: false`, which
+ * hides the thinking surface entirely. Used by the catalog generator to force
+ * the flag back on.
+ */
+export const isOpenAIOSeriesModelId = memo((modelId: string): boolean => {
+	const bare = bareModelId(modelId).trim().toLowerCase();
+	return /^o[134](-|$)/.test(bare);
+});
+
+const GROK_EFFORT_CAPABLE_PREFIXES = [
+	"grok-3-mini",
+	"grok-4.20-multi-agent",
+	"grok-4.3",
+	"grok-4.5",
+	"grok-build",
+] as const;
 
 /**
  * Grok SKUs that expose the wire `reasoning.effort` dial. Other Grok reasoners
- * (e.g. `grok-build`, `grok-4.20-0309-reasoning`) think natively but reject the
- * param, so callers must omit reasoning effort for them.
+ * (e.g. `grok-4.20-0309-reasoning`) think natively but reject the param, so
+ * callers must omit reasoning effort for them.
  */
 export const isGrokReasoningEffortCapable = memo((modelId: string): boolean => {
 	const bare = bareModelId(modelId).trim().toLowerCase();

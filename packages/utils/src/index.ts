@@ -6,6 +6,7 @@ export * from "./backoff";
 export * from "./binary";
 export * from "./collapse-whitespace";
 export * from "./color";
+export * from "./conformance";
 export * from "./content-text";
 export * from "./dirs";
 export * from "./env";

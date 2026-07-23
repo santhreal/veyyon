@@ -93,6 +93,26 @@ export class Box implements Component {
 		this.#invalidateCache();
 	}
 
+	#hugContent = false;
+
+	/**
+	 * When set, the box shrinks to its widest child line (plus padding and
+	 * border) instead of padding every row out to the width it was given. The
+	 * given width stays the wrap limit — children still render at the full
+	 * content width, hugging only trims the emitted rows. A bordered card
+	 * around three short lines reads as a card; the same frame stretched to
+	 * the terminal edge reads as a wall (the "box always spans full width
+	 * regardless of content" report, 2026-07-22). No effect when a child
+	 * already fills the width (its rows are pre-padded).
+	 */
+	setHugContent(hug: boolean): this {
+		if (this.#hugContent !== hug) {
+			this.#hugContent = hug;
+			this.#invalidateCache();
+		}
+		return this;
+	}
+
 	#invalidateCache(): void {
 		this.#cached = undefined;
 	}
@@ -144,26 +164,46 @@ export class Box implements Component {
 
 		const result: string[] = [];
 		if (contentRows > 0) {
+			// Hugging: emit rows at the widest child line, not the full width.
+			// The children already wrapped at contentWidth, so this only trims
+			// the padding (and the border rule) down to the real ink.
+			let emitWidth = innerWidth;
+			if (this.#hugContent) {
+				// Children like Markdown right-pad their rows with raw spaces;
+				// measure past that padding or every card measures full-width.
+				// Only bare trailing spaces are trimmed — bg-painted padding ends
+				// in escape bytes and is preserved as part of the visual design.
+				let maxChildWidth = 0;
+				for (const lines of childLines) {
+					for (const line of lines) {
+						const w = visibleWidth(line.replace(/ +$/, ""));
+						if (w > maxChildWidth) maxChildWidth = w;
+					}
+				}
+				emitWidth = Math.min(innerWidth, Math.max(1, maxChildWidth + paddingX * 2));
+			}
 			const leftPad = padding(paddingX);
 			const interior: string[] = [];
 			// Top padding
 			for (let i = 0; i < this.#paddingY; i++) {
-				interior.push(this.#applyBg("", innerWidth));
+				interior.push(this.#applyBg("", emitWidth));
 			}
 			// Content
 			for (const lines of childLines) {
 				for (const line of lines) {
-					interior.push(this.#applyBg(leftPad + line, innerWidth));
+					interior.push(
+						this.#applyBg(this.#hugContent ? leftPad + line.replace(/ +$/, "") : leftPad + line, emitWidth),
+					);
 				}
 			}
 			// Bottom padding
 			for (let i = 0; i < this.#paddingY; i++) {
-				interior.push(this.#applyBg("", innerWidth));
+				interior.push(this.#applyBg("", emitWidth));
 			}
 
 			if (border) {
 				const paint = border.color ?? (s => s);
-				const rule = border.chars.horizontal.repeat(Math.max(0, innerWidth));
+				const rule = border.chars.horizontal.repeat(Math.max(0, emitWidth));
 				const side = paint(border.chars.vertical);
 				result.push(paint(border.chars.topLeft + rule + border.chars.topRight));
 				for (const row of interior) {

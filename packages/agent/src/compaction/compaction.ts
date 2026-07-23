@@ -469,6 +469,15 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 			}
 			break;
 		}
+		// `developer` shares the user-message content shape (string | text/image
+		// blocks) and carries real content: synthetic auto-continue prompts are
+		// stored as full developer messages, some with normalized images. It was
+		// missing from this switch, so every developer message hit `default: return
+		// 0` and counted as ZERO tokens — silently under-reporting context usage to
+		// the compaction trigger, pruning budgets, and the operator context meter,
+		// which could let a session exceed the provider window unnoticed. Counted
+		// here with images, exactly like the other content-bearing roles.
+		case "developer":
 		case "custom":
 		case "hookMessage":
 		case "toolResult": {
@@ -753,7 +762,7 @@ function effortFromThinkingLevel(level: ThinkingLevel): Effort {
  * The clamp routes through `clampThinkingLevelForModel`, which returns
  * `undefined` for reasoning models without a thinking config — the build-time
  * encoding of `compat.supportsReasoningEffort: false` (e.g.
- * `xai-oauth/grok-build`). That `undefined` then flows through to the
+ * `xai-oauth/grok-4.20-0309-reasoning`). That `undefined` then flows through to the
  * openai-responses mapper, which omits the wire param — no
  * `requireSupportedEffort` throw.
  */
@@ -1622,9 +1631,7 @@ export async function compact(
 	// summary text above; strip the now-stale archive from preserveData so it
 	// cannot re-attach to the rebuilt context. Only the legacy case needs
 	// stripping — a session without a prior archive carries no frames to drop.
-	const finalPreserveData = hasLegacyArchive(previousPreserveData)
-		? stripLegacyArchive(preserveData)
-		: preserveData;
+	const finalPreserveData = hasLegacyArchive(previousPreserveData) ? stripLegacyArchive(preserveData) : preserveData;
 
 	return {
 		summary,

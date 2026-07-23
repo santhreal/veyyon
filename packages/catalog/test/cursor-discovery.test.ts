@@ -25,6 +25,10 @@ const FIXTURE_MODEL_IDS = [
 	"claude-4.5-opus-high",
 	"claude-4.6-opus-high",
 	"composer-1",
+	// Tier-suffixed ids with NO exact reference: must inherit the BASE
+	// model's reference via the stripped-suffix lookup.
+	"gpt-5.4-max",
+	"composer-1-high",
 ];
 
 let server: http2.Http2Server;
@@ -88,6 +92,34 @@ describe("cursor discovery input modalities (issue #4726)", () => {
 		expect(byId.get("claude-4.5-opus-high")?.input).toEqual(["text", "image"]);
 		expect(byId.get("claude-4.6-opus-high")?.input).toEqual(["text"]);
 		expect(byId.get("composer-1")?.input).toEqual(["text"]);
+	});
+
+	/**
+	 * Future-tier inheritance (follow-up to the inert-cursor-efforts fix,
+	 * 2026-07-22): when cursor ships a NEW tier id the hand collapse table
+	 * does not know yet (e.g. `gpt-5.4-max`), the normalizer must recognize
+	 * it as its base model at a fixed effort — inheriting the base
+	 * reference's reasoning flag, limits, and modalities — instead of
+	 * treating it as an unknown model with dial-less defaults. That default
+	 * path is exactly how a whole generation of reasoning tiers went dark.
+	 */
+	it("inherits the base reference for tier-suffixed ids with no exact reference", async () => {
+		const byId = await discover();
+		const tier = byId.get("gpt-5.4-max");
+		const base = byId.get("gpt-5.4");
+		expect(tier).toBeDefined();
+		// gpt-5.4 is a bundled reasoning family; its unknown -max tier must
+		// arrive reasoning-capable with the base's real limits, not the
+		// unknown-model defaults.
+		expect(tier?.reasoning).toBe(true);
+		expect(base === undefined || tier?.contextWindow === base.contextWindow).toBe(true);
+
+		// Non-reasoning base: the tier inherits false, proving the lookup
+		// inherits the base's actual flag rather than forcing true.
+		const composerTier = byId.get("composer-1-high");
+		const composerBase = byId.get("composer-1");
+		expect(composerTier).toBeDefined();
+		expect(composerTier?.reasoning).toBe(composerBase?.reasoning ?? false);
 	});
 
 	it("preserves fallback defaults for reference-less models", async () => {

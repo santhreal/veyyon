@@ -967,10 +967,14 @@ export class Editor implements Component, Focusable {
 					const before = displayText.slice(0, layoutLine.cursorPos);
 					const after = displayText.slice(layoutLine.cursorPos);
 					if (after.length === 0 && inlineHint) {
-						const availWidth = Math.max(0, lineContentWidth - displayWidth);
-						const hintText = hintStyle(truncateToWidth(inlineHint, availWidth));
+						// One blank cell between the cursor cell and the ghost hint: the
+						// terminal cursor sits on the gap, never on the hint's first
+						// character (it read as the cursor overlapping the placeholder).
+						const availWidth = Math.max(0, lineContentWidth - displayWidth - 1);
+						const truncatedHint = truncateToWidth(inlineHint, availWidth);
+						const hintText = truncatedHint.length > 0 ? ` ${hintStyle(truncatedHint)}` : "";
 						displayText = before + marker + hintText;
-						displayWidth += Math.min(visibleWidth(inlineHint), availWidth);
+						displayWidth += truncatedHint.length > 0 ? 1 + Math.min(visibleWidth(inlineHint), availWidth) : 0;
 					} else if (after.length === 0 && !borderVisible && displayWidth >= lineContentWidth) {
 						displayText = this.#renderTerminalCursorMarker(before, marker, lineContentWidth);
 					} else {
@@ -1007,10 +1011,15 @@ export class Editor implements Component, Focusable {
 						displayText = widthLimitedCursor.text;
 						displayWidth = widthLimitedCursor.width;
 					} else if (inlineHint) {
-						const availWidth = Math.max(0, lineContentWidth - displayWidth - overrideWidth);
-						const hintText = hintStyle(truncateToWidth(inlineHint, availWidth));
+						// Same one-cell gap as the terminal-cursor path: the override
+						// glyph must not touch the ghost hint's first character.
+						const availWidth = Math.max(0, lineContentWidth - displayWidth - overrideWidth - 1);
+						const truncatedHint = truncateToWidth(inlineHint, availWidth);
+						const hintText = truncatedHint.length > 0 ? ` ${hintStyle(truncatedHint)}` : "";
 						displayText = before + marker + this.cursorOverride + hintText;
-						displayWidth += overrideWidth + Math.min(visibleWidth(inlineHint), availWidth);
+						displayWidth +=
+							overrideWidth +
+							(truncatedHint.length > 0 ? 1 + Math.min(visibleWidth(inlineHint), availWidth) : 0);
 					} else {
 						displayText = before + marker + this.cursorOverride;
 						displayWidth += overrideWidth;
@@ -1025,10 +1034,15 @@ export class Editor implements Component, Focusable {
 						displayText = widthLimitedCursor.text;
 						displayWidth = widthLimitedCursor.width;
 					} else if (inlineHint) {
-						const availWidth = Math.max(0, lineContentWidth - displayWidth - cursorWidth);
-						const hintText = hintStyle(truncateToWidth(inlineHint, availWidth));
+						// Same one-cell gap: the ▏-style software cursor renders on the
+						// left edge of its cell and visually merged with the hint's
+						// first character without it.
+						const availWidth = Math.max(0, lineContentWidth - displayWidth - cursorWidth - 1);
+						const truncatedHint = truncateToWidth(inlineHint, availWidth);
+						const hintText = truncatedHint.length > 0 ? ` ${hintStyle(truncatedHint)}` : "";
 						displayText = before + marker + cursor + hintText;
-						displayWidth += cursorWidth + Math.min(visibleWidth(inlineHint), availWidth);
+						displayWidth +=
+							cursorWidth + (truncatedHint.length > 0 ? 1 + Math.min(visibleWidth(inlineHint), availWidth) : 0);
 					} else {
 						displayText = before + marker + cursor;
 						displayWidth += cursorWidth;

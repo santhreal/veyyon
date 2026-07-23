@@ -15,9 +15,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 // Pins fix #1 of the compaction effort-override bug. Before this fix,
 // `generateHandoff` (and the three other compaction summarizers) hardcoded
 // `reasoning: Effort.High`, ignoring the user's `/model` thinking selection.
-// On a model with `compat.supportsReasoningEffort: false` (xai-oauth/grok-build),
+// On a model with `compat.supportsReasoningEffort: false` (xai-oauth/grok-4.20-0309-reasoning),
 // this produced "Compaction failed: Thinking effort high is not supported by
-// xai-oauth/grok-build" — but the underlying defect (silent user-intent
+// xai-oauth/grok-4.20-0309-reasoning" — but the underlying defect (silent user-intent
 // override) was present on every model, just invisible because most models
 // silently accept the override.
 //
@@ -59,8 +59,8 @@ function getAnthropicModel(): Model {
 }
 
 function getGrokBuildModel(): Model {
-	const model = getBundledModel("xai-oauth", "grok-build");
-	if (!model) throw new Error("Expected built-in xai-oauth/grok-build to exist");
+	const model = getBundledModel("xai-oauth", "grok-4.20-0309-reasoning");
+	if (!model) throw new Error("Expected built-in xai-oauth/grok-4.20-0309-reasoning to exist");
 	return model;
 }
 
@@ -117,7 +117,7 @@ describe("compaction thinking-level resolution (regression)", () => {
 		expect(call[2]?.reasoning).toBe(ai.Effort.Low);
 	});
 
-	test("ThinkingLevel.High on xai-oauth/grok-build → reasoning=undefined (clamp)", async () => {
+	test("ThinkingLevel.High on xai-oauth/grok-4.20-0309-reasoning → reasoning=undefined (clamp)", async () => {
 		const spy = vi
 			.spyOn(ai, "completeSimple")
 			.mockResolvedValue(createAssistantMessage([{ type: "text", text: "handoff" }]));
@@ -233,7 +233,7 @@ describe("compact() propagates thinkingLevel to all three summarizers (regressio
 		}
 	});
 
-	test("xai-oauth/grok-build + ThinkingLevel.High → every fan-out call gets reasoning=undefined (clamp)", async () => {
+	test("xai-oauth/grok-4.20-0309-reasoning + ThinkingLevel.High → every fan-out call gets reasoning=undefined (clamp)", async () => {
 		const spy = vi
 			.spyOn(ai, "completeSimple")
 			.mockResolvedValue(createAssistantMessage([{ type: "text", text: "summary" }]));

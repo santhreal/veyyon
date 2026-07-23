@@ -10,6 +10,7 @@ import {
 	isMinimaxM3FamilyModelId,
 	isOpenAIGptOssModelId,
 	isOpenAIModelId,
+	isOpenAIOSeriesModelId,
 	isReasoningGlmModelId,
 	modelFamilyToken,
 	parseAnthropicModel,
@@ -292,9 +293,34 @@ describe("isGrokReasoningEffortCapable", () => {
 	});
 
 	test("rejects effort-dial-less Grok SKUs and non-Grok ids", () => {
-		expect(isGrokReasoningEffortCapable("grok-build")).toBe(false);
+		// grok-build moved to the capable allowlist (2026-07-22): it accepts the
+		// wire `reasoning.effort` param and was wrongly encoded as dial-less.
+		expect(isGrokReasoningEffortCapable("grok-build")).toBe(true);
+		expect(isGrokReasoningEffortCapable("xai-oauth/grok-build-0.1")).toBe(true);
 		expect(isGrokReasoningEffortCapable("grok-4.20-0309-reasoning")).toBe(false);
 		expect(isGrokReasoningEffortCapable("gpt-5")).toBe(false);
 		expect(isGrokReasoningEffortCapable("")).toBe(false);
+	});
+});
+
+describe("isOpenAIOSeriesModelId", () => {
+	// The generator uses this to force `reasoning: true` on aggregator o-series
+	// rows that models.dev ships as non-reasoning (o3-mini-high etc.). A miss
+	// leaves a reasoning model dial-less; a false positive would flag a
+	// non-reasoning model as a reasoner.
+	test("matches o-series ids in bare and provider-prefixed forms", () => {
+		expect(isOpenAIOSeriesModelId("o1")).toBe(true);
+		expect(isOpenAIOSeriesModelId("o1-pro")).toBe(true);
+		expect(isOpenAIOSeriesModelId("o3-mini-high")).toBe(true);
+		expect(isOpenAIOSeriesModelId("o3-2025-04-16")).toBe(true);
+		expect(isOpenAIOSeriesModelId("openai/o4-mini-high")).toBe(true);
+	});
+
+	test("rejects non-o-series ids that merely start with the letter o", () => {
+		expect(isOpenAIOSeriesModelId("o1js")).toBe(false);
+		expect(isOpenAIOSeriesModelId("olmo-2")).toBe(false);
+		expect(isOpenAIOSeriesModelId("o2-experimental")).toBe(false);
+		expect(isOpenAIOSeriesModelId("gpt-5.2")).toBe(false);
+		expect(isOpenAIOSeriesModelId("")).toBe(false);
 	});
 });

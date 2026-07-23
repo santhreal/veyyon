@@ -6,9 +6,9 @@
  * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
 
-import { stringifyJsonSafe } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { truncate as truncateChars } from "@veyyon/utils/format";
+import { stringifyJsonSafe } from "@veyyon/utils/json";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";

@@ -21,6 +21,7 @@ import {
 	isVariantCollapsedSpec,
 	resolveBareVariantAlias,
 	resolveVariantAlias,
+	stripEffortTierSuffix,
 } from "@veyyon/catalog/variant-collapse";
 
 function memberSpec(
@@ -847,5 +848,169 @@ describe("antigravity discovery collapsing", () => {
 
 		expect(requestedUrls[0]).toContain(ANTIGRAVITY_PRIMARY_ENDPOINT);
 		expect(models?.[0]?.baseUrl).toBe(ANTIGRAVITY_PRIMARY_ENDPOINT);
+	});
+});
+
+/**
+ * Devin effort-suffixed families collapsed 2026-07-22 (user report: "almost no
+ * LLMs have no reasoning choice"). The bundled catalog carried raw
+ * `claude-5-fable-*`, `claude-sonnet-5-*`, `grok-4-5-*` sibling ids and
+ * GLM-5.2's `-none` off pair as separate dial-less models, so the effort
+ * choice these SKUs actually serve was invisible: `getSupportedEfforts`
+ * returned [] and /thinking had nothing to set. These lock the collapsed
+ * bundled specs, the wire routing, and the alias that keeps old persisted
+ * suffixed ids resolving.
+ */
+describe("devin effort-suffixed family collapse (bundled)", () => {
+	it("bundles claude-sonnet-5 and claude-5-fable as five-tier effort-routed logical models", async () => {
+		const { getBundledModel } = await import("../src/models");
+		for (const id of ["claude-sonnet-5", "claude-5-fable"]) {
+			const model = getBundledModel("devin", id);
+			expect(model).toBeDefined();
+			expect(model.reasoning).toBe(true);
+			expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max]);
+			expect(model.thinking?.effortRouting?.[Effort.XHigh]).toBe(`${id}-xhigh`);
+			expect(model.requestModelId).toBe(`${id}-low`);
+			// The raw suffixed members no longer exist as separate bundled models.
+			expect(getBundledModel("devin", `${id}-high`)).toBeUndefined();
+		}
+	});
+
+	it("bundles grok-4-5 as a three-tier effort-routed logical model", async () => {
+		const { getBundledModel } = await import("../src/models");
+		const model = getBundledModel("devin", "grok-4-5");
+		expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
+		expect(model.thinking?.effortRouting?.[Effort.Medium]).toBe("grok-4-5-medium");
+		expect(getBundledModel("devin", "grok-4-5-low")).toBeUndefined();
+	});
+
+	it("folds GLM-5.2's -none off sibling into an off route instead of a separate model", async () => {
+		const { getBundledModel } = await import("../src/models");
+		for (const [id, none] of [
+			["glm-5-2", "glm-5-2-none"],
+			["glm-5-2-1m", "glm-5-2-none-1m"],
+		] as const) {
+			const model = getBundledModel("devin", id);
+			expect(model.reasoning).toBe(true);
+			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
+			expect(model.thinking?.effortRouting?.off).toBe(none);
+			expect(model.thinking?.effortRouting?.[Effort.Max]).toBe(
+				`${id === "glm-5-2" ? "glm-5-2-max" : "glm-5-2-max-1m"}`,
+			);
+			expect(getBundledModel("devin", none)).toBeUndefined();
+		}
+	});
+
+	it("routes wire model ids per effort on the collapsed families", async () => {
+		const { getBundledModel } = await import("../src/models");
+		const { resolveWireModelId } = await import("../src/model-thinking");
+		const sonnet = getBundledModel("devin", "claude-sonnet-5");
+		expect(resolveWireModelId(sonnet, Effort.Max)).toBe("claude-sonnet-5-max");
+		// No effort → the default wire id (the lowest tier), never a crash.
+		expect(resolveWireModelId(sonnet, undefined)).toBe("claude-sonnet-5-low");
+	});
+
+	it("aliases old persisted suffixed ids to their collapsed family", () => {
+		expect(resolveVariantAlias("devin", "claude-sonnet-5-xhigh")).toBe("claude-sonnet-5");
+		expect(resolveVariantAlias("devin", "claude-5-fable-max")).toBe("claude-5-fable");
+		expect(resolveVariantAlias("devin", "grok-4-5-high")).toBe("grok-4-5");
+		expect(resolveVariantAlias("devin", "glm-5-2-none")).toBe("glm-5-2");
+		expect(resolveVariantAlias("devin", "MODEL_CLAUDE_4_5_OPUS_THINKING")).toBe("MODEL_CLAUDE_4_5_OPUS");
+	});
+});
+
+/**
+ * Cursor tier families, the aggregator thinking-pair cache-price gate, and the
+ * o-series reasoning-flag corrector (2026-07-22, same user report as the devin
+ * collapse above). Cursor's raw discovery rows carried effort-tier siblings
+ * (`gpt-5.4-high` etc.) as separate `reasoning: false` models; the bare codex
+ * ids claimed wire-effort ladders the cursor transport ignored. Aggregator
+ * rows from models.dev shipped OpenAI o-series entries `reasoning: false`,
+ * and thinking twins with unreported (zero) cache prices were refused pairing
+ * by a strict per-field cost compare.
+ */
+describe("cursor tier families and aggregator reasoning metadata (bundled)", () => {
+	it("bundles cursor gpt-5.4 as a four-tier reasoning family (was four dial-less non-reasoners)", async () => {
+		const { getBundledModel } = await import("../src/models");
+		const model = getBundledModel("cursor", "gpt-5.4");
+		expect(model.reasoning).toBe(true);
+		expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
+		expect(model.thinking?.effortRouting?.[Effort.Medium]).toBe("gpt-5.4-medium");
+		expect(getBundledModel("cursor", "gpt-5.4-high")).toBeUndefined();
+	});
+
+	it("folds cursor codex tier siblings into their bare family claiming only routed efforts", async () => {
+		const { getBundledModel } = await import("../src/models");
+		for (const base of ["gpt-5.2-codex", "gpt-5.3-codex"]) {
+			const model = getBundledModel("cursor", base);
+			expect(model.reasoning).toBe(true);
+			// Medium had no tier id and the wire has no effort param, so the old
+			// inherited [low..xhigh] claim was a lie; only routed efforts remain.
+			expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.XHigh]);
+			expect(model.thinking?.effortRouting?.[Effort.XHigh]).toBe(`${base}-xhigh`);
+			expect(getBundledModel("cursor", `${base}-low`)).toBeUndefined();
+		}
+	});
+
+	it("pairs same-priced thinking twins whose cache prices are unreported zeros", async () => {
+		// openrouter qwen/qwen3-max-thinking ships identical input/output prices
+		// but zero cacheRead/cacheWrite; the strict per-field compare treated
+		// that as a price divergence and kept the twins separate dial-less rows.
+		const { getBundledModel } = await import("../src/models");
+		const { resolveWireModelId } = await import("../src/model-thinking");
+		const model = getBundledModel("openrouter", "qwen/qwen3-max");
+		expect(model.reasoning).toBe(true);
+		expect(model.thinking?.effortRouting?.off).toBe("qwen/qwen3-max");
+		expect(resolveWireModelId(model, Effort.High)).toBe("qwen/qwen3-max-thinking");
+		expect(getBundledModel("openrouter", "qwen/qwen3-max-thinking")).toBeUndefined();
+	});
+
+	it("still refuses to pair twins whose real input/output prices differ (negative twin)", async () => {
+		// openrouter kimi-k2 vs kimi-k2-thinking carry genuinely different
+		// prices ($0.57/2.3 vs $0.6/2.5): distinct billed SKUs, never merged.
+		const { getBundledModel } = await import("../src/models");
+		expect(getBundledModel("openrouter", "moonshotai/kimi-k2")).toBeDefined();
+		expect(getBundledModel("openrouter", "moonshotai/kimi-k2-thinking")).toBeDefined();
+	});
+
+	it("forces reasoning on aggregator o-series rows that models.dev shipped as non-reasoning", async () => {
+		const { getBundledModel } = await import("../src/models");
+		const { getSupportedEfforts } = await import("../src/model-thinking");
+		for (const [prov, id] of [
+			["aimlapi", "o3-mini-high"],
+			["aimlapi", "o4-mini-high"],
+			["kilo", "openai/o1-pro"],
+			["openrouter", "openai/o3-mini-high"],
+			["nanogpt", "openai/o1-preview"],
+		] as const) {
+			const model = getBundledModel(prov, id);
+			expect(model?.reasoning).toBe(true);
+			expect(getSupportedEfforts(model).length).toBeGreaterThan(0);
+		}
+	});
+});
+
+describe("stripEffortTierSuffix — the tier-suffix vocabulary owner", () => {
+	/**
+	 * Discovery normalizers use this to recognize a future tier id as its
+	 * base model (cursor: gpt-5.4-max → gpt-5.4). A miss leaves the tier as
+	 * an unknown dial-less model; a false positive would alias a genuinely
+	 * different model onto another's reference.
+	 */
+	it("strips exactly one trailing tier suffix", () => {
+		expect(stripEffortTierSuffix("gpt-5.4-max")).toBe("gpt-5.4");
+		expect(stripEffortTierSuffix("gpt-5.2-codex-xhigh")).toBe("gpt-5.2-codex");
+		expect(stripEffortTierSuffix("glm-5-2-none")).toBe("glm-5-2");
+		expect(stripEffortTierSuffix("o3-mini-high")).toBe("o3-mini");
+		expect(stripEffortTierSuffix("qwen3-max-thinking")).toBe("qwen3-max");
+	});
+
+	it("returns undefined for ids without a tier suffix and for bare suffixes", () => {
+		expect(stripEffortTierSuffix("gpt-5.4")).toBeUndefined();
+		expect(stripEffortTierSuffix("composer-3")).toBeUndefined();
+		// A mid-id tier word is not a suffix.
+		expect(stripEffortTierSuffix("high-noon-model")).toBeUndefined();
+		// Stripping must never produce an empty base id.
+		expect(stripEffortTierSuffix("-high")).toBeUndefined();
 	});
 });

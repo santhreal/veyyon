@@ -91,6 +91,22 @@ export interface VariantCollapseTable {
 	families: readonly EffortVariantFamily[];
 }
 
+/**
+ * Trailing effort-tier suffix on a sibling wire id (`gpt-5.4-xhigh`,
+ * `glm-5-2-none`, `o3-mini-high`). The ONE owner of the tier-suffix
+ * vocabulary — discovery normalizers use {@link stripEffortTierSuffix} to
+ * recognize a future, un-tabled tier id as a variant of its base model
+ * instead of treating it as an unknown model with default metadata.
+ */
+const EFFORT_TIER_SUFFIX_RE = /-(?:minimal|low|medium|high|xhigh|max|none|thinking)$/;
+
+/** The base id with one trailing effort-tier suffix removed, or undefined
+ *  when `id` carries no tier suffix. */
+export function stripEffortTierSuffix(id: string): string | undefined {
+	const stripped = id.replace(EFFORT_TIER_SUFFIX_RE, "");
+	return stripped !== id && stripped.length > 0 ? stripped : undefined;
+}
+
 /** `X` + `X-thinking` hand family: off routes to the bare id, efforts to `-thinking`. */
 function thinkingPair(baseId: string, name: string): EffortVariantFamily {
 	return {
@@ -439,6 +455,74 @@ export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 			DEVIN_FIVE_TIER_EFFORTS,
 		),
 		devinTierFamily(
+			"claude-5-fable",
+			"Claude Fable 5",
+			{
+				low: "claude-5-fable-low",
+				medium: "claude-5-fable-medium",
+				high: "claude-5-fable-high",
+				xhigh: "claude-5-fable-xhigh",
+				max: "claude-5-fable-max",
+			},
+			DEVIN_FIVE_TIER_EFFORTS,
+		),
+		devinTierFamily(
+			"claude-sonnet-5",
+			"Claude Sonnet 5",
+			{
+				low: "claude-sonnet-5-low",
+				medium: "claude-sonnet-5-medium",
+				high: "claude-sonnet-5-high",
+				xhigh: "claude-sonnet-5-xhigh",
+				max: "claude-sonnet-5-max",
+			},
+			DEVIN_FIVE_TIER_EFFORTS,
+		),
+		devinTierFamily(
+			"grok-4-5",
+			"Grok 4.5",
+			{
+				low: "grok-4-5-low",
+				medium: "grok-4-5-medium",
+				high: "grok-4-5-high",
+			},
+			[Effort.Low, Effort.Medium, Effort.High],
+		),
+		// GLM-5.2 serves an off sibling (`-none`), a high tier (the bare id),
+		// and a max tier — an effort axis, not separate SKUs. Lower requested
+		// efforts clamp up to `high`.
+		devinTierFamily(
+			"glm-5-2",
+			"GLM-5.2",
+			{
+				off: "glm-5-2-none",
+				high: "glm-5-2",
+				max: "glm-5-2-max",
+			},
+			[Effort.High, Effort.Max],
+		),
+		devinTierFamily(
+			"glm-5-2-1m",
+			"GLM-5.2 1M",
+			{
+				off: "glm-5-2-none-1m",
+				high: "glm-5-2-1m",
+				max: "glm-5-2-max-1m",
+			},
+			[Effort.High, Effort.Max],
+		),
+		// Legacy uppercase pair: the underscore token defeats the automatic
+		// `X`/`X-thinking` derivation, so collapse it by hand.
+		devinTierFamily(
+			"MODEL_CLAUDE_4_5_OPUS",
+			"Claude Opus 4.5",
+			{
+				off: "MODEL_CLAUDE_4_5_OPUS",
+				high: "MODEL_CLAUDE_4_5_OPUS_THINKING",
+			},
+			[Effort.High],
+		),
+		devinTierFamily(
 			"gpt-5-2",
 			"GPT-5.2",
 			{
@@ -568,11 +652,67 @@ export const DEVIN_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
 	],
 };
 
+/**
+ * Cursor serves reasoning effort as tier-suffixed sibling model ids (its wire
+ * carries no effort param — see `buildGrpcRequest` in pi-ai/providers/cursor).
+ * The raw tier ids arrived from discovery with `reasoning: false` (no
+ * `thinkingDetails`, no bundled reference) and sat as separate dial-less
+ * models; worse, the bare codex ids inherited a wire-effort ladder from their
+ * OpenAI reference specs that the cursor transport silently ignored. These
+ * families claim exactly the efforts a tier id exists for, so every claimed
+ * effort really changes what the server runs.
+ */
+export const CURSOR_VARIANT_COLLAPSE_TABLE: VariantCollapseTable = {
+	families: [
+		devinTierFamily(
+			"gpt-5.4",
+			"GPT-5.4",
+			{
+				low: "gpt-5.4-low",
+				medium: "gpt-5.4-medium",
+				high: "gpt-5.4-high",
+				xhigh: "gpt-5.4-xhigh",
+			},
+			DEVIN_FOUR_TIER_EFFORTS,
+		),
+		{
+			id: "gpt-5.2-codex",
+			name: "GPT-5.2 Codex",
+			members: ["gpt-5.2-codex", "gpt-5.2-codex-low", "gpt-5.2-codex-high", "gpt-5.2-codex-xhigh"],
+			routing: {
+				[Effort.Low]: "gpt-5.2-codex-low",
+				[Effort.High]: "gpt-5.2-codex-high",
+				[Effort.XHigh]: "gpt-5.2-codex-xhigh",
+			},
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.High, Effort.XHigh] },
+		},
+		{
+			id: "gpt-5.3-codex",
+			name: "GPT-5.3 Codex",
+			members: ["gpt-5.3-codex", "gpt-5.3-codex-low", "gpt-5.3-codex-high", "gpt-5.3-codex-xhigh"],
+			routing: {
+				[Effort.Low]: "gpt-5.3-codex-low",
+				[Effort.High]: "gpt-5.3-codex-high",
+				[Effort.XHigh]: "gpt-5.3-codex-xhigh",
+			},
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.High, Effort.XHigh] },
+		},
+		{
+			id: "gpt-5.2",
+			name: "GPT-5.2",
+			members: ["gpt-5.2", "gpt-5.2-high"],
+			routing: { [Effort.High]: "gpt-5.2-high" },
+			thinking: { mode: "effort", efforts: [Effort.High] },
+		},
+	],
+};
+
 /** Provider id → hand collapse table. The CCA providers diverge on thinking transport. */
 export const VARIANT_COLLAPSE_TABLES: Readonly<Record<string, VariantCollapseTable>> = {
 	"google-antigravity": ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
 	"google-gemini-cli": GEMINI_CLI_VARIANT_COLLAPSE_TABLE,
 	devin: DEVIN_VARIANT_COLLAPSE_TABLE,
+	cursor: CURSOR_VARIANT_COLLAPSE_TABLE,
 };
 
 /**
@@ -618,13 +758,18 @@ export function deriveThinkingPairFamilies<TSpec extends VariantSpecLike>(
 		if (spec.api !== base.api) continue;
 		const specPriced = spec.cost.input !== 0 || spec.cost.output !== 0;
 		const basePriced = base.cost.input !== 0 || base.cost.output !== 0;
+		// Cache fields compare only when BOTH sides report one: a zero cache
+		// price on an aggregator means "not told", same as an all-zero row (the
+		// openrouter qwen3-max twin ships identical input/output but zero cache
+		// fields and must still pair).
+		const cacheFieldDiffers = (a: number, b: number): boolean => a !== 0 && b !== 0 && a !== b;
 		if (
 			specPriced &&
 			basePriced &&
 			(spec.cost.input !== base.cost.input ||
 				spec.cost.output !== base.cost.output ||
-				spec.cost.cacheRead !== base.cost.cacheRead ||
-				spec.cost.cacheWrite !== base.cost.cacheWrite)
+				cacheFieldDiffers(spec.cost.cacheRead, base.cost.cacheRead) ||
+				cacheFieldDiffers(spec.cost.cacheWrite, base.cost.cacheWrite))
 		) {
 			continue;
 		}

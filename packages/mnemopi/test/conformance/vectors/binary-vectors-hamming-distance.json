@@ -1,0 +1,106 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/binary-vectors",
+ "function": "hammingDistanceFromArrays",
+ "vectors": [
+  {
+   "name": "equal arrays are distance 0",
+   "input": [
+    [
+     255,
+     0,
+     7
+    ],
+    [
+     255,
+     0,
+     7
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "full byte flip is 8",
+   "input": [
+    [
+     255
+    ],
+    [
+     0
+    ]
+   ],
+   "expected": 8
+  },
+  {
+   "name": "alternating patterns differ fully",
+   "input": [
+    [
+     170
+    ],
+    [
+     85
+    ]
+   ],
+   "expected": 8
+  },
+  {
+   "name": "length mismatch counts the tail's set bits",
+   "input": [
+    [
+     255,
+     255
+    ],
+    [
+     255
+    ]
+   ],
+   "expected": 8
+  },
+  {
+   "name": "empty vs bytes counts all set bits",
+   "input": [
+    [],
+    [
+     7
+    ]
+   ],
+   "expected": 3
+  },
+  {
+   "name": "both empty are distance 0",
+   "input": [
+    [],
+    []
+   ],
+   "expected": 0
+  },
+  {
+   "name": "single-bit difference",
+   "input": [
+    [
+     128
+    ],
+    [
+     129
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "multi-byte mixed",
+   "input": [
+    [
+     1,
+     2,
+     3
+    ],
+    [
+     3,
+     2,
+     1
+    ]
+   ],
+   "expected": 2
+  }
+ ]
+}

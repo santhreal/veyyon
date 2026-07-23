@@ -17,6 +17,7 @@ const result = await Bun.build({
 	target: "browser",
 	format: "iife",
 	minify: true,
+	external: ["bun", "bun:ffi"],
 	define: { "process.env.NODE_ENV": JSON.stringify("production") },
 });
 

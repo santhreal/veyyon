@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The editor now renders one blank cell between the cursor and ghost hint text (placeholder or autocomplete hint), in all three cursor modes: software glyph, hardware cursor marker, and cursor override. The hint previously started flush against the cursor cell, so the cursor sat visually on top of the hint's first character. When the width budget cannot fit any hint text, the hint and the gap are dropped together.
+
+### Added
+
+- Overflowing select lists now show a key legend on their status row (`Type to search · ↑↓ move · ↵ select · esc close`). The legend rides the existing row, never adds one, and the live search query survives truncation ahead of it.
+- `Box.setHugContent(hug)`: an opt-in that shrinks a box (and its border rule) to its widest child line instead of padding every row to the given width. The given width stays the wrap limit. Raw trailing-space padding from children is ignored when measuring; bg-painted padding is preserved.
+- `MarkdownTheme.codeBlockFence`, an optional hook that fully replaces a fenced code block's opening and closing rows (receiving the language and position). Absent, the literal ``` markers render through `codeBlockBorder` exactly as before. Applies to both the top-level and list-nested code render paths.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

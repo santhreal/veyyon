@@ -1,0 +1,64 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/vector-math",
+ "function": "encodeEmbeddingJson",
+ "vectors": [
+  {
+   "name": "plain integers",
+   "input": [
+    [
+     1,
+     2,
+     3
+    ]
+   ],
+   "expected": "[1,2,3]"
+  },
+  {
+   "name": "empty array encodes to []",
+   "input": [
+    []
+   ],
+   "expected": "[]"
+  },
+  {
+   "name": "fractions keep full precision",
+   "input": [
+    [
+     0.5,
+     -0.25,
+     0.1
+    ]
+   ],
+   "expected": "[0.5,-0.25,0.1]"
+  },
+  {
+   "name": "scientific-notation magnitudes",
+   "input": [
+    [
+     1e-7,
+     1.5e+300
+    ]
+   ],
+   "expected": "[1e-7,1.5e+300]"
+  },
+  {
+   "name": "negative zero",
+   "input": [
+    [
+     0
+    ]
+   ],
+   "expected": "[0]"
+  },
+  {
+   "name": "single value",
+   "input": [
+    [
+     42
+    ]
+   ],
+   "expected": "[42]"
+  }
+ ]
+}

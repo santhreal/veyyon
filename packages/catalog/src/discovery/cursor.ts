@@ -5,6 +5,7 @@ import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { toModelSpec } from "../provider-models/bundled-references";
 import type { Model, ModelSpec } from "../types";
+import { stripEffortTierSuffix } from "../variant-collapse";
 import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from "./cursor-gen/agent_pb";
 
 const CURSOR_DEFAULT_BASE_URL = "https://api2.cursor.sh";
@@ -282,7 +283,12 @@ function normalizeCursorModel(
 	}
 
 	const name = pickModelDisplayName(details, id);
-	const reference = references.get(id);
+	// Exact reference first; failing that, a tier-suffixed id (`gpt-5.5-low`)
+	// inherits its BASE model's reference so a future, un-tabled tier arrives
+	// with the base's reasoning flag, limits, and modalities instead of
+	// unknown-model defaults (a tier IS the base model at a fixed effort).
+	const tierBaseId = stripEffortTierSuffix(id);
+	const reference = references.get(id) ?? (tierBaseId !== undefined ? references.get(tierBaseId) : undefined);
 	const reasoning = Boolean(details.thinkingDetails) || reference?.reasoning === true;
 
 	if (reference) {

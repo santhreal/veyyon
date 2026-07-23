@@ -1,0 +1,608 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/vector-math",
+ "function": "cosineSimilarity",
+ "vectors": [
+  {
+   "name": "identical vectors score 1",
+   "input": [
+    [
+     1,
+     2,
+     3
+    ],
+    [
+     1,
+     2,
+     3
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "orthogonal vectors score 0",
+   "input": [
+    [
+     1,
+     0
+    ],
+    [
+     0,
+     1
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "opposite vectors score -1",
+   "input": [
+    [
+     1,
+     2
+    ],
+    [
+     -1,
+     -2
+    ]
+   ],
+   "expected": -0.9999999999999998
+  },
+  {
+   "name": "both empty score 0",
+   "input": [
+    [],
+    []
+   ],
+   "expected": 0
+  },
+  {
+   "name": "zero vector scores 0",
+   "input": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     1,
+     2,
+     3
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "single elements",
+   "input": [
+    [
+     2
+    ],
+    [
+     3
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "negative mix",
+   "input": [
+    [
+     1,
+     -2,
+     3
+    ],
+    [
+     -4,
+     5,
+     -6
+    ]
+   ],
+   "expected": -0.9746318461970762
+  },
+  {
+   "name": "scaled copies still score 1",
+   "input": [
+    [
+     1,
+     2,
+     3
+    ],
+    [
+     10,
+     20,
+     30
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "length mismatch reads missing as 0: longer a",
+   "input": [
+    [
+     1,
+     2,
+     3
+    ],
+    [
+     1,
+     2
+    ]
+   ],
+   "expected": 0.5976143046671968
+  },
+  {
+   "name": "length mismatch reads missing as 0: longer b",
+   "input": [
+    [
+     1
+    ],
+    [
+     1,
+     0,
+     0
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "length mismatch reads missing as 0: empty vs non-empty",
+   "input": [
+    [],
+    [
+     5,
+     5
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "length mismatch reads missing as 0: padding zeros are equivalent to absence",
+   "input": [
+    [
+     1,
+     2,
+     0
+    ],
+    [
+     1,
+     2
+    ]
+   ],
+   "expected": 0.9999999999999998
+  },
+  {
+   "name": "magnitude extremes: 1e150 entries stay finite",
+   "input": [
+    [
+     1e+150,
+     1e+150
+    ],
+    [
+     1e+150,
+     -1e+150
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "magnitude extremes: 1e200 squares overflow to Infinity in the norm",
+   "input": [
+    [
+     1e+200,
+     0
+    ],
+    [
+     1e+200,
+     0
+    ]
+   ],
+   "expected": "\u0000conformance:nan"
+  },
+  {
+   "name": "magnitude extremes: 1e-170 squares underflow the norm to 0",
+   "input": [
+    [
+     1e-170
+    ],
+    [
+     1e-170
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "magnitude extremes: subnormal entries",
+   "input": [
+    [
+     5e-324,
+     5e-324
+    ],
+    [
+     5e-324,
+     0
+    ]
+   ],
+   "expected": 0
+  },
+  {
+   "name": "generated: pseudo pair dim 2",
+   "input": [
+    [
+     -2,
+     5
+    ],
+    [
+     -5,
+     0
+    ]
+   ],
+   "expected": 0.3713906763541037
+  },
+  {
+   "name": "generated: pseudo self dim 2",
+   "input": [
+    [
+     -2,
+     5
+    ],
+    [
+     -2,
+     5
+    ]
+   ],
+   "expected": 1.0000000000000002
+  },
+  {
+   "name": "generated: pseudo pair dim 3",
+   "input": [
+    [
+     -2,
+     5,
+     1
+    ],
+    [
+     -5,
+     0,
+     5
+    ]
+   ],
+   "expected": 0.3872983346207417
+  },
+  {
+   "name": "generated: pseudo self dim 3",
+   "input": [
+    [
+     -2,
+     5,
+     1
+    ],
+    [
+     -2,
+     5,
+     1
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "generated: pseudo pair dim 4",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3
+    ],
+    [
+     -5,
+     0,
+     5,
+     -3
+    ]
+   ],
+   "expected": 0.5003258390700999
+  },
+  {
+   "name": "generated: pseudo self dim 4",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3
+    ],
+    [
+     -2,
+     5,
+     1,
+     -3
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "generated: pseudo pair dim 8",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3
+    ],
+    [
+     -5,
+     0,
+     5,
+     -3,
+     2,
+     -6,
+     -1,
+     4
+    ]
+   ],
+   "expected": 0.4982728791224398
+  },
+  {
+   "name": "generated: pseudo self dim 8",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3
+    ],
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3
+    ]
+   ],
+   "expected": 0.9999999999999998
+  },
+  {
+   "name": "generated: pseudo pair dim 16",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4
+    ],
+    [
+     -5,
+     0,
+     5,
+     -3,
+     2,
+     -6,
+     -1,
+     4,
+     -4,
+     1,
+     6,
+     -2,
+     3,
+     -5,
+     0,
+     5
+    ]
+   ],
+   "expected": 0.4753319249445311
+  },
+  {
+   "name": "generated: pseudo self dim 16",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4
+    ],
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4
+    ]
+   ],
+   "expected": 1
+  },
+  {
+   "name": "generated: pseudo pair dim 32",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5
+    ],
+    [
+     -5,
+     0,
+     5,
+     -3,
+     2,
+     -6,
+     -1,
+     4,
+     -4,
+     1,
+     6,
+     -2,
+     3,
+     -5,
+     0,
+     5,
+     -3,
+     2,
+     -6,
+     -1,
+     4,
+     -4,
+     1,
+     6,
+     -2,
+     3,
+     -5,
+     0,
+     5,
+     -3,
+     2,
+     -6
+    ]
+   ],
+   "expected": 0.09266232762279306
+  },
+  {
+   "name": "generated: pseudo self dim 32",
+   "input": [
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5
+    ],
+    [
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5,
+     2,
+     -2,
+     5,
+     1,
+     -3,
+     4,
+     0,
+     -4,
+     3,
+     -1,
+     -5
+    ]
+   ],
+   "expected": 1
+  }
+ ]
+}

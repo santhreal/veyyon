@@ -348,6 +348,86 @@ function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unk
 }
 
 /**
+ * The auth-broker keys in the GLOBAL config. Stored NESTED
+ * (`auth: { broker: { url, token } }`); the reader also accepts the legacy
+ * flat literal keys (`"auth.broker.url"`), matching the discovery precedence
+ * in `packages/ai/src/auth-broker/discover.ts` (nested wins). The writers
+ * always persist the nested form and remove any legacy flat duplicate so the
+ * value has exactly one home after the first write.
+ */
+const AUTH_BROKER_SEGMENTS = ["auth", "broker"] as const;
+
+/** The global auth-broker configuration, read without ever exposing the token. */
+export interface GlobalAuthBroker {
+	url: string | undefined;
+	/** Whether a token is stored. The plaintext is deliberately not returned:
+	 * settings surfaces render presence, never the secret. */
+	tokenSet: boolean;
+}
+
+function readAuthBrokerValue(record: Record<string, unknown>, leaf: "url" | "token"): string | undefined {
+	// Nested form wins over the legacy flat literal-dot key.
+	const auth = record[AUTH_BROKER_SEGMENTS[0]];
+	if (isRecord(auth)) {
+		const broker = auth[AUTH_BROKER_SEGMENTS[1]];
+		if (isRecord(broker) && typeof broker[leaf] === "string" && (broker[leaf] as string).length > 0) {
+			return broker[leaf] as string;
+		}
+	}
+	const flat = record[`${AUTH_BROKER_SEGMENTS.join(".")}.${leaf}`];
+	return typeof flat === "string" && flat.length > 0 ? flat : undefined;
+}
+
+/**
+ * Read the auth-broker url and token PRESENCE from the GLOBAL config. Safe:
+ * a broken global config must never crash a bare import or the settings UI;
+ * discovery re-validates loudly on the auth path itself.
+ */
+export function readGlobalAuthBrokerSafe(): GlobalAuthBroker {
+	try {
+		const { record } = readGlobalConfigRecord();
+		return {
+			url: readAuthBrokerValue(record, "url"),
+			tokenSet: readAuthBrokerValue(record, "token") !== undefined,
+		};
+	} catch {
+		return { url: undefined, tokenSet: false };
+	}
+}
+
+/** Set or clear (`undefined`/empty) one auth-broker leaf, preserving every
+ * other key. Writes the nested form, deletes any legacy flat duplicate, and
+ * prunes empty `broker`/`auth` records so a fully cleared config leaves no
+ * stub behind. */
+function writeGlobalAuthBrokerLeaf(leaf: "url" | "token", value: string | undefined): string {
+	const [authKey, brokerKey] = AUTH_BROKER_SEGMENTS;
+	return mutateGlobalConfigKey(authKey, existing => {
+		// The legacy flat literal key would shadow-read forever; one home only.
+		delete existing[`${authKey}.${brokerKey}.${leaf}`];
+		const auth = isRecord(existing[authKey]) ? (existing[authKey] as Record<string, unknown>) : {};
+		const broker = isRecord(auth[brokerKey]) ? (auth[brokerKey] as Record<string, unknown>) : {};
+		const trimmed = value?.trim();
+		if (trimmed) broker[leaf] = trimmed;
+		else delete broker[leaf];
+		if (Object.keys(broker).length > 0) auth[brokerKey] = broker;
+		else delete auth[brokerKey];
+		return Object.keys(auth).length > 0 ? auth : undefined;
+	});
+}
+
+/** Set or clear the global auth-broker URL. Returns the file written. */
+export function writeGlobalAuthBrokerUrl(url: string | undefined): string {
+	return writeGlobalAuthBrokerLeaf("url", url);
+}
+
+/** Set or clear the global auth-broker bearer token. Never logged, never read
+ * back into any UI surface (see {@link readGlobalAuthBrokerSafe}). Returns the
+ * file written. */
+export function writeGlobalAuthBrokerToken(token: string | undefined): string {
+	return writeGlobalAuthBrokerLeaf("token", token);
+}
+
+/**
  * The global-config key controlling whether provider credentials are shared
  * across profiles. Absent or `true` means shared (the default posture); `false`
  * isolates each profile to its own credential store. One owner for the literal
@@ -519,7 +599,7 @@ export function setProjectDir(dir: string): void {
 	} catch (error) {
 		throw new Error(
 			`Cannot enter the project directory: ${resolved}\n` +
-				`  ${error instanceof Error ? error.message : String(error)}\n` +
+				`  ${errorMessage(error)}\n` +
 				`Check that the directory still exists and that you have permission to read it.`,
 			{ cause: error },
 		);
@@ -853,6 +933,45 @@ export function getActiveProfileOrDefault(): string {
 /** Resolve the config root that backs a profile without activating it. */
 export function getProfileRootDir(profile: string | undefined): string {
 	return getProfileConfigRoot(normalizeProfileName(profile));
+}
+
+/**
+ * Fail-closed guard for recursive profile-directory removal. A profile
+ * lifecycle operation may delete ONLY a direct child of the current profiles
+ * root — `<configRoot>/profiles/<child>` — whether that child is a named
+ * profile (`profiles/work`) or a staging sibling (`profiles/.work.<pid>.tmp`).
+ *
+ * It throws for anything else: the profiles root itself, the config root
+ * (`~/.veyyon`), the home directory, or any ancestor of them, and any path
+ * outside the profiles tree. This is defense in depth against the class of bug
+ * that deleted a user's entire `~/.veyyon/profiles` during a bench run
+ * (BACKLOG FINDING-HOST-PROFILE-DIR-DELETED-DURING-BENCH): a mis-computed target
+ * (empty profile name, a bad join, a harness pointing at the wrong root) is
+ * refused rather than silently wiping the whole profiles tree.
+ *
+ * It does not special-case "sandbox mode": a named profile dir is removable
+ * under whatever config root is active (the real HOME or a VEYYON_CONFIG_DIR
+ * override), and the roots themselves are never removable through a profile
+ * operation under either. A sandbox teardown that legitimately wants to erase
+ * everything removes its own temp root directly, not through this guard.
+ *
+ * Call this immediately before handing any path to a recursive remove in the
+ * profile lifecycle. Returns the resolved absolute path so callers can remove
+ * exactly what was validated (no TOCTOU gap between check and use).
+ */
+export function assertRemovableProfileDir(target: string): string {
+	const resolved = path.resolve(target);
+	const profilesRoot = path.resolve(path.join(getBaseConfigRoot(), PROFILES_DIR_NAME));
+	const parent = path.dirname(resolved);
+	const base = path.basename(resolved);
+	if (parent !== profilesRoot || base === "" || base === "." || base === "..") {
+		throw new Error(
+			`Refusing to recursively remove ${resolved}: a profile operation may only delete a direct child of ${profilesRoot} ` +
+				`(a named profile or its staging sibling), never the profiles root, the config root, the home directory, or a path outside the profiles tree. ` +
+				`This is a fail-closed guard against wiping the whole profiles tree.`,
+		);
+	}
+	return resolved;
 }
 
 /** Resolved profile entry for lifecycle listing (`default` is the implicit home profile). */

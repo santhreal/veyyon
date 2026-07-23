@@ -45,9 +45,9 @@ export interface CreateExperimentRequest {
 import { errorMessage, isProcessAlive } from "@veyyon/utils";
 import indexHtml from "./web/index.html";
 
-const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
+import { DEFAULT_JOBS_DIR, REPO_ROOT } from "./paths";
+
 const PKG_DIR = path.resolve(import.meta.dir, "..");
-const DEFAULT_JOBS_DIR = path.join(REPO_ROOT, "runs", "harbor");
 
 export type { LaunchRequest } from "./launch-args";
 
@@ -373,10 +373,12 @@ export class ManagerServer {
 	launch(request: LaunchRequest): { jobName: string; pid: number } {
 		if (!request.model) throw new Error("model is required");
 		const benchmark = request.benchmark ?? "harbor";
-		if (benchmark !== "harbor" && benchmark !== "edit") {
+		if (benchmark !== "harbor" && benchmark !== "edit" && benchmark !== "deepswe") {
 			throw new Error(`unsupported benchmark: ${benchmark}`);
 		}
-		const dataset = request.dataset ?? (benchmark === "harbor" ? "terminal-bench@2.0" : "typescript-edit");
+		const dataset =
+			request.dataset ??
+			(benchmark === "harbor" ? "terminal-bench@2.0" : benchmark === "deepswe" ? "deep-swe" : "typescript-edit");
 		const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 		const modelSlug = request.model.replace(/[^a-zA-Z0-9]+/g, "-");
 		const jobName = request.jobName ?? `${modelSlug}-${stamp}`;
@@ -388,7 +390,16 @@ export class ManagerServer {
 
 		let argv: string[];
 		let cwd: string;
-		if (benchmark === "edit") {
+		if (benchmark === "deepswe") {
+			// deepswe-bench owns its own arms/tasks CLI; the caller passes
+			// `--tasks`, `--arms`, and `--tasks-root` via extraArgs. The run
+			// writes results.json into the uniform jobDir, where the deepswe
+			// snapshot adapter reads it.
+			cwd = path.join(REPO_ROOT, "packages", "deepswe-bench");
+			argv = ["bun", "run.ts", "--model", request.model, "--out", jobDir];
+			if (request.tasks !== undefined) argv.push("--limit", String(request.tasks));
+			if (request.concurrency !== undefined) argv.push("--jobs", String(request.concurrency));
+		} else if (benchmark === "edit") {
 			cwd = PKG_DIR;
 			argv = ["bun", "adapters/edit/cli.ts", "--model", request.model, "--output", path.join(jobDir, "result.json")];
 			if (request.tasks !== undefined) argv.push("--max-tasks", String(request.tasks));

@@ -35,13 +35,11 @@ async function walk(dir: string, out: string[]): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			// vendor: read-only snapshots; modes: the UI lane owned by other tasks.
-			if (
-				entry.name === "node_modules" ||
-				entry.name === "dist" ||
-				entry.name === "vendor" ||
-				entry.name === "modes"
-			) {
+			// vendor: read-only snapshots. modes/ is scanned too since H1-12
+			// repointed history-search onto the owner; its only remaining raw
+			// unicode classes (magic-keyword-boundary) use a wider charset the
+			// plain-class signature below deliberately does not match.
+			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") {
 				continue;
 			}
 			await walk(full, out);

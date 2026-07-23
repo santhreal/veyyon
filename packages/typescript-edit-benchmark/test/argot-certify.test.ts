@@ -15,6 +15,7 @@ import {
 	assertArgotCertified,
 	certifyArgot,
 	collectEmittedStrings,
+	EDIT_TASK_TRUTHS,
 	evaluateCertification,
 	measureTranscript,
 } from "../src/argot-certify";
@@ -63,7 +64,7 @@ describe("measureTranscript", () => {
 
 	test("an argot-off transcript (no sigils) measures as zero adoption and zero leaks", () => {
 		const m = measureTranscript(VOCAB, ["open packages/server/src/database/connection.ts"]);
-		expect(m).toEqual({ handleEmissions: 0, distinctHandles: 0, unknownSigils: 0 });
+		expect(m).toEqual({ handleEmissions: 0, distinctHandles: 0, unknownSigils: 0, codecTokensSaved: 0 });
 	});
 });
 
@@ -72,7 +73,7 @@ function run(
 	argotEnabled: boolean,
 	passed: boolean,
 	outputTokens: number,
-	transcript = { handleEmissions: 0, distinctHandles: 0, unknownSigils: 0 },
+	transcript = { handleEmissions: 0, distinctHandles: 0, unknownSigils: 0, codecTokensSaved: 0 },
 ): ArgotRunMeasurement {
 	return { taskId, argotEnabled, passed, outputTokens, transcript };
 }
@@ -96,7 +97,9 @@ describe("assembleRunMeasurement", () => {
 			argotEnabled: true,
 			passed: true,
 			outputTokens: 42,
-			transcript: { handleEmissions: 2, distinctHandles: 2, unknownSigils: 0 },
+			// codecTokensSaved: dbconn 16-3=13 plus svc 5-2=3 (verified against
+			// estimateTokens independently of the implementation).
+			transcript: { handleEmissions: 2, distinctHandles: 2, unknownSigils: 0, codecTokensSaved: 16 },
 		});
 	});
 
@@ -110,7 +113,7 @@ describe("assembleRunMeasurement", () => {
 			vocab: VOCAB,
 			messages,
 		});
-		expect(m.transcript).toEqual({ handleEmissions: 0, distinctHandles: 0, unknownSigils: 0 });
+		expect(m.transcript).toEqual({ handleEmissions: 0, distinctHandles: 0, unknownSigils: 0, codecTokensSaved: 0 });
 		expect(m.passed).toBe(false);
 	});
 });
@@ -146,6 +149,7 @@ describe("evaluateCertification — the four truths", () => {
 		onOutputTokens: 800,
 		offOutputTokens: 1000,
 		netOutputTokenDelta: -200,
+		totalCodecTokensSaved: 40,
 	});
 
 	test("certified: all four truths hold -> no failures", () => {
@@ -157,14 +161,38 @@ describe("evaluateCertification — the four truths", () => {
 		expect(failures.map(f => f.truth)).toEqual(["adoption"]);
 	});
 
-	test("fails net-tokens when argot on did not reduce output tokens", () => {
+	test("fails net-tokens when the codec saved nothing across adopted emissions", () => {
+		// Truth #2 is the deterministic codec metric, not the raw output delta:
+		// even with a favorable raw delta (generation-length noise can produce
+		// one), zero codecTokensSaved means the shorthand paid for nothing.
+		const failures = evaluateCertification({ ...pass(), totalCodecTokensSaved: 0 });
+		expect(failures.map(f => f.truth)).toEqual(["net-tokens"]);
+	});
+
+	test("net-tokens certifies on codecTokensSaved even when the raw output delta is positive", () => {
+		// Locks the ARG-BENCH-METRIC-NOISE fix: a longer-but-adopting run must
+		// not fail net-tokens just because the model happened to write more
+		// prose. The raw delta is informational context, never the verdict.
 		const failures = evaluateCertification({
 			...pass(),
 			onOutputTokens: 1100,
 			offOutputTokens: 1000,
 			netOutputTokenDelta: 100,
 		});
-		expect(failures.map(f => f.truth)).toEqual(["net-tokens"]);
+		expect(failures).toEqual([]);
+	});
+
+	test("the net-tokens failure detail reports the raw delta as informational context", () => {
+		const failures = evaluateCertification({
+			...pass(),
+			totalCodecTokensSaved: 0,
+			onOutputTokens: 1100,
+			offOutputTokens: 1000,
+			netOutputTokenDelta: 100,
+		});
+		expect(failures).toHaveLength(1);
+		expect(failures[0]!.detail).toContain("saved 0 tokens");
+		expect(failures[0]!.detail).toContain("raw output delta +100");
 	});
 
 	test("fails pass-parity when argot on regressed task success", () => {
@@ -187,10 +215,45 @@ describe("evaluateCertification — the four truths", () => {
 			onOutputTokens: 1200,
 			offOutputTokens: 1000,
 			netOutputTokenDelta: 200,
+			totalCodecTokensSaved: 0,
 		});
 		expect(new Set(failures.map(f => f.truth))).toEqual(
 			new Set(["adoption", "net-tokens", "pass-parity", "losslessness"]),
 		);
+	});
+
+	test("a truths subset evaluates only the requested truths (edit-task safety scope)", () => {
+		// Locks the ARG-BENCH-TASKS split: the minimal-edit fixtures reproduce ~no
+		// dictionary content, so certifying adoption/net-tokens there is asking a
+		// question the task cannot answer. EDIT_TASK_TRUTHS scopes the verdict to
+		// safety (parity + zero-leak) and must ignore zero adoption entirely.
+		const broken = { ...pass(), totalHandleEmissions: 0, totalCodecTokensSaved: 0 };
+		expect(evaluateCertification(broken, EDIT_TASK_TRUTHS)).toEqual([]);
+		// The same cert fails BOTH value truths under the full default scope.
+		expect(new Set(evaluateCertification(broken).map(f => f.truth))).toEqual(new Set(["adoption", "net-tokens"]));
+	});
+
+	test("a truths subset still reports its own failures (parity regression in safety scope)", () => {
+		const failures = evaluateCertification({ ...pass(), onPassCount: 1 }, EDIT_TASK_TRUTHS);
+		expect(failures.map(f => f.truth)).toEqual(["pass-parity"]);
+	});
+
+	test("zero paired runs fails regardless of the requested truths subset", () => {
+		// An empty bench must never certify anything, even safety-only: no data is
+		// not evidence of parity.
+		const empty = {
+			pairedTasks: 0,
+			onPassCount: 0,
+			offPassCount: 0,
+			totalHandleEmissions: 0,
+			totalUnknownSigils: 0,
+			onOutputTokens: 0,
+			offOutputTokens: 0,
+			netOutputTokenDelta: 0,
+			totalCodecTokensSaved: 0,
+		};
+		expect(evaluateCertification(empty, EDIT_TASK_TRUTHS)).toHaveLength(1);
+		expect(evaluateCertification(empty, EDIT_TASK_TRUTHS)[0]!.truth).toBe("pass-parity");
 	});
 
 	test("fails when there are no paired runs at all", () => {
@@ -203,6 +266,7 @@ describe("evaluateCertification — the four truths", () => {
 			onOutputTokens: 0,
 			offOutputTokens: 0,
 			netOutputTokenDelta: 0,
+			totalCodecTokensSaved: 0,
 		});
 		expect(failures).toHaveLength(1);
 		expect(failures[0]!.truth).toBe("adoption");
@@ -211,14 +275,27 @@ describe("evaluateCertification — the four truths", () => {
 
 describe("assertArgotCertified", () => {
 	test("returns silently when certified", () => {
-		const on = [run("a", true, true, 80, { handleEmissions: 4, distinctHandles: 2, unknownSigils: 0 })];
+		const on = [
+			run("a", true, true, 80, { handleEmissions: 4, distinctHandles: 2, unknownSigils: 0, codecTokensSaved: 12 }),
+		];
 		const off = [run("a", false, true, 100)];
 		expect(() => assertArgotCertified(certifyArgot(on, off))).not.toThrow();
 	});
 
+	test("scoped to EDIT_TASK_TRUTHS, zero adoption does not throw (safety-only verdict)", () => {
+		// The live edit-task bench calls exactly this: a run with no handle
+		// emissions and no codec savings must still certify when the requested
+		// scope is safety only, because those fixtures cannot measure value.
+		const on = [run("a", true, true, 110)];
+		const off = [run("a", false, true, 100)];
+		expect(() => assertArgotCertified(certifyArgot(on, off), EDIT_TASK_TRUTHS)).not.toThrow();
+	});
+
 	test("throws a message naming every unmet truth when the feature is broken", () => {
 		// The RED state today: gate fires but the model adopts nothing and saves nothing.
-		const on = [run("a", true, true, 110, { handleEmissions: 0, distinctHandles: 0, unknownSigils: 0 })];
+		const on = [
+			run("a", true, true, 110, { handleEmissions: 0, distinctHandles: 0, unknownSigils: 0, codecTokensSaved: 0 }),
+		];
 		const off = [run("a", false, true, 100)];
 		let message = "";
 		try {

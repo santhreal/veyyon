@@ -1,3 +1,5 @@
+import { errorMessage } from "./type-guards";
+
 /**
  * Try to parse JSON, returning null on failure.
  */
@@ -90,7 +92,7 @@ export function stringifyJsonSafe(value: unknown, space?: string | number): stri
 		// level, which would otherwise reach the reader as the text "undefined".
 		if (text !== undefined) return text;
 	} catch (error) {
-		return `[unserializable ${describeType(value)}: ${error instanceof Error ? error.message : String(error)}]`;
+		return `[unserializable ${describeType(value)}: ${errorMessage(error)}]`;
 	}
 	return `[unserializable ${describeType(value)}]`;
 }

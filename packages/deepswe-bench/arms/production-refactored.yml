@@ -1,0 +1,3 @@
+# Production-refactored arm: 100% settings-preserving system prompt template
+argot:
+  enabled: false
