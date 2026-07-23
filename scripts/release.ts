@@ -393,15 +393,22 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	// pinning a hardcoded list: the sentinel export name is version-specific by
 	// design (cross-version `.node` rejection), so any file that imports or calls
 	// it — including test harnesses like packages/tui/test/render-stress-*.ts —
-	// breaks on a bump unless the rewrite reaches it. `rg`'s pattern only matches
-	// concrete `__veyyonNativesV1_2_3` literals (the `{major}_{minor}` doc form and
-	// the `${…}` template in loader-state.js don't match), so this stays exact.
-	const sentinelFilesRaw =
-		await $`rg -l '__veyyonNativesV[A-Za-z0-9_]+' --glob '!bun.lock'`.text();
-	const sentinelFiles = sentinelFilesRaw
-		.split("\n")
-		.map(line => line.trim())
-		.filter(Boolean);
+	// breaks on a bump unless the rewrite reaches it. Scan with Bun.Glob (no
+	// external `rg`/`grep` dependency — the release runner has neither) and match
+	// only concrete `__veyyonNativesV1_2_3` literals; the `{major}_{minor}` doc
+	// form and the `${…}` template in loader-state.js don't match, so this stays
+	// exact.
+	const sentinelLiteral = /__veyyonNativesV[A-Za-z0-9_]+/;
+	const sentinelGlob = new Bun.Glob(
+		"{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}",
+	);
+	const sentinelFiles: string[] = [];
+	for await (const file of sentinelGlob.scan(".")) {
+		if (file.includes("node_modules") || file.includes("/dist/")) continue;
+		if (sentinelLiteral.test(await Bun.file(file).text())) {
+			sentinelFiles.push(file);
+		}
+	}
 	if (!sentinelFiles.includes("crates/veyyon-natives/src/lib.rs")) {
 		console.error(
 			"Error: could not locate the veyyon-natives version sentinel in crates/veyyon-natives/src/lib.rs. " +

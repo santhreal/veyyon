@@ -65,8 +65,18 @@ check "link_alias created the vey symlink" "$( [ -L "$VEYYON_INSTALL_DIR/vey" ] 
 check "vey resolves to veyyon" "$(readlink "$VEYYON_INSTALL_DIR/vey")" "$VEYYON_INSTALL_DIR/veyyon"
 
 # --- completions_dir_for: per-shell XDG paths ---
-check "bash completions dir" "$(completions_dir_for bash)" "$HOME/.local/share/bash-completion/completions"
-check "fish completions dir" "$(completions_dir_for fish)" "$HOME/.config/fish/completions"
+# The runner may export XDG_DATA_HOME/XDG_CONFIG_HOME (GitHub's does), so the
+# fallback assertions must unset them explicitly — otherwise "fish completions
+# dir" resolves to $XDG_CONFIG_HOME/... and the check is environment-dependent
+# (this exact drift failed CI). Cover BOTH the unset-fallback and the honored
+# XDG-override branch so the contract install.sh implements is pinned either way.
+( unset XDG_DATA_HOME XDG_CONFIG_HOME
+  check "bash completions dir (XDG unset)" "$(completions_dir_for bash)" "$HOME/.local/share/bash-completion/completions"
+  check "fish completions dir (XDG unset)" "$(completions_dir_for fish)" "$HOME/.config/fish/completions"
+  check "zsh completions dir (XDG unset)" "$(completions_dir_for zsh)" "$HOME/.local/share/zsh/site-functions" )
+( export XDG_DATA_HOME="/xdg/data" XDG_CONFIG_HOME="/xdg/config"
+  check "bash completions dir honors XDG_DATA_HOME" "$(completions_dir_for bash)" "/xdg/data/bash-completion/completions"
+  check "fish completions dir honors XDG_CONFIG_HOME" "$(completions_dir_for fish)" "/xdg/config/fish/completions" )
 
 # --- do_uninstall: removes veyyon + vey from the sandboxed install dir only ---
 do_uninstall >/dev/null 2>&1
