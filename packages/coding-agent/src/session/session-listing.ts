@@ -472,8 +472,41 @@ async function collectSessionsFromFiles(
 					)
 				).flat();
 
-	sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+	sessions.sort(compareSessionsByRecency);
 	return sessions;
+}
+
+/**
+ * Finite epoch-ms for a Date, or `fallback` when the Date is invalid (an absent
+ * or unparseable header timestamp yields `new Date("")` → NaN, and a NaN in a
+ * sort comparator silently degrades the sort to an unstable, order-dependent
+ * result).
+ */
+function finiteTime(date: Date, fallback: number): number {
+	const ms = date.getTime();
+	return Number.isFinite(ms) ? ms : fallback;
+}
+
+/**
+ * Recency order for the session list: newest first by file mtime. mtime is the
+ * production last-activity signal and is distinct per file on a real disk.
+ *
+ * When mtimes COLLIDE — several sessions written within the same millisecond,
+ * which is routine under the in-memory storage used by tests and possible on
+ * coarse-resolution filesystems — a bare mtime compare returns 0 and the final
+ * order becomes nondeterministic (it once flipped a shortlist to
+ * ["third task", "first task"] on CI while passing locally). Break the tie
+ * deterministically by the session's own content start timestamp (newest
+ * first), then by path, so the total order is stable everywhere.
+ */
+function compareSessionsByRecency(a: SessionInfo, b: SessionInfo): number {
+	const byModified = finiteTime(b.modified, 0) - finiteTime(a.modified, 0);
+	if (byModified !== 0) return byModified;
+	const byCreated = finiteTime(b.created, 0) - finiteTime(a.created, 0);
+	if (byCreated !== 0) return byCreated;
+	if (a.path < b.path) return -1;
+	if (a.path > b.path) return 1;
+	return 0;
 }
 
 /**

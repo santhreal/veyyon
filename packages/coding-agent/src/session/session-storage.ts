@@ -647,6 +647,18 @@ export class MemorySessionStorage implements SessionStorage {
 		this.#files.set(path, createMemoryFileEntry(content, Date.now()));
 	}
 
+	/**
+	 * Stamp an existing file's mtime explicitly. A test/simulation affordance:
+	 * `writeTextSync` records `Date.now()`, which collapses several rapid writes
+	 * to the same millisecond, so callers that need to model distinct
+	 * last-activity times (the signal `getRecentSessions` sorts by) cannot rely
+	 * on wall-clock write ordering. Setting mtimes explicitly makes that ordering
+	 * deterministic instead of timing-dependent.
+	 */
+	setMtimeSync(path: string, mtimeMs: number): void {
+		this.#requireEntry(path).mtimeMs = mtimeMs;
+	}
+
 	async updateSessionTitle(path: string, update: SessionTitleUpdate): Promise<void> {
 		const entry = this.#requireEntry(path);
 		this.#files.set(
