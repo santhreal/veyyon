@@ -296,6 +296,35 @@ describe("truncateDiffByHunk", () => {
 		expect(idxOld).toBeLessThan(idxNew);
 		expect(idxNew).toBeLessThan(idxTrailing);
 	});
+
+	it("drops whole hunks (not context) when the change lines alone exceed the line budget", () => {
+		// changeLineCount (6) > maxLines (4), so the context-preserving path is
+		// skipped and the function keeps segments head-first until the line budget
+		// fills, mid-hunk. This pins that budget-fill branch: it stops after the
+		// second hunk header (the 4th kept line), reporting the two dropped hunks
+		// and the five dropped lines exactly.
+		const diff = ["@@ h0 @@", "-a0", "+b0", "@@ h1 @@", "-a1", "+b1", "@@ h2 @@", "-a2", "+b2"].join("\n");
+		const r = truncateDiffByHunk(diff, 10, 4);
+		expect(r.text).toBe("@@ h0 @@\n-a0\n+b0\n@@ h1 @@");
+		expect(r.hiddenHunks).toBe(2);
+		expect(r.hiddenLines).toBe(5);
+	});
+
+	it("proportionally trims a between-changes context block, keeping its head and tail around a gap", () => {
+		// changeLineCount (2) fits, but the 7 context lines exceed the 4-line
+		// context budget, so the ratio path trims. The 6-line block sandwiched
+		// between two changes is split: first two lines, a blank gap marker, last
+		// two lines, dropping the middle. Pins the isBeforeChange && isAfterChange
+		// split branch and its exact kept text and hidden-line count.
+		const diff = ["@@ h @@", "-a", "c1", "c2", "c3", "c4", "c5", "c6", "+b"].join("\n");
+		const r = truncateDiffByHunk(diff, 10, 6);
+		expect(r.text).toBe("@@ h @@\n-a\nc1\nc2\n\nc5\nc6\n+b");
+		// c3 and c4 (the middle of the block) are gone; the head/tail survive.
+		expect(r.text).not.toContain("c3");
+		expect(r.text).not.toContain("c4");
+		expect(r.hiddenHunks).toBe(0);
+		expect(r.hiddenLines).toBe(1);
+	});
 });
 
 describe("formatErrorMessage (F4 sanitization)", () => {
