@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 /**
  * Convert JSON Type Definition (JTD) to JSON Schema.
  *
@@ -43,13 +43,13 @@ const primitiveMap: Record<JTDPrimitive, string> = {
  * overwritten. Non-object bases (an `unknown` primitive, an array) pass through.
  */
 function withDescription(base: unknown, raw: Record<string, unknown>): unknown {
-	if (base === null || typeof base !== "object" || Array.isArray(base)) return base;
+	if (!isRecord(base)) return base;
 	const meta = raw.metadata;
-	if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return base;
-	const description = (meta as Record<string, unknown>).description;
+	if (!isRecord(meta)) return base;
+	const description = meta.description;
 	if (typeof description !== "string") return base;
-	if ("description" in (base as Record<string, unknown>)) return base;
-	return { ...(base as Record<string, unknown>), description };
+	if ("description" in base) return base;
+	return { ...base, description };
 }
 
 /**
@@ -64,10 +64,10 @@ function withDescription(base: unknown, raw: Record<string, unknown>): unknown {
  */
 function applyNullable(base: unknown, nullable: boolean): unknown {
 	if (!nullable) return base;
-	if (base === null || typeof base !== "object" || Array.isArray(base)) {
+	if (!isRecord(base)) {
 		return { anyOf: [base, { type: "null" }] };
 	}
-	const obj = base as Record<string, unknown>;
+	const obj = base;
 	if (Array.isArray(obj.enum)) {
 		return obj.enum.includes(null) ? obj : { ...obj, enum: [...obj.enum, null] };
 	}

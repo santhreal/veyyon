@@ -74,6 +74,10 @@ async function testFiles(): Promise<string[]> {
 	const files: string[] = [];
 	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 		if (!pkg.isDirectory()) continue;
+		// argot is a standalone published package (only depends on smol-toml); it
+		// cannot import @veyyon/utils and carries its own token estimator by design,
+		// so exclude the whole package root from both the test and src scans.
+		if (pkg.name === "argot") continue;
 		try {
 			await walk(path.join(PACKAGES_DIR, pkg.name, "test"), files, true);
 		} catch {
@@ -89,6 +93,10 @@ describe("estimateTokens source lock", () => {
 		const seen = new Set<string>();
 		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 			if (!pkg.isDirectory()) continue;
+			// argot is a standalone published package (only depends on smol-toml); its
+			// own token estimator cannot import estimateTokensFromText by design, so
+			// exclude the whole package root from the src scan.
+			if (pkg.name === "argot") continue;
 			const files: string[] = [];
 			try {
 				await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
