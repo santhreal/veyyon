@@ -36,6 +36,7 @@ import {
 	formatAdvisorContextPrompt,
 } from "./advisor";
 import { type AsyncJob, AsyncJobManager } from "./async";
+import { loadArgotFolder } from "./argot-cache";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
@@ -1318,6 +1319,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		subagentMode: settings.get("argot.subagents"),
 		parentArgot: options.parentArgot,
 	});
+	if (argotEnabled && argot !== undefined && !argot.loaded) {
+		await loadArgotFolder(argot, cwd, undefined, settings.get("argot.tokenBudget")).catch(() => undefined);
+	}
 	// Encode gate: which models may WRITE shorthand and an optional context-size
 	// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
 	// unconditional and lossless whatever this holds; the gate governs only

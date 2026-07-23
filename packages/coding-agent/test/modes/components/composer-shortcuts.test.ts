@@ -50,6 +50,23 @@ describe("composer contextual shortcuts", () => {
 		expect(stripVTControlCharacters(bar.render(80)[0]!).trim()).toBe("");
 	});
 
+	// The band left-aligns at the composer rail (COMPOSER_INSET_COLS), under
+	// the footline's location group — one shared axis with the row above,
+	// instead of a terminal-centered position whose relationship to the
+	// footline changed with every content state (operator review 2026-07-23).
+	it("aligns band content at the composer rail", () => {
+		const kb = KeybindingsManager.inMemory();
+		const bar = new ComposerShortcutsBar();
+		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false }));
+		const rows = bar.render(80);
+		expect(rows.length).toBe(1);
+		const plain = stripVTControlCharacters(rows[0]!);
+		expect(plain.startsWith("  escape")).toBe(true);
+		bar.setScrollState(() => ({ active: true, newRows: 34 }));
+		const scrollRow = stripVTControlCharacters(bar.render(80)[0]!);
+		expect(scrollRow.startsWith("  ↓")).toBe(true);
+	});
+
 	// Regression lock for the footer jump (user report 2026-07-22): a band
 	// that renders 0 rows idle and 1 row busy changes the composer zone's
 	// height on every busy flip, jerking the whole footer vertically. The
