@@ -1,3 +1,5 @@
+import { setSafeProperty } from "./type-guards";
+
 const QUOTE = 0x22;
 const BACKSLASH = 0x5c;
 const U = 0x75;
@@ -284,7 +286,11 @@ class RelaxedJson {
 			}
 			const value = this.#value(true);
 			if (value === INCOMPLETE) return out;
-			out[key] = value;
+			// Match native JSON.parse: a literal `__proto__` (or constructor/prototype)
+			// key must become an own data property, not mutate the object's prototype
+			// or be dropped. This relaxed parser runs on malformed/truncated input
+			// (e.g. a truncated streaming tool-call buffer) where such a key can appear.
+			setSafeProperty(out, key, value);
 			this.#ws();
 			const d = this.#i < this.#n ? this.#s[this.#i] : "";
 			if (d === ",") {
@@ -543,7 +549,8 @@ class RelaxedJson {
 		// `hasOwnProperty`) would read the inherited method (truthy) and be thrown
 		// as non-recoverable instead of recovered as the string it is. Only the
 		// five curated non-finite/undefined atoms may abort recovery.
-		if (Object.hasOwn(NON_RECOVERABLE_BAREWORDS, word)) throw new SyntaxError(`Unexpected token at position ${start}`);
+		if (Object.hasOwn(NON_RECOVERABLE_BAREWORDS, word))
+			throw new SyntaxError(`Unexpected token at position ${start}`);
 		this.#i = i;
 		return word;
 	}
