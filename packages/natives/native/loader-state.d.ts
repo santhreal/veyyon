@@ -87,3 +87,15 @@ export interface SelectCpuVariantResult {
 export function selectCpuVariant(input: SelectCpuVariantInput): SelectCpuVariantResult;
 
 export function loadNative(): Record<string, unknown>;
+
+/** The exported symbol name the Rust addon emits for a version, e.g. `1.0.14` -> `__veyyonNativesV1_0_14`. */
+export function versionSentinelExportFor(version: string): string;
+
+/** The version a loaded addon was built for, read back from its sentinel export, or `"unknown"`. */
+export function detectBuiltNativeVersion(bindings: Record<string, unknown>): string;
+
+/** Every `__veyyonNativesV<major>_<minor>_<patch>` sentinel physically present in a built `.node`'s bytes, deduplicated. */
+export function nativeSentinelsInBuffer(buffer: Uint8Array): string[];
+
+/** `owner/repo` for a package.json `repository.url`; fails closed to `santhreal/veyyon` when missing or unparseable. */
+export function repoSlugFromRepositoryUrl(raw: string | null | undefined): string;
