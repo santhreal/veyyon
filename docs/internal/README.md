@@ -34,7 +34,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 
 | Doc | Covers |
 | --- | --- |
-| [design.md](design.md) | The full design & brand contract: naming, voice, wordmark, type, color, the sun motif. |
+| design.md _(local-only, gitignored)_ | The full design & brand contract kept on maintainer machines, not shipped; see brand.md for the public subset. |
 | [brand.md](brand.md) | Condensed identity contract: name, palette (the ember sun), and identity rules. |
 | [tui-design-language.md](tui-design-language.md) | The terminal-UX conventions Veyyon follows. |
 | [retained-patterns.md](retained-patterns.md) | Coordination and prompt patterns kept from upstream. |
