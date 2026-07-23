@@ -1,3 +1,4 @@
+import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { type Component, type RenderScheduler, type RenderTimer, TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
