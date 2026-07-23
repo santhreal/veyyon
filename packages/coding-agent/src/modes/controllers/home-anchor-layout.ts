@@ -114,10 +114,20 @@ export class HomeAnchorLayout {
 			if (currentFill !== 0) this.bottomFill.setLines(0);
 			return;
 		}
-		// With the hero up, give it 2/5 of the slack as top margin (slightly above
-		// true centre reads optically centred); once dismissed, all slack drops
-		// below so the composer stays pinned to the viewport bottom.
-		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : 0;
+		// Slack routing is the whole design:
+		// - Hero up: 2/5 above the hero (optically centred), the rest below so
+		//   the composer sits on the viewport bottom.
+		// - Empty transcript, no hero: all slack below — composer pinned to the
+		//   viewport bottom while the screen is at rest.
+		// - Conversation started: ALL slack ABOVE the transcript, so the
+		//   conversation hugs the composer at the bottom like any chat surface.
+		//   The old between-content fill painted the prompt at the top and the
+		//   loader at the bottom with a void of blank rows between them; when
+		//   the reply landed, those committed blank rows overflowed the screen
+		//   and pushed the prompt into scrollback while the viewport was mostly
+		//   empty (user screenshots, 2026-07-22).
+		const conversation = this.port.transcriptChildCount() > 0;
+		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);
 		if (slack - top !== currentFill) this.bottomFill.setLines(slack - top);
 	}
@@ -144,17 +154,13 @@ export class HomeAnchorLayout {
 	 * anchor resizes against the removed rows so the composer stays pinned to
 	 * the viewport bottom on this very frame, not the next.
 	 */
-	onHeroDismissed(removedRows: number): void {
-		const ui = this.port.ui;
-		const width = ui.terminal.columns;
+	onHeroDismissed(_removedRows: number): void {
+		// Direct remeasure: the hero is already unmounted, so summing the live
+		// children is exact on this frame, and sync() routes the slack per the
+		// current state (all-below at rest, all-above once a conversation
+		// exists) instead of hardcoding the composer-pinned distribution here.
 		this.topFill.setLines(0);
-		if (this.#active && ui.composedFrameRows > 0) {
-			const currentFill = this.bottomFill.render(width).length;
-			const contentExclFill = ui.composedFrameRows - currentFill - removedRows;
-			this.bottomFill.setLines(Math.max(0, ui.terminal.rows - contentExclFill));
-		} else {
-			this.sync();
-		}
-		ui.requestRender();
+		this.sync(true);
+		this.port.ui.requestRender();
 	}
 }

@@ -247,6 +247,11 @@ export function resolveAbortLabel(
 		AIError.is(message.errorId, AIError.Flag.Abort) ||
 		!message.errorMessage ||
 		message.errorMessage === GENERIC_ABORT_SENTINEL ||
+		// AbortError's bare-cancel shape (`Aborted: Cancelled`, utils/abortable.ts)
+		// carries no information beyond "aborted"; rendered verbatim it stacked
+		// three redundant labels: "Error: Aborted: Cancelled" (user screenshot,
+		// 2026-07-22).
+		message.errorMessage === "Aborted: Cancelled" ||
 		isSilentAbort(message);
 	if (!genericAbort) {
 		return message.errorMessage!;

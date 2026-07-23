@@ -638,8 +638,11 @@ export const globToolRenderer = {
 		);
 
 		const truncationReasons: string[] = [];
-		if (details?.resultLimitReached) truncationReasons.push(`limit ${details.resultLimitReached} results`);
-		if (limits?.resultLimit) truncationReasons.push(`limit ${limits.resultLimit.reached} results`);
+		// One reason for the result cap: details and limits both carry the same
+		// number, and pushing both rendered "limit 200 results, limit 200
+		// results" (user screenshot, 2026-07-22).
+		const resultLimit = details?.resultLimitReached ?? limits?.resultLimit?.reached;
+		if (resultLimit) truncationReasons.push(`limit ${resultLimit} results`);
 		if (truncation) truncationReasons.push(truncation.truncatedBy === "lines" ? "line limit" : "size limit");
 		const artifactId = truncation && "artifactId" in truncation ? truncation.artifactId : undefined;
 		if (artifactId) truncationReasons.push(formatFullOutputReference(artifactId));

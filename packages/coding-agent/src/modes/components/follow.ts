@@ -86,7 +86,7 @@ export function paintHotTail(
 	row: string,
 	theme: FollowTheme,
 	trueColor: boolean,
-	cooledToken: "thinkingText" | "toolOutput" | "userMessageText" = "thinkingText",
+	cooledToken: "thinkingText" | "toolOutput" = "thinkingText",
 	phase = 0,
 ): string {
 	if (!trueColor) return row;

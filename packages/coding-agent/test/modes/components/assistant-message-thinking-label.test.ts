@@ -65,9 +65,9 @@ describe("assistant message thinking label", () => {
 				{ type: "text", text: "Ready." },
 			]),
 		);
-		expect(lines[0]).toBe(" Thinking");
-		expect(lines[1]).toBe(" Let me look at the file.");
-		expect(lines).toContain(" Ready.");
+		expect(lines[0]).toBe("  Thinking");
+		expect(lines[1]).toBe("  Let me look at the file.");
+		expect(lines).toContain("  Ready.");
 	});
 
 	/** One label per message, not one per block — a label stutter between
@@ -80,8 +80,8 @@ describe("assistant message thinking label", () => {
 				{ type: "text", text: "Done." },
 			]),
 		);
-		expect(lines.filter(line => line === " Thinking")).toHaveLength(1);
-		expect(lines[0]).toBe(" Thinking");
+		expect(lines.filter(line => line === "  Thinking")).toHaveLength(1);
+		expect(lines[0]).toBe("  Thinking");
 	});
 
 	/** Negative twin: hidden thinking renders no trace and therefore no
@@ -101,7 +101,7 @@ describe("assistant message thinking label", () => {
 	/** Negative twin: a pure text answer gains no reasoning chrome. */
 	it("renders no label for a text-only answer", () => {
 		const lines = renderLines(message([{ type: "text", text: "Just the answer." }]));
-		expect(lines).toEqual([" Just the answer."]);
+		expect(lines).toEqual(["  Just the answer."]);
 	});
 });
 
