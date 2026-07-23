@@ -1,0 +1,90 @@
+{
+	"cases": [
+		{
+			"id": "timeout-clamp-bash-default",
+			"contract": "Omitting rawTimeout for bash returns the bash default of 300s",
+			"surface": "clamp-timeout",
+			"tags": ["positive"],
+			"input": { "tool": "bash" },
+			"expect": { "seconds": 300 }
+		},
+		{
+			"id": "timeout-clamp-bash-zero-to-min",
+			"contract": "A zero bash timeout clamps up to the bash minimum of 1s",
+			"surface": "clamp-timeout",
+			"tags": ["boundary", "adversarial"],
+			"input": { "tool": "bash", "rawTimeout": 0 },
+			"expect": { "seconds": 1 }
+		},
+		{
+			"id": "timeout-clamp-fetch-above-max",
+			"contract": "A fetch timeout above the fetch max clamps down to 45s",
+			"surface": "clamp-timeout",
+			"tags": ["adversarial", "negative"],
+			"input": { "tool": "fetch", "rawTimeout": 999 },
+			"expect": { "seconds": 45 }
+		},
+		{
+			"id": "timeout-clamp-fetch-in-range",
+			"contract": "An in-range fetch timeout is returned unchanged",
+			"surface": "clamp-timeout",
+			"tags": ["positive"],
+			"input": { "tool": "fetch", "rawTimeout": 20 },
+			"expect": { "seconds": 20 }
+		},
+		{
+			"id": "timeout-clamp-lsp-below-min",
+			"contract": "An lsp timeout below the lsp min clamps up to 5s",
+			"surface": "clamp-timeout",
+			"tags": ["boundary", "adversarial"],
+			"input": { "tool": "lsp", "rawTimeout": 1 },
+			"expect": { "seconds": 5 }
+		},
+		{
+			"id": "timeout-notice-omitted",
+			"contract": "An omitted requested timeout produces no clamp notice",
+			"surface": "timeout-clamp-notice",
+			"tags": ["positive", "negative"],
+			"input": { "tool": "fetch", "effectiveSec": 30 },
+			"expect": { "notice": null }
+		},
+		{
+			"id": "timeout-notice-unchanged",
+			"contract": "A request that matches the effective timeout produces no notice",
+			"surface": "timeout-clamp-notice",
+			"tags": ["positive", "negative"],
+			"input": { "tool": "fetch", "requestedSec": 20, "effectiveSec": 20 },
+			"expect": { "notice": null }
+		},
+		{
+			"id": "timeout-notice-clamped",
+			"contract": "A clamped fetch timeout emits the exact allowed-range notice text",
+			"surface": "timeout-clamp-notice",
+			"tags": ["positive", "regression"],
+			"input": { "tool": "fetch", "requestedSec": 999, "effectiveSec": 45 },
+			"expect": {
+				"notice": "Timeout clamped to 45s (requested 999s; allowed range 1-45s)."
+			}
+		},
+		{
+			"id": "timeout-desc-fetch",
+			"contract": "describeTimeoutParam for fetch states default 30 and clamp 1-45",
+			"surface": "timeout-param-desc",
+			"tags": ["positive", "contract"],
+			"input": { "tool": "fetch" },
+			"expect": {
+				"text": "timeout in seconds; default 30, clamped to 1-45"
+			}
+		},
+		{
+			"id": "timeout-desc-bash-zero-disables",
+			"contract": "describeTimeoutParam for bash can advertise that 0 disables a named deadline",
+			"surface": "timeout-param-desc",
+			"tags": ["positive", "boundary"],
+			"input": { "tool": "bash", "zeroDisablesNoun": "deadline" },
+			"expect": {
+				"text": "timeout in seconds; 0 disables the deadline; default 300, clamped to 1-3600"
+			}
+		}
+	]
+}

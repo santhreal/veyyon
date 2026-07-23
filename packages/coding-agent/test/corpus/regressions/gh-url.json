@@ -1,0 +1,92 @@
+{
+	"cases": [
+		{
+			"id": "gh-pr-url-basic",
+			"contract": "A standard GitHub pull URL yields repo and numeric prNumber",
+			"surface": "parse-pr-url",
+			"tags": ["positive"],
+			"input": { "url": "https://github.com/a/b/pull/12" },
+			"expect": { "repo": "a/b", "prNumber": 12 }
+		},
+		{
+			"id": "gh-pr-url-query-fragment",
+			"contract": "Trailing query and fragment on a PR URL are tolerated",
+			"surface": "parse-pr-url",
+			"tags": ["positive", "boundary"],
+			"input": { "url": "https://github.com/Own/Repo/pull/9?x=1#frag" },
+			"expect": { "repo": "Own/Repo", "prNumber": 9 }
+		},
+		{
+			"id": "gh-pr-url-case-insensitive-host",
+			"contract": "Mixed-case HTTPS and GitHub host still parse as a PR URL",
+			"surface": "parse-pr-url",
+			"tags": ["positive", "adversarial"],
+			"input": { "url": "HTTPS://GitHub.com/Own/Repo/pull/9" },
+			"expect": { "repo": "Own/Repo", "prNumber": 9 }
+		},
+		{
+			"id": "gh-pr-url-empty",
+			"contract": "Empty and whitespace-only PR URL inputs yield an empty object",
+			"surface": "parse-pr-url",
+			"tags": ["boundary", "negative"],
+			"input": { "url": "   " },
+			"expect": {}
+		},
+		{
+			"id": "gh-pr-url-issue-not-pr",
+			"contract": "An issues URL does not parse as a pull request",
+			"surface": "parse-pr-url",
+			"tags": ["negative", "adversarial"],
+			"input": { "url": "https://github.com/a/b/issues/3" },
+			"expect": {}
+		},
+		{
+			"id": "gh-pr-url-non-numeric",
+			"contract": "A non-numeric pull segment is rejected",
+			"surface": "parse-pr-url",
+			"tags": ["negative", "adversarial"],
+			"input": { "url": "https://github.com/a/b/pull/x" },
+			"expect": {}
+		},
+		{
+			"id": "gh-pr-url-whitespace-in-owner",
+			"contract": "Whitespace inside owner or repo rejects the PR URL",
+			"surface": "parse-pr-url",
+			"tags": ["adversarial", "negative"],
+			"input": { "url": "https://github.com/ow ner/repo/pull/1" },
+			"expect": {}
+		},
+		{
+			"id": "gh-issue-url-basic",
+			"contract": "A standard GitHub issue URL yields repo and numeric issueNumber",
+			"surface": "parse-issue-url",
+			"tags": ["positive"],
+			"input": { "url": "https://github.com/a/b/issues/3" },
+			"expect": { "repo": "a/b", "issueNumber": 3 }
+		},
+		{
+			"id": "gh-issue-url-pr-not-issue",
+			"contract": "A pull URL does not parse as an issue",
+			"surface": "parse-issue-url",
+			"tags": ["negative", "adversarial"],
+			"input": { "url": "https://github.com/a/b/pull/12" },
+			"expect": {}
+		},
+		{
+			"id": "gh-issue-url-trim",
+			"contract": "Leading and trailing whitespace around an issue URL is trimmed before parse",
+			"surface": "parse-issue-url",
+			"tags": ["boundary"],
+			"input": { "url": "  https://github.com/a/b/issues/7  " },
+			"expect": { "repo": "a/b", "issueNumber": 7 }
+		},
+		{
+			"id": "gh-issue-url-garbage",
+			"contract": "A non-GitHub string yields an empty issue parse object",
+			"surface": "parse-issue-url",
+			"tags": ["negative"],
+			"input": { "url": "not-a-url" },
+			"expect": {}
+		}
+	]
+}

@@ -37,11 +37,16 @@ Both branches state the resulting directory rather than describing what did or d
 5. The returned path is compared with the previous cwd to choose between the two result texts. The session may canonicalize (symlinks, macOS `/private`), so the reported directory is what `setCwd` returned, not what was requested.
 6. Any throw from the session is re-wrapped as a `ToolError` carrying the original message.
 
-## Side Effects
-- Session state: re-roots the live session at the new directory. The session cwd changes, and in an interactive session the project-scoped state follows it: project settings (`.veyyon` / `.claude`) reload, and plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing are rebuilt for the new directory. This matches what `/move` does, minus relocating the session file. It never writes the profile's `session.workdir`, so the re-root lasts for this session and no longer.
+## Side Effects & Prompt Cache Stability
+- Session state: re-roots the live session at the new directory. The session cwd changes, and in an interactive session the project-scoped state follows it: project settings (`.veyyon` / `.claude`) reload, and plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing are rebuilt for the new directory.
++- **Prompt Cache Protection:** Working directory changes occur across three distinct mutation vectors:
+  1. *Profile Defaults (`session.workdir` setting)*: Configured per-profile; updating it mid-session updates future session defaults without mutating live prompt headers.
+  2. *Agent Tool (`set_cwd`)*: Re-roots live session scope for path resolving (`[name#tag]`); prompt header metadata remains frozen until context compaction.
+  3. *User Commands (`/cd`, `/move`)*: Changes interactive execution scope without invalidating system prompt prefix hashes.
+  
+  **Rule:** To prevent cache invalidation, the rendered System Prompt and `<workstation>` block in preceding chat context MUST NOT be re-rendered mid-session prior to context compaction. Updating prompt header metadata is deferred to compaction re-primes when history is already reset.
 - Filesystem: none. The directory is read for validation by the session, nothing is written.
 - Approval: write-tier. It prompts in ask mode, is allowed under yolo and `bypassAllApprovals`, and is always blocked by a hard deny. The approval prompt shows `Working directory: <previous> → <next>`.
-
 ## Errors
 - `path is required` when the argument is empty or whitespace only.
 - `Session does not support setCwd.` when the session has no re-root capability.
