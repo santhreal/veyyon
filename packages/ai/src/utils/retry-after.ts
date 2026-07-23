@@ -1,3 +1,5 @@
+import { resetHeaderTargetMs } from "@veyyon/utils";
+
 export type HeadersLike = Headers | Record<string, string | undefined> | undefined | null;
 
 const RETRY_AFTER_HINT = "retry-after-ms=";
@@ -95,27 +97,12 @@ function parseResetHeader(value: string | undefined, unit: "ms" | "s"): number |
 	const numeric = Number(value);
 	if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
 
-	const nowMs = Date.now();
-	let targetMs: number | undefined;
-
-	if (unit === "ms") {
-		if (numeric > 1e12) {
-			targetMs = numeric;
-		} else if (numeric > 1e9) {
-			targetMs = numeric * 1000;
-		} else {
-			return Math.ceil(numeric);
-		}
-	} else {
-		if (numeric > 1e12) {
-			targetMs = numeric;
-		} else if (numeric > 1e9) {
-			targetMs = numeric * 1000;
-		} else {
-			return Math.ceil(numeric * 1000);
-		}
+	const target = resetHeaderTargetMs(numeric);
+	if ("delta" in target) {
+		// Not a timestamp: the raw value is a wait in the header's own unit.
+		return Math.ceil(unit === "ms" ? numeric : numeric * 1000);
 	}
-
-	if (targetMs <= nowMs) return undefined;
-	return Math.ceil(targetMs - nowMs);
+	const delta = target.atMs - Date.now();
+	if (delta <= 0) return undefined;
+	return Math.ceil(delta);
 }
