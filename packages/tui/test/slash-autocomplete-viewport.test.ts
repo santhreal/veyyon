@@ -135,8 +135,20 @@ describe("slash command autocomplete with unknown native viewport state", () => 
 			expect(editor.getText()).toBe("");
 			expect(viewport).not.toContain("status");
 			expect(viewport).not.toContain("/st");
+			// After the autocomplete shrink the editor is bottom-anchored: the
+			// viewport is chat-1..chat-6 plus the two editor rows, with no blank
+			// slab underneath. chat-1..chat-5 appear a second time because the
+			// tail re-anchor re-shows rows that already entered native
+			// scrollback — "duplication, never loss" beats a floating editor.
+			const viewportRows = viewport.split("\n");
+			expect(viewportRows[viewportRows.length - 1]).toBe("+- |                                  -+");
 			expect(term.getScrollBuffer()).toEqual([
 				"chat-0",
+				"chat-1",
+				"chat-2",
+				"chat-3",
+				"chat-4",
+				"chat-5",
 				"chat-1",
 				"chat-2",
 				"chat-3",
@@ -145,11 +157,6 @@ describe("slash command autocomplete with unknown native viewport state", () => 
 				"chat-6",
 				"+--------------------------------------+",
 				"+- |                                  -+",
-				"",
-				"",
-				"",
-				"",
-				"",
 			]);
 		} finally {
 			tui?.stop();
