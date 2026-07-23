@@ -3,6 +3,7 @@
 	"private": true,
 	"version": "0.1.0",
 	"description": "DeepSWE bench runner for perf-affecting veyyon features (see README.md)",
+	"author": "santhreal",
 	"dependencies": {
 		"argot": "workspace:*"
 	},
