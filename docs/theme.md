@@ -79,7 +79,9 @@ These color the "cool arc" of the design language: session identity segments use
 
 ### `composerBg` (optional)
 
-The tonal ground painted under the composer's input rows (the "quiet card"). Titanium sets it to `#0C0E12`, one step off black. A theme that omits it inherits its `statusLineBg`. Setting it to `""` (transparent) disables the card and the input rows keep the terminal's own background.
+The tonal ground painted under the composer's input rows and the padding rows above and below them (the "quiet card"). The padding rows carry the same ground so the card has a visible body rather than a single tinted line. A theme that omits it inherits its `statusLineBg`.
+
+This token is no longer painted. The composer renders directly on the terminal's own background (2026-07-22): every painted composer ground, absolute or derived, read as a gray slab on real terminals, so the input area carries no background at all. The token remains accepted in theme files for compatibility but has no visual effect.
 
 ### `export` section (optional)
 

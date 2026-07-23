@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "../searchindex-785b1849.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-de67d70d.js"></script>
@@ -284,6 +284,19 @@ compaction:
 <p>Every profile including <code>default</code>:</p>
 <pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/   # config.yml, sessions, MCP, skills, …
 </code></pre>
+<h3 id="instruction-files-global-vs-per-profile-agentsmd"><a class="header" href="#instruction-files-global-vs-per-profile-agentsmd">Instruction Files: Global vs Per-Profile (<code>AGENTS.md</code>)</a></h3>
+<p>Veyyon discovers exactly <strong>two user-level instruction layers</strong> before every session:</p>
+<ol>
+<li><strong>Global User Layer (<code>~/.veyyon/AGENTS.md</code>)</strong>: Applies across EVERY profile and workspace. Reserved for cross-profile standing rules.</li>
+<li><strong>Active Profile Layer (<code>~/.veyyon/profiles/&lt;profile_name&gt;/...</code>)</strong>: Applies ONLY to the active profile. Scanned in <strong>descending priority order</strong> (first match wins; exactly 1 file loaded per profile to prevent duplication):
+<ol>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent/AGENTS.md</code> (Highest)</li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/AGENTS.md</code></li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent/agent.md</code></li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent.md</code> (Lowest)</li>
+</ol>
+</li>
+</ol>
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="../features/profiles.html">Profiles</a>, <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="approvals"><a class="header" href="#approvals">Approvals</a></h2>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="../features/sandbox.html">Approvals</a>.</p>

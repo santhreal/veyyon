@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "../searchindex-785b1849.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-de67d70d.js"></script>
@@ -257,7 +257,7 @@ veyyon plugin doctor
 <p>If the new binary does not work for you, you can go back to the previous version without losing data.</p>
 <ol>
 <li>Close all Veyyon processes.</li>
-<li>Restore the previous binary from your system package manager, the release archive, or your own backup.</li>
+<li>Restore the previous binary. Run <code>veyyon rollback</code> to pick an earlier version, or re-run the <code>curl</code> installer with <code>--ref v&lt;version&gt;</code> to pin one from veyyon.dev; a source checkout goes back with <code>git checkout</code> and a rebuild.</li>
 <li>Restore profile <code>config.yml</code> (and global <code>~/.veyyon/config.yml</code> if you changed it) from the backup you made before upgrading, if the new version modified settings the old version cannot read.</li>
 <li>Leave agent-dir <code>sessions/</code>, archives, and SQLite stores in place. Rollout files are forward-compatible for recent releases; the old binary can rebuild indexes when needed.</li>
 <li>Start Veyyon and run <code>veyyon plugin doctor</code> to confirm the environment is healthy.</li>

@@ -35,8 +35,7 @@ content out of the live context and leaves a short placeholder in its place. Who
 results and large fenced or XML blocks are replaced with a marker such as
 `[shaken ~1200 tokens; recover: artifact://42 (region 3)]`. The full text is saved as a
 session artifact first, so you can always read it back with `read artifact://42`. Nothing is
-lost, it just stops being resent on every turn. Run it on demand with `/shake`, or let
-auto-maintenance run it when `compaction.strategy` is `shake`.
+lost, it just stops being resent on every turn. Run it on demand with `/shake`.
 
 Shake also removes redundancy. When you read the same unchanged file twice, or run the same
 command twice and get the same output, every copy but the newest carries no new information.
@@ -49,7 +48,7 @@ error results, and results already elided are never deduplicated.
 The match is exact. If a command's output changes between runs, both runs are kept, because the
 later one is genuinely new information rather than a repeat.
 
-This duplicate elision does not wait for the `shake` strategy. Whenever auto-maintenance is about
+This duplicate elision runs on its own, ahead of every strategy. Whenever auto-maintenance is about
 to compact because the context crossed the threshold or overflowed, it first runs the lossless
 dedup as a Tier-0 pass, whatever your `compaction.strategy` is. The pass is recall-preserving and
 makes no model call, so it always runs before the heavier path and shrinks what that path has to

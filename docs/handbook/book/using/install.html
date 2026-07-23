@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "../searchindex-785b1849.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-de67d70d.js"></script>
@@ -237,8 +237,8 @@ $ vey plugin doctor
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
 <p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
 <h2 id="updating"><a class="header" href="#updating">Updating</a></h2>
-<p>Veyyon keeps itself current. On startup it checks the registry for a newer
-release, and if it finds one it installs it in the background:</p>
+<p>Veyyon keeps itself current. On startup it checks veyyon.dev for a newer
+version, and if it finds one it downloads the new binary in the background:</p>
 <pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
 </code></pre>
 <p>The running process keeps the version it started with, so the update takes
@@ -266,14 +266,19 @@ your terminal.</p>
 <p>You can always update on demand, whichever settings are in force:</p>
 <pre><code class="language-console">$ veyyon update
 </code></pre>
-<p>Veyyon updates through whatever installed it, whether that is Homebrew, mise,
-bun, npm, or a standalone binary. If an automatic update fails, it says so and
-tells you to retry with <code>veyyon update</code>; it never fails quietly and leaves you
-on an old version without a word.</p>
+<p>Veyyon is distributed only two ways, and it updates the way it was installed. A
+binary install (the <code>curl</code> installer from veyyon.dev) replaces its own binary
+with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
+release and propagates automatically from GitHub Releases, so that is the only
+place a binary ever comes from. A source checkout does not self-update the
+binary; update it with <code>git pull</code> and a rebuild (<code>bun setup</code>). There is no npm,
+Homebrew, or other package-manager channel to go through. If an automatic update
+fails, Veyyon says so and tells you to retry with <code>veyyon update</code>; it never fails
+quietly and leaves you on an old version without a word.</p>
 <p>If the same version fails to install twice, the cause is usually the machine
 rather than the release: a binary owned by another user, a read-only image, or a
-package manager that needs elevated permissions. Veyyon reports that failure and
-then leaves it alone for six hours instead of repeating it on every launch. A
+directory that needs elevated permissions to write. Veyyon reports that failure
+and then leaves it alone for six hours instead of repeating it on every launch. A
 newer release is never held back by an older one’s failure, and <code>veyyon update</code>
 ignores the pause entirely, so you can always ask to see the error again:</p>
 <pre><code class="language-console">$ veyyon update

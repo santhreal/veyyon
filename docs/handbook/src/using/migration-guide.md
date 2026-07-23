@@ -62,7 +62,7 @@ Never delete `sessions/` to fix a state problem. Rollouts are the durable histor
 If the new binary does not work for you, you can go back to the previous version without losing data.
 
 1. Close all Veyyon processes.
-2. Restore the previous binary from your system package manager, the release archive, or your own backup.
+2. Restore the previous binary. Run `veyyon rollback` to pick an earlier version, or re-run the `curl` installer with `--ref v<version>` to pin one from veyyon.dev; a source checkout goes back with `git checkout` and a rebuild.
 3. Restore profile `config.yml` (and global `~/.veyyon/config.yml` if you changed it) from the backup you made before upgrading, if the new version modified settings the old version cannot read.
 4. Leave agent-dir `sessions/`, archives, and SQLite stores in place. Rollout files are forward-compatible for recent releases; the old binary can rebuild indexes when needed.
 5. Start Veyyon and run `veyyon plugin doctor` to confirm the environment is healthy.
