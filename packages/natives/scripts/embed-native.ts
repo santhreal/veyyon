@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { nativeSentinelsInBuffer, versionSentinelExportFor } from "../native/loader-state.js";
 
 const reset = process.argv.includes("--reset");
 const outputPath = path.join(import.meta.dir, "../native/embedded-addon.js");
@@ -94,12 +95,32 @@ if (available.length === 0) {
 	throw new Error(`No native addons found for ${platformTag}. Expected one of:\n${expected}`);
 }
 const packageJson = (await Bun.file(packageJsonPath).json()) as { version: string };
+const expectedSentinel = versionSentinelExportFor(packageJson.version);
 
 const archiveFilename = `${archivePrefix}${platformTag}${archiveSuffix}`;
 const archivePath = path.join(nativeDir, archiveFilename);
 const archiveEntries: Record<string, Uint8Array> = {};
 for (const addon of available) {
-	archiveEntries[addon.filename] = await fs.readFile(addon.path);
+	const bytes = await fs.readFile(addon.path);
+	// Refuse to embed a native built for a DIFFERENT version than this package.
+	// The loader keys the addon on `__veyyonNativesV<version>`; a `.node` left
+	// stale by a version bump (or a variant rebuilt at a different version, e.g.
+	// modern at 1.0.14 while baseline is 1.0.15) carries the wrong sentinel, so
+	// the compiled binary would extract it and then hard-fail at first native use
+	// — bricking exactly the CPUs that select that variant. Catch it here, at
+	// build time, instead of in a user's terminal. (Law 10: fail closed, never
+	// ship a fallback that cannot load.)
+	const sentinels = nativeSentinelsInBuffer(bytes);
+	if (!sentinels.includes(expectedSentinel)) {
+		const builtFor = sentinels.length > 0 ? sentinels.join(", ") : "no version sentinel";
+		throw new Error(
+			`Refusing to embed a stale native addon.\n` +
+				`  ${addon.filename} carries ${builtFor}, but this package is ${packageJson.version} ` +
+				`(expects ${expectedSentinel}).\n` +
+				`  Rebuild every variant for this version first: bun --cwd=packages/natives run build`,
+		);
+	}
+	archiveEntries[addon.filename] = bytes;
 }
 await Bun.write(archivePath, await new Bun.Archive(archiveEntries, { compress: "gzip", level: 9 }).bytes());
 

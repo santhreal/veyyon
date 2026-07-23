@@ -608,6 +608,24 @@ export function detectBuiltNativeVersion(bindings) {
 }
 
 /**
+ * Every `__veyyonNativesV<major>_<minor>_<patch>` sentinel physically present in
+ * a built `.node`'s bytes, deduplicated. The sentinel is an exported symbol name,
+ * so it appears verbatim as an ASCII string in the compiled binary — which lets
+ * the embed step (`scripts/embed-native.ts`) verify a `.node` was built for the
+ * package version WITHOUT `dlopen`, and refuse to ship a stale/mislabeled addon
+ * that would brick the loader at runtime. Reads the buffer as latin1 so every
+ * byte maps to one char and the symbol is never split by a decoder.
+ * @param {Buffer | Uint8Array} buffer
+ * @returns {string[]}
+ */
+export function nativeSentinelsInBuffer(buffer) {
+	const text = Buffer.from(buffer).toString("latin1");
+	const found = new Set();
+	for (const match of text.matchAll(/__veyyonNativesV\d+_\d+_\d+/g)) found.add(match[0]);
+	return [...found];
+}
+
+/**
  * `owner/repo` for a `package.json` `repository.url`, e.g.
  * `git+https://github.com/santhreal/veyyon.git` -> `santhreal/veyyon`. Fails
  * closed to veyyon's own slug (never a fork/upstream) when the URL is missing or
