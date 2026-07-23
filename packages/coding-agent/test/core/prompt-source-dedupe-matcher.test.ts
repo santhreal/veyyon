@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { dedupeAlwaysApplyRules, dedupePromptSource, promptSourceContainsRule } from "../../src/system-prompt";
 
 /**
- * Prompt-source deduplication decides whether a rule or a prompt block is
+ * Pure-function unit tests for prompt-source deduplication. (The end-to-end
+ * assembly path is covered separately by test/system-prompt-dedup.test.ts; this
+ * suite pins the matcher itself.) Prompt-source deduplication decides whether a rule or a prompt block is
  * already present in another prompt source and should therefore be dropped from
  * the assembled system prompt. Getting this wrong is a capability bug in both
  * directions: a false positive silently DROPS an instruction the model should
