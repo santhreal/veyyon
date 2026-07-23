@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { exponentialBackoffDelay } from "../src/backoff";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("exponentialBackoffDelay", () => {
 	it("doubles the base delay per attempt until the cap (jitter pinned to the midpoint)", () => {
@@ -60,42 +59,19 @@ describe("exponentialBackoffDelay", () => {
 // the grandfathered set is empty: any new local BACKOFF_BASE_MS / BACKOFF_MAX_MS
 // const, or a hand-rolled `... * (0.75 + Math.random() * 0.5)` jitter, fails the
 // lock and must call exponentialBackoffDelay instead.
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
-
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources).
 const LOCAL_BACKOFF_CONST = /const\s+BACKOFF_(?:BASE|MAX)_MS\s*=/;
 const HANDROLLED_JITTER = /0\.75\s*\+\s*Math\.random\(\)\s*\*\s*0\.5/;
-
-async function walk(dir: string, out: string[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-			out.push(full);
-		}
-	}
-}
 
 describe("reconnect backoff source lock", () => {
 	it("no production source hand-rolls the backoff schedule outside utils/src/backoff.ts", async () => {
 		const constOffenders: string[] = [];
 		const jitterOffenders: string[] = [];
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			const files: string[] = [];
-			try {
-				await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
-			} catch {
-				// Package without a src/ directory (assets-only) — nothing to scan.
-			}
-			for (const file of files) {
-				const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-				if (rel === "utils/src/backoff.ts") continue;
-				const text = await readFile(file, "utf8");
-				if (LOCAL_BACKOFF_CONST.test(text)) constOffenders.push(rel);
-				if (HANDROLLED_JITTER.test(text)) jitterOffenders.push(rel);
-			}
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (rel === "utils/src/backoff.ts") continue;
+			if (LOCAL_BACKOFF_CONST.test(text)) constOffenders.push(rel);
+			if (HANDROLLED_JITTER.test(text)) jitterOffenders.push(rel);
 		}
 		expect(
 			constOffenders,

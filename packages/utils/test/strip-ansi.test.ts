@@ -5,9 +5,8 @@
  * (one SGR-only, two byte-identical CSI+OSC forks).
  */
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("stripAnsi", () => {
 	it("strips SGR color/style sequences", () => {
@@ -40,44 +39,18 @@ describe("stripAnsi", () => {
 // a violation. Both src and test are scanned — a test-helper copy is still a
 // second definition that drifts (that is where these copies hid). Import the
 // owner; a narrower stripper needs its own honest name (e.g. stripSgr).
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 const OWNER = "utils/src/strip-ansi.ts";
 const STRIPANSI_DEF = /function\s+stripAnsi\s*\(/;
 
-async function walk(dir: string, out: string[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts")) {
-			out.push(full);
-		}
-	}
-}
-
-async function allTsFiles(): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		for (const sub of ["src", "test"]) {
-			try {
-				await walk(path.join(PACKAGES_DIR, pkg.name, sub), files);
-			} catch {
-				// Package without that subdirectory (assets-only) — nothing to scan.
-			}
-		}
-	}
-	return files;
-}
-
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources). Both src and test are scanned — a test-helper
+// copy is still a second definition that drifts (that is where these copies hid).
 describe("stripAnsi source lock", () => {
 	it("no source or test file defines a local stripAnsi outside the owner", async () => {
 		const offenders: string[] = [];
-		for (const file of await allTsFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src", "test"], includeTests: true })) {
 			if (rel === OWNER) continue;
-			if (STRIPANSI_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+			if (STRIPANSI_DEF.test(text)) offenders.push(rel);
 		}
 		expect(
 			offenders,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
+import { collectPackageSources } from "./support/package-sources";
 
 // Repo-wide sleep convention. This codebase has exactly ONE primitive for
 // "wait N milliseconds": `Bun.sleep(ms)` (used in ~80 production sites). The
@@ -12,8 +11,8 @@ import * as path from "node:path";
 // removed (mcp/manager.ts delay wrapper, ai mock.ts sleep helper, tts-worker and
 // tui terminal inline promises), so the grandfathered set is empty: any new
 // occurrence fails this lock. Call Bun.sleep directly, or untilAborted when the
-// wait must cancel.
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
+// wait must cancel. The monorepo walk + skip-set is shared with every other
+// source-ownership lock (see ./support/package-sources).
 
 // `new Promise(resolve => setTimeout(resolve, ...))`: the promise's own resolver
 // is passed straight to setTimeout as its callback. The \1 backreference pins
@@ -28,38 +27,11 @@ const INLINE_SLEEP_PROMISE = /new Promise(?:<[^>]*>)?\(\s*(?:async\s+)?\(?\s*(\w
 // timeout-race helper (`return Bun.sleep(ms).then(...)`) is not a false match.
 const SLEEP_ALIAS = /function\s+\w+\s*\([^)]*\)\s*(?::[^{]+)?\{\s*return\s+Bun\.sleep\([^)]*\);?\s*\}/;
 
-async function walk(dir: string, out: string[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-			out.push(full);
-		}
-	}
-}
-
-async function sourceFiles(): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		try {
-			await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
-		} catch {
-			// Package without a src/ directory (assets-only) — nothing to scan.
-		}
-	}
-	return files;
-}
-
 describe("sleep convention source lock", () => {
 	it("no production source hand-rolls a wait with new Promise + setTimeout, or aliases Bun.sleep", async () => {
 		const inlineOffenders: string[] = [];
 		const aliasOffenders: string[] = [];
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-			const text = await readFile(file, "utf8");
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			if (INLINE_SLEEP_PROMISE.test(text)) inlineOffenders.push(rel);
 			if (SLEEP_ALIAS.test(text)) aliasOffenders.push(rel);
 		}

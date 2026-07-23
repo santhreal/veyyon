@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { ALNUM_RE, ALNUM_WORD_RE, hasAlphanumeric, NON_ALNUM_RUN_RE } from "../src/regex";
+import { collectPackageSources } from "./support/package-sources";
 
 // Repo-wide source lock: the plain alphanumeric character class
 // `[\p{L}\p{N}]` (letters + numbers, nothing else) has exactly ONE owner,
@@ -29,38 +28,11 @@ const GRANDFATHERED = new Set<string>([
 // this substring hard-codes the idiom the owner replaces.
 const PLAIN_ALNUM_CLASS = "\\p{L}\\p{N}]";
 
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
-
-async function walk(dir: string, out: string[]): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			// vendor: read-only snapshots. modes/ is scanned too since H1-12
-			// repointed history-search onto the owner; its only remaining raw
-			// unicode classes (magic-keyword-boundary) use a wider charset the
-			// plain-class signature below deliberately does not match.
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") {
-				continue;
-			}
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-			out.push(full);
-		}
-	}
-}
-
-async function sourceFiles(): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		try {
-			await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
-		} catch {
-			// Package without a src directory (assets-only) — nothing to scan.
-		}
-	}
-	return files;
-}
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources). modes/ is scanned too (not skipped) since
+// H1-12 repointed history-search onto the owner; its only remaining raw unicode
+// classes (magic-keyword-boundary) use a wider charset the plain-class signature
+// above deliberately does not match.
 
 describe("alphanumeric class owner", () => {
 	it("hasAlphanumeric is true only when a letter or number is present", () => {
@@ -107,10 +79,8 @@ describe("plain-alnum class source lock", () => {
 		const offenders: string[] = [];
 		const cleared: string[] = [];
 		const seen = new Set<string>();
-		for (const file of await sourceFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			if (rel === "utils/src/regex.ts") continue;
-			const text = await readFile(file, "utf8");
 			if (!text.includes(PLAIN_ALNUM_CLASS)) continue;
 			seen.add(rel);
 			if (!GRANDFATHERED.has(rel)) offenders.push(rel);

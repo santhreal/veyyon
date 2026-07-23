@@ -1,6 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import {
 	containsUrlScheme,
 	hasUriScheme,
@@ -12,6 +10,7 @@ import {
 	URL_SCHEME_PREFIX_RE,
 	urlScheme,
 } from "../src/url";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("trimTrailingSlashes", () => {
 	it("strips a single trailing slash", () => {
@@ -154,7 +153,8 @@ describe("hasUriScheme (scheme prefix, no // required)", () => {
 // catalog provider-models/ollama.ts) were converted when this lock landed, so
 // no grandfathered set — any new named local definition fails outright.
 // (Inline `.replace(/\/+$/, "")` sites are tracked separately in the ledger.)
-const PACKAGES_DIR = path.join(import.meta.dir, "../..");
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources).
 
 const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
 
@@ -205,37 +205,12 @@ const SCHEME_LITERAL = /\[a-z\]\[a-z0-9\+\.-\]\*\)?:\\\/\\\/\//;
 // hasUriScheme instead.
 const URI_LITERAL = /\[a-z\]\[a-z0-9\+\.-\]\*:\//;
 
-async function walk(dir: string, out: string[], includeTests = false): Promise<void> {
-	for (const entry of await readdir(dir, { withFileTypes: true })) {
-		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out, includeTests);
-		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
-			out.push(full);
-		}
-	}
-}
-
-// Collect every .ts under each package's test/ dir. Only the function-definition
-// checks (LOCAL_DEF, LOCAL_NORMALIZE_BASE_URL) run against these — a test helper
-// that reimplements trimTrailingSlashes/normalizeBaseUrl is a second definition
-// that drifts, and the src-only scan never saw it. The inline-pattern checks
-// (INLINE_STRIP/STRIPONE) stay src-only: those regexes legitimately match test
-// assertions constructing expected values, so scanning tests would false-flag.
-async function testFiles(): Promise<string[]> {
-	const files: string[] = [];
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		try {
-			await walk(path.join(PACKAGES_DIR, pkg.name, "test"), files, true);
-		} catch {
-			// Package without a test/ directory — nothing to scan.
-		}
-	}
-	return files;
-}
-
+// Only the function-definition checks (LOCAL_DEF, LOCAL_NORMALIZE_BASE_URL) run
+// against test files — a test helper that reimplements
+// trimTrailingSlashes/normalizeBaseUrl is a second definition that drifts, and
+// the src-only scan never saw it. The inline-pattern checks (INLINE_STRIP/
+// STRIPONE) stay src-only: those regexes legitimately match test assertions
+// constructing expected values, so scanning tests would false-flag.
 describe("trimTrailingSlashes source lock", () => {
 	it("no production source defines a local trimTrailingSlash variant outside utils/src/url.ts", async () => {
 		const offenders: string[] = [];
@@ -246,31 +221,20 @@ describe("trimTrailingSlashes source lock", () => {
 		const striponeSeen = new Set<string>();
 		const schemeOffenders: string[] = [];
 		const uriOffenders: string[] = [];
-		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			const files: string[] = [];
-			try {
-				await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
-			} catch {
-				// Package without a src/ directory (assets-only) — nothing to scan.
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (rel === "utils/src/url.ts") continue;
+			if (LOCAL_DEF.test(text)) offenders.push(rel);
+			if (LOCAL_NORMALIZE_BASE_URL.test(text)) normalizeOffenders.push(rel);
+			if (INLINE_STRIP.test(text)) {
+				inlineSeen.add(rel);
+				if (!INLINE_STRIP_GRANDFATHERED.has(rel)) inlineOffenders.push(rel);
 			}
-			for (const file of files) {
-				const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-				if (rel === "utils/src/url.ts") continue;
-				const text = await readFile(file, "utf8");
-				if (LOCAL_DEF.test(text)) offenders.push(rel);
-				if (LOCAL_NORMALIZE_BASE_URL.test(text)) normalizeOffenders.push(rel);
-				if (INLINE_STRIP.test(text)) {
-					inlineSeen.add(rel);
-					if (!INLINE_STRIP_GRANDFATHERED.has(rel)) inlineOffenders.push(rel);
-				}
-				if (STRIPONE.test(text)) {
-					striponeSeen.add(rel);
-					if (!STRIPONE_GRANDFATHERED.has(rel)) striponeOffenders.push(rel);
-				}
-				if (SCHEME_LITERAL.test(text)) schemeOffenders.push(rel);
-				if (URI_LITERAL.test(text)) uriOffenders.push(rel);
+			if (STRIPONE.test(text)) {
+				striponeSeen.add(rel);
+				if (!STRIPONE_GRANDFATHERED.has(rel)) striponeOffenders.push(rel);
 			}
+			if (SCHEME_LITERAL.test(text)) schemeOffenders.push(rel);
+			if (URI_LITERAL.test(text)) uriOffenders.push(rel);
 		}
 		const cleared = [
 			...[...INLINE_STRIP_GRANDFATHERED].filter(rel => !inlineSeen.has(rel)),
@@ -303,9 +267,7 @@ describe("trimTrailingSlashes source lock", () => {
 	it("no test file defines a local trimTrailingSlashes or normalizeBaseUrl — tests dogfood the owner too", async () => {
 		const defOffenders: string[] = [];
 		const normalizeOffenders: string[] = [];
-		for (const file of await testFiles()) {
-			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
-			const text = await readFile(file, "utf8");
+		for (const { rel, text } of await collectPackageSources({ dirs: ["test"], includeTests: true })) {
 			if (LOCAL_DEF.test(text)) defOffenders.push(rel);
 			if (LOCAL_NORMALIZE_BASE_URL.test(text)) normalizeOffenders.push(rel);
 		}
