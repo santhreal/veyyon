@@ -22,6 +22,7 @@ import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { planDeccaraFills } from "./deccara";
 import { isKeyRelease, matchesKey } from "./keys";
 import { LoopWatchdog } from "./loop-watchdog";
+import { parseSgrMouse } from "./mouse";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
 	encodeKittyDeleteImage,
@@ -88,6 +89,13 @@ const CURSOR_END_NO_SYNC = "";
 // coordinates so columns/rows past 223 are reported.
 const MOUSE_TRACKING_ON = "\x1b[?1000h\x1b[?1003h\x1b[?1006h";
 const MOUSE_TRACKING_OFF = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
+// Wheel/button-only tracking for scroll isolation: 1000h reports button
+// presses (the wheel arrives as buttons 64/65) and 1006h SGR coordinates,
+// skipping 1003h any-motion so idle pointer moves never flood the input
+// queue. Tradeoff against native scroll: drag-select becomes Shift+drag,
+// the standard convention in mouse-capturing TUIs.
+const MOUSE_WHEEL_TRACKING_ON = "\x1b[?1000h\x1b[?1006h";
+const MOUSE_WHEEL_TRACKING_OFF = "\x1b[?1006l\x1b[?1000l";
 const ALT_SCREEN_ENTER = "\x1b[?1049h";
 const ALT_SCREEN_EXIT = "\x1b[?1049l";
 
@@ -1009,6 +1017,22 @@ export class TUI extends Container {
 	// re-exposes scrolled-off rows (they cannot be un-scrolled without
 	// rewriting history); live rows repaint at fixed positions.
 	#windowTopRow = 0;
+	// Scroll isolation. When enabled, wheel events scroll the transcript
+	// region while the pinned footer (the composer zone) stays live at the
+	// viewport bottom — the opencode/grok-build model, against the engine's
+	// native-scrollback default where the whole window scrolls and the
+	// composer goes with it. #virtualScrollTop is the absolute frame row at
+	// the top of the frozen transcript region; null means following the live
+	// tail. Commits freeze while set (a chunk would scroll the terminal and
+	// destroy the frozen view); the accumulated rows backfill through the
+	// ordinary seam rewrite on resume.
+	#scrollIsolation = false;
+	#wheelTrackingActive = false;
+	#pinnedFooterRows = 0;
+	#virtualScrollTop: number | null = null;
+	// Wheel scroll step in rows per tick. Three rows reads as a calm scroll;
+	// one row is sluggish on a long transcript.
+	static readonly #WHEEL_SCROLL_ROWS = 3;
 	// Exactly what is painted on the screen rows (post-composite, prepared).
 	#previousWindow: string[] = [];
 	#nativeScrollbackLiveRegionStart: number | undefined;
@@ -1346,6 +1370,62 @@ export class TUI extends Container {
 	 */
 	setScrollbackRebuild(enabled: boolean): void {
 		this.#scrollbackRebuildEnabled = enabled;
+	}
+
+	/**
+	 * Enable or disable scroll isolation (default off). While enabled the TUI
+	 * captures wheel/button mouse reports: wheel up freezes the transcript
+	 * region on an older frame slice and wheel down walks it back, with the
+	 * pinned footer (see {@link setPinnedFooterRows}) live at the bottom. A
+	 * frozen view resumes following on wheel-down to the tail, on
+	 * {@link scrollToLiveTail} (the host calls it on submit), on resize/full
+	 * paints, and while an overlay is visible. Enabling mid-session writes
+	 * the wheel-tracking mode; disabling restores native terminal scrollback.
+	 */
+	setScrollIsolation(enabled: boolean): void {
+		if (this.#scrollIsolation === enabled) return;
+		this.#scrollIsolation = enabled;
+		this.#virtualScrollTop = null;
+		this.#syncWheelTracking();
+		this.requestRender();
+	}
+
+	get scrollIsolation(): boolean {
+		return this.#scrollIsolation;
+	}
+
+	/** Rows of live footer pinned at the frame tail during scroll isolation.
+	 * The host recomputes it whenever the composer zone's height changes. */
+	setPinnedFooterRows(rows: number): void {
+		this.#pinnedFooterRows = Math.max(0, rows);
+	}
+
+	/** True while the transcript region shows a frozen, scrolled-up slice. */
+	get virtualScrollActive(): boolean {
+		return this.#virtualScrollTop !== null;
+	}
+
+	/** New live rows below the frozen view, for the host's scroll indicator. */
+	get virtualScrollNewRows(): number {
+		if (this.#virtualScrollTop === null) return 0;
+		return Math.max(0, this.#windowTopRow - this.#virtualScrollTop);
+	}
+
+	/** Resume following the live tail (host calls this on message submit). */
+	scrollToLiveTail(): void {
+		if (this.#virtualScrollTop === null) return;
+		this.#virtualScrollTop = null;
+		this.requestRender();
+	}
+
+	/** Apply or tear down wheel/button mouse tracking for scroll isolation.
+	 * Alt-screen overlays own the full tracking set while active, so this is
+	 * a no-op then; the alt-exit path re-syncs. */
+	#syncWheelTracking(): void {
+		const want = this.#scrollIsolation && !this.#stopped && this.#hasEverRendered && !this.#altActive;
+		if (want === this.#wheelTrackingActive) return;
+		this.#wheelTrackingActive = want;
+		this.terminal.write(want ? MOUSE_WHEEL_TRACKING_ON : MOUSE_WHEEL_TRACKING_OFF);
 	}
 
 	getShowHardwareCursor(): boolean {
@@ -1759,6 +1839,7 @@ export class TUI extends Container {
 		}
 		this.#clearSixelProbeState();
 		this.#stopped = true;
+		this.#syncWheelTracking();
 		this.#watchdog.stop();
 		if (this.#renderTimer) {
 			this.#renderTimer.cancel();
@@ -2300,6 +2381,19 @@ export class TUI extends Container {
 		this.#lastFrameCostMs = this.#renderScheduler.now() - start;
 	}
 
+	/** Wheel step for scroll isolation: freeze/walk the transcript region.
+	 * Anchored to the live window top so the first wheel-up starts from the
+	 * currently visible tail; walking down to the tail resumes following. */
+	#handleIsolationWheel(direction: -1 | 1): void {
+		if (direction === -1) {
+			this.#virtualScrollTop = Math.max(0, (this.#virtualScrollTop ?? this.#windowTopRow) - TUI.#WHEEL_SCROLL_ROWS);
+		} else if (this.#virtualScrollTop !== null) {
+			const next = this.#virtualScrollTop + TUI.#WHEEL_SCROLL_ROWS;
+			this.#virtualScrollTop = next >= this.#windowTopRow ? null : next;
+		}
+		this.requestRender();
+	}
+
 	#handleInput(data: string): void {
 		// Ctrl+C/Esc use app-level double-press windows. Give those gestures one
 		// frame to drain queued input before an ordinary repaint; delaying every
@@ -2327,6 +2421,18 @@ export class TUI extends Container {
 		// Consume terminal cell size responses without blocking unrelated input.
 		if (this.#consumeCellSizeResponse(data)) {
 			return;
+		}
+
+		// Scroll isolation owns every SGR mouse report while wheel tracking is
+		// on and no alt-screen overlay is active: the wheel scrolls the frozen
+		// transcript region, and any other report is swallowed so clicks never
+		// leak raw SGR bytes into the focused component.
+		if (this.#wheelTrackingActive && !this.#altActive && data.startsWith("\x1b[<")) {
+			const event = parseSgrMouse(data);
+			if (event) {
+				if (event.wheel) this.#handleIsolationWheel(event.wheel);
+				return;
+			}
 		}
 
 		// Global debug key handler (Shift+Ctrl+D)
@@ -2727,6 +2833,9 @@ export class TUI extends Container {
 			setAltScreenActive(false);
 			this.#forgetHardwareCursorState();
 			this.#altActive = false;
+			// Scroll isolation re-arms its wheel/button tracking after the
+			// overlay's full tracking set is torn down.
+			this.#syncWheelTracking();
 			this.#altPreviousLines = [];
 			// A resize while on the alt buffer reflowed the terminal's saved
 			// normal screen; it no longer matches our accounting, so force the
@@ -2953,8 +3062,7 @@ export class TUI extends Container {
 			chunkTo = windowTop;
 		} else if (
 			frameLength <= this.#committedRows ||
-			(frameLength - this.#committedRows < height &&
-				cursorMarkers.some(marker => marker.row >= this.#committedRows))
+			(frameLength - this.#committedRows < height && cursorMarkers.some(marker => marker.row >= this.#committedRows))
 		) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
@@ -3000,6 +3108,25 @@ export class TUI extends Container {
 			}
 		}
 
+		// Scroll isolation composite: the transcript region shows a frozen
+		// slice anchored at #virtualScrollTop while the pinned footer stays
+		// live at the viewport bottom. Commits freeze (a chunk's scroll would
+		// destroy the frozen view); the backfill runs through the ordinary
+		// seam rewrite on resume. windowTop and the commit accounting keep
+		// tracking the live tail, so resume needs no reconciliation.
+		let virtualScrollSlice = false;
+		if (this.#virtualScrollTop !== null) {
+			const tailTop = Math.max(0, frameLength - height);
+			if (fullPaint || geometryChanged || hasVisibleOverlay || this.#virtualScrollTop >= tailTop) {
+				// Resume: gestures and full paints invalidate the slice, overlays
+				// take over the window, and walking down to the tail is following.
+				this.#virtualScrollTop = null;
+			} else {
+				virtualScrollSlice = true;
+				chunkTo = this.#committedRows;
+			}
+		}
+
 		// 5. Pick the visible cursor marker (bottom-most at or below the window
 		// top), prepare lines, and build the visible window slice.
 		let cursorPos: { row: number; col: number } | null = null;
@@ -3012,7 +3139,19 @@ export class TUI extends Container {
 		}
 		const frame = this.#prepareFrame(rawFrame, width);
 		let window: string[] = new Array(height);
-		for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
+		if (virtualScrollSlice) {
+			// Frozen transcript rows above, live footer rows below; the two
+			// slices never overlap because viewTop < frameLength - height.
+			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
+			const regionRows = height - footerRows;
+			const viewTop = this.#virtualScrollTop!;
+			for (let r = 0; r < height; r++) {
+				window[r] =
+					r < regionRows ? (frame[viewTop + r] ?? "") : (frame[frameLength - footerRows + (r - regionRows)] ?? "");
+			}
+		} else {
+			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
+		}
 		if (hasVisibleOverlay) {
 			window = this.#compositeOverlaysIntoWindow(window, width, height);
 			const overlayMarkers = this.#extractCursorMarkers(window);
@@ -3061,6 +3200,7 @@ export class TUI extends Container {
 			this.#committedPrefixAuditRows = Math.min(chunkTo, finalBoundary);
 			this.#clearScrollbackOnNextRender = false;
 			this.#hasEverRendered = true;
+			this.#syncWheelTracking();
 			this.#publishCommittedRows();
 			if (!firstPaint && frameLength > height) this.#armPostFullPaintSettle();
 			return;
@@ -3074,7 +3214,7 @@ export class TUI extends Container {
 			prevWindowTop,
 			prevHardwareCursorRow,
 			forceWindowRewrite: this.#forceViewportRepaintOnNextRender || (geometryChanged && resizeRepaintsInPlace()),
-			repaintVirtualScrollInPlace: hasVisibleOverlay,
+			repaintVirtualScrollInPlace: hasVisibleOverlay || virtualScrollSlice,
 			cursorTrackingLineCount,
 		});
 		for (let i = this.#committedPrefix.length; i < chunkTo; i++) {

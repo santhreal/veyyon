@@ -18,6 +18,10 @@
 
 - Fixed the editor ungluing from the viewport bottom when a tall transient block collapses without a committed-prefix resync (the ask dialog's inline "type your own" prompt shrinking back to the one-line editor). `windowTop` floored at `#committedRows` and stranded the editor mid-screen with a blank slab underneath. The tail re-anchor now fires whenever the live tail below the committed boundary underfills the viewport while the focused cursor sits in it, re-showing the frame tail and accepting a few duplicated rows in native history over a floating editor.
 
+### Added
+
+- Scroll isolation: `TUI.setScrollIsolation(enabled)` plus `setPinnedFooterRows(rows)` give the host an opencode/grok-style scroll model. While enabled the engine captures wheel/button mouse reports (1000h+1006h, never 1003h motion flood), wheel-up freezes the transcript region on an older frame slice, and the pinned footer stays live at the viewport bottom. Commits freeze while a frozen view is active so held rows backfill exactly once through the ordinary seam rewrite on resume; following resumes on wheel-down to the tail, `scrollToLiveTail()`, resize/full paints, and visible overlays. `virtualScrollActive`/`virtualScrollNewRows` feed the host's scroll indicator. Native terminal scrollback remains the default; enabling trades plain drag-select for Shift+drag.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
