@@ -69,6 +69,29 @@ describe("getLanguageFromPath", () => {
 		expect(getLanguageFromPath("/home/user/project/src/index.ts")).toBe("typescript");
 		expect(getLanguageFromPath("C:\\Users\\dev\\app\\main.rs")).toBe("rust");
 	});
+
+	it("detects Makefile as make by basename, in any directory and as GNUmakefile", () => {
+		// Regression: getLanguageFromPath used to slice the FULL path on its last
+		// dot, so an extensionless Makefile in a subdirectory produced a
+		// slash-containing key that never matched the table. A root `Makefile`
+		// worked only by accident of the whole-path fallback, subdir Makefiles
+		// returned undefined, and GNUmakefile was never recognized. detectLanguageId
+		// already handled all of these by basename; getLanguageFromPath now matches.
+		expect(getLanguageFromPath("Makefile")).toBe("make");
+		expect(getLanguageFromPath("makefile")).toBe("make");
+		expect(getLanguageFromPath("src/Makefile")).toBe("make");
+		expect(getLanguageFromPath("build/sub/Makefile")).toBe("make");
+		// A parent directory carrying a dot must not defeat the basename match.
+		expect(getLanguageFromPath("v1.2/Makefile")).toBe("make");
+		expect(getLanguageFromPath("GNUmakefile")).toBe("make");
+	});
+
+	it("keeps recognizing known extensions on files in dotted directories", () => {
+		// The same dotted-directory hazard must not affect real extensions: the
+		// last dot lives in the filename, so the extension still resolves.
+		expect(getLanguageFromPath("v1.2/main.rs")).toBe("rust");
+		expect(getLanguageFromPath("a.b.c/index.ts")).toBe("typescript");
+	});
 });
 
 describe("detectLanguageId", () => {

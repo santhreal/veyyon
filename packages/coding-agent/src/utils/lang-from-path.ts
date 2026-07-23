@@ -210,6 +210,12 @@ export function getLanguageFromPath(filePath: string): string | undefined {
 	if (baseName === ".emacs") return "emacs-lisp";
 	if (baseName === "justfile") return "just";
 	if (baseName === "cmakelists.txt") return "cmake";
+	// Match by basename, like detectLanguageId does. themeExtensionKey slices the
+	// FULL path on its last dot, so an extensionless file in a subdirectory (e.g.
+	// `src/Makefile`) yields a slash-containing string that never matches the
+	// table, and `GNUmakefile` is not a table key at all. Without this a Makefile
+	// was only recognized at the repo root, and never as GNUmakefile.
+	if (baseName === "makefile" || baseName === "gnumakefile") return "make";
 
 	const pair = EXTENSION_LANG[themeExtensionKey(filePath)];
 	if (pair) return pair[0];
