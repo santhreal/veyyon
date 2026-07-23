@@ -167,3 +167,52 @@ export async function ensureGlobalAgentsFile(): Promise<void> {
 export async function ensureProfileAgentsFileAt(agentDir: string): Promise<void> {
 	await ensureManagedAgentsFile(path.join(agentDir, "AGENTS.md"), PROFILE_AGENTS_GUIDANCE);
 }
+
+/** True if anything (a file, or even a broken symlink) already sits at `p`. */
+async function pathPresent(p: string): Promise<boolean> {
+	try {
+		// lstat, not stat: a symlink at this path counts as present even when its
+		// target is missing, matching the `wx` seed (which fails EEXIST on any
+		// existing link). So a user's symlinked AGENTS.md is never seeded over.
+		await fs.lstat(p);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Seed the ACTIVE profile's `AGENTS.md` on startup when the profile carries no
+ * instruction file at all.
+ *
+ * {@link ensureProfileAgentsFileAt} runs only at profile *creation*, so a
+ * profile that predates that code (or the implicit `default`) would never get a
+ * persistent, update-proof file to edit. That gap is what pushed a user to edit
+ * an AGENTS.md *inside* the `~/.veyyon/src` checkout, which every source update
+ * reset away. Back-filling on startup gives every profile a real file outside
+ * the checkout.
+ *
+ * Only seeds when NONE of the four ladder candidates
+ * ({@link getProfileAgentsCandidates}) exist. Seeding the top-priority
+ * `<agentDir>/AGENTS.md` while the user keeps real instructions in a
+ * lower-priority `agent.md` would silently shadow them (the loader reads the
+ * first candidate that exists), so an existing lower-priority file suppresses
+ * the seed instead.
+ */
+export async function ensureActiveProfileAgentsFile(): Promise<void> {
+	for (const candidate of getProfileAgentsCandidates()) {
+		if (await pathPresent(candidate)) return;
+	}
+	await ensureProfileAgentsFileAt(getAgentDir());
+}
+
+/**
+ * Seed both managed instruction files veyyon owns at startup: the global
+ * cross-profile `~/.veyyon/AGENTS.md` and the active profile's `AGENTS.md`. One
+ * call so the boot path (system-prompt.ts) can never drift into seeding one and
+ * forgetting the other. Both are no-ops once their files exist.
+ */
+export async function ensureManagedAgentsFilesOnStartup(): Promise<void> {
+	await ensureGlobalAgentsFile();
+	await ensureActiveProfileAgentsFile();
+}

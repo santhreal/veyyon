@@ -271,9 +271,73 @@ install_bun() {
 VEYYON_SRC_DIR="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
 REPO_URL="https://github.com/${REPO}.git"
 
+# Commit any uncommitted local edits in a source checkout onto a durable backup
+# branch BEFORE the update resets over them. The update path runs
+# `git reset --hard origin/<ref>`, which would otherwise silently discard a
+# user's local edits to a tracked file (this is how an edited ~/.veyyon/src
+# AGENTS.md kept vanishing on every update). Preserving-then-resetting means the
+# installer never destroys work it did not create: the edits live on branch
+# `veyyon-local-<stamp>` and are printed for recovery.
+#
+# Uses `git commit-tree` so the backup commit is built from the staged tree
+# without moving HEAD or the current branch — the checkout is left exactly as it
+# was for the reset that follows. `git add -A` honors .gitignore, so build
+# artifacts (node_modules, dist) are not swept into the backup, only real edits.
+# Identity is forced inline so this works in a checkout with no configured git
+# user. Returns non-zero if preservation cannot complete, so the caller can
+# refuse to reset rather than risk destroying the changes (fail closed).
+preserve_local_src_changes() {
+    src="${1:-$VEYYON_SRC_DIR}"
+    [ -d "$src/.git" ] || return 0
+    [ -n "$( cd "$src" 2>/dev/null && git status --porcelain 2>/dev/null )" ] || return 0
+    stamp=$(date -u +%Y%m%d-%H%M%S)
+    branch="veyyon-local-$stamp"
+    (
+        cd "$src" || exit 1
+        git add -A || exit 1
+        tree=$(git write-tree) || exit 1
+        parent=$(git rev-parse -q --verify HEAD 2>/dev/null || true)
+        msg="veyyon: preserve local changes before update ($stamp)"
+        if [ -n "$parent" ]; then
+            commit=$(git -c user.name="veyyon-installer" -c user.email="installer@veyyon.dev" \
+                commit-tree "$tree" -p "$parent" -m "$msg") || exit 1
+        else
+            commit=$(git -c user.name="veyyon-installer" -c user.email="installer@veyyon.dev" \
+                commit-tree "$tree" -m "$msg") || exit 1
+        fi
+        git branch "$branch" "$commit" || exit 1
+    ) || { warn "could not preserve local changes in $src; refusing to reset over them"; return 1; }
+    warn "preserved your local changes on branch '$branch'"
+    warn "recover them with: git -C $src checkout $branch"
+    return 0
+}
+
+# Move an existing tree aside instead of deleting it. The clone path used to
+# `rm -rf "$VEYYON_SRC_DIR"` before cloning, which destroys any files a user put
+# there (or a partial/corrupt checkout with no .git). Moving to
+# `<dir>.bak-<stamp>` preserves everything and lets the fresh clone proceed.
+# An empty directory is simply removed (nothing to preserve). Fail closed: if
+# the move cannot happen, die rather than fall back to a destructive delete.
+move_aside_existing_src() {
+    src="${1:-$VEYYON_SRC_DIR}"
+    [ -e "$src" ] || return 0
+    if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+        rmdir "$src" 2>/dev/null || true
+        return 0
+    fi
+    stamp=$(date -u +%Y%m%d-%H%M%S)
+    backup="$src.bak-$stamp"
+    mv "$src" "$backup" || die "refusing to clone: could not move existing $src aside to $backup"
+    warn "moved existing $src aside to $backup (nothing was deleted)"
+}
+
 fetch_source_tree() {
     if [ -d "$VEYYON_SRC_DIR/.git" ]; then
         say "updating veyyon source in $VEYYON_SRC_DIR..."
+        # Commit local edits to a backup branch before resetting. If that fails,
+        # refuse the update rather than destroy uncommitted work.
+        preserve_local_src_changes "$VEYYON_SRC_DIR" \
+            || die "refusing to update: could not preserve local changes in $VEYYON_SRC_DIR"
         ( cd "$VEYYON_SRC_DIR" && git fetch --tags --force origin ) || die "failed to update $VEYYON_SRC_DIR"
         ref="$REF"
         if [ -z "$ref" ]; then
@@ -285,7 +349,8 @@ fetch_source_tree() {
     else
         say "cloning veyyon source into $VEYYON_SRC_DIR..."
         mkdir -p "$(dirname "$VEYYON_SRC_DIR")"
-        rm -rf "$VEYYON_SRC_DIR"
+        # Never rm -rf an existing tree: move it aside so nothing is lost.
+        move_aside_existing_src "$VEYYON_SRC_DIR"
         if [ -n "$REF" ]; then
             if git clone --depth 1 --branch "$REF" "$REPO_URL" "$VEYYON_SRC_DIR" >/dev/null 2>&1; then :; else
                 git clone "$REPO_URL" "$VEYYON_SRC_DIR" || die "failed to clone $REPO_URL"
