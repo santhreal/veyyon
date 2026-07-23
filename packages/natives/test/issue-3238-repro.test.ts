@@ -48,7 +48,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 			env: { [VARIANT_CACHE_ENV_KEY]: "modern" },
 			detectAvx2: () => {
 				detectorCalls += 1;
-				return false;
+				return "unsupported";
 			},
 		});
 		expect(result.variant).toBe("modern");
@@ -63,7 +63,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 			arch: "x64",
 			override: null,
 			env: {},
-			detectAvx2: () => true,
+			detectAvx2: () => "supported",
 		});
 		expect(result.variant).toBe("modern");
 		expect(result.source).toBe("detect");
@@ -75,17 +75,21 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 		expect(result.cacheEnvValue).toBe("modern");
 	});
 
-	it("falls through to baseline when detection fails, still emitting a cache hint", () => {
+	it("caches baseline when the CPU GENUINELY lacks AVX2 (probe ran, said no)", () => {
+		// A real non-AVX2 CPU: the probe executed and reported absent. Caching
+		// baseline is correct here — re-detecting on every worker is wasted work
+		// because the answer cannot change for this hardware.
 		const result = selectCpuVariant({
 			arch: "x64",
 			override: null,
 			env: {},
-			detectAvx2: () => false,
+			detectAvx2: () => "unsupported",
 		});
 		expect(result.variant).toBe("baseline");
 		expect(result.source).toBe("detect");
 		expect(result.cacheEnvKey).toBe(VARIANT_CACHE_ENV_KEY);
 		expect(result.cacheEnvValue).toBe("baseline");
+		expect(result.detectionFailed).toBeUndefined();
 	});
 
 	it("honors VEYYON_NATIVE_VARIANT override above both cache and detection", () => {
@@ -96,7 +100,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 			env: { [VARIANT_CACHE_ENV_KEY]: "modern" },
 			detectAvx2: () => {
 				detectorCalls += 1;
-				return true;
+				return "supported";
 			},
 		});
 		expect(result.variant).toBe("baseline");
@@ -113,7 +117,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 			arch: "x64",
 			override: "garbage" as unknown as "modern",
 			env: { [VARIANT_CACHE_ENV_KEY]: "also-garbage" },
-			detectAvx2: () => true,
+			detectAvx2: () => "supported",
 		});
 		expect(result.variant).toBe("modern");
 		expect(result.source).toBe("detect");
@@ -125,7 +129,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 				arch,
 				override: null,
 				env: {},
-				detectAvx2: () => true,
+				detectAvx2: () => "supported",
 			});
 			expect(result.variant).toBeNull();
 			expect(result.source).toBe("non-x64");
@@ -138,16 +142,66 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 		// then searched only [baseline, default]. With the cache populated by
 		// the main thread, the worker resolves modern and the candidate list
 		// regains the modern filename — the same on-disk artifact the build
-		// just produced.
+		// just produced. `detectAvx2: () => "unknown"` models the worker whose
+		// sysctl spawn failed; the cache hit must win over that failed probe.
 		const variant = selectCpuVariant({
 			arch: "x64",
 			override: null,
 			env: { [VARIANT_CACHE_ENV_KEY]: "modern" },
-			detectAvx2: () => false, // simulate the failing worker detector
+			detectAvx2: () => "unknown", // failing worker detector: could not run the probe
 		}).variant;
 		expect(variant).toBe("modern");
 		const filenames = getAddonFilenames({ tag: "darwin-x64", arch: "x64", variant });
 		expect(filenames[0]).toBe("veyyon_natives.darwin-x64-modern.node");
 		expect(filenames).toContain("veyyon_natives.darwin-x64-baseline.node");
+	});
+});
+
+/**
+ * The Law-10 core of the #3238 fix: a probe that COULD NOT RUN ("unknown") must
+ * never be silently equated with "the CPU has no AVX2" ("unsupported"). The old
+ * boolean detector returned `false` for both, so an AVX2 machine whose sysctl
+ * spawn failed in a worker got the slower `baseline` binary — a correct-but-
+ * slower fallback (Law 10 speed bound) — AND that guessed verdict was cached
+ * into `process.env`, poisoning every child process. These tests pin the
+ * distinction on the pure selector.
+ */
+describe("AVX2 detection tri-state: unknown never poisons the cache", () => {
+	it("does NOT cache when detection failed, so a later context can still detect", () => {
+		// The critical property: an "unknown" probe picks the ABI-safe baseline
+		// but leaves no cache entry. If it cached baseline here, a Bun worker or
+		// subprocess that inherits process.env would be permanently pinned to the
+		// slow variant even on a genuine AVX2 CPU.
+		const result = selectCpuVariant({
+			arch: "x64",
+			override: null,
+			env: {},
+			detectAvx2: () => "unknown",
+		});
+		expect(result.variant).toBe("baseline"); // ABI-safe: never SIGILL a non-AVX2 CPU
+		expect(result.source).toBe("detect-unknown");
+		expect(result.detectionFailed).toBe(true);
+		expect(result.cacheEnvKey).toBeUndefined(); // <-- must not persist the guess
+		expect(result.cacheEnvValue).toBeUndefined();
+	});
+
+	it("distinguishes genuine-absent (cached) from probe-failed (uncached) at the verdict level", () => {
+		const genuine = selectCpuVariant({ arch: "x64", override: null, env: {}, detectAvx2: () => "unsupported" });
+		const failed = selectCpuVariant({ arch: "x64", override: null, env: {}, detectAvx2: () => "unknown" });
+		// Both land on baseline, but only the genuine verdict is authoritative
+		// enough to cache and inherit; the failed probe is flagged, not cached.
+		expect(genuine.variant).toBe("baseline");
+		expect(failed.variant).toBe("baseline");
+		expect(genuine.cacheEnvKey).toBe(VARIANT_CACHE_ENV_KEY);
+		expect(failed.cacheEnvKey).toBeUndefined();
+		expect(genuine.detectionFailed).toBeUndefined();
+		expect(failed.detectionFailed).toBe(true);
+	});
+
+	it("a genuine 'supported' verdict still yields modern and caches it", () => {
+		const result = selectCpuVariant({ arch: "x64", override: null, env: {}, detectAvx2: () => "supported" });
+		expect(result.variant).toBe("modern");
+		expect(result.detectionFailed).toBeUndefined();
+		expect(result.cacheEnvValue).toBe("modern");
 	});
 });
