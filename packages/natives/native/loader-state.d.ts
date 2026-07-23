@@ -73,6 +73,17 @@ export function extractEmbeddedAddonArchive(input: ExtractEmbeddedAddonArchiveIn
 /** Tri-state AVX2 detection: the probe ran and found it, ran and didn't, or could not run. */
 export type Avx2Support = "supported" | "unsupported" | "unknown";
 
+/** Injectable probes for {@link classifyAvx2Support} so every platform branch is testable without the real host. */
+export interface Avx2Probes {
+	platform: NodeJS.Platform;
+	arch: string;
+	readCpuInfo: () => string | null;
+	runCommand: (command: string, args: string[]) => string | null;
+}
+
+/** Pure, side-effect-free AVX2 classification from injected probes (the runtime twin of scripts/host-detect's classifier). */
+export function classifyAvx2Support(probes: Avx2Probes): Avx2Support;
+
 export interface SelectCpuVariantInput {
 	arch: string;
 	override: "modern" | "baseline" | null | undefined;
