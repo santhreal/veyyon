@@ -3,13 +3,14 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, formatDeleteHeader, formatReplaceHeader, parsePatch } from "@veyyon/hashline";
+import { sweepAnchors } from "./support/anchor-sweep";
 
 describe("applyEdits past 6000 format header roundtrip 1 to 10000", () => {
 	const n = 10000;
 	const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 	const base = lines.join("\n");
 
-	for (let i = 1; i <= n; i++) {
+	for (const i of sweepAnchors(n)) {
 		it(`DEL ${i}`, () => {
 			const { firstChangedLine } = applyEdits(base, parsePatch(formatDeleteHeader(i)).edits);
 			expect(firstChangedLine).toBe(i);

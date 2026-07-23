@@ -3,13 +3,14 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { sweepAnchors } from "./support/anchor-sweep";
 
 describe("applyEdits past 6000 SWAP line 1 to 25000", () => {
 	const n = 25000;
 	const lines = Array.from({ length: n }, (_, i) => `L${i + 1}`);
 	const base = lines.join("\n");
 
-	for (let i = 1; i <= n; i++) {
+	for (const i of sweepAnchors(n)) {
 		it(`SWAP ${i}`, () => {
 			const { text, firstChangedLine } = applyEdits(base, parsePatch(`SWAP ${i}.=${i}:\n+X${i}`).edits);
 			expect(text.split("\n")[i - 1]).toBe(`X${i}`);

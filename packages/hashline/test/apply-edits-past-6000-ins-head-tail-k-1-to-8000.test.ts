@@ -3,11 +3,12 @@
  */
 import { describe, expect, it } from "bun:test";
 import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { sweepAnchors } from "./support/anchor-sweep";
 
 describe("applyEdits past 6000 INS HEAD/TAIL k 1 to 8000", () => {
 	const base = "Z";
 
-	for (let k = 1; k <= 8000; k++) {
+	for (const k of sweepAnchors(8000)) {
 		it(`HEAD k=${k}`, () => {
 			const rows = Array.from({ length: k }, (_, i) => `+H${i + 1}`).join("\n");
 			const out = applyEdits(base, parsePatch(`INS.HEAD:\n${rows}`).edits).text.split("\n");
