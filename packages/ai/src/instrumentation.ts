@@ -261,6 +261,12 @@ export interface AssistantTurnMetrics {
 	cacheWriteTokens?: number;
 	/** Reasoning/thinking tokens included in `outputTokens`, when the provider reports them. */
 	reasoningTokens?: number;
+	/** Ratio of input tokens served from the prompt cache (0.0 - 1.0). */
+	cacheHitRatio?: number;
+	/** Whether a prompt cache bust occurred on this turn. */
+	isCacheBust?: boolean;
+	/** Number of prompt cache tokens lost on this turn due to cache bust. */
+	cacheBustDeltaTokens?: number;
 	/** Upstream model provider that actually served the turn, when distinct from the gateway. */
 	upstreamProvider?: string;
 }
@@ -279,9 +285,9 @@ export interface AssistantTurnMetricsInput {
 	status: AssistantTurnStatus;
 	ttftMs?: number;
 	usage?: Usage;
+	previousCacheReadTokens?: number;
 	upstreamProvider?: string;
 }
-
 /**
  * Build the level-gated per-turn metrics record, or `undefined` at `off`. This
  * is the single mapping from level to captured fields for a model turn: the
@@ -328,6 +334,18 @@ export function captureAssistantTurnMetrics(input: AssistantTurnMetricsInput): A
 			metrics.cacheReadTokens = usage.cacheRead;
 			metrics.cacheWriteTokens = usage.cacheWrite;
 			if (usage.reasoningTokens !== undefined) metrics.reasoningTokens = usage.reasoningTokens;
+			const totalInput = (usage.cacheRead ?? 0) + (usage.input ?? 0);
+			if (totalInput > 0) {
+				metrics.cacheHitRatio = (usage.cacheRead ?? 0) / totalInput;
+			}
+			if (
+				input.previousCacheReadTokens !== undefined &&
+				input.previousCacheReadTokens > 1000 &&
+				(usage.cacheRead ?? 0) < input.previousCacheReadTokens * 0.5
+			) {
+				metrics.isCacheBust = true;
+				metrics.cacheBustDeltaTokens = input.previousCacheReadTokens - (usage.cacheRead ?? 0);
+			}
 		}
 		if (input.upstreamProvider !== undefined) metrics.upstreamProvider = input.upstreamProvider;
 	}
