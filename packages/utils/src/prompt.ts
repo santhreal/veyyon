@@ -11,11 +11,8 @@ export interface PromptFormatOptions {
 	normalizeRfc2119?: boolean;
 }
 
-// Opening XML tag (not self-closing, not closing)
-const OPENING_XML = /^<([a-z_-]+)(?:\s+[^>]*)?>$/;
-
 /**
- * Closing XML tag matcher, manual equivalent of `/^<\/([a-z_-]+)>$/` — avoids a
+ * Closing XML tag matcher, manual equivalent of `/^<\/([a-z_-]+)>$/`, avoids a
  * RegExp exec (and match array allocation) per `<`-prefixed line. Caller
  * guarantees `s` starts `</`.
  */
@@ -29,31 +26,6 @@ function closingTagName(s: string): string | null {
 	return s.slice(2, n - 1);
 }
 
-/**
- * Manual equivalent of {@link OPENING_XML}. Caller guarantees `s` starts with
- * `<` but not `</`. Falls back to the regex when the char after the tag name
- * is non-ASCII (possible unicode whitespace).
- */
-function openingTagName(s: string): string | null {
-	const n = s.length;
-	if (n < 3 || s.charCodeAt(n - 1) !== 62 /* > */) return null;
-	let j = 1;
-	while (j < n - 1) {
-		const c = s.charCodeAt(j);
-		if ((c >= 97 /* a */ && c <= 122) /* z */ || c === 45 /* - */ || c === 95 /* _ */) j++;
-		else break;
-	}
-	if (j === 1) return null;
-	if (j === n - 1) return s.slice(1, j); // `<tag>`
-	const c = s.charCodeAt(j);
-	if (c !== 32 /* space */ && c !== 9 /* tab */) {
-		if (c < 128) return null;
-		const match = OPENING_XML.exec(s);
-		return match ? match[1] : null;
-	}
-	// `\s+[^>]*>$` ⇔ no further `>` before the final char.
-	return s.indexOf(">", j + 1) === n - 1 ? s.slice(1, j) : null;
-}
 // Table row
 const TABLE_ROW = /^\|.*\|$/;
 // Table separator (|---|---|)
@@ -201,7 +173,6 @@ export function format(content: string, options: PromptFormatOptions = {}): stri
 	let inCodeBlock = false;
 
 	const htmlCommentState: HtmlCommentState = { inHtmlComment: false };
-	const topLevelTags: string[] = [];
 
 	for (let i = 0; i < lines.length; i++) {
 		const raw = lines[i];
@@ -250,17 +221,11 @@ export function format(content: string, options: PromptFormatOptions = {}): stri
 		let isClosingLine = false;
 		if (first === 60 /* < */) {
 			const trimmedStart = s === 0 ? line : line.slice(s);
-			if (trimmedStart.charCodeAt(1) === 47 /* / */) {
-				const tagName = closingTagName(trimmedStart);
-				if (tagName !== null) {
-					isClosingLine = true;
-					if (topLevelTags.length > 0 && topLevelTags[topLevelTags.length - 1] === tagName) {
-						topLevelTags.pop();
-					}
-				}
-			} else if (s === 0 && !trimmedStart.endsWith("/>")) {
-				const tagName = openingTagName(trimmedStart);
-				if (tagName !== null) topLevelTags.push(tagName);
+			// A top-of-line closing tag (`</name>`) lets the blank-pop below tighten
+			// `body\n\n</tag>` to `body\n</tag>`. This is not nesting-aware: the pop
+			// fires for any closing tag (even an unbalanced one) at any depth.
+			if (trimmedStart.charCodeAt(1) === 47 /* / */ && closingTagName(trimmedStart) !== null) {
+				isClosingLine = true;
 			}
 		} else if (first === 124 /* | */) {
 			const trimmedStart = s === 0 ? line : line.slice(s);
