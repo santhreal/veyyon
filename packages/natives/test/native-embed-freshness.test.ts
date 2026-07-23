@@ -144,8 +144,15 @@ describe("findStaleAddon on adversarial fakes", () => {
 		];
 		const stale = findStaleAddon(addons, "1.0.18");
 		expect(stale?.filename).toBe("veyyon_natives.linux-x64-baseline.node");
-		expect(stale?.expected).toBe("__veyyonNativesV1_0_19");
-		expect(stale?.builtFor).toEqual(["__veyyonNativesV1_0_17"]);
+		// Derive the sentinel strings from versionSentinelExportFor rather than
+		// hardcoding the literal "__veyyonNativesV…": a raw literal here is a
+		// FIXTURE, but the release bump's sentinel rewrite (sd -F on the previous
+		// release's literal) would clobber it to the new version and brick this
+		// test on every release (it did — v1.0.19 rewrote 1_0_18 -> 1_0_19 and the
+		// native bucket went red, blocking the publish). Function calls carry no
+		// literal for the rewrite to match.
+		expect(stale?.expected).toBe(versionSentinelExportFor("1.0.18"));
+		expect(stale?.builtFor).toEqual([versionSentinelExportFor("1.0.17")]);
 	});
 
 	it("flags a binary with no version sentinel at all", () => {
@@ -160,20 +167,20 @@ describe("staleAddonMessage", () => {
 	it("names the stale file, the version it was built for, and the version expected", () => {
 		const stale = {
 			filename: "veyyon_natives.linux-x64-baseline.node",
-			expected: "__veyyonNativesV1_0_19",
-			builtFor: ["__veyyonNativesV1_0_17"],
+			expected: versionSentinelExportFor("1.0.18"),
+			builtFor: [versionSentinelExportFor("1.0.17")],
 		};
 		const message = staleAddonMessage(stale, "1.0.18");
 		expect(message).toContain("Refusing to embed a stale native addon");
 		expect(message).toContain("veyyon_natives.linux-x64-baseline.node");
-		expect(message).toContain("__veyyonNativesV1_0_17");
+		expect(message).toContain(versionSentinelExportFor("1.0.17"));
 		expect(message).toContain("1.0.18");
-		expect(message).toContain("__veyyonNativesV1_0_19");
+		expect(message).toContain(versionSentinelExportFor("1.0.18"));
 		expect(message).toContain("bun --cwd=packages/natives run build");
 	});
 
 	it("says 'no version sentinel' when the binary carried none", () => {
-		const stale = { filename: "veyyon_natives.darwin-arm64.node", expected: "__veyyonNativesV1_0_19", builtFor: [] };
+		const stale = { filename: "veyyon_natives.darwin-arm64.node", expected: versionSentinelExportFor("1.0.18"), builtFor: [] };
 		expect(staleAddonMessage(stale, "1.0.18")).toContain("no version sentinel");
 	});
 });
