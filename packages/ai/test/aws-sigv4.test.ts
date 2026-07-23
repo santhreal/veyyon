@@ -93,4 +93,30 @@ describe("aws-sigv4 signRequest", () => {
 		// Token must appear in SignedHeaders too (it's signed).
 		expect(signed.authorization).toContain("x-amz-security-token");
 	});
+
+	test("a request header named after a prototype member is still signed, not skipped", async () => {
+		// Regression: the unsignable-header check read `UNSIGNABLE[lk]` directly.
+		// `UNSIGNABLE` is a plain object, so a header whose lowercased name is
+		// `constructor` resolved the inherited Object.prototype.constructor (truthy)
+		// and was wrongly dropped from the signed set. Object.hasOwn fixes it: only
+		// the real unsignable names are skipped, and a `constructor` header is signed
+		// like any other custom header while a genuine unsignable header
+		// (`connection`) stays excluded.
+		const signed = await signRequest({
+			method: "GET",
+			host: "example.amazonaws.com",
+			path: "/",
+			body: new Uint8Array(0),
+			region: REGION,
+			service: SERVICE,
+			credentials: CREDS,
+			date: DATE,
+			headers: { constructor: "custom-value", connection: "keep-alive", "x-custom": "y" },
+		});
+		const signedHeaders = /SignedHeaders=([^,]+)/.exec(signed.authorization)?.[1]?.split(";") ?? [];
+		expect(signedHeaders).toContain("constructor");
+		expect(signedHeaders).toContain("x-custom");
+		// `connection` is genuinely unsignable and must never enter SignedHeaders.
+		expect(signedHeaders).not.toContain("connection");
+	});
 });
