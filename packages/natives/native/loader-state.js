@@ -714,6 +714,76 @@ function initLoaderContext() {
 	};
 }
 
+/**
+ * Memoized native bindings. The first `native()` call runs the full
+ * `loadNative()` pipeline (variant detection, extraction, dlopen, validation);
+ * every later call returns the same cached object. This is the single load
+ * point every lazy export routes through.
+ * @type {Record<string, unknown> | undefined}
+ */
+let loadedNativeBindings;
+
+/** Load the native addon once (memoized), or throw loudly if it cannot load. */
+export function native() {
+	if (loadedNativeBindings === undefined) {
+		loadedNativeBindings = loadNative();
+	}
+	return loadedNativeBindings;
+}
+
+/**
+ * Lazy function export. Returns a wrapper that resolves its native binding on
+ * FIRST CALL, so importing `native/index.js` for its types, enum values, or a
+ * bare function reference never triggers `loadNative()`. Pure registry / schema
+ * / doc-truth imports whose transitive graph merely mentions `@veyyon/natives`
+ * therefore need no built `.node` (DOCS-NATIVES-1). The first ACTUAL call still
+ * loads-or-throws loudly — this is deferral, never a silent fallback (Law 10).
+ *
+ * The resolved function is cached in the closure after the first call, so the
+ * steady-state cost of a hot native call (countTokens, highlightCode, grep) is
+ * just the argument spread — no per-call `native()` check or property lookup.
+ * @param {string} name
+ * @returns {(...args: unknown[]) => unknown}
+ */
+export function lazyNativeFn(name) {
+	/** @type {((...args: unknown[]) => unknown) | undefined} */
+	let fn;
+	return (...args) => {
+		if (fn === undefined) {
+			const resolved = native()[name];
+			if (typeof resolved !== "function") {
+				throw new TypeError(`@veyyon/natives export "${name}" is not a native function`);
+			}
+			fn = /** @type {(...args: unknown[]) => unknown} */ (resolved);
+		}
+		return fn(...args);
+	};
+}
+
+/**
+ * Lazy class export. A Proxy that defers `loadNative()` to the first `new`,
+ * static-member access, or `instanceof` check, then forwards to the real native
+ * class. Preserves `new X(...)` (instances carry the real prototype, so
+ * `instanceof` and every method work), `X.staticMember`, and `"m" in X`.
+ * @param {string} name
+ * @returns {new (...args: unknown[]) => unknown}
+ */
+export function lazyNativeClass(name) {
+	return /** @type {new (...args: unknown[]) => unknown} */ (
+		new Proxy(function () {}, {
+			construct(_target, args) {
+				return Reflect.construct(/** @type {new (...a: unknown[]) => object} */ (native()[name]), args);
+			},
+			get(_target, prop, receiver) {
+				return Reflect.get(/** @type {object} */ (native()[name]), prop, receiver);
+			},
+			has(_target, prop) {
+				return Reflect.has(/** @type {object} */ (native()[name]), prop);
+			},
+		})
+	);
+}
+
 export function loadNative() {
 	startupMarker("native:loadNative:start");
 	const ctx = initLoaderContext();

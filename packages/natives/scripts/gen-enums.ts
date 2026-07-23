@@ -83,18 +83,23 @@ function buildGeneratedBlock(dts: string): string {
 		throw new Error("No public symbols found in index.d.ts — check napi build output");
 	}
 
+	// Classes and functions are LAZY accessors (lazyNativeClass / lazyNativeFn),
+	// not eager `nativeBindings.X` reads, so importing `native/index.js` never
+	// calls `loadNative()` — pure registry/schema/doc-truth imports stay
+	// native-free (DOCS-NATIVES-1). See the head of `native/index.js` for the
+	// deferral contract. Enums stay inline literals (no native access).
 	const lines: string[] = [];
 	if (classes.length > 0) {
 		lines.push("// classes");
 		for (const name of classes) {
-			lines.push(`export const ${name} = nativeBindings.${name};`);
+			lines.push(`export const ${name} = lazyNativeClass(${JSON.stringify(name)});`);
 		}
 	}
 	if (functions.length > 0) {
 		if (lines.length > 0) lines.push("");
 		lines.push("// functions");
 		for (const name of functions) {
-			lines.push(`export const ${name} = nativeBindings.${name};`);
+			lines.push(`export const ${name} = lazyNativeFn(${JSON.stringify(name)});`);
 		}
 	}
 	if (enums.length > 0) {

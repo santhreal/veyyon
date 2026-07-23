@@ -1,0 +1,455 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/decay",
+ "function": "weibullDecayFactor12",
+ "vectors": [
+  {
+   "name": "decay: general at 0h",
+   "input": [
+    0,
+    "general"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: general at -5h",
+   "input": [
+    -5,
+    "general"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: general at 1h",
+   "input": [
+    1,
+    "general"
+   ],
+   "expected": 0.99406529937
+  },
+  {
+   "name": "decay: general at 24h",
+   "input": [
+    24,
+    "general"
+   ],
+   "expected": 0.86687789975
+  },
+  {
+   "name": "decay: general at 168h",
+   "input": [
+    168,
+    "general"
+   ],
+   "expected": 0.367879441171
+  },
+  {
+   "name": "decay: general at 720h",
+   "input": [
+    720,
+    "general"
+   ],
+   "expected": 0.0137637867331
+  },
+  {
+   "name": "decay: general at 8760h",
+   "input": [
+    8760,
+    "general"
+   ],
+   "expected": 2.26279323768e-23
+  },
+  {
+   "name": "decay: fact at 0h",
+   "input": [
+    0,
+    "fact"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: fact at -5h",
+   "input": [
+    -5,
+    "fact"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: fact at 1h",
+   "input": [
+    1,
+    "fact"
+   ],
+   "expected": 0.99483571535
+  },
+  {
+   "name": "decay: fact at 24h",
+   "input": [
+    24,
+    "fact"
+   ],
+   "expected": 0.936307170378
+  },
+  {
+   "name": "decay: fact at 168h",
+   "input": [
+    168,
+    "fact"
+   ],
+   "expected": 0.731862223681
+  },
+  {
+   "name": "decay: fact at 720h",
+   "input": [
+    720,
+    "fact"
+   ],
+   "expected": 0.367879441171
+  },
+  {
+   "name": "decay: fact at 8760h",
+   "input": [
+    8760,
+    "fact"
+   ],
+   "expected": 0.000622743831337
+  },
+  {
+   "name": "decay: request at 0h",
+   "input": [
+    0,
+    "request"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: request at -5h",
+   "input": [
+    -5,
+    "request"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: request at 1h",
+   "input": [
+    1,
+    "request"
+   ],
+   "expected": 0.998364517609
+  },
+  {
+   "name": "decay: request at 24h",
+   "input": [
+    24,
+    "request"
+   ],
+   "expected": 0.824935489929
+  },
+  {
+   "name": "decay: request at 168h",
+   "input": [
+    168,
+    "request"
+   ],
+   "expected": 0.0283189088411
+  },
+  {
+   "name": "decay: request at 720h",
+   "input": [
+    720,
+    "request"
+   ],
+   "expected": 1.84672666241e-14
+  },
+  {
+   "name": "decay: request at 8760h",
+   "input": [
+    8760,
+    "request"
+   ],
+   "expected": 0
+  },
+  {
+   "name": "decay: profile at 0h",
+   "input": [
+    0,
+    "profile"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: profile at -5h",
+   "input": [
+    -5,
+    "profile"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: profile at 1h",
+   "input": [
+    1,
+    "profile"
+   ],
+   "expected": 0.936456580236
+  },
+  {
+   "name": "decay: profile at 24h",
+   "input": [
+    24,
+    "profile"
+   ],
+   "expected": 0.843379508616
+  },
+  {
+   "name": "decay: profile at 168h",
+   "input": [
+    168,
+    "profile"
+   ],
+   "expected": 0.736842822339
+  },
+  {
+   "name": "decay: profile at 720h",
+   "input": [
+    720,
+    "profile"
+   ],
+   "expected": 0.623410034354
+  },
+  {
+   "name": "decay: profile at 8760h",
+   "input": [
+    8760,
+    "profile"
+   ],
+   "expected": 0.367879441171
+  },
+  {
+   "name": "decay: decision at 0h",
+   "input": [
+    0,
+    "decision"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: decision at -5h",
+   "input": [
+    -5,
+    "decision"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: decision at 1h",
+   "input": [
+    1,
+    "decision"
+   ],
+   "expected": 0.997028233988
+  },
+  {
+   "name": "decay: decision at 24h",
+   "input": [
+    24,
+    "decision"
+   ],
+   "expected": 0.931062779704
+  },
+  {
+   "name": "decay: decision at 168h",
+   "input": [
+    168,
+    "decision"
+   ],
+   "expected": 0.606530659713
+  },
+  {
+   "name": "decay: decision at 720h",
+   "input": [
+    720,
+    "decision"
+   ],
+   "expected": 0.117319166094
+  },
+  {
+   "name": "decay: decision at 8760h",
+   "input": [
+    8760,
+    "decision"
+   ],
+   "expected": 4.75688263222e-12
+  },
+  {
+   "name": "decay: event at 0h",
+   "input": [
+    0,
+    "event"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: event at -5h",
+   "input": [
+    -5,
+    "event"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: event at 1h",
+   "input": [
+    1,
+    "event"
+   ],
+   "expected": 0.997866144098
+  },
+  {
+   "name": "decay: event at 24h",
+   "input": [
+    24,
+    "event"
+   ],
+   "expected": 0.907736120273
+  },
+  {
+   "name": "decay: event at 168h",
+   "input": [
+    168,
+    "event"
+   ],
+   "expected": 0.367879441171
+  },
+  {
+   "name": "decay: event at 720h",
+   "input": [
+    720,
+    "event"
+   ],
+   "expected": 0.00323538885874
+  },
+  {
+   "name": "decay: event at 8760h",
+   "input": [
+    8760,
+    "event"
+   ],
+   "expected": 1.15744378056e-50
+  },
+  {
+   "name": "decay: context at 0h",
+   "input": [
+    0,
+    "context"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: context at -5h",
+   "input": [
+    -5,
+    "context"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: context at 1h",
+   "input": [
+    1,
+    "context"
+   ],
+   "expected": 0.993306007496
+  },
+  {
+   "name": "decay: context at 24h",
+   "input": [
+    24,
+    "context"
+   ],
+   "expected": 0.904770218463
+  },
+  {
+   "name": "decay: context at 168h",
+   "input": [
+    168,
+    "context"
+   ],
+   "expected": 0.592629669772
+  },
+  {
+   "name": "decay: context at 720h",
+   "input": [
+    720,
+    "context"
+   ],
+   "expected": 0.164886004574
+  },
+  {
+   "name": "decay: context at 8760h",
+   "input": [
+    8760,
+    "context"
+   ],
+   "expected": 2.8366057044e-7
+  },
+  {
+   "name": "decay: not-a-type at 0h",
+   "input": [
+    0,
+    "not-a-type"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: not-a-type at -5h",
+   "input": [
+    -5,
+    "not-a-type"
+   ],
+   "expected": 1
+  },
+  {
+   "name": "decay: not-a-type at 1h",
+   "input": [
+    1,
+    "not-a-type"
+   ],
+   "expected": 0.99406529937
+  },
+  {
+   "name": "decay: not-a-type at 24h",
+   "input": [
+    24,
+    "not-a-type"
+   ],
+   "expected": 0.86687789975
+  },
+  {
+   "name": "decay: not-a-type at 168h",
+   "input": [
+    168,
+    "not-a-type"
+   ],
+   "expected": 0.367879441171
+  },
+  {
+   "name": "decay: not-a-type at 720h",
+   "input": [
+    720,
+    "not-a-type"
+   ],
+   "expected": 0.0137637867331
+  },
+  {
+   "name": "decay: not-a-type at 8760h",
+   "input": [
+    8760,
+    "not-a-type"
+   ],
+   "expected": 2.26279323768e-23
+  }
+ ]
+}

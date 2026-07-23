@@ -16,14 +16,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
-import {
-	discoverAuthStorage,
-	ModelRegistry,
-	SessionManager,
-	Settings,
-	createAgentSession,
-} from "@veyyon/coding-agent";
-import { armArgotFromCache } from "@veyyon/coding-agent/argot-cache";
+import { createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager, Settings } from "@veyyon/coding-agent";
+import { loadArgotFolder } from "@veyyon/coding-agent/argot-cache";
 import { ArgotSession, DEFAULT_SIGIL, makePromptFragment, measureDecode, renderPreamble, type Vocabulary } from "argot";
 import {
 	type ArgotCertification,
@@ -75,8 +69,10 @@ async function realTmp(): Promise<string> {
  * The fix mirrors a real operator flipping the setting mid-run: init once
  * (idempotent), then push the phase's values as runtime overrides, which the agent
  * session reads at construction exactly like a persisted setting.
+ *
+ * Exported for its regression suite (argot-bench.test.ts locks the flip).
  */
-async function applyArgotPhaseSettings(
+export async function applyArgotPhaseSettings(
 	argotEnabled: boolean,
 	model: string,
 	disableAboveTokens?: number,
@@ -109,11 +105,14 @@ async function copyTree(src: string, dest: string): Promise<void> {
  * adoption is measured against; when the fixture yields no handles it is empty,
  * and the bench will correctly report zero adoption for that task.
  */
-export async function prepareArgotWorkdir(task: EditTask, destDir: string): Promise<{ cwd: string; vocab: Vocabulary }> {
+export async function prepareArgotWorkdir(
+	task: EditTask,
+	destDir: string,
+): Promise<{ cwd: string; vocab: Vocabulary }> {
 	await copyTree(task.inputDir, destDir);
 	await fs.writeFile(path.join(destDir, ".argot"), "");
 	const argot = new ArgotSession();
-	await armArgotFromCache(argot, destDir);
+	await loadArgotFolder(argot, destDir);
 	return { cwd: destDir, vocab: argot.vocabulary() };
 }
 
@@ -256,7 +255,7 @@ async function prepareReproWorkdir(task: ReproTask, destDir: string): Promise<{ 
 	}
 	await fs.writeFile(path.join(destDir, ".argot"), "");
 	const argot = new ArgotSession();
-	await armArgotFromCache(argot, destDir);
+	await loadArgotFolder(argot, destDir);
 	return { cwd: destDir, vocab: argot.vocabulary() };
 }
 

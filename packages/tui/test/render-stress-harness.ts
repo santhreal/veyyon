@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { __veyyonNativesV1_0_12 } from "@veyyon/natives";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	type Component,
@@ -3952,6 +3953,12 @@ async function withPatchedEnv<T>(envMode: Scenario["envMode"], run: () => Promis
 
 async function withPatchedPlatform<T>(platform: Scenario["platform"], run: () => Promise<T>): Promise<T> {
 	if (platformPatchDepth > 0) throw new Error("Nested stress platform patching is not supported");
+	// Force the native addon to load for the REAL host platform before the
+	// patch: the loader memoizes on first call, so darwin/win32 scenarios
+	// reuse the host addon instead of demanding a `.node` that cannot exist
+	// here. The patch tests JS render logic; the native width functions are
+	// platform-independent, so the host binding is correct either way.
+	__veyyonNativesV1_0_12();
 	platformPatchDepth += 1;
 	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
 	Object.defineProperty(process, "platform", { configurable: true, value: platform });

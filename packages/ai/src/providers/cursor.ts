@@ -152,14 +152,50 @@ export const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";
 
 const CURSOR_PROXY_TUNNEL_TIMEOUT_MS = 30_000;
 
-const conversationStateCache = new Map<string, ConversationStateStructure>();
-const conversationBlobStores = new Map<string, Map<string, Uint8Array>>();
+/**
+ * A bounded, least-recently-used map. The cursor provider keys per-conversation
+ * state and blob stores by conversationId; a plain module-level Map grew without
+ * limit, so a long-lived process (an autonomous run touching many conversations,
+ * or many short sessions with random ids) leaked one entry per conversation for
+ * the process lifetime. This evicts the least-recently-used entry past `#max`.
+ * `get`/`set` both refresh recency, so an actively-streamed conversation is
+ * never evicted out from under an in-flight round.
+ */
+export class BoundedLruMap<K, V> {
+	readonly #max: number;
+	readonly #map = new Map<K, V>();
+	constructor(max: number) {
+		this.#max = max;
+	}
+	get(key: K): V | undefined {
+		const value = this.#map.get(key);
+		if (value !== undefined && this.#map.delete(key)) this.#map.set(key, value);
+		return value;
+	}
+	set(key: K, value: V): void {
+		this.#map.delete(key);
+		this.#map.set(key, value);
+		while (this.#map.size > this.#max) {
+			const oldest = this.#map.keys().next().value;
+			if (oldest === undefined) break;
+			this.#map.delete(oldest);
+		}
+	}
+}
+
+/** Cap on distinct conversations kept warm; well past any single run's working
+ *  set, small enough that the caches can never grow without bound. */
+const CURSOR_CONVERSATION_CACHE_MAX = 128;
+const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
+const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
 
 export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
 	conversationId?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
+	/** Wire model uid selected after thinking-effort routing (see mapOptionsForApi). */
+	wireModelId?: string;
 }
 
 const CONNECT_END_STREAM_FLAG = 0b00000010;
@@ -345,6 +381,13 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 		let h2Request: http2.ClientHttp2Stream | null = null;
 		let heartbeatTimer: NodeJS.Timeout | null = null;
 		let debugResponseLogPromise: Promise<RequestDebugResponseLog | undefined> | undefined;
+		// The run's AbortSignal is shared across every LLM round (agent-loop.ts
+		// passes the same object each round when harmony/owned-dialect are off), so
+		// an abort listener that is never removed accumulates one closure per round
+		// — each pinning that round's h2 stream/client. Hoist the handler so the
+		// finally can detach it the moment this round settles (leak fix).
+		const abortSignal = options?.signal;
+		let abortHandler: (() => void) | undefined;
 
 		try {
 			const apiKey = options?.apiKey;
@@ -566,13 +609,19 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					void closeDebugLog().finally(() => reject(error));
 				});
 
-				if (options?.signal) {
-					options.signal.addEventListener("abort", () => {
+				if (abortSignal) {
+					abortHandler = () => {
 						h2Request?.close();
 						void closeDebugLog().finally(() => {
 							reject(new AIError.AbortError());
 						});
-					});
+					};
+					// Already aborted before we attached: the event will never fire, so
+					// run the handler once synchronously instead of hanging the round.
+					if (abortSignal.aborted) abortHandler();
+					// { once: true } auto-detaches if it fires; the finally detaches it
+					// on every normal completion so it never outlives this one round.
+					else abortSignal.addEventListener("abort", abortHandler, { once: true });
 				}
 			});
 
@@ -619,6 +668,9 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			}
 			h2Request?.close();
 			h2Client?.close();
+			// Detach the abort listener so it cannot outlive this round on the
+			// shared run signal (removeEventListener is a no-op if it already fired).
+			if (abortSignal && abortHandler) abortSignal.removeEventListener("abort", abortHandler);
 		}
 	})();
 
@@ -2831,7 +2883,12 @@ function buildGrpcRequest(
 		turns,
 	});
 
-	const wireModelId = model.requestModelId ?? model.id;
+	// Cursor selects reasoning effort by MODEL ID (tier siblings like
+	// `gpt-5.4-high`), not a wire param: mapOptionsForApi resolves the
+	// requested effort through `thinking.effortRouting` into `wireModelId` so
+	// a collapsed family actually changes what the server runs. Models without
+	// routing keep the plain requestModelId path.
+	const wireModelId = options?.wireModelId ?? model.requestModelId ?? model.id;
 	const cursorMaxMode = model.cursorMaxMode === true;
 	const modelDetails = create(ModelDetailsSchema, {
 		modelId: wireModelId,

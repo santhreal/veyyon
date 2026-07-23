@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `resolveAuthBrokerConfig` now falls back to `auth.broker.url` / `auth.broker.token` in the machine-wide global config (`~/.veyyon/config.yml`) when the profile's own config leaves them unset (per-key precedence: env, then profile config, then global config, then the token file). The Settings UI's Global tab writes the global entries.
+
 ## [16.5.2] - 2026-07-14
 
 ### Added

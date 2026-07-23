@@ -5605,7 +5605,7 @@
 			"api": "openai-completions",
 			"provider": "aimlapi",
 			"baseUrl": "https://api.aimlapi.com/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -5624,7 +5624,7 @@
 			"api": "openai-completions",
 			"provider": "aimlapi",
 			"baseUrl": "https://api.aimlapi.com/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -5673,7 +5673,7 @@
 			"api": "openai-completions",
 			"provider": "aimlapi",
 			"baseUrl": "https://api.aimlapi.com/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -5692,7 +5692,7 @@
 			"api": "openai-completions",
 			"provider": "aimlapi",
 			"baseUrl": "https://api.aimlapi.com/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -5773,7 +5773,7 @@
 			"api": "openai-completions",
 			"provider": "aimlapi",
 			"baseUrl": "https://api.aimlapi.com/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -5792,7 +5792,7 @@
 			"api": "openai-completions",
 			"provider": "aimlapi",
 			"baseUrl": "https://api.aimlapi.com/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -15176,11 +15176,11 @@
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
-					"low",
-					"medium",
-					"high",
-					"xhigh"
-				]
+					"high"
+				],
+				"effortRouting": {
+					"high": "gpt-5.2-high"
+				}
 			}
 		},
 		"gpt-5.2-codex": {
@@ -15206,34 +15206,19 @@
 				"mode": "effort",
 				"efforts": [
 					"low",
-					"medium",
 					"high",
 					"xhigh"
-				]
+				],
+				"effortRouting": {
+					"low": "gpt-5.2-codex-low",
+					"high": "gpt-5.2-codex-high",
+					"xhigh": "gpt-5.2-codex-xhigh"
+				}
 			}
 		},
 		"gpt-5.2-codex-fast": {
 			"id": "gpt-5.2-codex-fast",
 			"name": "GPT-5.2 Codex Fast",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 272000,
-			"maxTokens": 64000
-		},
-		"gpt-5.2-codex-high": {
-			"id": "gpt-5.2-codex-high",
-			"name": "GPT-5.2 Codex High",
 			"api": "cursor-agent",
 			"provider": "cursor",
 			"baseUrl": "https://api2.cursor.sh",
@@ -15269,47 +15254,9 @@
 			"contextWindow": 272000,
 			"maxTokens": 64000
 		},
-		"gpt-5.2-codex-low": {
-			"id": "gpt-5.2-codex-low",
-			"name": "GPT-5.2 Codex Low",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 272000,
-			"maxTokens": 64000
-		},
 		"gpt-5.2-codex-low-fast": {
 			"id": "gpt-5.2-codex-low-fast",
 			"name": "GPT-5.2 Codex Low Fast",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 272000,
-			"maxTokens": 64000
-		},
-		"gpt-5.2-codex-xhigh": {
-			"id": "gpt-5.2-codex-xhigh",
-			"name": "GPT-5.2 Codex Extra High",
 			"api": "cursor-agent",
 			"provider": "cursor",
 			"baseUrl": "https://api2.cursor.sh",
@@ -15345,35 +15292,6 @@
 			"contextWindow": 272000,
 			"maxTokens": 64000
 		},
-		"gpt-5.2-high": {
-			"id": "gpt-5.2-high",
-			"name": "GPT-5.2 High",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 400000,
-			"maxTokens": 128000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"low",
-					"medium",
-					"high",
-					"xhigh"
-				]
-			}
-		},
 		"gpt-5.3-codex": {
 			"id": "gpt-5.3-codex",
 			"name": "GPT-5.3 Codex",
@@ -15397,10 +15315,14 @@
 				"mode": "effort",
 				"efforts": [
 					"low",
-					"medium",
 					"high",
 					"xhigh"
-				]
+				],
+				"effortRouting": {
+					"low": "gpt-5.3-codex-low",
+					"high": "gpt-5.3-codex-high",
+					"xhigh": "gpt-5.3-codex-xhigh"
+				}
 			}
 		},
 		"gpt-5.3-codex-fast": {
@@ -15422,47 +15344,9 @@
 			"contextWindow": 272000,
 			"maxTokens": 64000
 		},
-		"gpt-5.3-codex-high": {
-			"id": "gpt-5.3-codex-high",
-			"name": "GPT-5.3 Codex High",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 272000,
-			"maxTokens": 64000
-		},
 		"gpt-5.3-codex-high-fast": {
 			"id": "gpt-5.3-codex-high-fast",
 			"name": "GPT-5.3 Codex High Fast",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 272000,
-			"maxTokens": 64000
-		},
-		"gpt-5.3-codex-low": {
-			"id": "gpt-5.3-codex-low",
-			"name": "GPT-5.3 Codex Low",
 			"api": "cursor-agent",
 			"provider": "cursor",
 			"baseUrl": "https://api2.cursor.sh",
@@ -15517,25 +15401,6 @@
 			"contextWindow": 200000,
 			"maxTokens": 64000
 		},
-		"gpt-5.3-codex-xhigh": {
-			"id": "gpt-5.3-codex-xhigh",
-			"name": "GPT-5.3 Codex Extra High",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 272000,
-			"maxTokens": 64000
-		},
 		"gpt-5.3-codex-xhigh-fast": {
 			"id": "gpt-5.3-codex-xhigh-fast",
 			"name": "GPT-5.3 Codex Extra High Fast",
@@ -15555,13 +15420,13 @@
 			"contextWindow": 272000,
 			"maxTokens": 64000
 		},
-		"gpt-5.4-high": {
-			"id": "gpt-5.4-high",
-			"name": "GPT-5.4 High",
+		"gpt-5.4": {
+			"id": "gpt-5.4",
+			"name": "GPT-5.4",
 			"api": "cursor-agent",
 			"provider": "cursor",
 			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -15572,7 +15437,24 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"requestModelId": "gpt-5.4-low",
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"requiresEffort": true,
+				"effortRouting": {
+					"low": "gpt-5.4-low",
+					"medium": "gpt-5.4-medium",
+					"high": "gpt-5.4-high",
+					"xhigh": "gpt-5.4-xhigh"
+				}
+			}
 		},
 		"gpt-5.4-high-fast": {
 			"id": "gpt-5.4-high-fast",
@@ -15593,66 +15475,9 @@
 			"contextWindow": 200000,
 			"maxTokens": 64000
 		},
-		"gpt-5.4-low": {
-			"id": "gpt-5.4-low",
-			"name": "GPT-5.4 Low",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
-		"gpt-5.4-medium": {
-			"id": "gpt-5.4-medium",
-			"name": "GPT-5.4",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
 		"gpt-5.4-medium-fast": {
 			"id": "gpt-5.4-medium-fast",
 			"name": "GPT-5.4 Fast",
-			"api": "cursor-agent",
-			"provider": "cursor",
-			"baseUrl": "https://api2.cursor.sh",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
-		"gpt-5.4-xhigh": {
-			"id": "gpt-5.4-xhigh",
-			"name": "GPT-5.4 Extra High",
 			"api": "cursor-agent",
 			"provider": "cursor",
 			"baseUrl": "https://api2.cursor.sh",
@@ -15829,9 +15654,9 @@
 		}
 	},
 	"devin": {
-		"claude-5-fable-high": {
-			"id": "claude-5-fable-high",
-			"name": "Claude Fable 5 High",
+		"claude-5-fable": {
+			"id": "claude-5-fable",
+			"name": "Claude Fable 5",
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
@@ -15848,91 +15673,26 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-5-fable-low": {
-			"id": "claude-5-fable-low",
-			"name": "Claude Fable 5 Low",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-5-fable-max": {
-			"id": "claude-5-fable-max",
-			"name": "Claude Fable 5 Max",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-5-fable-medium": {
-			"id": "claude-5-fable-medium",
-			"name": "Claude Fable 5 Medium",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-5-fable-xhigh": {
-			"id": "claude-5-fable-xhigh",
-			"name": "Claude Fable 5 XHigh",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"requestModelId": "claude-5-fable-low",
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"requiresEffort": true,
+				"effortRouting": {
+					"low": "claude-5-fable-low",
+					"medium": "claude-5-fable-medium",
+					"high": "claude-5-fable-high",
+					"xhigh": "claude-5-fable-xhigh",
+					"max": "claude-5-fable-max"
+				}
+			}
 		},
 		"claude-opus-4-6": {
 			"id": "claude-opus-4-6",
@@ -16242,9 +16002,9 @@
 				}
 			}
 		},
-		"claude-sonnet-5-high": {
-			"id": "claude-sonnet-5-high",
-			"name": "Claude Sonnet 5 High",
+		"claude-sonnet-5": {
+			"id": "claude-sonnet-5",
+			"name": "Claude Sonnet 5",
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
@@ -16261,91 +16021,26 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-sonnet-5-low": {
-			"id": "claude-sonnet-5-low",
-			"name": "Claude Sonnet 5 Low",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-sonnet-5-max": {
-			"id": "claude-sonnet-5-max",
-			"name": "Claude Sonnet 5 Max",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-sonnet-5-medium": {
-			"id": "claude-sonnet-5-medium",
-			"name": "Claude Sonnet 5 Medium",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"claude-sonnet-5-xhigh": {
-			"id": "claude-sonnet-5-xhigh",
-			"name": "Claude Sonnet 5 XHigh",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"requestModelId": "claude-sonnet-5-low",
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				],
+				"requiresEffort": true,
+				"effortRouting": {
+					"low": "claude-sonnet-5-low",
+					"medium": "claude-sonnet-5-medium",
+					"high": "claude-sonnet-5-high",
+					"xhigh": "claude-sonnet-5-xhigh",
+					"max": "claude-sonnet-5-max"
+				}
+			}
 		},
 		"deepseek-v4": {
 			"id": "deepseek-v4",
@@ -16479,7 +16174,7 @@
 		},
 		"glm-5-2": {
 			"id": "glm-5-2",
-			"name": "GLM-5.2 High",
+			"name": "GLM-5.2",
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
@@ -16495,11 +16190,24 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"requestModelId": "glm-5-2-none",
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"high",
+					"max"
+				],
+				"effortRouting": {
+					"off": "glm-5-2-none",
+					"high": "glm-5-2",
+					"max": "glm-5-2-max"
+				}
+			}
 		},
 		"glm-5-2-1m": {
 			"id": "glm-5-2-1m",
-			"name": "GLM-5.2 High 1M",
+			"name": "GLM-5.2 1M",
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
@@ -16515,87 +16223,20 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"glm-5-2-max": {
-			"id": "glm-5-2-max",
-			"name": "GLM-5.2 Max",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
-		"glm-5-2-max-1m": {
-			"id": "glm-5-2-max-1m",
-			"name": "GLM-5.2 Max 1M",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
-		},
-		"glm-5-2-none": {
-			"id": "glm-5-2-none",
-			"name": "GLM-5.2 No Thinking",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
-		"glm-5-2-none-1m": {
-			"id": "glm-5-2-none-1m",
-			"name": "GLM-5.2 No Thinking 1M",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": false,
-			"input": [
-				"text"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 1000000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"requestModelId": "glm-5-2-none-1m",
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"high",
+					"max"
+				],
+				"effortRouting": {
+					"off": "glm-5-2-none-1m",
+					"high": "glm-5-2-1m",
+					"max": "glm-5-2-max-1m"
+				}
+			}
 		},
 		"gpt-5-2": {
 			"id": "gpt-5-2",
@@ -17135,9 +16776,9 @@
 			},
 			"requestModelId": "gpt-5-6-terra-none-priority"
 		},
-		"grok-4-5-high": {
-			"id": "grok-4-5-high",
-			"name": "Grok 4.5 High",
+		"grok-4-5": {
+			"id": "grok-4-5",
+			"name": "Grok 4.5",
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
@@ -17154,49 +16795,22 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 500000,
-			"maxTokens": 64000
-		},
-		"grok-4-5-low": {
-			"id": "grok-4-5-low",
-			"name": "Grok 4.5 Low",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 500000,
-			"maxTokens": 64000
-		},
-		"grok-4-5-medium": {
-			"id": "grok-4-5-medium",
-			"name": "Grok 4.5 Medium",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
-			"reasoning": true,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 500000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"requestModelId": "grok-4-5-low",
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true,
+				"effortRouting": {
+					"low": "grok-4-5-low",
+					"medium": "grok-4-5-medium",
+					"high": "grok-4-5-high"
+				}
+			}
 		},
 		"kimi-k2-6": {
 			"id": "kimi-k2-6",
@@ -17246,27 +16860,6 @@
 			"api": "devin-agent",
 			"provider": "devin",
 			"baseUrl": "https://server.codeium.com",
-			"reasoning": false,
-			"input": [
-				"text",
-				"image"
-			],
-			"supportsTools": true,
-			"cost": {
-				"input": 0,
-				"output": 0,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
-		"MODEL_CLAUDE_4_5_OPUS_THINKING": {
-			"id": "MODEL_CLAUDE_4_5_OPUS_THINKING",
-			"name": "Claude Opus 4.5 Thinking",
-			"api": "devin-agent",
-			"provider": "devin",
-			"baseUrl": "https://server.codeium.com",
 			"reasoning": true,
 			"input": [
 				"text",
@@ -17280,7 +16873,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"high"
+				],
+				"effortRouting": {
+					"off": "MODEL_CLAUDE_4_5_OPUS",
+					"high": "MODEL_CLAUDE_4_5_OPUS_THINKING"
+				}
+			}
 		},
 		"MODEL_PRIVATE_11": {
 			"id": "MODEL_PRIVATE_11",
@@ -31324,7 +30927,7 @@
 			"api": "openai-completions",
 			"provider": "kilo",
 			"baseUrl": "https://api.kilo.ai/api/gateway",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text",
 				"image"
@@ -31344,7 +30947,7 @@
 			"api": "openai-completions",
 			"provider": "kilo",
 			"baseUrl": "https://api.kilo.ai/api/gateway",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -31425,7 +31028,7 @@
 			"api": "openai-completions",
 			"provider": "kilo",
 			"baseUrl": "https://api.kilo.ai/api/gateway",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -31444,7 +31047,7 @@
 			"api": "openai-completions",
 			"provider": "kilo",
 			"baseUrl": "https://api.kilo.ai/api/gateway",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -39089,26 +38692,6 @@
 			"api": "openai-completions",
 			"provider": "nanogpt",
 			"baseUrl": "https://nano-gpt.com/api/v1",
-			"reasoning": false,
-			"input": [
-				"text",
-				"image"
-			],
-			"cost": {
-				"input": 1,
-				"output": 5,
-				"cacheRead": 0,
-				"cacheWrite": 0
-			},
-			"contextWindow": 200000,
-			"maxTokens": 64000
-		},
-		"claude-haiku-4-5-20251001-thinking": {
-			"id": "claude-haiku-4-5-20251001-thinking",
-			"name": "Claude Haiku 4.5 Thinking",
-			"api": "openai-completions",
-			"provider": "nanogpt",
-			"baseUrl": "https://nano-gpt.com/api/v1",
 			"reasoning": true,
 			"input": [
 				"text",
@@ -39117,7 +38700,7 @@
 			"cost": {
 				"input": 1,
 				"output": 5,
-				"cacheRead": 0.1,
+				"cacheRead": 0,
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
@@ -39131,7 +38714,14 @@
 					"high",
 					"xhigh"
 				],
-				"requiresEffort": true
+				"effortRouting": {
+					"off": "claude-haiku-4-5-20251001",
+					"minimal": "claude-haiku-4-5-20251001-thinking",
+					"low": "claude-haiku-4-5-20251001-thinking",
+					"medium": "claude-haiku-4-5-20251001-thinking",
+					"high": "claude-haiku-4-5-20251001-thinking",
+					"xhigh": "claude-haiku-4-5-20251001-thinking"
+				}
 			}
 		},
 		"claude-opus-4-1-20250805": {
@@ -48382,7 +47972,7 @@
 			"api": "openai-completions",
 			"provider": "nanogpt",
 			"baseUrl": "https://nano-gpt.com/api/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -48401,7 +47991,7 @@
 			"api": "openai-completions",
 			"provider": "nanogpt",
 			"baseUrl": "https://nano-gpt.com/api/v1",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -72426,7 +72016,7 @@
 			"api": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"provider": "openrouter",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -73541,7 +73131,7 @@
 			"api": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"provider": "openrouter",
-			"reasoning": false,
+			"reasoning": true,
 			"input": [
 				"text"
 			],
@@ -73550,25 +73140,6 @@
 				"output": 3.9,
 				"cacheRead": 0.156,
 				"cacheWrite": 0.975
-			},
-			"contextWindow": 262144,
-			"maxTokens": 32768
-		},
-		"qwen/qwen3-max-thinking": {
-			"id": "qwen/qwen3-max-thinking",
-			"name": "Qwen3 Max Thinking",
-			"api": "openrouter",
-			"baseUrl": "https://openrouter.ai/api/v1",
-			"provider": "openrouter",
-			"reasoning": true,
-			"input": [
-				"text"
-			],
-			"cost": {
-				"input": 0.78,
-				"output": 3.9,
-				"cacheRead": 0,
-				"cacheWrite": 0
 			},
 			"contextWindow": 262144,
 			"maxTokens": 32768,
@@ -73580,7 +73151,13 @@
 					"medium",
 					"high"
 				],
-				"requiresEffort": true
+				"effortRouting": {
+					"off": "qwen/qwen3-max",
+					"minimal": "qwen/qwen3-max-thinking",
+					"low": "qwen/qwen3-max-thinking",
+					"medium": "qwen/qwen3-max-thinking",
+					"high": "qwen/qwen3-max-thinking"
+				}
 			}
 		},
 		"qwen/qwen3-next-80b-a3b-instruct": {
@@ -87487,8 +87064,8 @@
 				},
 				"includeEncryptedReasoning": false,
 				"filterReasoningHistory": true,
-				"omitReasoningEffort": true,
-				"supportsReasoningEffort": false,
+				"omitReasoningEffort": false,
+				"supportsReasoningEffort": true,
 				"supportsImageDetailOriginal": false
 			}
 		},
@@ -87517,8 +87094,8 @@
 				},
 				"includeEncryptedReasoning": false,
 				"filterReasoningHistory": true,
-				"omitReasoningEffort": true,
-				"supportsReasoningEffort": false,
+				"omitReasoningEffort": false,
+				"supportsReasoningEffort": true,
 				"supportsImageDetailOriginal": false
 			}
 		},

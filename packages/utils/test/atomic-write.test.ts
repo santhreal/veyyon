@@ -321,6 +321,11 @@ const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
 	// the directory into place so a half-seeded profile never appears. The owner
 	// writes a single file, not a populated tree.
 	["coding-agent/src/cli/profile-cli.ts", "staging profile directory, not a file write"],
+	// The global-root migration MOVES existing entries between directories with
+	// renameSync (no temp file involved); its `.tmp` mentions are the profile
+	// staging-sibling naming convention (`profiles/.name.<pid>.tmp`) in docs and
+	// validation, not a temp-write. Nothing here copies the owner's logic.
+	["utils/src/dirs.ts", "directory-entry moves + staging-name validation, not a temp-file write"],
 ]);
 
 const RENAME_CALL = /\brename(?:Sync)?\s*\(/;

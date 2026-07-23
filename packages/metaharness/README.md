@@ -1,9 +1,19 @@
 # @veyyon/metaharness
 
-One manager for repository benchmarks. Harbor and TypeScript edit runs use the
-same experiment → run → trace model, SQLite store, REST/SSE API, and dashboard.
-Benchmark-native artifacts remain on disk; adapters normalize their live
-progress, scores, token usage, costs, and traces.
+One manager for repository benchmarks. Harbor, TypeScript edit, and DeepSWE
+arms runs use the same experiment → run → trace model, SQLite store, REST/SSE
+API, and dashboard. Benchmark-native artifacts remain on disk; adapters
+normalize their live progress, scores, token usage, costs, and traces.
+
+Registered adapters:
+
+- `harbor` — terminal-bench trials through the Harbor runner.
+- `edit` — the TypeScript edit benchmark (`adapters/edit/cli.ts`).
+- `deepswe` — `packages/deepswe-bench` arms x tasks runs. Launching spawns
+  `bun run.ts --model <m> --out <jobDir>` in that package; pass `--tasks`,
+  `--arms`, and `--tasks-root` through `extraArgs`. One trace per (arm, task)
+  cell: full verifier reward counts as a pass, a partial reward as a fail, an
+  execution error as an error, and the planned grid drives the running count.
 
 ```bash
 # Dashboard + API on :4700; launch every benchmark from the same “new run” form
@@ -107,6 +117,21 @@ stays the source of truth and historical CLI runs are auto-discovered.
 - `<jobs-dir>/_bench/<jobName>/report.md` — markdown summary table.
 - `<jobs-dir>/_bench/<jobName>/harbor.log` — full Harbor output.
 - `<jobs-dir>/_manager/logs/<jobName>.log` — runner output for API-launched runs.
+
+## Bench results into feature docs
+
+Bench results live in the doc page of the feature they measure, not in the
+changelog. `src/bench-report.ts` reads a finished run and inserts (or replaces
+in place) a marker-fenced results block in the target page:
+
+```bash
+bun src/bench-report.ts --run <jobName> --doc docs/argot.md [--key argot]
+```
+
+The block sits between `<!-- bench-results:<key> -->` markers, so re-benching
+a feature updates one canonical table. The key defaults to the run's
+benchmark kind; give each feature its own key when a page holds several
+blocks. Missing markers append a `## Benchmark results` section on first use.
 
 ## Trace reports
 

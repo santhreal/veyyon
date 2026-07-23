@@ -1,4 +1,4 @@
-import { parseJsonWithRepair } from "@veyyon/utils";
+import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./qwen3.md" with { type: "text" };
@@ -130,26 +130,53 @@ export class Qwen3InbandScanner implements InbandScanner {
 		const body = close === -1 ? this.#buffer : this.#buffer.slice(0, close);
 		if (!this.#started) this.#tryStart(body, events);
 		if (close === -1) {
-			if (final) this.#resetTool();
+			if (final) {
+				// Stream ended with no closing tag. A toolStart already announced here
+				// MUST be balanced by a toolEnd, or the downstream projector dispatches
+				// the named tool with the empty {} args it seeded on toolStart.
+				this.#emitBestEffortEnd(body, `${TOOL_OPEN}${body}`, events);
+				this.#resetTool();
+			}
 			return;
 		}
 
 		const parsed = this.#parseCall(body);
+		const rawBlock = `${TOOL_OPEN}${body}${TOOL_CLOSE}`;
 		if (parsed) {
 			if (!this.#started) {
 				events.push({ type: "toolStart", id: this.#id, name: parsed.name });
 				this.#started = true;
 			}
-			events.push({
-				type: "toolEnd",
-				id: this.#id,
-				name: parsed.name,
-				arguments: parsed.arguments,
-				rawBlock: `${TOOL_OPEN}${body}${TOOL_CLOSE}`,
-			});
+			events.push({ type: "toolEnd", id: this.#id, name: parsed.name, arguments: parsed.arguments, rawBlock });
+		} else {
+			// Body closed but did not parse. Balance an already-announced toolStart
+			// with a best-effort toolEnd rather than stranding a half-open call.
+			this.#emitBestEffortEnd(body, rawBlock, events);
 		}
 		this.#buffer = this.#buffer.slice(close + TOOL_CLOSE.length);
 		this.#resetTool();
+	}
+
+	/**
+	 * Balance an already-announced toolStart with a toolEnd when the body could
+	 * not be parsed (truncated stream or malformed JSON). Salvages whatever named
+	 * arguments partial parsing can recover, else empty, so the tool block is
+	 * finalized instead of dispatched half-open with empty args.
+	 */
+	#emitBestEffortEnd(body: string, rawBlock: string, events: InbandScanEvent[]): void {
+		if (!this.#started) return;
+		// #name was captured early from a PARTIAL body (it may be a prefix like "r"
+		// of "read"); re-derive the fuller name from the current body when possible.
+		let name = this.#name;
+		let args: unknown;
+		try {
+			const partial = parseStreamingJson<{ name?: unknown; arguments?: unknown }>(body);
+			if (typeof partial.name === "string" && partial.name.length > name.length) name = partial.name;
+			args = partial.arguments;
+		} catch {
+			args = undefined;
+		}
+		events.push({ type: "toolEnd", id: this.#id, name, arguments: recordOrEmpty(args), rawBlock });
 	}
 
 	#emitThinkingDelta(delta: string, events: InbandScanEvent[]): void {
@@ -185,11 +212,10 @@ export class Qwen3InbandScanner implements InbandScanner {
 			if (typeof parsed.name !== "string" || parsed.name.length === 0) return undefined;
 			let args = parsed.arguments;
 			if (typeof args === "string") {
-				try {
-					args = parseJsonWithRepair<unknown>(args);
-				} catch {
-					args = {};
-				}
+				// Double-encoded arguments: parse the stringified object. If unrepairable,
+				// let it throw to the outer catch so the one best-effort-end path handles
+				// it — never silently replaced with {} here (a Law-10 silent fallback).
+				args = parseJsonWithRepair<unknown>(args);
 			}
 			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {

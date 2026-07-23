@@ -104,7 +104,113 @@ describe("benchmark adapters", () => {
 	});
 
 	it("publishes metric definitions for every managed benchmark", () => {
-		expect(BENCHMARK_DEFINITIONS.map(definition => definition.kind)).toEqual(["harbor", "edit"]);
+		expect(BENCHMARK_DEFINITIONS.map(definition => definition.kind)).toEqual(["harbor", "edit", "deepswe"]);
 		expect(BENCHMARK_DEFINITIONS.every(definition => definition.metrics.length > 0)).toBe(true);
+	});
+
+	/**
+	 * ORG-METAHARNESS: deepswe-bench registers as a first-class adapter so its
+	 * arms x tasks runs land in the uniform store/dashboard instead of a
+	 * parallel runs/ silo. Pins the exact normalization: one trace per
+	 * (arm, task) cell, full reward === pass, execution error === error,
+	 * partial reward === fail (disjoint counts), the planned grid as `total`
+	 * so a mid-flight bench reports honest `running`, and the declared
+	 * reward_rate/mean_partial metrics computed from real rows.
+	 */
+	it("normalizes deepswe arms x tasks results into disjoint traces and grid totals", () => {
+		const dir = jobDir();
+		fs.writeFileSync(
+			path.join(dir, "results.json"),
+			JSON.stringify({
+				model: "test-model",
+				arms: ["baseline", "candidate"],
+				tasks: ["task-a", "task-b"],
+				results: [
+					{
+						arm: "baseline",
+						task: "task-a",
+						reward: 1,
+						partial: 1,
+						f2p: 1,
+						p2p: 1,
+						inputTokens: 100,
+						outputTokens: 10,
+						cacheTokens: 1000,
+						costUsd: 0.5,
+						agentSeconds: 12.5,
+						argotLoadCalls: 0,
+						assistantMsgsWithSigil: 0,
+						toolCalls: { bash: 3 },
+						error: null,
+					},
+					{
+						arm: "candidate",
+						task: "task-a",
+						reward: 0,
+						partial: 0.25,
+						f2p: 0.2,
+						p2p: 1,
+						inputTokens: 50,
+						outputTokens: 5,
+						cacheTokens: 500,
+						costUsd: 0.25,
+						agentSeconds: 6,
+						argotLoadCalls: 0,
+						assistantMsgsWithSigil: 0,
+						toolCalls: null,
+						error: null,
+					},
+					{
+						arm: "baseline",
+						task: "task-b",
+						reward: null,
+						partial: null,
+						f2p: null,
+						p2p: null,
+						inputTokens: null,
+						outputTokens: null,
+						cacheTokens: null,
+						costUsd: null,
+						agentSeconds: null,
+						argotLoadCalls: null,
+						assistantMsgsWithSigil: null,
+						toolCalls: null,
+						error: "pier launch failed",
+					},
+				],
+			}),
+		);
+
+		const snapshot = readBenchmarkSnapshot("deepswe", dir);
+		// Planned grid: 2 arms x 2 tasks; one cell still running.
+		expect(snapshot.total).toBe(4);
+		expect(snapshot.done).toBe(3);
+		expect(snapshot.running).toBe(1);
+		// Disjoint outcomes: full reward, partial reward, execution error.
+		expect(snapshot.pass).toBe(1);
+		expect(snapshot.fail).toBe(1);
+		expect(snapshot.error).toBe(1);
+		expect(snapshot.pass + snapshot.fail + snapshot.error).toBe(snapshot.done);
+		// Real sums, not shapes.
+		expect([snapshot.tokIn, snapshot.tokOut, snapshot.tokCache]).toEqual([150, 15, 1500]);
+		expect(snapshot.costUsd).toBeCloseTo(0.75);
+		expect(snapshot.score).toBeCloseTo(1 / 3);
+		expect(snapshot.metrics.reward_rate).toBeCloseTo(1 / 3);
+		expect(snapshot.metrics.mean_partial).toBeCloseTo((1 + 0.25) / 2);
+		expect(snapshot.traces[0]).toMatchObject({
+			name: "task-a__baseline",
+			task: "task-a",
+			status: "pass",
+			reward: 1,
+			durationMs: 12500,
+		});
+		expect(snapshot.traces[2]).toMatchObject({ name: "task-b__baseline", status: "error" });
+	});
+
+	it("reports an empty deepswe snapshot before results.json exists (bench still staging)", () => {
+		const snapshot = readBenchmarkSnapshot("deepswe", jobDir());
+		expect(snapshot.total).toBe(0);
+		expect(snapshot.traces).toEqual([]);
+		expect(snapshot.score).toBeNull();
 	});
 });

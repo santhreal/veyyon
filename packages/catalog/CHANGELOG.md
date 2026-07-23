@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Devin's effort-suffixed model families now collapse into effort-routed logical models, so their reasoning choice is actually selectable. `claude-5-fable-*` and `claude-sonnet-5-*` (five tiers, low..max), `grok-4-5-*` (low..high), GLM-5.2's `-none` off siblings (off/high/max, 200K and 1M variants), and the legacy `MODEL_CLAUDE_4_5_OPUS`/`_THINKING` pair were bundled as separate dial-less models; `/thinking` had nothing to set on them and `getSupportedEfforts` returned an empty list. Each family is now one logical model whose `thinking.effortRouting` picks the sibling wire id per effort; old persisted suffixed ids resolve to the collapsed family via the variant alias table.
+- `xai-oauth` grok-build and grok-build-0.1 now expose the reasoning-effort dial. They were curated `supportsReasoningEffort: false`, which stripped the thinking ladder and silently discarded the user's chosen effort; the models accept the wire `reasoning.effort` param (the plain `xai` provider entries already carried a ladder). `grok-build` joined the Grok effort-capable allowlist; `grok-4.20-0309-reasoning` remains the dial-less reference.
+- Cursor's tier-suffixed model ids (`gpt-5.4-low` .. `gpt-5.4-xhigh`, the `gpt-5.2`/`gpt-5.2-codex`/`gpt-5.3-codex` tier siblings) now collapse into effort-routed logical models, and the requested effort actually reaches the wire: Cursor's transport carries no effort field, so effort selects the tier sibling model id. Before this fix the tier ladders were inert; whatever effort you set, the same wire id was requested.
+- Cursor discovery now recognizes future tier-suffixed model ids (`gpt-5.4-max`, `composer-1-high`) as their base model at a fixed effort: a tier id with no exact bundled reference inherits the base's reference (reasoning flag, limits, modalities) via a stripped-suffix lookup instead of arriving as an unknown, dial-less model with default metadata.
+- Aggregator OpenAI o-series rows (`o1`, `o1-pro`, `o3-mini-high`, `o4-mini-high`, and dated pins on aimlapi, kilo, nanogpt, openrouter) now carry `reasoning: true`. Upstream metadata shipped them as non-reasoning, which hid the thinking dial entirely; the generator now corrects any o-series id whose reasoning flag is false.
+- Thinking-pair collapse no longer refuses to pair `X`/`X-thinking` siblings when one side reports a cache price of zero. Aggregators often omit cache pricing on one sibling; a zero cache field now means "not stated" instead of "different price", so pairs like openrouter's `qwen/qwen3-max` and nanogpt's `claude-haiku-4-5-20251001` fold into one model with an off/on thinking route. Pairs with genuinely different nonzero prices still stay separate.
+- `requireSupportedEffort` no longer ends its error with an empty `Supported efforts:` list for reasoning models with no controllable effort surface. The message now states that the model exposes no controllable thinking efforts and how to proceed.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

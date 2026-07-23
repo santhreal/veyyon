@@ -446,3 +446,33 @@ describe("SelectList.routeMouse", () => {
 		expect(selected).toBe("c");
 	});
 });
+
+describe("status-row key legend", () => {
+	/** Why this exists: an overflowing picker rendered only "Type to search"
+	 * with no visible affordances — the list read as inert chrome (part of
+	 * the "/ commands are boring" report, 2026-07-22). The legend rides the
+	 * EXISTING status row (no extra chrome row) in the dense one-space dot
+	 * dialect, and the live search text always survives truncation. */
+	it("shows the move/select/close legend on the overflow status row", () => {
+		const items = Array.from({ length: 9 }, (_, i) => ({ value: `v${i}`, label: `item ${i}` }));
+		const list = new SelectList(items, 3, testTheme);
+		const rendered = list.render(80).join("\n");
+		expect(rendered).toContain("Type to search · ↑↓ move · ↵ select · esc close");
+	});
+
+	it("keeps the live search query ahead of the legend", () => {
+		const items = Array.from({ length: 9 }, (_, i) => ({ value: `v${i}`, label: `item ${i}` }));
+		const list = new SelectList(items, 3, testTheme);
+		list.handleInput("4");
+		const rendered = list.render(80).join("\n");
+		expect(rendered).toContain("Search: 4 · ↑↓ move · ↵ select · esc close");
+	});
+
+	/** Negative twin: a list that fits renders no status row and no legend —
+	 * the legend never adds a chrome row of its own. */
+	it("renders no legend when the list fits without overflow", () => {
+		const items = [{ value: "a", label: "a" }];
+		const list = new SelectList(items, 5, testTheme);
+		expect(list.render(80).join("\n")).not.toContain("↑↓ move");
+	});
+});

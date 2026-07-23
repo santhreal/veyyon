@@ -1,0 +1,140 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/binary-vectors",
+ "function": "binarizeAsArray",
+ "vectors": [
+  {
+   "name": "sign pattern packs MSB-first",
+   "input": [
+    [
+     1,
+     -1,
+     0,
+     2,
+     -3
+    ]
+   ],
+   "expected": [
+    144
+   ]
+  },
+  {
+   "name": "eight positives fill one byte",
+   "input": [
+    [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   ],
+   "expected": [
+    255
+   ]
+  },
+  {
+   "name": "ninth bit starts a second byte",
+   "input": [
+    [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   ],
+   "expected": [
+    255,
+    128
+   ]
+  },
+  {
+   "name": "seven positives leave the low bit clear",
+   "input": [
+    [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   ],
+   "expected": [
+    254
+   ]
+  },
+  {
+   "name": "zeros produce cleared bits (strictly positive test)",
+   "input": [
+    [
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "expected": [
+    0
+   ]
+  },
+  {
+   "name": "all negatives clear every bit",
+   "input": [
+    [
+     -1,
+     -2,
+     -3
+    ]
+   ],
+   "expected": [
+    0
+   ]
+  },
+  {
+   "name": "empty embedding has no bytes",
+   "input": [
+    []
+   ],
+   "expected": []
+  },
+  {
+   "name": "alternating signs",
+   "input": [
+    [
+     1,
+     -1,
+     1,
+     -1,
+     1,
+     -1,
+     1,
+     -1
+    ]
+   ],
+   "expected": [
+    170
+   ]
+  },
+  {
+   "name": "single positive is the high bit",
+   "input": [
+    [
+     3
+    ]
+   ],
+   "expected": [
+    128
+   ]
+  }
+ ]
+}

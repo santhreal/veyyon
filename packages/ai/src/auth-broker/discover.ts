@@ -13,6 +13,7 @@ import {
 	getAgentDir,
 	getAuthBrokerSnapshotCachePath,
 	getConfigRootDir,
+	getGlobalConfigRootDir,
 	isEnoent,
 	isRecord,
 	logger,
@@ -155,7 +156,11 @@ function resolveSnapshotTtlMs(): number {
  *
  * 1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars.
  * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml` or `<agentDir>/config.yaml`.
- * 3. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
+ * 3. The same keys in the machine-wide global config (`~/.veyyon/config.yml`),
+ *    which is where the Settings UI's Global tab writes them — the broker is a
+ *    cross-profile concern, so one machine-wide entry serves every profile
+ *    while a profile's own config can still override it.
+ * 4. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
  *
  * Returns `null` when no broker URL is configured — callers should fall back to
  * the local SQLite store. Throws when a URL is configured but no token is
@@ -173,7 +178,11 @@ export async function resolveAuthBrokerConfig(
 	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
 	let configToken: string | undefined;
 	if (!url || !envToken) {
-		const fromConfig = await readConfigYaml(agentDir);
+		// Per-key precedence: the profile's own config wins, the machine-wide
+		// global config fills whichever keys the profile leaves unset.
+		const fromProfile = await readConfigYaml(agentDir);
+		const fromGlobal = await readConfigYaml(getGlobalConfigRootDir());
+		const fromConfig = { url: fromProfile.url ?? fromGlobal.url, token: fromProfile.token ?? fromGlobal.token };
 		if (!url && fromConfig.url) {
 			const resolved = await resolveConfig(fromConfig.url);
 			if (resolved && resolved.length > 0) url = resolved;

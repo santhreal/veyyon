@@ -1,0 +1,156 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/vector-math",
+ "function": "decodeEmbeddingJson",
+ "vectors": [
+  {
+   "name": "accepts: plain integers",
+   "input": [
+    "[1,2,3]"
+   ],
+   "expected": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "accepts: fractions",
+   "input": [
+    "[0.5,-0.25]"
+   ],
+   "expected": [
+    0.5,
+    -0.25
+   ]
+  },
+  {
+   "name": "accepts: surrounding whitespace",
+   "input": [
+    " [1,2] "
+   ],
+   "expected": [
+    1,
+    2
+   ]
+  },
+  {
+   "name": "accepts: subnormal is finite",
+   "input": [
+    "[1e-320]"
+   ],
+   "expected": [
+    1e-320
+   ]
+  },
+  {
+   "name": "accepts: negative zero",
+   "input": [
+    "[-0]"
+   ],
+   "expected": [
+    0
+   ]
+  },
+  {
+   "name": "accepts: single element",
+   "input": [
+    "[7]"
+   ],
+   "expected": [
+    7
+   ]
+  },
+  {
+   "name": "rejects: non-string input",
+   "input": [
+    42
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: empty string",
+   "input": [
+    ""
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: empty array",
+   "input": [
+    "[]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: malformed json",
+   "input": [
+    "not json"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: numeric string element",
+   "input": [
+    "[1,\"2\"]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: null element",
+   "input": [
+    "[null]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: nested array element",
+   "input": [
+    "[[1]]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: object",
+   "input": [
+    "{\"a\":1}"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: overflow to Infinity",
+   "input": [
+    "[1e999]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: bare NaN is invalid json",
+   "input": [
+    "[NaN]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: json string of an array",
+   "input": [
+    "\"[1,2]\""
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: trailing comma",
+   "input": [
+    "[1,2,]"
+   ],
+   "expected": null
+  },
+  {
+   "name": "rejects: boolean element",
+   "input": [
+    "[true]"
+   ],
+   "expected": null
+  }
+ ]
+}

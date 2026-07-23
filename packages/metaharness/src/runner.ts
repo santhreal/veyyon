@@ -25,7 +25,7 @@ import { harborRunnerArgs, type LaunchRequest } from "./launch-args";
 
 // ────────────────────────────────────────────────────────────────────── config
 
-const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
+import { DEFAULT_JOBS_DIR, REPO_ROOT } from "./paths";
 const PKG_DIR = path.resolve(import.meta.dir, "..");
 const AGENT_DIR = path.join(PKG_DIR, "agent");
 const CODING_AGENT_DIR = path.join(REPO_ROOT, "packages", "coding-agent");
@@ -108,7 +108,7 @@ function defaultConfig(): Config {
 		binaryArm64: null,
 		binaryX64: null,
 		build: true,
-		jobsDir: path.join(REPO_ROOT, "runs", "harbor"),
+		jobsDir: DEFAULT_JOBS_DIR,
 		jobName: null,
 		gatewayUrl: DOCKER_GATEWAY_URL,
 		gatewayToken: "no-auth",

@@ -1,0 +1,71 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/binary-vectors",
+ "function": "informationScore",
+ "vectors": [
+  {
+   "name": "zero distance is a perfect 1",
+   "input": [
+    0,
+    384
+   ],
+   "expected": 1
+  },
+  {
+   "name": "half distance is 0.5",
+   "input": [
+    192,
+    384
+   ],
+   "expected": 0.5
+  },
+  {
+   "name": "full distance is 0",
+   "input": [
+    384,
+    384
+   ],
+   "expected": 0
+  },
+  {
+   "name": "distance past dim goes negative",
+   "input": [
+    400,
+    384
+   ],
+   "expected": -0.04166666666666674
+  },
+  {
+   "name": "zero dim yields 0",
+   "input": [
+    10,
+    0
+   ],
+   "expected": 0
+  },
+  {
+   "name": "negative dim yields 0",
+   "input": [
+    3,
+    -5
+   ],
+   "expected": 0
+  },
+  {
+   "name": "small dims divide exactly",
+   "input": [
+    3,
+    8
+   ],
+   "expected": 0.625
+  },
+  {
+   "name": "fractional result",
+   "input": [
+    1,
+    3
+   ],
+   "expected": 0.6666666666666667
+  }
+ ]
+}

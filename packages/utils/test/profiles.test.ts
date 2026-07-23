@@ -7,6 +7,7 @@ import {
 	__resetDirsFromEnvForTests,
 	__resetProfileSnapshotForTests,
 	APP_NAME,
+	assertRemovableProfileDir,
 	DEFAULT_PROFILE_DIR_NAME,
 	getActiveProfile,
 	getActiveProfileOrDefault,
@@ -14,6 +15,7 @@ import {
 	getAgentDir,
 	getConfigAgentDirName,
 	getConfigRootDir,
+	getProfileRootDir,
 	getPythonGatewayDir,
 	getSessionsDir,
 	getStatsDbPath,
@@ -559,5 +561,70 @@ describe("profile path segment ownership", () => {
 		const literals = dirsSource.match(/"profiles"/g) ?? [];
 		expect(literals).toHaveLength(1);
 		expect(dirsSource).toContain('export const PROFILES_DIR_NAME = "profiles";');
+	});
+
+	/**
+	 * The fail-closed guard against wiping a whole profiles tree
+	 * (FINDING-HOST-PROFILE-DIR-DELETED-DURING-BENCH). A profile lifecycle
+	 * operation must only ever recursively remove a DIRECT child of the profiles
+	 * root; the guard throws for the profiles root itself, the config root, the
+	 * home directory, any path outside the tree, and any deeper nesting.
+	 *
+	 * Every boundary path is derived from `getProfileRootDir` so the test reads
+	 * the SAME config-root resolution the guard does under the sandboxed
+	 * VEYYON_CONFIG_DIR — no second copy of the layout to drift.
+	 */
+	describe("assertRemovableProfileDir", () => {
+		// profiles/work -> profilesRoot -> configRoot -> home, walked up from the resolver.
+		const workProfile = () => getProfileRootDir("work");
+		const profilesRoot = () => path.dirname(workProfile());
+		const configRoot = () => path.dirname(profilesRoot());
+		const homeRoot = () => path.dirname(configRoot());
+
+		it("allows removing a named profile directory (a direct child of the profiles root)", () => {
+			const target = workProfile();
+			// Returns the resolved path it validated, so the caller removes exactly that.
+			expect(assertRemovableProfileDir(target)).toBe(path.resolve(target));
+		});
+
+		it("allows removing a staging sibling (the dot-prefixed .tmp create uses)", () => {
+			const staging = path.join(profilesRoot(), `.work.${process.pid}.abcdef.tmp`);
+			expect(assertRemovableProfileDir(staging)).toBe(path.resolve(staging));
+		});
+
+		it("REFUSES the profiles root itself, so the whole tree can never be wiped", () => {
+			// This is the exact directory the bench run deleted; the guard makes it impossible.
+			expect(() => assertRemovableProfileDir(profilesRoot())).toThrow(/Refusing to recursively remove/);
+		});
+
+		it("REFUSES the config root (~/.veyyon)", () => {
+			expect(() => assertRemovableProfileDir(configRoot())).toThrow(/Refusing to recursively remove/);
+		});
+
+		it("REFUSES the home directory", () => {
+			expect(() => assertRemovableProfileDir(homeRoot())).toThrow(/Refusing to recursively remove/);
+		});
+
+		it("REFUSES a path outside the profiles tree entirely", () => {
+			expect(() => assertRemovableProfileDir(path.join(os.tmpdir(), "not-a-profile"))).toThrow(
+				/Refusing to recursively remove/,
+			);
+		});
+
+		it("REFUSES a nested grandchild (a subdir of a profile is not directly removable)", () => {
+			// dirname is profilesRoot/work, not profilesRoot -> refused. Removing a
+			// profile's agent dir must go through that profile, not this guard.
+			expect(() => assertRemovableProfileDir(path.join(workProfile(), "agent"))).toThrow(
+				/Refusing to recursively remove/,
+			);
+		});
+
+		it("REFUSES a `..` traversal that resolves up out of the profiles root", () => {
+			// profilesRoot/.. resolves to the config root; the guard resolves before
+			// checking, so the traversal cannot smuggle the config root past it.
+			expect(() => assertRemovableProfileDir(path.join(profilesRoot(), ".."))).toThrow(
+				/Refusing to recursively remove/,
+			);
+		});
 	});
 });

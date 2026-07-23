@@ -75,3 +75,49 @@ describe("Box border", () => {
 		}
 	});
 });
+
+describe("Box content hugging", () => {
+	/** Why this exists: bordered cards padded every row to the full given
+	 * width, so a three-word skill card stretched its frame to the terminal
+	 * edge and read as a wall, not a card (user defect #12, 2026-07-22).
+	 * setHugContent(true) shrinks the emitted rows (and the border rule) to
+	 * the widest child line; the given width stays the wrap limit. */
+	it("shrinks the frame to the widest child line", () => {
+		const box = new Box(1, 0, undefined, { chars: CHARS });
+		box.setIgnoreTight(true);
+		box.setHugContent(true);
+		box.addChild(new Text("hi", 0, 0));
+		const rows = box.render(40);
+		// 2 content cells + 2 padding + 2 border = 6, not 40.
+		expect(plain(rows)).toEqual(["+----+", "| hi |", "+----+"]);
+	});
+
+	/** Children like Markdown right-pad rows with raw spaces; hugging must
+	 * measure past that padding or every card still measures full width. */
+	it("ignores raw trailing-space padding when measuring", () => {
+		const box = new Box(1, 0, undefined, { chars: CHARS });
+		box.setIgnoreTight(true);
+		box.setHugContent(true);
+		box.addChild(new Text(`hi${" ".repeat(30)}`, 0, 0));
+		const rows = box.render(40);
+		expect(plain(rows)).toEqual(["+----+", "| hi |", "+----+"]);
+	});
+
+	/** The given width is still the wrap limit — hugging never widens. */
+	it("caps at the given width for wide content", () => {
+		const box = new Box(1, 0, undefined, { chars: CHARS });
+		box.setIgnoreTight(true);
+		box.setHugContent(true);
+		box.addChild(new Text("x".repeat(100), 0, 0));
+		for (const w of widths(box.render(20))) expect(w).toBeLessThanOrEqual(20);
+	});
+
+	/** Negative twin: without the opt-in, rows still fill the given width —
+	 * layouts that rely on full-bleed boxes are untouched. */
+	it("keeps full-width rows when hugging is off", () => {
+		const box = new Box(1, 0, undefined, { chars: CHARS });
+		box.setIgnoreTight(true);
+		box.addChild(new Text("hi", 0, 0));
+		for (const w of widths(box.render(40))) expect(w).toBe(40);
+	});
+});

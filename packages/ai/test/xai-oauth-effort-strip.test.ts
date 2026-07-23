@@ -7,18 +7,18 @@ import { getBundledModel } from "@veyyon/catalog/models";
 
 // Pins fix #2 of the compaction effort-override bug. Models that reason
 // natively but reject the wire `reasoning.effort` param (e.g.
-// `xai-oauth/grok-build`, `compat.supportsReasoningEffort: false` on
+// `xai-oauth/grok-4.20-0309-reasoning`, `compat.supportsReasoningEffort: false` on
 // openai-responses*) are encoded at build time as `thinking: undefined` —
 // "thinks, but exposes no control surface". `resolveOpenAiReasoningEffort`
 // returns undefined for them instead of tripping `requireSupportedEffort`
 // (the old user-visible "Compaction failed: Thinking effort high is not
-// supported by xai-oauth/grok-build. Supported efforts:" with an empty list),
+// supported by xai-oauth/grok-4.20-0309-reasoning. Supported efforts:" with an empty list),
 // and the wire-side `omitReasoningEffort` gate (stream.ts) remains the single
 // source of truth for the actual strip.
 describe("effort-dial-less reasoner encoding (regression)", () => {
-	test("xai-oauth/grok-build reasons but carries no thinking config", () => {
-		const grokBuild = getBundledModel("xai-oauth", "grok-build");
-		if (!grokBuild) throw new Error("xai-oauth/grok-build must be in bundled models.json");
+	test("xai-oauth/grok-4.20-0309-reasoning reasons but carries no thinking config", () => {
+		const grokBuild = getBundledModel("xai-oauth", "grok-4.20-0309-reasoning");
+		if (!grokBuild) throw new Error("xai-oauth/grok-4.20-0309-reasoning must be in bundled models.json");
 		expect(grokBuild.reasoning).toBe(true);
 		expect(grokBuild.thinking).toBeUndefined();
 		expect(getSupportedEfforts(grokBuild)).toEqual([]);

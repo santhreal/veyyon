@@ -240,43 +240,70 @@ function groupByTask(runs: readonly ArgotRunMeasurement[]): Map<string, ArgotRun
 	return map;
 }
 
+/** One of the four certified truths. */
+export type CertifiedTruth = "adoption" | "net-tokens" | "pass-parity" | "losslessness";
+
 /** A named reason a certification failed, for a precise operator-facing message. */
 export interface CertificationFailure {
-	truth: "adoption" | "net-tokens" | "pass-parity" | "losslessness";
+	truth: CertifiedTruth;
 	detail: string;
 }
 
+/** All four truths — the default certification scope. */
+export const ALL_TRUTHS: readonly CertifiedTruth[] = ["adoption", "net-tokens", "pass-parity", "losslessness"];
+
 /**
- * The four truths, evaluated. Returns every failure (not just the first) so one
- * run surfaces all of what is broken. An empty array means the feature is
- * certified: a real model adopted handles and netted a token saving, losslessly,
- * with no loss of task success.
+ * The truths a task class can honestly certify. The minimal-edit fixtures
+ * reproduce ~no dictionary content, so adoption/net-tokens are structurally
+ * unmeasurable there (proven by the forced-adoption probe: the model adopts
+ * 100% when reproduction is forced, but an edit task never forces it) — they
+ * certify SAFETY only. The content-reproduction tasks exercise the real argot
+ * use case and certify VALUE on top.
  */
-export function evaluateCertification(cert: ArgotCertification): CertificationFailure[] {
+export const EDIT_TASK_TRUTHS: readonly CertifiedTruth[] = ["pass-parity", "losslessness"];
+
+/**
+ * The truths, evaluated — all four by default, or the subset a task class can
+ * honestly measure (`truths`). Returns every failure (not just the first) so
+ * one run surfaces all of what is broken. An empty array means the feature is
+ * certified for that scope: within it, a real model adopted handles and the
+ * codec deterministically saved tokens, losslessly, with no loss of task
+ * success.
+ *
+ * Net value is certified on {@link ArgotCertification.totalCodecTokensSaved} —
+ * a pure function of the emitted handles — never on the raw output-token
+ * delta, which is dominated by generation-length nondeterminism and is
+ * reported in the failure detail as context only.
+ */
+export function evaluateCertification(
+	cert: ArgotCertification,
+	truths: readonly CertifiedTruth[] = ALL_TRUTHS,
+): CertificationFailure[] {
 	const failures: CertificationFailure[] = [];
+	const wants = new Set(truths);
 	if (cert.pairedTasks === 0) {
-		failures.push({ truth: "adoption", detail: "no paired on/off task runs to certify" });
+		failures.push({ truth: truths[0] ?? "adoption", detail: "no paired on/off task runs to certify" });
 		return failures;
 	}
-	if (cert.totalHandleEmissions <= 0) {
+	if (wants.has("adoption") && cert.totalHandleEmissions <= 0) {
 		failures.push({
 			truth: "adoption",
 			detail: `the model emitted 0 handles across ${cert.pairedTasks} tasks (want > 0)`,
 		});
 	}
-	if (cert.netOutputTokenDelta >= 0) {
+	if (wants.has("net-tokens") && cert.totalCodecTokensSaved <= 0) {
 		failures.push({
 			truth: "net-tokens",
-			detail: `argot on used ${cert.netOutputTokenDelta >= 0 ? "+" : ""}${cert.netOutputTokenDelta} output tokens vs off (want < 0): ${cert.onOutputTokens} on, ${cert.offOutputTokens} off`,
+			detail: `the codec saved ${cert.totalCodecTokensSaved} tokens across adopted emissions (want > 0); raw output delta ${cert.netOutputTokenDelta >= 0 ? "+" : ""}${cert.netOutputTokenDelta} (informational: ${cert.onOutputTokens} on, ${cert.offOutputTokens} off)`,
 		});
 	}
-	if (cert.onPassCount < cert.offPassCount) {
+	if (wants.has("pass-parity") && cert.onPassCount < cert.offPassCount) {
 		failures.push({
 			truth: "pass-parity",
 			detail: `argot on passed ${cert.onPassCount} tasks vs ${cert.offPassCount} off (on must not regress task success)`,
 		});
 	}
-	if (cert.totalUnknownSigils > 0) {
+	if (wants.has("losslessness") && cert.totalUnknownSigils > 0) {
 		failures.push({
 			truth: "losslessness",
 			detail: `${cert.totalUnknownSigils} raw sigils leaked unexpanded (want 0): a handle reached output without a matching definition`,
@@ -286,16 +313,19 @@ export function evaluateCertification(cert: ArgotCertification): CertificationFa
 }
 
 /**
- * Throw with a precise, multi-line message unless the certification passes all
- * four truths. This is what a benchmark test calls to turn the measured numbers
- * into a hard pass/fail: if these do not hold, argot does not "work", and the
- * suite must be red.
+ * Throw with a precise, multi-line message unless the certification passes the
+ * requested truths (all four by default; pass {@link EDIT_TASK_TRUTHS} for the
+ * safety-only edit-task class). This is what a benchmark test calls to turn
+ * the measured numbers into a hard pass/fail: if these do not hold, argot does
+ * not "work" for that scope, and the suite must be red.
  */
-export function assertArgotCertified(cert: ArgotCertification): void {
-	const failures = evaluateCertification(cert);
+export function assertArgotCertified(cert: ArgotCertification, truths: readonly CertifiedTruth[] = ALL_TRUTHS): void {
+	const failures = evaluateCertification(cert, truths);
 	if (failures.length === 0) {
 		return;
 	}
 	const lines = failures.map(f => `  - [${f.truth}] ${f.detail}`);
-	throw new Error(`Argot certification FAILED (${failures.length}/4 truths unmet):\n${lines.join("\n")}`);
+	throw new Error(
+		`Argot certification FAILED (${failures.length}/${truths.length} truths unmet):\n${lines.join("\n")}`,
+	);
 }

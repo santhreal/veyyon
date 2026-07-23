@@ -25,9 +25,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { APP_NAME, __resetDirsFromEnvForTests, getArgotCacheDir, setProfile } from "@veyyon/utils";
+import { __resetDirsFromEnvForTests, APP_NAME, getArgotCacheDir, setProfile } from "@veyyon/utils";
 import {
 	type ArgotBenchOutcome,
+	applyArgotPhaseSettings,
 	extractBenchmarkFixtures,
 	measureForcedAdoption,
 	measureSigilEmission,
@@ -35,7 +36,7 @@ import {
 	runArgotBench,
 	runContentReproBench,
 } from "../src/argot-bench";
-import { assembleRunMeasurement, assertArgotCertified } from "../src/argot-certify";
+import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../src/argot-certify";
 import { loadTasksFromDir } from "../src/tasks";
 import { verifyExpectedFileSubset } from "../src/verify";
 
@@ -153,13 +154,17 @@ describe("argot bench — deterministic setup seams", () => {
 
 describe("argot bench — live certification (opt-in via ARGOT_BENCH_MODEL)", () => {
 	it.skipIf(!BENCH_MODEL)(
-		`certifies adoption + savings on the built-in edit tasks with ${BENCH_MODEL ?? "<unset>"}`,
+		`certifies safety (parity + zero-leak) on the built-in edit tasks with ${BENCH_MODEL ?? "<unset>"}`,
 		async () => {
 			const outcome: ArgotBenchOutcome = await runArgotBench({ model: BENCH_MODEL!, taskLimit: 8 });
 			// Surface the measured numbers so a red run explains itself.
 			console.log("[argot-bench] certification:", JSON.stringify(outcome.certification, null, 2));
-			// The four truths, or a precise failure naming which ones are unmet.
-			assertArgotCertified(outcome.certification);
+			// The edit fixtures reproduce ~no dictionary content, so adoption and
+			// net-tokens are structurally unmeasurable here (the forced-adoption probe
+			// below proves the model DOES adopt when reproduction is forced). This
+			// class certifies SAFETY only; VALUE is certified by the
+			// content-reproduction bench.
+			assertArgotCertified(outcome.certification, EDIT_TASK_TRUTHS);
 		},
 		600_000,
 	);
@@ -222,5 +227,42 @@ describe("argot bench — live certification (opt-in via ARGOT_BENCH_MODEL)", ()
 			);
 		}
 		expect(true).toBe(true);
+	});
+});
+
+describe("applyArgotPhaseSettings — the phase-flip regression (ARG-BENCH-SETTINGS-SINGLETON)", () => {
+	/** The bug this suite locks out: `Settings.init` memoizes its first call and
+	 * silently ignores every later call's options, so the bench's on-phase
+	 * `Settings.init({ "argot.enabled": true })` was a no-op after the
+	 * off-phase's init — the "argot on" sessions ran with argot disabled and
+	 * adoption measured a FALSE ZERO. The fix routes phase values through
+	 * runtime overrides, which win regardless of init order. This test drives
+	 * the exact off→on→off sequence the bench runs and asserts the LIVE
+	 * singleton reads each phase's values. */
+	it("flips the live singleton off→on→off through overrides, beating the once-only init", async () => {
+		const { Settings } = await import("@veyyon/coding-agent/config/settings");
+
+		await applyArgotPhaseSettings(false, "test/model-a");
+		expect(Settings.instance.get("argot.enabled")).toBe(false);
+		expect(Settings.instance.get("argot.models")).toEqual([]);
+
+		await applyArgotPhaseSettings(true, "test/model-a", 123);
+		expect(Settings.instance.get("argot.enabled")).toBe(true);
+		expect(Settings.instance.get("argot.models")).toEqual(["test/model-a"]);
+		expect(Settings.instance.get("argot.disableAboveTokens")).toBe(123);
+
+		await applyArgotPhaseSettings(false, "test/model-a");
+		expect(Settings.instance.get("argot.enabled")).toBe(false);
+	});
+
+	/** The adversarial twin documenting the trap itself: a second Settings.init
+	 * with different options is a silent no-op (the memoized singleton wins).
+	 * If this ever starts honoring later options, the override path above is
+	 * no longer load-bearing and the bench's phase logic should be revisited. */
+	it("documents that a second Settings.init cannot flip argot.enabled", async () => {
+		const { Settings } = await import("@veyyon/coding-agent/config/settings");
+		await applyArgotPhaseSettings(false, "test/model-a");
+		await Settings.init({ overrides: { "argot.enabled": true } } as never);
+		expect(Settings.instance.get("argot.enabled")).toBe(false);
 	});
 });

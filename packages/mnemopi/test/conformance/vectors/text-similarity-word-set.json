@@ -1,0 +1,74 @@
+{
+ "schemaVersion": 1,
+ "module": "mnemopi/text-similarity",
+ "function": "wordSetSorted",
+ "vectors": [
+  {
+   "name": "lowercases and sorts",
+   "input": [
+    "Beta ALPHA gamma"
+   ],
+   "expected": [
+    "alpha",
+    "beta",
+    "gamma"
+   ]
+  },
+  {
+   "name": "duplicates collapse",
+   "input": [
+    "a b a b a"
+   ],
+   "expected": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "name": "punctuation stays attached to its word",
+   "input": [
+    "a, b. c!"
+   ],
+   "expected": [
+    "a,",
+    "b.",
+    "c!"
+   ]
+  },
+  {
+   "name": "tabs and newlines split",
+   "input": [
+    "a\tb\nc"
+   ],
+   "expected": [
+    "a",
+    "b",
+    "c"
+   ]
+  },
+  {
+   "name": "empty text is an empty set",
+   "input": [
+    ""
+   ],
+   "expected": []
+  },
+  {
+   "name": "whitespace-only text is an empty set",
+   "input": [
+    "  \t  "
+   ],
+   "expected": []
+  },
+  {
+   "name": "unicode words survive",
+   "input": [
+    "Héllo WÖRLD"
+   ],
+   "expected": [
+    "héllo",
+    "wörld"
+   ]
+  }
+ ]
+}

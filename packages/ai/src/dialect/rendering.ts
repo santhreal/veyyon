@@ -19,13 +19,14 @@ export function stringifyJson(value: unknown): string {
 	return stringifyJsonValue(value) ?? "null";
 }
 
-export function escapeXmlAttr(value: string): string {
-	return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
-
-export function escapeXmlText(value: string): string {
-	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
+// XML escaping has ONE owner in @veyyon/utils: `escapeXmlText` (escapes `&`,
+// `<`, `>`) and `escapeXmlAttribute` (also escapes `"` for attribute values),
+// both single-pass with a no-alloc fast path. Re-exported here (the attribute
+// one under this module's shorter `escapeXmlAttr` name) so dialect modules keep
+// importing them from `./rendering` alongside the other render helpers. Behavior
+// parity with the naive replaceAll chains these replaced is locked by the
+// differentials in utils/test/sanitize-text.test.ts.
+export { escapeXmlAttribute as escapeXmlAttr, escapeXmlText } from "@veyyon/utils";
 
 export type AssistantTranscriptParts = {
 	readonly text: string;

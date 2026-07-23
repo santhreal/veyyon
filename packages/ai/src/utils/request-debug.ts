@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { FetchImpl } from "../types";
 
 const REQUEST_DEBUG_ENV = "VEYYON_REQ_DEBUG";
@@ -198,7 +198,7 @@ class FileRequestDebugSession implements RequestDebugSession {
 		} catch (error) {
 			logger.error("Request debug log could not be opened; this response was not recorded", {
 				path: this.responsePath,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return undefined;
 		}
@@ -272,7 +272,7 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 		this.#failed = true;
 		logger.error("Request debug log failed; the rest of this response was not recorded", {
 			path: this.#path,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }

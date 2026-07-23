@@ -8,7 +8,13 @@ import { createMockModel } from "../src/providers/mock";
  */
 
 async function drain(
-	stream: AsyncIterable<{ type: string }> & { result: () => Promise<{ stopReason: string; content: unknown[]; errorMessage?: string }> },
+	stream: AsyncIterable<{ type: string }> & {
+		result: () => Promise<{
+			stopReason: string;
+			content: Array<{ type: string; text?: string }>;
+			errorMessage?: string;
+		}>;
+	},
 ) {
 	const types: string[] = [];
 	for await (const ev of stream) {
@@ -75,11 +81,7 @@ describe("AI stream adversarial fixtures", () => {
 		const mock = createMockModel({
 			responses: [
 				{
-					content: [
-						{ type: "thinking", thinking: "plan" },
-						"answer-part-1",
-						"answer-part-2",
-					],
+					content: [{ type: "thinking", thinking: "plan" }, "answer-part-1", "answer-part-2"],
 				},
 			],
 		});

@@ -206,11 +206,20 @@ describe("xAI-OAuth Responses reasoning-effort suppression", () => {
 		maxTokens: 512_000,
 	});
 
-	it("omits the effort dial for a custom grok-build spec (off the allowlist)", () => {
+	it("keeps the effort dial for a custom grok-build spec (on the allowlist since 2026-07-22)", () => {
+		// grok-build accepts the wire `reasoning.effort` param; it was wrongly
+		// encoded as dial-less, which silently discarded the user's thinking level.
 		const compat = buildOpenAIResponsesCompat(grokResponsesSpec("grok-build"));
+		expect(compat.supportsReasoningEffort).toBe(true);
+		expect(compat.omitReasoningEffort).toBe(false);
+		expect(buildModel(grokResponsesSpec("grok-build")).thinking).toBeDefined();
+	});
+
+	it("omits the effort dial for a custom grok-4.20-0309-reasoning spec (off the allowlist)", () => {
+		const compat = buildOpenAIResponsesCompat(grokResponsesSpec("grok-4.20-0309-reasoning"));
 		expect(compat.supportsReasoningEffort).toBe(false);
 		expect(compat.omitReasoningEffort).toBe(true);
-		expect(buildModel(grokResponsesSpec("grok-build")).thinking).toBeUndefined();
+		expect(buildModel(grokResponsesSpec("grok-4.20-0309-reasoning")).thinking).toBeUndefined();
 	});
 
 	it("keeps the effort dial for a custom grok-4.3 spec (on the allowlist)", () => {

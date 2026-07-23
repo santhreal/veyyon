@@ -1385,7 +1385,9 @@ function normalizeMandatoryReasoningOptions<TApi extends Api>(
 	return { ...options, reasoning: floor, disableReasoning: undefined };
 }
 
-function mapOptionsForApi<TApi extends Api>(
+/** Exported for tests: effort-to-wire-id routing (devin/cursor) is invisible
+ *  from outside the request, so its mapping is locked at this seam. */
+export function mapOptionsForApi<TApi extends Api>(
 	model: Model<TApi>,
 	rawOptions?: SimpleStreamOptions,
 	apiKey?: string,
@@ -1772,10 +1774,18 @@ function mapOptionsForApi<TApi extends Api>(
 		case "cursor-agent": {
 			const execHandlers = options?.cursorExecHandlers ?? options?.execHandlers;
 			const onToolResult = options?.cursorOnToolResult ?? execHandlers?.onToolResult;
+			// Cursor carries no wire effort param: effort selects a tier-suffixed
+			// sibling model id via `thinking.effortRouting` (mirrors devin-agent).
+			const cursorModel = model as Model<"cursor-agent">;
+			const cursorEffort =
+				options?.reasoning && !options.disableReasoning
+					? requireSupportedEffort(cursorModel, options.reasoning)
+					: undefined;
 			return castApi<"cursor-agent">({
 				...base,
 				execHandlers,
 				onToolResult,
+				wireModelId: resolveWireModelId(cursorModel, cursorEffort),
 			});
 		}
 
