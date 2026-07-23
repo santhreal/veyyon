@@ -1443,11 +1443,57 @@ export class StatusLineComponent implements Component {
 			else push(id, capRight);
 		}
 		const runningBackgroundJobs = this.session.getAsyncJobSnapshot()?.running.length ?? 0;
+		const badgeParts: string[] = [];
+		if (subagentBadge) badgeParts.push(subagentBadge);
 		if (runningBackgroundJobs > 0) {
-			capRight.unshift(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
+			badgeParts.push(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
 		}
-		if (subagentBadge) capRight.unshift(subagentBadge);
+		const badgeSlot = this.#animatedBadgeSlot(badgeParts);
+		if (badgeSlot !== null) capRight.unshift(badgeSlot);
 		return { location, capLeft, capRight };
+	}
+
+	// Badge slot animation state. Badges ease in/out over BADGE_ANIM_MS so a
+	// spawn or finish reads as intentional motion — a smooth merge — instead
+	// of the right group jumping sideways by the badge width (grok lesson:
+	// state changes must not shift stable geometry; the motion carries the
+	// change). Between animations the slot is exactly the badges' width, so
+	// there is no permanent dead space either.
+	#badgeSlotFromWidth = 0;
+	#badgeSlotTargetWidth = 0;
+	#badgeSlotAnimStartMs = 0;
+	// The badge text being clipped during a close; the count drops to zero
+	// before the slot finishes shrinking, so the last text must outlive it.
+	#badgeSlotText = "";
+	static readonly #BADGE_ANIM_MS = 240;
+
+	/** The badge slot at its current animated width, or null when the slot is
+	 * fully closed. The text slides in clipped to the easing width; the
+	 * caller unshifts the slot so the group's left edge eases open instead of
+	 * jumping. */
+	#animatedBadgeSlot(badgeParts: string[]): string | null {
+		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(theme.fg("dim", " · "))) : 0;
+		if (targetWidth !== this.#badgeSlotTargetWidth) {
+			this.#badgeSlotFromWidth = this.#badgeSlotCurrentWidth();
+			this.#badgeSlotTargetWidth = targetWidth;
+			this.#badgeSlotAnimStartMs = Date.now();
+			if (targetWidth > 0) this.#badgeSlotText = badgeParts.join(theme.fg("dim", " · "));
+		}
+		const width = this.#badgeSlotCurrentWidth();
+		if (width === 0) return null;
+		const clipped = truncateToWidth(this.#badgeSlotText, width);
+		const clippedWidth = visibleWidth(clipped);
+		return clippedWidth >= width ? clipped : clipped + " ".repeat(width - clippedWidth);
+	}
+
+	#badgeSlotCurrentWidth(): number {
+		const elapsed = Date.now() - this.#badgeSlotAnimStartMs;
+		if (elapsed >= StatusLineComponent.#BADGE_ANIM_MS) return this.#badgeSlotTargetWidth;
+		const t = elapsed / StatusLineComponent.#BADGE_ANIM_MS;
+		const eased = t * t * (3 - 2 * t);
+		return Math.round(
+			this.#badgeSlotFromWidth + (this.#badgeSlotTargetWidth - this.#badgeSlotFromWidth) * eased,
+		);
 	}
 
 	/**
