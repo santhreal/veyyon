@@ -4,7 +4,7 @@
   "version": "1.0.21",
   "description": "General-purpose agent with transport abstraction, state management, and attachment support",
   "homepage": "https://veyyon.dev",
-  "author": "Can Boluk",
+  "author": "santhreal",
   "contributors": [
     "Mario Zechner"
   ],

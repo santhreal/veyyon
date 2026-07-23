@@ -4,7 +4,7 @@
   "version": "1.0.21",
   "description": "Model catalog for veyyon: bundled model database, provider discovery descriptors, model identity, classification, and equivalence",
   "homepage": "https://veyyon.dev",
-  "author": "Can Boluk",
+  "author": "santhreal",
   "license": "MIT",
   "repository": {
     "type": "git",
