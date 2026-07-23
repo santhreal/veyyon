@@ -44,8 +44,8 @@ describe("composer contextual shortcuts", () => {
 		const rows = bar.render(80);
 		expect(rows.length).toBe(1);
 		const plain = stripVTControlCharacters(rows[0]!);
-		expect(plain).toContain("8 new rows");
-		expect(plain).toContain("wheel down to resume");
+		expect(plain).toContain("8 rows up");
+		expect(plain).toContain("click to go to the bottom");
 		bar.setScrollState(() => ({ active: false, newRows: 0 }));
 		expect(stripVTControlCharacters(bar.render(80)[0]!).trim()).toBe("");
 	});

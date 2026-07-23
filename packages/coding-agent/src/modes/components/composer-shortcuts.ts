@@ -66,7 +66,7 @@ export class ComposerShortcutsBar implements Component {
 		const scroll = this.#scrollState?.();
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
 		if (scroll?.active) {
-			const label = theme.fg("dim", `\u2193 ${scroll.newRows} new rows`) + theme.fg("muted", "  wheel down to resume");
+			const label = theme.fg("dim", `\u2193 ${scroll.newRows} rows up`) + theme.fg("muted", "  ·  click to go to the bottom");
 			return [inset + label];
 		}
 		if (this.#shortcuts.length === 0 || width < 20) return [""];

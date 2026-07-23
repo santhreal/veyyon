@@ -2448,12 +2448,22 @@ export class TUI extends Container {
 
 		// Scroll isolation owns every SGR mouse report while wheel tracking is
 		// on and no alt-screen overlay is active: the wheel scrolls the frozen
-		// transcript region, and any other report is swallowed so clicks never
-		// leak raw SGR bytes into the focused component.
+		// transcript region, a click in the pinned footer (band or composer)
+		// snaps back to the live tail, and any other report is swallowed so
+		// clicks never leak raw SGR bytes into the focused component.
 		if (this.#wheelTrackingActive && !this.#altActive && data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
 			if (event) {
-				if (event.wheel) this.#handleIsolationWheel(event.wheel);
+				if (event.wheel) {
+					this.#handleIsolationWheel(event.wheel);
+				} else if (
+					event.leftClick &&
+					this.#virtualScrollTop !== null &&
+					event.row >= this.terminal.rows - this.#pinnedFooterRows
+				) {
+					// Chat idiom: engaging the composer returns to the present.
+					this.scrollToLiveTail();
+				}
 				return;
 			}
 		}

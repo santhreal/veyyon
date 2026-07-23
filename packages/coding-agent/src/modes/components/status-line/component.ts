@@ -249,7 +249,7 @@ interface ActiveMeter {
 	activeMs: number;
 	activeStartedAt: number | null;
 	/** Duration of the most recently COMPLETED run window — what the location
-	 * line's "Worked for …" readout shows once the agent yields. */
+	 * line's stopped clock (`✓ 0:21`) shows once the agent yields. */
 	lastRunMs: number;
 	sessionFile: string | undefined;
 }
@@ -1507,20 +1507,20 @@ export class StatusLineComponent implements Component {
 	 * Join the location group and append the MODEL RUN clock with a roomy gap.
 	 * The clock is model runtime from the ONE active-processing meter (the
 	 * same accounting behind `time_spent`), never wall time since launch:
-	 * while the agent runs it ticks the current run (`…main *      0:42`);
-	 * once the run finishes it reads `Worked for 4m12s` (the completed run's
-	 * duration); before the model has ever started it says nothing at all.
-	 * Chrome, not a configurable segment — it rides the location line
-	 * whenever one renders (approved placement: next to the git branch, with
-	 * a decent amount of space). Dim; the mode's 1s heartbeat keeps the
-	 * running form ticking between agent events.
+	 * ONE clock, two states — while the agent runs it ticks the current run
+	 * (`0:42`); once the run finishes it freezes as a quiet receipt of the
+	 * completed run (`✓ 0:21`); before the model has ever started it says
+	 * nothing at all. Chrome, not a configurable segment — it rides the
+	 * location line whenever one renders (approved placement: next to the git
+	 * branch, with a decent amount of space). Dim; the mode's 1s heartbeat
+	 * keeps the running form ticking between agent events.
 	 */
 	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
 		const left = location.join(sep);
 		if (!left) return left;
 		const { runningMs, lastRunMs } = this.getRunClock();
 		const readout =
-			runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `Worked for ${formatDuration(lastRunMs)}` : "";
+			runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `✓ ${formatClock(lastRunMs)}` : "";
 		if (!readout) return left;
 		return `${left}${gap}${theme.fg("dim", readout)}`;
 	}

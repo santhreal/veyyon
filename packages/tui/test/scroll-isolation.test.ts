@@ -194,6 +194,32 @@ describe("scroll isolation", () => {
 		}
 	});
 
+	it("resumes following when the pinned footer is clicked", async () => {
+		// The operator's ask (2026-07-23): the scroll indicator says "click to
+		// go to the bottom" — a left click anywhere in the pinned footer (band
+		// or composer) snaps back to the live tail. Clicks in the frozen
+		// transcript region do NOT resume (that region is for reading).
+		const { term, tui, scheduler } = await setup(30);
+		try {
+			term.sendInput(WHEEL_UP);
+			await scheduler.drain(term);
+			expect(tui.virtualScrollActive).toBe(true);
+
+			// Click in the transcript region: still frozen.
+			term.sendInput("\x1b[<0;10;3M");
+			await scheduler.drain(term);
+			expect(tui.virtualScrollActive).toBe(true);
+
+			// Click in the footer (last row): resumes.
+			term.sendInput("\x1b[<0;10;10M");
+			await scheduler.drain(term);
+			expect(tui.virtualScrollActive).toBe(false);
+		} finally {
+			tui.stop();
+			await term.flush();
+		}
+	});
+
 	it("never leaks raw SGR mouse bytes into the focused component", async () => {
 		// With tracking on, clicks and wheel reports are engine input, not
 		// text: a stray report reaching the editor would insert escape junk.

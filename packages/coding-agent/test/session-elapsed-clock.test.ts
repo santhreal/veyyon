@@ -1,6 +1,6 @@
 /**
  * Model-run clock on the location line — `…keyhog  ·  main *      0:42` while
- * the agent runs, `Worked for 4m12s` once the run completes. The readout is
+ * the agent runs, `✓ 4:12` once the run completes. The readout is
  * MODEL RUNTIME from the ONE active-processing meter (the same accounting
  * behind the `time_spent` segment), never wall time since launch: the first
  * shipped version anchored at TUI construction and ticked while the model had
@@ -8,10 +8,10 @@
  * start and the timer is ticking"). These tests lock the corrected contract.
  *
  * Locks:
- *  1. Before the model has EVER run: no clock, no "Worked for", nothing.
+ *  1. Before the model has EVER run: no clock, no stopped receipt, nothing.
  *  2. While a run is live: a ticking colon clock of THAT run's elapsed, after
  *     the roomy 6-space gap (wider than the `  ·  ` separator).
- *  3. When the run ends: `Worked for <duration>` in compound units — and it
+ *  3. When the run ends: the clock freezes into the stopped receipt `✓ <clock>` —
  *     stays frozen (idle wall time never accumulates).
  *  4. A new run restarts the ticking clock; its completion replaces the
  *     Worked-for readout with the NEW run's duration (per-run, not a total).
@@ -83,7 +83,7 @@ describe("location line model-run clock", () => {
 		const line = locationLine(statusLine);
 		expect(line).not.toBeNull();
 		expect(line).not.toMatch(/\d:\d\d/);
-		expect(line).not.toContain("Worked for");
+		expect(line).not.toContain("✓");
 	});
 
 	it("ticks the current run's elapsed after the roomy gap while the agent runs", () => {
@@ -96,18 +96,18 @@ describe("location line model-run clock", () => {
 		expect(locationLine(statusLine)).toMatch(/\S {6}1:35$/);
 	});
 
-	it("freezes into 'Worked for <duration>' when the run ends", () => {
+	it("freezes into the stopped receipt ✓ <clock> when the run ends", () => {
 		const statusLine = new StatusLineComponent(session);
 		statusLine.markActivityStart();
 		at(95_000);
 		statusLine.markActivityEnd();
-		expect(locationLine(statusLine)).toMatch(/ {6}Worked for 1m35s$/);
+		expect(locationLine(statusLine)).toMatch(/ {6}✓ 1:35$/);
 		// Idle wall time never accumulates into the readout.
 		at(3_600_000);
-		expect(locationLine(statusLine)).toMatch(/ {6}Worked for 1m35s$/);
+		expect(locationLine(statusLine)).toMatch(/ {6}✓ 1:35$/);
 	});
 
-	it("restarts per run: a new run ticks from zero and replaces the Worked-for readout", () => {
+	it("restarts per run: a new run ticks from zero and replaces the stopped receipt", () => {
 		const statusLine = new StatusLineComponent(session);
 		statusLine.markActivityStart();
 		at(95_000);
@@ -117,7 +117,7 @@ describe("location line model-run clock", () => {
 		at(200_000 + 7_000);
 		expect(locationLine(statusLine)).toMatch(/ {6}0:07$/);
 		statusLine.markActivityEnd();
-		expect(locationLine(statusLine)).toMatch(/ {6}Worked for 7\.0s$/);
+		expect(locationLine(statusLine)).toMatch(/ {6}✓ 0:07$/);
 	});
 
 	it("carries the readout on the single-footline renderer too (one owner)", () => {
