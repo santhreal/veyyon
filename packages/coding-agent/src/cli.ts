@@ -90,6 +90,23 @@ async function showHelp(config: CliConfig): Promise<void> {
  * tarball installs all exercise it on every CI run.
  */
 async function runSmokeTest(): Promise<void> {
+	// Force the core `@veyyon/natives` addon to actually LOAD and RUN first. The
+	// loader is lazy — it defers `dlopen`/version-sentinel validation until the
+	// first real native call — so spawning the workers below does NOT prove the
+	// addon a normal launch depends on (grep, pty, tokens, text width: everything
+	// the interactive TUI hits immediately) can load on this shipped binary. A
+	// stale or version-mismatched `.node` throws right here, at the same point the
+	// interactive launch would have crashed, so release verification
+	// (`--smoke-test` on the PUBLISHED binary) fails instead of a user's terminal.
+	const natives = await import("@veyyon/natives");
+	const width = natives.visibleWidth("veyyon", 4);
+	if (width !== 6) {
+		throw new Error(
+			`native smoke failed: @veyyon/natives visibleWidth("veyyon") returned ${width}, expected 6 — ` +
+				"the core native addon did not load/run correctly on this binary",
+		);
+	}
+
 	const { smokeTestSyncWorker, startServer } = await import("@veyyon/stats");
 	const { smokeTestTinyTitleWorker } = await import("./tiny/title-client");
 	const { smokeTestSttWorker } = await import("./stt/asr-client");
