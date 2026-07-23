@@ -752,3 +752,38 @@ jobs:
               # lookup, so surface the result without gating the release on it.
               spctl -a -t exec -vv ./veyyon-darwin-arm64 || echo "spctl non-zero (expected for unstapled bare binary; ticket served online)"
 
+   release_github_verify_linux:
+      # linux-x64 is the most common `curl | sh` target, but the macOS verify job
+      # above never launches it — a broken linux binary (or a native addon that
+      # fails to load on a real launch) could publish unnoticed. Download the
+      # published asset exactly as install.sh does, verify the .sha256 sidecar
+      # install.sh requires, then run --version and --smoke-test in a clean HOME.
+      # --smoke-test forces the core @veyyon/natives addon to load, so this is the
+      # end-to-end proof that the shipped linux binary actually starts.
+      name: Verify published release (linux-x64)
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
+         needs.release_github.result == 'success' }}
+      needs: [release_metadata, release_github]
+      runs-on: ubuntu-22.04
+      permissions:
+         contents: read
+      steps:
+         - name: Download published linux-x64 binary and checksum sidecar
+           run: |
+              base="https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}"
+              curl -fsSL -o veyyon-linux-x64 "$base/veyyon-linux-x64"
+              curl -fsSL -o veyyon-linux-x64.sha256 "$base/veyyon-linux-x64.sha256"
+              chmod +x veyyon-linux-x64
+         - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
+           run: |
+              # The sidecar is `<hash>  veyyon-linux-x64`, so `-c` checks it against
+              # the downloaded file. install.sh refuses to install a binary whose
+              # published checksum is missing or mismatched, so a bad sidecar must
+              # fail the release here, not a user's install.
+              sha256sum -c veyyon-linux-x64.sha256
+         - name: Launch the published linux-x64 binary (forces native-addon load)
+           run: |
+              runtime_dir="$(mktemp -d)"
+              HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --version
+              HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --smoke-test
+
