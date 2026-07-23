@@ -28,7 +28,15 @@
  * underneath; this only adds curated context.
  */
 
-import { compareSemver } from "@veyyon/utils/semver";
+// Import compareSemver by RELATIVE PATH, not the "@veyyon/utils/semver"
+// workspace specifier. The release_github job that runs this script checks out
+// the repo and sets up bun but does NOT `bun install`, so the workspace symlink
+// `node_modules/@veyyon/utils` does not exist and the package specifier fails to
+// resolve ("Cannot find module '@veyyon/utils/semver'"). That crashed the very
+// first release_github run to completion (v1.0.20) and blocked the publish.
+// semver.ts is self-contained (no imports of its own), so a direct file import
+// needs no install and cannot regress this way.
+import { compareSemver } from "../packages/utils/src/semver.ts";
 import { $, Glob } from "bun";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
