@@ -488,9 +488,56 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	// this same atomic push — no separate `git lfs push` is needed.
 	console.log("Tagging and pushing to remote...");
 	const tagRef = `v${version}`;
-	const sha = (await git(["rev-parse", "HEAD"]).text()).trim();
-	await git(["tag", "-f", tagRef]);
-	await git(["push", "--atomic", "origin", "refs/heads/main:refs/heads/main", `${sha}:refs/tags/${tagRef}`]);
+	// `bun run check` above takes minutes, and main is a busy branch (concurrent
+	// pushes land during that window). A single atomic push of the bump commit
+	// then loses the race with `! [rejected] main -> main (fetch first)` and the
+	// release dies with the tree fully checked but never shipped. Retry: on a
+	// rejection, rebase the one version-bump commit onto the advanced origin/main
+	// and push again. The bump only rewrites version files (package.json, Cargo
+	// tomls, the lockfile, CHANGELOG, the natives sentinel), so replaying it over
+	// unrelated fleet commits is normally conflict-free; a real conflict (someone
+	// else bumped versions) aborts loudly rather than force over anyone's work.
+	// The check is NOT re-run per attempt — that would lengthen the race window,
+	// and the tag we push triggers the full CI release chain (release_binary
+	// `needs: check`), which re-validates the exact shipped tree before anything
+	// is published, so no unchecked state can ship. main is never force-pushed
+	// (it must fast-forward after the rebase); only the tag ref is forced, so a
+	// stale tag from a prior failed attempt is overwritten.
+	const maxPushAttempts = 10;
+	for (let attempt = 1; ; attempt++) {
+		const sha = (await git(["rev-parse", "HEAD"]).text()).trim();
+		await git(["tag", "-f", tagRef]);
+		try {
+			await git([
+				"push",
+				"--atomic",
+				"origin",
+				"refs/heads/main:refs/heads/main",
+				`+${sha}:refs/tags/${tagRef}`,
+			]);
+			break;
+		} catch (pushErr) {
+			if (attempt >= maxPushAttempts) {
+				console.error(
+					`Atomic push of the release bump was rejected ${maxPushAttempts} times running; main is advancing faster than the release can rebase onto it. Re-run the release.`,
+				);
+				throw pushErr;
+			}
+			console.log(
+				`  push rejected (attempt ${attempt}/${maxPushAttempts}); rebasing the bump onto origin/main and retrying…`,
+			);
+			await git(["fetch", "origin", "main"]);
+			try {
+				await git(["rebase", "origin/main"]);
+			} catch (rebaseErr) {
+				await git(["rebase", "--abort"]).nothrow();
+				console.error(
+					"Rebasing the version-bump commit onto origin/main hit a conflict (a concurrent commit touched the same version files). Aborting so no half-pushed release is left; re-run the release.",
+				);
+				throw rebaseErr;
+			}
+		}
+	}
 	console.log();
 
 	// 9. Watch CI
