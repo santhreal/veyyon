@@ -404,7 +404,9 @@ describe("approval mode value set is the one source of truth", () => {
 	});
 
 	it("includes the shipped ladder and both legacy aliases", () => {
-		expect([...APPROVAL_MODE_VALUES].sort()).toEqual(
+		// APPROVAL_MODE_VALUES is a readonly tuple of narrow literals; compare against
+		// a plain string[] by widening the matcher's expected type.
+		expect([...APPROVAL_MODE_VALUES].sort()).toEqual<string[]>(
 			["always-ask", "ask", "auto-edit", "plan", "write", "yolo"].sort(),
 		);
 	});

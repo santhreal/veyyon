@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { getExaMcpTools, RESEARCHER_MCP_TOOL_NAMES } from "@veyyon/coding-agent/exa/tools";
+import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { logger } from "@veyyon/utils";
 
 /**
@@ -149,7 +150,9 @@ describe("Exa MCP tool registration", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const result = await tools[0].execute("call-1", { query: "cats" });
+		// execute takes (toolCallId, params, onUpdate, ctx, signal?); the exa MCP
+		// wrapper ignores onUpdate/ctx, so a bare context satisfies the type.
+		const result = await tools[0].execute("call-1", { query: "cats" }, undefined, {} as CustomToolContext);
 
 		expect(new URL(requestedUrls[0]).host).toBe("websetsmcp.exa.ai");
 		expect(result.content).toEqual([{ type: "text", text: "made it" }]);

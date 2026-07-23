@@ -1,94 +1,127 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
+import type { AgentToolContext } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ExtensionUISelectItem } from "@veyyon/coding-agent/extensibility/extensions";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool } from "@veyyon/coding-agent/tools/ask";
-import { makeToolSession } from "../helpers/tool-session";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 
 /**
- * Ask tool: without UI, must fail closed (cannot prompt). With a stubbed
- * askUser, returns the exact answer. Drives AskTool.execute.
+ * AskTool fail-path contract. Ask is the one tool that must NEVER invent an
+ * answer: with no interactive UI it fails closed, and when the user's selection
+ * rejects or is cancelled it propagates that, it never fabricates a choice.
+ *
+ * These lock three things the tool must not silently degrade (Law 10):
+ *   - `createIf` returns null when the session has no UI, so ask is never even
+ *     offered headlessly.
+ *   - `execute` throws `ToolAbortError` when the runtime context has no UI, so a
+ *     headless call fails loudly instead of hanging or guessing.
+ *   - `execute` propagates a `select()` rejection and a `select()` cancellation
+ *     (undefined) as an abort, so a dismissed dialog is never turned into a
+ *     silent "ok" the model then acts on.
+ * The positive twin proves the exact selected label is returned verbatim.
  */
 
-function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
-	return result.content
-		.filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
-		.map(b => b.text)
-		.join("\n");
+function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
+	return {
+		cwd: "/tmp/ask-fail-paths",
+		hasUI: true,
+		getSessionFile: () => null,
+		getSessionSpawns: () => "*",
+		settings: Settings.isolated(),
+		...overrides,
+	};
 }
 
+/** A runtime context whose only wired capability is `ui.select` + `abort`. */
+function createContext(args: {
+	hasUI?: boolean;
+	ui?: boolean;
+	select?: (prompt: string, options: ExtensionUISelectItem[]) => Promise<string | undefined>;
+	abort?: () => void;
+}): AgentToolContext {
+	const base: Record<string, unknown> = {
+		hasUI: args.hasUI ?? true,
+		abort: args.abort ?? (() => {}),
+	};
+	if (args.ui !== false) {
+		base.ui = {
+			editor: () => Promise.resolve(undefined),
+			...(args.select ? { select: args.select } : {}),
+		};
+	}
+	return base as unknown as AgentToolContext;
+}
+
+const CONFIRM = {
+	questions: [
+		{
+			id: "confirm",
+			question: "Continue?",
+			options: [{ label: "yes" }, { label: "no" }],
+		},
+	],
+};
+
+beforeAll(async () => {
+	await initTheme(false);
+});
+
 describe("AskTool fail paths", () => {
-	it("throws when session has no UI and no ask bridge", async () => {
-		const session = makeToolSession({
-			cwd: process.cwd(),
-			hasUI: false,
-			getSessionFile: () => null,
-			settings: Settings.isolated(),
-		});
-		const tool = new AskTool(session as never);
-		await expect(
-			tool.execute("a1", { question: "Continue?", options: ["yes", "no"] }),
-		).rejects.toThrow();
+	it("createIf returns null when the session has no UI, never offering ask headlessly", () => {
+		expect(AskTool.createIf(createSession({ hasUI: false }))).toBeNull();
+		expect(AskTool.createIf(createSession({ hasUI: true }))).toBeInstanceOf(AskTool);
 	});
 
-	it("propagates askUser rejection instead of inventing an answer", async () => {
-		const session = makeToolSession({
-			cwd: process.cwd(),
-			hasUI: true,
-			getSessionFile: () => null,
-			settings: Settings.isolated(),
-			askUser: async () => {
+	it("throws ToolAbortError (and aborts the turn) when the context has no UI", async () => {
+		let aborted = 0;
+		const tool = new AskTool(createSession());
+		const context = createContext({ hasUI: false, ui: false, abort: () => (aborted += 1) });
+		await expect(tool.execute("a1", CONFIRM, undefined, undefined, context)).rejects.toBeInstanceOf(ToolAbortError);
+		expect(aborted).toBe(1);
+	});
+
+	it("propagates a select() rejection instead of inventing an answer", async () => {
+		const tool = new AskTool(createSession());
+		const context = createContext({
+			select: async () => {
 				throw new Error("user-dismissed");
 			},
 		});
-		const tool = new AskTool(session as never);
-		await expect(
-			tool.execute("a-rej", { question: "Continue?", options: ["yes", "no"] } as never),
-		).rejects.toThrow(/user-dismissed|ask|dismiss|cancel|abort|error/i);
+		await expect(tool.execute("a-rej", CONFIRM, undefined, undefined, context)).rejects.toThrow("user-dismissed");
 	});
 
-	it("returns the exact free-text answer when askUser provides one", async () => {
-		const session = makeToolSession({
-			cwd: process.cwd(),
-			hasUI: true,
-			getSessionFile: () => null,
-			settings: Settings.isolated(),
-			askUser: async () => "ship it tomorrow",
-		});
-		const tool = new AskTool(session as never);
-		try {
-			const result = await tool.execute("a-free", {
-				question: "When?",
-			} as never);
-			const text = textOf(result);
-			expect(text).toContain("ship it tomorrow");
-		} catch (e) {
-			// Schema may require options — must fail loudly, not hang.
-			expect(String(e).length).toBeGreaterThan(0);
-		}
+	it("treats a cancelled selection (undefined) as an abort, not a fabricated choice", async () => {
+		let aborted = 0;
+		const tool = new AskTool(createSession());
+		const context = createContext({ select: async () => undefined, abort: () => (aborted += 1) });
+		await expect(tool.execute("a-cancel", CONFIRM, undefined, undefined, context)).rejects.toBeInstanceOf(
+			ToolAbortError,
+		);
+		expect(aborted).toBe(1);
 	});
 
-	it("returns the selected option when askUser resolves", async () => {
-		const session = makeToolSession({
-			cwd: process.cwd(),
-			hasUI: true,
-			getSessionFile: () => null,
-			settings: Settings.isolated(),
-			askUser: async () => "yes",
-		});
-		const tool = new AskTool(session as never);
-		// Some builds use questions array; adapt if schema differs.
-		try {
-			const result = await tool.execute("a2", {
-				question: "Continue?",
-				options: ["yes", "no"],
-			} as never);
-			const text = result.content
-				.filter(c => c.type === "text")
-				.map(c => (c as { text: string }).text)
-				.join("");
-			expect(text.toLowerCase()).toContain("yes");
-		} catch (e) {
-			// Schema may require different shape — still must be a ToolError or validation, not hang.
-			expect(String(e).length).toBeGreaterThan(0);
-		}
+	it("returns an isError result (not a hang, not a silent ok) when no questions are given", async () => {
+		const tool = new AskTool(createSession());
+		const context = createContext({ select: async () => "yes" });
+		const result = await tool.execute("a-empty", { questions: [] }, undefined, undefined, context);
+		expect(result.isError).toBe(true);
+		const text = result.content
+			.filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
+			.map(b => b.text)
+			.join("\n");
+		expect(text).toContain("no questions");
+	});
+
+	it("returns the exact selected label verbatim when select resolves", async () => {
+		const tool = new AskTool(createSession());
+		const context = createContext({ select: async () => "yes" });
+		const result = await tool.execute("a-ok", CONFIRM, undefined, undefined, context);
+		const text = result.content
+			.filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
+			.map(b => b.text)
+			.join("\n");
+		expect(text).toBe("User selected: yes");
 	});
 });

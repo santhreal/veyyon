@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { scheduler } from "node:timers/promises";
-import { Agent, type AgentMessage } from "@veyyon/agent-core";
+import { Agent } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, ToolResultMessage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
+import {
+	normalizeCompactionStrategy,
+	resolveCompactionEngineAction,
+} from "@veyyon/coding-agent/config/compaction-strategy";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
@@ -217,431 +220,68 @@ describe("AgentSession shake", () => {
 		});
 	});
 
-	describe("auto-shake strategy", () => {
-		it("dispatches the elide path and emits a shake action for threshold maintenance", async () => {
+	describe("legacy shake strategy retirement", () => {
+		// The `shake` auto-compaction STRATEGY was retired: `compaction.strategy`
+		// now accepts only `handoff` | `summary`, and the legacy `shake` token
+		// folds into `summary` (compaction-strategy.ts LEGACY_SUMMARY). Auto
+		// compaction therefore dispatches the `context-full` engine action, never a
+		// `shake` action, and never calls AgentSession.shake() on its own. The
+		// manual shake operation (exercised by the suites above) is unaffected.
+		// These lock the retirement so a shake auto-dispatch cannot silently return.
+
+		it("normalizes the legacy shake strategy token to summary / context-full", () => {
+			expect(normalizeCompactionStrategy("shake")).toBe("summary");
+			// The engine action a threshold run derives from the legacy token is
+			// context-full — the in-place summary path, not a shake.
+			expect(resolveCompactionEngineAction("shake", { reason: "threshold" })).toBe("context-full");
+		});
+
+		it("dispatches context-full (never a shake action) when the stored strategy is the legacy shake token", async () => {
 			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdPercent", 1);
 			session.settings.set("contextPromotion.enabled", false);
 
-			// Reclaim enough that the corrected (provider − tokensFreed) figure lands
-			// inside the 80% recovery band — otherwise the #2275 post-shake check would
-			// (correctly) declare pressure unresolved and fall back to context-full.
-			const shakeSpy = vi
-				.spyOn(session, "shake")
-				.mockResolvedValue({ mode: "elide", toolResultsDropped: 1, blocksDropped: 0, tokensFreed: 10_000 });
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "trigger" }],
-				...apiInfo,
-				stopReason: "stop",
-				usage: {
-					input: 10_000,
-					output: 1_000,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 11_000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now(),
-			};
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-			await Bun.sleep(20);
-
-			expect(shakeSpy).toHaveBeenCalledWith("elide", expect.anything());
-			const start = events.filter(e => e.type === "auto_compaction_start");
-			expect(start).toHaveLength(1);
-			expect(start[0]).toMatchObject({ type: "auto_compaction_start", reason: "threshold", action: "shake" });
-			const end = events.filter(e => e.type === "auto_compaction_end");
-			expect(end).toHaveLength(1);
-			expect(end[0]).toMatchObject({ type: "auto_compaction_end", action: "shake" });
-		});
-
-		it("keeps a successful overflow shake recovery committed before retrying", async () => {
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("contextPromotion.enabled", false);
-			seedHeavyToolResult("X ".repeat(20000));
-			branchToolResults()[0].useless = true;
-			vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
-			vi.spyOn(session.agent, "continue").mockResolvedValue();
-			vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 1000, contextWindow: 200000, percent: 0.5 });
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "" }],
-				...apiInfo,
-				stopReason: "error",
-				errorMessage: "prompt is too long: 250000 tokens > 200000 maximum",
-				usage: {
-					input: 250_000,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 250_000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now(),
-			};
-			const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
-			session.subscribe(event => {
-				if (event.type === "auto_compaction_end" && event.action === "shake") onCompactionDone();
-			});
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-
-			await compactionDone;
-			await session.waitForIdle();
-
-			const shakeEnd = events.find(event => event.type === "auto_compaction_end" && event.action === "shake");
-			expect(shakeEnd).toMatchObject({ type: "auto_compaction_end", action: "shake", willRetry: true });
-			expect(sessionManager.getBranch()).not.toContainEqual(
-				expect.objectContaining({
-					type: "message",
-					message: expect.objectContaining({
-						role: "assistant",
-						stopReason: "error",
-						errorMessage: assistantMessage.errorMessage,
-					}),
-				}),
-			);
-			expect(session.agent.state.messages).not.toContainEqual(
-				expect.objectContaining({
-					role: "assistant",
-					stopReason: "error",
-					errorMessage: assistantMessage.errorMessage,
-				}),
-			);
-		});
-
-		it("keeps a no-op incomplete shake retry committed before rollback can restore the length tail", async () => {
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("contextPromotion.enabled", false);
-			vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
-			vi.spyOn(session.agent, "continue").mockResolvedValue();
-			vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 1000, contextWindow: 200000, percent: 0.5 });
-			const shakeSpy = vi
-				.spyOn(session, "shake")
-				.mockResolvedValue({ mode: "elide", toolResultsDropped: 0, blocksDropped: 0, tokensFreed: 0 });
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "partial response" }],
-				...apiInfo,
-				stopReason: "length",
-				usage: {
-					input: 20_000,
-					output: 5_000,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 25_000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now(),
-			};
-			const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
-			session.subscribe(event => {
-				if (event.type === "auto_compaction_end" && event.action === "shake") onCompactionDone();
-			});
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-
-			await compactionDone;
-			await session.waitForIdle();
-
-			expect(shakeSpy).toHaveBeenCalledTimes(1);
-			const shakeEnd = events.find(event => event.type === "auto_compaction_end" && event.action === "shake");
-			expect(shakeEnd).toMatchObject({ type: "auto_compaction_end", action: "shake", willRetry: true });
-			expect(sessionManager.getBranch()).not.toContainEqual(
-				expect.objectContaining({
-					type: "message",
-					message: expect.objectContaining({
-						role: "assistant",
-						stopReason: "length",
-						timestamp: assistantMessage.timestamp,
-					}),
-				}),
-			);
-			expect(session.agent.state.messages).not.toContainEqual(
-				expect.objectContaining({
-					role: "assistant",
-					stopReason: "length",
-					timestamp: assistantMessage.timestamp,
-				}),
-			);
-		});
-
-		it("has isCompacting true when the shake auto_compaction_start event fires", async () => {
-			// Defect 1 parity for the shake strategy: the controller backing isCompacting
-			// must be installed before auto_compaction_start is emitted, so a message
-			// typed as the loader appears is queued safely rather than mis-routed.
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("compaction.thresholdPercent", 1);
-			session.settings.set("contextPromotion.enabled", false);
-
-			let capturedIsCompacting: boolean | undefined;
-			const { promise: shakeStarted, resolve: onShakeStarted } = Promise.withResolvers<void>();
-			session.subscribe(event => {
-				if (event.type === "auto_compaction_start" && event.action === "shake") {
-					capturedIsCompacting = session.isCompacting;
-					onShakeStarted();
-				}
-			});
-
-			vi.spyOn(session, "shake").mockResolvedValue({
-				mode: "elide",
-				toolResultsDropped: 1,
-				blocksDropped: 0,
-				tokensFreed: 10_000,
-			});
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "trigger" }],
-				...apiInfo,
-				stopReason: "stop",
-				usage: {
-					input: 10_000,
-					output: 1_000,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 11_000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now(),
-			};
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-			await shakeStarted;
-
-			expect(capturedIsCompacting).toBe(true);
-		});
-
-		it("falls back to context-full when shake cannot drop context below the threshold (regression #2119)", async () => {
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("compaction.thresholdPercent", 1);
-			session.settings.set("contextPromotion.enabled", false);
-
-			// Seed agent state so the post-shake estimate is well above the 1% threshold
-			// (~2K tokens for a 200K window). The mocked shake returns reclaimed=true but
-			// does not modify state, mimicking the dead-loop scenario where shake removes
-			// nothing material yet the threshold check stays positive.
-			session.agent.replaceMessages([
-				{
-					role: "user",
-					content: [{ type: "text", text: "x".repeat(40000) }],
-					timestamp: Date.now(),
-				} as never,
-			]);
-
-			const shakeSpy = vi
-				.spyOn(session, "shake")
-				.mockResolvedValue({ mode: "elide", toolResultsDropped: 1, blocksDropped: 0, tokensFreed: 10 });
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "trigger" }],
-				...apiInfo,
-				stopReason: "stop",
-				usage: {
-					input: 10_000,
-					output: 1_000,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 11_000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now(),
-			};
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-			await Bun.sleep(50);
-
-			// Shake fires once. The pre-fix bug auto-continued, which would re-trigger shake
-			// on the next agent_end. The fix replaces that loop with a one-shot fallback.
-			expect(shakeSpy).toHaveBeenCalledTimes(1);
-
-			const shakeEnd = events.find(
-				e => e.type === "auto_compaction_end" && (e as { action?: string }).action === "shake",
-			) as { errorMessage?: string; skipped?: boolean } | undefined;
-			expect(shakeEnd).toBeDefined();
-			expect(shakeEnd?.errorMessage).toMatch(/falling back to context-full/i);
-
-			// Fallback enters the context-full path so the situation actually resolves.
-			const fullStart = events.find(
-				e => e.type === "auto_compaction_start" && (e as { action?: string }).action === "context-full",
-			);
-			expect(fullStart).toBeDefined();
-		});
-
-		it("falls back when provider-reported usage stays above the threshold even though the local estimate is below it (regression #2275)", async () => {
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("compaction.thresholdTokens", 5_000);
-			session.settings.set("contextPromotion.enabled", false);
-
-			// Agent state holds almost no content, so #estimatePendingPromptTokens reads
-			// well below the 5K threshold. The pre-fix post-shake check trusted that
-			// estimate and treated the pressure as resolved, even though the assistant
-			// message's provider-reported usage (11K) was well above the threshold.
-			// This is the metric-divergence dead loop from #2275: thinking-heavy
-			// sessions hit it for real (thinkingSignature payloads aren't counted by
-			// the estimator), and an empty-state probe mimics it deterministically.
-			session.agent.replaceMessages([]);
-
-			const shakeSpy = vi
-				.spyOn(session, "shake")
-				.mockResolvedValue({ mode: "elide", toolResultsDropped: 1, blocksDropped: 0, tokensFreed: 10 });
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "trigger" }],
-				...apiInfo,
-				stopReason: "stop",
-				usage: {
-					input: 10_000,
-					output: 1_000,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 11_000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now(),
-			};
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-			await Bun.sleep(50);
-
-			expect(shakeSpy).toHaveBeenCalledTimes(1);
-
-			const shakeEnd = events.find(
-				e => e.type === "auto_compaction_end" && (e as { action?: string }).action === "shake",
-			) as { errorMessage?: string; skipped?: boolean } | undefined;
-			expect(shakeEnd).toBeDefined();
-			expect(shakeEnd?.errorMessage).toMatch(/falling back to context-full/i);
-
-			const fullStart = events.find(
-				e => e.type === "auto_compaction_start" && (e as { action?: string }).action === "context-full",
-			);
-			expect(fullStart).toBeDefined();
-		});
-
-		it("counts pre-shake prune savings when deciding whether to fall back to context-full", async () => {
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("compaction.thresholdTokens", 76384);
-			session.settings.set("compaction.thresholdPercent", -1);
-			session.settings.set("compaction.dropUseless", true);
-			session.settings.set("contextPromotion.enabled", false);
-
-			const now = Date.now();
-			sessionManager.appendMessage({
-				role: "user",
-				content: "Investigate every module of the project.",
-				timestamp: now - 200,
-			});
-			const bigCallId = "call-big-useless-for-shake";
-			sessionManager.appendMessage({
-				role: "assistant",
-				content: [{ type: "toolCall", id: bigCallId, name: "grep", arguments: { pattern: "TODO" } }],
-				...apiInfo,
-				stopReason: "toolUse",
-				usage,
-				timestamp: now - 180,
-			});
-			sessionManager.appendMessage({
-				role: "toolResult",
-				toolCallId: bigCallId,
-				toolName: "grep",
-				content: [{ type: "text", text: "match line\n".repeat(20000) }],
-				isError: false,
-				useless: true,
-				timestamp: now - 170,
-			});
-			session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
-
-			const shakeSpy = vi
-				.spyOn(session, "shake")
-				.mockResolvedValue({ mode: "elide", toolResultsDropped: 1, blocksDropped: 0, tokensFreed: 100 });
-
-			const assistantMessage: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: "trigger" }],
-				...apiInfo,
-				stopReason: "stop",
-				usage: {
-					input: 5000,
-					output: 1000,
-					cacheRead: 85000,
-					cacheWrite: 0,
-					totalTokens: 91000,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: now,
-			};
-
-			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
-			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
-			await Bun.sleep(50);
-
-			expect(shakeSpy).toHaveBeenCalledTimes(1);
-			const fullStart = events.find(
-				event => event.type === "auto_compaction_start" && (event as { action?: string }).action === "context-full",
-			);
-			expect(fullStart).toBeUndefined();
-		});
-
-		it("falls back after pre-prompt shake when the floored stored conversation remains over threshold", async () => {
-			session.settings.override("compaction.strategy", "shake" as never);
-			session.settings.set("compaction.thresholdTokens", 8_000);
-			session.settings.set("compaction.keepRecentTokens", 1);
-			session.settings.set("contextPromotion.enabled", false);
-
-			const seedUser: AgentMessage = {
-				role: "user",
-				content: [{ type: "text", text: "seed" }],
-				timestamp: Date.now() - 2,
-			};
-			const bulkText = "alpha beta gamma delta epsilon ".repeat(3_000);
-			const seedAssistant: AssistantMessage = {
-				role: "assistant",
-				content: [{ type: "text", text: bulkText }],
-				...apiInfo,
-				stopReason: "stop",
-				usage: {
-					input: 1_000,
-					output: 10,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 1_010,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
-				timestamp: Date.now() - 1,
-			};
-			sessionManager.appendMessage(seedUser);
-			sessionManager.appendMessage(seedAssistant);
-			session.agent.replaceMessages([seedUser, seedAssistant]);
-
-			const shakeSpy = vi
-				.spyOn(session, "shake")
-				.mockResolvedValue({ mode: "elide", toolResultsDropped: 1, blocksDropped: 0, tokensFreed: 10 });
-			const compactSpy = vi.spyOn(compactionModule, "compact").mockImplementation(async preparation => ({
-				summary: "pre-prompt shake fallback compacted",
+			// Keep the summary path off the network: this asserts the routing, not
+			// the LLM. Mock compact() as a safety net so no real completion is issued.
+			vi.spyOn(compactionModule, "compact").mockImplementation(async preparation => ({
+				summary: "retirement summary",
 				shortSummary: undefined,
 				firstKeptEntryId: preparation.firstKeptEntryId,
 				tokensBefore: preparation.tokensBefore,
 				details: {},
 			}));
-			vi.spyOn(session.agent, "prompt").mockImplementation(async () => {});
+			// Spy shake to prove auto-compaction never routes through it under the
+			// retired strategy (the manual operation stays callable, just unused here).
+			const shakeSpy = vi.spyOn(session, "shake");
 
-			expect(session.getContextUsage({ contextWindow: 200_000 })?.tokens).toBe(1_000);
+			const assistantMessage: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "text", text: "trigger" }],
+				...apiInfo,
+				stopReason: "stop",
+				usage: {
+					input: 10_000,
+					output: 1_000,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 11_000,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now(),
+			};
+			session.agent.emitExternalEvent({ type: "message_end", message: assistantMessage });
+			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMessage] });
+			await session.waitForIdle();
 
-			await session.prompt("small pending prompt", { skipCompactionCheck: true });
-
-			expect(shakeSpy).toHaveBeenCalledTimes(1);
-			expect(compactSpy).toHaveBeenCalled();
-			const fullStart = events.find(
-				event => event.type === "auto_compaction_start" && (event as { action?: string }).action === "context-full",
-			);
-			expect(fullStart).toBeDefined();
+			// The engine action is context-full...
+			const starts = events.filter(event => event.type === "auto_compaction_start");
+			expect(starts).toHaveLength(1);
+			expect(starts[0]).toMatchObject({ type: "auto_compaction_start", action: "context-full" });
+			// ...no shake action is ever emitted, at start or end...
+			expect(events.some(event => (event as { action?: string }).action === "shake")).toBe(false);
+			// ...and AgentSession.shake() was never invoked by auto-compaction (the
+			// manual shake operation stays callable, it is simply never auto-routed).
+			expect(shakeSpy).not.toHaveBeenCalled();
 		});
 	});
 });

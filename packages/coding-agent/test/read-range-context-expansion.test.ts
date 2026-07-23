@@ -8,6 +8,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "./helpers/tool-session";
 
 // WHY THIS SUITE EXISTS (BACKLOG DOG-4)
 // -------------------------------------
@@ -34,15 +35,14 @@ function createSession(cwd: string): ToolSession {
 	// Disable structural summarization so a selector read returns literal lines
 	// regardless of language heuristics.
 	settings.set("read.summarize.enabled", false);
-	return {
+	return makeToolSession({
 		cwd,
-		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
 		getSessionSpawns: () => "*",
 		getArtifactsDir: () => path.join(cwd, "artifacts"),
 		allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 		settings,
-	} as unknown as ToolSession;
+	});
 }
 
 function makeNumberedContent(lines: number): string {

@@ -180,6 +180,8 @@ describe("write tool ACP fs routing", () => {
 
 		expect(await Bun.file(leakedPath).exists()).toBe(false);
 		if (!(rejection instanceof Error)) throw new Error("Expected memory:// write to reject");
-		expect(rejection.message).toContain("memory:// URLs are read-only for write");
+		// The rejection states the read-only contract and points to the right tool.
+		expect(rejection.message).toContain("memory:// URLs are read-only");
+		expect(rejection.message).toContain("memory_edit");
 	});
 });

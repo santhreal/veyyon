@@ -1333,7 +1333,15 @@ describe("AskTool multi-question navigation", () => {
 });
 
 describe("AskTool option markers", () => {
-	it("renders single-choice call options with circular radio markers, not checkboxes", async () => {
+	// The house block style deliberately shares ONE unselected glyph across radio
+	// and checkbox (`radio.unselected` === `checkbox.unchecked` === `□`, see
+	// symbols.ts). The single/multi distinction is carried by (a) the call header
+	// ("multi" appears only for multi-select) and (b) the SELECTED marker (`▣`
+	// radio vs `■` checkbox), which is where a selected radio must never read as a
+	// checked box. A call preview shows only unselected options, so it is asserted
+	// via the header; the selected-marker distinction is locked at the theme.
+
+	it("renders a single-choice call with the block marker and a non-multi header", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const rendered = askToolRenderer.renderCall(
@@ -1342,11 +1350,13 @@ describe("AskTool option markers", () => {
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
-		expect(text).toContain(theme!.radio.unselected);
-		expect(text).not.toContain(theme!.checkbox.unchecked);
+		expect(text).toContain(`${theme!.radio.unselected} Alpha`);
+		expect(text).toContain(`${theme!.radio.unselected} Beta`);
+		// Single-choice: the header carries no "multi" marker.
+		expect(text).not.toContain("multi");
 	});
 
-	it("renders multi-select call options with rectangular checkbox markers, not radios", async () => {
+	it("renders a multi-select call with the block marker and a multi header", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const rendered = askToolRenderer.renderCall(
@@ -1355,8 +1365,20 @@ describe("AskTool option markers", () => {
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
-		expect(text).toContain(theme!.checkbox.unchecked);
-		expect(text).not.toContain(theme!.radio.unselected);
+		expect(text).toContain(`${theme!.checkbox.unchecked} Alpha`);
+		// Multi-select is disclosed in the header.
+		expect(text).toContain("multi");
+	});
+
+	it("keeps the SELECTED radio marker distinct from a checked checkbox, so a radio never reads as a box", async () => {
+		// This is the contract that actually matters (symbols.ts): unselected markers
+		// are shared, but a selected radio (`▣`) must never be the same glyph as a
+		// checked checkbox (`■`), or single-choice selection would look like multi.
+		const theme = await getThemeByName("dark");
+		expect(theme).toBeDefined();
+		expect(theme!.radio.selected).not.toBe(theme!.checkbox.checked);
+		expect(theme!.radio.selected).toBe("▣");
+		expect(theme!.checkbox.checked).toBe("■");
 	});
 
 	it("keeps option rows stable across repeated renders", async () => {

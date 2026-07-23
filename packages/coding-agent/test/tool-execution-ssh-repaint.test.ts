@@ -132,7 +132,7 @@ describe("ToolExecutionComponent SSH repaint seams", () => {
 			const rows = plainBuffer(term);
 			expect(rows.some(row => row.includes("SSH: […]"))).toBe(false);
 			expect(rows.some(row => row.includes("$ …"))).toBe(false);
-			expect(rows.some(row => row.includes("⏳ SSH: [router]"))).toBe(true);
+			expect(rows.some(row => row.includes("⋯ SSH: [router]"))).toBe(true);
 			expect(rows.some(row => row.includes("Output"))).toBe(true);
 			expect(rows.some(row => row.includes("partial output"))).toBe(true);
 		} finally {

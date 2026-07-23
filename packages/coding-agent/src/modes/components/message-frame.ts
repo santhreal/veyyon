@@ -10,8 +10,21 @@
 
 import type { TextContent } from "@veyyon/ai";
 import type { Box, Component } from "@veyyon/tui";
-import { Markdown, Spacer, Text } from "@veyyon/tui";
+import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
 import { getMarkdownTheme, type Theme, theme } from "../../modes/theme/theme";
+import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
+
+/**
+ * Card-outline paint: the OSC 11-derived ground tint when the terminal
+ * reported its background (a fixed contrast step above ANY ground), else the
+ * static borderMuted token (calibrated for near-black terminals). One owner
+ * for every outlined transcript card.
+ */
+export function cardOutlineColor(): (text: string) => string {
+	const derived = groundTintFgAnsi(groundHairlineHex(), TERMINAL.trueColor);
+	if (derived !== undefined) return text => `${derived}${text}\x1b[39m`;
+	return text => theme.fg("borderMuted", text);
+}
 
 /** Message shape consumed by the shared frame. */
 export interface FramedMessage {
@@ -59,7 +72,10 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 
 	opts.box.clear();
 	// Match the skill card: a subtle rounded outline so injected messages read as cards.
-	opts.box.setBorder({ chars: theme.boxSharp, color: t => theme.fg("borderMuted", t) });
+	opts.box.setBorder({ chars: theme.boxSharp, color: cardOutlineColor() });
+	// Cards hug their content instead of stretching the frame to the terminal
+	// edge (defect: boxes always full width regardless of content).
+	opts.box.setHugContent(true);
 
 	const tag = opts.icon ? `${opts.icon} ${opts.message.customType}` : opts.message.customType;
 	opts.box.addChild(new Text(theme.fg("customMessageLabel", theme.bold(tag)), 0, 0));

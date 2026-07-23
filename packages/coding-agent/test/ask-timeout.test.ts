@@ -31,10 +31,9 @@ function createAskTool(): AskTool {
 					return undefined;
 				},
 			},
-			// `planFilePath` is required even when plan mode is off: every real state
-			// carries the path it would write to. The stub used to omit it, which the
-			// old `as unknown as ToolSession` cast accepted.
-			getPlanModeState: () => ({ enabled: false, planFilePath: "PLAN.md" }),
+			// Plan mode is off here; a disabled PlanModeState carries no plan file
+			// (planFilePath exists only on the enabled variant of the union).
+			getPlanModeState: () => ({ enabled: false }),
 		}),
 	);
 }

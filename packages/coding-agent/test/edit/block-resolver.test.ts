@@ -15,7 +15,8 @@ let blockRangeSpy: ReturnType<typeof spyOn> | undefined;
 
 beforeAll(() => {
 	blockRangeSpy = spyOn(natives, "blockRangeAt").mockImplementation(
-		({ line }: { code: string; path: string; line: number }) => {
+		// Match the real BlockRangeOptions shape (lang/path are optional).
+		({ line }: { code: string; lang?: string; path?: string; line: number }) => {
 			calls += 1;
 			return line <= 0 ? null : { startLine: line, endLine: line + 2 };
 		},

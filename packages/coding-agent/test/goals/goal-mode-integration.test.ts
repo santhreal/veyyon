@@ -556,4 +556,83 @@ describe("InteractiveMode goal mode integration", () => {
 		harness.mode.onInputCallback?.(harness.mode.startPendingSubmission({ text: "next turn" }));
 		await nextTurn;
 	});
+
+	/**
+	 * GMI-4b: `openGoalDetail` (the down-arrow affordance's target) must open the
+	 * SAME runtime-wired goal menu `/goal` opens — real objective in the title,
+	 * the exact action list for the goal's actual state — and Esc must close it
+	 * exactly once with zero side effects. Locks out two regressions: a menu that
+	 * shows stale/placeholder goal data, and an Esc that re-opens the selector or
+	 * fires a default action (pausing/dropping the goal the operator only peeked at).
+	 */
+	describe("openGoalDetail menu", () => {
+		it("opens the active-goal menu with the real objective, status, and action list", async () => {
+			await harness.mode.handleGoalModeCommand("Ship the release");
+			const selector = vi.spyOn(harness.mode, "showHookSelector").mockResolvedValue(undefined);
+
+			await harness.mode.openGoalDetail();
+
+			expect(selector).toHaveBeenCalledTimes(1);
+			expect(selector).toHaveBeenCalledWith("Goal: Ship the release (active)", [
+				"Show details",
+				"Adjust budget…",
+				"Pause",
+				"Drop",
+			]);
+		});
+
+		it("Esc closes the menu exactly once and mutates nothing", async () => {
+			await harness.mode.handleGoalModeCommand("Ship the release");
+			const before = harness.session.getGoalModeState();
+			const selector = vi.spyOn(harness.mode, "showHookSelector").mockResolvedValue(undefined);
+
+			await harness.mode.openGoalDetail();
+			await waitForMicrotasks();
+
+			// One open, no reopen, and the dismissal ran no action: the goal is
+			// byte-identical and still active.
+			expect(selector).toHaveBeenCalledTimes(1);
+			expect(harness.mode.goalModeEnabled).toBe(true);
+			expect(harness.mode.goalModePaused).toBe(false);
+			expect(harness.session.getGoalModeState()).toEqual(before);
+		});
+
+		it("opens the paused-goal menu with Resume first when the goal is paused", async () => {
+			await harness.mode.handleGoalModeCommand("Ship the release");
+			const selector = vi.spyOn(harness.mode, "showHookSelector").mockResolvedValueOnce("Pause");
+			await harness.mode.handleGoalModeCommand();
+			expect(harness.mode.goalModePaused).toBe(true);
+			selector.mockClear();
+			selector.mockResolvedValue(undefined);
+
+			await harness.mode.openGoalDetail();
+
+			expect(selector).toHaveBeenCalledTimes(1);
+			expect(selector).toHaveBeenCalledWith("Goal paused: Ship the release", [
+				"Resume",
+				"Show details",
+				"Adjust budget…",
+				"Drop",
+			]);
+		});
+
+		it("is a strict no-op when no goal exists (never opens an empty menu)", async () => {
+			const selector = vi.spyOn(harness.mode, "showHookSelector").mockResolvedValue(undefined);
+
+			await harness.mode.openGoalDetail();
+
+			expect(selector).not.toHaveBeenCalled();
+		});
+
+		it("routes a menu choice to the real action (Pause pauses the actual goal)", async () => {
+			await harness.mode.handleGoalModeCommand("Ship the release");
+			vi.spyOn(harness.mode, "showHookSelector").mockResolvedValueOnce("Pause");
+
+			await harness.mode.openGoalDetail();
+
+			expect(harness.mode.goalModeEnabled).toBe(false);
+			expect(harness.mode.goalModePaused).toBe(true);
+			expect(harness.session.getGoalModeState()?.goal.status).toBe("paused");
+		});
+	});
 });

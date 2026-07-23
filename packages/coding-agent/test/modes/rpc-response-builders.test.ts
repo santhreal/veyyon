@@ -55,6 +55,8 @@ describe("rpcErrorResponse", () => {
 		const res = rpcErrorResponse(undefined, "read", "missing");
 		expect(res.id).toBeUndefined();
 		expect(res.success).toBe(false);
+		// Narrow to the error variant before reading `error` (union member success:false).
+		if (res.success) throw new Error("expected an error frame");
 		expect(res.error).toBe("missing");
 		expect(res.command).toBe("read");
 	});
@@ -75,6 +77,7 @@ describe("rpcUnknownCommandResponse", () => {
 
 	it("surface contains Unknown command prefix for empty-looking types", () => {
 		const res = rpcUnknownCommandResponse("ghost");
+		if (res.success) throw new Error("expected an error frame");
 		expect(res.error).toBe("Unknown command: ghost");
 		expect(res.id).toBeUndefined();
 	});

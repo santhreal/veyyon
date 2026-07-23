@@ -8,7 +8,7 @@ import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../to
 import { canonicalizeMessage, formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import { type CacheInvalidation, CacheInvalidationMarkerComponent } from "./cache-invalidation-marker";
-import { paintHotTail, SmoothReveal } from "./follow";
+import { paintHotTail, shimmerPhase } from "./follow";
 
 /**
  * Max lines of a turn-ending provider error rendered inline in the transcript.
@@ -92,6 +92,11 @@ function thinkingPulseFrames(): readonly string[] {
  */
 const THINKING_DOTS_FRAME_MS_MIN = 70;
 const THINKING_DOTS_FRAME_MS_MAX = 230;
+
+/** Repaint interval (ms) for the liquid-glow flow while a block streams. ~30fps
+ *  so the accent sheen sweeps continuously even between provider token bursts,
+ *  when the reveal controller issues no renders of its own. */
+const SHIMMER_TICK_MS = 1000 / 30;
 
 /** Rolling window (ms) over which streaming-rate observations are averaged. */
 const SPEED_WINDOW_MS = 3000;
@@ -221,22 +226,25 @@ export class AssistantMessageComponent extends Container {
 	/** Live "thinking" pulse shown in place of a hidden thinking block while it
 	 *  streams; undefined when not animating. Driven by {@link #thinkingDotsTimer}. */
 	#thinkingDots: Text | undefined;
+	/** The static "Thinking" heading above the first visible reasoning block.
+	 *  Tracked so the settled-rows walk can treat it as byte-stable (it is a
+	 *  pure function of the theme, unlike the animated pulse Text). */
+	#thinkingLabel: Text | undefined;
 	#thinkingDotsTimer: NodeJS.Timeout | undefined;
 	#thinkingDotsFrame = 0;
-	/** The follow's pacing governor for the actively streaming block (thinking
-	 *  OR response text): provider deltas land in bursts, so the shown text
-	 *  trails the received text at a smoothed rate (see follow.ts). Undefined
-	 *  when nothing is streaming. */
-	#streamReveal: SmoothReveal | undefined;
-	/** Full received text of the streaming block the reveal paces. */
-	#streamRevealFull = "";
-	/** The Markdown child the reveal writes its paced slice into. */
-	#streamRevealMd: Markdown | undefined;
-	/** Character count last written to the child — ticks whose floored reveal
-	 *  hasn't moved skip the Markdown re-parse and repaint entirely. */
-	#streamRevealShown = -1;
-	/** ~30fps ticker advancing the reveal between provider deltas. */
-	#streamRevealTimer: NodeJS.Timeout | undefined;
+	/** Whether the tail row of the actively streaming block should carry the
+	 *  liquid accent glow: set on each transient render from
+	 *  {@link #shouldPaintTrail}, read by {@link render}. The reveal pacing itself
+	 *  lives in the single {@link StreamingRevealController}; this component only
+	 *  paints the glow onto whatever paced text it is handed. */
+	#trailActive = false;
+	/** ~30fps repaint ticker that keeps the liquid glow FLOWING while the block
+	 *  streams. The sheen phase is wall-clock driven, and the reveal controller
+	 *  only issues renders while it is actively revealing — so between token bursts
+	 *  (or once the reveal catches up) the flow would freeze mid-sweep without this
+	 *  ticker. It only requests repaints; it never mutates text (cheap). Runs only
+	 *  while {@link #trailActive} and truecolor is available. */
+	#shimmerTimer: NodeJS.Timeout | undefined;
 	/** Previous cumulative provider token count + timestamp, for deriving this
 	 *  block's instantaneous streaming rate fed into {@link sharedSpeedTracker}.
 	 *  Undefined until the first thinking update of this block. */
@@ -259,6 +267,11 @@ export class AssistantMessageComponent extends Container {
 		private readonly thinkingRenderers: readonly AssistantThinkingRenderer[] = [],
 		private readonly imageBudget?: ImageBudget,
 		private proseOnlyThinking = true,
+		/** Scoped repaint of THIS component only (the TUI's requestComponentRender
+		 *  pre-bound to this instance). The shimmer ticker prefers it over the
+		 *  full-tree onImageUpdate so 30fps flow never triggers a whole-transcript
+		 *  walk (issue #4377). Falls back to onImageUpdate when not provided. */
+		private readonly requestSelfRender?: () => void,
 	) {
 		super();
 		this.#transcriptBlockFinalized = message !== undefined;
@@ -307,16 +320,19 @@ export class AssistantMessageComponent extends Container {
 	override render(width: number): readonly string[] {
 		this.#lastRenderWidth = width;
 		const rows = super.render(width);
-		// The follow's lava-like trail: while a thinking reveal is live, the last
-		// non-empty row's trailing characters grade up to gold at the newest edge
-		// (see follow.ts). Text only, truecolor only, gone the frame the stream
-		// settles — the frame itself never animates.
-		if (this.#streamReveal?.behind && this.#streamRevealMd) {
+		// The follow's liquid glow: while this block is actively streaming, the
+		// last non-empty row's trailing characters grade up to the accent at the
+		// newest edge with a sheen band that sweeps over time (see follow.ts).
+		// Text only, truecolor only, gone the frame the stream settles. The sheen
+		// phase is wall-clock driven, so the 30fps repaints the reveal controller
+		// already issues while text pours animate the flow.
+		if (this.#trailActive) {
+			const phase = shimmerPhase(performance.now());
 			for (let i = rows.length - 1; i >= 0; i--) {
 				const row = rows[i]!;
 				if (row.replace(/\x1b\[[0-9;]*m/g, "").trim().length > 0) {
 					const painted = [...rows];
-					painted[i] = paintHotTail(row, theme, TERMINAL.trueColor);
+					painted[i] = paintHotTail(row, theme, TERMINAL.trueColor, "thinkingText", phase);
 					return painted;
 				}
 			}
@@ -334,6 +350,7 @@ export class AssistantMessageComponent extends Container {
 
 	override dispose(): void {
 		this.#stopThinkingAnimation();
+		this.#stopShimmer();
 		super.dispose();
 	}
 
@@ -426,6 +443,28 @@ export class AssistantMessageComponent extends Container {
 		this.#thinkingDotsFrame = 0;
 	}
 
+	/** Start/stop the shimmer repaint ticker to match {@link #trailActive}. Called
+	 *  wherever the trail flag changes so the flow runs exactly while it is needed
+	 *  and never after the block settles. No-op without truecolor (the glow itself
+	 *  is a no-op there, so animating it would be pure waste). */
+	#syncShimmer(): void {
+		if (this.#trailActive && TERMINAL.trueColor) this.#startShimmer();
+		else this.#stopShimmer();
+	}
+
+	#startShimmer(): void {
+		if (this.#shimmerTimer) return;
+		const repaint = this.requestSelfRender ?? this.onImageUpdate;
+		this.#shimmerTimer = setInterval(() => repaint?.(), SHIMMER_TICK_MS);
+		this.#shimmerTimer.unref?.();
+	}
+
+	#stopShimmer(): void {
+		if (!this.#shimmerTimer) return;
+		clearInterval(this.#shimmerTimer);
+		this.#shimmerTimer = undefined;
+	}
+
 	/**
 	 * Toggle suppression of the inline `Error: …` line while the same error is
 	 * pinned in the banner above the editor. Re-renders so the change is visible.
@@ -477,6 +516,12 @@ export class AssistantMessageComponent extends Container {
 				settled += child.render(width).length;
 				continue;
 			}
+			// The static "Thinking" heading is a pure function of the theme —
+			// byte-stable across streaming frames, unlike the animated pulse.
+			if (child === this.#thinkingLabel) {
+				settled += child.render(width).length;
+				continue;
+			}
 			// Not declared byte-stable: the boundary stops here.
 			return settled;
 		}
@@ -490,6 +535,10 @@ export class AssistantMessageComponent extends Container {
 	markTranscriptBlockFinalized(): void {
 		this.#transcriptBlockFinalized = true;
 		this.#stopThinkingAnimation();
+		// The block is sealed: the glow (and its ticker) must stop even when there
+		// was no thinking pulse to trigger the rebuild path below.
+		this.#trailActive = false;
+		this.#stopShimmer();
 		// If the live pulse was on screen when the block sealed, drop the fast path
 		// and rebuild so the placeholder is removed — finalized blocks never animate.
 		if (this.#thinkingDots) {
@@ -722,15 +771,13 @@ export class AssistantMessageComponent extends Container {
 					this.#fastPathItems = undefined;
 					return false;
 				}
-				if (transient) {
-					// The follow: pace the visible reveal instead of dumping the
-					// whole provider burst in one frame — reasoning AND response
-					// text both pour smoothly (see follow.ts).
-					this.#pushStreamReveal(item.md, newText);
-				} else {
-					this.#stopStreamReveal();
-					item.md.setText(newText);
-				}
+				// The reveal is already paced upstream by the single
+				// StreamingRevealController (grapheme-aware, 30fps); `newText` is its
+				// monotonically-growing paced prefix, so writing it straight through
+				// avoids a second governor beating against the first — the extra chunk
+				// this component used to add. The glow rides the tail row in render()
+				// whenever the update is transient (#shouldPaintTrail).
+				item.md.setText(newText);
 				item.lastText = newText;
 			}
 		}
@@ -743,70 +790,23 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	/**
-	 * Feed the follow's pacing governor with the latest received thinking text
-	 * and (re)start the ~30fps reveal ticker. The Markdown child only ever sees
-	 * the paced slice; `item.lastText` keeps the FULL text so the fast-path
-	 * dirty checks stay correct.
+	 * Whether the tail row should carry the liquid accent glow this render:
+	 * only while the block is an in-flight streaming partial (`transient`) that
+	 * has not been finalized, and its newest content is streaming text/thinking
+	 * (a tool call ends the text segment — the glow must not linger on frozen
+	 * text while a tool card renders below it).
 	 */
-	#pushStreamReveal(md: Markdown, fullText: string): void {
-		const now = performance.now();
-		if (!this.#streamReveal || this.#streamRevealMd !== md) {
-			this.#streamReveal = new SmoothReveal();
-			this.#streamRevealMd = md;
-			this.#streamRevealShown = -1;
-		}
-		this.#streamRevealFull = fullText;
-		this.#streamReveal.push(fullText.length, now);
-		this.#applyStreamReveal(now);
-		if (!this.#streamRevealTimer && this.#streamReveal.behind) {
-			this.#streamRevealTimer = setInterval(() => {
-				if (!this.#streamReveal) return;
-				this.#applyStreamReveal(performance.now());
-				if (!this.#streamReveal.behind) {
-					clearInterval(this.#streamRevealTimer);
-					this.#streamRevealTimer = undefined;
-				}
-			}, 33);
-			this.#streamRevealTimer.unref?.();
-		}
-	}
-
-	/** Advance the reveal and write the paced slice into the Markdown child.
-	 * Skips the (whole-block) Markdown re-parse when the floored reveal count
-	 * has not moved since the last tick — at trickle rates most ticks advance
-	 * by a fraction of a character, and re-parsing for zero visible change is
-	 * pure waste on the hottest streaming path. */
-	#applyStreamReveal(now: number): void {
-		if (!this.#streamReveal || !this.#streamRevealMd) return;
-		this.#streamReveal.advance(now);
-		const shown = this.#streamReveal.revealed;
-		if (shown === this.#streamRevealShown) return;
-		this.#streamRevealShown = shown;
-		this.#streamRevealMd.setText(this.#streamRevealFull.slice(0, shown));
-		this.#blockVersion++;
-		this.onImageUpdate?.();
-	}
-
-	/** Stop pacing: snap the block to its full text (stream finalized, shape
-	 * changed, or the component tore down its children). */
-	#stopStreamReveal(): void {
-		if (this.#streamRevealTimer) {
-			clearInterval(this.#streamRevealTimer);
-			this.#streamRevealTimer = undefined;
-		}
-		if (this.#streamReveal && this.#streamRevealMd) {
-			this.#streamReveal.finish();
-			this.#streamRevealMd.setText(this.#streamRevealFull);
-		}
-		this.#streamReveal = undefined;
-		this.#streamRevealMd = undefined;
-		this.#streamRevealShown = -1;
+	#shouldPaintTrail(message: AssistantMessage): boolean {
+		if (!this.#lastUpdateTransient || this.#transcriptBlockFinalized) return false;
+		return !message.content.some(c => c.type === "toolCall");
 	}
 
 	updateContent(message: AssistantMessage, opts?: { transient?: boolean }): void {
 		this.#blockVersion++;
 		this.#lastMessage = message;
 		this.#lastUpdateTransient = opts?.transient === true;
+		this.#trailActive = this.#shouldPaintTrail(message);
+		this.#syncShimmer();
 
 		// Streaming-speed gauge: only a live, in-flight render of the single
 		// animating hidden-thinking block feeds the shared session tracker. The
@@ -861,12 +861,12 @@ export class AssistantMessageComponent extends Container {
 		// Fast path: reuse Markdown children when shape is stable during streaming
 		if (this.#tryFastPathUpdate(message, opts)) return;
 
-		// Clear content container
-		// The rebuild discards the reveal's Markdown child, so the follow's
-		// pacing stops with it (its ticker must never write to a detached child).
-		this.#stopStreamReveal();
+		// Clear content container. The rebuild recreates each Markdown child at
+		// its full current (upstream-paced) text; there is no local reveal ticker
+		// to stop — the single StreamingRevealController owns pacing.
 		this.#contentContainer.clear();
 		this.#thinkingDots = undefined;
+		this.#thinkingLabel = undefined;
 
 		// Determine if we should capture Markdown instances for next fast path
 		const shouldCapture = this.#canFastPath(message);
@@ -909,6 +909,14 @@ export class AssistantMessageComponent extends Container {
 							(c.type === "thinking" && resolveThinkingDisplay(c, this.proseOnlyThinking).visible),
 					);
 
+				// A muted "Thinking" label heads the first visible reasoning block:
+				// without it the trace read as ordinary italic prose,
+				// indistinguishable from the answer (user defect #9, 2026-07-22).
+				// Same vocabulary as the hidden-thinking pulse label.
+				if (thinkingIndex === 0) {
+					this.#thinkingLabel = new Text(theme.fg("muted", "Thinking"), 1, 0);
+					this.#contentContainer.addChild(this.#thinkingLabel);
+				}
 				// Thinking traces in thinkingText color, italic
 				const md = new Markdown(thinkingText, 1, 0, getMarkdownTheme(), {
 					color: (text: string) => theme.fg("thinkingText", text),

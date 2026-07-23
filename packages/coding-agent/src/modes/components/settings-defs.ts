@@ -82,6 +82,17 @@ export interface ModelRolesSettingDef extends BaseSettingDef {
 	type: "modelRoles";
 }
 
+/**
+ * The profile's DEFAULT model — the model each new session starts on. Rendered
+ * with the same searchable model+effort picker as the role/subagent slots, but
+ * backed by the `default` model-role slot (the slot the interactive `/model`
+ * choice writes to and startup restores from), so it has no schema key of its
+ * own and never duplicates that source of truth.
+ */
+export interface DefaultModelSettingDef extends BaseSettingDef {
+	type: "defaultModel";
+}
+
 export type SettingDef =
 	| BooleanSettingDef
 	| EnumSettingDef
@@ -89,7 +100,16 @@ export type SettingDef =
 	| TextInputSettingDef
 	| ProviderLimitsSettingDef
 	| ModelSelectorSettingDef
-	| ModelRolesSettingDef;
+	| ModelRolesSettingDef
+	| DefaultModelSettingDef;
+
+/**
+ * Synthetic settings id for the {@link DefaultModelSettingDef}. Not a real
+ * config key: the value lives in the `default` model-role slot, read/written via
+ * `settings.getModelRole("default")` / `setModelRole`. Kept as a shared const so
+ * the def, the item builder, and the change handler all agree on the id.
+ */
+export const DEFAULT_MODEL_SETTING_ID = "defaultModel";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Condition Functions
@@ -251,6 +271,19 @@ export function getAllSettingDefs(): SettingDef[] {
 			if (def) defs.push(def);
 		}
 	}
+	// Synthetic entry: the default model has no schema key of its own (it lives in
+	// the `default` model-role slot), so it is injected here rather than derived
+	// from the schema. Placed first so it heads the model tab's "Models" group —
+	// the top of the tab, where "what model do I start on?" is looked for.
+	defs.unshift({
+		path: DEFAULT_MODEL_SETTING_ID as SettingPath,
+		type: "defaultModel",
+		tab: "model",
+		group: "Models",
+		label: "Default Model",
+		description:
+			"The model each new session starts on, restored on launch. Searchable picker with auth status, then a thinking-effort step. Scoped to the active profile.",
+	});
 	cachedDefs = defs;
 	return defs;
 }

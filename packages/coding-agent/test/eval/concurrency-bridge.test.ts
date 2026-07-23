@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { runEvalConcurrency } from "@veyyon/coding-agent/eval/concurrency-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * runEvalConcurrency resolves the worker-pool ceiling for an eval cell's
@@ -13,7 +14,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
  */
 
 function session(raw: unknown): ToolSession {
-	return { settings: { get: () => raw } } as unknown as ToolSession;
+	return makeToolSession({ settings: { get: () => raw } });
 }
 
 describe("runEvalConcurrency", () => {

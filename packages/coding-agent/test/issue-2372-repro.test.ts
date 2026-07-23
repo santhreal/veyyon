@@ -99,10 +99,10 @@ describe("issue #2372 pre-streaming chat rebuild preserves optimistic submission
 		expect(addMessageSpy).toHaveBeenCalledTimes(1);
 
 		// Simulate EventController#handleMessageStart having confirmed the user
-		// message: signature is cleared, real session entry exists in the
-		// transcript path. `#pendingSubmittedInput` may still be alive (we are
-		// streaming) but the replay must NOT trigger.
-		mode.optimisticUserMessageSignature = undefined;
+		// message: the controller calls clearOptimisticUserMessage(), which
+		// retires the signature. `#pendingSubmittedInput` may still be alive (we
+		// are streaming) but the replay must NOT trigger.
+		mode.clearOptimisticUserMessage();
 
 		mode.rebuildChatFromMessages();
 

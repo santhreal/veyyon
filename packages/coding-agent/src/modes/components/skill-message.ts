@@ -1,10 +1,12 @@
 import type { TextContent } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
+import { collapseWhitespace } from "@veyyon/utils";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import type { CustomMessage, SkillPromptDetails } from "../../session/messages";
 import { shortenPath } from "../../tools/render-utils";
 import { fileHyperlink } from "../../tui";
+import { cardOutlineColor } from "./message-frame";
 
 export class SkillMessageComponent extends Container {
 	#box: Box;
@@ -41,12 +43,15 @@ export class SkillMessageComponent extends Container {
 		this.addChild(this.#box);
 		this.#box.clear();
 		// Re-read symbols every rebuild so a runtime theme/preset switch refreshes the outline.
-		this.#box.setBorder({ chars: theme.boxSharp, color: t => theme.fg("borderMuted", t) });
+		this.#box.setBorder({ chars: theme.boxSharp, color: cardOutlineColor() });
+		// A card hugs its content; a frame stretched to the terminal edge reads
+		// as a wall (defect: boxes always full width regardless of content).
+		this.#box.setHugContent(true);
 
 		const details = this.message.details;
 		const name = details?.name?.trim() || "unknown";
 		// Collapse args to one line: a stray newline/tab in user-supplied args would split the header.
-		const args = details?.args?.replace(/\s+/g, " ").trim() ?? "";
+		const args = collapseWhitespace(details?.args);
 
 		// Header: icon-tag + skill name, with the invocation args trailing dimmed.
 		const tag = theme.fg("customMessageLabel", theme.bold(`${theme.icon.extensionSkill} skill`));

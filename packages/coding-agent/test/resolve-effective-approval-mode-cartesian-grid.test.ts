@@ -16,9 +16,11 @@ describe("resolveEffectiveApprovalMode cartesian grid", () => {
 						cliAutoApprove: cli,
 						planModeActive: plan,
 					});
+					// resolveEffectiveApprovalMode returns the narrow AutonomyLevel union;
+					// the expected fallback is a plain string, so widen the matcher.
 					if (cli) expect(got).toBe("yolo");
 					else if (plan) expect(got).toBe("plan");
-					else expect(got).toBe((c ?? "yolo") as string);
+					else expect(got).toBe<string>(c ?? "yolo");
 				});
 			}
 		}

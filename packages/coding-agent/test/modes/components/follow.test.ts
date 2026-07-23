@@ -1,162 +1,172 @@
 /**
- * The follow — silky-smooth reveal pacing + the lava-like hot trail.
+ * The follow — the liquid accent glow on the newest of a live reveal.
  *
- * The user-reported defect this locks out: reasoning text rendered CHUNKED —
- * each provider burst (often a whole sentence) appeared in one frame. The
- * SmoothReveal governor must turn bursty arrivals into a paced reveal, and the
- * pacing must satisfy three hard properties:
- *  1. No dumping: a large burst never appears in a single advance step — the
- *     revealed count grows by bounded increments across frames.
- *  2. Convergence: the reveal always catches the stream (accelerating with
- *     lag), and the lag is HARD-bounded so smooth can never become stale.
- *  3. Finish is exact: `finish()` snaps to the full text, so a settled block
- *     never shows a truncated tail.
+ * Design history this suite encodes: the follow used to run its own char-level
+ * SmoothReveal governor AND grade the trailing cells to GOLD at the tip. Two
+ * things were wrong and are locked out here:
+ *  1. Pacing is owned in ONE place now — StreamingRevealController. This module
+ *     no longer paces text at all, so there is no second governor to beat
+ *     against the first and read as chunky. (Pacing is covered by
+ *     streaming-reveal.test.ts and stream-reveal-monotonic.test.ts.)
+ *  2. The trail is the theme ACCENT with a sheen that FLOWS over time, not a
+ *     static gold "lava" tip. paintHotTail takes a `phase`; the same row at
+ *     different phases paints differently (the liquid motion), the newest edge
+ *     always reads hottest, and the oldest cell cools back into the named
+ *     surface color.
  *
- * paintHotTail: the trailing cells of the newest row grade to gold at the very
- * tip (theme matchHighlight). Truecolor only; without 24-bit color the row is
- * returned untouched (loud degrade: no trail at all, never a broken ramp).
+ * paintHotTail invariants held regardless of phase: visible text is unchanged
+ * (only zero-width SGR is added), one color opens per trailing cell, and without
+ * 24-bit color the row is returned byte-identical (loud degrade: no glow at all,
+ * never a 16-color approximation of the ramp).
  */
 import { describe, expect, it } from "bun:test";
-import { FOLLOW_TUNING, paintHotTail, SmoothReveal } from "@veyyon/coding-agent/modes/components/follow";
+import {
+	FOLLOW_TUNING,
+	paintHotTail,
+	SHIMMER_PERIOD_MS,
+	shimmerPhase,
+} from "@veyyon/coding-agent/modes/components/follow";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 const theme = createTheme(defaultThemes.titanium as ThemeJson, { mode: "truecolor" });
 
-describe("SmoothReveal — no dumping", () => {
-	/** A 400-char burst landing at once must NOT appear in one frame: at 30fps
-	 * each advance may only move a bounded slice, so the burst spreads over
-	 * many frames. */
-	it("spreads a single large burst across many frames", () => {
-		const r = new SmoothReveal();
-		r.push(10, 0);
-		r.advance(0);
-		r.push(410, 100); // one big burst
-		const steps: number[] = [];
-		let prev = r.revealed;
-		for (let t = 133; t <= 3000; t += 33) {
-			r.advance(t);
-			steps.push(r.revealed - prev);
-			prev = r.revealed;
-			if (!r.behind) break;
-		}
-		// More than a handful of frames were needed, and no single frame dumped
-		// the whole burst.
-		expect(steps.length).toBeGreaterThan(5);
-		expect(Math.max(...steps)).toBeLessThan(400);
+/** The exact `r;g;b` triple a theme token resolves to, as paintHotTail emits it. */
+function rgbOf(token: "thinkingText" | "toolOutput" | "accent"): string {
+	return theme
+		.getColorHex(token)
+		.replace("#", "")
+		.match(/../g)!
+		.map(h => parseInt(h, 16))
+		.join(";");
+}
+
+/** Every `38;2;r;g;b` foreground open in `out`, in order. */
+function opensOf(out: string): string[] {
+	return [...out.matchAll(/\x1b\[38;2;(\d+;\d+;\d+)m/g)].map(m => m[1]!);
+}
+
+/** Sum of a triple's channels — a cheap brightness proxy. */
+function brightness(triple: string): number {
+	return triple.split(";").reduce((a, c) => a + Number(c), 0);
+}
+
+/** A phase that parks the sheen band at the fresh tip, so the oldest cell has
+ *  effectively zero sheen (its color is the pure cooled surface) and the tip is
+ *  at full glow. Mirrors the module's sheen travel sheenPos = -0.2 + 1.4*phase,
+ *  solved for sheenPos ≈ 1.0. */
+const TIP_PHASE = (1.0 + 0.2) / 1.4;
+
+describe("shimmerPhase", () => {
+	/** Phase is a normalized [0,1) sweep over the period, wrapping cleanly so a
+	 *  free-running clock never produces a discontinuity mid-sheen. */
+	it("wraps into [0,1) across the period boundary", () => {
+		expect(shimmerPhase(0)).toBeCloseTo(0, 6);
+		expect(shimmerPhase(SHIMMER_PERIOD_MS / 2)).toBeCloseTo(0.5, 6);
+		expect(shimmerPhase(SHIMMER_PERIOD_MS)).toBeCloseTo(0, 6);
+		expect(shimmerPhase(SHIMMER_PERIOD_MS * 3.25)).toBeCloseTo(0.25, 6);
+		expect(shimmerPhase(-SHIMMER_PERIOD_MS * 0.25)).toBeCloseTo(0.75, 6);
 	});
 });
 
-describe("SmoothReveal — convergence and the hard lag bound", () => {
-	it("always catches up to a stalled stream", () => {
-		const r = new SmoothReveal();
-		r.push(50, 0);
-		r.push(300, 500);
-		for (let t = 533; t <= 20000 && r.behind; t += 33) r.advance(t);
-		expect(r.behind).toBe(false);
-		expect(r.revealed).toBe(300);
-	});
+describe("paintHotTail — the liquid accent glow", () => {
+	const row = "the reasoning tail of the current line";
 
-	/** The reveal must never trail by more than hardSnapChars, no matter how
-	 * fast text pours in — beyond that it snaps forward. */
-	it("bounds the lag at hardSnapChars", () => {
-		const r = new SmoothReveal();
-		r.push(0, 0);
-		r.push(10_000, 50);
-		r.advance(83);
-		expect(10_000 - r.revealed).toBeLessThanOrEqual(FOLLOW_TUNING.hardSnapChars);
-	});
-
-	/** finish() is exact — a settled block shows every character. */
-	it("finish snaps to the full text", () => {
-		const r = new SmoothReveal();
-		r.push(1234, 0);
-		r.finish();
-		expect(r.revealed).toBe(1234);
-		expect(r.behind).toBe(false);
-	});
-
-	/** A shrinking target (new block took over) restarts cleanly instead of
-	 * showing a phantom tail from the previous block. */
-	it("resets when the target shrinks", () => {
-		const r = new SmoothReveal();
-		r.push(500, 0);
-		r.finish();
-		r.push(20, 100);
-		expect(r.revealed).toBeLessThanOrEqual(20);
-	});
-});
-
-describe("paintHotTail — the lava-like trail", () => {
-	it("paints the trailing cells, ending exactly on matchHighlight gold", () => {
-		const row = "the reasoning tail of the current line";
-		const out = paintHotTail(row, theme, true);
+	it("adds only zero-width color: the visible text is unchanged", () => {
+		const out = paintHotTail(row, theme, true, "thinkingText", 0.3);
 		expect(out.replace(/\x1b\[[0-9;]*m/g, "")).toBe(row);
-		const gold = theme
-			.getColorHex("matchHighlight")
-			.replace("#", "")
-			.match(/../g)!
-			.map(h => parseInt(h, 16))
-			.join(";");
-		// The LAST color open before the final character is the exact gold.
-		const opens = [...out.matchAll(/\x1b\[38;2;(\d+;\d+;\d+)m/g)].map(m => m[1]);
-		expect(opens.length).toBe(FOLLOW_TUNING.hotTailCells);
-		expect(opens[opens.length - 1]).toBe(gold);
-		expect(out.endsWith("m" + row.slice(-1) + "\x1b[39m")).toBe(true);
 	});
 
-	it("grades monotonically warmer toward the tip (red channel never falls)", () => {
-		const out = paintHotTail("abcdefghijklmnopqrstuvwxyz", theme, true);
-		const reds = [...out.matchAll(/\x1b\[38;2;(\d+);\d+;\d+m/g)].map(m => Number(m[1]));
-		for (let i = 1; i < reds.length; i++) expect(reds[i]!).toBeGreaterThanOrEqual(reds[i - 1]!);
+	it("opens exactly one color per trailing cell", () => {
+		const out = paintHotTail(row, theme, true, "thinkingText", 0.3);
+		expect(opensOf(out).length).toBe(FOLLOW_TUNING.trailCells);
 	});
 
-	it("returns short rows fully painted rather than crashing", () => {
-		const out = paintHotTail("abc", theme, true);
+	it("caps the trail at the row width for short rows", () => {
+		const out = paintHotTail("abc", theme, true, "thinkingText", 0.3);
 		expect(out.replace(/\x1b\[[0-9;]*m/g, "")).toBe("abc");
+		expect(opensOf(out).length).toBe(3);
 	});
 
-	/** Loud degrade: without truecolor there is NO trail — the row comes back
-	 * byte-identical, never a 16-color approximation of the ramp. */
-	it("is a no-op without 24-bit color", () => {
-		const row = "plain reasoning text";
-		expect(paintHotTail(row, theme, false)).toBe(row);
+	it("cools the oldest cell into the surface named by cooledToken", () => {
+		// With the sheen parked at the tip, the oldest cell carries no sheen, so it
+		// is the pure cooled surface color — the anchor that keeps the glow reading
+		// as a continuation of thinking text (or tool output), not a foreign band.
+		const thinking = paintHotTail(row, theme, true, "thinkingText", TIP_PHASE);
+		const tool = paintHotTail(row, theme, true, "toolOutput", TIP_PHASE);
+		expect(opensOf(thinking)[0]).toBe(rgbOf("thinkingText"));
+		expect(opensOf(tool)[0]).toBe(rgbOf("toolOutput"));
 	});
 
-	it("leaves an all-whitespace row untouched by the caller contract", () => {
-		expect(paintHotTail("", theme, true)).toBe("");
+	it("burns hottest at the newest edge", () => {
+		// The tip must always read as the freshest character: brighter than the
+		// cooled oldest cell, and warmed past the plain accent (the sheen lightens
+		// the accent toward glass-white).
+		const out = paintHotTail(row, theme, true, "thinkingText", TIP_PHASE);
+		const opens = opensOf(out);
+		const tip = opens.at(-1)!;
+		expect(brightness(tip)).toBeGreaterThan(brightness(opens[0]!));
+		expect(brightness(tip)).toBeGreaterThan(brightness(rgbOf("accent")));
 	});
 
-	/**
-	 * The trail generalizes to tool surfaces (DS-4): a running tool's live
-	 * stdout tail cools into `toolOutput`, not `thinkingText`. Locks the
-	 * cooledToken parameter so the one gradient owner serves both surfaces —
-	 * the OLDEST tail cell opens with the EXACT hex of the requested surface
-	 * token (t=0 anchor of the mix), and the tip stays the same gold on both.
-	 */
-	it("cools into the surface named by cooledToken", () => {
-		const rgbOf = (token: "thinkingText" | "toolOutput" | "matchHighlight") =>
-			theme
-				.getColorHex(token)
-				.replace("#", "")
-				.match(/../g)!
-				.map(h => parseInt(h, 16))
-				.join(";");
-		const row = "streamed stdout line from a running bash tool";
-		const thinking = paintHotTail(row, theme, true, "thinkingText");
-		const tool = paintHotTail(row, theme, true, "toolOutput");
-		expect(thinking.replace(/\x1b\[[0-9;]*m/g, "")).toBe(row);
-		expect(tool.replace(/\x1b\[[0-9;]*m/g, "")).toBe(row);
-		const opens = (s: string) => [...s.matchAll(/\x1b\[38;2;(\d+;\d+;\d+)m/g)].map(m => m[1]);
-		expect(opens(tool)[0]).toBe(rgbOf("toolOutput"));
-		expect(opens(thinking)[0]).toBe(rgbOf("thinkingText"));
-		expect(opens(tool).at(-1)).toBe(rgbOf("matchHighlight"));
-		expect(opens(thinking).at(-1)).toBe(rgbOf("matchHighlight"));
+	it("flows: the same row paints differently as the phase advances", () => {
+		// The sheen band sweeps with time. If two well-separated phases produced
+		// identical output the glow would be a static tint, not a liquid flow —
+		// the exact defect this redesign fixes.
+		const a = paintHotTail(row, theme, true, "thinkingText", 0.1);
+		const b = paintHotTail(row, theme, true, "thinkingText", 0.6);
+		expect(a).not.toBe(b);
 	});
 
-	it("defaults cooledToken to thinkingText (reasoning callsites unchanged)", () => {
-		const row = "default surface stays the reasoning one";
-		expect(paintHotTail(row, theme, true)).toBe(paintHotTail(row, theme, true, "thinkingText"));
+	it("defaults cooledToken to thinkingText and phase to 0", () => {
+		expect(paintHotTail(row, theme, true)).toBe(paintHotTail(row, theme, true, "thinkingText", 0));
+	});
+
+	it("is a no-op without 24-bit color (loud degrade: no glow at all)", () => {
+		expect(paintHotTail(row, theme, false, "thinkingText", 0.3)).toBe(row);
+	});
+
+	it("returns an empty row untouched", () => {
+		expect(paintHotTail("", theme, true, "thinkingText", 0.3)).toBe("");
+	});
+});
+
+describe("paintHotTail padding anchor", () => {
+	/** The bug this locks out: rendered rows arrive right-padded to the
+	 * component width, and the trail selected the last TRAIL_CELLS of the
+	 * PADDED row — so the glow painted trailing spaces (invisible ink) and
+	 * the visible text never glowed at all. Found 2026-07-22 while probing
+	 * the "answer renders amber" report: the shipped glow had been a no-op
+	 * on every padded row since it landed. */
+	it("anchors the trail at the last visible character, not the padded edge", () => {
+		const padded = `glow ends here${" ".repeat(30)}`;
+		const out = paintHotTail(padded, theme, true, "thinkingText", 0);
+		// The final color open must wrap a real character, not a space.
+		const paintedChars = [...out.matchAll(/\x1b\[38;2;\d+;\d+;\d+m(.)/g)].map(m => m[1]!);
+		expect(paintedChars.length).toBeGreaterThan(0);
+		// The trail must cover real ink (word-interior spaces are fine, an
+		// all-space trail is the regression).
+		expect(paintedChars.some(ch => ch !== " ")).toBe(true);
+		expect(paintedChars[paintedChars.length - 1]).toBe("e");
+	});
+
+	it("keeps the trailing padding byte-identical after the reset", () => {
+		const padded = `short${" ".repeat(12)}`;
+		const out = paintHotTail(padded, theme, true, "thinkingText", 0);
+		expect(out.endsWith(`\x1b[39m${" ".repeat(12)}`)).toBe(true);
+		expect(out.replace(/\x1b\[[0-9;]*m/g, "")).toBe(padded);
+	});
+
+	it("still paints an unpadded row edge-to-edge", () => {
+		const row = "no padding at all";
+		const out = paintHotTail(row, theme, true, "thinkingText", 0);
+		expect(out.replace(/\x1b\[[0-9;]*m/g, "")).toBe(row);
+		expect(opensOf(out).length).toBeGreaterThan(0);
+	});
+
+	it("returns an all-space row untouched", () => {
+		const spaces = " ".repeat(20);
+		expect(paintHotTail(spaces, theme, true, "thinkingText", 0)).toBe(spaces);
 	});
 });

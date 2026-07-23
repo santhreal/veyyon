@@ -3,6 +3,7 @@ import { runEvalBudget } from "@veyyon/coding-agent/eval/budget-bridge";
 import type { Goal, GoalModeState } from "@veyyon/coding-agent/goals/state";
 import type { UsageStatistics } from "@veyyon/coding-agent/session/session-entries";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * runEvalBudget is the host-side handler for the eval `budget` helper; kernel code
@@ -48,11 +49,15 @@ function session(over: {
 	goalState?: GoalModeState;
 	usageOutput?: number;
 }): ToolSession {
-	return {
-		getTurnBudget: over.turn !== undefined ? () => over.turn : undefined,
-		getGoalModeState: over.goalState !== undefined ? () => over.goalState : undefined,
-		getUsageStatistics: over.usageOutput !== undefined ? () => usage(over.usageOutput as number) : undefined,
-	} as unknown as ToolSession;
+	// Hoist to consts so each accessor's closure captures a NARROWED (non-optional)
+	// value — the real ToolSession getters return a value, never undefined, and the
+	// makeToolSession type (no longer bypassed by a cast) enforces that.
+	const { turn, goalState, usageOutput } = over;
+	return makeToolSession({
+		getTurnBudget: turn !== undefined ? () => turn : undefined,
+		getGoalModeState: goalState !== undefined ? () => goalState : undefined,
+		getUsageStatistics: usageOutput !== undefined ? () => usage(usageOutput) : undefined,
+	});
 }
 
 describe("runEvalBudget precedence", () => {

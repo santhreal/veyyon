@@ -40,6 +40,9 @@ describe("rpc response id/command matrix", () => {
 				expect(res.success).toBe(false);
 				expect(res.command).toBe(cmd);
 				expect(res.id).toBe(id);
+				// Narrow the discriminated union to the error variant before reading
+				// `.error`; success responses have no error field.
+				if (res.success) throw new Error("rpcErrorResponse must return success:false");
 				expect(res.error).toBe(`err-${cmd}`);
 			}
 		}
@@ -50,6 +53,7 @@ describe("rpc response id/command matrix", () => {
 			const res = rpcUnknownCommandResponse(cmd);
 			expect(res.id).toBeUndefined();
 			expect(res.success).toBe(false);
+			if (res.success) throw new Error("unknown-command response must be success:false");
 			expect(res.error).toBe(`Unknown command: ${cmd}`);
 			expect(res.command).toBe(cmd);
 		}

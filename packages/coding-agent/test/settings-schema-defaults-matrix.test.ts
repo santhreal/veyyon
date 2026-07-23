@@ -5,12 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "../src/config/settings";
 import { getDefault, SETTINGS_SCHEMA, type SettingPath } from "../src/config/settings-schema";
 
-const SAMPLE_PATHS = [
-	"tier.openai",
-	"tier.subagent",
-	"display.smoothStreaming",
-	"tools.approvalMode",
-] as const;
+const SAMPLE_PATHS = ["tier.openai", "tier.subagent", "display.smoothStreaming", "tools.approvalMode"] as const;
 
 describe("settings schema defaults matrix", () => {
 	it("sample paths exist on SETTINGS_SCHEMA", () => {
@@ -29,7 +24,10 @@ describe("settings schema defaults matrix", () => {
 
 	it("override wins over default for tools.approvalMode when valid", () => {
 		const settings = Settings.isolated({ "tools.approvalMode": "ask" });
-		expect(settings.get("tools.approvalMode" as SettingPath)).toBe("ask");
+		// `as SettingPath` broadens get()'s return to the full SettingValue union,
+		// which the "ask" literal does not narrow into; widen the matcher to assert
+		// the runtime value directly.
+		expect(settings.get("tools.approvalMode" as SettingPath)).toBe<unknown>("ask");
 	});
 
 	it("SETTINGS_SCHEMA has a large non-empty set of paths", () => {

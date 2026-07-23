@@ -3,10 +3,7 @@
  * unrecognized non-empty → ask (fail closed, never yolo).
  */
 import { describe, expect, it } from "bun:test";
-import {
-	normalizeApprovalMode,
-	validateApprovalModeSetting,
-} from "@veyyon/coding-agent/tools/approval";
+import { normalizeApprovalMode, validateApprovalModeSetting } from "@veyyon/coding-agent/tools/approval";
 
 describe("normalizeApprovalMode fail-closed property", () => {
 	it("undefined maps to yolo default", () => {
@@ -23,7 +20,9 @@ describe("normalizeApprovalMode fail-closed property", () => {
 	];
 	for (const [input, want] of accepted) {
 		it(`accepts ${input} → ${want}`, () => {
-			expect(normalizeApprovalMode(input)).toBe(want);
+			// normalizeApprovalMode returns the narrow AutonomyLevel union; `want` is a
+			// plain string, so widen the matcher to compare their runtime values.
+			expect(normalizeApprovalMode(input)).toBe<string>(want);
 		});
 	}
 

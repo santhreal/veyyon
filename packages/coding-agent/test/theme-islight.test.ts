@@ -57,12 +57,15 @@ describe("getResolvedThemeColors HTML export defaults", () => {
 	});
 
 	it("uses light grey for empty text tokens on dark themes", async () => {
-		// "titanium" (the shipped default dark theme) leaves its text tokens empty,
-		// so it exercises the dark-theme grey fallback. The "dark" theme now sets an
-		// explicit brand text color, so it no longer probes this fallback path.
+		// "titanium" (the shipped default dark theme) leaves its `text` token
+		// empty, so it exercises the dark-theme grey fallback.
+		// `userMessageText` is no longer a fallback probe: titanium sets it
+		// explicitly to full silver. Prompts used to render in the dim tone and
+		// read as gray-on-gray — invisible against the ground (user screenshot,
+		// 2026-07-22). The operator's own words must be bright.
 		const colors = await getResolvedThemeColors("titanium");
 		expect(colors.text).toBe("#e5e5e7");
-		expect(colors.userMessageText).toBe("#e5e5e7");
+		expect(colors.userMessageText).toBe("#C6CBD4");
 	});
 	let tempAgentDir: string | undefined;
 	let originalAgentDir = "";

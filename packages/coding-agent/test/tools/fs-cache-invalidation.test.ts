@@ -17,8 +17,10 @@ const calls: string[] = [];
 let invalidateSpy: ReturnType<typeof spyOn> | undefined;
 
 beforeAll(() => {
-	invalidateSpy = spyOn(natives, "invalidateFsScanCache").mockImplementation((path: string) => {
-		calls.push(path);
+	invalidateSpy = spyOn(natives, "invalidateFsScanCache").mockImplementation((path?: string | null) => {
+		// The real signature accepts an optional/nullable path (a full-cache
+		// invalidation passes none); only record concrete path invalidations.
+		if (typeof path === "string") calls.push(path);
 	});
 });
 

@@ -4,10 +4,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
-	normalizeApprovalMode,
-	validateApprovalModeSetting,
 	APPROVAL_MODE_VALUES,
 	isKnownApprovalMode,
+	normalizeApprovalMode,
+	validateApprovalModeSetting,
 } from "../src/tools/approval";
 
 describe("normalizeApprovalMode exhaustive aliases", () => {
@@ -23,7 +23,9 @@ describe("normalizeApprovalMode exhaustive aliases", () => {
 
 	for (const [input, out] of table) {
 		it(`${JSON.stringify(input)} → ${out}`, () => {
-			expect(normalizeApprovalMode(input)).toBe(out);
+			// normalizeApprovalMode returns the narrow AutonomyLevel union; the table's
+			// expected value is a plain string, so widen the matcher to compare values.
+			expect(normalizeApprovalMode(input)).toBe<string>(out);
 		});
 	}
 

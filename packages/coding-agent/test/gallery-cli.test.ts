@@ -3,19 +3,17 @@ import * as path from "node:path";
 import {
 	GALLERY_STATES,
 	parseGalleryStates,
+	renderGalleryForThemes,
 	renderGalleryState,
 	resolveFixture,
+	themedOutPath,
 } from "@veyyon/coding-agent/cli/gallery-cli";
 import type { GalleryFixture } from "@veyyon/coding-agent/cli/gallery-fixtures";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getAvailableThemes, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
-import {
-	beginSettingsTest,
-	restoreSettingsTestState,
-	type SettingsTestState,
-} from "./helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 let settingsState: SettingsTestState | undefined;
 
@@ -164,5 +162,149 @@ describe("gallery harness", () => {
 		expect(stderr).toContain("Unknown tool 'nonexistent-tool'");
 		expect(stderr).toContain("Known tools:");
 		expect(stdout).not.toContain("Unknown tool");
+	}, 30_000);
+});
+
+/**
+ * `veyyon gallery --theme <name>` (GALLERY-THEME-FLAG) renders the gallery once
+ * per named theme so a UI change can be proven across the theme matrix
+ * (`.veyyon/skills/ui`) in a single invocation instead of seeding each theme
+ * through `config set`. These tests lock the contract the skill relies on:
+ *
+ *  - a theme name genuinely changes the rendered ANSI (the SGR bytes differ),
+ *    so a two-theme run produces two distinct proofs, not one repeated;
+ *  - an unknown theme fails the WHOLE run loudly, naming the offender, rather
+ *    than silently falling back to the active theme (Law 10);
+ *  - rendering a theme does not mutate the profile's stored `theme.dark`/
+ *    `theme.light`, so a matrix capture is a read-only render pass;
+ *  - the per-theme output path is suffixed deterministically so the files of a
+ *    matrix never collide.
+ */
+describe("gallery --theme matrix (GALLERY-THEME-FLAG)", () => {
+	// setTheme mutates the module theme singleton; restore the test baseline
+	// after this block so it cannot leak into later suites in the same process.
+	afterAll(async () => {
+		await initTheme(false, undefined, undefined, "dark", "light");
+	});
+
+	it("renders once per theme, and each theme produces genuinely different ANSI bytes", async () => {
+		const available = new Set(await getAvailableThemes());
+		// Two brand grounds that must differ: titanium (silver on black) vs light
+		// (structure on white). Both are shipped builtins.
+		expect(available.has("titanium")).toBe(true);
+		expect(available.has("light")).toBe(true);
+
+		const rendered = await renderGalleryForThemes(["titanium", "light"], ["bash"], ["success"], 100, false);
+		expect(rendered.map(r => r.theme)).toEqual(["titanium", "light"]);
+
+		const ansiOf = (name: string) =>
+			rendered
+				.find(r => r.theme === name)!
+				.sections.flatMap(s => s.lines)
+				.join("\n");
+		const titanium = ansiOf("titanium");
+		const light = ansiOf("light");
+
+		// Both actually rendered the tool...
+		expect(titanium).toContain("bash");
+		expect(light).toContain("bash");
+		// ...and the two carry different color escapes: the theme changed the pixels,
+		// not just the label. A degenerate matrix (two identical shots) is the exact
+		// failure the ui-skill differential is meant to catch, so it must fail here.
+		expect(titanium).not.toBe(light);
+		expect(titanium).toContain("[");
+		expect(light).toContain("[");
+		// The stripped text is identical (same tool, same state); only styling moved.
+		expect(Bun.stripANSI(titanium)).toBe(Bun.stripANSI(light));
+	});
+
+	it("preserves order and renders duplicate theme names once each", async () => {
+		const rendered = await renderGalleryForThemes(["light", "titanium", "light"], ["bash"], ["success"], 100, false);
+		expect(rendered.map(r => r.theme)).toEqual(["light", "titanium", "light"]);
+	});
+
+	it("fails the whole run on an unknown theme, naming the offender, with no fallback", async () => {
+		await expect(
+			renderGalleryForThemes(["titanium", "definitely-not-a-real-theme"], ["bash"], ["success"], 100, false),
+		).rejects.toThrow(/Unknown theme 'definitely-not-a-real-theme'\. Known themes: .*titanium/);
+	});
+
+	it("does not mutate the profile's stored theme.dark / theme.light", async () => {
+		const settings = await Settings.init({ inMemory: true });
+		const beforeDark = settings.get("theme.dark");
+		const beforeLight = settings.get("theme.light");
+		await renderGalleryForThemes(["titanium", "light"], ["bash"], ["success"], 100, false);
+		expect(settings.get("theme.dark")).toBe(beforeDark);
+		expect(settings.get("theme.light")).toBe(beforeLight);
+	});
+
+	it("suffixes the output path per theme so matrix files never collide", () => {
+		// Extension preserved, tag inserted before it.
+		expect(themedOutPath("shot.png", "light")).toBe("shot-light.png");
+		expect(themedOutPath("out/dir/shot.png", "titanium")).toBe("out/dir/shot-titanium.png");
+		// Only the final extension is treated as the extension.
+		expect(themedOutPath("a.b.png", "light")).toBe("a.b-light.png");
+		// No extension: append.
+		expect(themedOutPath("shot", "light")).toBe("shot-light");
+		// A theme name with path-hostile characters is slugified, never a separator.
+		expect(themedOutPath("shot.png", "my/weird theme")).toBe("shot-my-weird-theme.png");
+	});
+
+	it("wires --theme through the CLI: a repeated flag prints one labeled block per theme", async () => {
+		// End-to-end proof that the multiple `--theme` flag reaches runGalleryCommand
+		// and drives the per-theme render path, each block headed by its theme name.
+		const cliEntry = path.resolve(import.meta.dir, "../src/cli.ts");
+		const { env, cleanup } = hermeticSpawnEnv();
+		try {
+			const proc = Bun.spawn(
+				[
+					process.execPath,
+					cliEntry,
+					"gallery",
+					"--tool",
+					"bash",
+					"--theme",
+					"titanium",
+					"--theme",
+					"light",
+					"--plain",
+				],
+				{ env, stdout: "pipe", stderr: "pipe" },
+			);
+			const [stdout, , exitCode] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+			expect(exitCode).toBe(0);
+			expect(stdout).toContain("# theme: titanium");
+			expect(stdout).toContain("# theme: light");
+			// Two distinct blocks, in flag order.
+			expect(stdout.indexOf("# theme: titanium")).toBeLessThan(stdout.indexOf("# theme: light"));
+		} finally {
+			cleanup();
+		}
+	}, 30_000);
+
+	it("exits 1 with the error on stderr for an unknown --theme, printing nothing on stdout", async () => {
+		const cliEntry = path.resolve(import.meta.dir, "../src/cli.ts");
+		const { env, cleanup } = hermeticSpawnEnv();
+		try {
+			const proc = Bun.spawn(
+				[process.execPath, cliEntry, "gallery", "--tool", "bash", "--theme", "definitely-not-a-real-theme"],
+				{ env, stdout: "pipe", stderr: "pipe" },
+			);
+			const [stdout, stderr, exitCode] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+			expect(exitCode).toBe(1);
+			expect(stderr).toContain("Unknown theme 'definitely-not-a-real-theme'");
+			expect(stderr).toContain("Known themes:");
+			expect(stdout).not.toContain("# theme:");
+		} finally {
+			cleanup();
+		}
 	}, 30_000);
 });

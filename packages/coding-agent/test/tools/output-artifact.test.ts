@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
 import { saveOutputArtifact } from "@veyyon/coding-agent/tools/output-artifact";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * saveOutputArtifact is the single owner of the "allocate an artifact slot, then write
@@ -27,7 +28,7 @@ afterEach(() => {
 });
 
 const session = (allocateOutputArtifact?: unknown): ToolSession =>
-	({ allocateOutputArtifact }) as unknown as ToolSession;
+	makeToolSession({ allocateOutputArtifact: allocateOutputArtifact as ToolSession["allocateOutputArtifact"] });
 
 describe("saveOutputArtifact success", () => {
 	it("writes the full output to the allocated path and returns its id", async () => {

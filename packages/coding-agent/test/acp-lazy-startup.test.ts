@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import {
 	type Client,
@@ -156,6 +156,22 @@ async function closeTransport(writable: WritableStream<unknown>): Promise<void> 
 }
 
 describe("ACP lazy startup", () => {
+	// runRootCommand in ACP mode sets `VEYYON_NO_TITLE`/`VEYYON_NO_PTY` on the
+	// process env (main.ts) — real product behavior for the embedder modes. Running
+	// it IN-PROCESS leaks those into every later suite: a lingering `VEYYON_NO_TITLE`
+	// makes `generateSessionTitle` fail closed and returns null, silently breaking
+	// the title-generator/tiny-title/role-thinking suites downstream. Snapshot and
+	// restore both so this suite cannot pollute the shared process env.
+	const ENV_KEYS = ["VEYYON_NO_TITLE", "VEYYON_NO_PTY"] as const;
+	const savedEnv = new Map(ENV_KEYS.map(key => [key, process.env[key]]));
+	afterEach(() => {
+		for (const key of ENV_KEYS) {
+			const prev = savedEnv.get(key);
+			if (prev === undefined) delete process.env[key];
+			else process.env[key] = prev;
+		}
+	});
+
 	it("applies schema defaults for ACP background jobs and preserves explicit overrides", async () => {
 		const { runRootCommand } = await import("@veyyon/coding-agent/main");
 

@@ -164,3 +164,93 @@ describe("goal status-line segment (GMI-1)", () => {
 		);
 	});
 });
+
+describe("goal status-line segment — terminal statuses (GMI-4)", () => {
+	/** A finished goal must read as DONE at a glance: success glyph + success
+	 * color, never the mode accent — and it keeps the final token readout so
+	 * the operator sees what the goal cost. */
+	it("renders complete with the success glyph and color", () => {
+		const ctx = createGoalContext({ goal: { status: "complete", tokensUsed: 48_000, tokenBudget: 50_000 } });
+		const icon = theme.symbol("status.success");
+		expect(plain(ctx)).toBe(goalLabel(icon, "48K/50K 96%"));
+		expect(renderSegment("mode", ctx).content).toBe(theme.fg("success", goalLabel(icon, "48K/50K 96%")));
+	});
+
+	/** budget-limited is the HARD budget stop (distinct from the ≥90% soft
+	 * recolor): warning glyph + warning color, so the operator knows the goal
+	 * ended because the ceiling tripped, not because it finished. */
+	it("renders budget-limited with the warning glyph and color", () => {
+		const ctx = createGoalContext({ goal: { status: "budget-limited", tokensUsed: 50_000, tokenBudget: 50_000 } });
+		const icon = theme.symbol("status.warning");
+		expect(plain(ctx)).toBe(goalLabel(icon, "50K/50K 100%"));
+		expect(renderSegment("mode", ctx).content).toBe(theme.fg("warning", goalLabel(icon, "50K/50K 100%")));
+	});
+
+	/** A dropped goal dims out (aborted glyph, dim color): it is history, and
+	 * must not keep shouting in the accent hue. */
+	it("renders dropped with the aborted glyph, dimmed", () => {
+		const ctx = createGoalContext({ goal: { status: "dropped", tokensUsed: 5_000 } });
+		const icon = theme.symbol("status.aborted");
+		expect(plain(ctx)).toBe(goalLabel(icon, "5K"));
+		expect(renderSegment("mode", ctx).content).toBe(theme.fg("dim", goalLabel(icon, "5K")));
+	});
+
+	/** Terminal statuses are not "running": the spinner must never replace
+	 * their semantic glyph, even while the session streams (e.g. a follow-up
+	 * turn running after the goal completed). */
+	it("never animates a terminal status while streaming", () => {
+		for (const status of ["complete", "budget-limited", "dropped"] as const) {
+			const ctx = createGoalContext({
+				goal: { status, tokensUsed: 1_000, tokenBudget: 2_000 },
+				streaming: true,
+				activeMs: 240,
+			});
+			const icon =
+				status === "complete"
+					? theme.symbol("status.success")
+					: status === "budget-limited"
+						? theme.symbol("status.warning")
+						: theme.symbol("status.aborted");
+			expect(plain(ctx).startsWith(icon)).toBe(true);
+		}
+	});
+
+	/** The near-budget soft warning applies to a RUNNING goal only; complete at
+	 * 96% must keep the success treatment, not flip back to warning. */
+	it("does not apply the near-budget recolor to a non-running status", () => {
+		const ctx = createGoalContext({ goal: { status: "complete", tokensUsed: 48_000, tokenBudget: 50_000 } });
+		expect(renderSegment("mode", ctx).content).toBe(
+			theme.fg("success", goalLabel(theme.symbol("status.success"), "48K/50K 96%")),
+		);
+	});
+});
+
+describe("goal progress readout — boundary geometry (GMI-4)", () => {
+	/** An over-budget goal still running (grace before the hard stop) must not
+	 * render a five-digit percent that blows up the status line: the percent
+	 * clamps at 999% and the bar clamps full. */
+	it("caps the percent readout at 999% and the bar at full", () => {
+		const ctx = createGoalContext({ goal: { tokensUsed: 1_000_000, tokenBudget: 50 }, verbose: true });
+		// 1e6/50 = 2,000,000% -> capped 999%; fraction >1 clamps to 8/8 cells.
+		// (20000x the budget also trips the ≥90% warning recolor - asserted via
+		// the plain string here; color is covered by the near-budget tests.)
+		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "1M/50 999% ▰▰▰▰▰▰▰▰"));
+	});
+
+	/** A zero or negative budget is "no budget", never a division by zero:
+	 * the readout falls back to the plain tokensUsed form. */
+	it("treats a non-positive budget as no budget", () => {
+		for (const tokenBudget of [0, -100]) {
+			const ctx = createGoalContext({ goal: { tokensUsed: 7_000, tokenBudget }, verbose: true });
+			expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "7K"));
+		}
+	});
+
+	/** The bar rounds to the nearest cell; a hair over a cell boundary must
+	 * not render a full extra cell early (0.06 of 8 cells rounds to 0). */
+	it("rounds the bar to the nearest of 8 cells", () => {
+		const ctx = createGoalContext({ goal: { tokensUsed: 3, tokenBudget: 50 }, verbose: true });
+		// 3/50 = 6% -> round(0.06*8) = 0 filled cells.
+		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "3/50 6% ▱▱▱▱▱▱▱▱"));
+	});
+});

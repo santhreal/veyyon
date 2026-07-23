@@ -1,15 +1,18 @@
 /**
  * Brand conformance for the default dark theme (titanium).
  *
- * The Veyyon brand is specific and load-bearing: a pitch-black ground
- * (#000000) everywhere — no tinted or raised panels, no colored state
- * backgrounds — with silver (#C6CBD4) as the structural/brand color and
- * ember (#F0862E, the website's sun accent) as the single accent, carried
- * by links, the accent border, and the selection surface (#241510, a dim ember
- * wash under selected text and the one permitted non-black surface). These asserts lock that model so a theme
- * edit that reintroduces a non-black panel background, drifts the silver,
- * or drops the ember accent fails here instead of silently shipping an
- * off-brand default. Reference implementation: website/site.css :root.
+ * The Veyyon brand is specific and load-bearing: the terminal's OWN ground
+ * everywhere — no absolute page-ground fills, no tinted or raised panels, no
+ * colored state backgrounds (an absolute dark hex renders as a foreign slab
+ * on any non-black terminal; docs/internal/tui-design-language.md, Terminal
+ * ground) — with silver (#C6CBD4) as the structural/brand color and ember
+ * (#F0862E, the website's sun accent) as the single accent, carried by
+ * links, the accent border, and the selection surface (#241510, a dim ember
+ * wash under selected text and the one permitted painted surface). These
+ * asserts lock that model so a theme edit that reintroduces an absolute
+ * panel background, drifts the silver, or drops the ember accent fails here
+ * instead of silently shipping an off-brand default. Reference
+ * implementation: website/site.css :root.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
@@ -56,9 +59,12 @@ function expectSunFieldParity(js: string, source: string): void {
 	expect(webGlyphs, `${source}: glyph ramp equals the terminal GLYPH ramp`).toEqual([...SUN_GLYPH]);
 }
 
-// Every paintable background surface must stay pitch black, except the
-// selection surface, which carries the dim ember wash.
-const BLACK_BACKGROUND_KEYS = [
+// Every paintable background surface must stay TRANSPARENT — it inherits the
+// terminal's own ground — except the selection surface, which carries the dim
+// ember wash. Explicit black/near-black fills assumed a pure-black terminal
+// and rendered as harsh slabs on any other ground (user screenshots,
+// 2026-07-22); the derived composer card handles the one raised surface.
+const TRANSPARENT_BACKGROUND_KEYS = [
 	"userMessageBg",
 	"customMessageBg",
 	"toolPendingBg",
@@ -74,10 +80,14 @@ async function titanium() {
 }
 
 describe("brand conformance (titanium, the default dark theme)", () => {
-	it("paints every non-selection background surface pitch black", async () => {
+	/** Locks the de-slab rule: no non-selection surface may declare an
+	 * absolute background. `\x1b[49m` is the default-background SGR — the
+	 * terminal's own ground shows through. A reappearing `#000000` (or any
+	 * hex) here is the black-slab regression coming back. */
+	it("keeps every non-selection background surface transparent (terminal ground)", async () => {
 		const theme = await titanium();
-		for (const key of BLACK_BACKGROUND_KEYS) {
-			expect(theme.getBgColorHex(key)).toBe(BLACK);
+		for (const key of TRANSPARENT_BACKGROUND_KEYS) {
+			expect(theme.getBgAnsi(key), `${key} must inherit the terminal ground`).toBe("\x1b[49m");
 		}
 	});
 
@@ -130,7 +140,10 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	it("keeps the light theme on-brand: white ground, silver structure, ember accent", async () => {
 		const theme = await getThemeByName("light");
 		expect(theme).toBeDefined();
-		for (const key of BLACK_BACKGROUND_KEYS) {
+		// Unlike titanium (transparent, inherits the terminal ground), the light
+		// theme paints its white world explicitly: choosing a light theme on a
+		// dark terminal must produce readable light surfaces, not dark ones.
+		for (const key of TRANSPARENT_BACKGROUND_KEYS) {
 			expect(theme!.getBgColorHex(key)).toBe("#FFFFFF");
 		}
 		// Selection carries a dim ember wash, nothing saturated.
@@ -184,10 +197,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// inline COLORS/GLYPH. It is the fourth surface that draws the sun; pin it too
 	// so the copy it is forced to keep still cannot drift from the one sun.
 	it("keeps the OAuth callback sun (oauth.html) in parity with the terminal sun", () => {
-		const oauth = fs.readFileSync(
-			path.join(import.meta.dir, "../../ai/src/registry/oauth/oauth.html"),
-			"utf-8",
-		);
+		const oauth = fs.readFileSync(path.join(import.meta.dir, "../../ai/src/registry/oauth/oauth.html"), "utf-8");
 		expectSunFieldParity(oauth, "packages/ai/src/registry/oauth/oauth.html");
 	});
 

@@ -247,6 +247,43 @@ describe("EventController error banner", () => {
 
 		expect(clearPinnedError).toHaveBeenCalledTimes(1);
 	});
+
+	it("pins the error even when the turn died before any streaming component existed", async () => {
+		// Found live (2026-07-22): a provider that rejects the request at setup
+		// (unsupported thinking effort on devin/swe-1-6, bad model id, auth)
+		// emits message_end with stopReason "error" but no message_start, so
+		// ctx.streamingComponent is undefined. The old handler surfaced errors
+		// only inside the streaming-component branch — the submitted prompt
+		// vanished with no working line, no banner, and no clue. The banner must
+		// appear regardless of whether streaming ever began.
+		const errorMessage = "Thinking effort high is not supported by devin/swe-1-6";
+		const message = makeAssistantMessage({ stopReason: "error", errorMessage });
+		const { controller, ctx, showPinnedError } = createFixture();
+		expect((ctx as { streamingComponent?: unknown }).streamingComponent).toBeUndefined();
+
+		await controller.handleEvent({ type: "message_end", message } as Extract<
+			AgentSessionEvent,
+			{ type: "message_end" }
+		>);
+
+		expect(showPinnedError).toHaveBeenCalledTimes(1);
+		expect(showPinnedError).toHaveBeenCalledWith(errorMessage);
+	});
+
+	it("does not pin a banner for a component-less normal stop or abort (negative twins)", async () => {
+		for (const overrides of [
+			{ stopReason: "stop" as const },
+			{ stopReason: "aborted" as const, errorMessage: "Operation aborted" },
+		]) {
+			const message = makeAssistantMessage(overrides);
+			const { controller, showPinnedError } = createFixture();
+			await controller.handleEvent({ type: "message_end", message } as Extract<
+				AgentSessionEvent,
+				{ type: "message_end" }
+			>);
+			expect(showPinnedError).not.toHaveBeenCalled();
+		}
+	});
 });
 
 describe("EventController thinking visibility", () => {

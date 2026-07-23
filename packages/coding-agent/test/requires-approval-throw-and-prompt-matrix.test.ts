@@ -6,24 +6,24 @@ import { describe, expect, it } from "bun:test";
 import { requiresApproval } from "../src/tools/approval";
 
 function tool(name: string, tier: "read" | "write" | "exec") {
-	return { name, approval: tier as const };
+	// `tier` is already the narrow ToolTier union; `as const` is invalid on a
+	// reference (TS1355) and unnecessary, so pass it through directly.
+	return { name, approval: tier };
 }
 
 describe("requiresApproval throw and prompt matrix", () => {
 	it("plan mode denies write with Plan autonomy message", () => {
-		expect(() =>
-			requiresApproval(tool("write_file", "write"), {}, "plan", {}, { planModeActive: false }),
-		).toThrow(/Plan autonomy|non-mutating/);
+		expect(() => requiresApproval(tool("write_file", "write"), {}, "plan", {}, { planModeActive: false })).toThrow(
+			/Plan autonomy|non-mutating/,
+		);
 	});
 
 	it("user deny always throws naming tool", () => {
-		expect(() =>
-			requiresApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" }),
-		).toThrow(/bash/);
+		expect(() => requiresApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" })).toThrow(/bash/);
 		try {
 			requiresApproval(tool("bash", "exec"), {}, "yolo", { bash: "deny" });
 		} catch (e) {
-			expect(String(e)).toContain('tools.approval.bash: deny');
+			expect(String(e)).toContain("tools.approval.bash: deny");
 		}
 	});
 

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isRecord } from "@veyyon/utils";
 
 /**
  * Regression / contract corpus loader.
@@ -28,10 +29,6 @@ export interface CorpusCase {
 export interface LoadedCorpus {
 	file: string;
 	cases: CorpusCase[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function validateCase(raw: unknown, file: string, index: number): CorpusCase {

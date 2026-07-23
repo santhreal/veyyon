@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { makeToolSession } from "./helpers/tool-session";
 
 // NOTE: this suite deliberately does NOT call the global `Settings.init(...)`.
 // That mutates the process-wide `Settings` singleton, and because `Settings.init`
@@ -20,15 +21,14 @@ import { WriteTool } from "@veyyon/coding-agent/tools/write";
 // locks that guidance in so the message cannot regress back to the vague form.
 
 function createSession(cwd: string): ToolSession {
-	return {
+	return makeToolSession({
 		cwd,
-		hasUI: false,
 		getSessionFile: () => path.join(cwd, "session.jsonl"),
 		getSessionSpawns: () => "*",
 		getArtifactsDir: () => path.join(cwd, "artifacts"),
 		settings: Settings.isolated(),
 		enableLsp: false,
-	} as unknown as ToolSession;
+	});
 }
 
 describe("write tool: read-only internal-URL schemes name their mutation tool", () => {

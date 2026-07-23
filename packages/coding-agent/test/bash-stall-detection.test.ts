@@ -1,8 +1,8 @@
 /**
- * Coverage for the two bash backgrounding levers over the managed-job path.
+ * Coverage for the three bash backgrounding levers over the managed-job path.
  *
- * Both are opt-in and share the same machinery (BashTool.execute → managed
- * async job → foreground wait):
+ * All share the same machinery (BashTool.execute → managed async job →
+ * foreground wait):
  *
  *   - Auto-background (`bash.autoBackground.enabled` + `.thresholdMs`) fires on
  *     WALL-CLOCK time regardless of whether output is streaming: a long command
@@ -29,6 +29,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type { BashToolDetails } from "@veyyon/coding-agent/tools/bash";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { hasForegroundBashWait, requestManualBackground } from "@veyyon/coding-agent/tools/bash-foreground-registry";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "./helpers/tool-session";
 
@@ -166,4 +167,57 @@ describe("bash stall detection and wall-clock auto-background", () => {
 		expect(async.reason).toBe("stall");
 		expect(manager.cancel(async.jobId)).toBe(true);
 	});
+
+	/** The third lever: the operator's background key (`app.bash.background`,
+	 * default Ctrl+B). The TUI resolves the foreground wait through the
+	 * registry; the run converts with reason `manual` and its own notice —
+	 * the user's explicit 2026-07-22 ask (no way to reclaim the turn from a
+	 * long command besides waiting or interrupting). */
+	it("manual background request converts the wait with reason 'manual'", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": false,
+			"bash.stallDetection.enabled": true,
+			// Huge windows: only the manual request can win the race.
+			"bash.stallDetection.stallMs": 60_000,
+		});
+		const tool = new BashTool(session);
+		const pending = tool.execute("manual-1", { command: "sleep 5", timeout: 30 });
+		// Fire the keystroke once the wait registers (same signal the hint uses).
+		await waitForForegroundWait();
+		expect(requestManualBackground()).toBe(true);
+		const result = await pending;
+		const async = asyncDetails(result);
+		const text = resultText(result);
+
+		expect(async.state).toBe("running");
+		expect(async.reason).toBe("manual");
+		expect(text).toContain(`Backgrounded as job ${async.jobId} at the operator's request`);
+		expect(text).not.toContain("may be stuck");
+		expect(manager.cancel(async.jobId)).toBe(true);
+	});
+
+	/** Negative twin: with no wait registered the request reports false and
+	 * a normal command completes in the foreground untouched. */
+	it("manual request is a no-op after the command completes", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": false,
+			"bash.stallDetection.enabled": true,
+			"bash.stallDetection.stallMs": 60_000,
+		});
+		const tool = new BashTool(session);
+		const result = await tool.execute("manual-2", { command: "echo done", timeout: 30 });
+		expect(result.details?.async).toBeUndefined();
+		expect(resultText(result)).toContain("done");
+		expect(requestManualBackground()).toBe(false);
+	});
 });
+
+/** Resolve once the foreground wait registers (poll capped at 2s — the wait
+ * registers within the execute() call's first ticks). */
+async function waitForForegroundWait(): Promise<void> {
+	const deadline = Date.now() + 2_000;
+	while (!hasForegroundBashWait()) {
+		if (Date.now() > deadline) throw new Error("foreground bash wait never registered");
+		await Bun.sleep(10);
+	}
+}

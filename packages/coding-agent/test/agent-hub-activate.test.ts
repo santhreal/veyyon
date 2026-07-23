@@ -184,6 +184,14 @@ describe("Agent hub double-← gating", () => {
 		initTheme();
 	});
 
+	// The hub-gating path reads settings; init a fresh in-memory Settings per test
+	// so this block does not depend on another suite leaving Settings initialized
+	// (it fails in isolation otherwise).
+	beforeEach(async () => {
+		resetSettingsForTest();
+		await Settings.init({ inMemory: true });
+	});
+
 	afterEach(() => {
 		resetSettingsForTest();
 	});

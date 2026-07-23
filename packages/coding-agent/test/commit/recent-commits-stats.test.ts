@@ -1,4 +1,6 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
+import { createRecentCommitsTool } from "@veyyon/coding-agent/commit/agentic/tools/recent-commits";
+import * as git from "@veyyon/coding-agent/utils/git";
 
 /**
  * createRecentCommitsTool reports style statistics over recent commit subjects so the
@@ -11,11 +13,22 @@ import { describe, expect, it, mock } from "bun:test";
  * prefix is parsed case-insensitively (FIX(...) is recognized), but scope AGGREGATION in
  * topScopes is case-SENSITIVE (`api` and `API` are distinct buckets), and an empty log
  * yields all-zero stats rather than NaN from dividing by zero.
+ *
+ * Spy `git.log.subjects` on the shared exported object (NOT `mock.module`, which is
+ * process-global and stripped every OTHER `log` method — it was the leaker that broke
+ * the ReviewCommand suite's specific-commit path downstream). The afterEach restore
+ * keeps the real git module intact for later suites.
  */
 
+let subjectsSpy: Mock<typeof git.log.subjects> | undefined;
+
+afterEach(() => {
+	subjectsSpy?.mockRestore();
+	subjectsSpy = undefined;
+});
+
 const withSubjects = async (subjects: string[]) => {
-	mock.module("@veyyon/coding-agent/utils/git", () => ({ log: { subjects: async () => subjects } }));
-	const { createRecentCommitsTool } = await import("@veyyon/coding-agent/commit/agentic/tools/recent-commits");
+	subjectsSpy = spyOn(git.log, "subjects").mockImplementation(async () => subjects);
 	// The tool's execute only reads `params`; onUpdate and ctx are unused here.
 	const result = await createRecentCommitsTool("/cwd").execute("id", {}, undefined, undefined as never);
 	return (result as { details: { commits: string[]; stats: Record<string, unknown> } }).details;

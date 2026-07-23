@@ -66,7 +66,7 @@ import {
 } from "./modal-shell";
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
-import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
+import { DEFAULT_MODEL_SETTING_ID, getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
 import { getPreset } from "./status-line/presets";
 
 /**
@@ -463,6 +463,92 @@ class ModelRolesSubmenu extends Container {
 		this.onChange();
 		this.#showRoleList();
 		this.requestRender?.();
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/**
+ * Single-slot picker for the profile's DEFAULT model — the model each new
+ * session starts on. Opens straight to the model picker (there is only one slot,
+ * no role list), then a thinking-effort step, and persists to the `default`
+ * model-role slot via {@link Settings.setModelRole}. That is the exact slot the
+ * interactive `/model` choice writes to (LEGACY_DEFAULT_MODEL_ROLE) and startup
+ * restores from, so this reads and writes ONE source of truth, profile-scoped.
+ * Del clears the pin, letting the default resolve to the auto-selected model.
+ */
+class DefaultModelSubmenu extends Container {
+	#selectList: SelectList | undefined;
+
+	constructor(
+		private readonly models: ReadonlyArray<Model>,
+		private readonly registry: ModelRegistry,
+		private readonly onChange: () => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#showModelPicker();
+	}
+
+	#showModelPicker(): void {
+		this.clear();
+		this.#selectList = undefined;
+		const current = settings.getModelRole("default")?.trim();
+		const panel = new ModelSelectorPanel(
+			settings,
+			this.registry,
+			this.models,
+			{
+				title: "Default model",
+				description: "The model each new session starts on. Del clears the pin (auto-selects on launch).",
+				currentSelector: current,
+				allowClear: true,
+			},
+			{
+				onPick: (model, selector) => {
+					const efforts = getSupportedEfforts(model);
+					if (efforts.length === 0) {
+						this.#persist(selector);
+						return;
+					}
+					this.#showEffortPicker(selector, efforts);
+					this.requestRender?.();
+				},
+				onClear: () => {
+					settings.setModelRole("default", undefined);
+					this.onChange();
+					this.onCancel();
+				},
+				onCancel: () => this.onCancel(),
+			},
+		);
+		this.addChild(panel);
+	}
+
+	#showEffortPicker(selector: string, efforts: readonly Effort[]): void {
+		this.#selectList = renderEffortStep(
+			this,
+			selector,
+			efforts,
+			value => this.#persist(value),
+			() => {
+				this.#showModelPicker();
+				this.requestRender?.();
+			},
+		);
+	}
+
+	#persist(value: string): void {
+		settings.setModelRole("default", value);
+		this.onChange();
+		this.onCancel();
 	}
 
 	handleInput(data: string): void {
@@ -1297,6 +1383,16 @@ export class SettingsSelectorComponent implements Component {
 					submenu: (_cv, done) => this.#createModelRolesInput(done),
 					changed,
 				};
+
+			case "defaultModel":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatModelSelectorValue(currentValue),
+					submenu: (_cv, done) => this.#createDefaultModelInput(done),
+					changed,
+				};
 		}
 	}
 
@@ -1304,10 +1400,17 @@ export class SettingsSelectorComponent implements Component {
 	 * Get the current value for a setting.
 	 */
 	#getCurrentValue(def: SettingDef): unknown {
+		// The default-model entry is synthetic (no schema key): its value lives in
+		// the `default` model-role slot, so read it from there, not settings.get.
+		if (def.type === "defaultModel") return settings.getModelRole("default");
 		return settings.get(def.path);
 	}
 
 	#isChanged(def: SettingDef, currentValue: unknown): boolean {
+		// Synthetic path: "changed" means a default model has been pinned (the
+		// unset default resolves live to the auto-selected model). getDefault would
+		// throw on the non-schema path.
+		if (def.type === "defaultModel") return typeof currentValue === "string" && currentValue.trim().length > 0;
 		return !Object.is(currentValue, getDefault(def.path));
 	}
 
@@ -1558,6 +1661,27 @@ export class SettingsSelectorComponent implements Component {
 				this.callbacks.onChange("modelRoles", settings.getModelRoles());
 			},
 			() => done(this.#formatModelRolesValue()),
+			this.context.requestRender,
+		);
+	}
+
+	#createDefaultModelInput(done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			fallback.addChild(new Spacer(1));
+			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "escape") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		return new DefaultModelSubmenu(
+			ctx.models,
+			ctx.registry,
+			() => this.callbacks.onChange(DEFAULT_MODEL_SETTING_ID as SettingPath, settings.getModelRole("default") ?? ""),
+			() => done(this.#formatModelSelectorValue(settings.getModelRole("default"))),
 			this.context.requestRender,
 		);
 	}

@@ -72,7 +72,7 @@ describe("sshToolRenderer", () => {
 					.render(120)[0]!,
 			);
 
-		expect(renderHeader(true)).toContain("⏳ SSH: [sccpu]");
+		expect(renderHeader(true)).toContain("⋯ SSH: [sccpu]");
 		expect(renderHeader(false)).toContain("⇄ SSH: [sccpu]");
 	});
 	it("renders the collapsed command as a viewport tail window in every state — no stream→final expansion", async () => {
