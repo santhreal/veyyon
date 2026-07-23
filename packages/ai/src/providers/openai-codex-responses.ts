@@ -526,7 +526,13 @@ function createCodexRequestMetadata(
 	const callerMetadata = options.clientMetadata;
 	if (callerMetadata) {
 		for (const key in callerMetadata) {
-			if (!CODEX_RESERVED_METADATA_KEYS[key]) extra[key] = callerMetadata[key];
+			// Own-property test, not `CODEX_RESERVED_METADATA_KEYS[key]`: a plain index
+			// read resolves Object.prototype members, so a caller metadata key literally
+			// named `toString`/`valueOf`/`constructor`/`hasOwnProperty` would read the
+			// inherited method (truthy), be treated as reserved, and be silently dropped
+			// from the outgoing turn metadata. Object.hasOwn only matches the real
+			// reserved names.
+			if (!Object.hasOwn(CODEX_RESERVED_METADATA_KEYS, key)) extra[key] = callerMetadata[key];
 		}
 	}
 	const turnMetadata: Record<string, unknown> = {
