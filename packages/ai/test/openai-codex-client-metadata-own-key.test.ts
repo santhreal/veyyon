@@ -35,11 +35,16 @@ describe("Codex client metadata reserved-key filtering uses own-property semanti
 			customField: "keep-custom",
 		});
 
+		// Read metadata by string key name on purpose: these keys collide with
+		// prototype method names (toString/valueOf/hasOwnProperty), and accessing
+		// them as data via a variable key documents that intent and avoids the
+		// useLiteralKeys lint that a `.toString` dot access would trip.
+		const value = (key: string): unknown => (parsed as Record<string, unknown>)[key];
 		expect(Object.hasOwn(parsed, "toString")).toBe(true);
-		expect(parsed["toString"]).toBe("keep-tostring");
-		expect(parsed["valueOf"]).toBe("keep-valueof");
-		expect(parsed["hasOwnProperty"]).toBe("keep-hasown");
-		expect(parsed["customField"]).toBe("keep-custom");
+		expect(value("toString")).toBe("keep-tostring");
+		expect(value("valueOf")).toBe("keep-valueof");
+		expect(value("hasOwnProperty")).toBe("keep-hasown");
+		expect(value("customField")).toBe("keep-custom");
 	});
 
 	it("still strips a genuinely reserved key so a caller cannot override identity", () => {
@@ -48,7 +53,7 @@ describe("Codex client metadata reserved-key filtering uses own-property semanti
 			customField: "kept",
 		});
 		// session_id is reserved: the identity value wins, not the caller's.
-		expect(parsed["session_id"]).toBe("session-own-key-test");
-		expect(parsed["customField"]).toBe("kept");
+		expect(parsed.session_id).toBe("session-own-key-test");
+		expect(parsed.customField).toBe("kept");
 	});
 });
