@@ -5,8 +5,8 @@ import {
 	getDefault,
 	getEnumValues,
 	getType,
-	type SettingPath,
 	SETTINGS_SCHEMA,
+	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
@@ -34,7 +34,9 @@ function isGlobalScoped(path: SettingPath): boolean {
 function valuesEqual(path: SettingPath, actual: unknown, expected: unknown): boolean {
 	if (Object.is(actual, expected)) return true;
 	const type = getType(path);
-	if (type === "array" || type === "object" || type === "record") {
+	// Structural defaults (array/record) compare by value, not identity; the
+	// schema has no "object" type, its structured kinds are exactly these two.
+	if (type === "array" || type === "record") {
 		return JSON.stringify(actual) === JSON.stringify(expected);
 	}
 	return false;
@@ -138,8 +140,11 @@ describe("settings schema defaults corpus", () => {
 		expect(settings.get("compaction.enabled")).toBe(false);
 		expect(getDefault("compaction.enabled")).toBe(true);
 		if ("autoResume" in SETTINGS_SCHEMA) {
-			expect(settings.get("autoResume" as SettingPath)).toBe(true);
-			expect(getDefault("autoResume" as SettingPath)).toBe(false);
+			// `autoResume` is a legacy-probe path cast to SettingPath, so its value
+			// type is the full SettingValue union; widen the matcher to compare the
+			// runtime boolean without narrowing that union to a single member.
+			expect(settings.get("autoResume" as SettingPath)).toBe<unknown>(true);
+			expect(getDefault("autoResume" as SettingPath)).toBe<unknown>(false);
 		}
 	});
 

@@ -102,8 +102,11 @@ describe("settings-test-state isolation", () => {
 		expect(getAgentDir()).toBe(before.agentDir);
 		expect(getActiveProfile()).toBe(before.profile);
 		expect(process.cwd()).toBe(before.cwd);
-		expect(process.env.VEYYON_CONFIG_DIR).toBe(before.configDir);
-		expect(Bun.env.VEYYON_CONFIG_DIR).toBe(before.configDir);
+		// bun-types the env index as `string`, but restore may have DELETED the key
+		// (it was unset before the mutation) — the snapshot is `string | undefined`,
+		// so widen the matcher to compare undefined-vs-undefined honestly.
+		expect(process.env.VEYYON_CONFIG_DIR).toBe<string | undefined>(before.configDir);
+		expect(Bun.env.VEYYON_CONFIG_DIR).toBe<string | undefined>(before.configDir);
 	});
 
 	it("restores env keys the suite deleted and removes keys the suite added", () => {
@@ -119,8 +122,9 @@ describe("settings-test-state isolation", () => {
 		restoreSettingsTestState(state);
 		state = undefined;
 
-		expect(process.env.HOME).toBe(originalHome);
-		expect(Bun.env.HOME).toBe(originalHome);
+		// originalHome is `string | undefined`; restore re-adds the deleted key.
+		expect(process.env.HOME).toBe<string | undefined>(originalHome);
+		expect(Bun.env.HOME).toBe<string | undefined>(originalHome);
 		expect(process.env[markerKey]).toBeUndefined();
 		expect(Bun.env[markerKey]).toBeUndefined();
 	});

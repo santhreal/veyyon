@@ -41,7 +41,9 @@ describe("status.connecting / status.active symbols", () => {
 			mode: "truecolor",
 			symbolPresetOverride: "unicode",
 		});
-		expect(unicode.status.connecting).toBe("◌");
+		// ◦ pairs with ● as its unfilled state; the former ◌ (U+25CC) is the
+		// combining-mark placeholder glyph and read as a rendering artifact.
+		expect(unicode.status.connecting).toBe("◦");
 		expect(unicode.status.active).toBe("●");
 		const ascii = createTheme(defaultThemes.titanium as ThemeJson, {
 			mode: "truecolor",
@@ -63,7 +65,7 @@ describe("status.connecting / status.active symbols", () => {
 			// Comments may mention the glyphs; code strings must not.
 			const codeLines = src.split("\n").filter(l => !l.trim().startsWith("*") && !l.trim().startsWith("//"));
 			for (const line of codeLines) {
-				expect(line, `${rel}: ${line.trim()}`).not.toMatch(/["`][^"`]*[◌●][^"`]*["`]/);
+				expect(line, `${rel}: ${line.trim()}`).not.toMatch(/["`][^"`]*[◌◦●][^"`]*["`]/);
 			}
 		}
 	});

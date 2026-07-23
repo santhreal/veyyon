@@ -61,7 +61,7 @@ import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import "./discovery";
 import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
-import { createArgotSession, collectArgotLoadedRoots, rearmArgotForDecode } from "./argot-cache";
+import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./argot-cache";
 import { buildArgotGate, expandToolArguments } from "./argot-wire";
 import { initializeWithSettings } from "./discovery";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
@@ -1200,7 +1200,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		try {
 			return await resolveActiveRepoContext(cwd);
 		} catch (err) {
-			logger.debug("Failed to resolve active repo context", { err: String(err) });
+			// Null degrades the prompt's repo context (branch/status enrichment),
+			// so the operator must be able to see WHY it vanished: warn, not debug.
+			logger.warn("Failed to resolve active repo context", { err: String(err) });
 			return null;
 		}
 	});

@@ -93,7 +93,10 @@ describe("AssistantMessageComponent mermaid markdown", () => {
 		const rendered = renderAssistantMessage("```mermaid\nthis is not mermaid\n```");
 
 		expect(TERMINAL.imageProtocol).toBeNull();
-		expect(rendered).toContain("```mermaid");
+		// The fallback renders as a normal fenced block: the theme's designed
+		// fence chrome (`──╴mermaid`, not literal backticks) plus the source.
+		expect(rendered).toContain("──╴mermaid");
+		expect(rendered).not.toContain("```");
 		expect(rendered).toContain("this is not mermaid");
 	});
 });

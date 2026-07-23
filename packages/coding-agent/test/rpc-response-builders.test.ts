@@ -4,12 +4,33 @@ import {
 	rpcSuccessResponse,
 	rpcUnknownCommandResponse,
 } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
+import type { RpcSessionState } from "@veyyon/coding-agent/modes/rpc/rpc-types";
 
 /**
  * Product-owned RPC frame builders. These are the single owners of id-echo and
  * unknown-command id-drop; corpus and dispatcher tests must call them rather
  * than re-implementing the shapes.
  */
+
+/** A complete RpcSessionState (the get_state data payload requires every field);
+ *  overrides let a test vary just the fields it asserts on. */
+function sessionState(overrides: Partial<RpcSessionState> = {}): RpcSessionState {
+	return {
+		thinkingLevel: undefined,
+		isStreaming: false,
+		isCompacting: false,
+		steeringMode: "all",
+		followUpMode: "all",
+		interruptMode: "immediate",
+		sessionId: "s",
+		autoCompactionEnabled: false,
+		messageCount: 0,
+		queuedMessageCount: 0,
+		todoPhases: [],
+		...overrides,
+	};
+}
+
 describe("rpc response builders (product)", () => {
 	it("rpcUnknownCommandResponse always drops id and names the type", () => {
 		const frame = rpcUnknownCommandResponse("definitely_not_a_command");
@@ -23,15 +44,13 @@ describe("rpc response builders (product)", () => {
 	});
 
 	it("rpcSuccessResponse echoes the request id on known commands", () => {
-		const frame = rpcSuccessResponse("state-1", "get_state", {
-			sessionId: "s",
-			messageCount: 0,
-		});
+		const state = sessionState({ sessionId: "s", messageCount: 0 });
+		const frame = rpcSuccessResponse("state-1", "get_state", state);
 		expect(frame.id).toBe("state-1");
 		expect(frame.success).toBe(true);
 		expect(frame.command).toBe("get_state");
 		if (frame.success && frame.command === "get_state") {
-			expect(frame.data).toEqual({ sessionId: "s", messageCount: 0 });
+			expect(frame.data).toEqual(state);
 		}
 	});
 
@@ -39,6 +58,9 @@ describe("rpc response builders (product)", () => {
 		const frame = rpcErrorResponse("parse-id", "parse", "Failed to parse command: null");
 		expect(frame.id).toBe("parse-id");
 		expect(frame.success).toBe(false);
+		// Narrow to the error variant of the union before reading `error` (only the
+		// success:false member carries it); the throw keeps the assertion non-vacuous.
+		if (frame.success) throw new Error("expected an error frame");
 		expect(frame.error).toBe("Failed to parse command: null");
 	});
 

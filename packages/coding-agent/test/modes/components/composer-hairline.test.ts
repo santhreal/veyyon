@@ -20,11 +20,13 @@
  * left margin is part of the same agreed geometry.
  */
 import { afterEach, beforeAll, describe, expect, it, setSystemTime } from "bun:test";
-import { visibleWidth } from "@veyyon/tui/utils";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { ComposerHairline, QuietZoneLine } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { CardPadRow, ComposerHairline, QuietZoneLine } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { visibleWidth } from "@veyyon/tui/utils";
 
 function strip(s: string): string {
 	return s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -156,5 +158,99 @@ describe("QuietZoneLine indent — the composer inset", () => {
 		const line = new QuietZoneLine(width => "a".repeat(Math.max(0, width)), 2);
 		const [row] = line.render(2);
 		expect(row).toBe(" a");
+	});
+});
+
+describe("CardPadRow — the card's vertical body", () => {
+	beforeAll(async () => {
+		await Settings.init({ inMemory: true });
+		await initTheme();
+	});
+
+	/**
+	 * The composer has NO card (user order 2026-07-22: every painted composer
+	 * box, theme token and derived tint alike, read as a gray slab on the
+	 * real terminal). The pad row is pure vertical air: an empty string with
+	 * zero escape bytes, regardless of what the theme's composerBg token says.
+	 */
+	it("paints nothing — no ground, no escapes, whatever the theme declares", () => {
+		const [row] = new CardPadRow().render();
+		expect(row).toBe("");
+	});
+
+	/** Chrome is silent: the pad row is pure ground — no glyphs, no foreground
+	 * paint, byte-identical across wall-clock time and shimmer states. */
+	it("renders identical bytes across time and shimmer activity", () => {
+		settings.set("display.shimmer", "living");
+		const pad = new CardPadRow();
+		setSystemTime(new Date("2026-07-21T12:00:00Z"));
+		const rest = pad.render();
+		for (const activity of ["streaming", "ask", "error", "tool"] as const) {
+			setShimmerActivity(activity);
+			setSystemTime(new Date("2026-07-21T12:00:03Z"));
+			expect(pad.render()).toEqual(rest);
+		}
+		setSystemTime();
+		settings.set("display.shimmer", "disabled");
+	});
+});
+
+describe("composer placeholder", () => {
+	/** The idle hint read as uneven spacing: `ask anything  ·  / for commands`
+	 * put DOUBLE spaces around the interpunct (user report 2026-07-22, "double
+	 * wide gaps"). The placeholder lives in ONE module const routed to both
+	 * the initial editor and mode-switch rebuilds; this source lock keeps the
+	 * spacing single and the const the only definition site. */
+	it("uses single spaces around the interpunct and one definition site", () => {
+		const src = readFileSync(join(import.meta.dir, "../../../src/modes/interactive-mode.ts"), "utf8");
+		expect(src).toContain('const COMPOSER_PLACEHOLDER = "ask anything · / for commands";');
+		// Both setPlaceholder call sites route through the const — no literal.
+		expect(src.match(/setPlaceholder\(COMPOSER_PLACEHOLDER\)/g)?.length).toBe(2);
+		expect(src).not.toContain('setPlaceholder("ask anything');
+		// The double-space regression itself, banned anywhere in the module.
+		expect(src).not.toContain("ask anything  ·");
+	});
+});
+
+describe("composer card wiring (interactive-mode)", () => {
+	const src = () => readFileSync(join(import.meta.dir, "../../../src/modes/interactive-mode.ts"), "utf8");
+
+	/** The card's vertical padding must be CardPadRow, never a bare Spacer:
+	 * bare spacers render terminal ground and collapse the card to a single
+	 * cramped tinted strip hugging the text (user screenshot, 2026-07-22).
+	 * The mount order moved to mountComposerZone (ARCH-2), so the sandwich is
+	 * locked in composer-chrome.ts and the host must delegate to it; the
+	 * behavioral pin (CardPadRow, not Spacer) lives in
+	 * composer-zone-mount.test.ts against the real mount function. */
+	it("mounts the pad/editor/pad sandwich through the one composer-chrome owner", () => {
+		const chrome = readFileSync(join(import.meta.dir, "../../../src/modes/components/composer-chrome.ts"), "utf8");
+		expect(chrome).toMatch(
+			/addChild\(new CardPadRow\(\)\);\s*\n\s*ui\.addChild\(parts\.editorContainer\);\s*\n\s*ui\.addChild\(new CardPadRow\(\)\)/,
+		);
+		expect(chrome).not.toMatch(/addChild\(new Spacer\(1\)\);\s*\n\s*ui\.addChild\(parts\.editorContainer\)/);
+		// The host mounts nothing inline — one mount owner only.
+		expect(src()).toContain("mountComposerZone(this.ui, {");
+		expect(src()).not.toContain("addChild(new CardPadRow())");
+	});
+
+	/** The composer has NO painted ground (user order 2026-07-22: every
+	 * attempt at a tinted composer box read as a gray slab on the real
+	 * terminal). The input rows must carry no background, and no card owner
+	 * may creep back in at any call site. */
+	it("paints no ground behind the input rows — the gray box stays dead", () => {
+		const text = src();
+		expect(text).toContain("this.editor.setRowBackground(undefined)");
+		expect(text).not.toContain("composerCardGround");
+		expect(text).not.toMatch(/setRowBackground\([^)]*getBgAnsi\("composerBg"\)/);
+	});
+
+	/** The derived tints only exist if the app FEEDS the detection: the OSC 11
+	 * report must reach setDetectedTerminalGround both on change and as the
+	 * subscribe-time replay seed. This wiring was missing entirely once —
+	 * every derived chrome color silently used its static fallback forever. */
+	it("feeds the OSC 11 background report into the ground-tint owner", () => {
+		const text = src();
+		expect(text.match(/setDetectedTerminalGround\(/g)?.length).toBeGreaterThanOrEqual(2);
+		expect(text).toMatch(/onBackgroundColorChange\?\.\(hex => \{[\s\S]{0,400}setDetectedTerminalGround\(hex\)/);
 	});
 });

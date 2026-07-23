@@ -69,8 +69,8 @@ describe("session orchestration scenarios (hermetic)", () => {
 	it("creates a session with zero messages and a stable session id", async () => {
 		const s = await makeSession();
 		expect(s.state.messages.length).toBe(0);
-		const id = s.sessionManager.getSessionId?.() ?? s.sessionManager.sessionId;
-		expect(typeof id === "string" ? id.length : 0).toBeGreaterThan(0);
+		const id = s.sessionManager.getSessionId();
+		expect(id.length).toBeGreaterThan(0);
 	});
 
 	it("setCwd moves project workdir and keeps dispose idempotent", async () => {

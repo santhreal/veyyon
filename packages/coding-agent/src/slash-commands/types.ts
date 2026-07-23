@@ -1,3 +1,5 @@
+import type { CollabGuestContext } from "../collab/guest";
+import type { CollabHostContext } from "../collab/host";
 import type { Settings } from "../config/settings";
 import type { InteractiveModeContext } from "../modes/types";
 import type { AgentSession } from "../session/agent-session";
@@ -81,6 +83,110 @@ export interface SlashCommandRuntime {
 }
 
 /**
+ * The exact slice of `InteractiveModeContext` the TUI slash-command host reads
+ * (78 of its 215 members). This is the whole surface every `handleTui` handler
+ * and every builtin-registry helper touches — the command handlers plus the
+ * selectors, dashboards, status line, editor, and collab/plan/goal/loop state
+ * they drive. Naming it (H1-77) is what lets a test build a
+ * `TuiSlashCommandRuntime` from a `Pick` without the `as unknown as
+ * InteractiveModeContext` cast the full 215-member interface would force, and
+ * it makes the slash-command system's dependency on the interactive context
+ * legible instead of "all of it". Keep this in lockstep with actual `ctx.`
+ * reads under `slash-commands/` — a handler that reaches for a member not
+ * listed here is a signal to add the member (and reconsider whether the
+ * handler belongs in the TUI host), not to widen back to the whole interface.
+ *
+ * `/collab` builds a `CollabHost`/`CollabGuestLink` from the whole `ctx`, so the
+ * host surface transitively includes everything those need. Rather than re-list
+ * their members (which would drift), compose their already-named slices
+ * (`CollabHostContext`, `CollabGuestContext`) — ONE PLACE owns the collab
+ * surface, and this slice grows automatically if it does.
+ */
+export type TuiSlashCommandHostContext = CollabHostContext &
+	CollabGuestContext &
+	Pick<
+		InteractiveModeContext,
+		| "collabGuest"
+		| "collabHost"
+		| "editor"
+		| "goalModeEnabled"
+		| "handleBtwCommand"
+		| "handleChangelogCommand"
+		| "handleClearCommand"
+		| "handleCompactCommand"
+		| "handleContextCommand"
+		| "handleDropCommand"
+		| "handleDumpCommand"
+		| "handleExportCommand"
+		| "handleForkCommand"
+		| "handleFreshCommand"
+		| "handleGoalModeCommand"
+		| "handleGuidedGoalCommand"
+		| "handleHandoffCommand"
+		| "handleHotkeysCommand"
+		| "handleJobsCommand"
+		| "handleLoopCommand"
+		| "handleMCPCommand"
+		| "handleMemoryCommand"
+		| "handleMoveCommand"
+		| "handleOmfgCommand"
+		| "handlePlanModeCommand"
+		| "handleQueueCommand"
+		| "handleRenameCommand"
+		| "handleResumeSession"
+		| "handleSessionCommand"
+		| "handleSessionDeleteCommand"
+		| "handleShakeCommand"
+		| "handleShareCommand"
+		| "handleSSHCommand"
+		| "handleTanCommand"
+		| "handleTodoCommand"
+		| "handleToolsCommand"
+		| "handleUsageCommand"
+		| "handleVibeModeCommand"
+		| "loopLimit"
+		| "loopModeEnabled"
+		| "loopPrompt"
+		| "lspServers"
+		| "oauthManualInput"
+		| "openPlanReview"
+		| "planModeEnabled"
+		| "planModePlanFilePath"
+		| "present"
+		| "refreshSlashCommandState"
+		| "requestRelaunch"
+		| "session"
+		| "sessionManager"
+		| "settings"
+		| "showAgentHub"
+		| "showAgentsDashboard"
+		| "showAskDialog"
+		| "showCopySelector"
+		| "showDebugSelector"
+		| "showError"
+		| "showExtensionsDashboard"
+		| "showFullWelcome"
+		| "showHookConfirm"
+		| "showModelSelector"
+		| "showOAuthSelector"
+		| "showProviderSetup"
+		| "showResetUsageSelector"
+		| "showSessionSelector"
+		| "showSettingsSelector"
+		| "showStatus"
+		| "showThinkingSelector"
+		| "showTreeSelector"
+		| "showUserMessageSelector"
+		| "showWarning"
+		| "shutdown"
+		| "statusLine"
+		| "todoPhases"
+		| "ui"
+		| "updateEditorBorderColor"
+		| "vibeModeEnabled"
+	>;
+
+/**
  * Runtime visible to TUI-only handlers (`handleTui`). Carries the interactive
  * mode context. Intentionally narrower than `SlashCommandRuntime` so existing
  * callers can keep building it from just `{ ctx }`; when the TUI dispatcher
@@ -88,7 +194,7 @@ export interface SlashCommandRuntime {
  * `SlashCommandRuntime` from `ctx`.
  */
 export interface TuiSlashCommandRuntime {
-	ctx: InteractiveModeContext;
+	ctx: TuiSlashCommandHostContext;
 }
 
 /** Unified slash-command spec consumed by both TUI and ACP dispatchers. */

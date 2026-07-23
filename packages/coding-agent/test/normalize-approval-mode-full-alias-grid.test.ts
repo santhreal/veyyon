@@ -18,7 +18,9 @@ describe("normalizeApprovalMode full alias grid", () => {
 
 	for (const [input, want] of cases) {
 		it(`${JSON.stringify(input)} → ${want}`, () => {
-			expect(normalizeApprovalMode(input)).toBe(want);
+			// normalizeApprovalMode returns the narrow AutonomyLevel union; `want` is a
+			// plain string, so widen the matcher to compare their runtime values.
+			expect(normalizeApprovalMode(input)).toBe<string>(want);
 		});
 	}
 

@@ -18,7 +18,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, formatCount } from "@veyyon/utils";
+import { clampLow, collapseWhitespace, formatCount } from "@veyyon/utils";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
@@ -225,7 +225,7 @@ function renderPreviewContent(preview: string, width: number): string[] {
 }
 
 function normalizedInlineInput(input: string): string {
-	return replaceTabs(input).replace(/\s+/g, " ").trim();
+	return collapseWhitespace(replaceTabs(input));
 }
 
 function renderAnswerSummary(question: ExtensionAskDialogQuestion, state: QuestionState): string {
@@ -302,7 +302,7 @@ function renderRowLabel(
 		}
 	}
 	if (isOther && state.customInput !== undefined) {
-		const preview = replaceTabs(state.customInput).replace(/\s+/g, " ").trim();
+		const preview = collapseWhitespace(replaceTabs(state.customInput));
 		lines.push(theme.fg("muted", `      ${truncateToWidth(preview, Math.max(1, width - 6), Ellipsis.Unicode)}`));
 	}
 	return lines;

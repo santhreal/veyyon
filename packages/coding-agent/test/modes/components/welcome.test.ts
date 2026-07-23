@@ -138,7 +138,9 @@ describe("WelcomeComponent hero layout", () => {
 		expect(compact).toContain("/welcome");
 		expect(compact).toContain("/resume");
 		expect(compact).not.toContain("Resume session");
-		expect(compact).not.toContain("fix-the-parser");
+		// DS-13 (2026-07-22): the home shows a one-line continue affordance for
+		// the most recent session; the full menu still lives behind /welcome.
+		expect(compact).toContain("fix-the-parser · 2h ago — /resume");
 
 		const full = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions, [], true).render(80));
 		expect(full).toContain("Resume session");

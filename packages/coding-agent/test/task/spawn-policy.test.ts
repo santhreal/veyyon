@@ -6,6 +6,7 @@ import { DEFAULT_SPAWN_AGENT, resolveSpawnPolicy } from "../../src/task/spawn-po
 import type { AgentDefinition } from "../../src/task/types";
 import { getTaskSchema } from "../../src/task/types";
 import type { ToolSession } from "../../src/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * resolveSpawnPolicy is the single interpreter of a parent agent's `spawns`
@@ -171,13 +172,10 @@ function makeSpawnSession(spawns: string): ToolSession {
 		"task.batch": true,
 		"task.isolation.mode": "none",
 	});
-	return {
-		cwd: process.cwd(),
-		hasUI: false,
+	return makeToolSession({
 		settings,
-		getSessionFile: () => null,
 		getSessionSpawns: () => spawns,
-	} as unknown as ToolSession;
+	});
 }
 
 describe("task spawn policy surfaces", () => {

@@ -9,6 +9,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
+import { collapseWhitespace, NON_ALNUM_RUN_RE } from "@veyyon/utils";
 import type { HistoryEntry, HistoryStorage } from "../../session/history-storage";
 import { theme } from "../theme/theme";
 import {
@@ -36,7 +37,7 @@ const MAX_VISIBLE = 10;
 function queryTokens(query: string): string[] {
 	return query
 		.toLowerCase()
-		.split(/[^\p{L}\p{N}]+/u)
+		.split(NON_ALNUM_RUN_RE)
 		.filter(tok => tok.length > 0);
 }
 
@@ -130,7 +131,7 @@ class HistoryResultsList implements Component {
 			const showTime = rowWidth >= gutterWidth + 12 + timeWidth;
 
 			const promptBudget = Math.max(4, rowWidth - gutterWidth - (showTime ? timeWidth + 1 : 0));
-			const normalized = entry.prompt.replace(/\s+/g, " ").trim();
+			const normalized = collapseWhitespace(entry.prompt);
 			const plain = truncateToWidth(normalized, promptBudget);
 			const highlighted = highlightTokens(plain, this.#tokens);
 

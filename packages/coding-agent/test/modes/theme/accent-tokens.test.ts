@@ -136,12 +136,15 @@ describe("mode glyph hues — the DS-6 morph palette on titanium", () => {
 });
 
 describe("composerBg — the quiet card ground (DS-6 layer 0)", () => {
-	/** Titanium declares the approved #0C0E12 (one step off black) — a drift
-	 * here changes the composer's ground without anyone noticing until a
-	 * screenshot comparison. */
-	it("titanium binds the approved quiet-card hex", () => {
+	/** Titanium declares composerBg "" (transparent): explicit dark fills
+	 * assume a pure-black terminal ground and render as harsh black slabs on
+	 * any other terminal background (live report 2026-07-22, grey-bg
+	 * terminal). The composer inherits the REAL terminal ground instead; a
+	 * future card must derive from the detected OSC 11 background, never a
+	 * hardcoded near-black. */
+	it("titanium keeps the composer ground transparent", () => {
 		const theme = createTheme(titanium as ThemeJson, { mode: "truecolor" });
-		expect(theme.getBgAnsi("composerBg")).toBe("\x1b[48;2;12;14;18m");
+		expect(theme.getBgAnsi("composerBg")).toBe("\x1b[49m");
 	});
 
 	/** A theme that omits composerBg inherits statusLineBg at load time — the

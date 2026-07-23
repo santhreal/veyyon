@@ -13,7 +13,7 @@ import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
-import { paintHotTail } from "../modes/components/follow";
+import { paintHotTail, shimmerPhase } from "../modes/components/follow";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { highlightCode, type Theme } from "../modes/theme/theme";
 import bashDescription from "../prompts/tools/bash.md" with { type: "text" };
@@ -30,6 +30,7 @@ import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } 
 import { getSixelLineMask } from "../utils/sixel";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
+import { registerForegroundBashWait } from "./bash-foreground-registry";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
@@ -186,15 +187,16 @@ export interface BashToolDetails {
 		type: "bash";
 		/**
 		 * Why a still-running call was backgrounded: `threshold` (wall-clock
-		 * auto-background) or `stall` (no output for the stall window, possibly
-		 * stuck). Drives the operator notice; absent for non-background states.
+		 * auto-background), `stall` (no output for the stall window, possibly
+		 * stuck), or `manual` (the operator pressed the background key). Drives
+		 * the operator notice; absent for non-background states.
 		 */
 		reason?: BackgroundReason;
 	};
 }
 
 /** Why a still-running bash call was moved to the background. */
-type BackgroundReason = "threshold" | "stall";
+type BackgroundReason = "threshold" | "stall" | "manual";
 
 export interface BashToolOptions {}
 
@@ -346,6 +348,9 @@ function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "thres
 			`its result will still be delivered automatically if it finishes. If you believe it is hung, ` +
 			`cancel it with the job tool (cancel: ["${jobId}"]).`
 		);
+	}
+	if (reason === "manual") {
+		return `Backgrounded as job ${jobId} at the operator's request; result will be delivered automatically.`;
 	}
 	return `Backgrounded as job ${jobId}; result will be delivered automatically.`;
 }
@@ -761,6 +766,15 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		if (stallMs > 0) {
 			waiters.push(this.#watchStall(job, stallMs, internal.signal));
 		}
+		// The operator's manual "background this now" key: the TUI resolves this
+		// waiter through the foreground-wait registry. Registered for exactly the
+		// duration of the race (the finally below), so the composer hint only
+		// advertises the key while it can actually win.
+		const manual = Promise.withResolvers<{ kind: "background"; reason: BackgroundReason }>();
+		const unregisterManual = registerForegroundBashWait(() =>
+			manual.resolve({ kind: "background", reason: "manual" }),
+		);
+		waiters.push(manual.promise);
 
 		let onAbort: (() => void) | undefined;
 		if (signal) {
@@ -774,6 +788,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			return await Promise.race(waiters);
 		} finally {
 			internal.abort();
+			unregisterManual();
 			if (signal && onAbort) {
 				signal.removeEventListener("abort", onAbort);
 			}
@@ -1554,6 +1569,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 									uiTheme,
 									TERMINAL.trueColor,
 									"toolOutput",
+									shimmerPhase(performance.now()),
 								);
 							}
 						}

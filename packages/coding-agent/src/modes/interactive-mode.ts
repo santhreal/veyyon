@@ -142,7 +142,13 @@ import { VibeSessionRegistry } from "../vibe/runtime";
 import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
-import { ComposerHairline, QuietZoneLine } from "./components/composer-chrome";
+import {
+	COMPOSER_INSET_COLS,
+	ComposerHairline,
+	mountComposerZone,
+	QuietZoneLine,
+	resolveComposerAccents,
+} from "./components/composer-chrome";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer-shortcuts";
 import { CustomEditor } from "./components/custom-editor";
 import { ErrorBannerComponent } from "./components/error-banner";
@@ -156,11 +162,11 @@ import { goalProgressBar } from "./components/status-line/segments";
 import { renderSunsetField } from "./components/sun";
 import type { ToolExecutionHandle } from "./components/tool-execution";
 import { TranscriptContainer } from "./components/transcript-container";
-import { WelcomeComponent, type LspServerInfo as WelcomeLspServerInfo } from "./components/welcome";
 import { BtwController } from "./controllers/btw-controller";
 import { CommandController } from "./controllers/command-controller";
 import { EventController } from "./controllers/event-controller";
 import { ExtensionUiController } from "./controllers/extension-ui-controller";
+import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { InputController } from "./controllers/input-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
@@ -169,6 +175,8 @@ import { SessionFocusController } from "./controllers/session-focus-controller";
 import { SSHCommandController } from "./controllers/ssh-command-controller";
 import { TanCommandController } from "./controllers/tan-command-controller";
 import { TodoCommandController } from "./controllers/todo-command-controller";
+import { TranscriptComposer } from "./controllers/transcript-composer";
+import { WelcomeController } from "./controllers/welcome-controller";
 import {
 	consumeLoopLimitIteration,
 	createLoopLimitRuntime,
@@ -188,6 +196,7 @@ import {
 import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
 import { interruptHint } from "./shared";
+import { setDetectedTerminalGround } from "./theme/ground-tints";
 import { clearMermaidCache } from "./theme/mermaid-cache";
 import {
 	lavaText,
@@ -288,20 +297,9 @@ const EDITOR_RESERVED_ROWS = 12;
 const EDITOR_FALLBACK_ROWS = 24;
 const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
 const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
-/**
- * A small breathing margin below the whole composer block so the prompt never
- * sits flush against the terminal's bottom edge — jammed there it read as "too
- * low". One row lifts it just off the floor in every state (home anchor and
- * mid-conversation alike); the home-screen fill math counts it via the composed
- * frame, so the anchor stays exact.
- */
-const COMPOSER_BOTTOM_MARGIN_ROWS = 1;
-/**
- * Left inset of the composer zone's content (the `›` gutter and the metadata
- * footline), in columns — the terminal realization of the design mockups'
- * horizontal composer padding. Nothing in the composer sits at column 0.
- */
-const COMPOSER_INSET_COLS = 2;
+/** The idle composer's ghost text. Single spaces around the interpunct — the
+ * double-spaced version read as uneven gaps (user screenshot, 2026-07-21). */
+const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
  * Editor max-height cap for a terminal of `terminalRows` rows.
@@ -551,11 +549,15 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	unsubscribe?: () => void;
 	onInputCallback?: (input: SubmittedUserInput) => void;
-	optimisticUserMessageSignature: string | undefined = undefined;
-	locallySubmittedUserSignatures: Set<string> = new Set();
+	// Optimistic-message + local-echo + rebuild state lives in the composer
+	// (ARCH-2); these accessors keep the InteractiveModeContext contract.
+	get optimisticUserMessageSignature(): string | undefined {
+		return this.#transcriptComposer.optimisticSignature;
+	}
+	get locallySubmittedUserSignatures(): Set<string> {
+		return this.#transcriptComposer.localEchoSignatures;
+	}
 	#pendingSubmittedInput: SubmittedUserInput | undefined;
-	#pendingSubmissionDispose: (() => void) | undefined;
-	#optimisticUserMessageComponents: Component[] = [];
 	lastSigintTime = 0;
 	lastEscapeTime = 0;
 	lastLeftTapTime = 0;
@@ -668,19 +670,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	#voicePreviousShowHardwareCursor: boolean | null = null;
 	#voicePreviousUseTerminalCursor: boolean | null = null;
 	#resizeHandler?: () => void;
-	// Flexible spacer that pushes the composer to the viewport bottom on the home
-	// screen (empty transcript). Once a conversation starts, the transcript fills
-	// the viewport and this collapses to zero, so the composer sits at its natural
-	// bottom. Sized by #syncBottomFill(); an inline layout touch, not a renderer change.
-	#bottomFill: Spacer = new Spacer(0);
-	// Top counterpart on the home screen: takes a share of the slack while the
-	// welcome card is up so the hero sits vertically centred (UI-2). Collapses
-	// to zero on dismissal or the first conversation turn.
-	#topFill: Spacer = new Spacer(0);
-	// True until the first real conversation turn (a ChatBlock) mounts. Warnings
-	// and notices in the transcript do not end the home screen, so the composer
-	// stays bottom-anchored until the user actually starts a conversation.
-	#homeAnchorActive = true;
+	/** Owns the home-screen anchor fills and their sizing (ARCH-2 extraction);
+	 *  every fill row on screen is sized in the layout controller, never here.
+	 *  Constructed in the constructor (the port closes over `this`). */
+	#layout!: HomeAnchorLayout;
+	#transcriptComposer!: TranscriptComposer;
 	#observerRegistry: SessionObserverRegistry;
 	#eventBus?: EventBus;
 	#eventBusUnsubscribers: Array<() => void> = [];
@@ -691,10 +685,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
 	#mcpFailedServers = new Map<string, { error: string; foreign: boolean }>();
-	#welcomeComponent?: WelcomeComponent;
-	/** The welcome card's surrounding spacers, kept so dismissal removes the
-	 *  whole block and leaves no blank rows behind. */
-	#welcomeSpacers: Spacer[] = [];
+	/** Owns the startup hero and the full `/welcome` card (ARCH-2 extraction);
+	 *  the fill/anchor math stays here, reached through the layout port.
+	 *  Constructed in the constructor (the port closes over `this`). */
+	#welcomeController!: WelcomeController;
 	// Component-scoped: a ChatBlock (e.g. the MCP "Connecting..." spinner) ticks
 	// its own animation on a fixed cadence inside a possibly large transcript; a
 	// full requestRender() would re-walk that whole tree per tick purely to
@@ -749,6 +743,36 @@ export class InteractiveMode implements InteractiveModeContext {
 		// unless the user opts in, and never emits raw escapes on other terminals.
 		setTerminalTextSizing(settings.get("tui.textSizing") && TERMINAL.textSizing);
 		this.chatContainer = new TranscriptContainer();
+		this.#transcriptComposer = new TranscriptComposer({
+			chatContainer: this.chatContainer,
+			addMessageToChat: (message, options) => void this.addMessageToChat(message, options),
+			renderSessionContext: context => this.renderSessionContext(context),
+			buildTranscriptContext: () =>
+				// Live display collapses to the compacted transcript tail unless the
+				// user opted into the full inline history; export/resume callers
+				// choose their own mode.
+				this.viewSession.buildTranscriptSessionContext({
+					collapseCompactedHistory: settings.get("display.collapseCompacted"),
+				}),
+			isViewStreaming: () => this.viewSession?.isStreaming === true,
+			streamingComponent: () => this.streamingComponent,
+			pendingTools: this.pendingTools,
+			isKnownSlashCommand: text => this.isKnownSlashCommand(text),
+			pendingSubmission: () => this.#pendingSubmittedInput,
+		});
+		this.#layout = new HomeAnchorLayout({
+			ui: this.ui,
+			transcriptChildCount: () => this.chatContainer.children.length,
+			// Resolved lazily: the welcome controller is constructed just below.
+			hasHero: () => this.#welcomeController.hasHero,
+		});
+		this.#welcomeController = new WelcomeController({
+			ui: this.ui,
+			chatContainer: this.chatContainer,
+			topFillRows: width => this.#layout.topFillRows(width),
+			onHeroDismissed: removedRows => this.#layout.onHeroDismissed(removedRows),
+			remeasureAnchor: () => this.#layout.sync(true),
+		});
 		this.pendingMessagesContainer = new AnchoredLiveContainer();
 		this.statusContainer = new AnchoredLiveContainer();
 		this.todoContainer = new AnchoredLiveContainer();
@@ -770,21 +794,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#syncEditorMaxHeight();
 		this.#resizeHandler = () => {
 			this.#syncEditorMaxHeight();
-			this.#syncBottomFill();
+			this.#layout.sync();
 			this.ui.requestRender();
 		};
 		process.stdout.on("resize", this.#resizeHandler);
 		// Home-screen anchor self-correction: content mounted or resized after the
 		// fill was seeded (e.g. the async MCP status line) would otherwise leave
 		// the composer drifting off the viewport bottom until the next resize.
-		this.ui.onFrameComposed = () => {
-			if (!this.#homeAnchorActive) return;
-			const width = this.ui.terminal.columns;
-			const before = this.#topFill.render(width).length + this.#bottomFill.render(width).length;
-			this.#syncBottomFill();
-			const after = this.#topFill.render(width).length + this.#bottomFill.render(width).length;
-			if (after !== before) this.ui.requestRender();
-		};
+		this.ui.onFrameComposed = () => this.#layout.onFrameComposed();
 		try {
 			this.historyStorage = HistoryStorage.open();
 			this.editor.setHistoryStorage(this.historyStorage);
@@ -807,7 +824,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// left, capability (model · mode · context · MCP health) right. The
 		// chrome is silent; motion belongs to content.
 		this.editor.setBorderVisible(false);
-		this.editor.setPlaceholder("ask anything  ·  / for commands");
+		this.editor.setPlaceholder(COMPOSER_PLACEHOLDER);
 		this.composerHairline = new ComposerHairline();
 		this.capabilityLine = new QuietZoneLine(
 			width => this.statusLine.renderQuietLine(width, { locationRight: this.#locationRightZone() }),
@@ -939,10 +956,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	playWelcomeIntro(): void {
-		const welcome = this.#welcomeComponent;
-		// Component-scoped: the intro only mutates the welcome box's own rows,
-		// so a resumed long transcript is not re-walked per animation frame.
-		welcome?.playIntro(() => this.ui.requestComponentRender(welcome));
+		this.#welcomeController.playIntro();
 	}
 
 	async init(options: InteractiveModeInitOptions = {}): Promise<void> {
@@ -1023,7 +1037,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 
 		const startupQuiet = settings.get("startup.quiet");
-		this.#welcomeComponent = undefined;
 
 		for (const warning of this.session.configWarnings) {
 			this.ui.addChild(new Text(theme.fg("warning", `Warning: ${warning}`), 1, 0));
@@ -1031,24 +1044,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		if (!startupQuiet) {
-			// Add welcome header
-			this.#welcomeComponent = new WelcomeComponent(
-				this.#version,
-				modelName,
-				providerName,
-				recentSessions,
-				this.#getWelcomeLspServers(),
+			// The centring top margin mounts before the hero block; ordering matters.
+			this.ui.addChild(this.#layout.topFill);
+			this.#welcomeController.mountHero(
+				{ version: this.#version, modelName, providerName, recentSessions },
+				{ playIntro: !options.suppressWelcomeIntro },
 			);
-
-			// Setup UI layout
-			this.ui.addChild(this.#topFill);
-			this.#welcomeSpacers = [new Spacer(1), new Spacer(1)];
-			this.ui.addChild(this.#welcomeSpacers[0] as Spacer);
-			this.ui.addChild(this.#welcomeComponent);
-			this.ui.addChild(this.#welcomeSpacers[1] as Spacer);
-			if (!options.suppressWelcomeIntro) {
-				this.playWelcomeIntro();
-			}
 		}
 
 		this.ui.addChild(this.chatContainer);
@@ -1062,28 +1063,23 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Bottom-anchor fill: on the home screen this expands to sink the whole
 		// status + composer block to the viewport bottom (grok placement); it sits
 		// above the status loader so they travel down together.
-		this.ui.addChild(this.#bottomFill);
-		// Working loader / transient status sits below the sticky todo + subagent
-		// HUDs, just above the editor's hook-widget top margin — so it reads next to
-		// the prompt while keeping the one-line gap above the editor.
-		this.ui.addChild(this.statusContainer);
-		this.ui.addChild(this.statusLine); // Only renders hook statuses (quiet status lives around the composer)
-		this.ui.addChild(this.hookWidgetContainerAbove);
-		this.ui.addChild(this.composerHairline);
-		// One row of air inside the composer zone above the input, one below —
-		// the mockups' vertical composer padding.
-		this.ui.addChild(new Spacer(1));
-		this.ui.addChild(this.editorContainer);
-		this.ui.addChild(new Spacer(1));
-		this.ui.addChild(this.capabilityLine);
-		this.ui.addChild(this.composerShortcuts);
-		this.ui.addChild(this.hookWidgetContainerBelow);
-		// Breathing room under the composer so it floats just off the terminal's
-		// bottom edge instead of sitting flush against it.
-		this.ui.addChild(new Spacer(COMPOSER_BOTTOM_MARGIN_ROWS));
+		this.ui.addChild(this.#layout.bottomFill);
+		// The whole composer zone (status, hairline, padded card, footline,
+		// margin) mounts in its one canonical order via mountComposerZone —
+		// the order is a design contract owned and tested in composer-chrome.
+		mountComposerZone(this.ui, {
+			statusContainer: this.statusContainer,
+			statusLine: this.statusLine,
+			hookWidgetsAbove: this.hookWidgetContainerAbove,
+			hairline: this.composerHairline,
+			editorContainer: this.editorContainer,
+			capabilityLine: this.capabilityLine,
+			shortcuts: this.composerShortcuts,
+			hookWidgetsBelow: this.hookWidgetContainerBelow,
+		});
 		this.ui.setFocus(this.editor);
 		// Anchor the composer to the viewport bottom on the launch/home screen.
-		this.#syncBottomFill();
+		this.#layout.sync();
 
 		this.#inputController.setupKeyHandlers();
 		this.#inputController.setupEditorSubmitHandler();
@@ -1107,8 +1103,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		// The first paint used an estimated fill (no composed frame existed yet);
 		// now the exact composed height is known, so re-anchor precisely. It only
 		// re-renders if the estimate was off, so there is usually no visible reflow.
-		this.#syncBottomFill();
-		if (this.#bottomFill.render(this.ui.terminal.columns).length > 0) this.ui.requestRender();
+		this.#layout.sync();
+		if (this.#layout.bottomFill.render(this.ui.terminal.columns).length > 0) this.ui.requestRender();
 		pushTerminalTitle();
 		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
 		this.updateEditorBorderColor();
@@ -1225,9 +1221,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		// The background-color capability is optional on the Terminal interface
 		// (older custom terminals may lack it); when absent, painting is simply
 		// unavailable and both the subscription and the paint calls no-op.
-		this.ui.terminal.onBackgroundColorChange?.(() => {
+		this.ui.terminal.onBackgroundColorChange?.(hex => {
 			this.#applyPaintGround();
+			// Feed the ground-relative tint owner (hairline, composer card, card
+			// outlines): every derived chrome color re-resolves against the REAL
+			// terminal ground the moment it is known or changes.
+			setDetectedTerminalGround(hex);
+			this.updateEditorBorderColor();
+			this.ui.requestRender();
 		});
+		setDetectedTerminalGround(this.ui.terminal.backgroundColor);
 		this.#applyPaintGround();
 
 		// A branch change (checkout, worktree switch, `git switch`) invalidates
@@ -1593,17 +1596,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	recordLocalSubmission(text: string, imageCount = 0): () => void {
-		if (this.isKnownSlashCommand(text)) {
-			return () => {};
-		}
-		const signature = `${text}\u0000${imageCount}`;
-		this.locallySubmittedUserSignatures.add(signature);
-		let disposed = false;
-		return () => {
-			if (disposed) return;
-			disposed = true;
-			this.locallySubmittedUserSignatures.delete(signature);
-		};
+		return this.#transcriptComposer.recordLocalSubmission(text, imageCount);
 	}
 
 	async withLocalSubmission<T>(text: string, fn: () => Promise<T>, options?: { imageCount?: number }): Promise<T> {
@@ -1615,31 +1608,15 @@ export class InteractiveMode implements InteractiveModeContext {
 			throw err;
 		}
 	}
-	#captureAddedChatComponents(render: () => void): Component[] {
-		const start = this.chatContainer.children.length;
-		render();
-		return this.chatContainer.children.slice(start);
-	}
-
 	clearOptimisticUserMessage(): void {
-		this.optimisticUserMessageSignature = undefined;
-		this.#pendingSubmissionDispose?.();
-		this.#pendingSubmissionDispose = undefined;
-		this.#optimisticUserMessageComponents = [];
+		this.#transcriptComposer.clearOptimistic();
 	}
 
 	replaceOptimisticUserMessage(
 		message: AgentMessage,
 		options?: { imageLinks?: readonly (string | undefined)[] },
 	): void {
-		this.optimisticUserMessageSignature = undefined;
-		this.#pendingSubmissionDispose?.();
-		this.#pendingSubmissionDispose = undefined;
-		for (const component of this.#optimisticUserMessageComponents) {
-			this.chatContainer.removeChild(component);
-		}
-		this.#optimisticUserMessageComponents = [];
-		this.addMessageToChat(message, options);
+		this.#transcriptComposer.replaceOptimistic(message, options);
 	}
 
 	startPendingSubmission(input: {
@@ -1663,35 +1640,22 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#pendingSubmittedInput = submission;
 		if (!submission.customType) {
 			this.#resetGoalContinuationSuppression();
-			const imageCount = submission.images?.length ?? 0;
-			this.optimisticUserMessageSignature = `${submission.text}\u0000${imageCount}`;
-			this.#pendingSubmissionDispose = this.recordLocalSubmission(submission.text, imageCount);
-			this.#optimisticUserMessageComponents = this.#captureAddedChatComponents(() => {
-				this.addMessageToChat(
-					{
-						role: "user",
-						content: [{ type: "text", text: submission.text }, ...(submission.images ?? [])],
-						attribution: "user",
-						timestamp: Date.now(),
-					},
-					{ imageLinks: input.imageLinks },
-				);
-			});
+			this.#transcriptComposer.showOptimistic(submission);
 		} else {
-			this.clearOptimisticUserMessage();
+			this.#transcriptComposer.clearOptimistic();
 		}
 		this.editor.setText("");
 		this.editor.imageLinks = undefined;
 		this.ensureLoadingAnimation();
 		// Keep the composer pinned to the viewport bottom as the conversation
 		// begins: the anchor stays live and self-collapses once output fills the
-		// viewport (see #syncBottomFill), so the first message renders at the top of
+		// viewport (see HomeAnchorLayout.sync), so the first message renders at the top of
 		// scrollback with the composer still on the bottom edge. Remeasure directly
 		// — the just-added user message and the working indicator are not in the
 		// committed frame yet, so trusting the stale composed height would reserve
 		// empty-home slack on top of them and overflow, jumping the message above
 		// the fold (the old first-message jerk).
-		this.#syncBottomFill(true);
+		this.#layout.sync(true);
 		this.ui.requestRender();
 		return submission;
 	}
@@ -1734,19 +1698,16 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	finishPendingSubmission(input: SubmittedUserInput): void {
 		const wasPendingSubmission = this.#pendingSubmittedInput === input;
-		const pendingSubmissionDispose = this.#pendingSubmissionDispose;
 		if (wasPendingSubmission) {
 			this.#pendingSubmittedInput = undefined;
-			this.#pendingSubmissionDispose = undefined;
 		}
 		if (input.customType === "goal-continuation") {
 			this.#goalContinuationTurnInFlight = false;
 		}
 
-		if (wasPendingSubmission && !this.session.isStreaming && !this.streamingComponent) {
-			this.optimisticUserMessageSignature = undefined;
-			pendingSubmissionDispose?.();
-			this.#optimisticUserMessageComponents = [];
+		const quiesced = !this.session.isStreaming && !this.streamingComponent;
+		this.#transcriptComposer.onSubmissionFinished({ owned: wasPendingSubmission, quiesced });
+		if (wasPendingSubmission && quiesced) {
 			this.#pendingWorkingMessage = undefined;
 			if (this.loadingAnimation) {
 				this.#stopLoadingAnimation(true);
@@ -1760,77 +1721,6 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#syncEditorMaxHeight(): void {
 		this.editor.setMaxHeight(this.#computeEditorMaxHeight());
-	}
-
-	/**
-	 * Anchor the composer to the viewport bottom on the home screen by sizing
-	 * {@link #bottomFill} to the slack between the rendered content and the
-	 * terminal height. While the welcome card is up, a share of that slack goes
-	 * to {@link #topFill} so the hero sits vertically centred instead of jammed
-	 * into the top-left. Only fills when the transcript is empty (the launch/home
-	 * screen) — once a conversation scrolls in, the composer is at the natural
-	 * bottom and both fills collapse to zero. Measures only side-effect-free
-	 * components (welcome, status line, shortcut bar) and treats the bordered
-	 * editor as its minimum height; being off by a row is harmless.
-	 */
-	#syncBottomFill(remeasure = false): void {
-		// Only anchor on the launch/home screen (an empty transcript). The anchor
-		// deliberately outlives the welcome card: the first keystroke dismisses
-		// the card but the composer must stay at the viewport bottom until a real
-		// conversation turn scrolls in.
-		if (!this.#homeAnchorActive) {
-			this.#topFill.setLines(0);
-			this.#bottomFill.setLines(0);
-			return;
-		}
-		const width = this.ui.terminal.columns;
-		const rows = this.ui.terminal.rows;
-		const currentTopFill = this.#topFill.render(width).length;
-		const currentFill = this.#bottomFill.render(width).length;
-
-		// Prefer the exact composed frame height (all children, wrapping included)
-		// minus our own fills. `composedFrameRows` is one frame stale, which is fine
-		// for the steady-state onFrameComposed correction but wrong right after a
-		// content change that has not committed yet: on the very frame a submit adds
-		// the user message AND the working indicator, the stale height would reserve
-		// empty-home slack on top of them and overflow, jumping the message above
-		// the fold. `remeasure` (and the pre-first-render seed, when no frame exists)
-		// measures the true current height directly by summing every root child
-		// except our own two fills — the one accurate content measurement, so the
-		// composer lands on the bottom edge on this frame, not the next.
-		let contentExclFill = this.ui.composedFrameRows - currentFill - currentTopFill;
-		if (remeasure || this.ui.composedFrameRows <= 0) {
-			let total = 0;
-			for (const child of this.ui.children) {
-				if (child === this.#bottomFill || child === this.#topFill) continue;
-				try {
-					total += child.render(width).length;
-				} catch {
-					total += 1;
-				}
-			}
-			contentExclFill = total;
-		}
-
-		const slack = Math.max(0, rows - contentExclFill);
-		// Latch the anchor off for good once a real conversation has grown tall
-		// enough to fill the viewport. Past that point output scrolls into native
-		// scrollback (composedFrameRows can then shrink again), and re-anchoring
-		// would bounce the composer back up mid-stream. The home screen itself (an
-		// empty transcript) never latches off, even on a terminal so short the hero
-		// alone fills it — there is no conversation to scroll yet.
-		if (slack <= 0 && this.chatContainer.children.length > 0) {
-			this.#homeAnchorActive = false;
-			if (currentTopFill !== 0) this.#topFill.setLines(0);
-			if (currentFill !== 0) this.#bottomFill.setLines(0);
-			return;
-		}
-		// With the hero up, give it 2/5 of the slack as top margin (slightly above
-		// true centre reads optically centred); once dismissed, all slack drops
-		// below so the composer stays pinned to the viewport bottom.
-		const top = this.#welcomeComponent ? Math.floor((slack * 2) / 5) : 0;
-		if (top !== currentTopFill) this.#topFill.setLines(top);
-		if (slack - top !== currentFill) this.#bottomFill.setLines(slack - top);
 	}
 
 	#syncStatusLineSettings(): void {
@@ -1854,77 +1744,31 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	updateEditorBorderColor(): void {
-		// The `/yolo` full-bypass is a persistent danger state ("every prompt is
-		// off"), so it outranks every other border treatment — the operator must
-		// never lose sight of it.
-		if (this.session.isApprovalBypassed()) {
-			this.editor.borderColor = theme.getBypassModeBorderColor();
-		} else if (this.isBashMode) {
-			this.editor.borderColor = theme.getBashModeBorderColor();
-		} else if (this.isPythonMode) {
-			this.editor.borderColor = theme.getPythonModeBorderColor();
-		} else {
-			const accentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
-			const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
-			const hex = sessionName
-				? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
-				: undefined;
-			const ansi = getSessionAccentAnsi(hex);
-			if (ansi) {
-				this.editor.borderColor = (str: string) => `${ansi}${str}\x1b[39m`;
-			} else {
-				const level = this.session.thinkingLevel ?? ThinkingLevel.Off;
-				this.editor.borderColor = theme.getThinkingBorderColor(level);
-			}
-		}
-		if (this.focusedAgentId) {
-			// Focused subagent view: faint the outline so the borrowed session is
-			// visually distinct from the main one.
-			const base = this.editor.borderColor;
-			this.editor.borderColor = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
-		}
-		// The border is hidden; the accent lives on the prompt glyph. DS-6 morph:
-		// a mode changes the GLYPH, not just the hue — `!` full bypass (alarm),
-		// `$` bash (amber), `◈` plan (violet) — so the state reads even where
-		// color is degraded or the operator is colorblind. Otherwise the `›`
-		// carries the named-session identity accent or the theme's borderAccent.
-		// No pinned hue: the theme (and any rebrand) owns the color through its
-		// tokens.
-		let gutter: string;
-		if (this.session.isApprovalBypassed()) {
-			gutter = theme.getBypassModeBorderColor()("!");
-		} else if (this.isBashMode) {
-			gutter = theme.getBashModeBorderColor()("$");
-		} else if (this.isPythonMode) {
-			gutter = theme.getPythonModeBorderColor()("›");
-		} else if (this.planModeEnabled && !this.planModePaused) {
-			gutter = theme.fg("modeAccent", "◈");
-		} else {
-			const accentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
-			const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
-			const hex = sessionName
-				? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
-				: undefined;
-			const ansi = getSessionAccentAnsi(hex);
-			// A named session keeps its identity accent; otherwise the `›` takes
-			// the theme's borderAccent (ember on titanium) — a fixed hue, never
-			// activity-tinted. The chrome is silent; motion belongs to content.
-			const open = ansi ?? theme.getFgAnsi("borderAccent");
-			gutter = `${open}›\x1b[39m`;
-		}
-		if (this.focusedAgentId) gutter = `\x1b[2m${gutter}\x1b[22m`;
-		this.editor.setPromptGutter(`${" ".repeat(COMPOSER_INSET_COLS)}${gutter} `);
-		// DS-6 multiline whisper: wrapped/subsequent input rows carry a dim `┆`
-		// under the prompt glyph, so a multi-line draft reads as one body with a
-		// quiet spine instead of floating text.
-		this.editor.setPromptGutterContinuation(`${" ".repeat(COMPOSER_INSET_COLS)}${theme.fg("dim", "┆")} `);
-		// DS-6 layer 0, the quiet card: input rows sit on the composerBg tonal
-		// ground (#0C0E12 on titanium — one step off black). Themes inherit
-		// statusLineBg when they don't declare it; a transparent resolved bg
-		// (\x1b[49m, from `""` in theme JSON) means no card — the documented
-		// quiet degrade — so skip the per-row wrap entirely.
-		const composerGround = theme.getBgAnsi("composerBg");
-		this.editor.setRowBackground(composerGround === "\x1b[49m" ? undefined : composerGround);
+		// The accent decision (border color, DS-6 glyph morph, continuation
+		// spine) is a pure function in composer-chrome.ts; this method only
+		// snapshots the mode/session state and applies the result. The session
+		// identity accent needs settings + the session name, so it resolves here.
+		const accentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
+		const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
+		const hex = sessionName
+			? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
+			: undefined;
+		const accents = resolveComposerAccents({
+			bypass: this.session.isApprovalBypassed(),
+			bashMode: this.isBashMode,
+			pythonMode: this.isPythonMode,
+			planMode: this.planModeEnabled && !this.planModePaused,
+			focusedSubagent: this.focusedAgentId !== undefined,
+			sessionAccentAnsi: getSessionAccentAnsi(hex),
+			thinkingLevel: this.session.thinkingLevel ?? ThinkingLevel.Off,
+		});
+		this.editor.borderColor = accents.borderColor;
+		this.editor.setPromptGutter(accents.promptGutter);
+		this.editor.setPromptGutterContinuation(accents.promptGutterContinuation);
+		// No composer card: the input renders on the terminal's own ground.
+		// (User order 2026-07-22: the tinted box is gone entirely; the composer
+		// is hairline + text + footline, nothing painted behind it.)
+		this.editor.setRowBackground(undefined);
 		this.ui.requestRender();
 	}
 
@@ -1944,76 +1788,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	rebuildChatFromMessages(): void {
-		// Mid-stream rebuilds (e.g. `/shake`, theme/setting changes that touch the
-		// transcript) replay only committed `state.messages`. The agent's in-flight
-		// `streamMessage` and its still-pending tool calls live OUTSIDE
-		// `state.messages` until `message_end`, so a plain clear+replay detaches
-		// their UI components while keeping the `streamingComponent` / `pendingTools`
-		// references — subsequent `message_update`/`message_end` events would then
-		// update orphaned components that never re-render and the live LLM output
-		// vanishes from the chat (#3656). Snapshot the in-flight components,
-		// clear+replay, then re-append them in their original chat-container order
-		// and restore the `pendingTools` map so streaming routes back into them.
-		const liveComponents: Component[] = [];
-		const livePendingTools = new Map<string, ToolExecutionHandle>();
-		if (this.viewSession?.isStreaming) {
-			const liveSet = new Set<Component>();
-			if (this.streamingComponent) liveSet.add(this.streamingComponent);
-			for (const [id, component] of this.pendingTools) {
-				livePendingTools.set(id, component);
-				liveSet.add(component as unknown as Component);
-			}
-			if (liveSet.size > 0) {
-				for (const child of this.chatContainer.children) {
-					if (liveSet.has(child)) liveComponents.push(child);
-				}
-			}
-		}
-		this.chatContainer.clear();
-		// Live display collapses to the compacted transcript tail unless the
-		// user opted into the full inline history; export/resume callers choose
-		// their own mode.
-		const context = this.viewSession.buildTranscriptSessionContext({
-			collapseCompactedHistory: settings.get("display.collapseCompacted"),
-		});
-		this.renderSessionContext(context);
-		for (const child of liveComponents) {
-			this.chatContainer.addChild(child);
-		}
-		// `renderSessionContext` clears `pendingTools` at start AND end so the
-		// reconstructed historical tool components don't leak into live tracking.
-		// Restore the in-flight entries afterwards so the next streamed tool-call
-		// delta is routed into the preserved component instead of stacking a
-		// duplicate ToolExecutionComponent below it.
-		for (const [id, component] of livePendingTools) {
-			this.pendingTools.set(id, component);
-		}
-		// During the pre-streaming window — after `startPendingSubmission` has
-		// optimistically rendered the user's message but before the user
-		// `message_start` event lands it in `session` entries — any rebuild
-		// (e.g. Ctrl+T toggleThinkingBlockVisibility, theme selector) would
-		// otherwise erase the user's just-submitted message until the first
-		// assistant token arrived (#2372). Once `message_start` fires the
-		// signature is cleared by `EventController`, so this replay is a no-op
-		// post-streaming and cannot duplicate.
-		this.#replayOptimisticUserMessage();
-	}
-
-	#replayOptimisticUserMessage(): void {
-		if (!this.optimisticUserMessageSignature) return;
-		const submission = this.#pendingSubmittedInput;
-		if (!submission || submission.cancelled || submission.customType) return;
-		this.#optimisticUserMessageComponents = this.#captureAddedChatComponents(() => {
-			this.addMessageToChat(
-				{
-					role: "user",
-					content: [{ type: "text", text: submission.text }, ...(submission.images ?? [])],
-					attribution: "user",
-					timestamp: Date.now(),
-				},
-				{ imageLinks: submission.imageLinks },
-			);
-		});
+		// The composer owns the rebuild's live-component preservation (#3656)
+		// and the pre-streaming optimistic replay (#2372).
+		this.#transcriptComposer.rebuild();
 	}
 
 	#formatTodoLine(todo: TodoItem, prefix: string, matched: boolean): string {
@@ -4086,7 +3863,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 		nextEditor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
 		nextEditor.setBorderVisible(false);
-		nextEditor.setPlaceholder("ask anything  ·  / for commands");
+		nextEditor.setPlaceholder(COMPOSER_PLACEHOLDER);
 		nextEditor.setMaxHeight(this.#computeEditorMaxHeight());
 		if (this.historyStorage) {
 			nextEditor.setHistoryStorage(this.historyStorage);
@@ -4125,10 +3902,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			item.mount(this.#chatHost);
 		}
 		// The composer stays anchored to the viewport bottom as the transcript
-		// grows; #syncBottomFill latches the anchor off for good only once the
+		// grows; HomeAnchorLayout.sync latches the anchor off for good only once the
 		// content first fills the viewport, so a short reply keeps the composer on
 		// the bottom edge instead of riding up under it.
-		this.#syncBottomFill();
+		this.#layout.sync();
 	}
 
 	resetTranscript(): void {
@@ -4167,8 +3944,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#handleLspStartupEvent(event: LspStartupEvent): void {
-		this.#updateWelcomeLspServers();
-
+		// Live surfaces showing warmup state (the /lsp panel, status chrome)
+		// must repaint when server states change; without this the pending
+		// mark lingers until an unrelated event happens to paint a frame.
+		// (Historically this render rode on dead welcome-card LSP plumbing.)
+		this.ui.requestRender();
 		if (event.type === "failed") {
 			this.showWarning(`LSP startup failed: ${event.error}. It will retry lazily on write.`);
 			return;
@@ -4187,25 +3967,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			const failedNames = failedServers.map(server => server.name).join(", ");
 			this.showWarning(`LSP startup failed for ${failedNames}. It will retry lazily on write.`);
 		}
-	}
-
-	#getWelcomeLspServers(): WelcomeLspServerInfo[] {
-		return (
-			this.lspServers?.map(server => ({
-				name: server.name,
-				status: server.status,
-				fileTypes: server.fileTypes,
-			})) ?? []
-		);
-	}
-
-	#updateWelcomeLspServers(): void {
-		if (!this.#welcomeComponent) {
-			return;
-		}
-
-		this.#welcomeComponent.setLspServers(this.#getWelcomeLspServers());
-		this.ui.requestRender();
 	}
 
 	#clearWorkingMessageAccentCache(): void {
@@ -4264,7 +4025,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#clearWorkingMessageAccentCache();
 			this.statusContainer.disposeChildren();
 			const messageColorFn = ((message: string) =>
-				renderWorkingMessage(message, this.#getWorkingMessageAccent(), this.#workingClockText)) as LoaderMessageColorFn & {
+				renderWorkingMessage(
+					message,
+					this.#getWorkingMessageAccent(),
+					this.#workingClockText,
+				)) as LoaderMessageColorFn & {
 				animated?: true;
 			};
 			// Shimmer drives the 30fps redraw; when it is disabled the working
@@ -4430,29 +4195,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 *  keystroke ends the hero moment. Idempotent; the bottom anchor stays so
 	 *  the composer does not jump until a conversation turn scrolls in. */
 	dismissWelcome(): void {
-		const welcome = this.#welcomeComponent;
-		if (!welcome) return;
-		this.#welcomeComponent = undefined;
-		welcome.stopIntro();
-		const width = this.ui.terminal.columns;
-		// #syncBottomFill measures via the last composed frame, which still
-		// includes the card — subtract the removed rows explicitly so the composer
-		// stays pinned to the viewport bottom on this very frame, not the next.
-		// The centring top margin goes with the card.
-		const removedRows =
-			welcome.render(width).length + this.#welcomeSpacers.length + this.#topFill.render(width).length;
-		this.#topFill.setLines(0);
-		for (const spacer of this.#welcomeSpacers) this.ui.removeChild(spacer);
-		this.#welcomeSpacers = [];
-		this.ui.removeChild(welcome);
-		if (this.#homeAnchorActive && this.ui.composedFrameRows > 0) {
-			const currentFill = this.#bottomFill.render(width).length;
-			const contentExclFill = this.ui.composedFrameRows - currentFill - removedRows;
-			this.#bottomFill.setLines(Math.max(0, this.ui.terminal.rows - contentExclFill));
-		} else {
-			this.#syncBottomFill();
-		}
-		this.ui.requestRender();
+		this.#welcomeController.dismiss();
 	}
 
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void {
@@ -4750,25 +4493,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		const recentSessions = await getRecentSessions(this.sessionManager.getSessionDir()).then(sessions =>
 			sessions.map(s => ({ name: s.name, timeAgo: s.timeAgo })),
 		);
-		const welcome = new WelcomeComponent(
-			this.#version,
-			this.session.model?.name ?? "",
-			this.session.model?.provider ?? "",
+		this.#welcomeController.showFull({
+			version: this.#version,
+			modelName: this.session.model?.name ?? "",
+			providerName: this.session.model?.provider ?? "",
 			recentSessions,
-			this.#getWelcomeLspServers(),
-			true,
-		);
-		// The full card supersedes the home hero — leaving both mounted painted
-		// two suns and, with the home-anchor slack still sized for an empty
-		// transcript, pushed the freshly added card clean off the top of the
-		// viewport (live capture 2026-07-22: /welcome showed a blank screen).
-		this.dismissWelcome();
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(welcome);
-		this.chatContainer.addChild(new Spacer(1));
-		// Remeasure so the anchor accounts for the card on THIS frame.
-		this.#syncBottomFill(true);
-		welcome.playIntro(() => this.ui.requestComponentRender(welcome));
+		});
 	}
 
 	showSettingsSelector(initialItemId?: string): void {

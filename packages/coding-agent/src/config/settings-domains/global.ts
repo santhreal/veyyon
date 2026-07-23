@@ -14,11 +14,22 @@
 
 import {
 	DEFAULT_PROFILE_DIR_NAME,
+	readGlobalAuthBrokerSafe,
 	readGlobalDefaultProfileSafe,
 	readGlobalProfileSharingSafe,
+	writeGlobalAuthBrokerToken,
+	writeGlobalAuthBrokerUrl,
 	writeGlobalDefaultProfile,
 	writeGlobalProfileSharing,
 } from "@veyyon/utils";
+
+/**
+ * What the settings UI shows for a stored auth-broker token. The plaintext is
+ * NEVER read back into any UI model ("never log secrets"); saving this exact
+ * mask leaves the stored token untouched, so an operator can open and close
+ * the field without destroying the secret.
+ */
+export const AUTH_BROKER_TOKEN_MASK = "********";
 
 export const GLOBAL_SETTINGS = {
 	defaultProfile: {
@@ -44,6 +55,32 @@ export const GLOBAL_SETTINGS = {
 			label: "Share Credentials Across Profiles",
 			description:
 				"When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store.",
+		},
+	},
+
+	authBrokerUrl: {
+		type: "string",
+		default: "",
+		ui: {
+			tab: "global",
+			scope: "global",
+			group: "Auth Broker",
+			label: "Auth Broker URL",
+			description:
+				"Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config.",
+		},
+	},
+
+	authBrokerToken: {
+		type: "string",
+		default: "",
+		ui: {
+			tab: "global",
+			scope: "global",
+			group: "Auth Broker",
+			label: "Auth Broker Token",
+			description:
+				"Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it.",
 		},
 	},
 } as const;
@@ -74,6 +111,23 @@ export const GLOBAL_SETTING_BINDINGS: Record<string, GlobalSettingBinding> = {
 		read: () => readGlobalProfileSharingSafe(),
 		write: value => {
 			writeGlobalProfileSharing(value !== false);
+		},
+	},
+	authBrokerUrl: {
+		read: () => readGlobalAuthBrokerSafe().url ?? "",
+		write: value => {
+			writeGlobalAuthBrokerUrl(typeof value === "string" ? value : undefined);
+		},
+	},
+	authBrokerToken: {
+		// Presence only — the plaintext never reaches a UI model.
+		read: () => (readGlobalAuthBrokerSafe().tokenSet ? AUTH_BROKER_TOKEN_MASK : ""),
+		write: value => {
+			const text = typeof value === "string" ? value.trim() : "";
+			// Saving the untouched mask must keep the stored secret, or merely
+			// opening the field would destroy the token.
+			if (text === AUTH_BROKER_TOKEN_MASK) return;
+			writeGlobalAuthBrokerToken(text.length > 0 ? text : undefined);
 		},
 	},
 };

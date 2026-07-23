@@ -50,6 +50,20 @@ const MISE_TOOL = "github:santhreal/veyyon";
  * See #1686.
  */
 const NPM_REGISTRY = "https://registry.npmjs.org/";
+/**
+ * GitHub REST base for {@link REPO}. Veyyon ships only through GitHub Releases
+ * (see the Distribution section in the root `AGENTS.md`): the `curl` installer
+ * and this self-updater both resolve versions here, never from a package
+ * registry, so the running binary and a fresh install always agree on what
+ * "latest" means. `releases/latest` already excludes drafts and prereleases, so
+ * an unpublished draft never triggers an update.
+ */
+const GITHUB_RELEASES_API = `https://api.github.com/repos/${REPO}/releases`;
+/**
+ * GitHub requires a User-Agent on every API request and rejects requests
+ * without one. Identify the updater so the traffic is attributable.
+ */
+const GITHUB_API_USER_AGENT = `${APP_NAME}-updater`;
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
@@ -272,24 +286,28 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
 }
 
 /**
- * Get the latest release info from the npm registry.
- * Uses npm instead of GitHub API to avoid unauthenticated rate limiting.
- */
-/**
- * Look up the latest published release.
+ * Look up the latest published release from GitHub Releases.
  *
- * The one place the registry is asked what the newest version is. Startup and
- * `veyyon update` both come through here, so they can never disagree about
- * which registry to ask or how to read the answer.
+ * The one place the release source is asked what the newest version is. Startup
+ * and `veyyon update` both come through here, so they can never disagree about
+ * where to ask or how to read the answer, and it is the same source
+ * `install.sh` uses so a self-update and a fresh `curl` install always resolve
+ * the same version. Veyyon has no npm package; the GitHub release is the only
+ * catalog (see {@link GITHUB_RELEASES_API}).
+ *
+ * `releases/latest` returns the newest non-draft, non-prerelease release, so a
+ * draft that has been uploaded but not published never triggers an update.
  *
  * `timeoutMs` exists because the two callers want different patience: a
  * startup check runs while you are waiting to type and gives up quickly, while
  * an explicit `veyyon update` is worth waiting on.
  */
 export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIMEOUT_MS): Promise<ReleaseInfo> {
+	const url = `${GITHUB_RELEASES_API}/latest`;
 	let response: Response;
 	try {
-		response = await fetch(`${NPM_REGISTRY}${PACKAGE}/latest`, {
+		response = await fetch(url, {
+			headers: { "User-Agent": GITHUB_API_USER_AGENT, Accept: "application/vnd.github+json" },
 			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
@@ -301,21 +319,24 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 	if (!response.ok) {
 		const hint =
 			response.status === 404
-				? ` — ${PACKAGE} has no published release on the npm registry yet`
-				: response.status === 429
-					? " — the npm registry is rate-limiting this address; retry in a few minutes"
+				? ` — ${REPO} has no published GitHub release yet (a draft or untagged release does not count)`
+				: response.status === 403 || response.status === 429
+					? " — GitHub is rate-limiting this address; retry in a few minutes"
 					: "";
 		throw new Error(
-			`Failed to fetch release info from ${NPM_REGISTRY}${PACKAGE}/latest: HTTP ${response.status} ${response.statusText}${hint}`,
+			`Failed to fetch release info from ${url}: HTTP ${response.status} ${response.statusText}${hint}`,
 		);
 	}
 
-	const data = (await response.json()) as { version: string };
-	const version = data.version;
-	const tag = `v${version}`;
+	const data = (await response.json()) as { tag_name?: unknown };
+	const tag = typeof data.tag_name === "string" ? data.tag_name : "";
+	const version = tag.replace(/^v/, "");
+	if (!isValidSemver(version)) {
+		throw new Error(`GitHub returned a release with an unusable tag ${JSON.stringify(tag)} from ${url}`);
+	}
 
 	return {
-		tag,
+		tag: tag.startsWith("v") ? tag : `v${version}`,
 		version,
 	};
 }

@@ -1341,7 +1341,13 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	try {
 		const stat = await Bun.file(searchPath).stat();
 		isDirectory = stat.isDirectory();
-	} catch {
+	} catch (err) {
+		// Only a genuinely-missing path is "Path not found". A permission error
+		// (EACCES on a parent dir without +x), EIO, ELOOP, etc. must propagate
+		// loudly rather than be masked as not-found — otherwise the operator hunts
+		// for a path that exists. Matches this module's own convention
+		// (partitionExistingPaths rethrows non-ENOENT; isEnoent/isEnotdir at L339).
+		if (!isEnoent(err) && !isEnotdir(err)) throw err;
 		const hint = opts.multipathStatHint && rawPaths.length > 1 ? opts.multipathStatHint : "";
 		throw new ToolError(`Path not found: ${scopePath}${hint}`);
 	}

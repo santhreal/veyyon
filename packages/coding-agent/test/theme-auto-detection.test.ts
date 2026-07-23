@@ -69,17 +69,27 @@ describe("theme auto-detection", () => {
 		expect(detectSpy).not.toHaveBeenCalled();
 	});
 
+	// The observer is faked through the theme module's own seam
+	// (`setMacAppearanceObserverStarterForTest`), never `vi.spyOn` on the
+	// native class: that export is a lazy Proxy, so spying installs the mock
+	// on the proxy's dummy target while `get` keeps returning the real
+	// binding (the spy records 0 calls), and merely ACCESSING `.start` loads
+	// the darwin addon — which does not exist on non-mac dev hosts.
 	it("keeps honoring terminal-reported appearance outside fallback mode", async () => {
 		using _globals = withThemeTestGlobals();
 		const detectSpy = vi.spyOn(nativesModule, "detectMacOSAppearance").mockReturnValue(MacOSAppearance.Light);
-		const observerSpy = vi.spyOn(nativesModule.MacAppearanceObserver, "start");
+		const starter = vi.fn(() => ({ stop: vi.fn() }));
+		themeModule.setMacAppearanceObserverStarterForTest(starter);
+		try {
+			themeModule.onTerminalAppearanceChange("dark");
+			await themeModule.initTheme(true, undefined, undefined, "dark", "light");
 
-		themeModule.onTerminalAppearanceChange("dark");
-		await themeModule.initTheme(true, undefined, undefined, "dark", "light");
-
-		expect(themeModule.getCurrentThemeName()).toBe("dark");
-		expect(detectSpy).not.toHaveBeenCalled();
-		expect(observerSpy).not.toHaveBeenCalled();
+			expect(themeModule.getCurrentThemeName()).toBe("dark");
+			expect(detectSpy).not.toHaveBeenCalled();
+			expect(starter).not.toHaveBeenCalled();
+		} finally {
+			themeModule.setMacAppearanceObserverStarterForTest(undefined);
+		}
 	});
 
 	it("updates auto theme from the native fallback observer in Zellij", async () => {
@@ -87,25 +97,27 @@ describe("theme auto-detection", () => {
 		const stop = vi.fn();
 		let onAppearanceChange: ((appearance: "dark" | "light") => void) | undefined;
 		vi.spyOn(nativesModule, "detectMacOSAppearance").mockReturnValue(MacOSAppearance.Light);
-		const observerSpy = vi.spyOn(nativesModule.MacAppearanceObserver, "start").mockImplementation(((
-			callback: (err: null | Error, appearance: "dark" | "light") => void,
-		) => {
+		const starter = vi.fn((callback: (err: Error | null, appearance: string) => void) => {
 			onAppearanceChange = (appearance: "dark" | "light") => callback(null, appearance);
 			return { stop };
-		}) as any);
+		});
+		themeModule.setMacAppearanceObserverStarterForTest(starter);
+		try {
+			await themeModule.initTheme(true, undefined, undefined, "dark", "light");
 
-		await themeModule.initTheme(true, undefined, undefined, "dark", "light");
+			expect(starter).toHaveBeenCalledTimes(1);
+			expect(themeModule.getCurrentThemeName()).toBe("light");
+			expect(onAppearanceChange).toBeDefined();
 
-		expect(observerSpy).toHaveBeenCalledTimes(1);
-		expect(themeModule.getCurrentThemeName()).toBe("light");
-		expect(onAppearanceChange).toBeDefined();
+			onAppearanceChange!("dark");
+			await Bun.sleep(0);
 
-		onAppearanceChange!("dark");
-		await Bun.sleep(0);
-
-		expect(themeModule.getCurrentThemeName()).toBe("dark");
-		themeModule.stopThemeWatcher();
-		expect(stop).toHaveBeenCalledTimes(1);
+			expect(themeModule.getCurrentThemeName()).toBe("dark");
+			themeModule.stopThemeWatcher();
+			expect(stop).toHaveBeenCalledTimes(1);
+		} finally {
+			themeModule.setMacAppearanceObserverStarterForTest(undefined);
+		}
 	});
 	it("Zellij fallback stays macOS-only (Linux + Zellij = honor terminal)", async () => {
 		using _globals = withThemeTestGlobals({ platform: "linux", zellij: "1" });

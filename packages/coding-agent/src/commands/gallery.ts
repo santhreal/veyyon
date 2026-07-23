@@ -12,6 +12,11 @@ export default class Gallery extends Command {
 
 	static flags = {
 		tool: Flags.string({ char: "t", description: "Render a single tool by name" }),
+		theme: Flags.string({
+			description:
+				"Render in the named theme(s) instead of the profile's active theme; repeatable. Each theme suffixes its output (-<theme>). An unknown name fails; the profile's stored theme is not changed.",
+			multiple: true,
+		}),
 		state: Flags.string({
 			char: "s",
 			description: "Render only the given lifecycle state(s)",
@@ -50,6 +55,7 @@ export default class Gallery extends Command {
 		}
 		await runGalleryCommand({
 			tool: flags.tool,
+			themes: flags.theme,
 			states,
 			width: flags.width,
 			expanded: flags.expanded,

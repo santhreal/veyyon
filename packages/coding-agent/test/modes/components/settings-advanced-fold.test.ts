@@ -22,7 +22,10 @@ import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 type MutableTerminalInfo = { imageProtocol: ImageProtocol | null };
 const terminal = TERMINAL as unknown as MutableTerminalInfo;
 
-// The 13 keys demoted from appearance's flat list into the collapsed fold.
+// The 13 keys SPEC-SETTINGS-SIMPLIFICATION demoted from appearance's flat list
+// into the collapsed fold. These are the ORIGINAL appearance keys, tracked
+// separately from later additions so the "26 original keys / placement-only"
+// spec below stays exact.
 const DEMOTED_APPEARANCE_PATHS = [
 	"statusLine.sessionAccent",
 	"statusLine.transparent",
@@ -38,6 +41,17 @@ const DEMOTED_APPEARANCE_PATHS = [
 	"showHardwareCursor",
 	"task.showResolvedModelBadge",
 ] as const;
+
+// Keys added to the Advanced fold AFTER the spec: new experimental toggles that
+// default into Advanced (advanced: true) so the simplified 12-row appearance
+// view stays stable as the product grows. `display.subagentInbox` is the
+// experimental opencode-style agent split, off by default.
+const EXTRA_ADVANCED_APPEARANCE_PATHS = ["display.subagentInbox"] as const;
+
+// Everything the collapsed Advanced fold holds today: the 13 spec-demoted
+// originals plus any post-spec experimental additions. Drives the heading count.
+const ALL_ADVANCED_APPEARANCE_PATHS = [...DEMOTED_APPEARANCE_PATHS, ...EXTRA_ADVANCED_APPEARANCE_PATHS] as const;
+const ADVANCED_COUNT = ALL_ADVANCED_APPEARANCE_PATHS.length;
 
 // The 12 keys that stay visible in appearance's default (collapsed) view.
 const KEPT_APPEARANCE_PATHS = [
@@ -69,13 +83,13 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly 12 non-advanced rows and 13 demoted rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly 12 non-advanced rows and 14 advanced rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);
 
 		expect(visible.map(def => def.path).sort()).toEqual([...KEPT_APPEARANCE_PATHS].sort());
-		expect(advanced.map(def => def.path).sort()).toEqual([...DEMOTED_APPEARANCE_PATHS].sort());
+		expect(advanced.map(def => def.path).sort()).toEqual([...ALL_ADVANCED_APPEARANCE_PATHS].sort());
 		expect(TAB_GROUPS.appearance.length).toBe(3);
 		expect(TAB_GROUPS.appearance).not.toContain("Images");
 	});
@@ -140,14 +154,14 @@ describe("appearance advanced fold — panel rendering", () => {
 	// Flat single-column layout (width 70) so every row for the tab renders inline.
 	const FLAT_WIDTH = 70;
 
-	it("collapses the 13 demoted keys behind a single Advanced (13) row by default", () => {
+	it("collapses every advanced key behind a single Advanced heading row by default", () => {
 		const comp = createSelector();
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
 
 		expect(rendered).toContain("Dark Theme");
 		expect(rendered).toContain("Show Inline Images");
 		expect(rendered).toContain("Show Token Usage");
-		expect(rendered).toContain("Advanced (13)");
+		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
 
 		// Demoted rows stay hidden while the fold is collapsed and every value is default.
 		expect(rendered).not.toContain("Transparent Status Line");
@@ -155,15 +169,15 @@ describe("appearance advanced fold — panel rendering", () => {
 		expect(rendered).not.toContain("Show Resolved Model Badge");
 	});
 
-	it("expands the Advanced fold on Enter to reveal all 13 demoted rows, keeping the count stable", () => {
+	it("expands the Advanced fold on Enter to reveal the demoted rows, keeping the count stable", () => {
 		const comp = createSelector();
-		// 11 kept rows precede the Advanced toggle in tab order; 11 Down presses
-		// lands selection on the toggle row itself.
+		// The 12 kept rows precede the Advanced toggle in tab order; that many Down
+		// presses lands selection on the toggle row itself.
 		for (let i = 0; i < KEPT_APPEARANCE_PATHS.length; i++) comp.handleInput("\x1b[B");
 		comp.handleInput("\n");
 
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
-		expect(rendered).toContain("Advanced (13)");
+		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
 		expect(rendered).toContain("Transparent Status Line");
 		expect(rendered).toContain("Render Mermaid Diagrams");
 		expect(rendered).toContain("Session Accent");
@@ -171,7 +185,7 @@ describe("appearance advanced fold — panel rendering", () => {
 		// fold is open when the early advanced rows paint under the toggle.
 		// (The sticky "Theme" header pinned above — its own section scrolled
 		// out of view — costs one row of the visible window.)
-		expect(rendered).toContain("▾ Advanced (13)");
+		expect(rendered).toContain(`▾ Advanced (${ADVANCED_COUNT})`);
 		expect(rendered).toContain("Theme");
 	});
 
@@ -182,9 +196,9 @@ describe("appearance advanced fold — panel rendering", () => {
 
 		// Changed value is surfaced...
 		expect(rendered).toContain("Transparent Status Line");
-		// ...but the heading count still reflects all 13 advanced defs, and
+		// ...but the heading count still reflects every advanced def, and
 		// other (still-default) advanced rows stay hidden.
-		expect(rendered).toContain("Advanced (13)");
+		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
 		expect(rendered).not.toContain("Tight Layout");
 		expect(rendered).not.toContain("Show Resolved Model Badge");
 	});

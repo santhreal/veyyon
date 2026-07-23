@@ -14,6 +14,7 @@
  */
 
 import type { AssistantMessage, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
+import { escapeRegExp } from "@veyyon/utils";
 
 export interface RelativizeResult {
 	messages: Message[];
@@ -43,7 +44,7 @@ interface CompiledRoot {
 }
 
 function compileRoot(root: string): CompiledRoot {
-	const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const escaped = escapeRegExp(root);
 	return {
 		root,
 		prefix: new RegExp(`${escaped}/`, "g"),

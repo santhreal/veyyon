@@ -22,7 +22,10 @@ describe("composer contextual shortcuts", () => {
 		const plain = stripVTControlCharacters(bar.render(80).join("\n"));
 		expect(plain).toContain("enter");
 		expect(plain).toContain("send");
-		expect(plain).toContain("|");
+		// One separator grammar across the whole TUI: the middle dot `·`, not the
+		// old `|` holdout (see modal-shell.ts SHORTCUT_SEP). The bar renders through
+		// the same renderModalShortcuts as ModalShell footers, so it matches.
+		expect(plain).toContain("·");
 	});
 
 	it("stays empty when neither busy nor queued — the quiet idle contract", () => {

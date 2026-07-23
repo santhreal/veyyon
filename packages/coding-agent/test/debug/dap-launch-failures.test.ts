@@ -15,6 +15,7 @@ import type {
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { DebugTool } from "@veyyon/coding-agent/tools/debug";
 import { removeWithRetries } from "@veyyon/utils";
+import { makeToolSession } from "../helpers/tool-session";
 
 const TEST_ADAPTER: DapResolvedAdapter = {
 	name: "lldb-dap",
@@ -820,13 +821,11 @@ describe("DebugTool launch validation", () => {
 // that guidance so it cannot regress to the vague form.
 describe("debug launch missing-program guidance", () => {
 	function session(cwd: string): ToolSession {
-		return {
+		return makeToolSession({
 			cwd,
-			hasUI: false,
-			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			settings: Settings.isolated({ "debug.enabled": true }),
-		} as unknown as ToolSession;
+		});
 	}
 
 	it("names the required program field and shows an example when program is omitted", async () => {

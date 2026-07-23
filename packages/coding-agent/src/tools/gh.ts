@@ -11,6 +11,7 @@ import type {
 } from "@veyyon/agent-core";
 
 import {
+	clamp,
 	DAY_MS,
 	errorMessage,
 	getWorktreeDir,
@@ -695,7 +696,7 @@ export function resolveTailLimit(value: number | undefined): number {
 	// (0, 1) floors to 0, and `tailLogLines` does `lines.slice(-tail)`, where
 	// `slice(-0)` is `slice(0)` — it would return the ENTIRE log where a tiny
 	// tail was asked for. Clamp up so any positive tail yields at least one line.
-	return Math.min(Math.max(1, Math.floor(value)), RUN_WATCH_TAIL_MAX);
+	return clamp(Math.floor(value), 1, RUN_WATCH_TAIL_MAX);
 }
 
 function appendRepoFlag(args: string[], repo: string | undefined, identifier?: string): void {

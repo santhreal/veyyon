@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { type Api, type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
-import { errorMessage, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
+import { $env, errorMessage, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
@@ -64,6 +64,18 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
  *   reflects the credential actually selected for this request.
  * @param customSystemPrompt Optional title-specific system prompt override
  */
+/**
+ * Whether auto-titling is disabled for this process. The `--no-title` flag (and
+ * the rpc / rpc-ui / acp embedder modes) set `VEYYON_NO_TITLE=1`. Every
+ * auto-title path — first-input titling, the replan title refresh, and the
+ * plan-approved seed — routes its decision through this ONE predicate so the
+ * flag can never be bypassed by a path that forgot to read the env directly
+ * (the bug this consolidates: only the first-input path used to check it).
+ */
+export function autoTitleDisabled(): boolean {
+	return Boolean($env.VEYYON_NO_TITLE);
+}
+
 export async function generateSessionTitle(
 	firstMessage: string,
 	registry: ModelRegistry,
@@ -73,6 +85,13 @@ export async function generateSessionTitle(
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined,
 	customSystemPrompt?: string,
 ): Promise<string | null> {
+	// Hard off switch: --no-title / VEYYON_NO_TITLE disables auto-titling for
+	// every caller of this function (first-input AND replan refresh), so no
+	// title model is ever invoked. Checked before anything else.
+	if (autoTitleDisabled()) {
+		logger.debug("title-generator: skipped, auto-titling disabled", { sessionId, reason: "no-title" });
+		return null;
+	}
 	// Defer titling for greetings / acknowledgements / empty input. The default
 	// tiny title model can't reliably decline trivial input, so this happens
 	// deterministically before any model is invoked; the caller retries on the

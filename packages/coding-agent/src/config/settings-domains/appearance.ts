@@ -438,7 +438,8 @@ export const APPEARANCE_SETTINGS = {
 				{
 					value: "living",
 					label: "Living",
-					description: "Motion and color change with what the agent is doing: thinking, streaming, running a tool, error",
+					description:
+						"Motion and color change with what the agent is doing: thinking, streaming, running a tool, error",
 				},
 				{ value: "disabled", label: "Disabled", description: "No animation; static muted text" },
 			],
@@ -454,6 +455,9 @@ export const APPEARANCE_SETTINGS = {
 			label: "Subagent Inbox (experimental)",
 			description:
 				"opencode-style split: a live per-agent sidebar plus the focused agent's detail pane, instead of the modal agent hub. Experimental; off by default while the layout is refined.",
+			// Experimental and off by default: lives in the Advanced fold so the
+			// simplified appearance view stays at its stable 12-row default.
+			advanced: true,
 		},
 	},
 

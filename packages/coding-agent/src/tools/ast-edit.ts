@@ -21,6 +21,7 @@ import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import type { OutputMeta } from "./output-meta";
 import { isInternalUrlPath, resolveToolSearchScope } from "./path-utils";
+import { enforcePlanModeWrite } from "./plan-mode-guard";
 import {
 	appendParseErrorsBulletList,
 	capParseErrors,
@@ -450,6 +451,17 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 					label: `AST Edit: ${result.totalReplacements} replacement${previewReplacementPlural} in ${result.filesTouched} file${previewFilePlural}`,
 					sourceToolName: this.name,
 					apply: async (_reason: string) => {
+						// Plan mode keeps the working tree read-only. ast_edit's preview
+						// (dryRun) is a harmless read, but THIS apply writes files to disk.
+						// The apply is dispatched by the read-tier `resolve` tool, so it is
+						// auto-approved even in plan mode — without this guard ast_edit is a
+						// fail-open bypass of the invariant the write/replace/patch tools
+						// enforce (they call enforcePlanModeWrite before every write). Check
+						// every previewed target so a working-tree rewrite throws here, before
+						// a single byte is written; sandbox (local://) targets are allowed.
+						for (const fileChange of result.fileChanges) {
+							enforcePlanModeWrite(this.session, fileChange.path, { op: "update" });
+						}
 						const applyResult = await runAstEditOnce(multiTargets, resolvedSearchPath, globFilter, {
 							rewrites: normalizedRewrites,
 							dryRun: false,

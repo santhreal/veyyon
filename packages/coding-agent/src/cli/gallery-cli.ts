@@ -7,13 +7,14 @@
  * rendered output to stdout. It exists for visual QA of tool renderers without
  * having to provoke each state through a live agent session.
  */
+import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { TUI } from "@veyyon/tui";
-import { clampLow, getProjectDir } from "@veyyon/utils";
+import { clampLow, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { ToolExecutionComponent } from "../modes/components/tool-execution";
-import { initTheme, theme } from "../modes/theme/theme";
+import { getAvailableThemes, initTheme, setTheme, theme } from "../modes/theme/theme";
 import { toolRenderers } from "../tools/renderers";
 import { type GalleryFixture, type GalleryResult, galleryFixtures } from "./gallery-fixtures";
 import { captureGalleryScreenshots } from "./gallery-screenshot";
@@ -63,6 +64,14 @@ export interface GalleryCommandArgs {
 	width?: number;
 	/** Restrict to a single tool name. */
 	tool?: string;
+	/**
+	 * Render in the named theme(s) instead of the profile's active theme. Each
+	 * theme produces its own output (suffixed `-<theme>`), so one invocation
+	 * covers a whole theme matrix. An unknown name fails loudly rather than
+	 * falling back to the active theme. Does not mutate the profile's stored
+	 * theme: the theme is applied in-memory for the render pass only.
+	 */
+	themes?: string[];
 	/** Restrict to specific lifecycle states. */
 	states?: GalleryState[];
 	/** Render the expanded variant of each renderer. */
@@ -220,6 +229,57 @@ async function renderGallerySections(
 	return sections;
 }
 
+/** One theme's fully-rendered gallery sections, tagged with the theme name. */
+export interface ThemedGallery {
+	theme: string;
+	sections: GallerySection[];
+}
+
+/**
+ * Render the gallery once per requested theme. Every name is validated against
+ * the available theme set BEFORE any rendering, so an unknown theme fails the
+ * whole invocation loudly (Law 10: no silent fallback to the active theme) with
+ * a message naming the offending theme and the known set. Each theme is applied
+ * in-memory via {@link setTheme} for its render pass only; the caller's profile
+ * theme is never written. Duplicate names in `themes` are rendered once each in
+ * the order given, which is intentional (a caller may want the same theme twice
+ * with different downstream output paths).
+ */
+export async function renderGalleryForThemes(
+	themes: readonly string[],
+	names: string[],
+	states: GalleryState[],
+	width: number,
+	expanded: boolean,
+): Promise<ThemedGallery[]> {
+	const available = new Set(await getAvailableThemes());
+	const unknown = themes.filter(name => !available.has(name));
+	if (unknown.length > 0) {
+		const known = [...available].sort().join(", ");
+		throw new Error(`Unknown theme '${unknown[0]}'. Known themes: ${known}`);
+	}
+	const rendered: ThemedGallery[] = [];
+	for (const name of themes) {
+		await setTheme(name);
+		rendered.push({ theme: name, sections: await renderGallerySections(names, states, width, expanded) });
+	}
+	return rendered;
+}
+
+/**
+ * Insert a `-<theme>` tag before the extension of a screenshot output path so a
+ * theme matrix writes distinct files: `shot.png` + theme `light` → `shot-light.png`,
+ * and a path with no extension simply appends (`shot` → `shot-light`). The theme
+ * name is slugified (non-alphanumerics to `-`) so a custom theme name can never
+ * inject a path separator or an unexpected extension boundary.
+ */
+export function themedOutPath(out: string, themeName: string): string {
+	const slug = themeName.replace(/[^A-Za-z0-9._-]+/g, "-");
+	const ext = path.extname(out);
+	if (ext === "") return `${out}-${slug}`;
+	return `${out.slice(0, -ext.length)}-${slug}${ext}`;
+}
+
 /**
  * Render the gallery. Iterates the renderer registry (or a single tool),
  * printing each requested lifecycle state under a labeled section — or, with
@@ -254,6 +314,36 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 		return;
 	}
 
+	const plain = args.plain || chalk.level === 0;
+
+	// Theme-matrix path: render (and capture/print) once per named theme, each to
+	// its own suffixed output. Unknown names fail the whole run before any output.
+	if (args.themes && args.themes.length > 0) {
+		let rendered: ThemedGallery[];
+		try {
+			rendered = await renderGalleryForThemes(args.themes, names, states, width, expanded);
+		} catch (err) {
+			process.stderr.write(`${errorMessage(err)}\n`);
+			process.exitCode = 1;
+			return;
+		}
+		for (const { theme: themeName, sections } of rendered) {
+			if (args.screenshot) {
+				const paths = await captureGalleryScreenshots(sections, {
+					width,
+					font: args.font,
+					fontSize: args.fontSize,
+					out: args.out ? themedOutPath(args.out, themeName) : undefined,
+				});
+				process.stdout.write(`${paths.join("\n")}\n`);
+			} else {
+				const lines = [`# theme: ${themeName}`, ...sections.flatMap(section => section.lines), ""];
+				process.stdout.write(`${lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n")}\n`);
+			}
+		}
+		return;
+	}
+
 	const sections = await renderGallerySections(names, states, width, expanded);
 
 	if (args.screenshot) {
@@ -271,7 +361,6 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 	lines.push("");
 	// --plain forces it, but a piped/redirected stdout (chalk detects non-TTY
 	// and NO_COLOR) also degrades to plain text instead of escape soup.
-	const plain = args.plain || chalk.level === 0;
 	const text = lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n");
 	process.stdout.write(`${text}\n`);
 }

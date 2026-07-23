@@ -66,13 +66,20 @@ describe("lang icon badges (unicode preset)", () => {
 		expect(theme.getLangIcon("shell")).not.toBe("S");
 	});
 
-	it("keeps the deliberate enclosed-letter badges, width-1 and consistent", async () => {
+	/** The enclosed-letter badges (Ⓒ Ⓙ Ⓚ) are BANNED from the unicode
+	 * preset: enclosed alphanumerics (U+2460–24FF) render two cells wide in
+	 * many fonts while the TUI counts one, swallowing the space after them
+	 * (the glyph width contract, docs/internal/tui-design-language.md).
+	 * These languages now share the uniform width-1 default mark. */
+	it("routes the former enclosed-letter languages to the width-1 default mark", async () => {
 		const theme = await unicodeTheme();
-		expect(theme.getLangIcon("c")).toBe("Ⓒ");
-		expect(theme.getLangIcon("julia")).toBe("Ⓙ");
-		// kotlin was a width-2 emoji (🅺) — normalized to a width-1 circled letter
-		// matching Ⓒ/Ⓙ.
-		expect(theme.getLangIcon("kotlin")).toBe("Ⓚ");
+		expect(theme.getLangIcon("c")).toBe(DEFAULT_MARK);
+		expect(theme.getLangIcon("julia")).toBe(DEFAULT_MARK);
+		expect(theme.getLangIcon("kotlin")).toBe(DEFAULT_MARK);
+		// The banned range must never reappear on any known language badge.
+		for (const lang of ["c", "julia", "kotlin", "java", "csharp"]) {
+			expect(theme.getLangIcon(lang)).not.toMatch(/[①-⓿\u{1F100}-\u{1F1FF}]/u);
+		}
 	});
 
 	it("falls back to the default mark for an unknown language", async () => {

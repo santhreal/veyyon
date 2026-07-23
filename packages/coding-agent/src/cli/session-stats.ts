@@ -16,6 +16,7 @@
 
 import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
 import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai";
+import { clamp } from "@veyyon/utils";
 import type { FileEntry, SessionHeader, SessionMessageEntry } from "../session/session-entries";
 
 /** One assistant request and the tool calls it drove, with token cost. */
@@ -114,7 +115,7 @@ export interface SessionStatsReport {
 export function percentile(sortedAsc: readonly number[], p: number): number {
 	if (sortedAsc.length === 0) return 0;
 	const rank = Math.ceil((p / 100) * sortedAsc.length);
-	const index = Math.min(Math.max(rank - 1, 0), sortedAsc.length - 1);
+	const index = clamp(rank - 1, 0, sortedAsc.length - 1);
 	return sortedAsc[index];
 }
 
@@ -300,7 +301,7 @@ function accumulateToolResult(message: ToolResultMessage, sink: ToolResultSink):
 	}
 
 	if (metrics.argsHash) {
-		const key = `${message.toolName} ${metrics.argsHash}`;
+		const key = `${message.toolName}\u0000${metrics.argsHash}`;
 		const repeat = repeats.get(key) ?? {
 			tool: message.toolName,
 			argsHash: metrics.argsHash,

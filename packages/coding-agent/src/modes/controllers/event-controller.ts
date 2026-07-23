@@ -18,6 +18,7 @@ import { TodoReminderComponent } from "../../modes/components/todo-reminder";
 import { ToolExecutionComponent } from "../../modes/components/tool-execution";
 import { TtsrNotificationComponent } from "../../modes/components/ttsr-notification";
 import { createUsageRowBlock } from "../../modes/components/usage-row";
+import { UserMessageComponent } from "../../modes/components/user-message";
 import { setShimmerActivity, shimmerText } from "../../modes/theme/shimmer";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
@@ -495,7 +496,29 @@ export class EventController {
 		this.#retrySupersededAssistantQueue = [];
 	}
 
+	/** The prompt the running turn is working on; it carries the follow's glow
+	 *  from agent_start to agent_end (see UserMessageComponent.setWorking). */
+	#workingUserMessage: UserMessageComponent | undefined;
+
+	/** Move the working glow to the newest user prompt in the transcript. */
+	#armWorkingUserMessage(): void {
+		this.#workingUserMessage?.setWorking(false);
+		this.#workingUserMessage = undefined;
+		// Optional access: controller test harnesses build partial ctx mocks
+		// without a chat container; with no transcript there is nothing to glow.
+		const children = this.ctx.chatContainer?.children ?? [];
+		for (let i = children.length - 1; i >= 0; i--) {
+			const child = children[i];
+			if (child instanceof UserMessageComponent) {
+				child.setWorking(true);
+				this.#workingUserMessage = child;
+				return;
+			}
+		}
+	}
+
 	async #handleAgentStart(_event: Extract<AgentSessionEvent, { type: "agent_start" }>): Promise<void> {
+		this.#armWorkingUserMessage();
 		this.#toolTimelineComponents.clear();
 		this.#postToolAssistantComponents.clear();
 		this.#lastIntent = undefined;
@@ -588,6 +611,11 @@ export class EventController {
 					this.ctx.editor.setText("");
 				}
 				this.ctx.updatePendingMessagesDisplay();
+			}
+			// A prompt landing mid-turn (queued while streaming) becomes the one
+			// being worked: move the glow so it always sits on the newest prompt.
+			if (!event.message.synthetic && this.ctx.session?.isStreaming) {
+				this.#armWorkingUserMessage();
 			}
 			this.ctx.ui.requestRender();
 		} else if (event.message.role === "fileMention") {
@@ -1056,6 +1084,19 @@ export class EventController {
 			}
 			this.ctx.statusLine.invalidate();
 			this.ctx.ui.requestRender();
+		} else if (
+			event.message.role === "assistant" &&
+			event.message.stopReason === "error" &&
+			event.message.errorMessage &&
+			!isSilentAbort(event.message)
+		) {
+			// The turn died before any streaming began (the provider rejected the
+			// request at setup: unsupported thinking effort, bad model id, auth),
+			// so there is no streaming component to carry an inline error row.
+			// Without this branch the submitted prompt vanished with no working
+			// line, no banner, and no clue. Pin the error above the editor exactly
+			// like a mid-stream failure; the next turn's agent_start clears it.
+			this.ctx.showPinnedError(event.message.errorMessage);
 		}
 		this.ctx.ui.requestRender();
 	}
@@ -1261,6 +1302,8 @@ export class EventController {
 	}
 
 	async #finishAgentEnd(): Promise<void> {
+		this.#workingUserMessage?.setWorking(false);
+		this.#workingUserMessage = undefined;
 		this.#setTerminalProgress(false);
 		// Living shimmer: the turn is over — return to the resting state so the
 		// next turn opens fresh from `thinking` rather than mid-motion.
@@ -1619,8 +1662,7 @@ export class EventController {
 		if (!recapSettings.enabled) return;
 		if (this.ctx.editor.getText().trim()) return;
 
-		const timeoutMs =
-			clampLow(recapSettings.idleSeconds, IDLE_RECAP_MIN_SECONDS, IDLE_RECAP_MAX_SECONDS) * 1000;
+		const timeoutMs = clampLow(recapSettings.idleSeconds, IDLE_RECAP_MIN_SECONDS, IDLE_RECAP_MAX_SECONDS) * 1000;
 		this.#idleRecapTimer = setTimeout(() => {
 			this.#idleRecapTimer = undefined;
 			void this.#runIdleRecap();

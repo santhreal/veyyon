@@ -58,7 +58,7 @@ export interface TuiBuiltinSlashCommand extends BuiltinSlashCommand {
 	getAutocompleteDescription?: () => string | undefined;
 }
 
-function refreshStatusLine(ctx: InteractiveModeContext): void {
+function refreshStatusLine(ctx: Pick<InteractiveModeContext, "statusLine" | "ui">): void {
 	ctx.statusLine.invalidate();
 	ctx.ui.requestRender();
 }
@@ -112,7 +112,7 @@ function collabLinkHint(host: CollabHost, heading: string, view = false): string
 	].join("\n");
 }
 
-function showCollabQrCode(ctx: InteractiveModeContext, webLink: string): void {
+function showCollabQrCode(ctx: Pick<InteractiveModeContext, "present" | "showError">, webLink: string): void {
 	try {
 		ctx.present([new Spacer(1), new CollabQrCodeComponent(webLink)]);
 	} catch (err) {
@@ -120,7 +120,12 @@ function showCollabQrCode(ctx: InteractiveModeContext, webLink: string): void {
 	}
 }
 
-function showCollabLink(ctx: InteractiveModeContext, host: CollabHost, heading: string, view = false): void {
+function showCollabLink(
+	ctx: Pick<InteractiveModeContext, "present" | "showError" | "showStatus">,
+	host: CollabHost,
+	heading: string,
+	view = false,
+): void {
 	ctx.showStatus(collabLinkHint(host, heading, view), { dim: false });
 	showCollabQrCode(ctx, view ? host.webViewLink : host.webLink);
 }

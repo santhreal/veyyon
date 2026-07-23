@@ -235,18 +235,29 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// A bare stroke matching ✓/✗ — this used to be the literal word "warn",
 	// which leaked as text ("warn interrupted" in the resume dialog).
 	"status.warning": "!",
-	"status.info": "ⓘ",
-	"status.pending": "⏳",
+	// WIDTH CONTRACT: every status glyph must be unambiguously ONE cell wide.
+	// East-Asian-ambiguous codepoints (ⓘ U+24D8) and emoji-presentation
+	// codepoints (⏳ U+231B, ⏹ U+23F9) render TWO cells in many terminal
+	// fonts while the TUI counts one, so the glyph swallows its following
+	// space and overlaps the label ("ⓘwaiting on 1 job", live report
+	// 2026-07-22). Replacements come from narrow-safe ranges only.
+	"status.info": "i",
+	"status.pending": "⋯",
 	"status.disabled": "⦸",
 	// House block style (see docs/internal/tui-design-language.md "Blockiness"):
 	// a bare presence marker is a square, not a circle. `▪` = present/on/done,
 	// `▫` = shadowed/auto. Kept distinct from the `■`/`□` checkbox squares.
 	"status.enabled": "▪",
 	"status.running": "⟳",
-	"status.connecting": "◌",
+	// ◦ pairs with the ● active mark as its unfilled state. The former ◌
+	// (U+25CC DOTTED CIRCLE) is the combining-mark placeholder glyph and
+	// reads as a rendering artifact in many fonts.
+	"status.connecting": "◦",
 	"status.active": "●",
 	"status.shadowed": "▫",
-	"status.aborted": "⏹",
+	// ∎ (U+220E) keeps the house blockiness while staying narrow-safe; the
+	// former ⏹ carries emoji presentation and rendered two cells wide.
+	"status.aborted": "∎",
 	"status.done": "▪",
 	// Navigation
 	"nav.cursor": "›",
@@ -310,14 +321,17 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.plan": "",
 	"icon.prewalk": "",
 	"icon.goal": "",
-	"icon.pause": "⏸",
+	"icon.pause": "‖",
 	"icon.loop": "↻",
 	"icon.folder": "",
 	"icon.worktree": "⧉",
 	"icon.search": "⌕",
-	// Neutral "ephemeral" mark (matches the poimandres themes) — the old 🗑
-	// trash can read as "this session is garbage" when cwd was /tmp.
-	"icon.scratchFolder": "◌",
+	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The
+	// old 🗑 read as "this session is garbage"; its ◌ replacement (U+25CC
+	// DOTTED CIRCLE) is the combining-mark placeholder glyph and read as a
+	// rendering artifact next to the blank regular folder icon (user report
+	// 2026-07-22, "stray ◌ in the footline").
+	"icon.scratchFolder": "▫",
 	"icon.file": "▤",
 	"icon.git": "",
 	"icon.branch": "",
@@ -397,14 +411,14 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"lang.rust": "",
 	"lang.go": "",
 	"lang.java": "",
-	"lang.c": "Ⓒ",
+	"lang.c": "",
 	"lang.cpp": "",
 	"lang.csharp": "",
 	"lang.ruby": "",
-	"lang.julia": "Ⓙ",
+	"lang.julia": "",
 	"lang.php": "",
 	"lang.swift": "",
-	"lang.kotlin": "Ⓚ",
+	"lang.kotlin": "",
 	"lang.shell": "",
 	"lang.html": "",
 	"lang.css": "",

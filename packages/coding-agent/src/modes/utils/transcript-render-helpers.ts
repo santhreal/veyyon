@@ -6,7 +6,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
-import { formatBytes, formatDuration } from "@veyyon/utils";
+import { collapseWhitespace, formatBytes, formatDuration } from "@veyyon/utils";
 import {
 	type CustomMessage,
 	type FileMentionMessage,
@@ -204,7 +204,7 @@ export type AssistantErrorPresentation =
 	| { kind: "compact-recovered"; text: string; isError: false };
 
 function sanitizeRecoveredRetryNote(note: string): string {
-	const normalized = replaceTabs(note).replace(/\s+/g, " ").trim();
+	const normalized = collapseWhitespace(replaceTabs(note));
 	return truncateToWidth(normalized || "retried", TRUNCATE_LENGTHS.CONTENT);
 }
 

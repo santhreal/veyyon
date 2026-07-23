@@ -40,9 +40,12 @@ describe("AgentSession advisor descriptor thinking level", () => {
 		authStorage.setRuntimeApiKey("devin", "test-key");
 		modelRegistry = new ModelRegistry(authStorage);
 		const anthropic = getBundledModel("anthropic", "claude-sonnet-4-5");
-		const devin = getBundledModel("devin", "glm-5-2");
+		// A Devin model that still has the regression shape: `reasoning: true` with
+		// NO controllable `thinking` descriptor. `glm-5-2` gained an effort
+		// descriptor upstream, so it no longer exercises the no-thinking clamp path.
+		const devin = getBundledModel("devin", "swe-1-6-fast");
 		if (!anthropic) throw new Error("Expected bundled anthropic/claude-sonnet-4-5 to exist");
-		if (!devin) throw new Error("Expected bundled devin/glm-5-2 to exist");
+		if (!devin) throw new Error("Expected bundled devin/swe-1-6-fast to exist");
 		anthropicModel = anthropic;
 		devinModel = devin;
 	});

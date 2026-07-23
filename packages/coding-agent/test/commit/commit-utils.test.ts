@@ -6,7 +6,7 @@ import {
 	normalizeAnalysis,
 	normalizeDetails,
 	parseJsonPayload,
-} from "@veyyon/coding-agent/commit/utils";
+} from "@veyyon/coding-agent/commit/utils/analysis";
 
 /**
  * Helpers that turn a model response into a ConventionalAnalysis. They had no

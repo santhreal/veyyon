@@ -31,6 +31,7 @@ type ConfigurableEditorAction = Extract<
 	| "app.clipboard.pasteImage"
 	| "app.clipboard.pasteTextRaw"
 	| "app.clipboard.copyPrompt"
+	| "app.bash.background"
 >;
 
 const DEFAULT_ACTION_KEYS: Record<ConfigurableEditorAction, KeyId[]> = {
@@ -38,6 +39,7 @@ const DEFAULT_ACTION_KEYS: Record<ConfigurableEditorAction, KeyId[]> = {
 	"app.clear": ["ctrl+c"],
 	"app.exit": ["ctrl+d"],
 	"app.suspend": ["ctrl+z"],
+	"app.bash.background": ["ctrl+b"],
 	"app.display.reset": ["ctrl+l"],
 	"app.thinking.cycle": ["shift+tab"],
 	"app.model.cycleForward": ["ctrl+p"],
@@ -424,6 +426,10 @@ export class CustomEditor extends Editor {
 	onExternalEditor?: () => void;
 	onHistorySearch?: () => void;
 	onSuspend?: () => void;
+	/** Manual "background the running foreground command". Returns whether a
+	 *  foreground wait consumed the key; on false the key falls through to its
+	 *  editor meaning (ctrl+b is also readline cursor-left). */
+	onBashBackground?: () => boolean;
 	onSelectModelTemporary?: () => void;
 	/** Called when the configured copy-prompt shortcut is pressed. */
 	onCopyPrompt?: () => void;
@@ -741,6 +747,13 @@ export class CustomEditor extends Editor {
 			if (this.#matchesAction(canonical, "app.display.reset") && this.onDisplayReset) {
 				this.onDisplayReset();
 				return;
+			}
+
+			// Manual bash backgrounding — CONDITIONAL consumption: the handler
+			// returns false when no foreground command is waiting, and the key
+			// falls through to its editor meaning (ctrl+b = readline cursor-left).
+			if (this.#matchesAction(canonical, "app.bash.background") && this.onBashBackground) {
+				if (this.onBashBackground()) return;
 			}
 
 			// Intercept configured suspend shortcut

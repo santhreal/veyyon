@@ -709,12 +709,29 @@ function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}): 
 
 var macObserver: { stop(): void } | undefined;
 
+type MacAppearanceObserverStarter = (callback: (err: Error | null, appearance: string) => void) => { stop(): void };
+
+/**
+ * Seam over `MacAppearanceObserver.start`. The native export is a lazy Proxy
+ * whose property access loads the platform addon, so tests can neither spy on
+ * it (`defineProperty` lands on the proxy's dummy target while `get` keeps
+ * returning the real binding) nor run where the darwin addon does not exist.
+ * Production always uses the real native class; tests install a fake starter.
+ */
+let macAppearanceObserverStarter: MacAppearanceObserverStarter | undefined;
+
+/** Install (or with undefined, remove) a fake observer starter. Test-only. */
+export function setMacAppearanceObserverStarterForTest(starter: MacAppearanceObserverStarter | undefined): void {
+	macAppearanceObserverStarter = starter;
+}
+
 function startMacAppearanceObserver(): void {
 	stopMacAppearanceObserver();
 	if (!shouldUseMacOSAppearanceFallback()) return;
 	try {
 		macOSReportedAppearance = detectMacOSAppearance() ?? undefined;
-		macObserver = MacAppearanceObserver.start((err, appearance) => {
+		const start = macAppearanceObserverStarter ?? (cb => MacAppearanceObserver.start(cb));
+		macObserver = start((err, appearance) => {
 			if (!err && (appearance === "dark" || appearance === "light")) {
 				macOSReportedAppearance = appearance;
 				reevaluateAutoTheme("macOS fallback");
@@ -1073,6 +1090,19 @@ export function getMarkdownTheme(): MarkdownTheme {
 		code: (text: string) => theme.fg("mdCode", text),
 		codeBlock: (text: string) => theme.fg("mdCodeBlock", text),
 		codeBlockBorder: (text: string) => theme.fg("mdCodeBlockBorder", text),
+		// Designed fence rows: literal ``` markers read as UNRENDERED markdown
+		// (the "this is rendering raw" report), so fenced blocks open with a
+		// short rule + language tag and close with the bare rule — the same
+		// dim-rule section language the transcript already speaks (compaction
+		// marker, cache-miss marker). Chrome stays quiet: one dim token, no
+		// motion, no backticks.
+		codeBlockFence: (lang, pos) =>
+			theme.fg(
+				"mdCodeBlockBorder",
+				pos === "open" && lang
+					? `${theme.boxSharp.horizontal.repeat(2)}╴${lang}`
+					: theme.boxSharp.horizontal.repeat(2),
+			),
 		quote: (text: string) => theme.fg("mdQuote", text),
 		quoteBorder: (text: string) => theme.fg("mdQuoteBorder", text),
 		hr: (text: string) => theme.fg("mdHr", text),

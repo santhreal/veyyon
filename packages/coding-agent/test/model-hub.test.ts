@@ -178,10 +178,11 @@ describe("ModelHub", () => {
 			const rendered = normalize(hub.render(220));
 			expect(rendered).not.toContain("▪default");
 			expect(rendered).toContain("▪custom-fast");
-			// Explicit :low suffix surfaces as the low thinking glyph on the chip.
-			// Under the house block style the low level is the `▂` gauge bar, not a
-			// quadrant circle (docs/internal/tui-design-language.md "Blockiness").
-			expect(rendered).toContain("▂");
+			// Explicit :low suffix surfaces as the low thinking level on the chip. The
+			// gauge-bar glyphs (▁▂▃) were retired because they rendered as stray solid
+			// rectangles beside the word; the level now shows as the short text label
+			// (see symbols.ts "thinking.low": "low").
+			expect(rendered).toContain("custom-fast low");
 			expect(rendered).toContain("▪smol");
 		});
 

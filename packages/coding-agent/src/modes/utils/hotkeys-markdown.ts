@@ -37,6 +37,7 @@ export function buildHotkeysMarkdown(bindings: HotkeysMarkdownBindings): string 
 		`| \`${appKey(bindings, "app.clear")}\` | Clear editor (first) / exit (second) |`,
 		`| \`${appKey(bindings, "app.exit")}\` | Exit (when editor is empty) |`,
 		`| \`${appKey(bindings, "app.suspend")}\` | Suspend to background |`,
+		`| \`${appKey(bindings, "app.bash.background")}\` | Move the running foreground command to a background job |`,
 		`| \`${appKey(bindings, "app.display.reset")}\` | Reset terminal display |`,
 		`| \`${appKey(bindings, "app.thinking.cycle")}\` | Cycle thinking level |`,
 		`| \`${appKey(bindings, "app.model.cycleForward")}\` | Cycle role models (slow/default/smol) |`,

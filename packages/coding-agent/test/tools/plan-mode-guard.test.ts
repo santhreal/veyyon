@@ -2,11 +2,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	targetsLocalSandbox,
-	unwrapHashlineHeaderPath,
-} from "@veyyon/coding-agent/tools/plan-mode-guard";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { targetsLocalSandbox, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 
@@ -28,7 +25,7 @@ function session(artifactsDir: string | null, cwd: string): ToolSession {
 		},
 		getArtifactsDir: () => artifactsDir,
 		getSessionId: () => "sess-plan-guard",
-		getPlanModeState: () => ({ enabled: true }),
+		getPlanModeState: () => ({ enabled: true as const, planFilePath: "local://PLAN.md" }),
 	});
 }
 

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@veyyon/tui";
-import { $env, errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
+import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { resolveLocalRoot } from "../../internal-urls";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
@@ -19,10 +19,12 @@ import type { InteractiveModeContext } from "../../modes/types";
 import manualContinuePrompt from "../../prompts/system/manual-continue.md" with { type: "text" };
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeBuiltinSlashCommand } from "../../slash-commands/builtin-registry";
+import type { TuiSlashCommandHostContext } from "../../slash-commands/types";
 import { isTinyTitleLocalModelKey } from "../../tiny/models";
 import { isLowSignalTitleInput } from "../../tiny/text";
 import { tinyTitleClient } from "../../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
+import { requestManualBackground } from "../../tools/bash-foreground-registry";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
 import { vocalizer } from "../../tts/vocalizer";
 import {
@@ -35,7 +37,8 @@ import { EnhancedPasteController } from "../../utils/enhanced-paste";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { ensureSupportedImageInput, ImageInputTooLargeError, loadImageInput } from "../../utils/image-loading";
 import { resizeImage } from "../../utils/image-resize";
-import { generateSessionTitle } from "../../utils/title-generator";
+import { autoTitleDisabled, generateSessionTitle } from "../../utils/title-generator";
+import type { SkillCommandHost } from "../skill-command";
 
 /**
  * Slash commands that may carry secrets in their arguments should never be
@@ -156,9 +159,68 @@ const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
 const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
 const LEFT_DOUBLE_TAP_MAX_GAP_MS = 500;
 
+/**
+ * The slice of `InteractiveModeContext` the input controller reads (H1-77). It
+ * composes the two surfaces it forwards `ctx` to whole — the TUI slash-command
+ * host (`executeBuiltinSlashCommand`) and the skill-command host
+ * (`isKnownSkillCommand` / `invokeSkillCommandFromText`) — plus the 41 members
+ * it reads directly (bash/python/btw/omfg key handling, thinking-block
+ * visibility, submission gating, welcome/goal-detail, and the escape/tap
+ * timing state). Composing the named host slices (ONE PLACE) keeps the forward
+ * surfaces in lockstep instead of re-listing their members here, and naming the
+ * whole thing is what lets `InputController` be built in a test without the
+ * `as unknown as InteractiveModeContext` cast the 215-member interface forces.
+ */
+export type InputControllerContext = TuiSlashCommandHostContext &
+	SkillCommandHost &
+	Pick<
+		InteractiveModeContext,
+		| "canBranchBtw"
+		| "cancelPendingSubmission"
+		| "canCopyBtw"
+		| "clearEditor"
+		| "dismissWelcome"
+		| "flushPendingBashComponents"
+		| "focusedAgentId"
+		| "goalModePaused"
+		| "handleBashCommand"
+		| "handleBtwBranchKey"
+		| "handleBtwCopyKey"
+		| "handleBtwEscape"
+		| "handleOmfgEscape"
+		| "handlePythonCommand"
+		| "handleSTTToggle"
+		| "hasActiveBtw"
+		| "hasActiveOmfg"
+		| "hasDisplayableThinkingContent"
+		| "hideThinkingBlock"
+		| "isBashMode"
+		| "isPythonMode"
+		| "isShuttingDown"
+		| "keybindings"
+		| "lastEscapeTime"
+		| "lastLeftTapTime"
+		| "lastSigintTime"
+		| "loadingAnimation"
+		| "locallySubmittedUserSignatures"
+		| "onInputCallback"
+		| "openGoalDetail"
+		| "pauseLoop"
+		| "queueCompactionMessage"
+		| "refreshComposerShortcuts"
+		| "showHistorySearch"
+		| "showModelCycleTrack"
+		| "startPendingSubmission"
+		| "toggleThinkingBlockVisibility"
+		| "toolOutputExpanded"
+		| "unfocusSession"
+		| "viewSession"
+		| "withLocalSubmission"
+	>;
+
 export class InputController {
 	constructor(
-		private ctx: InteractiveModeContext,
+		private ctx: InputControllerContext,
 		/** Injectable clipboard reads so tests can drive paste flows without a real clipboard. */
 		private clipboard: {
 			readImage: typeof readImageFromClipboard;
@@ -411,6 +473,10 @@ export class InputController {
 		this.ctx.editor.onExit = () => this.handleCtrlD();
 		this.ctx.editor.setActionKeys("app.suspend", this.ctx.keybindings.getKeys("app.suspend"));
 		this.ctx.editor.onSuspend = () => this.handleCtrlZ();
+		this.ctx.editor.setActionKeys("app.bash.background", this.ctx.keybindings.getKeys("app.bash.background"));
+		// Conditional: consumes the key only while a foreground command is
+		// waiting; otherwise ctrl+b stays readline cursor-left.
+		this.ctx.editor.onBashBackground = () => requestManualBackground();
 		this.ctx.editor.setActionKeys("app.thinking.cycle", this.ctx.keybindings.getKeys("app.thinking.cycle"));
 		this.ctx.editor.onCycleThinkingLevel = () => this.cycleThinkingLevel();
 		this.ctx.editor.setActionKeys("app.model.cycleForward", this.ctx.keybindings.getKeys("app.model.cycleForward"));
@@ -837,7 +903,7 @@ export class InputController {
 			// skipped deterministically (no model invoked, no download-progress UI)
 			// and the session stays unnamed — the next user message gets a fresh
 			// chance, so titling defers past "hi" instead of latching onto it.
-			if (!this.ctx.sessionManager.getSessionName() && !$env.VEYYON_NO_TITLE && !isLowSignalTitleInput(text)) {
+			if (!this.ctx.sessionManager.getSessionName() && !autoTitleDisabled() && !isLowSignalTitleInput(text)) {
 				this.#showTinyTitleDownloadProgress(this.ctx.settings.get("providers.tinyModel"));
 				const registry = this.ctx.session.modelRegistry;
 				generateSessionTitle(

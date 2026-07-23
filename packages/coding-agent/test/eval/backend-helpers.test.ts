@@ -6,6 +6,7 @@ import {
 	toExecutorBackendResult,
 } from "@veyyon/coding-agent/eval/backend-helpers";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * The per-language eval backends (jl/js/py/rb) share these helpers to namespace a
@@ -17,7 +18,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
  */
 
 function session(map: Record<string, unknown>): ToolSession {
-	return { settings: { get: (key: string) => map[key] } } as unknown as ToolSession;
+	return makeToolSession({ settings: { get: (key: string) => map[key] } });
 }
 
 describe("namespaceSessionId", () => {

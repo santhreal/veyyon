@@ -510,55 +510,35 @@ const costSegment: StatusLineSegment = {
 /** The context bar's fixed cell count — small enough to whisper, wide enough
  *  that one cell is a meaningful 12.5% step. */
 const CONTEXT_BAR_CELLS = 8;
-/** Brand breathing frames for the bar's tip — the same pixel-inhale cycle the
- *  working spinner uses, so the two live elements share one vocabulary. */
-const CONTEXT_BAR_TIP_FRAMES = ["░", "▒", "▓", "█", "▓", "▒"] as const;
-/** Cells whose right edge is a major fill (25%, 50%, 75%, ~90%): once
- *  reached they lock in gold, giving the eye fixed anchors on the ramp. */
-const CONTEXT_BAR_MAJOR_CELLS = new Set([1, 3, 5, 6]);
-/** Tip breath cadence; past the error threshold the breath doubles — the bar
- *  visibly quickens as compaction nears. */
+/** Live-tip pulse cadence; past the error threshold the pulse doubles — the
+ *  bar visibly quickens as compaction nears. */
 const CONTEXT_BAR_TIP_STEP_MS = 1000;
 const CONTEXT_BAR_TIP_STEP_URGENT_MS = 500;
 
-/** Static frontier glyphs for the RESTING bar: the tip encodes the next
- *  cell's fractional fill as data (quarter steps), no motion. */
-const CONTEXT_BAR_FRACTION_GLYPHS = ["▱", "░", "▒", "▓"] as const;
-
 /**
- * The growing context bar (approved §04 mock): `▰▰▰▓▱▱▱▱` — filled cells in
- * the usage-level hue (silver → gold → ember → alarm via the ONE
- * getContextUsageThemeColor owner), reached major-fill cells locked gold, and
- * dim rest cells. The frontier cell is dual-natured: while the agent RUNS
- * (`live`) it breathes the brand frames — motion means "the model is working
- * right now", the same contract as the spinner; at rest it is a STATIC
- * quarter-step glyph showing the next cell's fractional fill, because motion
- * on an idle screen signals activity that does not exist. Pure in
+ * The growing context bar: `▰▰▰▱▱▱▱▱` — filled cells in the usage-level hue
+ * (silver → gold → ember → alarm via the ONE getContextUsageThemeColor
+ * owner), rest cells dim. Strictly two glyphs, two tones: mixing shaded
+ * quarter-step glyphs (░▒▓) into the outlined track read as a rendering
+ * artifact ("a random rectangle in the middle of the context window box",
+ * user report 2026-07-22) — the adjacent percent text already carries the
+ * sub-cell precision. While the agent RUNS (`live`) the frontier cell pulses
+ * between filled and empty in the SAME two-glyph vocabulary — motion means
+ * "the model is working right now"; at rest the bar is fully static. Pure in
  * (ratio, level, nowMs, live) so tests can pin exact frames.
  */
 export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs: number, live: boolean): string {
 	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
-	const filled = Math.min(CONTEXT_BAR_CELLS, Math.floor(clamped * CONTEXT_BAR_CELLS));
+	const filled = Math.min(CONTEXT_BAR_CELLS, Math.round(clamped * CONTEXT_BAR_CELLS));
 	const levelColor = getContextUsageThemeColor(level);
-	let tipFrame: string;
-	if (live) {
-		const stepMs = level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS;
-		tipFrame = CONTEXT_BAR_TIP_FRAMES[Math.floor(nowMs / stepMs) % CONTEXT_BAR_TIP_FRAMES.length] as string;
-	} else {
-		const fraction = clamped * CONTEXT_BAR_CELLS - filled;
-		tipFrame = CONTEXT_BAR_FRACTION_GLYPHS[
-			Math.min(CONTEXT_BAR_FRACTION_GLYPHS.length - 1, Math.floor(fraction * 4))
-		] as string;
-	}
 	let bar = "";
 	for (let cell = 0; cell < CONTEXT_BAR_CELLS; cell++) {
 		if (cell < filled) {
-			bar +=
-				CONTEXT_BAR_MAJOR_CELLS.has(cell) && level !== "error"
-					? theme.fg("matchHighlight", "▰")
-					: theme.fg(levelColor, "▰");
-		} else if (cell === filled && clamped < 1) {
-			bar += tipFrame === "▱" ? theme.fg("dim", "▱") : theme.fg(levelColor, tipFrame);
+			bar += theme.fg(levelColor, "▰");
+		} else if (live && cell === filled) {
+			const stepMs = level === "error" ? CONTEXT_BAR_TIP_STEP_URGENT_MS : CONTEXT_BAR_TIP_STEP_MS;
+			const tipOn = Math.floor(nowMs / stepMs) % 2 === 0;
+			bar += tipOn ? theme.fg(levelColor, "▰") : theme.fg("dim", "▱");
 		} else {
 			bar += theme.fg("dim", "▱");
 		}
@@ -747,7 +727,10 @@ const sessionNameSegment: StatusLineSegment = {
 			getSessionAccentAnsi(
 				getSessionAccentHex(name, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance),
 			) ?? theme.getFgAnsi("accent");
-		return { content: `${ansi}${sanitizeStatusText(name)}\x1b[39m`, visible: true };
+		// Clamp: auto-generated titles are sentence-length ("Render check line
+		// second paragraph") and an unclamped chip dominates the shared footline.
+		const label = truncateToWidth(sanitizeStatusText(name), TRUNCATE_LENGTHS.CHIP);
+		return { content: `${ansi}${label}\x1b[39m`, visible: true };
 	},
 };
 

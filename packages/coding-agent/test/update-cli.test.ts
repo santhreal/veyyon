@@ -44,6 +44,64 @@ const TEST_CONFIG: CliConfig = {
 	commands: new Map(),
 };
 
+/**
+ * Version discovery is the link that broke install-then-update: the shipped
+ * binary is fetched from GitHub Releases by `install.sh`, but the self-updater
+ * used to ask the npm registry, which has no `@veyyon/coding-agent` package and
+ * never will (Veyyon ships GitHub-only). A binary installed from GitHub could
+ * therefore never see a newer version. These tests lock the source to the
+ * GitHub Releases API — the same catalog `install.sh` reads — and prove it fails
+ * loudly rather than silently returning a stale or empty answer (Law 10).
+ */
+describe("getLatestRelease reads GitHub Releases, not npm", () => {
+	function mockFetch(response: Response): { calls: Array<{ url: string; init?: RequestInit }> } {
+		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		const impl = (async (input: string | URL | Request, init?: RequestInit) => {
+			calls.push({ url: String(input), init });
+			return response;
+		}) as unknown as typeof fetch;
+		spyOn(globalThis, "fetch").mockImplementation(impl);
+		return { calls };
+	}
+
+	it("queries the GitHub releases/latest endpoint for santhreal/veyyon with a User-Agent", async () => {
+		const { calls } = mockFetch(new Response(JSON.stringify({ tag_name: "v1.2.3" }), { status: 200 }));
+
+		const release = await updateCli.getLatestRelease(1000);
+
+		expect(release).toEqual({ tag: "v1.2.3", version: "1.2.3" });
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.url).toBe("https://api.github.com/repos/santhreal/veyyon/releases/latest");
+		expect(calls[0]?.url).not.toContain("registry.npmjs.org");
+		const headers = calls[0]?.init?.headers as Record<string, string> | undefined;
+		expect(headers?.["User-Agent"]).toContain("veyyon");
+	});
+
+	it("normalizes a tag published without a leading v", async () => {
+		mockFetch(new Response(JSON.stringify({ tag_name: "2.0.0" }), { status: 200 }));
+
+		expect(await updateCli.getLatestRelease(1000)).toEqual({ tag: "v2.0.0", version: "2.0.0" });
+	});
+
+	it("throws loudly on 404 (draft/untagged release is not a published release), never a silent default", async () => {
+		mockFetch(new Response("Not Found", { status: 404, statusText: "Not Found" }));
+
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/no published GitHub release yet/);
+	});
+
+	it("throws with a retry hint when GitHub rate-limits (403/429)", async () => {
+		mockFetch(new Response("", { status: 403, statusText: "Forbidden" }));
+
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/rate-limiting this address/);
+	});
+
+	it("refuses a release whose tag is not a usable semver instead of guessing", async () => {
+		mockFetch(new Response(JSON.stringify({ tag_name: "nightly" }), { status: 200 }));
+
+		await expect(updateCli.getLatestRelease(1000)).rejects.toThrow(/unusable tag/);
+	});
+});
+
 describe("update command plugin dispatch", () => {
 	it("routes -l to plugin upgrade instead of the app updater", async () => {
 		const pluginSpy = spyOn(pluginCli, "runPluginCommand").mockResolvedValue(undefined);
@@ -493,7 +551,7 @@ describe("update-cli stale backup sweep", () => {
 });
 
 describe("update-cli release-info errors", () => {
-	it("404 from the registry names the URL, status, and unpublished-package hint without a doubled Error prefix", async () => {
+	it("404 from GitHub Releases names the URL, status, and unpublished-release hint without a doubled Error prefix", async () => {
 		spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404, statusText: "Not Found" }));
 		const errors: string[] = [];
 		spyOn(console, "error").mockImplementation((...args: unknown[]) => {
@@ -510,9 +568,10 @@ describe("update-cli release-info errors", () => {
 		expect(exitSpy).toHaveBeenCalledWith(1);
 		const combined = errors.join("\n");
 		expect(combined).toContain("Failed to check for updates");
-		expect(combined).toContain("registry.npmjs.org");
+		expect(combined).toContain("api.github.com/repos/santhreal/veyyon/releases/latest");
+		expect(combined).not.toContain("registry.npmjs.org");
 		expect(combined).toContain("HTTP 404");
-		expect(combined).toContain("no published release");
+		expect(combined).toContain("no published GitHub release yet");
 		// `${err}` used to stringify the Error and double the prefix.
 		expect(combined).not.toContain("Error: Failed to fetch");
 	});
@@ -529,7 +588,7 @@ describe("runUpdateCommand fetch cancellation", () => {
 		const fetchStub = Object.assign(
 			async (_input: string | URL | Request, init?: RequestInit | BunFetchRequestInit) => {
 				requestSignal = init?.signal ?? undefined;
-				return Response.json({ version: "999.0.0" });
+				return Response.json({ tag_name: "v999.0.0" });
 			},
 			{ preconnect: globalThis.fetch.preconnect },
 		);
@@ -559,7 +618,7 @@ describe("runAutoUpdate", () => {
 	});
 
 	it("reports up-to-date when the registry has nothing newer", async () => {
-		stubRegistry(async () => Response.json({ version: "1.2.3" }));
+		stubRegistry(async () => Response.json({ tag_name: "v1.2.3" }));
 
 		expect(await updateCli.runAutoUpdate("1.2.3", undefined, await statePath())).toEqual({ status: "up-to-date" });
 		// Strictly newer is required, so a registry that has fallen behind the
@@ -593,7 +652,7 @@ describe("runAutoUpdate", () => {
 		// the reporter rather than on stdout is what makes this test meaningful:
 		// an earlier version only exercised the up-to-date path, which never
 		// reaches an install and so could not have caught a console write.
-		stubRegistry(async () => Response.json({ version: "9.9.9" }));
+		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
@@ -603,7 +662,7 @@ describe("runAutoUpdate", () => {
 	});
 
 	it("reports an install failure instead of claiming success", async () => {
-		stubRegistry(async () => Response.json({ version: "9.9.9" }));
+		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 		spyOn(updateCli, "installRelease").mockRejectedValue(new Error("brew exited 1"));
 
 		expect(await updateCli.runAutoUpdate("1.0.0", undefined, await statePath())).toEqual({
@@ -614,7 +673,7 @@ describe("runAutoUpdate", () => {
 	});
 
 	it("does not write to stdout on the up-to-date path", async () => {
-		stubRegistry(async () => Response.json({ version: "1.0.0" }));
+		stubRegistry(async () => Response.json({ tag_name: "v1.0.0" }));
 		const write = spyOn(process.stdout, "write").mockImplementation(() => true);
 
 		await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
@@ -626,7 +685,7 @@ describe("runAutoUpdate", () => {
 		it("records the failed version so the next launch can see it", async () => {
 			// The record is what the backoff reads. If the failure path did not
 			// write it, every launch would retry an install that cannot succeed.
-			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 			spyOn(updateCli, "installRelease").mockRejectedValue(new Error("EACCES: permission denied"));
 			const state = await statePath();
 
@@ -643,7 +702,7 @@ describe("runAutoUpdate", () => {
 			// A machine that cannot install at all showed the same red error on
 			// every launch. It now reports once and backs off, and crucially does
 			// not spend a package-manager run reproducing the failure each time.
-			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "EACCES", state, Date.now());
@@ -657,7 +716,7 @@ describe("runAutoUpdate", () => {
 		it("still installs a different version while an older failure is in its window", async () => {
 			// A build that failed is not evidence the next build fails, so a new
 			// release must never be held back by the previous one's cooldown.
-			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.8", "bad tarball", state, Date.now());
@@ -671,7 +730,7 @@ describe("runAutoUpdate", () => {
 		it("clears the record after a successful install", async () => {
 			// Otherwise a machine that recovered keeps a failure on disk that
 			// nothing removes, and a later failure is judged against a stale one.
-			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "transient", state, 1_000);
@@ -685,7 +744,7 @@ describe("runAutoUpdate", () => {
 			// Opening three terminals at once used to run three concurrent
 			// package-manager writes at the same binary. The lock makes the
 			// losers stand down instead of racing.
-			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 			const install = spyOn(updateCli, "installRelease").mockImplementation(async () => {
 				// Hold long enough that the siblings must contend for the lock.
 				await Bun.sleep(30);
@@ -709,7 +768,7 @@ describe("runAutoUpdate", () => {
 		it("releases the lock after an install, so the next launch is not blocked", async () => {
 			// A lock left behind by a finished install would stall updates until
 			// its staleness window elapsed, which is deliberately fifteen minutes.
-			stubRegistry(async () => Response.json({ version: "9.9.9" }));
+			stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 
