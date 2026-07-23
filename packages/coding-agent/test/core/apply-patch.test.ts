@@ -643,6 +643,64 @@ describe("parseApplyPatch (production)", () => {
 	});
 });
 
+/**
+ * The envelope has no quoting, so the path is the rest of the marker line. An
+ * extra space after the colon (`*** Add File:  x.txt`) or a trailing space on a
+ * `*** Move to:` line used to leave the whitespace on the parsed path, so the
+ * write landed at ` x.txt` while the approval dialog — which trims — showed
+ * `x.txt`. That is a silent write to a name the user never approved. These tests
+ * lock the parser to trim every marker path so the parsed and approved paths
+ * stay in lock-step.
+ *
+ * A file marker with a whitespace-only path (`*** Add File:   `) is line-trimmed
+ * back to a bare marker that no longer matches, so it is already rejected as an
+ * invalid hunk header; those tests assert it still throws rather than yielding an
+ * empty path that would resolve to the cwd downstream. The `*** Move to:` line is
+ * read un-trimmed, so an empty destination reaches an explicit guard instead.
+ */
+describe("parseApplyPatch path hygiene (trim + reject empty)", () => {
+	const wrap = (body: string) => `*** Begin Patch\n${body}\n*** End Patch`;
+
+	test("trims a leading space left by a double space after 'Add File:'", () => {
+		const result = parseApplyPatch(wrap("*** Add File:  hello.txt\n+hi"));
+		expect(result[0].path).toBe("hello.txt");
+	});
+
+	test("trims the update path and the move destination", () => {
+		const result = parseApplyPatch(wrap("*** Update File:  a.txt\n*** Move to:  b.txt\n@@\n-x\n+y"));
+		expect(result[0].path).toBe("a.txt");
+		expect(result[0].rename).toBe("b.txt");
+	});
+
+	test("trims a trailing space on the delete path", () => {
+		const result = parseApplyPatch(wrap("*** Delete File: gone.txt "));
+		expect(result[0]).toEqual({ path: "gone.txt", op: "delete" });
+	});
+
+	test("rejects a whitespace-only Add File path instead of yielding an empty path", () => {
+		expect(() => parseApplyPatch(wrap("*** Add File:   \n+hi"))).toThrow(/is not a valid hunk header/);
+	});
+
+	test("rejects a whitespace-only Delete File path so it cannot target the cwd", () => {
+		expect(() => parseApplyPatch(wrap("*** Delete File:   "))).toThrow(/is not a valid hunk header/);
+	});
+
+	test("rejects a whitespace-only Update File path", () => {
+		expect(() => parseApplyPatch(wrap("*** Update File:   \n@@\n-x\n+y"))).toThrow(/is not a valid hunk header/);
+	});
+
+	test("rejects an empty Move to destination via its own guard", () => {
+		expect(() => parseApplyPatch(wrap("*** Update File: a.txt\n*** Move to:   \n@@\n-x\n+y"))).toThrow(
+			/Move to.*missing a destination path/,
+		);
+	});
+
+	test("leaves a canonical single-space path unchanged", () => {
+		const result = parseApplyPatch(wrap("*** Add File: clean.txt\n+hi"));
+		expect(result[0].path).toBe("clean.txt");
+	});
+});
+
 describe("applyCodexPatch (production)", () => {
 	let tempDir: string;
 

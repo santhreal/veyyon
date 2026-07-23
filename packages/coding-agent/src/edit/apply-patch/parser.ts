@@ -37,6 +37,24 @@ interface ParseApplyPatchOptions {
 }
 
 /**
+ * Extract the path that follows a file-op marker (`*** Add File: ` etc.),
+ * trimmed.
+ *
+ * The envelope has no quoting or escaping, so the path is the rest of the line
+ * and must not carry stray whitespace. `firstLine.slice(marker.length)` leaves a
+ * leading space whenever the model writes an extra space after the colon
+ * (`*** Add File:  x.txt`), and `*** Move to:` reads an un-trimmed line, so a
+ * trailing space survives there. Left untrimmed, the write lands at ` x.txt`
+ * while the approval dialog (which trims via `extractApprovalPath`) showed
+ * `x.txt`: the user approves one path and a differently named file is written,
+ * renamed, or deleted. Trimming here keeps the parsed path in lock-step with the
+ * approved one.
+ */
+function markerPath(line: string, markerLength: number): string {
+	return line.slice(markerLength).trim();
+}
+
+/**
  * Parse a Codex `*** Begin Patch` envelope into a list of single-file
  * patch inputs.
  */
@@ -91,7 +109,7 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 		const firstLine = remaining[0].trim();
 
 		if (firstLine.startsWith(ADD_FILE_MARKER)) {
-			const path = firstLine.slice(ADD_FILE_MARKER.length);
+			const path = markerPath(firstLine, ADD_FILE_MARKER.length);
 			let contents = "";
 			let consumed = 1;
 
@@ -112,7 +130,7 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 		}
 
 		if (firstLine.startsWith(DELETE_FILE_MARKER)) {
-			const path = firstLine.slice(DELETE_FILE_MARKER.length);
+			const path = markerPath(firstLine, DELETE_FILE_MARKER.length);
 			hunks.push({ path, op: "delete" });
 			remaining = remaining.slice(1);
 			lineNumber++;
@@ -120,13 +138,16 @@ function parseApplyPatchWithOptions(patchText: string, options: ParseApplyPatchO
 		}
 
 		if (firstLine.startsWith(UPDATE_FILE_MARKER)) {
-			const path = firstLine.slice(UPDATE_FILE_MARKER.length);
+			const path = markerPath(firstLine, UPDATE_FILE_MARKER.length);
 			remaining = remaining.slice(1);
 			lineNumber++;
 
 			let movePath: string | undefined;
 			if (remaining.length > 0 && remaining[0].startsWith(MOVE_TO_MARKER)) {
-				movePath = remaining[0].slice(MOVE_TO_MARKER.length);
+				movePath = markerPath(remaining[0], MOVE_TO_MARKER.length);
+				if (movePath.length === 0 && !streaming) {
+					throw new ParseError("'*** Move to:' is missing a destination path", lineNumber);
+				}
 				remaining = remaining.slice(1);
 				lineNumber++;
 			}
