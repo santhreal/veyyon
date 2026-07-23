@@ -3,6 +3,7 @@ import {
 	applyEdits,
 	detectLineEnding,
 	type Edit,
+	EMPTY_REPLACE,
 	formatHashlineHeader,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
@@ -284,13 +285,18 @@ describe("hashline abort sentinel", () => {
 });
 
 describe("hashline parser — delete and blank payload semantics", () => {
-	it("applies inline delete and empty replace operations", () => {
+	it("applies inline delete operations and rejects a bodyless SWAP", () => {
 		expect(applyDiff("line1\nline2\nline3\n", splitHashlineInput("[a.ts]\nDEL 2\n").diff)).toBe("line1\nline3\n");
 		expect(applyDiff("line1\nline2\nline3\nline4\n", splitHashlineInput("[a.ts]\nDEL 2.=3\n").diff)).toBe(
 			"line1\nline4\n",
 		);
-		expect(applyDiff("line1\nline2\nline3\n", splitHashlineInput("[a.ts]\nSWAP 2.=2:\n").diff)).toBe(
-			"line1\nline3\n",
+		// A bodyless `SWAP` is not a silent delete: deleting lines is spelled `DEL`.
+		// Routing a zero-payload replace through the delete path was the Law 10
+		// silent-data-loss bug (a truncated stream that lost its body rows would
+		// erase the whole range); the parser now rejects it. See
+		// parser-empty-swap-rejected.test.ts for the full contract.
+		expect(() => applyDiff("line1\nline2\nline3\n", splitHashlineInput("[a.ts]\nSWAP 2.=2:\n").diff)).toThrow(
+			EMPTY_REPLACE,
 		);
 	});
 

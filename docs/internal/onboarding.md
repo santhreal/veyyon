@@ -71,4 +71,4 @@ Open the PR against `main`. Put your change under the affected package's
 fix), and make sure `bun run check` and the tests pass. CI, the security suite, and
 the automated review run before a maintainer reviews it.
 
-*Verified against `7ca44d3` on 2026-07-21.*
+*Verified against `d3e3db30` on 2026-07-23.*

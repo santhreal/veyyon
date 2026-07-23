@@ -58,7 +58,7 @@ describe("unicode preset width contract — no ambiguous or emoji-width glyphs",
 	 *    2026-07-22, "stray ◌ in the footline")
 	 */
 	it("keeps every unicode symbol out of the known double-width ranges", () => {
-		const banned = /[①-⓿⌚⌛⏩-⏺️]|◌|[\u{1F000}-\u{1FAFF}]/u;
+		const banned = /[\u2460-\u24FF\u231A\u231B\u23E9-\u23FA]|\uFE0F|\u25CC|[\u{1F000}-\u{1FAFF}]/u;
 		for (const [key, value] of Object.entries(UNICODE_SYMBOLS)) {
 			expect(banned.test(value), `${key} = ${JSON.stringify(value)}`).toBe(false);
 		}

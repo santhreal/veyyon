@@ -282,4 +282,4 @@ If the concern is message shape, id correlation, or MCP method ordering, it belo
 
 If the concern is framing (JSONL vs HTTP/SSE), stream parsing, fetch/spawn lifecycle, timeout clocks, or connection teardown, it belongs to transport implementation.
 
-*Verified against `a49ff74` on 2026-07-17.*
+*Verified against `d3e3db30` on 2026-07-23.*
