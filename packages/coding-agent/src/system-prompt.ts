@@ -26,7 +26,7 @@ import { applyPromptSectionOrder } from "./prompt-sections";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
-import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+import { assembleDefaultTemplate } from "./system-prompt-builder/default-template";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import { shortenPath } from "./tools/render-utils";
@@ -858,7 +858,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree,
 		renderMermaid,
 	};
-	let rendered = prompt.render(resolvedCustomPrompt ? customSystemPromptTemplate : systemPromptTemplate, data);
+	let rendered = prompt.render(resolvedCustomPrompt ? customSystemPromptTemplate : assembleDefaultTemplate(), data);
 	if (sectionOrder && sectionOrder.length > 0) {
 		if (resolvedCustomPrompt) {
 			logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
