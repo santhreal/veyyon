@@ -472,12 +472,12 @@ function runCwdBoundaryReason(c: CorpusCase): void {
 
 function runParsePrUrl(c: CorpusCase): void {
 	const input = c.input as { url?: string };
-	expect(parsePrUrl(input.url)).toEqual(c.expect);
+	expect(parsePrUrl(input.url) as unknown).toEqual(c.expect);
 }
 
 function runParseIssueUrl(c: CorpusCase): void {
 	const input = c.input as { url?: string };
-	expect(parseIssueUrl(input.url)).toEqual(c.expect);
+	expect(parseIssueUrl(input.url) as unknown).toEqual(c.expect);
 }
 
 function runClampTimeout(c: CorpusCase): void {
@@ -508,7 +508,7 @@ function runTimeoutParamDesc(c: CorpusCase): void {
 
 function runParseCompactArgs(c: CorpusCase): void {
 	const input = c.input as { args: string };
-	expect(parseCompactArgs(input.args)).toEqual(c.expect);
+	expect(parseCompactArgs(input.args) as unknown).toEqual(c.expect);
 }
 
 function runFindCompactMode(c: CorpusCase): void {
@@ -539,13 +539,13 @@ function runParseLineRangeChunk(c: CorpusCase): void {
 		return;
 	}
 	expect(threw).toBeNull();
-	expect(range ?? null).toEqual(exp.range ?? null);
+	expect((range ?? null) as unknown).toEqual(exp.range ?? null);
 }
 
 function runParseLineRanges(c: CorpusCase): void {
 	const input = c.input as { sel: string };
 	const exp = c.expect as { ranges: Array<{ startLine: number; endLine?: number }> | null };
-	expect(parseLineRanges(input.sel)).toEqual(exp.ranges);
+	expect(parseLineRanges(input.sel) as unknown).toEqual(exp.ranges);
 }
 
 function runWriteFilesystemTargets(c: CorpusCase): void {
@@ -561,11 +561,11 @@ function runFormatPathRelative(c: CorpusCase): void {
 }
 
 function runParseSearchPath(c: CorpusCase): void {
-	expect(parseSearchPath((c.input as { path: string }).path)).toEqual(c.expect);
+	expect(parseSearchPath((c.input as { path: string }).path) as unknown).toEqual(c.expect);
 }
 
 function runParseFindPattern(c: CorpusCase): void {
-	expect(parseFindPattern((c.input as { pattern: string }).pattern)).toEqual(c.expect);
+	expect(parseFindPattern((c.input as { pattern: string }).pattern) as unknown).toEqual(c.expect);
 }
 
 function runRpcSuccessBuilder(c: CorpusCase): void {
@@ -582,7 +582,7 @@ function runRpcSuccessBuilder(c: CorpusCase): void {
 	expect(frame.type).toBe<string>(exp.type);
 	expect(frame.command).toBe(exp.command);
 	expect(frame.success).toBe(exp.success);
-	expect(frame.data).toEqual(exp.data);
+	expect((frame as { data?: unknown }).data).toEqual(exp.data);
 }
 
 function runRpcErrorBuilder(c: CorpusCase): void {
@@ -599,7 +599,7 @@ function runRpcErrorBuilder(c: CorpusCase): void {
 	expect(frame.type).toBe<string>(exp.type);
 	expect(frame.command).toBe(exp.command);
 	expect(frame.success).toBe(exp.success);
-	expect(frame.error).toBe(exp.error);
+	expect((frame as { error?: unknown }).error).toBe(exp.error);
 }
 
 function runRpcUnknownBuilder(c: CorpusCase): void {
@@ -616,7 +616,7 @@ function runRpcUnknownBuilder(c: CorpusCase): void {
 	expect(frame.type).toBe<string>(exp.type);
 	expect(frame.command).toBe(exp.command);
 	expect(frame.success).toBe(exp.success);
-	expect(frame.error).toBe(exp.error);
+	expect((frame as { error?: unknown }).error).toBe(exp.error);
 }
 
 function runFormatShortSha(c: CorpusCase): void {
@@ -680,7 +680,7 @@ function runParseConflictUri(c: CorpusCase): void {
 function runScanConflictLines(c: CorpusCase): void {
 	const input = c.input as { lines: string[]; firstLineNumber: number };
 	const exp = c.expect as { blocks: unknown[] };
-	expect(scanConflictLines(input.lines, input.firstLineNumber)).toEqual(exp.blocks);
+	expect(scanConflictLines(input.lines, input.firstLineNumber) as unknown).toEqual(exp.blocks);
 }
 
 function runIsFindingPriority(c: CorpusCase): void {
@@ -691,7 +691,7 @@ function runIsFindingPriority(c: CorpusCase): void {
 
 function runGetPriorityInfo(c: CorpusCase): void {
 	const input = c.input as { priority: FindingPriority };
-	expect(getPriorityInfo(input.priority)).toEqual(c.expect);
+	expect(getPriorityInfo(input.priority) as unknown).toEqual(c.expect);
 }
 
 function runTitleSlotRoundtrip(c: CorpusCase): void {
@@ -707,10 +707,10 @@ function runTitleSlotRoundtrip(c: CorpusCase): void {
 	expect(Buffer.byteLength(line, "utf-8")).toBe(exp.byteLength);
 	const slot = parseTitleSlotLine(line);
 	expect(slot?.title).toBe(exp.title);
-	expect(slot?.source).toBe(exp.source);
+	expect(slot?.source as unknown).toBe(exp.source);
 	expect(slot?.updatedAt).toBe(exp.updatedAt);
 	expect(slot?.pad.length).toBe(exp.padLength);
-	expect(titleUpdateFromSlot(slot)).toEqual({
+	expect(titleUpdateFromSlot(slot) as unknown).toEqual({
 		title: exp.title,
 		source: exp.source,
 		updatedAt: exp.updatedAt,
@@ -761,7 +761,7 @@ function runFormatFullOutputRef(c: CorpusCase): void {
 
 function runStripRawOutputArtifact(c: CorpusCase): void {
 	const input = c.input as { text: string };
-	expect(stripRawOutputArtifactNotice(input.text)).toEqual(c.expect);
+	expect(stripRawOutputArtifactNotice(input.text) as unknown).toEqual(c.expect);
 }
 
 function runStripGeneratedOutputNotice(c: CorpusCase): void {
@@ -801,13 +801,13 @@ function runEvaluateCodexAutoRedeem(c: CorpusCase): void {
 		attemptedBlockKeys: new Set(),
 		lastAttemptAtByAccount: new Map(),
 	});
-	expect(frame).toEqual(c.expect);
+	expect(frame as unknown).toEqual(c.expect);
 }
 
 function runParseNumstat(c: CorpusCase): void {
 	const input = c.input as { output: string };
 	const exp = c.expect as { entries: unknown[] };
-	expect(parseNumstat(input.output)).toEqual(exp.entries);
+	expect(parseNumstat(input.output) as unknown).toEqual(exp.entries);
 }
 
 function runExtractPathFromRename(c: CorpusCase): void {
