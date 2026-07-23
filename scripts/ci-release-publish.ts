@@ -214,8 +214,11 @@ export async function prepareNativeCorePackage(pkgDir: string, write: boolean): 
  *
  * `bun pm pack` builds the tarball because it resolves the `catalog:` and
  * `workspace:` protocols (npm would ship them verbatim, producing
- * uninstallable manifests) and runs the `prepack` lifecycle, baking generated
- * sources (e.g. coding-agent's docs index) into the tarball.
+ * uninstallable manifests). Note it does NOT run the `prepack` lifecycle (bun
+ * 1.3.x dropped that), so any package whose `prepack` bakes generated sources
+ * into the tarball — coding-agent's `dist/cli.js` bundle — must have `prepack`
+ * run explicitly before this pack, or the tarball ships a manifest pointing at
+ * files that are not in it.
  *
  * The tarball is handed to `npm publish` — not `bun publish` — because only the
  * npm CLI performs the OIDC trusted-publishing token exchange; `bun publish`

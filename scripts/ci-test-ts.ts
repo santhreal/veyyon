@@ -105,12 +105,15 @@ const nativeAndIntegrationPackages = ["packages/natives", "packages/tui", "packa
 // and is outside every CI TS bucket.
 const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
 
-// Repo-level script tests. CI's `workspace` bucket only runs the merge gates:
-// the concurrency regression (the GHA-config guard) and the .d.ts extension
-// rewrite (guards published-type resolution; hermetic temp-dir suite). A local
-// full run also exercises the release-notes and link-veyyon tests. (A
-// `ci-test-ts.test.ts` entry used to sit here but the file never existed — bun
-// silently ignores unmatched filters when at least one other filter matches.)
+// Repo-level script tests. CI's `workspace` bucket runs the release/merge gates
+// inline (see the `case "workspace"` list below): the concurrency regression
+// (GHA-config guard), the native-build guard, the releasable-changes gate, and
+// the install-methods dependency-coverage guard (keeps the tarball smoke's
+// hand-kept package lists in sync with coding-agent's real closure — a drift
+// there silently gates every release). A local full run also exercises the
+// release-notes, link-veyyon, and docs-book-pin tests. (A `ci-test-ts.test.ts`
+// entry used to sit here but the file never existed — bun silently ignores
+// unmatched filters when at least one other filter matches.)
 const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-build-native.test.ts",
@@ -119,6 +122,7 @@ const repoScriptTests = [
 	"scripts/has-releasable-changes.test.ts",
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
+	"scripts/install-methods-coverage.test.ts",
 	"website/tools/gen-changelog.test.ts",
 ];
 
@@ -353,6 +357,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 						"scripts/ci-concurrency.test.ts",
 						"scripts/ci-build-native.test.ts",
 						"scripts/has-releasable-changes.test.ts",
+						"scripts/install-methods-coverage.test.ts",
 					],
 				},
 			];

@@ -100,7 +100,15 @@ cp "$natives_pkg_backup" "$ROOT_DIR/packages/natives/package.json"
 # 3. Pack the remaining workspace packages (natives core and coding-agent
 #    handled separately). `collab-web` is private but still packed here so its
 #    prepack build and tarball file list stay release-safe.
-for pkg in utils wire hashline catalog ai mnemopi agent tui stats; do
+# `argot` is a workspace package with an UNSCOPED name that collides with an
+# unrelated public `argot` on npm (latest 0.1.x). coding-agent depends on it via
+# `workspace:*`, which packs as `argot@<repo version>` — a version the public
+# package will never have. Without packing it here and overriding below, bun
+# resolves the dep from the registry and the tarball smoke dies with
+# `No version matching "<ver>" found for specifier "argot"`. It must be in this
+# list for the same reason every other workspace dep is: the version under test
+# is not published.
+for pkg in utils wire hashline catalog ai mnemopi agent tui stats argot; do
    (
       cd "$ROOT_DIR/packages/$pkg"
       bun pm pack --destination "$TARBALL_DIR" --quiet >/dev/null
@@ -113,11 +121,20 @@ done
 #    work without a build, so the swap must be reproduced here for the smoke
 #    to exercise the bundled worker-host entry the published package ships.
 #    Always restore the working-tree manifest.
+#
+#    `dist/cli.js` is built by the package's `prepack` (`gen:bundle`). `bun pm
+#    pack` USED to run `prepack`, but bun 1.3.x no longer does, so we run it
+#    explicitly here — otherwise the tarball declares `bin.veyyon = dist/cli.js`
+#    (and lists it in `files`) while the file is absent, and the installed
+#    `.bin/veyyon` dangles ("No such file or directory", exit 127). Run it loudly
+#    inside the rc guard so a bundle failure fails the smoke instead of shipping a
+#    binless package (Law 10).
 agent_pkg_backup="$WORK_DIR/coding-agent-package.json.orig"
 cp "$ROOT_DIR/packages/coding-agent/package.json" "$agent_pkg_backup"
 agent_rc=0
 {
    bun -e 'import { applyPublishBin } from "./scripts/ci-release-publish.ts"; await applyPublishBin("packages/coding-agent", true);' &&
+      bun --cwd="$ROOT_DIR/packages/coding-agent" run gen:bundle >/dev/null &&
       (cd "$ROOT_DIR/packages/coding-agent" && bun pm pack --destination "$TARBALL_DIR" --quiet >/dev/null)
 } || agent_rc=$?
 cp "$agent_pkg_backup" "$ROOT_DIR/packages/coding-agent/package.json"
@@ -134,6 +151,9 @@ mnemopi_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-mnemopi-*.tgz)"
 agent_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-agent-core-*.tgz)"
 tui_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-tui-*.tgz)"
 stats_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-stats-*.tgz)"
+# Unscoped name, so no `veyyon-` prefix and the `[0-9]` guard keeps this from
+# matching any future `argot-<suffix>` sibling the way the natives core does.
+argot_tgz="$(find_tarball "$TARBALL_DIR"/argot-[0-9]*.tgz)"
 coding_agent_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-coding-agent-*.tgz)"
 
 TARBALL_APP_DIR="$WORK_DIR/tarball-install"
@@ -158,12 +178,13 @@ mkdir -p "$TARBALL_APP_DIR"
 			'@veyyon/agent-core': '$agent_tgz',
 			'@veyyon/tui': '$tui_tgz',
 			'@veyyon/stats': '$stats_tgz',
+			'argot': '$argot_tgz',
 			'@veyyon/coding-agent': '$coding_agent_tgz'
 		};
 		require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
 	"
 
-   bun add "$utils_tgz" "$wire_tgz" "$natives_tgz" "$hashline_tgz" "$catalog_tgz" "$ai_tgz" "$mnemopi_tgz" "$agent_tgz" "$tui_tgz" "$stats_tgz" "$coding_agent_tgz"
+   bun add "$utils_tgz" "$wire_tgz" "$natives_tgz" "$hashline_tgz" "$catalog_tgz" "$ai_tgz" "$mnemopi_tgz" "$agent_tgz" "$tui_tgz" "$stats_tgz" "$argot_tgz" "$coding_agent_tgz"
    # The platform leaf must arrive through the core's optionalDependencies +
    # override, not as a direct dependency — assert it landed before smoking so a
    # resolution regression is distinguishable from a runtime loader bug.
