@@ -199,7 +199,7 @@ tools:
     bash: prompt
 
 compaction:
-  strategy: snap
+  strategy: summary
   thresholdTokens: 150000     # compact past 150k tokens, on any model
 
 theme:
@@ -552,7 +552,7 @@ contextPromotion:
 
 compaction:
   enabled: true
-  strategy: snap              # handoff | snap (schema default)
+  strategy: summary           # summary | handoff (schema default: summary)
   midTurnEnabled: true        # check thresholds between tool-loop provider requests
   thresholdTokens: -1         # absolute token trigger, model-independent (-1 = use the percent below)
   thresholdPercent: -1        # legacy percent-of-window trigger (-1 = provider/reserve default)
@@ -686,8 +686,8 @@ searxng:
 | `exa.enableWebsets` | boolean | `false` | Exa websets. |
 | `searxng.endpoint` | string | _(unset)_ | SearXNG instance URL. |
 | `searxng.token` | string | _(unset)_ | SearXNG token; also `searxng.basicUsername`/`searxng.basicPassword`/`searxng.categories`/`searxng.language`. |
-| `auth.broker.url` | string | _(unset)_ | Auth-broker URL. Overridden by `VEYYON_AUTH_BROKER_URL`. |
-| `auth.broker.token` | string | _(unset)_ | Auth-broker token. Overridden by `VEYYON_AUTH_BROKER_TOKEN`. |
+
+The auth-broker keys (`auth.broker.url` / `auth.broker.token`) live in the machine-wide global config, not a profile's own file; see [Global (all profiles)](#global-all-profiles).
 
 Provider credentials and custom model definitions are configured separately, see [Providers](./providers.md) and [Models](./models.md).
 
@@ -699,6 +699,8 @@ These keys live in the machine-wide `~/.veyyon/config.yml`, not a profile's own 
 |---|---|---|---|
 | `defaultProfile` | string | `default` | Which profile a bare `vey` launches when `--profile` and `VEYYON_PROFILE` are unset. Also settable with `veyyon profile default [name]`; setting it back to `default` clears the override. |
 | `profileSharing` | boolean | `true` | When `true`, every profile reads one machine-wide provider credential store (`~/.veyyon/shared-auth/agent.db`). Set `false` to give each profile its own private credentials. See [Providers](./providers.md). |
+| `auth.broker.url` | string | _(unset)_ | Auth-broker base URL, shown as **Auth Broker URL** on the Global tab. Stored nested (`auth: { broker: { url } }`); the legacy flat `"auth.broker.url"` key is still read and is rewritten to the nested form on the next save. `VEYYON_AUTH_BROKER_URL` still wins over config. |
+| `auth.broker.token` | string | _(unset)_ | Auth-broker bearer token, shown as **Auth Broker Token**. Write-only in `/settings`: a stored token renders as a mask and is never echoed; enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. `VEYYON_AUTH_BROKER_TOKEN` still wins over config. |
 
 ### Other groups
 

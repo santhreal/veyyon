@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "searchindex-785b1849.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-de67d70d.js"></script>
@@ -547,7 +547,7 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <h2 id="mechanisms-1"><a class="header" href="#mechanisms-1">Mechanisms</a></h2>
 <ul>
 <li>Bounded <code>read</code>, <code>glob</code>, and <code>grep</code> outputs (truncation is marked in tool results)</li>
-<li>Compaction (<code>handoff</code> or <code>snap</code>) compresses older history instead of dropping it silently</li>
+<li>Compaction (<code>summary</code> or <code>handoff</code>) compresses older history instead of dropping it silently</li>
 <li>Goal mode keeps an objective outside the raw transcript tail</li>
 <li>Edit verification and tool repair reduce failed apply/schema turns</li>
 </ul>
@@ -635,8 +635,8 @@ $ vey plugin doctor
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
 <p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
 <h2 id="updating"><a class="header" href="#updating">Updating</a></h2>
-<p>Veyyon keeps itself current. On startup it checks the registry for a newer
-release, and if it finds one it installs it in the background:</p>
+<p>Veyyon keeps itself current. On startup it checks veyyon.dev for a newer
+version, and if it finds one it downloads the new binary in the background:</p>
 <pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
 </code></pre>
 <p>The running process keeps the version it started with, so the update takes
@@ -664,14 +664,19 @@ your terminal.</p>
 <p>You can always update on demand, whichever settings are in force:</p>
 <pre><code class="language-console">$ veyyon update
 </code></pre>
-<p>Veyyon updates through whatever installed it, whether that is Homebrew, mise,
-bun, npm, or a standalone binary. If an automatic update fails, it says so and
-tells you to retry with <code>veyyon update</code>; it never fails quietly and leaves you
-on an old version without a word.</p>
+<p>Veyyon is distributed only two ways, and it updates the way it was installed. A
+binary install (the <code>curl</code> installer from veyyon.dev) replaces its own binary
+with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
+release and propagates automatically from GitHub Releases, so that is the only
+place a binary ever comes from. A source checkout does not self-update the
+binary; update it with <code>git pull</code> and a rebuild (<code>bun setup</code>). There is no npm,
+Homebrew, or other package-manager channel to go through. If an automatic update
+fails, Veyyon says so and tells you to retry with <code>veyyon update</code>; it never fails
+quietly and leaves you on an old version without a word.</p>
 <p>If the same version fails to install twice, the cause is usually the machine
 rather than the release: a binary owned by another user, a read-only image, or a
-package manager that needs elevated permissions. Veyyon reports that failure and
-then leaves it alone for six hours instead of repeating it on every launch. A
+directory that needs elevated permissions to write. Veyyon reports that failure
+and then leaves it alone for six hours instead of repeating it on every launch. A
 newer release is never held back by an older one’s failure, and <code>veyyon update</code>
 ignores the pause entirely, so you can always ask to see the error again:</p>
 <pre><code class="language-console">$ veyyon update
@@ -1823,7 +1828,7 @@ the recalled messages). Queueing an empty message is refused with an error.</p>
 <p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
 <p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
 <p>In the composer’s quiet footline the <code>context_pct</code> segment renders as a growing 8-cell bar instead of the <code>pct/window</code> text: <code>▰▰▰▓▱▱▱▱ 38% ∞</code>. Filled cells take the usage hue (silver, then gold, ember, and red as the window fills), and cells at the 25/50/75/90 percent marks lock in gold once reached. The cell at the fill frontier breathes while the model is running (faster once usage passes 90 percent); at rest it is a static quarter-step glyph showing how full the next cell is, so an idle screen never moves. The percent number stays; the window denominator moves to the <code>context_total</code> segment. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the window. Classic status-line presets keep the text form.</p>
-<p>Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run’s elapsed, in <code>M:SS</code> form and widening to <code>H:MM:SS</code> past the hour: <code>…keyhog  ·  main *      12:34</code>. When the run finishes it reads <code>Worked for 12m34s</code> and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: <code>Running tests · 0:42 ⟦esc⟧</code>; that clock restarts whenever the step changes. The <code>time_spent</code> segment is related but cumulative: it sums every run since <code>/clear</code> and appears in the <code>full</code> and <code>nerd</code> presets.</p>
+<p>Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run’s elapsed, in <code>M:SS</code> form and widening to <code>H:MM:SS</code> past the hour: <code>…keyhog  ·  main *      12:34</code>. When the run finishes it reads <code>Worked for 12m34s</code> and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: <code>Running tests · 0:42 ⟦esc⟧</code>; that clock restarts whenever the step changes. The <code>time_spent</code> segment is related but cumulative: it sums every run in the session (a fresh session with <code>/new</code> starts it at zero) and appears in the <code>full</code> and <code>nerd</code> presets.</p>
 <h2 id="session-tree-and-agents"><a class="header" href="#session-tree-and-agents">Session tree and agents</a></h2>
 <div class="table-wrapper">
 <table>
@@ -3368,7 +3373,7 @@ subagent:
   model: deepseek/deepseek-chat     # optional override of modelRoles.task
 compaction:
   model: openai/gpt-5-mini
-  strategy: handoff                 # or snap
+  strategy: handoff                 # or summary (the default)
   thresholdPercent: 80
 </code></pre>
 <p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception, unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
@@ -3468,6 +3473,19 @@ compaction:
 <p>Every profile including <code>default</code>:</p>
 <pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/   # config.yml, sessions, MCP, skills, …
 </code></pre>
+<h3 id="instruction-files-global-vs-per-profile-agentsmd"><a class="header" href="#instruction-files-global-vs-per-profile-agentsmd">Instruction Files: Global vs Per-Profile (<code>AGENTS.md</code>)</a></h3>
+<p>Veyyon discovers exactly <strong>two user-level instruction layers</strong> before every session:</p>
+<ol>
+<li><strong>Global User Layer (<code>~/.veyyon/AGENTS.md</code>)</strong>: Applies across EVERY profile and workspace. Reserved for cross-profile standing rules.</li>
+<li><strong>Active Profile Layer (<code>~/.veyyon/profiles/&lt;profile_name&gt;/...</code>)</strong>: Applies ONLY to the active profile. Scanned in <strong>descending priority order</strong> (first match wins; exactly 1 file loaded per profile to prevent duplication):
+<ol>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent/AGENTS.md</code> (Highest)</li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/AGENTS.md</code></li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent/agent.md</code></li>
+<li><code>~/.veyyon/profiles/&lt;name&gt;/agent.md</code> (Lowest)</li>
+</ol>
+</li>
+</ol>
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="approvals-3"><a class="header" href="#approvals-3">Approvals</a></h2>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="#approvals">Approvals</a>.</p>
@@ -3657,11 +3675,17 @@ config tree (<code>.veyyon/</code>, <code>~/.veyyon/profiles/default/agent/</cod
 <p>Read and write from a shell with <code>veyyon config</code>:</p>
 <pre><code class="language-console">$ veyyon config list                    # all settings with effective values
 $ veyyon config get tools.approvalMode
-$ veyyon config set compaction.strategy snap
+$ veyyon config set compaction.strategy summary
 $ veyyon config path                     # print the active agent directory
 </code></pre>
 <p><code>/settings</code> does the same inside a live session. Keys must match a schema path exactly
 (<code>theme.dark</code>, not <code>theme</code>).</p>
+<h3 id="session-working-directory-sessionworkdir-vs-set_cwd"><a class="header" href="#session-working-directory-sessionworkdir-vs-set_cwd">Session Working Directory (<code>session.workdir</code> vs <code>set_cwd</code>)</a></h3>
+<ul>
+<li><strong>Persistent Profile Default (<code>session.workdir</code>)</strong>: Configures the default working directory for a profile across all future sessions. Set interactively via <code>/settings</code> (Interaction › Profile) or in <code>~/.veyyon/profiles/&lt;profile&gt;/agent/config.yml</code>.</li>
+<li><strong>Ephemeral Session Re-root (<code>set_cwd</code> tool / <code>/cwd</code>)</strong>: Re-roots the active session’s working directory temporarily. It never writes <code>session.workdir</code>.</li>
+<li><strong>Prompt Cache Protection</strong>: Working directory changes mid-session update path resolution, but the rendered System Prompt header (<code>&lt;workstation&gt;</code>) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.</li>
+</ul>
 <h3 id="when-a-settings-file-has-a-syntax-error"><a class="header" href="#when-a-settings-file-has-a-syntax-error">When a settings file has a syntax error</a></h3>
 <p>If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
 read it. It tells you at startup, names the file, and runs the session on
@@ -3753,7 +3777,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </thead>
 <tbody>
 <tr><td>Auto-compaction threshold</td><td><code>compaction.thresholdPercent</code> (also <code>compaction.thresholdTokens</code>)</td></tr>
-<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>handoff</code> or <code>snap</code> (schema default <code>snap</code>)</td></tr>
+<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
 </tbody>
@@ -4064,7 +4088,7 @@ veyyon plugin doctor
 <p>If the new binary does not work for you, you can go back to the previous version without losing data.</p>
 <ol>
 <li>Close all Veyyon processes.</li>
-<li>Restore the previous binary from your system package manager, the release archive, or your own backup.</li>
+<li>Restore the previous binary. Run <code>veyyon rollback</code> to pick an earlier version, or re-run the <code>curl</code> installer with <code>--ref v&lt;version&gt;</code> to pin one from veyyon.dev; a source checkout goes back with <code>git checkout</code> and a rebuild.</li>
 <li>Restore profile <code>config.yml</code> (and global <code>~/.veyyon/config.yml</code> if you changed it) from the backup you made before upgrading, if the new version modified settings the old version cannot read.</li>
 <li>Leave agent-dir <code>sessions/</code>, archives, and SQLite stores in place. Rollout files are forward-compatible for recent releases; the old binary can rebuild indexes when needed.</li>
 <li>Start Veyyon and run <code>veyyon plugin doctor</code> to confirm the environment is healthy.</li>
@@ -5483,8 +5507,7 @@ content out of the live context and leaves a short placeholder in its place. Who
 results and large fenced or XML blocks are replaced with a marker such as
 <code>[shaken ~1200 tokens; recover: artifact://42 (region 3)]</code>. The full text is saved as a
 session artifact first, so you can always read it back with <code>read artifact://42</code>. Nothing is
-lost, it just stops being resent on every turn. Run it on demand with <code>/shake</code>, or let
-auto-maintenance run it when <code>compaction.strategy</code> is <code>shake</code>.</p>
+lost, it just stops being resent on every turn. Run it on demand with <code>/shake</code>.</p>
 <p>Shake also removes redundancy. When you read the same unchanged file twice, or run the same
 command twice and get the same output, every copy but the newest carries no new information.
 Shake finds each earlier tool result whose tool, arguments, and output exactly match a later
@@ -5494,7 +5517,7 @@ a duplicate is redundant however recent it is. Results from a protected tool (su
 error results, and results already elided are never deduplicated.</p>
 <p>The match is exact. If a command’s output changes between runs, both runs are kept, because the
 later one is genuinely new information rather than a repeat.</p>
-<p>This duplicate elision does not wait for the <code>shake</code> strategy. Whenever auto-maintenance is about
+<p>This duplicate elision runs on its own, ahead of every strategy. Whenever auto-maintenance is about
 to compact because the context crossed the threshold or overflowed, it first runs the lossless
 dedup as a Tier-0 pass, whatever your <code>compaction.strategy</code> is. The pass is recall-preserving and
 makes no model call, so it always runs before the heavier path and shrinks what that path has to

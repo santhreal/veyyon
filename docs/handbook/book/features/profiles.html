@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "../searchindex-785b1849.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-de67d70d.js"></script>
@@ -299,7 +299,7 @@ subagent:
   model: deepseek/deepseek-chat     # optional override of modelRoles.task
 compaction:
   model: openai/gpt-5-mini
-  strategy: handoff                 # or snap
+  strategy: handoff                 # or summary (the default)
   thresholdPercent: 80
 </code></pre>
 <p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception, unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>

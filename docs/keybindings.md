@@ -38,6 +38,7 @@ app.history.search: []
 | `app.message.dequeue`       | `Alt+Up`                               | Dequeue a queued message back into the editor |
 | `app.retry`                 | `Alt+R`                                | Retry the last failed assistant turn          |
 | `app.display.reset`         | `Ctrl+L`                               | Reset terminal display                        |
+| `app.bash.background`       | `Ctrl+B`                               | Move the running foreground command to a background job. Active only while a foreground `bash` call is waiting; the working line shows `⟦ctrl+b background⟧` then. Otherwise the chord keeps its readline meaning (cursor left) |
 | `app.clipboard.copyLine`    | `Alt+Shift+L`                          | Copy the current line                         |
 | `app.clipboard.copyPrompt`  | `Alt+Shift+C`                          | Copy the whole prompt                         |
 | `app.clipboard.pasteImage`  | `Ctrl+V` (`Alt+V` fallback on Windows) | Paste from the clipboard (image preferred, text fallback) |

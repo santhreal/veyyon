@@ -131,7 +131,7 @@ subagent:
   model: deepseek/deepseek-chat     # optional override of modelRoles.task
 compaction:
   model: openai/gpt-5-mini
-  strategy: handoff                 # or snap
+  strategy: handoff                 # or summary (the default)
   thresholdPercent: 80
 ```
 

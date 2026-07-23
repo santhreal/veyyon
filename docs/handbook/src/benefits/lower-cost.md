@@ -5,7 +5,7 @@ Token use and turn count depend on tool output size, compaction, and whether bad
 ## Mechanisms
 
 - Bounded `read`, `glob`, and `grep` outputs (truncation is marked in tool results)
-- Compaction (`handoff` or `snap`) compresses older history instead of dropping it silently
+- Compaction (`summary` or `handoff`) compresses older history instead of dropping it silently
 - Goal mode keeps an objective outside the raw transcript tail
 - Edit verification and tool repair reduce failed apply/schema turns
 

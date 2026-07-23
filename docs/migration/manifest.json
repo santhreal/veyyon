@@ -1,0 +1,355 @@
+{
+ "schemaVersion": 1,
+ "modules": [
+  {
+   "module": "hashline/tokenizer",
+   "sourceFile": "packages/hashline/src/tokenizer.ts",
+   "contract": "docs/migration/hashline-contract.md",
+   "functions": [
+    {
+     "name": "splitHashlineLines",
+     "input": [
+      {
+       "name": "text",
+       "type": "string"
+      }
+     ],
+     "output": "string[]",
+     "errors": [],
+     "invariants": [
+      "result.length >= 1",
+      "no element contains LF",
+      "terminator-style: trailing terminator adds no phantom line",
+      "CR trimmed only when immediately before a terminating LF",
+      "split(x).join('\\n') === x when x has no trailing terminator"
+     ]
+    },
+    {
+     "name": "parseLid",
+     "input": [
+      {
+       "name": "raw",
+       "type": "string"
+      },
+      {
+       "name": "lineNum",
+       "type": "number"
+      }
+     ],
+     "output": "{ line: number }",
+     "errors": [
+      {
+       "type": "Error",
+       "messagePrefix": "line <lineNum>: expected a line number"
+      }
+     ],
+     "invariants": [
+      "accepts exactly one ASCII-whitespace-padded canonical decimal with non-zero first digit",
+      "round-trips every positive integer <= Number.MAX_SAFE_INTEGER",
+      "rejects leading zeros, signs, radix prefixes, non-ASCII digits"
+     ]
+    }
+   ]
+  },
+  {
+   "module": "hashline/normalize",
+   "sourceFile": "packages/hashline/src/normalize.ts",
+   "contract": "docs/migration/hashline-contract.md",
+   "functions": [
+    {
+     "name": "detectLineEnding",
+     "input": [
+      {
+       "name": "content",
+       "type": "string"
+      }
+     ],
+     "output": "\"\\r\\n\" | \"\\n\"",
+     "errors": [],
+     "invariants": [
+      "LF-less content (incl. lone CR) detects as LF",
+      "first-encounter: CRLF wins only when it occurs before the first LF"
+     ]
+    },
+    {
+     "name": "normalizeToLF",
+     "input": [
+      {
+       "name": "text",
+       "type": "string"
+      }
+     ],
+     "output": "string",
+     "errors": [],
+     "invariants": [
+      "idempotent",
+      "result contains no CR byte",
+      "byte pair CR LF collapses as ONE ending"
+     ]
+    },
+    {
+     "name": "restoreLineEndings",
+     "input": [
+      {
+       "name": "text",
+       "type": "string"
+      },
+      {
+       "name": "ending",
+       "type": "\"\\r\\n\" | \"\\n\""
+      }
+     ],
+     "output": "string",
+     "errors": [],
+     "invariants": [
+      "identity for ending LF",
+      "for CRLF every LF becomes CRLF; pre-existing CR is not protected",
+      "restore(normalize(x), detect(x)) === x for single-style documents"
+     ]
+    },
+    {
+     "name": "stripBom",
+     "input": [
+      {
+       "name": "content",
+       "type": "string"
+      }
+     ],
+     "output": "{ bom: string, text: string }",
+     "errors": [],
+     "invariants": [
+      "bom + text === content",
+      "strips at most one leading U+FEFF; interior BOMs are content"
+     ]
+    }
+   ]
+  },
+  {
+   "module": "mnemopi/vector-math",
+   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "contract": "docs/migration/mnemopi-contract.md",
+   "functions": [
+    {
+     "name": "cosineSimilarity",
+     "input": [
+      {
+       "name": "a",
+       "type": "number[]"
+      },
+      {
+       "name": "b",
+       "type": "number[]"
+      }
+     ],
+     "output": "number",
+     "errors": [],
+     "invariants": [
+      "iterates to the longer length; missing and non-finite entries read as 0",
+      "returns 0 when either squared norm is exactly 0 (empty, zero vector, underflow)",
+      "norm overflow to Infinity propagates (1e200 pair yields NaN, frozen)",
+      "IEEE-exact ops only (+ * / sqrt): ports match bit-for-bit"
+     ]
+    },
+    {
+     "name": "encodeEmbeddingJson",
+     "input": [
+      {
+       "name": "embedding",
+       "type": "number[]"
+      }
+     ],
+     "output": "string",
+     "errors": [],
+     "invariants": [
+      "byte-exact JSON.stringify wire format (persisted embedding_json column)"
+     ]
+    },
+    {
+     "name": "decodeEmbeddingJson",
+     "input": [
+      {
+       "name": "raw",
+       "type": "unknown"
+      }
+     ],
+     "output": "number[] | null",
+     "errors": [],
+     "invariants": [
+      "strict: null for non-string, empty string, malformed/non-array/empty JSON, any non-finite or non-number element",
+      "decode(encode(v)) === v for finite non-empty v"
+     ]
+    }
+   ]
+  },
+  {
+   "module": "mnemopi/binary-vectors",
+   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "contract": "docs/migration/mnemopi-contract.md",
+   "functions": [
+    {
+     "name": "quantizeInt8AsArray",
+     "input": [
+      {
+       "name": "embedding",
+       "type": "number[]"
+      }
+     ],
+     "output": "number[] (int8)",
+     "errors": [],
+     "invariants": [
+      "clamp to [-1,1], non-finite reads 0, scale by 127 with magnitude-symmetric round-half-up (0.5 -> 64, -0.5 -> -64)"
+     ]
+    },
+    {
+     "name": "binarizeAsArray",
+     "input": [
+      {
+       "name": "embedding",
+       "type": "number[]"
+      }
+     ],
+     "output": "number[] (bytes)",
+     "errors": [],
+     "invariants": [
+      "bit set iff entry strictly positive; MSB-first within each byte",
+      "dim clamped to min(len, EMBEDDING_DIM); corpus stays <= 32 dims"
+     ]
+    },
+    {
+     "name": "hammingDistanceFromArrays",
+     "input": [
+      {
+       "name": "a",
+       "type": "number[] (bytes)"
+      },
+      {
+       "name": "b",
+       "type": "number[] (bytes)"
+      }
+     ],
+     "output": "number",
+     "errors": [],
+     "invariants": [
+      "popcount of XOR over the shared prefix plus popcount of the longer tail"
+     ]
+    },
+    {
+     "name": "informationScore",
+     "input": [
+      {
+       "name": "distance",
+       "type": "number"
+      },
+      {
+       "name": "dim",
+       "type": "number"
+      }
+     ],
+     "output": "number",
+     "errors": [],
+     "invariants": [
+      "1 - distance/dim; dim <= 0 returns 0; values past dim go negative (frozen)"
+     ]
+    }
+   ]
+  },
+  {
+   "module": "mnemopi/decay",
+   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "contract": "docs/migration/mnemopi-contract.md",
+   "functions": [
+    {
+     "name": "weibullDecayFactor12",
+     "input": [
+      {
+       "name": "ageHours",
+       "type": "number"
+      },
+      {
+       "name": "memoryType",
+       "type": "string?"
+      }
+     ],
+     "output": "number",
+     "errors": [],
+     "invariants": [
+      "ageHours <= 0 returns exactly 1",
+      "known type: exp(-((age/eta) ** k)) from WEIBULL_PARAMS; unknown type: exp(-age/168)",
+      "boundary value rounded to 12 significant digits (libm exp/pow drift)"
+     ]
+    }
+   ]
+  },
+  {
+   "module": "mnemopi/text-similarity",
+   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "contract": "docs/migration/mnemopi-contract.md",
+   "functions": [
+    {
+     "name": "wordSetSorted",
+     "input": [
+      {
+       "name": "text",
+       "type": "string"
+      }
+     ],
+     "output": "string[]",
+     "errors": [],
+     "invariants": [
+      "lowercased whitespace-split token set, deduped, UTF-16 code-unit sorted"
+     ]
+    },
+    {
+     "name": "jaccardWordSimilarity",
+     "input": [
+      {
+       "name": "a",
+       "type": "string"
+      },
+      {
+       "name": "b",
+       "type": "string"
+      }
+     ],
+     "output": "number",
+     "errors": [],
+     "invariants": [
+      "|A n B| / |A u B| over word sets; 0 when either set is empty (never NaN)"
+     ]
+    }
+   ]
+  },
+  {
+   "module": "mnemopi/mmr",
+   "sourceFile": "packages/mnemopi/src/core/conformance-boundary.ts",
+   "contract": "docs/migration/mnemopi-contract.md",
+   "functions": [
+    {
+     "name": "mmrRerankRecords",
+     "input": [
+      {
+       "name": "results",
+       "type": "{content?: string, score?: number}[]"
+      },
+      {
+       "name": "lambdaParam",
+       "type": "number"
+      },
+      {
+       "name": "topK",
+       "type": "number"
+      }
+     ],
+     "output": "{content?: string, score?: number}[]",
+     "errors": [],
+     "invariants": [
+      "topK truncated toward 0; <= 0 returns []",
+      "stable score-descending presort seeds selection with the top item",
+      "greedy argmax of lambda*score - (1-lambda)*maxJaccardToSelected; first winner on ties",
+      "unselected remainder fills to topK in sorted order"
+     ]
+    }
+   ]
+  }
+ ]
+}

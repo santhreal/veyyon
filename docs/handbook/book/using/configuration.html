@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "../searchindex-785b1849.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-de67d70d.js"></script>
@@ -218,11 +218,17 @@
 <p>Read and write from a shell with <code>veyyon config</code>:</p>
 <pre><code class="language-console">$ veyyon config list                    # all settings with effective values
 $ veyyon config get tools.approvalMode
-$ veyyon config set compaction.strategy snap
+$ veyyon config set compaction.strategy summary
 $ veyyon config path                     # print the active agent directory
 </code></pre>
 <p><code>/settings</code> does the same inside a live session. Keys must match a schema path exactly
 (<code>theme.dark</code>, not <code>theme</code>).</p>
+<h3 id="session-working-directory-sessionworkdir-vs-set_cwd"><a class="header" href="#session-working-directory-sessionworkdir-vs-set_cwd">Session Working Directory (<code>session.workdir</code> vs <code>set_cwd</code>)</a></h3>
+<ul>
+<li><strong>Persistent Profile Default (<code>session.workdir</code>)</strong>: Configures the default working directory for a profile across all future sessions. Set interactively via <code>/settings</code> (Interaction › Profile) or in <code>~/.veyyon/profiles/&lt;profile&gt;/agent/config.yml</code>.</li>
+<li><strong>Ephemeral Session Re-root (<code>set_cwd</code> tool / <code>/cwd</code>)</strong>: Re-roots the active session’s working directory temporarily. It never writes <code>session.workdir</code>.</li>
+<li><strong>Prompt Cache Protection</strong>: Working directory changes mid-session update path resolution, but the rendered System Prompt header (<code>&lt;workstation&gt;</code>) remains frozen until context compaction. Mutating system prompt headers mid-session prior to compaction invalidates LLM prefix prompt caches, causing 100% cache-miss token inflation.</li>
+</ul>
 <h3 id="when-a-settings-file-has-a-syntax-error"><a class="header" href="#when-a-settings-file-has-a-syntax-error">When a settings file has a syntax error</a></h3>
 <p>If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
 read it. It tells you at startup, names the file, and runs the session on
@@ -314,7 +320,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </thead>
 <tbody>
 <tr><td>Auto-compaction threshold</td><td><code>compaction.thresholdPercent</code> (also <code>compaction.thresholdTokens</code>)</td></tr>
-<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>handoff</code> or <code>snap</code> (schema default <code>snap</code>)</td></tr>
+<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
 </tbody>
