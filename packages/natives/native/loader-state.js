@@ -588,7 +588,7 @@ let warnedStaleWorkspaceNative = false;
 
 /**
  * The export name the Rust addon emits for `version`, e.g. `1.0.14` ->
- * `__veyyonNativesV1_0_19`. `scripts/release.ts` bumps this name in lock-step
+ * `__veyyonNativesV1_0_20`. `scripts/release.ts` bumps this name in lock-step
  * with the package version, so a `.node` from another release physically cannot
  * expose the symbol this loader looks for. Exported so the version<->sentinel
  * contract can be pinned by a test (the workspace/test env skips the runtime

@@ -88,7 +88,7 @@ export function selectCpuVariant(input: SelectCpuVariantInput): SelectCpuVariant
 
 export function loadNative(): Record<string, unknown>;
 
-/** The exported symbol name the Rust addon emits for a version, e.g. `1.0.14` -> `__veyyonNativesV1_0_19`. */
+/** The exported symbol name the Rust addon emits for a version, e.g. `1.0.14` -> `__veyyonNativesV1_0_20`. */
 export function versionSentinelExportFor(version: string): string;
 
 /** The version a loaded addon was built for, read back from its sentinel export, or `"unknown"`. */
