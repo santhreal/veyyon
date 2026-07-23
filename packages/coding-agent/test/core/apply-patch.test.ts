@@ -11,6 +11,7 @@ import {
 	ParseError,
 	parseApplyPatch,
 	parseDiffHunks,
+	PartialApplyPatchError,
 	seekSequence,
 } from "@veyyon/coding-agent/edit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
@@ -729,8 +730,10 @@ describe("applyCodexPatch (production)", () => {
 			"*** End Patch",
 		].join("\n");
 
-		await expect(applyCodexPatch(patch, { cwd: tempDir })).rejects.toThrow();
+		const error = await applyCodexPatch(patch, { cwd: tempDir }).catch(e => e);
 
+		// The failure is the structured partial-application error, not a bare throw.
+		expect(error).toBeInstanceOf(PartialApplyPatchError);
 		// First op should have landed before the failure.
 		expect(await Bun.file(path.join(tempDir, "first.txt")).text()).toBe("A\n");
 	});
@@ -797,6 +800,119 @@ describe("applyCodexPatch (production)", () => {
 		await expect(applyCodexPatch(patch, { cwd: tempDir })).rejects.toBeInstanceOf(ApplyPatchError);
 		expect(await Bun.file(src).text()).toBe("hello\n");
 		expect(await Bun.file(dst).text()).toBe("will-be-preserved\n");
+	});
+});
+
+/**
+ * `applyCodexPatch` applies hunks in order and is NOT atomic (spec §6.1). When a
+ * hunk fails partway, the earlier hunks are already on disk. Before the fix the
+ * function let the underlying error propagate bare, so a caller could not tell
+ * which files had already been mutated — the exact silent-partial-application
+ * trap the module docstring claimed to prevent but did not. These tests lock in
+ * `PartialApplyPatchError`: it must carry the applied results and the
+ * applied-vs-unapplied path breakdown, and its message must name both sets so
+ * the caller can re-issue only the failed and unapplied files. If anyone
+ * reverts to a bare throw, the structured-contract assertions below fail.
+ */
+describe("applyCodexPatch partial-failure contract (PartialApplyPatchError)", () => {
+	let tempDir: string;
+
+	beforeEach(() => {
+		tempDir = path.join(os.tmpdir(), `codex-partial-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		fs.mkdirSync(tempDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		try {
+			removeSyncWithRetries(tempDir);
+		} catch {
+			// ignore
+		}
+	});
+
+	test("mid-batch failure surfaces applied results and applied/unapplied paths", async () => {
+		await Bun.write(path.join(tempDir, "first.txt"), "a\n");
+
+		const patch = [
+			"*** Begin Patch",
+			"*** Update File: first.txt",
+			"@@",
+			"-a",
+			"+A",
+			"*** Update File: missing.txt",
+			"@@",
+			"-x",
+			"+y",
+			"*** Add File: later.txt",
+			"+never reached",
+			"*** End Patch",
+		].join("\n");
+
+		const error = await applyCodexPatch(patch, { cwd: tempDir }).catch(e => e);
+
+		expect(error).toBeInstanceOf(PartialApplyPatchError);
+		const partial = error as PartialApplyPatchError;
+		// The hunk that threw, and the ones after it that were never attempted.
+		expect(partial.failedPath).toBe("missing.txt");
+		expect(partial.unappliedPaths).toEqual(["later.txt"]);
+		// Exactly the first hunk succeeded and is recorded as modified.
+		expect(partial.results).toHaveLength(1);
+		expect(partial.affected).toEqual({ added: [], modified: ["first.txt"], deleted: [] });
+		// The message names both the applied and the unapplied files verbatim.
+		expect(partial.message).toContain("Failed to apply missing.txt");
+		expect(partial.message).toContain("Files already applied: first.txt.");
+		expect(partial.message).toContain("Files NOT applied: later.txt");
+		// Disk truth: the applied file changed, the unapplied file was never created.
+		expect(await Bun.file(path.join(tempDir, "first.txt")).text()).toBe("A\n");
+		expect(fs.existsSync(path.join(tempDir, "later.txt"))).toBe(false);
+	});
+
+	test("failure on the very first hunk reports no applied files and lists every later path", async () => {
+		const patch = [
+			"*** Begin Patch",
+			"*** Update File: missing.txt",
+			"@@",
+			"-x",
+			"+y",
+			"*** Add File: b.txt",
+			"+b",
+			"*** Add File: c.txt",
+			"+c",
+			"*** End Patch",
+		].join("\n");
+
+		const error = await applyCodexPatch(patch, { cwd: tempDir }).catch(e => e);
+
+		expect(error).toBeInstanceOf(PartialApplyPatchError);
+		const partial = error as PartialApplyPatchError;
+		expect(partial.failedPath).toBe("missing.txt");
+		expect(partial.results).toHaveLength(0);
+		expect(partial.affected).toEqual({ added: [], modified: [], deleted: [] });
+		expect(partial.unappliedPaths).toEqual(["b.txt", "c.txt"]);
+		// With nothing applied, the message must not claim any file landed.
+		expect(partial.message).not.toContain("Files already applied");
+		expect(partial.message).toContain("Files NOT applied: b.txt, c.txt");
+		// Neither later file was written.
+		expect(fs.existsSync(path.join(tempDir, "b.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(tempDir, "c.txt"))).toBe(false);
+	});
+
+	test("PartialApplyPatchError is an ApplyPatchError so existing handlers still catch it", async () => {
+		await Bun.write(path.join(tempDir, "first.txt"), "a\n");
+		const patch = [
+			"*** Begin Patch",
+			"*** Update File: first.txt",
+			"@@",
+			"-a",
+			"+A",
+			"*** Update File: missing.txt",
+			"@@",
+			"-x",
+			"+y",
+			"*** End Patch",
+		].join("\n");
+
+		await expect(applyCodexPatch(patch, { cwd: tempDir })).rejects.toBeInstanceOf(ApplyPatchError);
 	});
 });
 
