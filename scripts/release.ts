@@ -302,6 +302,23 @@ export function planSentinelRewrite(prevVersion: string, nextVersion: string): {
 }
 
 /**
+ * True for a source file the sentinel rewrite must NEVER touch even when it holds
+ * the previous sentinel. Test files carry the sentinel as an intentional
+ * historical FIXTURE (a `.toBe("__veyyonNativesV<prev>")` where `<prev>` is a
+ * deliberate past version). Because `<prev>` can be the IMMEDIATELY previous
+ * release, its literal equals the rewrite's `from`, so an `sd -F` rename clobbers
+ * the fixture and bricks the native bucket — the recurring NATIVE-SENTINEL bug
+ * (it re-fired on v1.0.19, rewriting a 1_0_18 fixture to 1_0_19). Only production
+ * source that EMITS or mirrors the CURRENT sentinel must advance (lib.rs
+ * `js_name`, the generated native/index.{js,d.ts}, the render-stress harnesses —
+ * none of which are `.test.` files). The `.test.` filename convention excludes
+ * `foo.test.ts` while keeping non-test mirrors like `render-stress-harness.ts`.
+ */
+export function isSentinelRewriteExcluded(file: string): boolean {
+	return file.includes("node_modules") || file.includes("/dist/") || /\.test\.[cm]?[jt]s$/.test(file);
+}
+
+/**
  * Whether this run is the release workflow rather than a workstation. Set by
  * `.github/workflows/release.yml`; deliberately its own variable and not bare
  * `CI`, so a release run from any other CI context still behaves normally.
@@ -430,7 +447,10 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	const sentinelGlob = new Bun.Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
 	const sentinelFiles: string[] = [];
 	for await (const file of sentinelGlob.scan(".")) {
-		if (file.includes("node_modules") || file.includes("/dist/")) continue;
+		// Skip vendored/build outputs and, crucially, TEST files: a test can hold
+		// the previous sentinel as an intentional fixture, and rewriting it bricks
+		// the native bucket. Single owner: isSentinelRewriteExcluded (release.ts).
+		if (isSentinelRewriteExcluded(file)) continue;
 		if ((await Bun.file(file).text()).includes(prevSentinelName)) {
 			sentinelFiles.push(file);
 		}

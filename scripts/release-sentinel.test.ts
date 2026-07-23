@@ -13,7 +13,7 @@
  * come back.
  */
 import { describe, expect, it } from "bun:test";
-import { planSentinelRewrite, sentinelExportName } from "./release.ts";
+import { isSentinelRewriteExcluded, planSentinelRewrite, sentinelExportName } from "./release.ts";
 
 describe("sentinelExportName", () => {
 	it("maps a clean semver to its sentinel export symbol", () => {
@@ -73,8 +73,46 @@ describe("planSentinelRewrite", () => {
 		expect(rewritten).toContain(`.toBe("__veyyonNativesV1_0_13")`);
 		expect(rewritten).toContain(`.toBe("__veyyonNativesV16_5_2")`);
 	});
+});
 
-	it("the OLD blanket rewrite WOULD have corrupted those fixtures (documents the bug)", () => {
+describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
+	it("excludes test files, which carry the sentinel as an intentional fixture", () => {
+		// The v1.0.19 recurrence: native-embed-freshness.test.ts held the literal
+		// "__veyyonNativesV1_0_18" as a fixture. 1.0.18 was the PREVIOUS release, so
+		// the rewrite's `from` equaled that literal and clobbered it to 1_0_19,
+		// failing the native bucket and blocking the publish. Test files must be
+		// excluded from the file scan no matter what version they reference.
+		for (const testFile of [
+			"packages/natives/test/native-embed-freshness.test.ts",
+			"packages/natives/test/native-version-sentinel.test.ts",
+			"packages/coding-agent/test/foo.test.mts",
+			"packages/tui/test/bar.test.js",
+		]) {
+			expect(isSentinelRewriteExcluded(testFile)).toBe(true);
+		}
+	});
+
+	it("excludes vendored and build-output copies", () => {
+		expect(isSentinelRewriteExcluded("packages/natives/node_modules/x/lib.js")).toBe(true);
+		expect(isSentinelRewriteExcluded("packages/coding-agent/dist/cli.js")).toBe(true);
+	});
+
+	it("still rewrites production source that emits or mirrors the current sentinel", () => {
+		// These are NOT test files and must advance on a bump: the Rust js_name, the
+		// generated native mirrors, and the render-stress harness (a `-harness.ts`,
+		// not a `.test.ts`, so the `.test.` convention keeps it in scope).
+		for (const productionFile of [
+			"crates/veyyon-natives/src/lib.rs",
+			"packages/natives/native/index.js",
+			"packages/natives/native/index.d.ts",
+			"packages/tui/test/render-stress-harness.ts",
+			"packages/tui/test/render-stress-subprocess.ts",
+		]) {
+			expect(isSentinelRewriteExcluded(productionFile)).toBe(false);
+		}
+	});
+
+	it("documents the bug that the exclusion now prevents (superseded assertion)", () => {
 		// The regression this suite guards against: a blanket
 		// `sd '__veyyonNativesV[A-Za-z0-9_]+' <current>` rewrote every sentinel,
 		// including the fixtures, to the current version.
