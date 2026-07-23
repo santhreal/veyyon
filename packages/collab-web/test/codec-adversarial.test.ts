@@ -29,7 +29,7 @@ describe("collab codec adversarial", () => {
 		const sealed = await seal(key, frame as never);
 		expect(sealed.byteLength).toBeGreaterThan(12);
 		const opened = await open(key, sealed);
-		expect(opened).toEqual(frame);
+		expect(opened).toEqual<unknown>(frame);
 	});
 
 	it("open fails closed with a different room key", async () => {

@@ -81,7 +81,7 @@ describe("applyCompatOverrides", () => {
 		// ownership, not by blacklisting names.
 		const compat: Record<string, unknown> = { toString: "declared-own-value" };
 		applyCompatOverrides(compat, { toString: "override-value" } as unknown as object);
-		expect(compat.toString).toBe("override-value");
+		expect(compat.toString as unknown).toBe("override-value");
 	});
 
 	it("does not apply inherited enumerable keys from the override object", () => {
