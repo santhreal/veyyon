@@ -154,16 +154,16 @@ release with all assets + checksums. The install scripts then pick it up through
 
 ## Repository secrets and variables
 
-Everything CI needs to publish, in one place. Every secret is optional-with-a-loud-skip
-except `GITHUB_TOKEN` (automatic): a missing secret emits a CI `::warning::` and skips
-its publish leg, the release itself still ships the GitHub binaries.
+Everything CI needs to publish, in one place. veyyon publishes to GitHub only, so
+the one credential a release genuinely needs is `RELEASE_PAT` (to trigger the
+release run). The rest are optional-with-a-loud-skip: a missing secret emits a CI
+`::warning::` and skips that leg (signing, or the site deploys), and the release
+still ships the GitHub binaries.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
-| `NPM_PUBLISH` | repo var | set `on` to opt IN to the npm publish leg. It is **off by default**: the install channel is the curl script (GitHub release binaries), so npm is a secondary convenience, and a stale or 2FA-bound token must never trigger a doomed publish that red-fails an otherwise green release. With it off, `release_npm` skips loudly. |
-| `NPM_TOKEN` | secret | credential for the npm publish leg once `NPM_PUBLISH=on`. Alternatively configure OIDC trusted publishing (no token) via `scripts/setup-npm-trust.ts`. |
-| `HOMEBREW_TAP_DEPLOY_KEY` | secret | Homebrew formula push, also needs repo var `HOMEBREW_TAP_REPO` (e.g. `santhreal/homebrew-tap`) |
-| `CLOUDFLARE_API_TOKEN` | secret | `release_site` auto-deploy (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
+| `RELEASE_PAT` | secret | **required.** Fine-grained PAT with Contents: read/write. The Release workflow pushes the version-bump commit and tag with it, because GitHub does not start workflow runs for pushes made with the built-in `GITHUB_TOKEN` — so without it a release would be tagged but never published. The workflow refuses to start when it is missing. Drives both the automatic (push) and manual release paths. |
+| `CLOUDFLARE_API_TOKEN` | secret | `release_site` auto-deploy of both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | only if the token spans multiple Cloudflare accounts |
 | `APPLE_CERTIFICATE_P12` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER_ID` | secrets | macOS Developer-ID signing + notarization (all five or signing is skipped) |
 | `SITE_AUTODEPLOY` | repo var | set `off` to disable the release site auto-deploy |
@@ -175,12 +175,9 @@ rollback lever:
 
 - **Bad release, binaries broken**: mark the bad GitHub release as a **pre-release**
   (or delete it). `releases/latest` immediately falls back to the previous good
-  release and every new `curl | sh` install gets the old binaries. This is the fastest
-  path and needs no new build.
-- **npm**: you cannot unpublish after the fact; `npm deprecate @veyyon/<pkg>@<ver> "broken, use <prev>"`
-  instead, then ship the fix. Deprecation warns on install without breaking resolution.
-- **Homebrew**: revert the formula commit in the tap repo; `brew install` follows the
-  tap head, not GitHub `latest`.
+  release and every new `curl | sh` install gets the old binaries. The installed
+  binary's auto-updater resolves the same `releases/latest`, so it stops offering the
+  bad version too. This is the fastest path and needs no new build.
 - **Website/changelog**: the next `site:deploy` (manual or the fixed release's
   auto-deploy) reconciles the changelog against the *published* releases, so an
   unpublished/rolled-back version automatically drops back to `pending release`.

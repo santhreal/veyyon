@@ -10,18 +10,7 @@ import {
 } from "@veyyon/coding-agent/cli/auto-update-state";
 import * as pluginCli from "@veyyon/coding-agent/cli/plugin-cli";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
-import {
-	buildBunInstallArgs,
-	buildHomebrewUpdateArgs,
-	buildMiseForceInstallArgs,
-	buildMiseUpgradeArgs,
-	buildNpmInstallArgs,
-	pruneBunInstallCache,
-	replaceBinaryForUpdate,
-	resolveBunGlobalNodeModulesDirFromLocations,
-	resolveUpdateMethodForTest,
-	sweepStaleBackups,
-} from "@veyyon/coding-agent/cli/update-cli";
+import { replaceBinaryForUpdate, resolveUpdateMethod, sweepStaleBackups } from "@veyyon/coding-agent/cli/update-cli";
 import Update from "@veyyon/coding-agent/commands/update";
 import { removeWithRetries } from "@veyyon/utils";
 import type { CliConfig } from "@veyyon/utils/cli";
@@ -126,316 +115,55 @@ describe("update command plugin dispatch", () => {
 	});
 });
 
-describe("update-cli install target detection", () => {
-	it("uses bun update when prioritized veyyon is inside bun global bin", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.bun/bin/veyyon", "/Users/test/.bun/bin");
-
-		expect(method).toBe("bun");
+/**
+ * Veyyon ships GitHub-only: the one thing the updater must get right is telling a
+ * standalone binary (safe to swap) from a source checkout (whose PATH entry is a
+ * symlink to an in-checkout launcher a swap would destroy). These lock that
+ * classification, including that it follows the symlink rather than judging by
+ * the PATH string, so a source install is never silently clobbered (Law 10).
+ */
+describe("resolveUpdateMethod classifies binary vs source installs", () => {
+	it("treats a standalone binary path as a binary install", () => {
+		expect(resolveUpdateMethod("/home/u/.local/bin/veyyon")).toBe("binary");
 	});
 
-	it("uses npm update when prioritized veyyon is inside an npm global bin", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.npm-global/bin/veyyon", undefined, {
-			npmBinDir: "/Users/test/.npm-global/bin",
-		});
-
-		expect(method).toBe("npm");
+	it("treats the in-checkout launcher path as a source install", () => {
+		// install.sh --source links PATH's veyyon at
+		// <checkout>/packages/coding-agent/scripts/veyyon.
+		expect(resolveUpdateMethod("/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon")).toBe("source");
 	});
 
-	it("uses npm update for Windows npm command shims even when no package-manager bin dirs were detected", () => {
-		const method = resolveUpdateMethodForTest("C:\\Users\\test\\AppData\\Roaming\\npm\\veyyon.cmd", undefined);
-
-		expect(method).toBe("npm");
-	});
-
-	it("uses binary update when prioritized veyyon is outside bun global bin", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.local/bin/veyyon", "/Users/test/.bun/bin");
-
-		expect(method).toBe("binary");
-	});
-
-	it("uses binary update when bun global bin cannot be resolved", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.local/bin/veyyon", undefined);
-
-		expect(method).toBe("binary");
-	});
-
-	it("uses Homebrew update when prioritized veyyon resolves into the Homebrew formula", async () => {
+	it("follows a PATH symlink to the source launcher and still reports source", async () => {
 		const dir = await makeTempDir();
-		const prefix = path.join(dir, "opt", "veyyon");
-		const linkedBin = path.join(dir, "bin");
-		await fs.mkdir(path.join(prefix, "bin"), { recursive: true });
-		await fs.mkdir(linkedBin, { recursive: true });
-		await Bun.write(path.join(prefix, "bin", "veyyon"), "binary");
-		await fs.symlink(path.join(prefix, "bin", "veyyon"), path.join(linkedBin, "veyyon"));
+		const launcherDir = path.join(dir, "src", "packages", "coding-agent", "scripts");
+		await fs.mkdir(launcherDir, { recursive: true });
+		const launcher = path.join(launcherDir, "veyyon");
+		await Bun.write(launcher, "#!/bin/sh\nexec bun ...\n");
+		const linkDir = path.join(dir, "bin");
+		await fs.mkdir(linkDir, { recursive: true });
+		const link = path.join(linkDir, "veyyon");
+		await fs.symlink(launcher, link);
 
-		const method = resolveUpdateMethodForTest(path.join(linkedBin, "veyyon"), "/Users/test/.bun/bin", {
-			homebrewPrefix: prefix,
-		});
-
-		expect(method).toBe("brew");
+		expect(resolveUpdateMethod(link)).toBe("source");
 	});
 
-	it("uses mise update when prioritized veyyon is in an active mise bin path", () => {
-		const method = resolveUpdateMethodForTest(
-			"/Users/test/.local/share/mise/installs/github-santhreal-veyyon/latest/bin/veyyon",
-			undefined,
-			{
-				miseBinDirs: ["/Users/test/.local/share/mise/installs/github-santhreal-veyyon/latest/bin"],
-			},
-		);
-
-		expect(method).toBe("mise");
-	});
-
-	it("uses mise update when prioritized veyyon is a mise shim", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.local/share/mise/shims/veyyon", undefined, {
-			miseDataDir: "/Users/test/.local/share/mise",
-		});
-
-		expect(method).toBe("mise");
-	});
-});
-
-describe("update-cli package manager commands", () => {
-	it("targets the Homebrew tap formula and switches to reinstall for forced updates", () => {
-		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "santhreal/tap/veyyon"]);
-		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "santhreal/tap/veyyon"]);
-	});
-
-	it("targets the mise GitHub backend tool and force-reinstalls the checked version when requested", () => {
-		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:santhreal/veyyon", "--bump"]);
-		expect(buildMiseForceInstallArgs("15.10.5")).toEqual(["install", "--force", "github:santhreal/veyyon@15.10.5"]);
-	});
-
-	it("pins npm package installs to the official registry and the checked native package versions", () => {
-		const args = buildNpmInstallArgs("16.3.15", "win32-x64");
-
-		expect(args.slice(0, 2)).toEqual(["install", "-g"]);
-		expect(args).toContain("--registry=https://registry.npmjs.org/");
-		expect(args).toContain("@veyyon/coding-agent@16.3.15");
-		expect(args).toContain("@veyyon/natives@16.3.15");
-		expect(args).toContain("@veyyon/natives-win32-x64@16.3.15");
-	});
-});
-
-describe("update-cli bun install command", () => {
-	it("pins the official npm registry and bypasses the manifest cache so a stale mirror or snapshot cannot mask a freshly published version", () => {
-		// Regression: veyyon queries https://registry.npmjs.org/<pkg>/latest directly.
-		// The install MUST hit the same registry, otherwise:
-		//   - a lagging mirror (corp proxy, Taobao, …) rejects the version with
-		//     `No version matching "X" (but package exists)`,
-		//   - or bun's local manifest snapshot does the same when the user's bun
-		//     is already pointed at the official registry but its cache predates
-		//     the release.
-		// See https://github.com/can1357/oh-my-pi/issues/1686.
-		const args = buildBunInstallArgs("15.7.6", "linux-x64");
-		expect(args.slice(0, 5)).toEqual([
-			"install",
-			"-g",
-			"--no-cache",
-			"--registry=https://registry.npmjs.org/",
-			"@veyyon/coding-agent@15.7.6",
-		]);
-	});
-
-	it("pins the native addon core and the platform-specific leaf to the same version so the loader sentinel cannot drift on supported tags", () => {
-		// Regression: bun install -g <pkg>@<v> would update only the top-level
-		// package, leaving @veyyon/natives and @veyyon/natives-<tag>
-		// at their previous version. The next launch then loaded a stale .node
-		// file and aborted at validateLoadedBindings with `The .node file on
-		// disk is from a different release than this loader`. See
-		// https://github.com/can1357/oh-my-pi/issues/1824.
-		for (const tag of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"]) {
-			const args = buildBunInstallArgs("15.9.0", tag);
-			expect(args).toContain("@veyyon/natives@15.9.0");
-			expect(args).toContain(`@veyyon/natives-${tag}@15.9.0`);
-		}
-	});
-
-	it("omits the leaf on unsupported platform tags so an EBADPLATFORM swap does not mask the underlying `no matching version` error", () => {
-		// Defensive: an unsupported tag (e.g. linux-arm32) still installs the
-		// core natives package — which will fail at module load if the platform
-		// truly is unsupported — but we never request a leaf the release
-		// pipeline doesn't publish, otherwise bun aborts with EBADPLATFORM
-		// and hides the real diagnostic from `loadNative`'s aggregated error.
-		const args = buildBunInstallArgs("15.9.0", "linux-arm");
-		expect(args).toContain("@veyyon/natives@15.9.0");
-		expect(args.some(arg => arg.startsWith("@veyyon/natives-"))).toBe(false);
-	});
-
-	it("derives global node_modules from supported bun global locations", () => {
-		expect(resolveBunGlobalNodeModulesDirFromLocations(path.join("home", ".bun", "bin"), undefined)).toBe(
-			path.join("home", ".bun", "install", "global", "node_modules"),
-		);
-		expect(
-			resolveBunGlobalNodeModulesDirFromLocations(undefined, path.join("home", ".bun", "install", "cache")),
-		).toBe(path.join("home", ".bun", "install", "global", "node_modules"));
-	});
-});
-
-describe("update-cli bun cache pruning", () => {
-	it("keeps only the newest cached version for filtered global install packages", async () => {
+	it("follows a PATH symlink to a plain binary and reports binary", async () => {
 		const dir = await makeTempDir();
-		await Bun.write(path.join(dir, "react", "18.3.1@@@1"), "");
-		await Bun.write(path.join(dir, "react", "19.2.6@@@1"), "");
-		await Bun.write(
-			path.join(dir, "react@18.3.1@@@1", "package.json"),
-			JSON.stringify({ name: "react", version: "18.3.1" }),
-		);
-		await Bun.write(
-			path.join(dir, "react@19.2.6@@@1", "package.json"),
-			JSON.stringify({ name: "react", version: "19.2.6" }),
-		);
-		await Bun.write(path.join(dir, "@veyyon", "pi-utils", "15.7.6@@@1"), "");
-		await Bun.write(path.join(dir, "@veyyon", "pi-utils", "15.8.0@@@1"), "");
-		await Bun.write(
-			path.join(dir, "@veyyon", "pi-utils@15.7.6@@@1", "package.json"),
-			JSON.stringify({ name: "@veyyon/utils", version: "15.7.6" }),
-		);
-		await Bun.write(
-			path.join(dir, "@veyyon", "pi-utils@15.8.0@@@1", "package.json"),
-			JSON.stringify({ name: "@veyyon/utils", version: "15.8.0" }),
-		);
-		await Bun.write(path.join(dir, "chalk", "4.1.2@@@1"), "");
-		await Bun.write(path.join(dir, "chalk", "5.6.2@@@1"), "");
-		await Bun.write(
-			path.join(dir, "chalk@4.1.2@@@1", "package.json"),
-			JSON.stringify({ name: "chalk", version: "4.1.2" }),
-		);
-		await Bun.write(
-			path.join(dir, "chalk@5.6.2@@@1", "package.json"),
-			JSON.stringify({ name: "chalk", version: "5.6.2" }),
-		);
+		const real = path.join(dir, "opt", "veyyon");
+		await fs.mkdir(path.dirname(real), { recursive: true });
+		await Bun.write(real, "\x7fELF-ish standalone binary");
+		const link = path.join(dir, "veyyon");
+		await fs.symlink(real, link);
 
-		const result = await pruneBunInstallCache(dir, new Set(["react", "@veyyon/utils"]));
-
-		expect(result).toEqual({ scannedPackages: 2, removedEntries: 4 });
-		expect(await Bun.file(path.join(dir, "react", "18.3.1@@@1")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "react@18.3.1@@@1", "package.json")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "react", "19.2.6@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "react@19.2.6@@@1", "package.json")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "@veyyon", "pi-utils", "15.7.6@@@1")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "@veyyon", "pi-utils@15.7.6@@@1", "package.json")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "@veyyon", "pi-utils", "15.8.0@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "@veyyon", "pi-utils@15.8.0@@@1", "package.json")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "chalk", "4.1.2@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "chalk@4.1.2@@@1", "package.json")).exists()).toBe(true);
+		expect(resolveUpdateMethod(link)).toBe("binary");
 	});
 
-	it("never deletes real cached versions because of an unparseable sibling directory", async () => {
-		// REGRESSION: the prune loop picked "latest" with a comparator that returned
-		// 0 for anything it could not parse. A directory name that is not a version
-		// therefore tied with everything, and if it was iterated first it became
-		// "latest" and every genuine cached version was deleted instead of it.
-		// Whether your cache survived depended on readdir order.
-		const dir = await makeTempDir();
-		// "0-not-a-version" sorts before the real versions, so it is the entry the
-		// old code would have latched onto as "latest".
-		await Bun.write(path.join(dir, "pkg", "0-not-a-version@@@1"), "");
-		await Bun.write(path.join(dir, "pkg", "1.0.0@@@1"), "");
-		await Bun.write(path.join(dir, "pkg", "2.0.0@@@1"), "");
-		await Bun.write(
-			path.join(dir, "pkg@0-not-a-version@@@1", "package.json"),
-			JSON.stringify({ name: "pkg", version: "0-not-a-version" }),
-		);
-		await Bun.write(
-			path.join(dir, "pkg@1.0.0@@@1", "package.json"),
-			JSON.stringify({ name: "pkg", version: "1.0.0" }),
-		);
-		await Bun.write(
-			path.join(dir, "pkg@2.0.0@@@1", "package.json"),
-			JSON.stringify({ name: "pkg", version: "2.0.0" }),
-		);
-
-		await pruneBunInstallCache(dir, new Set(["pkg"]));
-
-		// The newest orderable version survives.
-		expect(await Bun.file(path.join(dir, "pkg", "2.0.0@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "pkg@2.0.0@@@1", "package.json")).exists()).toBe(true);
-		// The older orderable version is pruned, which is the point of the sweep.
-		expect(await Bun.file(path.join(dir, "pkg", "1.0.0@@@1")).exists()).toBe(false);
-		// The entry we could not order is left exactly where it was: deleting on an
-		// ordering that could not be computed is what caused the bug.
-		expect(await Bun.file(path.join(dir, "pkg", "0-not-a-version@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "pkg@0-not-a-version@@@1", "package.json")).exists()).toBe(true);
-	});
-
-	it("prunes correctly regardless of which version is encountered first", async () => {
-		// The old comparator made the outcome depend on directory iteration order.
-		// Both layouts must reach the same answer.
-		for (const order of [
-			["1.0.0", "2.0.0"],
-			["2.0.0", "1.0.0"],
-		]) {
-			const dir = await makeTempDir();
-			for (const version of order) {
-				await Bun.write(path.join(dir, "pkg", `${version}@@@1`), "");
-				await Bun.write(
-					path.join(dir, `pkg@${version}@@@1`, "package.json"),
-					JSON.stringify({ name: "pkg", version }),
-				);
-			}
-
-			await pruneBunInstallCache(dir, new Set(["pkg"]));
-
-			expect(await Bun.file(path.join(dir, "pkg", "2.0.0@@@1")).exists()).toBe(true);
-			expect(await Bun.file(path.join(dir, "pkg", "1.0.0@@@1")).exists()).toBe(false);
-		}
-	});
-
-	it("keeps a prerelease from outranking the release it precedes", async () => {
-		// 2.0.0-rc.1 must not be treated as newer than 2.0.0. The comparator this
-		// path used to share mis-ranked prerelease identifiers.
-		const dir = await makeTempDir();
-		for (const version of ["2.0.0", "2.0.0-rc.1"]) {
-			await Bun.write(path.join(dir, "pkg", `${version}@@@1`), "");
-			await Bun.write(
-				path.join(dir, `pkg@${version}@@@1`, "package.json"),
-				JSON.stringify({ name: "pkg", version }),
-			);
-		}
-
-		await pruneBunInstallCache(dir, new Set(["pkg"]));
-
-		expect(await Bun.file(path.join(dir, "pkg", "2.0.0@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "pkg", "2.0.0-rc.1@@@1")).exists()).toBe(false);
-	});
-
-	it("keeps current registry-qualified marker entries with their materialized package", async () => {
-		const dir = await makeTempDir();
-		await Bun.write(path.join(dir, "pkg", "1.0.0@@registry.npmjs.org@@@1"), "");
-		await Bun.write(
-			path.join(dir, "pkg@1.0.0@@registry.npmjs.org@@@1", "package.json"),
-			JSON.stringify({ name: "pkg", version: "1.0.0" }),
-		);
-
-		const result = await pruneBunInstallCache(dir, new Set(["pkg"]));
-
-		expect(result).toEqual({ scannedPackages: 1, removedEntries: 0 });
-		expect(await Bun.file(path.join(dir, "pkg", "1.0.0@@registry.npmjs.org@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "pkg@1.0.0@@registry.npmjs.org@@@1", "package.json")).exists()).toBe(true);
-	});
-
-	it("treats a stable release as newer than a matching prerelease", async () => {
-		const dir = await makeTempDir();
-		await Bun.write(path.join(dir, "pkg", "1.0.0-beta.1@@@1"), "");
-		await Bun.write(path.join(dir, "pkg", "1.0.0@@@1"), "");
-		await Bun.write(
-			path.join(dir, "pkg@1.0.0-beta.1@@@1", "package.json"),
-			JSON.stringify({ name: "pkg", version: "1.0.0-beta.1" }),
-		);
-		await Bun.write(
-			path.join(dir, "pkg@1.0.0@@@1", "package.json"),
-			JSON.stringify({ name: "pkg", version: "1.0.0" }),
-		);
-
-		const result = await pruneBunInstallCache(dir);
-
-		expect(result).toEqual({ scannedPackages: 1, removedEntries: 2 });
-		expect(await Bun.file(path.join(dir, "pkg", "1.0.0-beta.1@@@1")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "pkg@1.0.0-beta.1@@@1", "package.json")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "pkg", "1.0.0@@@1")).exists()).toBe(true);
-		expect(await Bun.file(path.join(dir, "pkg@1.0.0@@@1", "package.json")).exists()).toBe(true);
+	it("guidance for a source install names the launcher and the git-pull remedy", () => {
+		const launcher = "/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon";
+		const msg = updateCli.sourceInstallUpdateGuidance(launcher);
+		expect(msg).toContain(launcher);
+		expect(msg).toContain("git pull");
+		expect(msg).toContain("--source");
 	});
 });
 
@@ -656,6 +384,32 @@ describe("runAutoUpdate", () => {
 		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+
+		expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
+		expect(install).toHaveBeenCalledWith("9.9.9", false, updateCli.SILENT_UPDATE_REPORTER);
+	});
+
+	it("skips a source install instead of clobbering its launcher with a binary", async () => {
+		// A source checkout (install.sh --source) updates via `git pull`; a binary
+		// swap would overwrite its launcher. The background updater must SKIP it, not
+		// attempt the install and fail-loop every launch (Law 10). The install method
+		// is injected so the test does not depend on how veyyon is installed locally.
+		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "source");
+
+		expect(outcome).toEqual({ status: "skipped", version: "9.9.9", reason: "source-install" });
+		expect(install).not.toHaveBeenCalled();
+	});
+
+	it("still installs a binary install when the newer version is available", async () => {
+		// The companion to the source-skip test: an injected `binary` method takes
+		// the normal install path, proving the skip is specific to source installs.
+		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
+		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 
 		expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
 		expect(install).toHaveBeenCalledWith("9.9.9", false, updateCli.SILENT_UPDATE_REPORTER);
