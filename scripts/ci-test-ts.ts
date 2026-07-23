@@ -123,6 +123,7 @@ const repoScriptTests = [
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
+	"scripts/release-sentinel.test.ts",
 	"website/tools/gen-changelog.test.ts",
 ];
 
@@ -365,6 +366,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 						"scripts/ci-build-native.test.ts",
 						"scripts/has-releasable-changes.test.ts",
 						"scripts/install-methods-coverage.test.ts",
+						"scripts/release-sentinel.test.ts",
 					],
 				},
 			];
