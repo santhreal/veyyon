@@ -319,9 +319,7 @@ export class AssistantMessageComponent extends Container {
 
 	override render(width: number): readonly string[] {
 		this.#lastRenderWidth = width;
-		// V3 turn-headers: a micro-label names the speaker, then one row of air.
-		const header = ` ${theme.fg("dim", "─╴")}${theme.fg("borderAccent", "●")} ${theme.fg("dim", "veyyon")}`;
-		const rows = [header, "", ...super.render(width)];
+		const rows = super.render(width);
 		// The follow's liquid glow: while this block is actively streaming, the
 		// last non-empty row's trailing characters grade up to the accent at the
 		// newest edge with a sheen band that sweeps over time (see follow.ts).
@@ -891,7 +889,11 @@ export class AssistantMessageComponent extends Container {
 			if (content.type === "text" && canonicalizeMessage(content.text)) {
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const trimmed = content.text.trim();
-				const md = new Markdown(trimmed, 1, 0, getMarkdownTheme());
+				// V4 prompt-bar: agent prose steps back one tone so the operator's
+				// own words and the tool activity carry the visual hierarchy.
+				const md = new Markdown(trimmed, 1, 0, getMarkdownTheme(), {
+					color: (value: string) => theme.fg("muted", value),
+				});
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "text", lastText: trimmed });
