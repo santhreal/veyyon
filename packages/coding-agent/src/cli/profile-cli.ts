@@ -6,6 +6,7 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+	assertRemovableProfileDir,
 	atomicWriteFile,
 	getActiveProfile,
 	getProfileRootDir,
@@ -342,6 +343,9 @@ export async function createProfile(
 	const parentDir = path.dirname(rootDir);
 	await fs.mkdir(parentDir, { recursive: true });
 	const stagingRoot = path.join(parentDir, `.${normalized}.${process.pid}.${crypto.randomUUID()}.tmp`);
+	// Validate up front so the catch-path cleanup below can only ever remove a
+	// direct child of the profiles root (FINDING-HOST-PROFILE-DIR-DELETED-DURING-BENCH).
+	assertRemovableProfileDir(stagingRoot);
 	const stagingAgentDir = path.join(stagingRoot, "agent");
 	try {
 		if (seedAgentDir) {
@@ -387,7 +391,9 @@ export async function removeProfile(name: string, options: { yes?: boolean } = {
 	if (!options.yes) {
 		throw new Error(`Refusing to remove ${rootDir} without --yes`);
 	}
-	await removeWithRetries(rootDir);
+	// Fail closed: never let a mis-resolved rootDir take out the profiles root,
+	// the config root, or HOME (FINDING-HOST-PROFILE-DIR-DELETED-DURING-BENCH).
+	await removeWithRetries(assertRemovableProfileDir(rootDir));
 
 	// If this profile was the launch default, clear the global pointer. Leaving
 	// it would dangle: the next launch resolves defaultProfile to a directory

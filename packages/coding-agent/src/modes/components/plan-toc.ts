@@ -8,6 +8,8 @@
  * No TUI dependencies: this module is unit-tested in isolation.
  */
 
+import { collapseWhitespace } from "@veyyon/utils";
+
 /** ATX heading: 1-6 `#`, required whitespace, a title, optional closing `#`s. */
 const HEADING_RE = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
 /** Opening/closing code fence run (``` or ~~~), allowing up to 3 lead spaces. */
@@ -40,7 +42,7 @@ export function stripInlineMarkdown(text: string): string {
 	out = out.replace(/(\*\*|__)(.+?)\1/g, "$2");
 	out = out.replace(/(\*|_)(.+?)\1/g, "$2");
 	out = out.replace(/~~(.+?)~~/g, "$1");
-	return out.replace(/\s+/g, " ").trim();
+	return collapseWhitespace(out);
 }
 
 /**

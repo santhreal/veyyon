@@ -1056,6 +1056,19 @@ export class EventController {
 			}
 			this.ctx.statusLine.invalidate();
 			this.ctx.ui.requestRender();
+		} else if (
+			event.message.role === "assistant" &&
+			event.message.stopReason === "error" &&
+			event.message.errorMessage &&
+			!isSilentAbort(event.message)
+		) {
+			// The turn died before any streaming began (the provider rejected the
+			// request at setup: unsupported thinking effort, bad model id, auth),
+			// so there is no streaming component to carry an inline error row.
+			// Without this branch the submitted prompt vanished with no working
+			// line, no banner, and no clue. Pin the error above the editor exactly
+			// like a mid-stream failure; the next turn's agent_start clears it.
+			this.ctx.showPinnedError(event.message.errorMessage);
 		}
 		this.ctx.ui.requestRender();
 	}
@@ -1619,8 +1632,7 @@ export class EventController {
 		if (!recapSettings.enabled) return;
 		if (this.ctx.editor.getText().trim()) return;
 
-		const timeoutMs =
-			clampLow(recapSettings.idleSeconds, IDLE_RECAP_MIN_SECONDS, IDLE_RECAP_MAX_SECONDS) * 1000;
+		const timeoutMs = clampLow(recapSettings.idleSeconds, IDLE_RECAP_MIN_SECONDS, IDLE_RECAP_MAX_SECONDS) * 1000;
 		this.#idleRecapTimer = setTimeout(() => {
 			this.#idleRecapTimer = undefined;
 			void this.#runIdleRecap();

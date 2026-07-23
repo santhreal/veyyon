@@ -56,15 +56,13 @@ import {
 	compact,
 	compactionContextTokens,
 	createCompactionSummaryMessage,
-	DEFAULT_SHAKE_CONFIG,
 	estimateTokens,
 	generateBranchSummary,
 	generateHandoffFromContext,
 	hasLegacyArchive,
 	isThresholdTokensClampedForWindow,
-	redactLegacyArchiveText,
-	stripLegacyArchive,
 	prepareCompaction,
+	redactLegacyArchiveText,
 	renderHandoffPrompt,
 	resolveBudgetReserveTokens,
 	resolveThresholdTokens,
@@ -74,6 +72,7 @@ import {
 	type SummaryOptions,
 	shouldCompact,
 	shouldUseOpenAiRemoteCompaction,
+	stripLegacyArchive,
 } from "@veyyon/agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
@@ -2565,7 +2564,13 @@ export class AgentSession {
 			this.#autoThinking = true;
 			this.#thinkingLevel = resolveProvisionalAutoLevel(this.model);
 		} else {
-			this.#thinkingLevel = config.thinkingLevel;
+			// Clamp the configured level against the session's model, mirroring the
+			// restore path below. A persisted `high` (set while on another model)
+			// forwarded unclamped to a reasoning model with no controllable effort
+			// surface (e.g. devin/swe-1-6: `thinking: undefined`) threw
+			// "Thinking effort high is not supported ... Supported efforts:" (empty
+			// list) at the FIRST stream of every turn — the session was unusable.
+			this.#thinkingLevel = resolveThinkingLevelForModel(this.model, config.thinkingLevel);
 		}
 		if (config.prewalk) {
 			this.#prewalk = config.prewalk;
@@ -10180,7 +10185,7 @@ export class AgentSession {
 				error: classificationError,
 				fallbackLevel: effort ?? "none",
 				timeoutMs: AgentSession.#AUTO_THINKING_TIMEOUT_MS,
-				fix: "If this repeats, the classifier model may be unreachable; set a fixed thinking level with /think to stop relying on it.",
+				fix: "If this repeats, the classifier model may be unreachable; set a fixed thinking level with /thinking to stop relying on it.",
 			});
 		}
 		if (effort === undefined) return;
@@ -13042,7 +13047,7 @@ export class AgentSession {
 						// Effort configured on this compaction candidate wins; otherwise
 						// honor the user's /model thinking selection (incl. `off`).
 						// Clamped per-model inside compact() via resolveCompactionEffort
-						// so unsupported-effort models (xai-oauth/grok-build) don't trip
+						// so unsupported-effort models (xai-oauth/grok-4.20-0309-reasoning) do not trip
 						// requireSupportedEffort.
 						thinkingLevel: configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
 						tools: this.agent.state.tools,

@@ -65,8 +65,15 @@ async function maybeAutoChdir(parsed: Args): Promise<string | undefined> {
  * Tell the operator that the launch relocated away from `$HOME`, and how to opt
  * out or choose a directory. One line on stderr (safe in every output mode; JSON
  * and print keep stdout clean), so the relocation is loud instead of silent.
+ *
+ * The CALLER announces this, and only AFTER {@link applySessionWorkdir} has run:
+ * a profile `session.workdir` re-roots the session away from the `/tmp` fallback,
+ * so announcing at relocation time would print a false "Started in /tmp instead"
+ * to a user who actually lands in their configured workdir (and tell them to set
+ * a setting they already have). Announce only when the `/tmp` relocation is the
+ * session's final resting place.
  */
-function announceAutoChdir(home: string, target: string): void {
+export function announceAutoChdir(home: string, target: string): void {
 	process.stderr.write(
 		`${chalk.yellow(`Not rooting the session at your home directory (${home}).`)}` +
 			`${chalk.dim(` Started in ${target} instead.`)}\n` +
@@ -79,12 +86,18 @@ function announceAutoChdir(home: string, target: string): void {
 
 /**
  * Apply an explicit CLI `--cwd` (highest precedence), otherwise maybe auto-chdir
- * away from `$HOME` (announced, not silent). Profile `session.workdir` is applied
- * later by {@link applySessionWorkdir} after Settings.init — it outranks process
- * cwd but loses to an explicit `--cwd`.
+ * away from `$HOME`. Profile `session.workdir` is applied later by
+ * {@link applySessionWorkdir} after Settings.init — it outranks process cwd but
+ * loses to an explicit `--cwd`.
+ *
+ * The relocation happens here (before Settings.init, because settings discovery
+ * is cwd-relative) but is NOT announced here: the caller announces it via
+ * {@link announceAutoChdir} only after `applySessionWorkdir`, and only if
+ * `session.workdir` did not re-root elsewhere — otherwise the "Started in /tmp
+ * instead" line is false for a user whose workdir takes over.
  *
  * @returns the auto-chdir target when the launch relocated away from home, else
- * `undefined`. Callers may ignore it; it exists so the relocation is observable.
+ * `undefined`. The caller uses it to decide whether to announce.
  */
 export async function applyStartupCwd(parsed: Args): Promise<string | undefined> {
 	if (parsed.cwd) {
@@ -96,11 +109,7 @@ export async function applyStartupCwd(parsed: Args): Promise<string | undefined>
 		parsed.cwd = getProjectDir();
 		return undefined;
 	}
-	const relocated = await maybeAutoChdir(parsed);
-	if (relocated) {
-		announceAutoChdir(os.homedir(), relocated);
-	}
-	return relocated;
+	return maybeAutoChdir(parsed);
 }
 
 /**

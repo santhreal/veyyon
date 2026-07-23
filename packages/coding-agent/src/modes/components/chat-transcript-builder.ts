@@ -282,6 +282,9 @@ export class ChatTranscriptBuilder {
 			this.deps.getMessageRenderer ? undefined : [], // placeholder for thinkingRenderers
 			this.deps.ui.imageBudget,
 			proseOnlyThinking,
+			// Scoped repaint for the streaming shimmer ticker: repaint just this row,
+			// never the whole transcript, so the 30fps liquid flow stays cheap (#4377).
+			() => this.deps.ui.requestComponentRender(assistantComponent),
 		);
 		this.container.addChild(assistantComponent);
 
@@ -312,6 +315,7 @@ export class ChatTranscriptBuilder {
 				this.deps.getMessageRenderer ? undefined : [],
 				undefined,
 				proseOnlyThinking,
+				() => this.deps.ui.requestComponentRender(component),
 			);
 			this.container.addChild(component);
 		};

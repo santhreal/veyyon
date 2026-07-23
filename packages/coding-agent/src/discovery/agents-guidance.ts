@@ -101,7 +101,19 @@ export function getGlobalAgentsPath(): string {
 	return path.join(getGlobalConfigRootDir(), "AGENTS.md");
 }
 
-/** Absolute path of the active profile's AGENTS.md (`<agentDir>/AGENTS.md`). */
+/** Candidate paths for the active profile's instruction file (AGENTS.md / agent.md). */
+export function getProfileAgentsCandidates(): string[] {
+	const agentDir = getAgentDir();
+	const profileDir = path.dirname(agentDir);
+	return [
+		path.join(agentDir, "AGENTS.md"),
+		path.join(profileDir, "AGENTS.md"),
+		path.join(agentDir, "agent.md"),
+		path.join(profileDir, "agent.md"),
+	];
+}
+
+/** Absolute path of the active profile's primary AGENTS.md (`<agentDir>/AGENTS.md`). */
 export function getProfileAgentsPath(): string {
 	return path.join(getAgentDir(), "AGENTS.md");
 }
