@@ -14,7 +14,7 @@ jaq-std = "2.1.0"
 jaq-json = "1.1.1"
 
 codesnake = "0.2"
-hifijson = "0.2.0"
+hifijson = "0.5.0"
 memmap2 = "0.9"
 tempfile = "3.3.0"
 unicode-width = "0.1.13"
