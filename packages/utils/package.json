@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/utils",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Shared utilities for pi packages",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
