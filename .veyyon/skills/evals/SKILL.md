@@ -34,6 +34,32 @@ To test a system prompt candidate:
    - Paste your candidate system prompt template.
    - The runner (`run.ts`) automatically stages the prompt into the container and passes `--system-prompt` to `vey`.
 
+### Swap one section, not the whole template
+
+Pasting a whole template into `arms/<arm_name>.prompt.md` is how a setting quietly dies. The default template gates each setting behind a conditional, for example `{{#if taskIrcEnabled}}`. When you hand-copy the template and edit one region, it is easy to drop a conditional in a region you never meant to touch. The setting still parses and still flows into the render data, but no branch consumes it, so it renders as nothing and fails silently. This is the bug that made the delegation settings (`taskIrcEnabled`, `eagerTasksAlways`) useless during earlier experiments.
+
+When your experiment only changes one region, prefer a section override over a full copy. The default template is one file, `packages/coding-agent/src/prompts/system/system-prompt.md`, and `system-prompt-builder/default-template.ts` exposes it as named sections:
+
+```ts
+import { assembleDefaultTemplate } from "../system-prompt-builder/default-template";
+
+// Swap only the tool-policy region. Every other section, and every
+// conditional inside it, stays byte-for-byte identical to the shipped default.
+const candidate = assembleDefaultTemplate({
+  toolPolicy: myToolPolicyVariant,
+});
+```
+
+The sections are `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, and `deliveryContract`, split at the template's own banner lines (`ROLE\n====`, `TOOL POLICY\n====`, and so on). `assembleDefaultTemplate()` with no overrides returns the shipped template exactly. An override replaces only the section you name. Because you never retype the other sections, you cannot drop a conditional in them.
+
+### The parity guard
+
+`packages/coding-agent/src/system-prompt-settings-parity.test.ts` locks every gating setting to a concrete anchor string in the rendered prompt. Toggling `taskIrcEnabled` must add or remove `ask A via \`irc\``; toggling `eagerTasksAlways` must add or remove `MUST fan the work out`; and so on for every setting. If an edit drops a branch, the matching test goes red instead of shipping a dead setting. A coverage test also fails if you add a new gating setting without a parity assertion, so the guard cannot fall behind the template. Run it before you promote any prompt change:
+
+```bash
+bun test packages/coding-agent/src/system-prompt-settings-parity.test.ts
+```
+
 ---
 
 ## 3. Running an A/B Benchmark Evaluation
@@ -81,7 +107,7 @@ bun run.ts --reaggregate runs/prompt-tuning-01
 - **The 3 CWD Mutation Vectors:** Working directory changes occur via:
   1. *Profile Defaults (`session.workdir` setting)*: Updating it mid-session updates future session defaults without mutating live prompt headers.
   2. *Agent Tool (`set_cwd`)*: Re-roots live session scope for path resolving (`[name#tag]`); prompt header metadata remains frozen until context compaction.
-  3. *User Commands (`/cd`, `/move`)*: Changes interactive execution scope without invalidating system prompt prefix hashes.
+  3. *User Commands (`/cwd`, `/move`)*: Changes interactive execution scope without invalidating system prompt prefix hashes.
 - **Zero Mid-Session Prompt Mutation:** Never mutate system prompt templates or workstation metadata (`<workstation>`, `cwd`, active profile labels) mid-session before context compaction.
 - **Cache Invalidation Penalty:** Modifying `cwd` or workstation stats mid-session invalidates the prefix cache for all subsequent turns, triggering 100% cache-miss token inflation.
 - **Safe Mutation Seams:** Workstation/profile updates belong strictly at or after context compaction, when history is re-primed and the prompt cache is naturally reset.
