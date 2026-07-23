@@ -583,14 +583,72 @@ function maybeStageNodeModulesAddon(ctx, errors) {
 	return stagedPath;
 }
 
+/** One-shot guard so the stale-native warning fires once per process, not per candidate. */
+let warnedStaleWorkspaceNative = false;
+
+/**
+ * The export name the Rust addon emits for `version`, e.g. `1.0.14` ->
+ * `__veyyonNativesV1_0_14`. `scripts/release.ts` bumps this name in lock-step
+ * with the package version, so a `.node` from another release physically cannot
+ * expose the symbol this loader looks for. Exported so the version<->sentinel
+ * contract can be pinned by a test (the workspace/test env skips the runtime
+ * check, so nothing else guards against the two drifting apart).
+ */
+export function versionSentinelExportFor(version) {
+	return `__veyyonNativesV${String(version).replace(/[^A-Za-z0-9]/g, "_")}`;
+}
+
+/** The version a loaded addon was actually built for, read back from its own sentinel export. */
+export function detectBuiltNativeVersion(bindings) {
+	for (const key of Object.keys(bindings)) {
+		const m = key.match(/^__veyyonNativesV(\d+)_(\d+)_(\d+)$/);
+		if (m) return `${m[1]}.${m[2]}.${m[3]}`;
+	}
+	return "unknown";
+}
+
+/**
+ * `owner/repo` for a `package.json` `repository.url`, e.g.
+ * `git+https://github.com/santhreal/veyyon.git` -> `santhreal/veyyon`. Fails
+ * closed to veyyon's own slug (never a fork/upstream) when the URL is missing or
+ * unparseable, so the release-download help can't point users at another repo.
+ */
+export function repoSlugFromRepositoryUrl(raw) {
+	const match = typeof raw === "string" ? raw.match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?/i) : null;
+	return match ? `${match[1]}/${match[2]}` : "santhreal/veyyon";
+}
+
 function validateLoadedBindings(ctx, bindings, candidate) {
-	// In workspace dev (running out of `packages/natives/native/` rather than a
-	// `node_modules` install or a compiled bundle) the local `.node` only gains
-	// the renamed sentinel after `bun --cwd=packages/natives run build`. Skip
-	// validation there so a stale post-pull dev tree boots while the rebuild
-	// completes; install and compiled-binary paths still validate.
-	if (ctx.isWorkspaceLoad) return;
 	if (typeof bindings[ctx.versionSentinelExport] === "function") return;
+
+	// The .node on disk was built for a different package version than this
+	// loader expects (its `__veyyonNativesV*` sentinel does not match).
+	if (ctx.isWorkspaceLoad) {
+		// Workspace dev (running out of `packages/natives/native/` rather than a
+		// `node_modules` install or compiled bundle): the local `.node` only gains
+		// the renamed sentinel after `bun --cwd=packages/natives run build`, so a
+		// version bump leaves it stale until the next rebuild. Boot anyway so a
+		// post-pull tree keeps working while that rebuild happens — but NEVER
+		// silently: loading a wrong-version native risks ABI/behavior drift, so
+		// surface it loudly, once, with the exact fix. (Law 10: no silent fallback;
+		// this is also why the workspace/test env never tripped a hard failure.)
+		if (!warnedStaleWorkspaceNative) {
+			warnedStaleWorkspaceNative = true;
+			const built = detectBuiltNativeVersion(bindings);
+			try {
+				fs.writeSync(
+					2,
+					`[veyyon] warning: loaded a stale native addon built for @veyyon/natives@${built}, ` +
+						`but this tree is at ${ctx.packageVersion}. It may drift from the current sources. ` +
+						"Rebuild with: bun --cwd=packages/natives run build\n" +
+						`  (${candidate})\n`,
+				);
+			} catch {
+				// stderr unavailable; the warning is best-effort but must never crash the load.
+			}
+		}
+		return;
+	}
 	throw new Error(
 		`Loaded ${candidate} but it does not expose the @veyyon/natives@${ctx.packageVersion} ` +
 			`version sentinel \`${ctx.versionSentinelExport}\`. The .node file on disk is from a different ` +
@@ -629,9 +687,7 @@ function installNativeTokioRuntime(bindings) {
  */
 function releasesDownloadBase() {
 	const raw = typeof packageJson.repository === "string" ? packageJson.repository : packageJson.repository?.url;
-	const match = typeof raw === "string" ? raw.match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?/i) : null;
-	const slug = match ? `${match[1]}/${match[2]}` : "santhreal/veyyon";
-	return `https://github.com/${slug}/releases/latest/download`;
+	return `https://github.com/${repoSlugFromRepositoryUrl(raw)}/releases/latest/download`;
 }
 
 function buildHelpMessage(ctx) {
@@ -709,7 +765,7 @@ function initLoaderContext() {
 	// physically cannot expose the symbol this loader is looking for. That
 	// turns the silent `<sym> is not a function` crash from a Windows
 	// locked-file update into an actionable load-time error.
-	const versionSentinelExport = `__veyyonNativesV${packageVersion.replace(/[^A-Za-z0-9]/g, "_")}`;
+	const versionSentinelExport = versionSentinelExportFor(packageVersion);
 	const isWorkspaceLoad =
 		!isCompiledBinary && !nativeDir.includes("\\node_modules\\") && !nativeDir.includes("/node_modules/");
 
