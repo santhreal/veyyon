@@ -2931,7 +2931,11 @@ export function populateResponsesUsageFromResponse(
  *    `Object.getOwnPropertySymbols` pass, or those symbols resurface and break
  *    chaining.
  *  - keys listed in `omitKeys` are skipped (the option compare omits `input`
- *    and the per-turn `client_metadata`).
+ *    and the per-turn `client_metadata`). The omit lookup is an own-property
+ *    check, not `omitKeys[key]`: a bare index would read `Object.prototype`
+ *    members, so a key literally named `toString`/`valueOf`/`constructor` would
+ *    resolve to the inherited method (truthy) and be silently omitted from the
+ *    comparison even though it is not in the omit list.
  * A defined value differing across sides IS a difference; a key undefined or
  * absent on both stays equal. Nested values use full {@link Bun.deepEquals}.
  */
@@ -2940,14 +2944,19 @@ function deepEqualsWithout(a: unknown, b: unknown, omitKeys?: Record<string, boo
 	const ao = a as Record<string, unknown>;
 	const bo = b as Record<string, unknown>;
 	for (const key in ao) {
-		if (omitKeys?.[key]) continue;
+		if (omitKeys && Object.hasOwn(omitKeys, key) && omitKeys[key]) continue;
 		const av = ao[key];
 		const bv = bo[key];
 		if (av !== bv && !Bun.deepEquals(av, bv)) return false;
 	}
 	for (const key in bo) {
-		if (omitKeys?.[key]) continue;
-		if (bo[key] !== undefined && !(key in ao)) return false;
+		if (omitKeys && Object.hasOwn(omitKeys, key) && omitKeys[key]) continue;
+		// Own-property test, not `key in ao`: the model here is own enumerable keys
+		// (see the doc above). `key in ao` also matches inherited Object.prototype
+		// members, so a `b` that owns a defined key named after one (`toString`,
+		// `constructor`, …) that `a` does not own would be treated as present on `a`
+		// and the extra key would not break equality — a false chain match.
+		if (bo[key] !== undefined && !Object.hasOwn(ao, key)) return false;
 	}
 	return true;
 }

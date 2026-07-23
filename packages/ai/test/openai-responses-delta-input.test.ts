@@ -110,4 +110,42 @@ describe("buildResponsesDeltaInput streaming-symbol scrub", () => {
 			buildResponsesDeltaInput(previous, [previousAssistant], { input: [user, wrongPhaseAssistant, appended] }),
 		).toBeNull();
 	});
+
+	it("breaks the chain when current adds a top-level option named after a prototype member", () => {
+		// Regression: the "extra key on b" test in deepEqualsWithout used `key in a`,
+		// which is true for every Object.prototype member. A `current` that owns an
+		// extra defined top-level option whose name collides with one (`toString`
+		// here stands in for any such name) was therefore treated as present on
+		// `previous`, so the differing option did NOT break the chain and a stale
+		// delta was reused. Own-property membership breaks the chain as it must.
+		const items = baselineItems();
+		const appended: ResponseInputItem = {
+			type: "function_call",
+			id: "fc_2",
+			call_id: "call_2",
+			name: "bar",
+			arguments: "{}",
+		};
+		const previous = { input: [items[0]] } as Record<string, unknown> & { input: ResponseInputItem[] };
+		const current = {
+			input: [items[0], items[1], appended],
+			toString: "custom-option-flag",
+		} as Record<string, unknown> & { input: ResponseInputItem[] };
+		expect(buildResponsesDeltaInput(previous, [items[1]], current)).toBeNull();
+	});
+
+	it("breaks the chain when a prefix item gains a field named after a prototype member", () => {
+		// The same own-property hazard at the per-ITEM compare: a current prefix item
+		// that owns an extra defined field named `valueOf` (a prototype member) which
+		// the baseline item lacks must count as a mutation. `key in baseline` hid it
+		// because `"valueOf" in baseline` is always true.
+		const previous = { input: [baselineItems()[0]] };
+		const previousResponseItems = [baselineItems()[1]];
+		const mutated = baselineItems();
+		Reflect.set(mutated[1], "valueOf", "unexpected");
+		const current = {
+			input: [...mutated, { type: "function_call", id: "fc_2" } as ResponseInputItem],
+		};
+		expect(buildResponsesDeltaInput(previous, previousResponseItems, current)).toBeNull();
+	});
 });
