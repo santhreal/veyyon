@@ -1251,8 +1251,8 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	}
 	const appliedEdits = edits as readonly AppliedEdit[];
 
-	const fileLines = text.split("\n");
-	const lineOrigins: LineOrigin[] = fileLines.map(() => "original");
+	let fileLines = text.split("\n");
+	let lineOrigins: LineOrigin[] = fileLines.map(() => "original");
 
 	let firstChangedLine: number | undefined;
 	const trackFirstChanged = (line: number) => {
@@ -1282,15 +1282,29 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 		}
 	});
 
-	// Apply per-line buckets bottom-up so earlier indices stay valid.
+	// Apply per-line buckets in one forward rebuild. A previous version mutated
+	// `fileLines` with a `splice` per changed line; on a large-range edit (e.g.
+	// `DEL 1.=30000`, which expands to 30000 single-line deletes) every splice
+	// shifted the whole tail, making the applier O(edits * n) — ~1.8e9 ops /
+	// ~160ms on a 60k-line file. Walking the original lines once and emitting
+	// each line's replacement into fresh arrays is O(n + output). Reading the
+	// current line/origin from the untouched originals keeps the result
+	// byte-identical to the old bottom-up in-place pass.
 	const byLine = bucketAnchorEditsByLine(anchorEdits);
-	for (const line of [...byLine.keys()].sort((a, b) => b - a)) {
+	const rebuiltLines: string[] = [];
+	const rebuiltOrigins: LineOrigin[] = [];
+	for (let idx = 0; idx < fileLines.length; idx++) {
+		const line = idx + 1;
+		const currentLine = fileLines[idx] ?? "";
+		const currentOrigin = lineOrigins[idx] ?? "original";
 		const bucket = byLine.get(line);
-		if (!bucket) continue;
+		if (!bucket) {
+			rebuiltLines.push(currentLine);
+			rebuiltOrigins.push(currentOrigin);
+			continue;
+		}
 		bucket.sort((a, b) => a.idx - b.idx);
 
-		const idx = line - 1;
-		const currentLine = fileLines[idx] ?? "";
 		const beforeInsertLines: string[] = [];
 		const afterInsertLines: string[] = [];
 		const replacementLines: string[] = [];
@@ -1312,22 +1326,32 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 			replacementLines.length === 0 &&
 			afterInsertLines.length === 0 &&
 			!deleteLine
-		)
+		) {
+			rebuiltLines.push(currentLine);
+			rebuiltOrigins.push(currentOrigin);
 			continue;
+		}
 
-		const replacement = deleteLine
-			? [...beforeInsertLines, ...replacementLines, ...afterInsertLines]
-			: [...beforeInsertLines, ...replacementLines, currentLine, ...afterInsertLines];
-		const origins: LineOrigin[] = [];
-		for (let i = 0; i < beforeInsertLines.length; i++) origins.push("insert");
-		for (let i = 0; i < replacementLines.length; i++) origins.push(deleteLine ? "replacement" : "insert");
-		if (!deleteLine) origins.push(lineOrigins[idx] ?? "original");
-		for (let i = 0; i < afterInsertLines.length; i++) origins.push("insert");
-
-		fileLines.splice(idx, 1, ...replacement);
-		lineOrigins.splice(idx, 1, ...origins);
+		for (const l of beforeInsertLines) {
+			rebuiltLines.push(l);
+			rebuiltOrigins.push("insert");
+		}
+		for (const l of replacementLines) {
+			rebuiltLines.push(l);
+			rebuiltOrigins.push(deleteLine ? "replacement" : "insert");
+		}
+		if (!deleteLine) {
+			rebuiltLines.push(currentLine);
+			rebuiltOrigins.push(currentOrigin);
+		}
+		for (const l of afterInsertLines) {
+			rebuiltLines.push(l);
+			rebuiltOrigins.push("insert");
+		}
 		trackFirstChanged(line);
 	}
+	fileLines = rebuiltLines;
+	lineOrigins = rebuiltOrigins;
 
 	if (bofLines.length > 0) {
 		insertAtStart(fileLines, lineOrigins, bofLines);
