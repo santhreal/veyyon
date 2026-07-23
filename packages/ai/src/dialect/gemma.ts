@@ -1,5 +1,5 @@
 import type { Message, ToolCall } from "../types";
-import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny } from "./coercion";
+import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import dialectPrompt from "./gemma.md" with { type: "text" };
 import { assistantTranscriptParts, collectToolResultRun, messageContentText } from "./rendering";
 import type {
@@ -177,7 +177,7 @@ function parseGemmaArgs(text: string): Record<string, unknown> {
 		if (colon === -1) continue;
 		const key = trimmed.slice(0, colon).trim();
 		if (!/^[A-Za-z_]\w*$/.test(key)) continue;
-		out[key] = parseGemmaValue(trimmed.slice(colon + 1).trim());
+		setToolArg(out, key, parseGemmaValue(trimmed.slice(colon + 1).trim()));
 	}
 	return out;
 }

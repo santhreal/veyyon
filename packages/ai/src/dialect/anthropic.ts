@@ -1,7 +1,7 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import dialectPrompt from "./anthropic.md" with { type: "text" };
-import { buildArgShapes, buildStringArgsResolver, mintToolCallId, type ToolArgShape } from "./coercion";
+import { buildArgShapes, buildStringArgsResolver, mintToolCallId, setToolArg, type ToolArgShape } from "./coercion";
 import {
 	escapeXmlAttr,
 	escapeXmlText,
@@ -402,7 +402,7 @@ export class AnthropicInbandScanner implements InbandScanner {
 			const value = this.#paramTruncated
 				? `${this.#paramValue}\n…[parameter truncated: exceeded ${MAX_PARAMETER_VALUE_LENGTH} bytes]`
 				: this.#paramValue;
-			this.#args[this.#paramName] = this.#coerceParameterValue(this.#paramName, value, this.#paramString);
+			setToolArg(this.#args, this.#paramName, this.#coerceParameterValue(this.#paramName, value, this.#paramString));
 		}
 		this.#paramName = "";
 		this.#paramValue = "";

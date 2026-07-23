@@ -6,6 +6,7 @@ import {
 	mintToolCallId,
 	partialSuffixOverlap,
 	partialSuffixOverlapAny,
+	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
 import dialectPrompt from "./glm.md" with { type: "text" };
@@ -330,7 +331,7 @@ export class GLMInbandScanner implements InbandScanner {
 	#endValue(): void {
 		const call = this.#call;
 		if (!call || call.key === null) return;
-		call.arguments[call.key] = call.stringArgs.has(call.key) ? call.valueRaw : decodeValue(call.valueRaw);
+		setToolArg(call.arguments, call.key, call.stringArgs.has(call.key) ? call.valueRaw : decodeValue(call.valueRaw));
 		call.key = null;
 		call.valueRaw = "";
 	}

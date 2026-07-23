@@ -12,7 +12,7 @@ import {
 	setStreamingPartialJson,
 } from "../utils/block-symbols";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import { buildStringArgsResolver } from "./coercion";
+import { buildStringArgsResolver, getOwnArg, setToolArg } from "./coercion";
 import { createInbandScanner } from "./factory";
 import type { Dialect, InbandScanEvent, InbandScanner, InbandTool } from "./types";
 
@@ -435,11 +435,11 @@ class InbandStreamProjector {
 		if (!entry) return;
 		if (entry.currentKey !== event.key) {
 			entry.currentKey = event.key;
-			entry.rawValue =
-				typeof entry.block.arguments[event.key] === "string" ? String(entry.block.arguments[event.key]) : "";
+			const prior = getOwnArg(entry.block.arguments, event.key);
+			entry.rawValue = typeof prior === "string" ? prior : "";
 		}
 		entry.rawValue += event.delta;
-		entry.block.arguments[event.key] = entry.rawValue;
+		setToolArg(entry.block.arguments, event.key, entry.rawValue);
 		if (this.#emitEvents)
 			this.#out.push({
 				type: "toolcall_delta",
