@@ -117,7 +117,7 @@ In the tape, vary only the `Set Theme` background to move between grounds
 capture block. This is the one place the pure-black brand block is deliberately
 set aside: a brand demo GIF keeps pure black, but a UI regression proof must
 exercise the grounds a user actually runs, because that is where the bugs live.
-`brand-conformance.test.ts` and [design.md](../../../docs/internal/design.md)
+`brand-conformance.test.ts` and [brand.md](../../../docs/internal/brand.md)
 own the palette; this matrix proves your change respects it on every ground.
 
 ## Step 6: Animation proves with a GIF pair

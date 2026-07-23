@@ -28,7 +28,7 @@ A demo must record the same every time or it is not reproducible.
 
 ## The capture block
 
-Pixel quality is a finding, not a detail. A cramped, low-resolution 1200x620 GIF reads as amateur next to a large, sharp, edge-to-edge black one. The frame is austere on purpose: pure black, sharp corners, no colorful window chrome. That is the brand, not an accident, and it matches the Canvas rule in [design.md](../../../docs/internal/design.md#canvas), where a surface that owns the viewport paints black edge to edge. Start every tape with this block (all keys verified against the pinned VHS):
+Pixel quality is a finding, not a detail. A cramped, low-resolution 1200x620 GIF reads as amateur next to a large, sharp, edge-to-edge black one. The frame is austere on purpose: pure black, sharp corners, no colorful window chrome. That is the brand, not an accident, and it matches the Canvas rule (a surface that owns the viewport paints black edge to edge). Start every tape with this block (all keys verified against the pinned VHS):
 
 ```tape
 Set Shell bash
