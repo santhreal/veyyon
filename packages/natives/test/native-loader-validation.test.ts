@@ -66,6 +66,7 @@ describe("evaluateLoadedBindings — installed/compiled load fails closed (the u
 		const ctx = ctxFor({ packageVersion: "1.0.15", isWorkspaceLoad: false });
 		const decision = evaluateLoadedBindings(ctx, addonBuiltFor("1.0.14"), "veyyon_natives.linux-x64-modern.node");
 		expect(decision.action).toBe("throw");
+		if (decision.action !== "throw") throw new Error(`expected throw, got ${decision.action}`);
 		expect(decision.builtVersion).toBe("1.0.14");
 	});
 
@@ -76,6 +77,7 @@ describe("evaluateLoadedBindings — installed/compiled load fails closed (the u
 		const ctx = ctxFor({ packageVersion: "1.0.20", isWorkspaceLoad: false });
 		const decision = evaluateLoadedBindings(ctx, addonBuiltFor("1.0.15"), "/opt/veyyon/native/1.0.20/veyyon_natives.linux-x64-modern.node");
 		expect(decision.action).toBe("throw");
+		if (decision.action !== "throw") throw new Error(`expected throw, got ${decision.action}`);
 		expect(decision.message).toContain("@veyyon/natives@1.0.15"); // built for
 		expect(decision.message).toContain("@veyyon/natives@1.0.20"); // loader expects
 		expect(decision.message).toContain(versionSentinelExportFor("1.0.20"));
@@ -90,6 +92,7 @@ describe("evaluateLoadedBindings — installed/compiled load fails closed (the u
 		const ctx = ctxFor({ packageVersion: "1.0.20", isWorkspaceLoad: false });
 		const decision = evaluateLoadedBindings(ctx, { grep: () => 0, ptyOpen: () => 0 }, "stale.node");
 		expect(decision.action).toBe("throw");
+		if (decision.action !== "throw") throw new Error(`expected throw, got ${decision.action}`);
 		expect(decision.builtVersion).toBe("unknown");
 		expect(decision.message).toContain("@veyyon/natives@unknown");
 	});
@@ -104,6 +107,7 @@ describe("evaluateLoadedBindings — workspace load boots loudly, never silently
 		const ctx = ctxFor({ packageVersion: "1.0.20", isWorkspaceLoad: true });
 		const decision = evaluateLoadedBindings(ctx, addonBuiltFor("1.0.15"), "packages/natives/native/veyyon_natives.linux-x64-modern.node");
 		expect(decision.action).toBe("warn");
+		if (decision.action !== "warn") throw new Error(`expected warn, got ${decision.action}`);
 		expect(decision.builtVersion).toBe("1.0.15");
 	});
 
@@ -111,6 +115,7 @@ describe("evaluateLoadedBindings — workspace load boots loudly, never silently
 		const ctx = ctxFor({ packageVersion: "1.0.20", isWorkspaceLoad: true });
 		const decision = evaluateLoadedBindings(ctx, addonBuiltFor("1.0.14"), "packages/natives/native/x.node");
 		expect(decision.action).toBe("warn");
+		if (decision.action !== "warn") throw new Error(`expected warn, got ${decision.action}`);
 		expect(decision.message).toContain("@veyyon/natives@1.0.14");
 		expect(decision.message).toContain("1.0.20");
 		expect(decision.message).toContain("bun --cwd=packages/natives run build");

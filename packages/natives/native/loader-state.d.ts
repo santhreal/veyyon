@@ -70,25 +70,43 @@ export interface ExtractEmbeddedAddonArchiveInput {
 
 export function extractEmbeddedAddonArchive(input: ExtractEmbeddedAddonArchiveInput): string[];
 
+/** Tri-state AVX2 detection: the probe ran and found it, ran and didn't, or could not run. */
+export type Avx2Support = "supported" | "unsupported" | "unknown";
+
 export interface SelectCpuVariantInput {
 	arch: string;
 	override: "modern" | "baseline" | null | undefined;
 	env: Record<string, string | undefined>;
-	detectAvx2: () => boolean;
+	detectAvx2: () => Avx2Support;
 }
 
 export interface SelectCpuVariantResult {
 	variant: "modern" | "baseline" | null;
-	source: "non-x64" | "override" | "cache" | "detect";
+	source: "non-x64" | "override" | "cache" | "detect" | "detect-unknown";
 	cacheEnvKey?: string;
 	cacheEnvValue?: string;
+	/** True only when detection could not run (`detect-unknown`): baseline was chosen for ABI safety but the verdict is a guess and is NOT cached. */
+	detectionFailed?: boolean;
 }
 
 export function selectCpuVariant(input: SelectCpuVariantInput): SelectCpuVariantResult;
 
+/** Accept / warn / throw decision for a loaded native addon, keyed on its version sentinel. */
+export type LoadedBindingsDecision =
+	| { action: "accept" }
+	| { action: "warn"; builtVersion: string; message: string }
+	| { action: "throw"; builtVersion: string; message: string };
+
+/** Pure, side-effect-free version-sentinel gate for a loaded addon (the runtime load-failure decision). */
+export function evaluateLoadedBindings(
+	ctx: { versionSentinelExport: string; isWorkspaceLoad: boolean; packageVersion: string },
+	bindings: Record<string, unknown>,
+	candidate: string,
+): LoadedBindingsDecision;
+
 export function loadNative(): Record<string, unknown>;
 
-/** The exported symbol name the Rust addon emits for a version, e.g. `1.0.14` -> `__veyyonNativesV1_0_21`. */
+/** The exported symbol name the Rust addon emits for a version, mapping `x.y.z` -> `__veyyonNativesVx_y_z`. */
 export function versionSentinelExportFor(version: string): string;
 
 /** The version a loaded addon was built for, read back from its sentinel export, or `"unknown"`. */
