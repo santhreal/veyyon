@@ -3,7 +3,7 @@
  * Why: multi-row SWAP payload must expand/contract the file exactly.
  */
 import { describe, expect, it } from "bun:test";
-import { applyEdits, parsePatch } from "@veyyon/hashline";
+import { applyEdits, EMPTY_REPLACE, parsePatch } from "@veyyon/hashline";
 
 describe("applyEdits past 6000 SWAP range multi body", () => {
 	const base = Array.from({ length: 10 }, (_, i) => `L${i + 1}`).join("\n");
@@ -26,9 +26,10 @@ describe("applyEdits past 6000 SWAP range multi body", () => {
 		expect(text).toBe("ONLY");
 	});
 
-	it("SWAP 1.=10 with empty body yields empty file", () => {
-		// empty SWAP body: may be empty string or throw — lock real contract
-		const r = applyEdits(base, parsePatch("SWAP 1.=10:\n").edits);
-		expect(r.text).toBe("");
+	it("SWAP 1.=10 with empty body is rejected; DEL 1.=10 clears the file", () => {
+		// A bodyless SWAP is not "clear the range" — it throws EMPTY_REPLACE
+		// (silent-delete footgun removed). Clearing the whole file is DEL 1.=10.
+		expect(() => parsePatch("SWAP 1.=10:\n")).toThrow(EMPTY_REPLACE);
+		expect(applyEdits(base, parsePatch("DEL 1.=10").edits).text).toBe("");
 	});
 });
