@@ -245,7 +245,11 @@ export function resolveOpenAIReasoningEffortFallback(
 	options?: { explicitDisable?: boolean },
 ): OpenAIReasoningEffortFallback | undefined {
 	const currentEffort = readOpenAIReasoningEffort(params);
-	if (!currentEffort || !KNOWN_REASONING_VALUE[currentEffort.toLowerCase()]) return undefined;
+	// Object.hasOwn, not `KNOWN_REASONING_VALUE[...]`: a bare index read resolves
+	// Object.prototype members, so an effort value of `constructor` (lowercase is
+	// prototype-stable) would read the inherited constructor (truthy), pass this
+	// gate as a "known" effort, and feed a non-number into the rank math downstream.
+	if (!currentEffort || !Object.hasOwn(KNOWN_REASONING_VALUE, currentEffort.toLowerCase())) return undefined;
 	if (!isInvalidReasoningEffortError(error, captured, currentEffort)) return undefined;
 	const message = collectMessageParts(error, captured);
 	const allowed = parseAllowedReasoningValues(message, currentEffort);

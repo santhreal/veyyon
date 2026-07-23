@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-responses";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { resolveOpenAIReasoningEffortFallback } from "@veyyon/ai/providers/openai-reasoning-fallback";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import type { CapturedHttpErrorResponse } from "@veyyon/ai/utils/http-inspector";
 import type { Context, FetchImpl, Model, ProviderSessionState } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
@@ -363,5 +365,39 @@ describe("OpenAI reasoning effort fallback retry", () => {
 		expect(result.stopReason).toBe("error");
 		expect(result.errorStatus).toBe(400);
 		expect(attempts).toBe(1);
+	});
+});
+
+describe("resolveOpenAIReasoningEffortFallback known-effort gate uses own-property semantics", () => {
+	// A recognized invalid-reasoning-effort error: 400 status + a message that
+	// names reasoning_effort and lists the allowed values. This drives the code
+	// past the known-effort gate into the fallback selection so the gate's
+	// behavior on a prototype-named effort is observable in the return value.
+	const invalidEffortError = {
+		status: 400,
+		bodyText: "Invalid reasoning_effort: must be one of 'low', 'medium', 'high'",
+	} as unknown as CapturedHttpErrorResponse;
+
+	it("returns undefined for an effort named after a prototype member instead of treating it as known", () => {
+		// Regression: the gate read `KNOWN_REASONING_VALUE[effort.toLowerCase()]`.
+		// For effort `constructor` (lowercase-stable) that resolved the inherited
+		// Object.prototype.constructor (truthy), so the bogus effort passed the gate
+		// and fell through to the rank math, where `REASONING_VALUE_RANK["constructor"]`
+		// (also inherited, a function not a number) produced NaN distances and the
+		// function returned `null` (disable reasoning). With Object.hasOwn the gate
+		// rejects the unknown effort up front and returns undefined (no fallback).
+		const result = resolveOpenAIReasoningEffortFallback(undefined, invalidEffortError, {
+			reasoning_effort: "constructor",
+		});
+		expect(result).toBeUndefined();
+	});
+
+	it("still resolves a genuine known effort through the same gate", () => {
+		// The gate must not over-reject: a real effort (`xhigh`) with the same error
+		// resolves to the nearest allowed enabled value (`high`).
+		const result = resolveOpenAIReasoningEffortFallback(undefined, invalidEffortError, {
+			reasoning_effort: "xhigh",
+		});
+		expect(result).toBe("high");
 	});
 });

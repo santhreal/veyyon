@@ -178,7 +178,11 @@ export async function signRequest(params: SignParams): Promise<SignedHeaders> {
 	if (extraHeaders) {
 		for (const k in extraHeaders) {
 			const lk = k.toLowerCase();
-			if (UNSIGNABLE[lk]) continue;
+			// Object.hasOwn, not `UNSIGNABLE[lk]`: a bare index read resolves
+			// Object.prototype members, so a header literally named `constructor`
+			// (lowercase-stable) would read the inherited constructor (truthy) and be
+			// wrongly skipped from the signed set instead of being signed.
+			if (Object.hasOwn(UNSIGNABLE, lk)) continue;
 			if (lk.startsWith("proxy-") || lk.startsWith("sec-")) continue;
 			signed[lk] = extraHeaders[k].trim().replace(/\s+/g, " ");
 		}
