@@ -121,6 +121,31 @@ describe("applyReleaseToChangelog", () => {
 		expect(after).toContain("## [1.0.4] - 2026-05-01");
 	});
 
+	it("mints no version for a [Unreleased] with only a header and no bullets (gate parity)", () => {
+		// The divergence this locks out: release.ts once used a looser "any
+		// non-whitespace" check, so a stray `### Fixed` header (no bullets) would
+		// create a hollow version section for THIS package when another package's
+		// real bullets triggered the cut. The release gate counts bullets, so the
+		// roll must too — a header alone is not releasable content.
+		const before = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Fixed",
+			"",
+			"## [1.0.0] - 2026-01-01",
+			"",
+			"- First.",
+			"",
+		].join("\n");
+
+		const after = applyReleaseToChangelog(before, "1.0.1", DATE);
+
+		expect(after).not.toContain("## [1.0.1]");
+		expect(after.match(/## \[Unreleased\]/g)).toHaveLength(1);
+	});
+
 	it("is a no-op transform when there is no [Unreleased] section at all", () => {
 		const before = ["# Changelog", "", "## [1.0.0] - 2026-01-01", "", "- First.", ""].join("\n");
 		expect(applyReleaseToChangelog(before, "1.0.1", DATE)).toBe(before);

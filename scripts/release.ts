@@ -11,6 +11,7 @@
 import { isNewerVersion } from "@veyyon/utils/semver";
 import { $, Glob } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
+import { parseUnreleasedBullets } from "./require-changelog.ts";
 import { buildRootChangelog, ROOT_PATH } from "./sync-root-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
@@ -208,13 +209,6 @@ async function watchCI(): Promise<boolean> {
 	}
 }
 
-function hasUnreleasedContent(content: string): boolean {
-	const unreleasedMatch = content.match(/## \[Unreleased\]\s*\n([\s\S]*?)(?=## \[\d|$)/);
-	if (!unreleasedMatch) return false;
-	const sectionContent = unreleasedMatch[1].trim();
-	return sectionContent.length > 0;
-}
-
 function removeEmptyVersionEntries(content: string): string {
 	// Remove version entries that have no content (just whitespace until next ## [ or EOF)
 	return content.replace(/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}\s*\n(?=## \[|\s*$)/g, "");
@@ -229,12 +223,16 @@ function removeEmptyVersionEntries(content: string): string {
  * `packages/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
  * a fresh `## [Unreleased]`) jammed `[Unreleased]` above the fork notice and left
  * the real bullets stranded in a phantom version that never published. When
- * `[Unreleased]` has no bullets, no version entry is created. Any pre-existing
+ * `[Unreleased]` has no bullets, no version entry is created — using the SAME
+ * bullet-based predicate (`parseUnreleasedBullets`) the release gate
+ * (`has-releasable-changes`) decides on, so the two can never disagree: a stray
+ * `### Fixed` header with no bullets does not mint a hollow version section for
+ * one package just because another package triggered the cut. Any pre-existing
  * empty dated section is dropped either way. Pure so the ordering contract is
  * pinned by a test rather than only observed after a real release runs.
  */
 export function applyReleaseToChangelog(content: string, version: string, date: string): string {
-	if (hasUnreleasedContent(content)) {
+	if (parseUnreleasedBullets(content).length > 0) {
 		content = content.replace("## [Unreleased]", `## [Unreleased]\n\n## [${version}] - ${date}`);
 	}
 	return removeEmptyVersionEntries(content);
