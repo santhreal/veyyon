@@ -218,12 +218,19 @@ function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-function workspaceTestCommand(pkg: string, parallel: number, options: { extraArgs?: string[] } = {}): TestCommand {
-	const { extraArgs = [] } = options;
+function workspaceTestCommand(
+	pkg: string,
+	parallel: number,
+	options: { extraArgs?: string[]; smol?: boolean } = {},
+): TestCommand {
+	const { extraArgs = [], smol = false } = options;
+	// `--smol` runs the test process with a smaller heap. The native/TUI/integration
+	// bucket asks for it because those suites load the native addon and browser-ish
+	// modules; without it a fat single invocation can OOM-kill (reported as exit 137).
 	return {
 		label: pkg,
 		cwd: pkg,
-		command: ["bun", "test", `--parallel=${parallel}`, ...extraArgs],
+		command: ["bun", "test", ...(smol ? ["--smol"] : []), `--parallel=${parallel}`, ...extraArgs],
 	};
 }
 
@@ -392,7 +399,9 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 		case "local-ts":
 			return [
 				...fastWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 8, { extraArgs: onlyFailuresArgs })),
-				...nativeAndIntegrationPackages.map(pkg => workspaceTestCommand(pkg, 4, { extraArgs: onlyFailuresArgs })),
+				...nativeAndIntegrationPackages.map(pkg =>
+					workspaceTestCommand(pkg, 4, { extraArgs: onlyFailuresArgs, smol: true }),
+				),
 				...localOnlyWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 4, { extraArgs: onlyFailuresArgs })),
 				...(await commandsForMode("coding-agent-heavy")),
 				{
