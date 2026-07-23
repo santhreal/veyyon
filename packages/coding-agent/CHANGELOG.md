@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The setup wizard now runs on the first install only. Updates never re-run onboarding again: the onboarding generation is a fixed value the app version can't advance, so once you have onboarded, every later update leaves you in your session instead of dropping you back into the wizard. (Previously a major version bump re-onboarded the whole base.)
+
 ## [1.0.13] - 2026-07-23
 
 ### Added
@@ -11348,7 +11352,7 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Compaction now counts retained custom and branch tokens in the keepRecent budget, and cuts past the crossing entry when keeping everything would dead-end.
 - Settings values cycle with click-then-choose rather than Left/Right.
 - Many fail-closed hardening fixes: grep on an unreadable directory, malformed plugin and marketplace manifests, unreadable context files, and project-settings discovery warnings now surface loudly instead of being swallowed, and CLI usage errors exit with the correct code.
-- The sign-in success page text sits below the sun mark, not over it.
+- The sign-in success page text sits below the mark, not over it.
 
 ## [1.0.1] - 2026-07-18
 

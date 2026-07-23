@@ -65,10 +65,11 @@ export interface SetupScene {
 	id: string;
 	title: string;
 	/**
-	 * The app MAJOR version this scene was introduced in. It is a floor, not a
-	 * per-scene trigger: onboarding re-runs once per major release (see
-	 * `selectSetupScenes`), and a scene runs whenever its floor is at or below the
-	 * current major. Stage a scene for a future major by setting this ahead.
+	 * The onboarding generation this scene was introduced in. It is a floor, not a
+	 * per-scene trigger: a scene runs whenever its floor is at or below the current
+	 * generation ({@link CURRENT_SETUP_VERSION}, see `selectSetupScenes`). Since the
+	 * gate is fixed, all shipped scenes use the current generation; a scene can be
+	 * staged for a future generation by setting this ahead of it.
 	 */
 	minVersion: number;
 	shouldRun?(ctx: SetupWizardContext): boolean | Promise<boolean>;
