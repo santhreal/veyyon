@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The `set_cwd` tool now offers its `argot_load` follow-up tip whenever Argot is enabled for the profile, matching the setting you control, instead of only when an Argot session already happens to exist. The tip appears the first time you re-root in an Argot-enabled profile.
+
 ## [1.0.14] - 2026-07-23
 
 ### Fixed
