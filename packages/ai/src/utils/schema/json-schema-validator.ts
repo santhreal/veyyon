@@ -333,9 +333,19 @@ function validateObjectKeywords(
 ): boolean {
 	let valid = true;
 	const properties = isRecord(schema.properties) ? schema.properties : {};
+	// Every instance-membership test below uses `Object.hasOwn`, never `key in
+	// value`. JSON Schema defines a `required`/`properties` key as an OWN property
+	// of the instance, but `key in value` also matches inherited `Object.prototype`
+	// members. A JSON.parse'd instance always carries that prototype, so `key in
+	// value` breaks two ways: `required: ["toString"]` passes on an object that
+	// lacks the property (false negative), and `properties: { toString: ... }` on
+	// an object without it validates the inherited `Object.prototype.toString`
+	// function against the subschema (spurious failure). `Object.hasOwn` keeps the
+	// tests to real own properties, matching the `Object.keys(value)` iteration the
+	// count/additionalProperties keywords already use.
 	if (isRequiredSet(schema.required)) {
 		for (const key of schema.required) {
-			if (!(key in value)) {
+			if (!Object.hasOwn(value, key)) {
 				pushIssue(issues, [...path, key], "is required", { keyword: "required" });
 				valid = false;
 			}
@@ -343,7 +353,7 @@ function validateObjectKeywords(
 	}
 
 	for (const key in properties) {
-		if (!(key in value)) continue;
+		if (!Object.hasOwn(value, key)) continue;
 		valid = validateSchemaNode(properties[key], value[key], [...path, key], ctx, issues) && valid;
 	}
 
@@ -366,7 +376,7 @@ function validateObjectKeywords(
 				valid = false;
 				continue;
 			}
-			for (const key in value) {
+			for (const key of Object.keys(value)) {
 				if (!re.test(key)) continue;
 				known.add(key);
 				valid = validateSchemaNode(patternSchema, value[key], [...path, key], ctx, issues) && valid;
@@ -378,11 +388,11 @@ function validateObjectKeywords(
 		const dependentRequired = schema.dependentRequired;
 		for (const key in dependentRequired) {
 			const deps = dependentRequired[key];
-			if (!(key in value)) continue;
+			if (!Object.hasOwn(value, key)) continue;
 			if (!Array.isArray(deps)) continue;
 			for (const dep of deps) {
 				if (typeof dep !== "string") continue;
-				if (!(dep in value)) {
+				if (!Object.hasOwn(value, dep)) {
 					pushIssue(issues, [...path, dep], `is required when "${key}" is present`, {
 						keyword: "dependentRequired",
 					});
@@ -395,7 +405,7 @@ function validateObjectKeywords(
 	if (isRecord(schema.dependentSchemas)) {
 		const dependentSchemas = schema.dependentSchemas;
 		for (const key in dependentSchemas) {
-			if (!(key in value)) continue;
+			if (!Object.hasOwn(value, key)) continue;
 			valid = validateSchemaNode(dependentSchemas[key], value, path, ctx, issues) && valid;
 		}
 	}
@@ -410,7 +420,7 @@ function validateObjectKeywords(
 			valid = false;
 		}
 	} else if (additional !== undefined && additional !== true) {
-		for (const key in value) {
+		for (const key of Object.keys(value)) {
 			if (known.has(key)) continue;
 			valid = validateSchemaNode(additional, value[key], [...path, key], ctx, issues) && valid;
 		}
