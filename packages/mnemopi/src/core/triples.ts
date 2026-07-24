@@ -1,7 +1,8 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
-import { copyFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { atomicWriteFileSync } from "@veyyon/utils";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 
 export interface TripleRow {
@@ -91,22 +92,21 @@ export function legacyTripleDbPath(env: ProcessEnv = process.env): string {
 
 function copyLegacyDb(source: string, destination: string): void {
 	mkdirSync(dirname(destination), { recursive: true });
-	const tempPath = join(
-		dirname(destination),
-		`.${destination.split(/[\\/]/).at(-1) ?? "triples.db"}.${process.pid}.tmp`,
-	);
 	let sourceDb: Database | null = null;
 	try {
 		sourceDb = openDatabase(source, { create: false, readwrite: false, pragmas: false });
-		writeFileSync(tempPath, (sourceDb as SerializableDatabase).serialize());
-		if (!existsSync(destination)) copyFileSync(tempPath, destination);
+		const serialized = (sourceDb as SerializableDatabase).serialize();
+		// One-time legacy migration: copy the old triples DB to its new home.
+		// The previous code wrote a temp then `copyFileSync`'d it into place, and
+		// copyFileSync streams bytes straight into `destination`, so a crash mid
+		// copy left a truncated SQLite file at the destination. The `existsSync`
+		// guard would then treat that corrupt half-DB as a completed migration and
+		// never retry, silently losing the user's triple store. Write via a
+		// sibling temp + atomic rename so the destination only ever appears as the
+		// whole, valid database.
+		if (!existsSync(destination)) atomicWriteFileSync(destination, serialized);
 	} finally {
 		closeQuietly(sourceDb);
-		try {
-			unlinkSync(tempPath);
-		} catch {
-			// Best-effort cleanup; a failed copy should surface as the original error.
-		}
 	}
 }
 
