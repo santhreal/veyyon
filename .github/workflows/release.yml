@@ -201,3 +201,38 @@ jobs:
               echo "" >> "$GITHUB_STEP_SUMMARY"
               echo "The tagged push starts the CI release run, which publishes the" >> "$GITHUB_STEP_SUMMARY"
               echo "binaries, the GitHub release, and the website changelog." >> "$GITHUB_STEP_SUMMARY"
+
+   # A red cut is as silent as a red publish was (v1.0.28-35): the preflight
+   # check can fail, the atomic bump push can be rejected when main advances
+   # mid-cut, or RELEASE_PAT can be missing — and none of that reaches ci.yml's
+   # release_train_alert, which only watches the publish path. File/update the
+   # same pinned `release-train` issue here; the next green PUBLISH closes it
+   # (ci.yml side), so one issue tracks the whole train.
+   cut_failed_alert:
+      name: Alert on failed release cut
+      needs: [gate, release]
+      if: ${{ always() && (needs.gate.result == 'failure' || needs.release.result == 'failure') }}
+      runs-on: ubuntu-22.04
+      permissions:
+         contents: read
+         issues: write
+      env:
+         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+         GATE_RESULT: ${{ needs.gate.result }}
+         RELEASE_RESULT: ${{ needs.release.result }}
+      steps:
+         - name: File or update the pinned release-train issue
+           shell: bash
+           run: |
+              set -euo pipefail
+              title="Release train red: the release cut failed (gate=$GATE_RESULT, release=$RELEASE_RESULT)"
+              body=$(printf 'The release CUT failed before any tag was published (gate=%s, release=%s).\n\nRun: %s\n\nNo new version ships until a green cut; the next successful publish closes this issue automatically.' "$GATE_RESULT" "$RELEASE_RESULT" "$RUN_URL")
+              existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-train --state open --json number --jq '.[0].number // empty')
+              if [ -n "$existing" ]; then
+                gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+                gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title"
+              else
+                gh issue create --repo "$GITHUB_REPOSITORY" --label release-train --title "$title" --body "$body"
+              fi
+              echo "::error::release cut failed (gate=$GATE_RESULT, release=$RELEASE_RESULT); release-train issue updated"

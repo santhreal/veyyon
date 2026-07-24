@@ -72,6 +72,21 @@ describe("a red release run is loud (release_train_alert)", () => {
 		expect(needs).toContain("test_workspace");
 		expect(needs).toContain("release_github");
 	});
+
+	// The CUT side has its own failure modes that never reach ci.yml (preflight
+	// check failure, atomic bump push rejected because main advanced mid-cut,
+	// missing RELEASE_PAT); a red cut with no alert is the same silent jam the
+	// publish alert exists to prevent.
+	it("release.yml alerts on a failed cut with the same release-train issue", async () => {
+		const wf = await loadYaml("workflows/release.yml");
+		const alert = wf.jobs.cut_failed_alert;
+		expect(alert).toBeDefined();
+		expect(alert.if).toContain("always()");
+		expect(alert.if).toContain("needs.release.result == 'failure'");
+		expect(alert.permissions.issues).toBe("write");
+		const raw = await Bun.file(path.join(workflowsDir, "workflows/release.yml")).text();
+		expect(raw).toContain("--label release-train");
+	});
 });
 
 describe("every third-party action is sha-pinned", () => {
