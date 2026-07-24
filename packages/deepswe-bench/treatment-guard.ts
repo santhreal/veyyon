@@ -19,10 +19,13 @@
  * The pre-run {@link encodeArmModelMismatch} guard is necessary but NOT sufficient:
  * it matches the REQUESTED `--model` string, but the runtime resolves that id
  * through the catalog (provider aliases, effort-tier collapsing) to a different
- * logical id before the gate runs. A requested `google-antigravity/gemini-3.6-flash`
- * that the catalog serves as logical `gemini-3.5-flash` passes this guard (3.6 is
- * on the list) yet fails the gate (the resolved 3.5 is not), so the arm silently
- * runs decode-only. The authoritative check is therefore POST-RUN:
+ * logical id before the gate runs. This is not hypothetical: `google-antigravity`
+ * used to alias `gemini-3.6-flash` onto the 3.5 flash family, so a run requesting
+ * 3.6 passed this guard (3.6 was on the list) yet failed the gate (the resolved
+ * 3.5 was not) and silently ran decode-only. That alias has been removed, but the
+ * gap it exposed is permanent: any future alias, effort collapse, or provider
+ * rename reopens it, because this guard cannot see a resolution that has not
+ * happened yet. The authoritative check is therefore POST-RUN:
  * {@link encodePreambleSilentlyDropped} reads whether the encode preamble actually
  * reached the model (see aggregate's `systemPromptTeachesArgot`), which reflects
  * the model AFTER resolution and catches exactly that degrade. Run both.
