@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { transitionsEnabled } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { pickWeightedTip, WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
@@ -221,8 +222,11 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("skips the intro bloom and renders one static settled frame when animations are disabled", () => {
-		settings.set("display.shimmer", "disabled");
+	it("skips the intro bloom and renders one static settled frame when structural motion is off", () => {
+		// The bloom is gated on `display.transitions` (structural motion), not on
+		// `display.shimmer` (working-message text animation): coupling the two
+		// silently killed the bloom when the shimmer default flipped to disabled.
+		settings.set("display.transitions", "off");
 		try {
 			const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
 			const intervalSpy = vi.spyOn(globalThis, "setInterval");
@@ -238,7 +242,25 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 			welcome.invalidate();
 			expect(welcome.render(80).join("\n")).toBe(a);
 		} finally {
+			settings.set("display.transitions", "on");
+		}
+	});
+
+	it("keeps structural motion independent of the shimmer style (decoupling contract)", () => {
+		// Locks the regression where `display.shimmer: disabled` (the DEFAULT)
+		// silently killed every structural transition: shimmer style must not
+		// affect transitionsEnabled(), and the off switch must win regardless of
+		// shimmer.
+		settings.set("display.shimmer", "disabled");
+		try {
+			expect(transitionsEnabled()).toBe(true);
+			settings.set("display.transitions", "off");
+			expect(transitionsEnabled()).toBe(false);
 			settings.set("display.shimmer", "classic");
+			expect(transitionsEnabled()).toBe(false);
+		} finally {
+			settings.set("display.transitions", "on");
+			settings.set("display.shimmer", "disabled");
 		}
 	});
 

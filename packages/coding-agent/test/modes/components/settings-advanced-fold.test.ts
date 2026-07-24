@@ -43,7 +43,7 @@ const DEMOTED_APPEARANCE_PATHS = [
 ] as const;
 
 // Keys added to the Advanced fold AFTER the spec: new experimental toggles that
-// default into Advanced (advanced: true) so the simplified 12-row appearance
+// default into Advanced (advanced: true) so the simplified 13-row appearance
 // view stays stable as the product grows. `display.subagentInbox` is the
 // experimental opencode-style agent split, off by default. `tui.scrollIsolation`
 // pins the prompt while the wheel scrolls the transcript, on by default.
@@ -54,7 +54,10 @@ const EXTRA_ADVANCED_APPEARANCE_PATHS = ["display.subagentInbox", "tui.scrollIso
 const ALL_ADVANCED_APPEARANCE_PATHS = [...DEMOTED_APPEARANCE_PATHS, ...EXTRA_ADVANCED_APPEARANCE_PATHS] as const;
 const ADVANCED_COUNT = ALL_ADVANCED_APPEARANCE_PATHS.length;
 
-// The 12 keys that stay visible in appearance's default (collapsed) view.
+// The 13 keys that stay visible in appearance's default (collapsed) view.
+// `display.transitions` joined the visible set with the TOUCH-5 overlay
+// unfold: it is the reduced-motion switch for structural chrome animation, a
+// first-class taste choice like Shimmer, not an experimental toggle.
 const KEPT_APPEARANCE_PATHS = [
 	"theme.dark",
 	"theme.light",
@@ -65,6 +68,7 @@ const KEPT_APPEARANCE_PATHS = [
 	"terminal.showImages",
 	"tui.hyperlinks",
 	"tui.paintGround",
+	"display.transitions",
 	"display.shimmer",
 	"display.smoothStreaming",
 	"display.showTokenUsage",
@@ -84,7 +88,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly 12 non-advanced rows and 15 advanced rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly 13 non-advanced rows and 15 advanced rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);
@@ -176,7 +180,7 @@ describe("appearance advanced fold — panel rendering", () => {
 
 	it("expands the Advanced fold on Enter to reveal the demoted rows, keeping the count stable", () => {
 		const comp = createSelector();
-		// The 12 kept rows precede the Advanced toggle in tab order; that many Down
+		// The 13 kept rows precede the Advanced toggle in tab order; that many Down
 		// presses lands selection on the toggle row itself.
 		for (let i = 0; i < KEPT_APPEARANCE_PATHS.length; i++) comp.handleInput("\x1b[B");
 		comp.handleInput("\n");
