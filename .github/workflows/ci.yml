@@ -840,7 +840,13 @@ jobs:
               codesign -dvvv ./veyyon-darwin-arm64
               codesign --verify --strict --verbose=4 ./veyyon-darwin-arm64
               runtime_dir="$(mktemp -d)"
-              HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-darwin-arm64 --version
+              # Assert the binary reports the version being released — a binary built
+              # from the wrong commit (or a failed version-embed) would otherwise run
+              # fine while reporting a stale version, and publish unnoticed.
+              expected="${{ needs.release_metadata.outputs.release-tag }}"; expected="veyyon/${expected#v}"
+              actual="$(HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-darwin-arm64 --version)"
+              echo "reported: $actual (expected to contain: $expected)"
+              case "$actual" in *"$expected"*) : ;; *) echo "::error::published macOS binary reports '$actual', expected '$expected'"; exit 1 ;; esac
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-darwin-arm64 --smoke-test
          - name: Assert signed release is not ad-hoc
            if: env.MACOS_SIGNING == 'true'
@@ -886,7 +892,13 @@ jobs:
          - name: Launch the published linux-x64 binary (forces native-addon load)
            run: |
               runtime_dir="$(mktemp -d)"
-              HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --version
+              # Assert the reported version matches the release tag (catches a binary
+              # built from the wrong commit / a failed version-embed that would run
+              # fine but report a stale version).
+              expected="${{ needs.release_metadata.outputs.release-tag }}"; expected="veyyon/${expected#v}"
+              actual="$(HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --version)"
+              echo "reported: $actual (expected to contain: $expected)"
+              case "$actual" in *"$expected"*) : ;; *) echo "::error::published linux binary reports '$actual', expected '$expected'"; exit 1 ;; esac
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --smoke-test
 
    release_github_verify_windows:
@@ -935,8 +947,13 @@ jobs:
               $env:HOME = Join-Path $runtimeDir "home"
               $env:USERPROFILE = $env:HOME
               $env:XDG_DATA_HOME = Join-Path $runtimeDir "xdg"
-              & .\veyyon-windows-x64.exe --version
+              # Assert the reported version matches the release tag (catches a binary
+              # built from the wrong commit / a failed version-embed).
+              $expected = "veyyon/" + ("${{ needs.release_metadata.outputs.release-tag }}" -replace '^v','')
+              $actual = (& .\veyyon-windows-x64.exe --version | Out-String).Trim()
               if ($LASTEXITCODE -ne 0) { throw "veyyon-windows-x64.exe --version failed with exit $LASTEXITCODE" }
+              Write-Host "reported: $actual (expected to contain: $expected)"
+              if ($actual -notlike "*$expected*") { throw "published Windows binary reports '$actual', expected '$expected'" }
               & .\veyyon-windows-x64.exe --smoke-test
               if ($LASTEXITCODE -ne 0) { throw "veyyon-windows-x64.exe --smoke-test failed with exit $LASTEXITCODE" }
 
