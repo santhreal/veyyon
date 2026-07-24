@@ -12,7 +12,7 @@
 // the config root (getArgotCacheDir), keyed by content signature, immutable and
 // content-addressed. See argot's project-vocab.ts for the full lifecycle.
 
-import { getArgotCacheDir, logger } from "@veyyon/utils";
+import { errorMessage, getArgotCacheDir, logger } from "@veyyon/utils";
 import {
 	ARGOT_LOAD_TOOL,
 	ArgotSession,
@@ -228,4 +228,28 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
 		return undefined;
 	}
 	return { root, changed: argot.unload(root) };
+}
+
+/**
+ * Arm a session's shorthand in the background after startup. The first load in
+ * a project walks the repo to generate the dictionary, so awaiting it inline
+ * would block session construction on large trees; instead the session starts
+ * unarmed and the completed load fires `onArmed` (the prompt refresh, the same
+ * contract `argot_load` uses). A missing project marker resolves quietly to
+ * nothing; a genuine failure (malformed cache, handle conflict) logs loudly.
+ */
+export async function armArgotAfterStartup(opts: {
+	argot: ArgotSession;
+	cwd: string;
+	tokenBudget?: number;
+	onArmed: () => Promise<void>;
+}): Promise<void> {
+	try {
+		const loaded = await loadArgotFolder(opts.argot, opts.cwd, undefined, opts.tokenBudget);
+		if (loaded !== undefined && loaded.handles > 0) {
+			await opts.onArmed();
+		}
+	} catch (error) {
+		logger.warn("Argot startup load failed; session stays unarmed", { cwd: opts.cwd, error: errorMessage(error) });
+	}
 }

@@ -36,7 +36,7 @@ import {
 	formatAdvisorContextPrompt,
 } from "./advisor";
 import { type AsyncJob, AsyncJobManager } from "./async";
-import { loadArgotFolder } from "./argot-cache";
+import { armArgotAfterStartup } from "./argot-cache";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
@@ -1318,18 +1318,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		subagentMode: settings.get("argot.subagents"),
 		parentArgot: options.parentArgot,
 	});
-	if (argotEnabled && argot !== undefined && !argot.loaded) {
-		// The adoption path auto-loads the launch project so the feature works
-		// out of the box; argot_load remains the way to teach additional
-		// projects. A missing project marker is a quiet undefined (nothing to
-		// load); a genuine failure (malformed cache, handle conflict) must log,
-		// never vanish.
-		try {
-			await loadArgotFolder(argot, cwd, undefined, settings.get("argot.tokenBudget"));
-		} catch (error) {
-			logger.warn("Argot startup load failed; session starts unarmed", { cwd, error: errorMessage(error) });
-		}
-	}
 	// Encode gate: which models may WRITE shorthand and an optional context-size
 	// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
 	// unconditional and lossless whatever this holds; the gate governs only
@@ -3169,6 +3157,22 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			titleSystemPrompt: options.titleSystemPrompt,
 		});
 		hasSession = true;
+
+		if (argotEnabled && argot !== undefined && !argot.loaded) {
+			// The adoption path auto-loads the launch project so the feature works
+			// out of the box; argot_load remains the way to teach additional
+			// projects. The load runs in the background: the first dictionary
+			// generation in a project walks the repo, and awaiting it inline
+			// would block session construction on large trees. The completed load
+			// refreshes the base system prompt to teach the handles — the same
+			// contract as argot_load.
+			void armArgotAfterStartup({
+				argot,
+				cwd,
+				tokenBudget: settings.get("argot.tokenBudget"),
+				onArmed: () => session.refreshBaseSystemPrompt(),
+			});
+		}
 
 		// Record the top-level session's exact system prompt + active tools at start,
 		// reusing the SAME `session_init` entry a subagent writes (ONE PLACE — see

@@ -21,6 +21,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	armArgotAfterStartup,
 	collectArgotLoadedRoots,
 	createArgotSession,
 	loadArgotFolder,
@@ -595,5 +596,75 @@ describe("unloadArgotFolder", () => {
 		// can key off it), and unloading a root that was never loaded is a no-op.
 		expect(result?.root).toBe(resolveProjectRoot(repoDir));
 		expect(result?.changed).toBe(false);
+	});
+});
+
+describe("armArgotAfterStartup", () => {
+	let repoDir = "";
+	let plainDir = "";
+	let cacheRoot = "";
+	let originalXdgCache: string | undefined;
+
+	beforeEach(() => {
+		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-xdg-"));
+		repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-repo-"));
+		plainDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-plain-"));
+		originalXdgCache = process.env.XDG_CACHE_HOME;
+		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
+		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
+		setProfile(TEST_PROFILE);
+		if (!getArgotCacheDir().startsWith(cacheRoot)) {
+			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
+		}
+		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
+		writeFile(repoDir, ROUTES, `import '../database/connection.ts';\n// see ${CONNECTION}\n`);
+		git(repoDir, "init", "-q");
+		git(repoDir, "config", "user.email", "t@example.com");
+		git(repoDir, "config", "user.name", "Test");
+		git(repoDir, "add", "-A");
+		git(repoDir, "commit", "-q", "-m", "init");
+	});
+
+	afterEach(() => {
+		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
+		else process.env.XDG_CACHE_HOME = originalXdgCache;
+		__resetDirsFromEnvForTests();
+		for (const dir of [repoDir, plainDir, cacheRoot]) if (dir) removeSyncWithRetries(dir);
+	});
+
+	it("arms in the background and fires onArmed once the dictionary is loaded", async () => {
+		// The startup contract behind the non-blocking load: the session is
+		// constructed unarmed, and the completed load fires the prompt refresh
+		// exactly once, with the handles already in the codec by then.
+		const argot = new ArgotSession();
+		let armedCalls = 0;
+		let loadedWhenArmed = false;
+		await armArgotAfterStartup({
+			argot,
+			cwd: repoDir,
+			onArmed: async () => {
+				armedCalls += 1;
+				loadedWhenArmed = argot.loaded;
+			},
+		});
+		expect(armedCalls).toBe(1);
+		expect(loadedWhenArmed).toBe(true);
+		expect(argot.promptFragment()).toContain(CONNECTION);
+	});
+
+	it("never fires onArmed when there is nothing to load, and does not throw", async () => {
+		// A marker-free folder is a normal "nothing to load" answer: the session
+		// stays unarmed and the refresh is skipped, silently by design.
+		const argot = new ArgotSession();
+		let armedCalls = 0;
+		await armArgotAfterStartup({
+			argot,
+			cwd: plainDir,
+			onArmed: async () => {
+				armedCalls += 1;
+			},
+		});
+		expect(armedCalls).toBe(0);
+		expect(argot.loaded).toBe(false);
 	});
 });
