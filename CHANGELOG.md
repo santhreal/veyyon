@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the remapped TypeBox compatibility shim omitting `Type.Unsafe`, which crashed extensions such as `vey-mcp-adapter` when they registered tools from raw MCP input schemas.
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed
