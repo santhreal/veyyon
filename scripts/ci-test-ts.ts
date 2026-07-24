@@ -224,11 +224,20 @@ function shellQuote(value: string): string {
 // Per-package bun-test args applied in every mode. hashline's large-base scale
 // suites (`apply-edits-past-6000-*`) do an O(range) operation per sampled anchor
 // — a `DEL 1.=k` prefix delete expands to k edits — so a single `it` can run a
-// few seconds on a slow CI runner, above bun's 5s per-test default. A larger
-// per-test timeout gives those legitimately-heavy tests headroom without masking
-// a hang: the ci-test-ts 600s bucket watchdog still bounds the whole run.
+// few seconds on a slow CI runner, above bun's 5s per-test default. packages/ai
+// carries several `numRuns: 10_000` fast-check property suites (tool-argument
+// normalization/idempotence): a synchronous `fc.assert` blocks the event loop
+// for the whole run, so bun's default 5s timeout is only checked after the run
+// completes and cannot interrupt it — under `--parallel=8` on a loaded runner a
+// 10k-run property that is ~1.5s uncontended is CPU-starved past 5s and fails
+// the bucket, which skips the release publish. A larger per-test timeout gives
+// those legitimately-heavy tests headroom without masking a hang: the ci-test-ts
+// 600s bucket watchdog still bounds the whole run. (The single extreme outlier,
+// the 10k deeply-nested-tree idempotence property that hit ~20s, carries its own
+// explicit 120s per-test override in the suite; this floor covers the rest.)
 const workspacePackageExtraArgs: Record<string, string[]> = {
 	"packages/hashline": ["--timeout", "20000"],
+	"packages/ai": ["--timeout", "20000"],
 };
 
 function workspaceTestCommand(
