@@ -49,6 +49,68 @@ export function blockContainsSigil(block: unknown, sigil: string = DEFAULT_SIGIL
 	return false;
 }
 
+export interface SessionUsage {
+	inputTokens: number;
+	outputTokens: number;
+	cacheTokens: number;
+	costUsd: number;
+	argotLoadCalls: number;
+	assistantMsgsWithSigil: number;
+	toolCalls: Record<string, number>;
+}
+
+/**
+ * Tally token usage and tool telemetry from a session's messages.
+ *
+ * The bug this consolidates and fixes: one tool invocation appears in the
+ * transcript TWICE — as a `toolCall` block on the assistant message that
+ * requested it, and again as a `toolResult` message carrying its output. The
+ * old parser incremented the distribution on BOTH, so every tool count was
+ * doubled (a run with 40 real `eval` calls reported 80). Tools are now tallied
+ * exactly once, from the assistant's `toolCall` blocks — the model's actual
+ * invocations — and `argot_load` is counted from that same place, so the
+ * treatment probe and the tool distribution can never disagree about how many
+ * times the model called it.
+ *
+ * `messages` is the ordered sequence of `entry.message` objects from a session
+ * jsonl (already JSON-parsed by the caller; malformed lines dropped upstream).
+ * Token fields read veyyon's own `usage` accounting on each assistant message.
+ */
+export function tallyUsage(messages: Array<Record<string, unknown>>): SessionUsage {
+	let inputTokens = 0;
+	let outputTokens = 0;
+	let cacheTokens = 0;
+	let costUsd = 0;
+	let argotLoadCalls = 0;
+	let assistantMsgsWithSigil = 0;
+	const toolCalls: Record<string, number> = {};
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		const usage = (message.usage ?? {}) as Record<string, number | Record<string, number>>;
+		inputTokens += (usage.input as number) || 0;
+		outputTokens += (usage.output as number) || 0;
+		cacheTokens += ((usage.cacheRead as number) || 0) + ((usage.cacheWrite as number) || 0);
+		costUsd += (usage.cost as Record<string, number>)?.total || 0;
+		const content = (message.content ?? []) as Array<Record<string, unknown>>;
+		// Encode is detected wherever a handle can land — a text block OR a tool
+		// call's arguments (commands and diffs carry handles too). See
+		// blockContainsSigil; scanning text only would undercount encode.
+		if (content.some(b => blockContainsSigil(b))) assistantMsgsWithSigil++;
+		for (const block of content) {
+			if (
+				typeof block === "object" &&
+				block !== null &&
+				block.type === "toolCall" &&
+				typeof block.name === "string"
+			) {
+				toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
+				if (block.name === "argot_load") argotLoadCalls++;
+			}
+		}
+	}
+	return { inputTokens, outputTokens, cacheTokens, costUsd, argotLoadCalls, assistantMsgsWithSigil, toolCalls };
+}
+
 /**
  * Extract a provider "finish reason" (e.g. `PROHIBITED_CONTENT`, `SAFETY`,
  * `RECITATION`) from captured agent output, if one is present.

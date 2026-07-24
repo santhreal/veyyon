@@ -42,14 +42,15 @@ import * as path from "node:path";
 import YAML from "yaml";
 import {
 	type ArmResult,
-	blockContainsSigil,
 	effectiveTemperature,
 	jobNameOf,
 	PINNED_TEMPERATURE,
 	parseJobName,
 	providerFinishReason,
 	renderReport,
+	type SessionUsage,
 	selectTasks,
+	tallyUsage,
 } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 import { encodeArmModelMismatch } from "./treatment-guard";
@@ -137,54 +138,26 @@ function sha256File(p: string): string {
 	return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 }
 
-function parseSessionsUsage(trialDir: string): Partial<ArmResult> | null {
+function parseSessionsUsage(trialDir: string): SessionUsage | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
 	if (!fs.existsSync(sessionsDir)) return null;
 	const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith(".jsonl"));
 	if (files.length === 0) return null;
-	let inputTokens = 0,
-		outputTokens = 0,
-		cacheTokens = 0,
-		costUsd = 0;
-	let argotLoadCalls = 0,
-		assistantMsgsWithSigil = 0;
-	const toolCalls: Record<string, number> = {};
+	// Read every session line into its message object; the pure tallyUsage does the
+	// counting (and the once-per-tool fix) so the same logic is unit-tested.
+	const messages: Array<Record<string, unknown>> = [];
 	for (const file of files) {
 		for (const line of fs.readFileSync(path.join(sessionsDir, file), "utf8").split("\n")) {
 			if (!line.trim()) continue;
-			let entry: { message?: Record<string, unknown> };
 			try {
-				entry = JSON.parse(line);
+				const entry = JSON.parse(line) as { message?: Record<string, unknown> };
+				if (entry.message) messages.push(entry.message);
 			} catch {
-				continue;
-			}
-			const message = entry.message ?? {};
-			const role = message.role;
-			if (role === "assistant") {
-				const usage = (message.usage ?? {}) as Record<string, number | Record<string, number>>;
-				inputTokens += (usage.input as number) || 0;
-				outputTokens += (usage.output as number) || 0;
-				cacheTokens += ((usage.cacheRead as number) || 0) + ((usage.cacheWrite as number) || 0);
-				costUsd += (usage.cost as Record<string, number>)?.total || 0;
-				const content = (message.content ?? []) as Array<Record<string, unknown>>;
-				// Count encode wherever a handle can land: a text block OR a tool
-				// call's arguments (commands and diffs carry handles too). See
-				// blockContainsSigil \u2014 scanning text only would undercount encode.
-				if (content.some(b => blockContainsSigil(b))) assistantMsgsWithSigil++;
-				for (const block of content) {
-					if (typeof block === "object" && block.type === "toolCall" && typeof block.name === "string") {
-						toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
-					}
-				}
-			} else if (role === "toolResult") {
-				if (message.toolName === "argot_load") argotLoadCalls++;
-				if (typeof message.toolName === "string") {
-					toolCalls[message.toolName] = (toolCalls[message.toolName] ?? 0) + 1;
-				}
+				// A truncated final line (a killed run) is not a parse we can trust.
 			}
 		}
 	}
-	return { inputTokens, outputTokens, cacheTokens, costUsd, argotLoadCalls, assistantMsgsWithSigil, toolCalls };
+	return tallyUsage(messages);
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {

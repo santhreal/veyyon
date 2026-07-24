@@ -25,6 +25,7 @@ import {
 	selectTasks,
 	signTestPValue,
 	summarizeCell,
+	tallyUsage,
 	wilsonInterval,
 } from "./aggregate";
 
@@ -779,5 +780,93 @@ describe("renderReport — the Errors (per arm) section exposes a refusal asymme
 		];
 		const report = renderReport(results, "m", STAMP, 1);
 		expect(report).not.toContain("## Errors (per arm)");
+	});
+});
+
+describe("tallyUsage — a tool invocation is counted once, not once per call and once per result", () => {
+	// The bug this locks out: one tool use shows up in the transcript twice — as a
+	// toolCall block on the assistant message, and as a toolResult message. The old
+	// parser counted both, doubling every entry in the tool distribution (40 real
+	// eval calls reported as 80). tallyUsage counts only the assistant invocations.
+
+	test("a call+result pair for the same tool counts as ONE, not two", () => {
+		const messages = [
+			{
+				role: "assistant",
+				content: [{ type: "toolCall", name: "eval", arguments: { code: "1+1" } }],
+			},
+			{ role: "toolResult", toolName: "eval", content: [{ type: "text", text: "2" }] },
+		];
+		const u = tallyUsage(messages);
+		expect(u.toolCalls).toEqual({ eval: 1 });
+	});
+
+	test("counts match the model's real invocations across a mixed session", () => {
+		// Two eval calls and one read call, each with its paired result. The doubled
+		// parser would have reported eval:4, read:2.
+		const messages = [
+			{ role: "assistant", content: [{ type: "toolCall", name: "eval", arguments: {} }] },
+			{ role: "toolResult", toolName: "eval", content: [] },
+			{ role: "assistant", content: [{ type: "toolCall", name: "read", arguments: {} }] },
+			{ role: "toolResult", toolName: "read", content: [] },
+			{ role: "assistant", content: [{ type: "toolCall", name: "eval", arguments: {} }] },
+			{ role: "toolResult", toolName: "eval", content: [] },
+		];
+		expect(tallyUsage(messages).toolCalls).toEqual({ eval: 2, read: 1 });
+	});
+
+	test("argot_load is counted from the invocation, consistent with the tool distribution", () => {
+		// The treatment probe (argotLoadCalls) and the distribution must agree: both
+		// derive from the same assistant toolCall block, so a load is 1 in both.
+		const messages = [
+			{ role: "assistant", content: [{ type: "toolCall", name: "argot_load", arguments: { folder: "pkg" } }] },
+			{ role: "toolResult", toolName: "argot_load", content: [] },
+		];
+		const u = tallyUsage(messages);
+		expect(u.argotLoadCalls).toBe(1);
+		expect(u.toolCalls.argot_load).toBe(1);
+	});
+
+	test("sums token usage from assistant messages and ignores non-assistant roles", () => {
+		const messages = [
+			{
+				role: "assistant",
+				usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 3, cost: { total: 0.01 } },
+				content: [],
+			},
+			{ role: "toolResult", toolName: "read", content: [] },
+			{
+				role: "assistant",
+				usage: { input: 50, output: 10, cacheRead: 2, cacheWrite: 0, cost: { total: 0.005 } },
+				content: [],
+			},
+		];
+		const u = tallyUsage(messages);
+		expect(u.inputTokens).toBe(150);
+		expect(u.outputTokens).toBe(30);
+		expect(u.cacheTokens).toBe(10); // (5+3) + (2+0)
+		expect(u.costUsd).toBeCloseTo(0.015, 12);
+	});
+
+	test("counts an assistant message as encoded when a handle rides in a tool call, not just prose", () => {
+		// Ties tallyUsage to blockContainsSigil: a handle in a shell command counts.
+		const messages = [
+			{ role: "assistant", content: [{ type: "toolCall", name: "bash", arguments: { command: "cat §dbconn" } }] },
+			{ role: "assistant", content: [{ type: "text", text: "no handle here" }] },
+		];
+		expect(tallyUsage(messages).assistantMsgsWithSigil).toBe(1);
+	});
+
+	test("an empty session tallies to all-zero, never throws", () => {
+		const u = tallyUsage([]);
+		expect(u).toEqual({
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheTokens: 0,
+			costUsd: 0,
+			argotLoadCalls: 0,
+			assistantMsgsWithSigil: 0,
+			toolCalls: {},
+		});
 	});
 });
