@@ -963,6 +963,41 @@ export function typeableHandleMass(
 }
 
 /**
+ * The run's own noise floor: how much output size varies between REPEATED SAMPLES
+ * OF THE SAME TASK, as a percentage.
+ *
+ * Grouping by task is the whole point and not a detail. Pooling every sample of
+ * an arm across tasks measures task difficulty, which dwarfs run-to-run noise: a
+ * one-line fix and a subsystem refactor differ in output by multiples, while two
+ * runs of the same task differ by a few percent. Pooled that way the "noise" floor
+ * is enormous, and an effect ceiling that genuinely clears real noise gets
+ * declared unmeasurable. Only samples of the SAME task under the SAME arm differ
+ * by nothing except chance, which is exactly the floor a real effect must clear.
+ *
+ * Per-task spreads are combined by taking the median, so one pathological task (a
+ * timeout, a refusal retry) cannot set the floor for the whole run. Returns `null`
+ * when no task has at least two samples, since spread is then unobservable.
+ */
+export function withinTaskSpreadPct(rows: readonly ArmResult[]): number | null {
+	const byTask = new Map<string, number[]>();
+	for (const row of rows) {
+		if (row.error || row.outputTokens === null) continue;
+		const list = byTask.get(row.task);
+		if (list === undefined) byTask.set(row.task, [row.outputTokens]);
+		else list.push(row.outputTokens);
+	}
+	const spreads: number[] = [];
+	for (const values of byTask.values()) {
+		const spread = relativeSpreadPct(values);
+		if (spread !== null) spreads.push(spread);
+	}
+	if (spreads.length === 0) return null;
+	spreads.sort((a, b) => a - b);
+	const mid = Math.floor(spreads.length / 2);
+	return spreads.length % 2 === 1 ? spreads[mid]! : (spreads[mid - 1]! + spreads[mid]!) / 2;
+}
+
+/**
  * Relative spread of a set of values, as a percentage of their mean.
  *
  * Used as the run's own noise floor: the token totals of repeated samples of the
@@ -1428,13 +1463,11 @@ export function renderReport(
 			const handles = Math.max(...rows.map(r => r.encodeHeadroom?.handles ?? 0));
 			const usable = Math.max(...rows.map(r => r.encodeHeadroom?.usableHandles ?? 0));
 			const pct = emitted === 0 ? 0 : (100 * saved) / emitted;
-			// Noise is estimated from this arm's own repeated samples, so it needs no
-			// assumption about the provider or the task: identical cells differ only by
-			// run-to-run variance, which is exactly the floor a real effect must clear.
-			const tokens = okByArm(a)
-				.map(r => r.outputTokens)
-				.filter((t): t is number => t !== null);
-			const noise = relativeSpreadPct(tokens);
+			// Noise is estimated WITHIN each task, then combined. Pooling an arm's
+			// samples across tasks would measure task difficulty rather than chance,
+			// and that inflated floor would declare a genuinely measurable run
+			// unmeasurable. Only repeats of the same task differ by nothing else.
+			const noise = withinTaskSpreadPct(okByArm(a));
 			const verdict = ceilingBelowNoise(pct, noise)
 				? "**CANNOT MEASURE** — ceiling below noise; any delta here is variance"
 				: "measurable — the ceiling exceeds this run's noise";

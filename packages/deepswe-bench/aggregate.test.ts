@@ -42,6 +42,7 @@ import {
 	tallyUsage,
 	typeableHandleMass,
 	wilsonInterval,
+	withinTaskSpreadPct,
 } from "./aggregate";
 
 /** Build an ArmResult with sane defaults, overriding only what a test cares about. */
@@ -1830,5 +1831,94 @@ describe("efficiency comparison — input tokens are tested, not just displayed"
 		const md = renderReport(rows, "m", "now");
 		const inputRow = md.split("\n").find(l => l.startsWith("| input tok | a → b |")) ?? "";
 		expect(inputRow).toContain("b dearer");
+	});
+});
+
+describe("withinTaskSpreadPct — the noise floor must measure chance, not task difficulty", () => {
+	// The bug this fixes: the headroom verdict originally pooled every sample of an
+	// arm across tasks to estimate noise. Output size is driven far more by which
+	// task is being solved than by run-to-run variance, so the pooled figure was a
+	// measure of corpus difficulty. That inflated floor would stamp CANNOT MEASURE
+	// on a run whose ceiling comfortably cleared real noise, silently discarding a
+	// valid result — the opposite of the error the instrument exists to prevent.
+
+	test("wildly different tasks with perfectly stable repeats report ZERO noise", () => {
+		// The exact failure mode. Task A emits 1,000 tokens and task B emits 100,000,
+		// but each repeats identically, so there is no run-to-run variance at all.
+		// Pooling would report a spread near 140%; the correct answer is 0.
+		const rows: ArmResult[] = [
+			res({ arm: "a", task: "small", repeat: 0, outputTokens: 1000 }),
+			res({ arm: "a", task: "small", repeat: 1, outputTokens: 1000 }),
+			res({ arm: "a", task: "huge", repeat: 0, outputTokens: 100000 }),
+			res({ arm: "a", task: "huge", repeat: 1, outputTokens: 100000 }),
+		];
+		expect(withinTaskSpreadPct(rows)).toBe(0);
+		// And the pooled calculation really would have been enormous, which is why
+		// this test asserts the contrast rather than the fixed value alone.
+		expect(relativeSpreadPct([1000, 1000, 100000, 100000])!).toBeGreaterThan(100);
+	});
+
+	test("real within-task variation is reported", () => {
+		// Two tasks each varying by the same relative amount: the floor is that
+		// amount, not something diluted or amplified by their different sizes.
+		const rows: ArmResult[] = [
+			res({ arm: "a", task: "x", repeat: 0, outputTokens: 90 }),
+			res({ arm: "a", task: "x", repeat: 1, outputTokens: 110 }),
+			res({ arm: "a", task: "y", repeat: 0, outputTokens: 900 }),
+			res({ arm: "a", task: "y", repeat: 1, outputTokens: 1100 }),
+		];
+		const expected = relativeSpreadPct([90, 110])!;
+		expect(withinTaskSpreadPct(rows)).toBeCloseTo(expected, 6);
+	});
+
+	test("the median across tasks keeps one pathological task from setting the floor", () => {
+		// A single erratic task (a retried timeout) must not raise the noise floor for
+		// the whole run and suppress an otherwise valid verdict.
+		const rows: ArmResult[] = [
+			res({ arm: "a", task: "x", repeat: 0, outputTokens: 100 }),
+			res({ arm: "a", task: "x", repeat: 1, outputTokens: 100 }),
+			res({ arm: "a", task: "y", repeat: 0, outputTokens: 100 }),
+			res({ arm: "a", task: "y", repeat: 1, outputTokens: 100 }),
+			res({ arm: "a", task: "wild", repeat: 0, outputTokens: 10 }),
+			res({ arm: "a", task: "wild", repeat: 1, outputTokens: 10000 }),
+		];
+		expect(withinTaskSpreadPct(rows)).toBe(0);
+	});
+
+	test("errored samples are excluded from the floor", () => {
+		// An errored run has no trustworthy token count; letting it in would invent
+		// variance that never happened.
+		const rows: ArmResult[] = [
+			res({ arm: "a", task: "x", repeat: 0, outputTokens: 100 }),
+			res({ arm: "a", task: "x", repeat: 1, outputTokens: 100 }),
+			res({ arm: "a", task: "x", repeat: 2, outputTokens: 99999, error: "CancelledError" }),
+		];
+		expect(withinTaskSpreadPct(rows)).toBe(0);
+	});
+
+	test("a single-repeat run has no observable spread", () => {
+		// With one sample per task nothing can be said about chance, and the caller
+		// falls back to its conservative floor rather than assuming zero noise.
+		const rows: ArmResult[] = [
+			res({ arm: "a", task: "x", repeat: 0, outputTokens: 100 }),
+			res({ arm: "a", task: "y", repeat: 0, outputTokens: 5000 }),
+		];
+		expect(withinTaskSpreadPct(rows)).toBeNull();
+	});
+
+	test("the headroom verdict uses the within-task floor, not the pooled one", () => {
+		// End-to-end proof on the shape that used to break: two tasks of very
+		// different sizes, stable repeats, and a 5% ceiling. Pooled noise would be
+		// ~140% and read CANNOT MEASURE; the true floor is 0%, so this is measurable.
+		const hr = { emittedChars: 1000, handles: 10, usableHandles: 8, maxSavedChars: 50, maxSavedPct: 5 };
+		const rows: ArmResult[] = [
+			res({ arm: "full", task: "small", repeat: 0, reward: 1, outputTokens: 1000, encodeHeadroom: hr }),
+			res({ arm: "full", task: "small", repeat: 1, reward: 1, outputTokens: 1000, encodeHeadroom: hr }),
+			res({ arm: "full", task: "huge", repeat: 0, reward: 1, outputTokens: 100000, encodeHeadroom: hr }),
+			res({ arm: "full", task: "huge", repeat: 1, reward: 1, outputTokens: 100000, encodeHeadroom: hr }),
+		];
+		const md = renderReport(rows, "m", "now", 2);
+		expect(md).toContain("measurable — the ceiling exceeds");
+		expect(md).not.toContain("CANNOT MEASURE");
 	});
 });
