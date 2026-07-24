@@ -182,6 +182,24 @@ export abstract class Filesystem {
 	}
 
 	/**
+	 * Whether `a` and `b` name the SAME underlying file. Used by the patcher's
+	 * move guard to tell a real move-onto-a-different-file (which would clobber
+	 * the user's destination and must be refused) from a rename that only changes
+	 * the path's spelling of one file (a case-only rename, or a path routed
+	 * through a symlink), which is legitimate and must be allowed.
+	 *
+	 * The default compares {@link canonicalPath}s, which is exactly right for a
+	 * case-sensitive backend (in-memory, S3, a Git tree): two distinct keys are
+	 * two distinct files, so a move between them is a real clobber. A disk backend
+	 * on a case-insensitive volume, or one that follows symlinks, must override
+	 * this to compare by identity (device + inode) so `README.md` and `readme.md`
+	 * on such a volume are recognised as one file. See {@link NodeFilesystem}.
+	 */
+	async isSameExistingFile(a: string, b: string): Promise<boolean> {
+		return this.canonicalPath(a) === this.canonicalPath(b);
+	}
+
+	/**
 	 * Canonical path used as a key by external caches (e.g. snapshot
 	 * stores). The default is identity; override to return an absolute or
 	 * otherwise canonicalised path so producers and consumers of cached
@@ -343,5 +361,18 @@ export class NodeFilesystem extends Filesystem {
 
 	async exists(path: string): Promise<boolean> {
 		return Bun.file(path).exists();
+	}
+
+	/**
+	 * Compare by device + inode, not by path string, so the move guard treats a
+	 * case-only rename on a case-insensitive volume and a symlinked path as the
+	 * one file they really are (and thus a legitimate rename, not a clobber). This
+	 * is the same identity test {@link move} uses to decide whether deleting the
+	 * source after a content-move would destroy the destination, so both stay in
+	 * agreement about what "the same file" means. `canonicalPath` alone cannot do
+	 * this: {@link pathModule.resolve} folds neither case nor symlinks.
+	 */
+	override async isSameExistingFile(a: string, b: string): Promise<boolean> {
+		return sameExistingFile(a, b);
 	}
 }

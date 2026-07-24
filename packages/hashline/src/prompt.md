@@ -14,7 +14,7 @@ Every file section starts with `[PATH#TAG]`. `TAG` = 4-hex snapshot tag from you
 `INS.BLK.POST N:` — insert the body rows after the END of the block that BEGINS on line N — outside it, at sibling depth. To append inside a block, use `INS.POST`.
 `INS.HEAD:` / `INS.TAIL:` — insert the body rows at the very start / end of the file.
 `REM` — delete the whole file named by the section header. No body, no line ops.
-`MV DEST` — move/rename the section file to `DEST` (a path, quoted when it contains spaces). Line edits above `MV` land on the source first, then the final content is written at `DEST`.
+`MV DEST` — move/rename the section file to `DEST` (a path, quoted when it contains spaces). Line edits above `MV` land on the source first, then the final content is written at `DEST`. `DEST` must not already exist as a different file; the move is refused rather than overwrite it, so edit that file directly or delete it first.
 Single line: `SWAP N.=N:` / `DEL N`. The range is the ORIGINAL lines you touch; body length is irrelevant (replacing 1 line with 10 is still `SWAP N.=N:`).
 </ops>
 

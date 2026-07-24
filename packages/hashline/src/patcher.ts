@@ -314,6 +314,25 @@ export class Patcher {
 			throw new Error(`MV destination is the same as ${target.path}.`);
 		}
 
+		// Refuse to move onto an existing DIFFERENT file. `fs.move` overwrites its
+		// destination unconditionally, so without this guard `MV a -> b` where `b`
+		// already holds the user's real content silently destroys `b` and leaves no
+		// trace — a destructive fs op the model can trigger by naming a wrong or
+		// hallucinated destination. Fail loudly here, during prepare, so a
+		// multi-section batch aborts before any write lands (all-or-nothing). A
+		// rename that only respells one file (case-only on a case-insensitive
+		// volume, or through a symlink) is NOT a clobber: isSameExistingFile
+		// recognises it by identity and lets it through, matching the same-file
+		// guard fs.move uses to avoid deleting the file it just wrote.
+		if (fileOp?.kind === "move" && (await this.fs.exists(fileOp.dest))) {
+			if (!(await this.fs.isSameExistingFile(target.path, fileOp.dest))) {
+				throw new Error(
+					`MV destination ${fileOp.dest} already exists; refusing to overwrite it. ` +
+						`Edit ${fileOp.dest} directly, or remove it first, then move.`,
+				);
+			}
+		}
+
 		const { bom: bomFromText, text } = stripBom(read.rawContent);
 		const bom = bomFromText || (await this.#readBinaryBom(target.path));
 		const lineEnding = detectLineEnding(text);
