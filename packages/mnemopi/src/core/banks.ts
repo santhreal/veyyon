@@ -42,21 +42,7 @@ export class BankManager {
 	}
 	deleteBank(name: string, force = false): boolean {
 		this.validateName(name);
-		if (name === "default") {
-			if (!force) throw new ValueError("Cannot delete 'default' bank without force=True");
-			// The default bank's DB lives at dataDir/mnemopi.db (the exact path
-			// getBankDbPath resolves), NOT under banksDir/default/. Deleting a
-			// banksDir/default dir here used to be a silent no-op: the caller was
-			// told nothing was deleted (or worse, believed the data was wiped)
-			// while the real default DB survived. Act on the same path the reads
-			// use, including the SQLite sidecars.
-			const dbPath = this.getBankDbPath("default");
-			if (!existsSync(dbPath)) return false;
-			for (const p of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
-				rmSync(p, { force: true });
-			}
-			return true;
-		}
+		if (name === "default" && !force) throw new ValueError("Cannot delete 'default' bank without force=True");
 		const bankDir = join(this.banksDir, name);
 		if (!existsSync(bankDir)) return false;
 		rmSync(bankDir, { recursive: true, force: true });

@@ -17,7 +17,6 @@
  * MIT License - Copyright (c) 2025 opentui
  */
 import { EventEmitter } from "events";
-import { PASTE_MAX_BYTES } from "./bracketed-paste";
 import { isKittyProtocolActive } from "./keys";
 
 const ESC = "\x1b";
@@ -26,6 +25,7 @@ const BRACKETED_PASTE_END = "\x1b[201~";
 // Paste-mode recovery bounds: a lost/corrupted end marker (ssh/tmux
 // truncation) must not hang input forever or grow memory unboundedly.
 const PASTE_INACTIVITY_TIMEOUT_MS = 1000;
+const PASTE_MAX_BYTES = 64 * 1024 * 1024;
 // A buggy double-report (CSI-u event plus the bare printable for the same
 // keypress) arrives in the same terminal write; a bare char that shows up
 // later than this window is a real keystroke and must not be swallowed.

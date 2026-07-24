@@ -21,6 +21,7 @@ import { EMBER as SUN_EMBER_RAMP, GLYPH as SUN_GLYPH } from "@veyyon/coding-agen
 import { SILVER_STOPS } from "@veyyon/coding-agent/modes/components/welcome";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 
+const BLACK = "#000000";
 const BRAND_SILVER = "#C6CBD4";
 const EMBER = "#F0862E";
 const EMBER_SELECTION = "#241510";

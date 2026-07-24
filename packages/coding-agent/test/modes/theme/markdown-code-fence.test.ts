@@ -16,6 +16,7 @@ import { getMarkdownTheme, initTheme, theme } from "@veyyon/coding-agent/modes/t
 import { Markdown } from "@veyyon/tui";
 
 function plain(lines: readonly string[]): string[] {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI
 	return lines.map(line => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 }
 

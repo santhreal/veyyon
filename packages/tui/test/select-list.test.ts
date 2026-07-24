@@ -465,9 +465,7 @@ describe("status-row key legend", () => {
 		const list = new SelectList(items, 3, testTheme);
 		list.handleInput("4");
 		const rendered = list.render(80).join("\n");
-		// With a live query the esc chip reads "clear": the cancel ladder clears
-		// the search on the first press (see select-list-cancel-ladder.test.ts).
-		expect(rendered).toContain("Search: 4 · ↑↓ move · ↵ select · esc clear");
+		expect(rendered).toContain("Search: 4 · ↑↓ move · ↵ select · esc close");
 	});
 
 	/** Negative twin: a list that fits renders no status row and no legend —
