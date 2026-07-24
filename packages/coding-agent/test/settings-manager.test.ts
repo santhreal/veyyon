@@ -165,6 +165,107 @@ describe("Settings", () => {
 		});
 	});
 
+	describe("well-formed but wrong-shape settings file", () => {
+		// A settings file can parse WITHOUT error yet not be a mapping: an editor or
+		// a bad script can leave behind a YAML sequence (`- foo`), a bare scalar
+		// (`42`), or a quoted string. YAML.parse succeeds and returns an array,
+		// number, or string, so the parse-error/quarantine path never fires. The old
+		// loader collapsed any non-record straight to `{}` with no signal — worse
+		// than the corrupt-file path, which at least quarantines and reports. That is
+		// a silent capability loss (Law 10): the user's whole config vanishes and
+		// nothing tells them why. These tests pin that a wrong-shape root is treated
+		// exactly like an unparseable file — preserved, reported, and not overwritten
+		// on the next save — while a genuinely empty file stays silent.
+
+		it("quarantines a top-level YAML sequence instead of silently dropping it", async () => {
+			fs.mkdirSync(agentDir, { recursive: true });
+			const sequenceYaml = ["- startup", "- model", "- theme"].join("\n");
+			await Bun.write(getConfigPath(), sequenceYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(fs.existsSync(`${getConfigPath()}.corrupt`)).toBe(true);
+			expect(fs.readFileSync(`${getConfigPath()}.corrupt`, "utf-8")).toBe(sequenceYaml);
+			expect(settings.quarantinedFiles).toEqual([
+				{ path: getConfigPath(), quarantinePath: `${getConfigPath()}.corrupt` },
+			]);
+		});
+
+		it("quarantines a bare scalar root and reports it", async () => {
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), "42\n");
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(fs.readFileSync(`${getConfigPath()}.corrupt`, "utf-8")).toBe("42\n");
+			expect(settings.quarantinedFiles).toHaveLength(1);
+		});
+
+		it("quarantines a top-level string root and reports it", async () => {
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), '"just a string"\n');
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(fs.readFileSync(`${getConfigPath()}.corrupt`, "utf-8")).toBe('"just a string"\n');
+			expect(settings.quarantinedFiles).toHaveLength(1);
+		});
+
+		it("does not overwrite the rescued wrong-shape file when a later save applies a change", async () => {
+			// The wrong-shape file is the only copy of whatever the user meant to
+			// write. Applying `set` and flushing must land the change WITHOUT clobbering
+			// the preserved copy, matching the corrupt-file contract.
+			fs.mkdirSync(agentDir, { recursive: true });
+			const sequenceYaml = ["- one", "- two"].join("\n");
+			await Bun.write(getConfigPath(), sequenceYaml);
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+			settings.set("setupVersion", 2);
+			await settings.flush();
+
+			expect(fs.readFileSync(`${getConfigPath()}.corrupt`, "utf-8")).toBe(sequenceYaml);
+			expect((await readSettings()).setupVersion).toBe(2);
+		});
+
+		it("leaves a blank file silent: an empty settings file is legitimately empty, not malformed", async () => {
+			// The fix must distinguish an empty file (null parse — the user has no
+			// settings yet, which is normal on first run) from a wrong-shape file. A
+			// blank file must NOT be quarantined or reported.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), "");
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(fs.existsSync(`${getConfigPath()}.corrupt`)).toBe(false);
+			expect(settings.quarantinedFiles).toEqual([]);
+		});
+
+		it("leaves a comments-only file silent, treating it as an empty mapping", async () => {
+			// A file that is only comments also parses to null. Same as blank: no
+			// settings, no complaint.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await Bun.write(getConfigPath(), "# no settings yet\n# just notes\n");
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(fs.existsSync(`${getConfigPath()}.corrupt`)).toBe(false);
+			expect(settings.quarantinedFiles).toEqual([]);
+		});
+
+		it("loads a normal mapping without quarantining, proving the guard is shape-specific", async () => {
+			// The negative twin: a well-formed mapping is untouched, so the wrong-shape
+			// guard cannot regress into quarantining valid configs.
+			fs.mkdirSync(agentDir, { recursive: true });
+			await writeSettings({ startup: { quiet: true }, setupVersion: 5 });
+
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
+
+			expect(fs.existsSync(`${getConfigPath()}.corrupt`)).toBe(false);
+			expect(settings.quarantinedFiles).toEqual([]);
+			expect(settings.get("setupVersion" as SettingPath)).toBe(5);
+		});
+	});
+
 	describe("collapseChangelog migration", () => {
 		it("strips the obsolete key on load instead of leaving a dead toggle", async () => {
 			// collapseChangelog gated how much of the changelog startup dumped into

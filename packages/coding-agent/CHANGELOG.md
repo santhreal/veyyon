@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A settings file that parses cleanly but is not a mapping (a top-level YAML sequence, a bare scalar, or a string) is now preserved and reported instead of silently discarded. The loader previously collapsed any non-mapping root to an empty config with no signal, so a mis-edited settings file erased the user's whole configuration invisibly. Such a file is now quarantined and surfaced through `quarantinedFiles`, exactly like an unparseable one, while a blank or comments-only file stays silent as a legitimately empty config.
+
+## [1.0.31] - 2026-07-24
+
+### Fixed
+
+- The `apply_patch` default filesystem now commits crash-atomically. The interactive editor already wrote through the crash-atomic LSP path, but the default filesystem behind programmatic and SDK `apply_patch` callers still used a truncate-then-stream `Bun.write`, so a crash mid-write could leave the target file truncated. Create, update, and move writes through the default now write a sibling temp and rename it over the target, preserving an existing file's permission bits.
+
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes
