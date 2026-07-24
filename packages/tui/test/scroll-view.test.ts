@@ -115,9 +115,11 @@ describe("ScrollView", () => {
 		const view = new ScrollView(source, { height: 2, scrollbar: "never", theme });
 		expect(view.render(10)).toEqual(["alpha", "beta"]);
 
-		source[1] = "BETA-EDITED";
+		// Stay under the render width (10 cols): this test is about adoption of
+		// the mutation, not truncation.
+		source[1] = "BETA-EDIT";
 		view.setLines(source);
-		expect(view.render(10)).toEqual(["alpha", "BETA-EDITED"]);
+		expect(view.render(10)).toEqual(["alpha", "BETA-EDIT"]);
 	});
 
 	/**

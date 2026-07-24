@@ -375,16 +375,20 @@ describe("runAutoUpdate", () => {
 	it("reports up-to-date when the registry has nothing newer", async () => {
 		stubRegistry(async () => Response.json({ tag_name: "v1.2.3" }));
 
-		expect(await updateCli.runAutoUpdate("1.2.3", undefined, await statePath())).toEqual({ status: "up-to-date" });
+		expect(await updateCli.runAutoUpdate("1.2.3", undefined, await statePath(), () => "binary")).toEqual({
+			status: "up-to-date",
+		});
 		// Strictly newer is required, so a registry that has fallen behind the
 		// installed build must not trigger a downgrade install.
-		expect(await updateCli.runAutoUpdate("2.0.0", undefined, await statePath())).toEqual({ status: "up-to-date" });
+		expect(await updateCli.runAutoUpdate("2.0.0", undefined, await statePath(), () => "binary")).toEqual({
+			status: "up-to-date",
+		});
 	});
 
 	it("reports the registry failure instead of silently doing nothing", async () => {
 		stubRegistry(async () => new Response("nope", { status: 503, statusText: "Service Unavailable" }));
 
-		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 		expect(outcome.status).toBe("failed");
 		expect(outcome.status === "failed" && outcome.error).toContain("503");
 		// No version is known when the lookup itself failed.
@@ -396,7 +400,7 @@ describe("runAutoUpdate", () => {
 			throw new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
 		});
 
-		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 		expect(outcome).toEqual({ status: "failed", error: "getaddrinfo ENOTFOUND registry.npmjs.org" });
 	});
 
@@ -410,7 +414,7 @@ describe("runAutoUpdate", () => {
 		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 
-		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 
 		expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
 		expect(install).toHaveBeenCalledWith("9.9.9", false, updateCli.SILENT_UPDATE_REPORTER);
@@ -446,7 +450,7 @@ describe("runAutoUpdate", () => {
 		stubRegistry(async () => Response.json({ tag_name: "v9.9.9" }));
 		spyOn(updateCli, "installRelease").mockRejectedValue(new Error("brew exited 1"));
 
-		expect(await updateCli.runAutoUpdate("1.0.0", undefined, await statePath())).toEqual({
+		expect(await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary")).toEqual({
 			status: "failed",
 			version: "9.9.9",
 			error: "brew exited 1",
@@ -457,7 +461,7 @@ describe("runAutoUpdate", () => {
 		stubRegistry(async () => Response.json({ tag_name: "v1.0.0" }));
 		const write = spyOn(process.stdout, "write").mockImplementation(() => true);
 
-		await updateCli.runAutoUpdate("1.0.0", undefined, await statePath());
+		await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 
 		expect(write).not.toHaveBeenCalled();
 	});
@@ -470,7 +474,7 @@ describe("runAutoUpdate", () => {
 			spyOn(updateCli, "installRelease").mockRejectedValue(new Error("EACCES: permission denied"));
 			const state = await statePath();
 
-			await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
 			expect(await readAutoUpdateState(state)).toEqual({
 				failedVersion: "9.9.9",
@@ -488,7 +492,7 @@ describe("runAutoUpdate", () => {
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "EACCES", state, Date.now());
 
-			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
 			expect(outcome).toEqual({ status: "skipped", version: "9.9.9", reason: "recent-failure" });
 			expect(install).not.toHaveBeenCalled();
@@ -502,7 +506,7 @@ describe("runAutoUpdate", () => {
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.8", "bad tarball", state, Date.now());
 
-			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
 			expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
 			expect(install).toHaveBeenCalledTimes(1);
@@ -516,7 +520,7 @@ describe("runAutoUpdate", () => {
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "transient", state, 1_000);
 
-			await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
 			expect(await readAutoUpdateState(state)).toEqual({});
 		});
@@ -533,9 +537,9 @@ describe("runAutoUpdate", () => {
 			const state = await statePath();
 
 			const outcomes = await Promise.all([
-				updateCli.runAutoUpdate("1.0.0", undefined, state),
-				updateCli.runAutoUpdate("1.0.0", undefined, state),
-				updateCli.runAutoUpdate("1.0.0", undefined, state),
+				updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary"),
+				updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary"),
+				updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary"),
 			]);
 
 			expect(install).toHaveBeenCalledTimes(1);
@@ -553,9 +557,9 @@ describe("runAutoUpdate", () => {
 			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
 			const state = await statePath();
 
-			await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 			await clearAutoUpdateFailure(state);
-			const second = await updateCli.runAutoUpdate("1.0.0", undefined, state);
+			const second = await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
 			expect(second).toEqual({ status: "updated", version: "9.9.9" });
 		});
@@ -704,6 +708,8 @@ describe("verifyDownloadChecksum is a fail-closed integrity gate", () => {
 	it("refuses when the sidecar body is empty or unparseable", async () => {
 		const { filePath } = await writeBinary("fake-binary");
 		spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 200 }));
-		await expect(verifyDownloadChecksum(filePath, SIDECAR)).rejects.toThrow(/empty or unparseable — refusing to install/);
+		await expect(verifyDownloadChecksum(filePath, SIDECAR)).rejects.toThrow(
+			/empty or unparseable — refusing to install/,
+		);
 	});
 });
