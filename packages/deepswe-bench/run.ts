@@ -285,19 +285,30 @@ function reaggregate(runDir: string): void {
 	// arm configs, so it cannot re-derive the temperature that was actually run. Losing
 	// it would silently drop the regime provenance from the re-rendered results.json.
 	let sampling: unknown = null;
+	// The arm fingerprints and binary sha likewise cannot be re-derived from the jobs
+	// on disk (a reaggregate does not re-stage), so carry them forward or the run
+	// stops being self-identifying after a re-render.
+	let armFingerprints: unknown = null;
+	let binarySha: string | null = null;
 	try {
 		const prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
 		model = prior.model ?? model;
 		limit = prior.limit ?? null;
 		totalTasksAvailable = prior.totalTasksAvailable ?? null;
 		sampling = prior.sampling ?? null;
+		armFingerprints = prior.armFingerprints ?? null;
+		binarySha = prior.binarySha ?? null;
 	} catch {
 		/* first aggregation */
 	}
 	const repeats = results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1;
 	fs.writeFileSync(
 		path.join(runDir, "results.json"),
-		JSON.stringify({ model, limit, totalTasksAvailable, sampling, arms, tasks, repeats, results }, null, 2),
+		JSON.stringify(
+			{ model, binarySha, limit, totalTasksAvailable, sampling, armFingerprints, arms, tasks, repeats, results },
+			null,
+			2,
+		),
 	);
 	fs.writeFileSync(path.join(runDir, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
@@ -660,6 +671,12 @@ async function main(): Promise<void> {
 					perArm: Object.fromEntries(arms.map(a => [a, armTemperature.get(a) ?? PINNED_TEMPERATURE])),
 					note: "greedy at temperature 0: top-p / top-k are irrelevant, so temperature alone fixes the regime",
 				},
+				// The semantic fingerprint of each arm's exact (config, sections, rule)
+				// inputs — the same value the zero-IV guard uses. Stamping it makes every
+				// run self-identifying: two runs of an arm with the same name but a changed
+				// config produce different fingerprints, so a longitudinal diff catches the
+				// drift instead of silently comparing two different treatments.
+				armFingerprints: Object.fromEntries(arms.map(a => [a, armFingerprints.get(a) ?? null])),
 				arms,
 				tasks,
 				repeats,
