@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { clampLow, errorMessage, isEnoent } from "@veyyon/utils";
+import { atomicWriteFilePreservingMode, clampLow, errorMessage, isEnoent } from "@veyyon/utils";
 import { type } from "arktype";
 import {
 	type FileDiagnosticsResult,
@@ -124,7 +124,15 @@ export const defaultFileSystem: FileSystem = {
 		return fs.promises.readFile(path);
 	},
 	async write(path: string, content: string): Promise<void> {
-		await Bun.write(path, await serializeEditFileText(path, path, content));
+		// Crash-atomic: write a sibling temp and rename it over the target so a
+		// death mid-write (SIGINT, OOM-kill, full disk) can never leave the user's
+		// source truncated. The interactive editor overrides this with the LSP
+		// writethrough (also atomic); this default backs every programmatic /
+		// SDK apply_patch caller that does not pass its own filesystem, so the
+		// shipped default must be as safe as the interactive path. Mode is carried
+		// forward because the rename swaps the inode (a bare atomic write would
+		// otherwise strip a script's +x); new files default to 0o644.
+		await atomicWriteFilePreservingMode(path, await serializeEditFileText(path, path, content));
 	},
 	async delete(path: string): Promise<void> {
 		await fs.promises.unlink(path);

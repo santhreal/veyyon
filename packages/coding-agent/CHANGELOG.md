@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The `apply_patch` default filesystem now commits crash-atomically. The interactive editor already wrote through the crash-atomic LSP path, but the default filesystem behind programmatic and SDK `apply_patch` callers still used a truncate-then-stream `Bun.write`, so a crash mid-write could leave the target file truncated. Create, update, and move writes through the default now write a sibling temp and rename it over the target, preserving an existing file's permission bits.
+
 ## [1.0.30] - 2026-07-24
 
 ### Fixed
