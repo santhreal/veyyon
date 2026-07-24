@@ -35,7 +35,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import YAML from "yaml";
-import { type ArmResult, jobNameOf, parseJobName, renderReport } from "./aggregate";
+import { type ArmResult, jobNameOf, parseJobName, renderReport, selectTasks } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 import { encodeArmModelMismatch } from "./treatment-guard";
 
@@ -262,15 +262,24 @@ function reaggregate(runDir: string): void {
 	const arms = [...new Set(results.map(r => r.arm))];
 	const tasks = [...new Set(results.map(r => r.task))];
 	let model = "unknown";
+	// Preserve the subset provenance the original run recorded (which tasks were
+	// sampled, out of how many): a reaggregate re-derives `tasks` from the jobs on
+	// disk, so without carrying these forward the "this was a limited subset" signal
+	// would silently vanish from the re-rendered results.json.
+	let limit: number | null = null;
+	let totalTasksAvailable: number | null = null;
 	try {
-		model = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8")).model ?? model;
+		const prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
+		model = prior.model ?? model;
+		limit = prior.limit ?? null;
+		totalTasksAvailable = prior.totalTasksAvailable ?? null;
 	} catch {
 		/* first aggregation */
 	}
 	const repeats = results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1;
 	fs.writeFileSync(
 		path.join(runDir, "results.json"),
-		JSON.stringify({ model, arms, tasks, repeats, results }, null, 2),
+		JSON.stringify({ model, limit, totalTasksAvailable, arms, tasks, repeats, results }, null, 2),
 	);
 	fs.writeFileSync(path.join(runDir, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
@@ -310,7 +319,15 @@ async function main(): Promise<void> {
 	const jobParallel = Number.isFinite(rawJobs) && rawJobs > 0 ? Math.floor(rawJobs) : 2;
 	const rawTrialTimeout = Number(args["trial-timeout"] ?? "900");
 	const trialTimeoutSec = Number.isFinite(rawTrialTimeout) && rawTrialTimeout > 0 ? rawTrialTimeout : 900;
-	const limit = args.limit ? Number(args.limit) : undefined;
+	let limit: number | undefined;
+	if (args.limit !== undefined) {
+		const parsedLimit = Number(args.limit);
+		if (!Number.isInteger(parsedLimit) || parsedLimit <= 0) {
+			console.error(`error: --limit must be a positive integer (got ${JSON.stringify(args.limit)})`);
+			process.exit(1);
+		}
+		limit = parsedLimit;
+	}
 	const outRoot = path.resolve(
 		args.out ?? path.join(BENCH_DIR, "runs", new Date().toISOString().replace(/[:.]/g, "-")),
 	);
@@ -328,7 +345,19 @@ async function main(): Promise<void> {
 			.filter(d => fs.existsSync(path.join(tasksRoot, d, "task.toml")))
 			.sort();
 	}
-	if (limit !== undefined) tasks = tasks.slice(0, limit);
+	const totalTasksAvailable = tasks.length;
+	if (limit !== undefined && limit < totalTasksAvailable) {
+		// Even-stride representative subsample, not the alphabetically-first N (which
+		// would cluster on the first repo prefix and bias the pass rate). Loud, because
+		// a limited run's pass rate is an estimate over a SUBSET, not the full suite,
+		// and must never be read as the headline number.
+		tasks = selectTasks(tasks, limit);
+		console.error(
+			`note: --limit ${limit} selects ${tasks.length} of ${totalTasksAvailable} tasks as an even-stride ` +
+				`representative sample; the reported pass rate covers this subset, not the full suite ` +
+				`(the exact task list is recorded in results.json).`,
+		);
+	}
 	if (tasks.length === 0) {
 		console.error("no tasks selected");
 		process.exit(1);
@@ -577,7 +606,20 @@ async function main(): Promise<void> {
 	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
 	fs.writeFileSync(
 		path.join(outRoot, "results.json"),
-		JSON.stringify({ model, binarySha, arms, tasks, repeats, results }, null, 2),
+		JSON.stringify(
+			{
+				model,
+				binarySha,
+				limit: limit ?? null,
+				totalTasksAvailable,
+				arms,
+				tasks,
+				repeats,
+				results,
+			},
+			null,
+			2,
+		),
 	);
 	fs.writeFileSync(path.join(outRoot, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`\nwrote ${path.join(outRoot, "report.md")} and results.json`);

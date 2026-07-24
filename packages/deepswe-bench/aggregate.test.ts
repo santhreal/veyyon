@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { type ArmResult, jobNameOf, parseJobName, renderReport, summarizeCell } from "./aggregate";
+import { type ArmResult, jobNameOf, parseJobName, renderReport, selectTasks, summarizeCell } from "./aggregate";
 
 /** Build an ArmResult with sane defaults, overriding only what a test cares about. */
 function res(over: Partial<ArmResult>): ArmResult {
@@ -81,6 +81,66 @@ describe("jobNameOf / parseJobName — the reaggregate round-trip", () => {
 			task: "some-task",
 			repeat: 10,
 		});
+	});
+});
+
+describe("selectTasks — a --limit subsample must be representative, not the alphabetical head", () => {
+	// The bug this locks out: `sorted.slice(0, limit)`. DeepSWE task names are
+	// repo-prefixed, so the first N cluster on one repo and a pass rate over them is
+	// a biased estimate of the whole-suite rate. selectTasks must spread the picks
+	// across the sorted range while staying fully deterministic (a limited run has to
+	// stay reproducible and reaggregatable).
+
+	const suite = Array.from({ length: 100 }, (_, i) => `task-${String(i).padStart(3, "0")}`);
+
+	test("returns the whole set (a copy) when no limit is given", () => {
+		const picked = selectTasks(suite, undefined);
+		expect(picked).toEqual(suite);
+		expect(picked).not.toBe(suite); // a copy, so callers can mutate without aliasing
+	});
+
+	test("returns the whole set when the limit meets or exceeds the size", () => {
+		expect(selectTasks(suite, 100)).toEqual(suite);
+		expect(selectTasks(suite, 1000)).toEqual(suite);
+	});
+
+	test("spans the whole range instead of clustering at the head (the anti-bias property)", () => {
+		// slice(0,10) would return task-000..task-009 (all clustered). Even stride over
+		// 100 tasks at limit 10 lands one pick per contiguous decile, so the last pick is
+		// near the end of the suite, not the start.
+		const picked = selectTasks(suite, 10);
+		expect(picked).toEqual([
+			"task-000",
+			"task-010",
+			"task-020",
+			"task-030",
+			"task-040",
+			"task-050",
+			"task-060",
+			"task-070",
+			"task-080",
+			"task-090",
+		]);
+		// Concretely: this is NOT the biased head slice.
+		expect(picked).not.toEqual(suite.slice(0, 10));
+	});
+
+	test("is deterministic: the same limit always selects the same tasks", () => {
+		expect(selectTasks(suite, 7)).toEqual(selectTasks(suite, 7));
+	});
+
+	test("picks distinct, in-range tasks and never duplicates or overflows", () => {
+		for (const limit of [1, 2, 3, 13, 37, 99]) {
+			const picked = selectTasks(suite, limit);
+			expect(picked).toHaveLength(limit);
+			expect(new Set(picked).size).toBe(limit); // no repeats
+			for (const t of picked) expect(suite).toContain(t); // every pick is a real task
+		}
+	});
+
+	test("limit of zero or below selects nothing (guarded upstream, defended here)", () => {
+		expect(selectTasks(suite, 0)).toEqual([]);
+		expect(selectTasks(suite, -5)).toEqual([]);
 	});
 });
 

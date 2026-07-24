@@ -29,6 +29,34 @@ export function jobNameOf(arm: string, task: string, repeat: number, repeats: nu
 	return repeats > 1 ? `${arm}__${task}__r${repeat}` : `${arm}__${task}`;
 }
 
+/**
+ * Pick `limit` tasks spread EVENLY across the sorted task set, for a smoke/debug
+ * run that cannot afford the full suite.
+ *
+ * The obvious `sorted.slice(0, limit)` is unsound as a sample: DeepSWE task names
+ * are repo-prefixed (`astropy__...`, `django__...`), so the alphabetically-first
+ * N cluster on the first repo or two, and a pass rate measured over them is not an
+ * estimate of the pass rate over the whole suite — it silently benches a biased
+ * slice. An even stride across the sorted list spans the whole task space instead,
+ * so a limited run is a representative subsample of the full one.
+ *
+ * The stride is fully deterministic (no RNG), so the same `limit` always selects
+ * the same tasks and a limited run stays reproducible and reaggregatable. Returns
+ * the full set (a copy) when `limit` is undefined or at least the set size, and the
+ * empty set when `limit <= 0`.
+ */
+export function selectTasks(sorted: readonly string[], limit: number | undefined): string[] {
+	if (limit === undefined || limit >= sorted.length) return [...sorted];
+	if (limit <= 0) return [];
+	const out: string[] = [];
+	for (let i = 0; i < limit; i++) {
+		// i/limit walks [0,1) in `limit` even steps; scaling by the set size spreads
+		// the picks across the whole sorted range instead of clustering at the head.
+		out.push(sorted[Math.floor((i * sorted.length) / limit)] as string);
+	}
+	return out;
+}
+
 /** Inverse of {@link jobNameOf}: recover (arm, task, repeat) from a job name. */
 export function parseJobName(jobName: string): { arm: string; task: string; repeat: number } {
 	const sep = jobName.indexOf("__");
