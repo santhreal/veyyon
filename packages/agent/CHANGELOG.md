@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Outbound tool-call ids are now canonicalized per provider for compatibility.
+
+### Fixed
+
+- Compaction now counts retained custom and branch tokens in the keep-recent budget, and cuts past the crossing entry when keeping everything would otherwise dead-end.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Performance
+
+- Applying a large-range edit is now O(n) instead of O(n^2), and the O(n^2) scale suites are bounded, so a big single edit no longer degrades quadratically with file size.
+
 ## [1.0.23] - 2026-07-24
 
 ### Fixed
