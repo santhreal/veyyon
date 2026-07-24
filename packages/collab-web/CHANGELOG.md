@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevented IME composition (Korean/Japanese/Chinese) from duplicating the last character when pressing Enter to commit in the collab web composer. ([#39](https://github.com/santhreal/veyyon/issues/39))
+
 ## [16.5.1] - 2026-07-14
 
 ### Fixed
