@@ -457,6 +457,27 @@ function Install-FromSource {
     }
 }
 
+# Parse a `.sha256` sidecar body ("<hex>  <filename>") into the lowercased hash.
+# Returns $null when the body is empty or has no leading token, so the caller can
+# fail closed rather than compare against an empty expected value. Splits on any
+# whitespace (matches the POSIX installer's `awk '{print $1}'`).
+function ConvertFrom-Sha256Sidecar {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+    $token = ($Text.Trim() -split '\s+')[0]
+    if ([string]::IsNullOrWhiteSpace($token)) { return $null }
+    return $token.ToLower()
+}
+
+# Compute the SHA-256 of a file and compare it, case-insensitively, to $Expected.
+# Returns $true only on an exact match (fail closed on empty/mismatch).
+function Test-FileSha256 {
+    param([string]$Path, [string]$Expected)
+    if ([string]::IsNullOrWhiteSpace($Expected)) { return $false }
+    $actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLower()
+    return ($actual -eq $Expected.ToLower())
+}
+
 function Install-Binary {
     if ($Ref) {
         Write-Host "Fetching release $Ref..."
@@ -492,7 +513,7 @@ function Install-Binary {
     } else {
         $expected = $null
         try {
-            $expected = (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30).Trim().Split(" ")[0].ToLower()
+            $expected = ConvertFrom-Sha256Sidecar (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30)
         } catch {
             Remove-Item $OutPath -ErrorAction SilentlyContinue
             throw "no published checksum for $BinaryAsset ($Latest) - refusing to install unverified. Current releases publish .sha256 sidecars; for an old pre-sidecar release, pass -NoVerify to override."
@@ -501,8 +522,8 @@ function Install-Binary {
             Remove-Item $OutPath -ErrorAction SilentlyContinue
             throw "published checksum for $BinaryAsset is empty/unparseable - refusing to install (pass -NoVerify to override)"
         }
-        $actual = (Get-FileHash -Path $OutPath -Algorithm SHA256).Hash.ToLower()
-        if ($actual -ne $expected) {
+        if (-not (Test-FileSha256 -Path $OutPath -Expected $expected)) {
+            $actual = (Get-FileHash -Path $OutPath -Algorithm SHA256).Hash.ToLower()
             Remove-Item $OutPath -ErrorAction SilentlyContinue
             throw "checksum mismatch for $BinaryAsset (expected $expected, got $actual)"
         }
