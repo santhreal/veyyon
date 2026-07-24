@@ -557,6 +557,18 @@ jobs:
          - name: Install method smoke tests
            run: bun run ci:test:install-methods
 
+   install_ps1_functions:
+      name: Windows installer function tests
+      # install.ps1 is a shipped install channel; run its helper-function tests
+      # on a real Windows shell so the PATH-wiring logic (which never ran on the
+      # Linux runners) is actually gated. pwsh ships on windows-latest.
+      runs-on: windows-latest
+      steps:
+         - uses: actions/checkout@v4
+         - name: install.ps1 function tests
+           shell: pwsh
+           run: pwsh -File scripts/install-tests/functions.test.ps1
+
    release_binary:
       name: "Release binary: ${{ matrix.target_id }}"
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&

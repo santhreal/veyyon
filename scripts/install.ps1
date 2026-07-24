@@ -193,14 +193,48 @@ function Install-Alias {
     }
 }
 
+# Split a raw PATH string into its entries, dropping empties. An empty entry in
+# Windows PATH means "current directory", which is clutter and a hazard, so we
+# never emit one.
+function Split-PathEntries {
+    param([string]$Raw)
+    if ([string]::IsNullOrEmpty($Raw)) { return @() }
+    return @($Raw -split ';' | Where-Object { $_ -ne '' })
+}
+
+# True when $Dir is already a distinct entry of $Raw. A substring test is wrong:
+# "C:\a\bin" is a substring of "C:\a\bin2" and of "C:\a\bin;..." with wildcard
+# metacharacters, so a naive -like falsely reports the dir is present (or absent)
+# and either skips a needed add or double-adds. Compare whole entries, trimmed of
+# a trailing separator, case-insensitively (Windows paths are case-insensitive).
+function Test-PathContainsDir {
+    param([string]$Raw, [string]$Dir)
+    $target = $Dir.TrimEnd('\')
+    foreach ($entry in (Split-PathEntries $Raw)) {
+        if ($entry.TrimEnd('\') -ieq $target) { return $true }
+    }
+    return $false
+}
+
+# Pure: return $Raw with $Dir appended as a distinct entry, or $Raw unchanged
+# when $Dir is already present. Never introduces a leading/duplicate ';' (a null
+# or empty existing PATH used to yield ";C:\...\bin", i.e. an empty "current
+# directory" entry). Extracted so it can be unit-tested without touching the
+# machine's real environment.
+function Get-PathWithDir {
+    param([string]$Raw, [string]$Dir)
+    if (Test-PathContainsDir $Raw $Dir) { return $Raw }
+    return ((@(Split-PathEntries $Raw) + $Dir) -join ';')
+}
+
 # Add the install dir to the user PATH if it is not already there. Returns $true
 # when a new entry was added (so the caller can tell the user to restart).
 function Add-ToPath {
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($UserPath -notlike "*$InstallDir*") {
+    if (-not (Test-PathContainsDir $UserPath $InstallDir)) {
         Write-Host "Adding $InstallDir to PATH..."
-        [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", "User")
-        $env:Path = "$env:Path;$InstallDir"
+        [Environment]::SetEnvironmentVariable("Path", (Get-PathWithDir $UserPath $InstallDir), "User")
+        $env:Path = Get-PathWithDir $env:Path $InstallDir
         return $true
     }
     return $false
@@ -422,25 +456,29 @@ function Uninstall-Veyyon {
     }
 }
 
-# Main logic
-if ($Uninstall) {
-    Uninstall-Veyyon
-    return
-}
-
-# Default to source when a ref is pinned.
-if ($Ref -and -not $Source -and -not $Binary) {
-    $Source = $true
-}
-
-if ($Source) {
-    if (-not (Test-BunInstalled)) {
-        Write-Host "Installing bun..."
-        irm bun.sh/install.ps1 | iex
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+# Main logic. Guarded so the test harness can dot-source this file to exercise
+# the helper functions in isolation without running a real install: set
+# $env:VEYYON_INSTALL_SOURCED=1 before sourcing (mirrors install.sh).
+if (-not $env:VEYYON_INSTALL_SOURCED) {
+    if ($Uninstall) {
+        Uninstall-Veyyon
+        return
     }
-    Assert-BunVersion $MinimumBunVersion
-    Install-FromSource
-} else {
-    Install-Binary
+
+    # Default to source when a ref is pinned.
+    if ($Ref -and -not $Source -and -not $Binary) {
+        $Source = $true
+    }
+
+    if ($Source) {
+        if (-not (Test-BunInstalled)) {
+            Write-Host "Installing bun..."
+            irm bun.sh/install.ps1 | iex
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+        }
+        Assert-BunVersion $MinimumBunVersion
+        Install-FromSource
+    } else {
+        Install-Binary
+    }
 }
