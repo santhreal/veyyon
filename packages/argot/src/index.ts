@@ -59,6 +59,8 @@ export {
 	EMPTY_GATE,
 	type MakeGateOptions,
 	makeGate,
+	modelAllowed,
+	modelIdSegment,
 	shouldEncode,
 } from "./policy.js";
 export { ARGOT_PREAMBLE, type PreambleOptions, renderPreamble } from "./preamble.js";

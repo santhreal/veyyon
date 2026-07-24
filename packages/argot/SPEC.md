@@ -304,6 +304,14 @@ encoding.
   `contextTokens`.
 - **`EMPTY_GATE`** is the inert gate (no model, no cutoff); `shouldEncode` is
   always `false`.
+- **`modelAllowed(entry, activeModel) -> boolean`** exposes the single allowlist
+  matching rule `shouldEncode` uses: a provider-qualified entry matches only its
+  exact id; a bare entry matches the active id's segment after the last `/`.
+  Exported so a caller (for example an eval harness) can decide ahead of a run
+  whether a model would be encoded under a gate, using the same rule the runtime
+  applies rather than a re-derived copy that could drift.
+- **`modelIdSegment(id) -> string`** returns the part of an id after the last
+  `/`, the segment a bare allowlist entry is compared against.
 
 ### The generator
 

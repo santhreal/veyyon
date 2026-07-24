@@ -21,7 +21,24 @@ Every evaluation comparison MUST vary **EXACTLY ONE independent variable** betwe
 
 **NEVER replace the whole system prompt to test a prompt change.** A whole-prompt override (a custom `SYSTEM.md` / `--system-prompt` snapshot) freezes a point-in-time copy that no longer responds to settings, and it silently drops every settings-gated section it forgets to copy — the delegation block renders only when the delegation setting is on, so a hand-compressed snapshot that omits it inverts that setting invisibly. That is two hidden variables, not one. Override one named section instead; the engine renders all the others.
 
-The runner enforces the mechanical floor of this rule: if any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module), it fails loudly with the colliding arm names instead of running. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
+The runner enforces two mechanical floors of this rule before it runs anything:
+
+1. **Zero-IV collision.** If any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module and same/no rule), it fails loudly with the colliding arm names. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
+2. **Treatment-not-applied.** If an arm turns argot encoding on with a non-empty `argot.models` allowlist that does not include the `--model` under test, it fails loudly. argot only encodes for a model on its allowlist, so such an arm would SILENTLY degrade to decode-only while still being labelled the encode condition — a silent fallback living inside the eval set. The check uses argot's own `modelAllowed` predicate (exported from the SDK), so it can never drift from the gate the runtime actually applies. A deliberately decode-only arm (`enabled: true`, empty allowlist, as in `arms/decode.yml`) is fine and passes.
+
+## Canonical single-IV comparisons
+
+These are the sound pairings the shipped arms are built for. Each varies exactly one thing, so a delta is attributable:
+
+| Comparison | Arms | The one variable |
+|---|---|---|
+| Feature flag | `baseline` ↔ `argot-setting-only` | `argot.enabled` false → true, nothing else |
+| The nudge rule | `argot-setting-only` ↔ `candidate-argot-nudge` | adds `arms/candidate-argot-nudge.rule.md` (an always-apply rule), same config |
+| Teaching (encode) | `decode` ↔ `full` | the model is allowlisted to encode and taught the preamble; codec/loadability held equal |
+| Model | any single arm, two `--model` values | only `--model` differs |
+
+Do not compare across two of these at once (e.g. `baseline` ↔ `full` mixes the feature flag AND teaching). Pick the pair whose single variable is the effect you want to measure.
+
 ## Prerequisites (once per machine)
 
 0. Clone the tasks into this package: `git clone --depth 1
@@ -39,9 +56,10 @@ The runner enforces the mechanical floor of this rule: if any two arms in a run 
 cd packages/deepswe-bench
 bun run.ts \
   --tasks tasks/pilot-10.txt \
-  --arms none,decode,full \
+  --arms baseline,decode,full \
   --model google-antigravity/gemini-2.5-flash \
   --jobs 2 \
+  --repeats 3 \
   --out ../../runs/deepswe/argot-pilot
 ```
 
@@ -61,6 +79,11 @@ Flags:
   2 is safe on a 16-core/64 GB machine, 4 is the practical ceiling.
 - `--model <provider/id>` — the model under test. When the arm gates behavior
   per model (argot does), the arm file names the same model id.
+- `--repeats K` — sample every (arm, task) cell K times (default 1). LLM agents
+  are stochastic, so one sample per cell cannot separate a real arm effect from
+  run-to-run noise. With K > 1 the report shows each cell's pass RATE with a
+  binomial standard error, and the total run is `arms x tasks x K`. Raise K when
+  the expected delta is small; the standard error shrinks as `1/sqrt(K)`.
 
 Assets are staged into `<out>/assets/` (the compiled binary, the auth DB, and
 the arm overlays) and uploaded into each task container at run time with
@@ -75,9 +98,14 @@ verifier reports), `results.json` (every metric, machine-readable), and
 
 ## Reading the table
 
-- **pass (reward=1)** and **mean reward** — task success from the held-out
-  verifier. A feature that changes pass rate is a correctness change, not a
-  perf change; treat accordingly.
+- **pass rate ±se** and **mean reward** — task success from the held-out
+  verifier. With `--repeats K`, each cell is `passRate ±stdErr (passes/n)`: the
+  fraction of samples that scored reward 1, its binomial standard error, and the
+  raw tally. Two arms whose pass rates differ by less than a couple of standard
+  errors are not distinguishable at that sample count — raise `--repeats` before
+  trusting the sign. A feature that changes pass rate is a correctness change,
+  not a perf change; treat accordingly. Errored samples are excluded from the
+  rate (shown as `(+N err)`), never counted as failures.
 - **input / output / cache tok** — summed per arm from the persisted veyyon
   session usage. Output tokens are the expensive ones; a compression feature
   should move output tokens down at equal reward.
@@ -89,9 +117,10 @@ verifier reports), `results.json` (every metric, machine-readable), and
   Probe rows only appear for arms that engaged the mechanism; every feature
   should add probes like these to prove engagement, not just outcomes.
 
-Compare arms only on the same model and the same task set. One run per
-(arm, task) is a single sample — for a feature with a small expected delta,
-rerun or expand the task set before trusting the sign of the difference.
+Compare arms only on the same model and the same task set. For a feature with a
+small expected delta, raise `--repeats` (more samples per cell) and/or expand the
+task set before trusting the sign of the difference; the standard error column
+tells you when you have enough samples to read the delta.
 
 ## How it works (and why it is not slop)
 
@@ -167,11 +196,15 @@ behavioral nudge rather than a section rewrite (this is what
 
 ## The argot pilot arms (2026-07-21)
 
-- `none` — `argot.enabled: false`.
+- `baseline` — `argot.enabled: false` (the control; no argot at all).
+- `argot-setting-only` — `argot.enabled: true`, defaults otherwise.
+- `candidate-argot-nudge` — `argot-setting-only` plus `arms/candidate-argot-nudge.rule.md`.
 - `decode` — enabled and loadable, but the model allowlist is empty, so nothing
   is ever taught (isolates the cost of the feature being armed).
-- `full` — enabled, `gemini-2.5-flash` allowed to encode; the agent loads the
-  project itself with `argot_load` and writes handles.
+- `full` — enabled, with an `argot.models` allowlist that includes the model
+  under test, allowed to encode; the agent loads the project itself with
+  `argot_load` and writes handles. (If you bench a `--model` the allowlist does
+  not name, the runner refuses to run rather than silently measure decode-only.)
 
 ## Argot on DeepSWE: what is and is not measurable
 
@@ -183,7 +216,7 @@ differs between arms — which keeps the arm comparison clean.
 
 That makes the bench measure three distinct things:
 
-1. **Enablement overhead** (none vs decode vs full, all tasks): what the
+1. **Enablement overhead** (baseline vs decode vs full, all tasks): what the
    preamble, the tools, and the decode seams cost when the feature exists.
    Pilot answer: within noise, ~0.7% input tokens.
 2. **Organic adoption** (full arm, `argot_load_calls` probe): whether the

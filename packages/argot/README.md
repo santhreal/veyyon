@@ -311,6 +311,8 @@ exported too, for harnesses that drive the flow directly.
 | `shouldEncode(gate, input): boolean` | Decide whether to teach the model shorthand this turn (model allowlist + context cutoff). Gates only encoding; decoding is never affected. See [Controlling when the model encodes](#controlling-when-the-model-encodes). |
 | `ArgotGate` / `ArgotGateInput` | The gate you build from settings (`models`, `disableAboveTokens`) and the per-turn inputs you measure (`model`, `contextTokens`). |
 | `EMPTY_GATE: ArgotGate` | The inert gate: no model listed, no cutoff. `shouldEncode` is always `false`. |
+| `modelAllowed(entry, activeModel): boolean` | Whether one allowlist entry names the active model, the exact rule `shouldEncode` applies: a bare entry (`gemini-3.6-flash`) is a provider wildcard matching the id's last segment; a provider-qualified entry (`google-antigravity/gemini-3.6-flash`) matches only that exact id. Exported so a caller can check ahead of a run whether a model would be encoded, without re-deriving the rule. |
+| `modelIdSegment(id): string` | The model-id segment of a possibly provider-qualified id (the part after the last `/`). |
 | `generateDictFromRepo(files, options?): GeneratedDict` | Propose an `AGENTS.dict` from a repo file listing (with optional contents). The recommended starting point. See [Generating a dictionary](#generating-a-dictionary). |
 | `generateDict(corpus, options?): GeneratedDict` | The underlying generator over any text corpus, packed under a token budget. |
 | `estimateTokens(text): number` / `extractCandidates(text): string[]` | The default token heuristic and candidate extractor `generateDict` uses. Exported so you can reuse or replace either. |
