@@ -406,6 +406,19 @@ export function shimmerEnabled(): boolean {
 }
 
 /**
+ * Whether STRUCTURAL motion plays: overlay open transitions and the welcome
+ * bloom. Owned by `display.transitions` (default on), deliberately separate
+ * from `display.shimmer`: turning the working-message text animation off is a
+ * taste choice about text, not a request for hard-cut overlays — coupling the
+ * two silently killed the bloom and the unfold when the shimmer default
+ * flipped to `disabled`. `off` is the reduced-motion switch for chrome.
+ */
+export function transitionsEnabled(): boolean {
+	if (!isSettingsInitialized()) return true;
+	return settings.get("display.transitions") !== "off";
+}
+
+/**
  * Apply a shimmer sweep across one or more segments, treating them as a
  * single continuous string for band positioning. Each segment can supply
  * its own palette so the gradient stays in lockstep while the colors

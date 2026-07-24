@@ -11,7 +11,7 @@ import {
 } from "@veyyon/tui";
 import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../../config/settings";
-import { shimmerEnabled } from "../../modes/theme/shimmer";
+import { transitionsEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
 import { sunMark } from "./sun";
 import tipsText from "./tips.txt" with { type: "text" };
@@ -203,13 +203,13 @@ export class WelcomeComponent implements Component {
 	/**
 	 * Play the one-shot launch bloom: the sun rises from a hot point to a full
 	 * resting disc, then settles. Safe to call repeatedly — it resets and replays.
-	 * Degraded path: without truecolor, or with animations disabled
-	 * (`display.shimmer: disabled`), the bloom is skipped entirely and the mark
+	 * Degraded path: without truecolor, or with structural motion off
+	 * (`display.transitions: off`), the bloom is skipped entirely and the mark
 	 * renders one static settled frame.
 	 */
 	playIntro(requestRender: () => void): void {
 		this.#stopAnimation();
-		if (!TERMINAL.trueColor || !shimmerEnabled()) {
+		if (!TERMINAL.trueColor || !transitionsEnabled()) {
 			requestRender();
 			return;
 		}

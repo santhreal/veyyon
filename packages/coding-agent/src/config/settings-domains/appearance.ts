@@ -440,6 +440,22 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	"display.transitions": {
+		type: "enum",
+		values: ["on", "off"] as const,
+		default: "on",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Transitions",
+			description: "Structural motion: overlay open transitions and the welcome bloom",
+			options: [
+				{ value: "on", label: "On", description: "Overlays unfold open; the welcome mark blooms in" },
+				{ value: "off", label: "Off", description: "Reduced motion: every surface appears as a hard cut" },
+			],
+		},
+	},
+
 	"display.shimmer": {
 		type: "enum",
 		values: ["classic", "kitt", "living", "disabled"] as const,

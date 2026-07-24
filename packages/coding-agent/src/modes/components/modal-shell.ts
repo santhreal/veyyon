@@ -12,7 +12,7 @@
  * top. This is not a full-screen TUI conversion.
  */
 import { clamp, clampLow, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { shimmerEnabled } from "../theme/shimmer";
+import { transitionsEnabled } from "../theme/shimmer";
 import { theme } from "../theme/theme";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
@@ -603,8 +603,8 @@ const REVEAL_TICK_MS = 33;
 /**
  * Drives a one-shot open reveal for a modal card: `value` eases 0 → 1 over
  * {@link REVEAL_MS}, ticking a re-render until settled. Follows the welcome
- * bloom's convention (interval + requestRender, `display.shimmer: disabled`
- * gating is the CALLER's job via shimmerEnabled()). Idle after settling: the
+ * bloom's convention (interval + requestRender, `display.transitions: off`
+ * gating is the CALLER's job via modalRevealEnabled()). Idle after settling: the
  * timer self-clears, so a settled overlay costs nothing per frame.
  */
 export class ModalRevealDriver {
@@ -659,13 +659,14 @@ export class ModalRevealDriver {
 
 /**
  * Ambient gate for the open unfold, decided at the SHOW site (single owner):
- * `display.shimmer: disabled` turns all chrome animation off, and non-truecolor
- * terminals follow the welcome bloom's convention of skipping motion entirely.
+ * `display.transitions: off` turns structural motion off, and non-truecolor
+ * terminals skip motion entirely (the reveal clip itself is color-agnostic,
+ * but sub-frame chrome motion on 16-color terminals reads as flicker).
  * Components never read this themselves — they honor `options.reveal` blindly,
  * which keeps direct constructions (tests, embedders) deterministic.
  */
 export function modalRevealEnabled(): boolean {
-	return TERMINAL.trueColor && shimmerEnabled();
+	return TERMINAL.trueColor && transitionsEnabled();
 }
 
 /**
