@@ -862,3 +862,54 @@ jobs:
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --version
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-linux-x64 --smoke-test
 
+   release_github_verify_windows:
+      # Windows is a first-class install channel (install.ps1), but neither verify
+      # job above ever launches the Windows binary — a broken .exe, a missing/wrong
+      # .sha256 sidecar (install.ps1 fails closed without it), or a native addon
+      # that will not load on Windows could publish unnoticed. Download the
+      # published asset exactly as install.ps1 does, verify the sidecar the way
+      # install.ps1 requires (Get-FileHash), then run --version and --smoke-test in
+      # a clean HOME. --smoke-test forces the core @veyyon/natives addon to load,
+      # so this is the end-to-end proof that the shipped Windows binary starts.
+      name: Verify published release (windows-x64)
+      if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
+         needs.release_github.result == 'success' }}
+      needs: [release_metadata, release_github]
+      runs-on: windows-latest
+      # Post-publish verification (like the macOS/linux verify jobs): it does not
+      # gate the publish, so cap it so a smoke-test that hangs on Windows fails
+      # fast and loud instead of holding a runner.
+      timeout-minutes: 15
+      permissions:
+         contents: read
+      steps:
+         - name: Download published windows-x64 binary and checksum sidecar
+           shell: pwsh
+           run: |
+              $base = "https://github.com/${{ github.repository }}/releases/download/${{ needs.release_metadata.outputs.release-tag }}"
+              Invoke-WebRequest -Uri "$base/veyyon-windows-x64.exe" -OutFile veyyon-windows-x64.exe
+              Invoke-WebRequest -Uri "$base/veyyon-windows-x64.exe.sha256" -OutFile veyyon-windows-x64.exe.sha256
+         - name: Verify the published .sha256 sidecar (install.ps1 fails closed without it)
+           shell: pwsh
+           run: |
+              # The sidecar is "<hash>  veyyon-windows-x64.exe"; take the leading hash
+              # token and compare it case-insensitively to the file's SHA-256, exactly
+              # as install.ps1 does. A missing or mismatched sidecar fails the release
+              # here rather than a user's install.
+              $expected = ((Get-Content -Raw veyyon-windows-x64.exe.sha256).Trim() -split '\s+')[0].ToLower()
+              if ([string]::IsNullOrWhiteSpace($expected)) { throw "published sidecar is empty/unparseable" }
+              $actual = (Get-FileHash -Path veyyon-windows-x64.exe -Algorithm SHA256).Hash.ToLower()
+              if ($actual -ne $expected) { throw "checksum mismatch: expected $expected, got $actual" }
+              Write-Host "checksum verified: $actual"
+         - name: Launch the published windows-x64 binary (forces native-addon load)
+           shell: pwsh
+           run: |
+              $runtimeDir = Join-Path $env:TEMP "veyyon-verify-$PID"
+              $env:HOME = Join-Path $runtimeDir "home"
+              $env:USERPROFILE = $env:HOME
+              $env:XDG_DATA_HOME = Join-Path $runtimeDir "xdg"
+              & .\veyyon-windows-x64.exe --version
+              if ($LASTEXITCODE -ne 0) { throw "veyyon-windows-x64.exe --version failed with exit $LASTEXITCODE" }
+              & .\veyyon-windows-x64.exe --smoke-test
+              if ($LASTEXITCODE -ne 0) { throw "veyyon-windows-x64.exe --smoke-test failed with exit $LASTEXITCODE" }
+
