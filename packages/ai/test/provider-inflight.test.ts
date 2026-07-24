@@ -307,3 +307,118 @@ describe("provider in-flight request limits", () => {
 		expect(path.isAbsolute(relative)).toBe(false);
 	});
 });
+
+/**
+ * A request that fails AFTER acquiring an in-flight slot must give the slot
+ * back. The happy-path tests above only prove the slot is released when a
+ * request completes normally; they never exercise the `catch` arm of
+ * `withProviderInFlightLimit`, which is the arm that runs when the provider
+ * throws mid-dispatch (a dropped connection, a 5xx, a handler that rejects).
+ *
+ * If that arm ever stops releasing the slot, the failure is silent and
+ * catastrophic: the lease dir stays on disk with a live heartbeat, so it never
+ * ages into staleness (30s) and never gets reaped. With `maxInFlightRequests`
+ * set to 1, the very next request to that provider blocks forever. These tests
+ * make that regression a hard, fast failure instead of a production wedge.
+ */
+describe("provider in-flight slot release on failure", () => {
+	beforeEach(async () => {
+		await useIsolatedLimiterRoot();
+	});
+
+	test("releases the slot after a mid-dispatch failure so a queued request proceeds", async () => {
+		registerMockApi();
+		const firstStarted = Promise.withResolvers<void>();
+		const releaseFirst = Promise.withResolvers<void>();
+		let callIndex = 0;
+		const mock = createMockModel({
+			provider: "tests",
+			handler: async () => {
+				callIndex++;
+				if (callIndex === 1) {
+					firstStarted.resolve();
+					await releaseFirst.promise;
+					throw new Error("provider exploded mid-dispatch");
+				}
+				return { content: [`reply ${callIndex}`] };
+			},
+		});
+
+		const first = streamSimple(mock.model, context(), { maxInFlightRequests: { tests: 1 } });
+		const firstResult = first.result();
+		await firstStarted.promise;
+
+		// The second request queues behind the in-flight (soon-to-fail) first one;
+		// with a limit of 1 it cannot dispatch until the slot is freed.
+		const second = streamSimple(mock.model, context(), { maxInFlightRequests: { tests: 1 } });
+		await Bun.sleep(20);
+		expect(mock.calls).toHaveLength(1);
+
+		// The first request now fails. Its slot MUST be released here, or the
+		// second request never dispatches and this test hangs to timeout.
+		releaseFirst.resolve();
+		await expect(firstResult).rejects.toThrow("provider exploded mid-dispatch");
+
+		const secondMessage = await second.result();
+		expect(secondMessage.content).toEqual([{ type: "text", text: "reply 2" }]);
+		expect(mock.calls).toHaveLength(2);
+	});
+
+	test("does not leak slots across repeated mid-dispatch failures", async () => {
+		registerMockApi();
+		const FAILURES = 4;
+		let callIndex = 0;
+		const mock = createMockModel({
+			provider: "tests",
+			handler: async () => {
+				callIndex++;
+				if (callIndex <= FAILURES) throw new Error(`boom ${callIndex}`);
+				return { content: [`reply ${callIndex}`] };
+			},
+		});
+
+		// Every failure must return its slot. A slow leak (one lease not released
+		// per failure) would only surface after several failures, so drive a run
+		// of them before proving a fresh request can still acquire the sole slot.
+		for (let i = 1; i <= FAILURES; i++) {
+			const failing = streamSimple(mock.model, context(), { maxInFlightRequests: { tests: 1 } });
+			await expect(failing.result()).rejects.toThrow(`boom ${i}`);
+		}
+
+		const ok = streamSimple(mock.model, context(), { maxInFlightRequests: { tests: 1 } });
+		const message = await ok.result();
+		expect(message.content).toEqual([{ type: "text", text: `reply ${FAILURES + 1}` }]);
+		expect(mock.calls).toHaveLength(FAILURES + 1);
+	});
+
+	test("signals waiters when releasing the slot after a failure", async () => {
+		registerMockApi();
+		const providerDir = limiterDir("tests");
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const mock = createMockModel({
+			provider: "tests",
+			handler: async () => {
+				started.resolve();
+				await release.promise;
+				throw new Error("boom");
+			},
+		});
+
+		const stream = streamSimple(mock.model, context(), { maxInFlightRequests: { tests: 1 } });
+		const result = stream.result();
+		await started.promise;
+
+		// Acquiring an uncontended slot writes no wakeup (see the acquisition test
+		// above), so the file must be absent while the request is still in flight.
+		expect(await Bun.file(path.join(providerDir, ".wakeup")).exists()).toBe(false);
+
+		release.resolve();
+		await expect(result).rejects.toThrow("boom");
+
+		// Releasing the slot on the error path must still wake any waiter, exactly
+		// as the success path does. Prove the wakeup was written by the release,
+		// not merely by a queued waiter's fallback timer (there is no waiter here).
+		expect(await Bun.file(path.join(providerDir, ".wakeup")).exists()).toBe(true);
+	});
+});
