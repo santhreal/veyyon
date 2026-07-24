@@ -332,6 +332,25 @@ async function jules(key: string, path: string, init?: RequestInit): Promise<any
 	return res.json();
 }
 
+/** The session's last agent-authored message, or null. Review-path only. */
+async function lastAgentMessage(key: string, sessionName: string): Promise<string | null> {
+	let last: string | null = null;
+	let pageToken = "";
+	for (let page = 0; page < 50; page++) {
+		const d = await jules(
+			key,
+			`/${sessionName}/activities?pageSize=100${pageToken ? `&pageToken=${pageToken}` : ""}`,
+		);
+		for (const a of d.activities ?? []) {
+			const msg = a?.agentMessaged?.agentMessage;
+			if (typeof msg === "string" && msg.trim()) last = msg;
+		}
+		pageToken = d.nextPageToken ?? "";
+		if (!pageToken) break;
+	}
+	return last;
+}
+
 // ---------------------------------------------------------------------------
 // Key discovery and per-key budget.
 
@@ -626,15 +645,23 @@ async function harvest(): Promise<void> {
 				);
 				console.log(`harvest: #${issue.number} -> PR ${action.url}.`);
 				break;
-			case "review":
+			case "review": {
 				await addLabels(issue.number, [REVIEW_LABEL]);
 				await removeLabel(issue.number, DISPATCHED_LABEL);
+				// Quote the session's final word so triage never needs session
+				// spelunking: for a NOT-APPLICABLE verdict the reasoning to
+				// verify is right on the issue.
+				const finalWord = await lastAgentMessage(sessionKey, marker.session).catch(() => null);
+				const quoted = finalWord
+					? `\n\nSession's final message:\n\n> ${finalWord.slice(0, 1500).replaceAll("\n", "\n> ")}`
+					: "";
 				await comment(
 					issue.number,
-					`Session [\`${marker.session}\`](${session.url ?? ""}) needs a human: ${action.reason}. If it declared NOT-APPLICABLE, verify the reasoning and close this issue; otherwise resolve and remove \`${REVIEW_LABEL}\` to requeue.`,
+					`Session [\`${marker.session}\`](${session.url ?? ""}) needs a human: ${action.reason}. If it declared NOT-APPLICABLE, verify the reasoning and close this issue; otherwise resolve and remove \`${REVIEW_LABEL}\` to requeue.${quoted}`,
 				);
 				console.log(`harvest: #${issue.number} -> ${REVIEW_LABEL} (${action.reason}).`);
 				break;
+			}
 			case "failed":
 				await comment(
 					issue.number,
