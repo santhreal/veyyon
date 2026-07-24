@@ -897,6 +897,62 @@ export function encodeHeadroom(
 	};
 }
 
+/** How much of a repository's vocabulary is in strings a coding agent would ever type. */
+export interface TypeableMass {
+	/** Handles in the vocabulary. */
+	handles: number;
+	/** Handles whose expansion contains no whitespace, so an agent could plausibly type it. */
+	typeable: number;
+	/**
+	 * Characters saved per emission if every typeable handle were written once:
+	 * the sum over typeable handles of expansion length minus handle length.
+	 * This is the compressible mass that is actually reachable by an agent.
+	 */
+	savingPerEmission: number;
+	/** Longest typeable expansion, the best single substitution available. */
+	longestTypeable: number;
+}
+
+/**
+ * Score a vocabulary by how much of it a coding agent could ever actually write.
+ *
+ * This is the pre-run screen for choosing tasks that can measure shorthand at all.
+ * It exists because the exact ceiling ({@link encodeHeadroom}) is only computable
+ * AFTER a run, which is far too late to discover that a multi-hour benchmark was
+ * unmeasurable by construction.
+ *
+ * The whitespace test is the whole idea, and it is calibrated against real data
+ * rather than assumed. On the first run where encoding actually fired, every one
+ * of the seven handles the model emitted was whitespace-free, and not a single
+ * whitespace-bearing handle was ever emitted: 100% recall, 33% precision. Prose
+ * repeats heavily in a repository (license blocks, fixture YAML, documentation
+ * URLs) and therefore earns handles, but an agent never retypes it. Paths, import
+ * specifiers, and symbols are what an agent writes over and over.
+ *
+ * Because the test never misses a string the model would have written, a low score
+ * is a SOUND one-sided conclusion: such a repository cannot show a shorthand
+ * effect, whatever the run does. A high score is only a candidate, not a promise,
+ * since the agent still has to touch those particular strings. Screen with this,
+ * then confirm with {@link encodeHeadroom} on the run itself.
+ */
+export function typeableHandleMass(
+	handles: Readonly<Record<string, string>>,
+	sigil: string = DEFAULT_SIGIL,
+): TypeableMass {
+	let typeable = 0;
+	let savingPerEmission = 0;
+	let longestTypeable = 0;
+	for (const [name, expansion] of Object.entries(handles)) {
+		if (expansion.length === 0 || /\s/.test(expansion)) continue;
+		const saving = expansion.length - (sigil.length + name.length);
+		if (saving <= 0) continue;
+		typeable++;
+		savingPerEmission += saving;
+		longestTypeable = Math.max(longestTypeable, expansion.length);
+	}
+	return { handles: Object.keys(handles).length, typeable, savingPerEmission, longestTypeable };
+}
+
 /**
  * Relative spread of a set of values, as a percentage of their mean.
  *

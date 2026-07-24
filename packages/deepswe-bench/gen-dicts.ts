@@ -10,10 +10,21 @@
  * arm has a real dictionary to load (none/decode run with the same file
  * present but without teaching; see README).
  *
- * The savings table (dicts/report.md) is also the task-selection instrument:
- * tasks whose repos have no repeated-long-token mass show near-zero
- * estimatedSavings and cannot demonstrate codec value regardless of model
- * quality.
+ * The savings table (dicts/report.md) is also the task-selection instrument,
+ * and it ranks on TYPEABLE savings, not the SDK's raw estimate. The raw estimate
+ * counts every string that repeats in the repository, which is dominated by
+ * license blocks, fixture YAML, and documentation URLs. Those earn handles and
+ * inflate the estimate, but a coding agent never retypes them, so they cannot
+ * produce a single token of real saving.
+ *
+ * Measured on the first run where encoding actually fired: of 33 handles, only 7
+ * were ever emitted, and every one of those was whitespace-free. No prose handle
+ * was emitted at all. Ranking on the raw estimate therefore overstates a repo's
+ * potential by roughly three times and picked a task whose true ceiling was 0.27%
+ * of output against 8.15% token noise, an experiment that could not have produced
+ * a result. `typeableSavings` counts only whitespace-free handles, which never
+ * misses a string the model would have written, so a near-zero value is a sound
+ * reason to exclude a task before spending hours on it.
  *
  * Usage:
  *   bun gen-dicts.ts --tasks tasks/pilot-10.txt   # selected tasks
@@ -23,12 +34,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { generateDictFromRepo } from "argot";
+import { typeableHandleMass } from "./aggregate";
 
 interface DictRow {
 	task: string;
 	handles: number;
 	dictTokens: number;
 	estimatedSavings: number;
+	/** Handles whose expansion an agent could plausibly type (no whitespace). */
+	typeableHandles: number;
+	/** Characters saved per emission across those handles: the reachable mass. */
+	typeableSavings: number;
 	error: string | null;
 }
 
@@ -109,15 +125,28 @@ async function genOne(task: string): Promise<DictRow> {
 		const files = collectFiles(dir);
 		const { toml, handles, dictTokens, estimatedSavings } = generateDictFromRepo(files, {});
 		if (toml) fs.writeFileSync(path.join(DICTS_DIR, `${task}.AGENTS.dict`), toml);
+		const entries: Record<string, string> = {};
+		for (const handle of handles) entries[handle.name] = handle.expansion;
+		const mass = typeableHandleMass(entries);
 		return {
 			task,
 			handles: handles.length,
 			dictTokens,
 			estimatedSavings,
+			typeableHandles: mass.typeable,
+			typeableSavings: mass.savingPerEmission,
 			error: toml ? null : "no dictionary generated",
 		};
 	} catch (err) {
-		return { task, handles: 0, dictTokens: 0, estimatedSavings: 0, error: String(err).slice(0, 200) };
+		return {
+			task,
+			handles: 0,
+			dictTokens: 0,
+			estimatedSavings: 0,
+			typeableHandles: 0,
+			typeableSavings: 0,
+			error: String(err).slice(0, 200),
+		};
 	}
 }
 
@@ -153,24 +182,37 @@ async function main(): Promise<void> {
 				const row = await genOne(task);
 				rows.push(row);
 				console.log(
-					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} dict~${row.dictTokens}tok savings~${row.estimatedSavings}tok`}`,
+					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} (${row.typeableHandles} typeable) typeable-saving=${row.typeableSavings}ch raw~${row.estimatedSavings}tok`}`,
 				);
 			}
 		}),
 	);
 
-	rows.sort((a, b) => b.estimatedSavings - a.estimatedSavings);
+	// Rank on TYPEABLE savings. The raw SDK estimate counts prose that repeats in
+	// the repo but that no agent ever writes, so ranking on it selects tasks that
+	// cannot show an effect. See the header for the measurement behind this.
+	rows.sort((a, b) => b.typeableSavings - a.typeableSavings);
 	const lines = [
 		"# Argot dictionary savings per DeepSWE task",
 		"",
 		`Generated ${new Date().toISOString()} by gen-dicts.ts (SDK generateDictFromRepo, default token budget).`,
 		"",
-		"| task | handles | dict tokens | estimated savings (output tok) |",
-		"|---|---|---|---|",
+		"Ranked by `typeable saving`: characters saved per emission across handles whose",
+		"expansion contains no whitespace. Prose handles (license text, fixture YAML, doc",
+		"URLs) repeat heavily in a repo and inflate the raw SDK estimate, but a coding",
+		"agent never retypes them. On the one run measured, every handle the model emitted",
+		"was whitespace-free and no prose handle ever was, so this column never misses a",
+		"string the model would have written. A near-zero value means the task cannot",
+		"demonstrate codec value at all, whatever the model does: exclude it before",
+		"spending a run on it, and confirm the exact ceiling post-run from the bench",
+		"report's Encode headroom section.",
+		"",
+		"| task | handles | typeable handles | typeable saving (ch/emission) | dict tokens | raw SDK estimate (output tok) |",
+		"|---|---|---|---|---|---|",
 		...rows.map(r =>
 			r.error
-				? `| ${r.task} | — | — | ERROR: ${r.error} |`
-				: `| ${r.task} | ${r.handles} | ${r.dictTokens} | ${r.estimatedSavings} |`,
+				? `| ${r.task} | — | — | — | — | ERROR: ${r.error} |`
+				: `| ${r.task} | ${r.handles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
 		),
 		"",
 	];
