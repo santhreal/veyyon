@@ -26,7 +26,16 @@ export function normalizeBaseUrl(baseUrl: string | undefined, fallback: string):
 export function normalizeBaseUrl(baseUrl: string | undefined, fallback?: undefined): string | undefined;
 export function normalizeBaseUrl(baseUrl: string | undefined, fallback?: string): string | undefined {
 	const trimmed = baseUrl?.trim();
-	if (trimmed) return trimTrailingSlashes(trimmed);
+	// Strip the trailing run of slashes AND any whitespace interleaved with them.
+	// The leading `.trim()` removes edge whitespace, but a trailing slash can sit
+	// in front of an interior space (`"http://x /"`); stripping only the slash
+	// would re-expose that space and emit a base URL that ends in whitespace,
+	// breaking every URL join and contradicting this function's own contract
+	// ("trim surrounding whitespace AND strip trailing slashes"). Removing the
+	// combined `[/\s]+` run in one pass keeps the result fully trimmed and
+	// slash-free no matter how slashes and spaces interleave at the end.
+	// `trimTrailingSlashes` stays slash-only for its other callers.
+	if (trimmed) return trimmed.replace(/[/\s]+$/, "");
 	return fallback;
 }
 
