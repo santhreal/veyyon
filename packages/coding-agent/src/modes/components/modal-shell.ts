@@ -12,6 +12,7 @@
  * top. This is not a full-screen TUI conversion.
  */
 import { clamp, clampLow, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { shimmerEnabled } from "../theme/shimmer";
 import { theme } from "../theme/theme";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
@@ -592,3 +593,103 @@ export const SELECT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "enter select", clickable: true, id: "confirm" },
 	{ label: "esc close", clickable: true, id: "close" },
 ];
+
+// --- Open reveal (TOUCH-5) ---------------------------------------------------
+
+/** Total reveal duration. Short enough that a fast typist never waits on it. */
+const REVEAL_MS = 130;
+const REVEAL_TICK_MS = 33;
+
+/**
+ * Drives a one-shot open reveal for a modal card: `value` eases 0 → 1 over
+ * {@link REVEAL_MS}, ticking a re-render until settled. Follows the welcome
+ * bloom's convention (interval + requestRender, `display.shimmer: disabled`
+ * gating is the CALLER's job via shimmerEnabled()). Idle after settling: the
+ * timer self-clears, so a settled overlay costs nothing per frame.
+ */
+export class ModalRevealDriver {
+	#armed = false;
+	#start: number | null = null;
+	#timer: NodeJS.Timeout | null = null;
+	#settled = false;
+
+	/**
+	 * Eased reveal fraction in [0, 1]; 1 once settled or never started. The
+	 * timeline begins on the FIRST read after start(), not at start() itself:
+	 * an overlay's first paint can lag construction by more than the whole
+	 * animation (alt-screen switch, session work), and a construction-anchored
+	 * clock then plays the unfold to nobody.
+	 */
+	get value(): number {
+		if (this.#settled) return 1;
+		if (!this.#armed) return 1;
+		if (this.#start === null) {
+			this.#start = performance.now();
+			return 0;
+		}
+		const t = Math.min(1, (performance.now() - this.#start) / REVEAL_MS);
+		// easeOutCubic: fast unfold, gentle landing.
+		return 1 - (1 - t) ** 3;
+	}
+
+	/** Begin the reveal (idempotent; a second call replays from zero). */
+	start(requestRender: () => void): void {
+		this.stop();
+		this.#settled = false;
+		this.#armed = true;
+		this.#start = null;
+		this.#timer = setInterval(() => {
+			// The settle deadline counts from first paint; keep ticking until the
+			// timeline has both started and elapsed.
+			if (this.#start !== null && performance.now() - this.#start >= REVEAL_MS) this.stop();
+			requestRender();
+		}, REVEAL_TICK_MS);
+		requestRender();
+	}
+
+	/** Settle immediately (also used on dismount so no timer outlives the card). */
+	stop(): void {
+		if (this.#timer !== null) {
+			clearInterval(this.#timer);
+			this.#timer = null;
+		}
+		this.#settled = true;
+	}
+}
+
+/**
+ * Ambient gate for the open unfold, decided at the SHOW site (single owner):
+ * `display.shimmer: disabled` turns all chrome animation off, and non-truecolor
+ * terminals follow the welcome bloom's convention of skipping motion entirely.
+ * Components never read this themselves — they honor `options.reveal` blindly,
+ * which keeps direct constructions (tests, embedders) deterministic.
+ */
+export function modalRevealEnabled(): boolean {
+	return TERMINAL.trueColor && shimmerEnabled();
+}
+
+/**
+ * Clip a rendered modal frame to an unfolding card: the top border stays put,
+ * the bottom border slides down as the body grows. Pure so the exact frames
+ * are byte-assertable in tests. `reveal >= 1` returns the lines untouched;
+ * during the unfold every hidden card row becomes a blank area row, so nothing
+ * below the moving bottom border ever paints. The minimum visible card is the
+ * two border rows — a reveal never shows a borderless sliver.
+ */
+export function applyModalReveal(result: ModalShellResult, areaWidth: number, reveal: number): string[] {
+	const geometry = result.geometry;
+	if (geometry === null || reveal >= 1) return result.lines;
+	// cardRowEnd is EXCLUSIVE (see hitTestModalChrome's `row < cardRowEnd`).
+	const { cardRowStart, cardRowEnd } = geometry;
+	const cardRows = cardRowEnd - cardRowStart;
+	const visible = Math.max(2, Math.round(cardRows * Math.max(0, reveal)));
+	if (visible >= cardRows) return result.lines;
+	const blank = padding(areaWidth);
+	return result.lines.map((line, row) => {
+		if (row < cardRowStart || row >= cardRowEnd) return line;
+		const cardRow = row - cardRowStart;
+		if (cardRow < visible - 1) return line; // top border + grown body rows
+		if (cardRow === visible - 1) return result.lines[cardRowEnd - 1]!; // bottom border, slid up
+		return blank;
+	});
+}

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import {
+	applyModalReveal,
 	computeModalDims,
 	fitTipLine,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	MODAL_SIZING_SETTINGS,
+	ModalRevealDriver,
 	renderModalShell,
 	renderModalShortcuts,
 	SETTINGS_BROWSE_SHORTCUTS,
@@ -176,5 +178,139 @@ describe("ModalShell", () => {
 		expect(close).toEqual({ kind: "close" });
 		const outside = hitTestModalChrome(geometry, 0, 0, { leftClick: true });
 		expect(outside).toEqual({ kind: "outside" });
+	});
+});
+
+describe("applyModalReveal — the open unfold (TOUCH-5)", () => {
+	// Why this suite exists: overlay open used to be a hard cut. The reveal
+	// clips the rendered frame to an unfolding card (top border fixed, bottom
+	// border sliding down). These tests lock the clip's contracts so the
+	// animation can never leak partial card rows below the moving border,
+	// paint a borderless sliver, or alter the settled frame.
+	function renderCard() {
+		return renderModalShell({
+			title: "Reveal",
+			sizing: MODAL_SIZING_SETTINGS,
+			areaWidth: 120,
+			areaHeight: 40,
+			body: Array.from({ length: 10 }, (_, i) => `row ${i}`),
+			shortcuts: SETTINGS_BROWSE_SHORTCUTS,
+		});
+	}
+
+	it("returns the frame byte-identical at reveal >= 1 (settled state)", () => {
+		const shell = renderCard();
+		expect(applyModalReveal(shell, 120, 1)).toBe(shell.lines);
+		expect(applyModalReveal(shell, 120, 2)).toBe(shell.lines);
+	});
+
+	it("returns the frame untouched when the terminal was too small (null geometry)", () => {
+		const shell = renderModalShell({
+			title: "Tiny",
+			sizing: MODAL_SIZING_SETTINGS,
+			areaWidth: 18,
+			areaHeight: 40,
+			body: ["x"],
+			shortcuts: [],
+		});
+		expect(shell.geometry).toBeNull();
+		expect(applyModalReveal(shell, 18, 0.5)).toBe(shell.lines);
+	});
+
+	it("keeps the top border fixed and slides the BOTTOM border up mid-reveal", () => {
+		const shell = renderCard();
+		const geometry = shell.geometry!;
+		const clipped = applyModalReveal(shell, 120, 0.5);
+		// Top border row is byte-identical to the settled frame.
+		expect(clipped[geometry.cardRowStart]).toBe(shell.lines[geometry.cardRowStart]!);
+		// cardRowEnd is exclusive, matching hitTestModalChrome.
+		const cardRows = geometry.cardRowEnd - geometry.cardRowStart;
+		const visible = Math.max(2, Math.round(cardRows * 0.5));
+		// The last visible row is the card's real bottom border, not a sheared body row.
+		expect(clipped[geometry.cardRowStart + visible - 1]).toBe(shell.lines[geometry.cardRowEnd - 1]!);
+		// Everything between the moved border and the settled border is blank.
+		for (let row = geometry.cardRowStart + visible; row < geometry.cardRowEnd; row++) {
+			expect(stripVTControlCharacters(clipped[row]!).trim()).toBe("");
+		}
+	});
+
+	it("never shows a borderless sliver: reveal 0 still paints both border rows", () => {
+		const shell = renderCard();
+		const geometry = shell.geometry!;
+		const clipped = applyModalReveal(shell, 120, 0);
+		expect(clipped[geometry.cardRowStart]).toBe(shell.lines[geometry.cardRowStart]!);
+		expect(clipped[geometry.cardRowStart + 1]).toBe(shell.lines[geometry.cardRowEnd - 1]!);
+	});
+
+	it("grows monotonically: a larger reveal never shows fewer card rows", () => {
+		const shell = renderCard();
+		const geometry = shell.geometry!;
+		const visibleRows = (reveal: number): number => {
+			const clipped = applyModalReveal(shell, 120, reveal);
+			let count = 0;
+			for (let row = geometry.cardRowStart; row < geometry.cardRowEnd; row++) {
+				if (stripVTControlCharacters(clipped[row]!).trim() !== "") count++;
+			}
+			return count;
+		};
+		let previous = 0;
+		for (const reveal of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
+			const current = visibleRows(reveal);
+			expect(current).toBeGreaterThanOrEqual(previous);
+			previous = current;
+		}
+		// Settled: every card row that is non-blank in the full frame is shown.
+		let settled = 0;
+		for (let row = geometry.cardRowStart; row < geometry.cardRowEnd; row++) {
+			if (stripVTControlCharacters(shell.lines[row]!).trim() !== "") settled++;
+		}
+		expect(previous).toBe(settled);
+	});
+
+	it("leaves rows outside the card region untouched at every phase", () => {
+		const shell = renderCard();
+		const geometry = shell.geometry!;
+		for (const reveal of [0, 0.3, 0.7]) {
+			const clipped = applyModalReveal(shell, 120, reveal);
+			for (let row = 0; row < geometry.cardRowStart; row++) {
+				expect(clipped[row]).toBe(shell.lines[row]!);
+			}
+			for (let row = geometry.cardRowEnd; row < shell.lines.length; row++) {
+				expect(clipped[row]).toBe(shell.lines[row]!);
+			}
+		}
+	});
+});
+
+describe("ModalRevealDriver — the wall-clock phase driver", () => {
+	// Why: the driver is the only stateful piece of the unfold. These tests
+	// lock its lifecycle so a settled overlay can never keep ticking renders
+	// (a leaked interval re-rendering forever) and a started reveal always
+	// begins collapsed instead of flashing the full card first.
+	it("reports 1 before start (a never-animated card renders settled)", () => {
+		const driver = new ModalRevealDriver();
+		expect(driver.value).toBe(1);
+	});
+
+	it("starts collapsed, ticks renders, then settles at exactly 1 and stops ticking", async () => {
+		const driver = new ModalRevealDriver();
+		let ticks = 0;
+		driver.start(() => {
+			ticks++;
+		});
+		expect(driver.value).toBeLessThan(0.7); // collapsed-ish right after start
+		expect(ticks).toBeGreaterThanOrEqual(1); // first paint requested synchronously
+		await new Promise(resolve => setTimeout(resolve, 250)); // > REVEAL_MS
+		expect(driver.value).toBe(1);
+		const settledTicks = ticks;
+		await new Promise(resolve => setTimeout(resolve, 120));
+		expect(ticks).toBe(settledTicks); // interval self-cleared; no leak
+	});
+
+	it("stop() settles immediately mid-flight (dismount kills the animation)", () => {
+		const driver = new ModalRevealDriver();
+		driver.start(() => {});
+		driver.stop();
+		expect(driver.value).toBe(1);
 	});
 });

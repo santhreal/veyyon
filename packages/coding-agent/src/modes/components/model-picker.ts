@@ -10,9 +10,11 @@ import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	renderModalShell,
 	withCompact,
@@ -38,6 +40,12 @@ export interface ModelPickerOptions {
 	currentContextTokens?: number;
 	/** `provider/id` of the session's active model; highlighted and preselected. */
 	currentSelector?: string;
+	/**
+	 * Play the open unfold (TOUCH-5). Opt-in at the real show site only: the
+	 * reveal is wall-clock-driven, so a default-on would make every direct
+	 * construction (tests, embedders) render mid-animation frames.
+	 */
+	reveal?: boolean;
 }
 
 /** Rows the browser renders around its list window (search + blank, blank + two detail rows). */
@@ -63,6 +71,8 @@ export class ModelPickerComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onCancel: () => void;
+	/** One-shot open unfold (TOUCH-5); settles instantly with shimmer disabled. */
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		tui: TUI,
@@ -78,6 +88,12 @@ export class ModelPickerComponent implements Component {
 		this.#scopedModels = scopedModels;
 		this.#currentSelector = options.currentSelector;
 		this.#onCancel = callbacks.onCancel;
+
+		// The show site decides availability (modalRevealEnabled); a truthy
+		// option here always animates, keeping direct constructions deterministic.
+		if (options.reveal) {
+			this.#reveal.start(() => this.#tui.requestRender());
+		}
 
 		this.#browser = new ModelBrowser(settings, {
 			currentContextTokens: options.currentContextTokens,
@@ -202,6 +218,6 @@ export class ModelPickerComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

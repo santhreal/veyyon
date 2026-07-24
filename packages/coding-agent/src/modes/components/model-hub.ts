@@ -36,9 +36,11 @@ import { AUTO_THINKING, type ConfiguredThinkingLevel, getConfiguredThinkingLevel
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
@@ -103,6 +105,12 @@ export interface ModelHubCallbacks {
 export interface ModelHubOptions {
 	/** Preselect this provider's sidebar entry (e.g. when reopening after /login). */
 	initialProviderId?: string;
+	/**
+	 * Play the open unfold (TOUCH-5). Opt-in at the real show site only: the
+	 * reveal is wall-clock-driven, so a default-on would make every direct
+	 * construction (tests, embedders) render mid-animation frames.
+	 */
+	reveal?: boolean;
 }
 
 interface SidebarEntry {
@@ -240,6 +248,8 @@ export class ModelHubComponent implements Component {
 	#chipRanges: ChipRange[] = [];
 	#lockedLoginLine: number | null = null;
 	#rolesRowStart = 1;
+	/** One-shot open unfold (TOUCH-5); settles instantly with shimmer disabled. */
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		tui: TUI,
@@ -254,6 +264,14 @@ export class ModelHubComponent implements Component {
 		this.#registry = registry;
 		this.#scopedModels = scopedModels;
 		this.#callbacks = callbacks;
+
+		// Overlays composite from the overlay stack each frame, so a plain
+		// requestRender (not a component-scoped one) is the correct tick here.
+		// The show site decides availability (modalRevealEnabled); a truthy
+		// option here always animates, keeping direct constructions deterministic.
+		if (options.reveal) {
+			this.#reveal.start(() => this.#tui.requestRender());
+		}
 
 		this.#browser = new ModelBrowser(settings, {
 			emptyText: () => this.#emptyStateMessage(),
@@ -290,6 +308,7 @@ export class ModelHubComponent implements Component {
 
 	/** Cancel pending provider refresh timers and the spinner. Host calls this on overlay close. */
 	dispose(): void {
+		this.#reveal.stop();
 		for (const [, timer] of this.#scheduledProviderRefreshes) clearTimeout(timer);
 		this.#scheduledProviderRefreshes.clear();
 		this.#refreshingProviders.clear();
@@ -2052,6 +2071,6 @@ export class ModelHubComponent implements Component {
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#stripRow = this.#contentRowStart + splitRows;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }
