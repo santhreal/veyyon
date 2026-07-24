@@ -494,6 +494,51 @@ describe("renderReport — efficiency comparison and treatment-applied sections"
 		expect(report).toContain("full cheaper BUT reward dropped");
 	});
 
+	test("a partial-credit reward drop with an IDENTICAL binary pass rate still vetoes 'reward held'", () => {
+		// The blind spot this locks out: both arms FAIL every task (reward never reaches 1,
+		// so the binary pass rate is 0 for both and the pass-rate guardrail sees no loss),
+		// but B scores a strictly lower fractional reward on every task (0.4 vs 0.8). Before
+		// the continuous check the verdict would read "cheaper, reward held" — hiding a real
+		// correctness regression behind the binarization. It must now read the drop.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 0.8, outputTokens: 1000 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 0.4, outputTokens: 800 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		// B is genuinely cheaper AND the binary pass rate is a 0-0 tie...
+		expect(report).toContain("0.000"); // both arms' pass rate is 0 (never reward===1)
+		// ...yet the continuous reward dropped 6-0, so the efficiency verdict must warn.
+		expect(report).toContain("full cheaper BUT reward dropped");
+	});
+
+	test("an EQUAL partial-credit reward (0.8 vs 0.8) with a token saving reads 'cheaper, reward held'", () => {
+		// The contrast case that proves the continuous check does not false-positive: both
+		// arms fail binary (0.8 < 1) but score the SAME fractional reward every task, so the
+		// reward sign test is all ties and the saving is a clean win.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 0.8, outputTokens: 1000 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 0.8, outputTokens: 800 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("full cheaper, reward held");
+	});
+
+	test("the continuous reward comparison section names the lower-reward arm", () => {
+		// The guardrail's reward input must be operator-visible, not a hidden veto: the
+		// report carries its own paired reward table so a reader sees WHY a saving was
+		// rejected. B scores lower on every task → the section calls it out.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 0.8, outputTokens: 1000 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 0.4, outputTokens: 800 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("## Reward comparison — continuous partial credit (paired by task)");
+		expect(report).toContain("full lower reward");
+	});
+
 	test("a metric the provider never reports reads 'not measured', not 'not distinguishable'", () => {
 		// The real gemini/antigravity case: 82k output tokens but cost is 0 for every
 		// sample (no pricing entry). A paired delta of all-zeros would render "not
