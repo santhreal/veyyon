@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { $ } from "bun";
 import { detectHostAvx2Support } from "../../../scripts/host-detect";
 import { generateEnumExports } from "./gen-enums";
+import { exceedsGlibcFloor, GLIBC_FLOOR, inspectGlibcRequirement, planLinuxNativeRoute } from "./native-portability";
 
 // pcre2-sys prefers a system libpcre2 when pkg-config finds one. Release addons
 // must not retain host Homebrew paths such as /opt/homebrew/opt/pcre2/*.dylib.
@@ -18,6 +19,27 @@ const targetPlatform = Bun.env.TARGET_PLATFORM || process.platform;
 const targetArch = Bun.env.TARGET_ARCH || process.arch;
 const configuredVariantRaw = Bun.env.TARGET_VARIANT;
 const isCrossCompile = Boolean(crossTarget) || targetPlatform !== process.platform || targetArch !== process.arch;
+
+// Route linux-gnu builds toward the release glibc floor. Without this, a local
+// `gen:native` links the HOST glibc into the addon and any binary bundling it
+// hard-fails on older distros — while looking perfectly distributable. When the
+// zig toolchain is present the build pins the same floor CI ships; otherwise it
+// proceeds host-only and the post-build check below reports the real floor
+// loudly. `VEYYON_NATIVE_HOST_ONLY=1` opts out of the auto-pin explicitly.
+const nativeRoute = planLinuxNativeRoute({
+	crossTarget,
+	platform: targetPlatform,
+	arch: targetArch,
+	zigAvailable: Boolean(Bun.which("zig")),
+	cargoZigbuildAvailable: Boolean(Bun.which("cargo-zigbuild")),
+	hostOnlyOverride: Bun.env.VEYYON_NATIVE_HOST_ONLY === "1",
+});
+const effectiveCrossTarget = nativeRoute?.kind === "zigbuild" ? nativeRoute.target : crossTarget;
+if (nativeRoute?.kind === "zigbuild") {
+	console.log(`Routing linux-gnu build through cargo-zigbuild at the release glibc floor: ${nativeRoute.target}`);
+} else if (nativeRoute?.kind === "hostOnly" && !isCrossCompile) {
+	console.warn(`[build-native] building against the HOST glibc (${nativeRoute.reason}); portability checked after build.`);
+}
 
 type X64Variant = "modern" | "baseline";
 
@@ -190,7 +212,7 @@ async function resolveBuiltAddonPath(outputDir: string, canonicalFilename: strin
 }
 
 function resolveBuildOutputDirPrefix(profileLabel: string): string {
-	const buildTarget = crossTarget ?? `${targetPlatform}-${targetArch}`;
+	const buildTarget = effectiveCrossTarget ?? `${targetPlatform}-${targetArch}`;
 	const variantLabel = effectiveVariant ?? "default";
 	return path.join(nativeDir, ".build", `${buildTarget}-${variantLabel}-${profileLabel}-`);
 }
@@ -204,6 +226,54 @@ async function installGeneratedBindings(outputDir: string): Promise<void> {
 		const message = err instanceof Error ? err.message : String(err);
 		throw new Error(`Failed to install generated index.d.ts: ${message}`);
 	}
+}
+
+/**
+ * Report — and on pinned targets, enforce — the addon's real glibc floor.
+ * A linux-gnu addon that requires more than {@link GLIBC_FLOOR} runs only on
+ * hosts at least as new as this build machine; bundled into `dist/vey` it
+ * hard-fails (`GLIBC_x.y not found`) everywhere older, so the host-only case
+ * must be impossible to miss in the build output.
+ */
+async function verifyGlibcPortability(addonPath: string): Promise<void> {
+	if (targetPlatform !== "linux") return;
+	if (effectiveCrossTarget?.endsWith("-musl")) return;
+	const pinnedFloor = effectiveCrossTarget ? /\.(\d+(?:\.\d+)+)$/.exec(effectiveCrossTarget)?.[1] : undefined;
+	const requirement = await inspectGlibcRequirement(addonPath);
+	if (requirement === "unavailable") {
+		console.warn(
+			`[build-native] warning: readelf unavailable — glibc floor of ${path.basename(addonPath)} NOT verified` +
+				(pinnedFloor ? ` (target pins ${pinnedFloor}, unproven here).` : "."),
+		);
+		return;
+	}
+	if (requirement === null) {
+		console.log(`glibc floor: none (no versioned glibc symbols) — portable.`);
+		return;
+	}
+	if (pinnedFloor !== undefined) {
+		if (exceedsGlibcFloor(requirement, pinnedFloor)) {
+			throw new Error(
+				`Portability contract violated: ${path.basename(addonPath)} requires GLIBC_${requirement} but the ` +
+					`target pins glibc ${pinnedFloor}. The zigbuild floor did not hold — do not distribute this addon.`,
+			);
+		}
+		console.log(`glibc floor: ${requirement} (within the pinned ${pinnedFloor}) — portable.`);
+		return;
+	}
+	if (exceedsGlibcFloor(requirement, GLIBC_FLOOR)) {
+		console.warn(
+			"\n============================================================\n" +
+				`[build-native] HOST-ONLY ADDON: ${path.basename(addonPath)} requires GLIBC_${requirement}\n` +
+				`The release floor is glibc ${GLIBC_FLOOR}; this addon (and any binary bundling it) fails on\n` +
+				`every distro older than this machine. Fine for local use — DO NOT distribute it.\n` +
+				`To build the portable addon the way CI does, install zig + cargo-zigbuild and rerun\n` +
+				`(the build auto-pins glibc ${GLIBC_FLOOR} when both are present).\n` +
+				"============================================================\n",
+		);
+		return;
+	}
+	console.log(`glibc floor: ${requirement} (within the release floor ${GLIBC_FLOOR}) — portable.`);
 }
 
 async function isElfFile(filePath: string): Promise<boolean> {
@@ -358,8 +428,8 @@ const napiArgs = [
 	profileLabel,
 ];
 
-if (crossTarget) {
-	napiArgs.push("--target", crossTarget);
+if (effectiveCrossTarget) {
+	napiArgs.push("--target", effectiveCrossTarget);
 	// Route through `cargo-zigbuild` (non-MSVC targets) or `cargo-xwin`
 	// (MSVC targets). The napi CLI picks the right backend from the target.
 	napiArgs.push("--cross-compile");
@@ -367,12 +437,12 @@ if (crossTarget) {
 	// the triple (e.g. `x86_64-unknown-linux-gnu.2.17`) but strips it before
 	// invoking cargo, so cargo's TARGET — and the artifact dir — use the bare
 	// triple.
-	const bareTriple = crossTarget.replace(/\.\d+(?:\.\d+)*$/, "");
+	const bareTriple = effectiveCrossTarget.replace(/\.\d+(?:\.\d+)*$/, "");
 	// `zig cc` enables `NDEBUG` at `-O3`, which trips tree-sitter-just's
 	// scanner.c (`#error "expected assertions to be enabled"`). cc-rs reads
 	// `CFLAGS_<target>` (dashes → underscores) keyed off cargo's bare TARGET, so
 	// the override must use the bare triple or it is silently dropped.
-	if (!crossTarget.endsWith("-msvc")) {
+	if (!effectiveCrossTarget.endsWith("-msvc")) {
 		const envKey = `CFLAGS_${bareTriple.replace(/-/g, "_")}`;
 		const existing = process.env[envKey] ?? "";
 		process.env[envKey] = existing ? `${existing} -UNDEBUG` : "-UNDEBUG";
@@ -380,7 +450,7 @@ if (crossTarget) {
 	// napi 3.7.0 resolves the built artifact from the FULL `--target` directory,
 	// but cargo-zigbuild writes under the bare triple; bridge the two so napi's
 	// postBuild copyArtifact succeeds for glibc-pinned targets.
-	await ensureZigbuildTargetDirLink(crossTarget, bareTriple);
+	await ensureZigbuildTargetDirLink(effectiveCrossTarget, bareTriple);
 }
 
 const canonicalAddonFilename = `veyyon_natives.${targetPlatform}-${targetArch}${variantSuffix}.node`;
@@ -433,11 +503,22 @@ async function runNapiBuildWithSccacheFallback() {
 try {
 	const { buildResult, stderr } = await runNapiBuildWithSccacheFallback();
 	if (buildResult.exitCode !== 0) {
+		if (nativeRoute?.kind === "zigbuild") {
+			// No silent fallback to a host-glibc build: that would ship the exact
+			// portability lie this routing exists to prevent. Fail with the way out.
+			throw new Error(
+				`napi build failed on the auto-selected zigbuild target ${nativeRoute.target}${stderr ? `:\n${stderr}` : ""}\n` +
+					"Known incompatibility: rustc >= 1.9x emits `-Wl,--threads=N`, which zig's linker rejects " +
+					"(upgrade cargo-zigbuild, or pin an older rustc). To explicitly build a host-only addon " +
+					"instead, rerun with VEYYON_NATIVE_HOST_ONLY=1 — that addon must NOT be distributed.",
+			);
+		}
 		throw new Error(`napi build failed${stderr ? `:\n${stderr}` : ""}`);
 	}
 
 	const builtAddonPath = await resolveBuiltAddonPath(buildOutputDir, canonicalAddonFilename);
 	await stripAndVerifyNativeAddon(builtAddonPath);
+	await verifyGlibcPortability(builtAddonPath);
 	if (builtAddonPath !== canonicalAddonPath) {
 		console.log(`Normalizing native addon filename: ${path.basename(builtAddonPath)} → ${canonicalAddonFilename}`);
 		await installBinary(builtAddonPath, canonicalAddonPath);

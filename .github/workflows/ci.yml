@@ -24,7 +24,9 @@ env:
    # glibc floor for shipped linux native addons. A stock Ubuntu runner links its
    # own (newer) glibc symbol versions and would fail to dlopen on older distros.
    # Building the linux-gnu addons through cargo-zigbuild against this floor keeps
-   # them portable. Bump to raise the minimum supported glibc.
+   # them portable. MIRROR: the owner of this value is
+   # packages/natives/scripts/native-portability.ts (GLIBC_FLOOR); update both —
+   # native-portability.test.ts fails on drift. Bump to raise the minimum glibc.
    GLIBC_FLOOR: "2.17"
 
 permissions:
