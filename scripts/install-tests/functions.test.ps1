@@ -59,6 +59,26 @@ Check "a prefix-substring entry does NOT block the add" `
     (Get-PathWithDir "C:\a\bin2" "C:\a\bin") "C:\a\bin2;C:\a\bin"
 Check "empty entries are cleaned out on append" (Get-PathWithDir "C:\x;;C:\y" "C:\a\bin") "C:\x;C:\y;C:\a\bin"
 
+# --- checksum verification (mirrors install.sh verify_sha256) ---
+# The binary install fails closed on a missing/empty/unparseable sidecar and on a
+# hash mismatch. These lock the extracted pure parsers/comparators so a refactor
+# cannot silently weaken the security-critical checksum path on Windows.
+Check "sidecar parse takes the leading hash token" (ConvertFrom-Sha256Sidecar "abc123def  veyyon-windows-x64.exe") "abc123def"
+Check "sidecar parse lowercases the hash" (ConvertFrom-Sha256Sidecar "ABC123DEF  veyyon.exe") "abc123def"
+Check "sidecar parse tolerates leading/trailing whitespace" (ConvertFrom-Sha256Sidecar "   deadbeef  file`n") "deadbeef"
+Check "sidecar parse splits on a tab too" (ConvertFrom-Sha256Sidecar "cafef00d`tfile") "cafef00d"
+Check "sidecar parse of empty text is null" ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar ""))) "True"
+Check "sidecar parse of whitespace-only text is null" ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar "   `n  "))) "True"
+
+$hashFile = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-sha-$PID.bin"
+"veyyon-integrity-fixture" | Set-Content -NoNewline -Path $hashFile
+$realHash = (Get-FileHash -Path $hashFile -Algorithm SHA256).Hash.ToLower()
+Check "Test-FileSha256 accepts the matching hash" (Test-FileSha256 -Path $hashFile -Expected $realHash) "True"
+Check "Test-FileSha256 accepts an uppercase matching hash" (Test-FileSha256 -Path $hashFile -Expected $realHash.ToUpper()) "True"
+Check "Test-FileSha256 fails closed on a wrong hash" (Test-FileSha256 -Path $hashFile -Expected "deadbeef") "False"
+Check "Test-FileSha256 fails closed on an empty expected hash" (Test-FileSha256 -Path $hashFile -Expected "") "False"
+Remove-Item -Force $hashFile -ErrorAction SilentlyContinue
+
 # --- source-checkout data-loss protection (mirrors install.sh) ---
 # The update path runs `git reset --hard`, and uninstall used to rm the checkout
 # outright. Locks the Windows-side fix: a user's local edits under ~/.veyyon/src
