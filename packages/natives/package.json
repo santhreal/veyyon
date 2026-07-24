@@ -1,6 +1,6 @@
 {
   "name": "@veyyon/natives",
-  "version": "1.0.35",
+  "version": "1.0.36",
   "description": "Native Rust bindings for grep, clipboard, image processing, syntax highlighting, PTY, and shell operations via N-API",
   "type": "module",
   "homepage": "https://veyyon.dev",

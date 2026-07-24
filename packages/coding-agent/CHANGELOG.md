@@ -2,15 +2,11 @@
 
 ## [Unreleased]
 
+## [1.0.36] - 2026-07-24
+
 ### Fixed
 
 - Error messages no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace, applying a personality, or changing the Mermaid rendering setting now reads `Failed to …: <reason>` instead of `Failed to …: Error: <reason>`.
-
-## [1.0.35] - 2026-07-24
-
-### Changed
-
-- `veyyon update` now prints `Checksum verified` after it validates a downloaded binary against its published `.sha256` sidecar, so you can see the integrity check ran and passed rather than only hearing about it when it fails. This matches the `verified sha256` confirmation the `curl` installer already prints. The automatic startup update stays silent to avoid corrupting the session UI.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11282,6 +11278,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.35] - 2026-07-24
+
+### Changed
+
+- `veyyon update` now prints `Checksum verified` after it validates a downloaded binary against its published `.sha256` sidecar, so you can see the integrity check ran and passed rather than only hearing about it when it fails. This matches the `verified sha256` confirmation the `curl` installer already prints. The automatic startup update stays silent to avoid corrupting the session UI.
 
 ## [1.0.34] - 2026-07-24
 

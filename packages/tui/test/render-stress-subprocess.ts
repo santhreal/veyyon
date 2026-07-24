@@ -1,4 +1,4 @@
-import { __veyyonNativesV1_0_35 } from "@veyyon/natives";
+import { __veyyonNativesV1_0_36 } from "@veyyon/natives";
 import { formatSeed, runStressScenario, type Scenario, type StressScenarioResult } from "./render-stress-harness";
 
 // Load the native addon for the REAL host platform before any scenario patches
@@ -8,7 +8,7 @@ import { formatSeed, runStressScenario, type Scenario, type StressScenarioResult
 // platform patch tests the JS render logic; the native width/token functions
 // are platform-independent, so the host addon is the correct binding either
 // way. The version probe is the cheapest real call that forces the load.
-__veyyonNativesV1_0_35();
+__veyyonNativesV1_0_36();
 
 // Subprocess entry for the randomized render-stress pool. The parent test writes
 // the scenario JSON to a temp file and spawns one `bun` process per scenario with
