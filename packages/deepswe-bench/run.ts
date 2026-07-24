@@ -437,13 +437,12 @@ async function main(): Promise<void> {
 		console.error("error: --arms must specify at least one valid arm name");
 		process.exit(1);
 	}
-	// Default to the RESOLVED logical id (`gemini-3.5-flash`), not the display alias
-	// `gemini-3.6-flash`. On google-antigravity the catalog serves the flash family
-	// under logical id `gemini-3.5-flash` with `gemini-3.6-flash` as an alias, so a
-	// requested `.../gemini-3.6-flash` runs as logical `.../gemini-3.5-flash`. Keeping
-	// requested == resolved is what lets an encode arm's allowlist match the model the
-	// gate actually sees; the post-run preamble check fails the run closed if it drifts.
-	const model = args.model ?? "google-antigravity/gemini-3.5-flash";
+	// Name the model you actually want to bench. The catalog used to alias
+	// `gemini-3.6-flash` onto the 3.5 flash family on this provider, so a request
+	// for 3.6 could resolve to 3.5 and the encode gate (which sees the RESOLVED
+	// id) would not match an allowlist naming the requested one. That alias is
+	// gone, so 3.6 now resolves to 3.6 or fails loudly, and requested == resolved.
+	const model = args.model ?? "google-antigravity/gemini-3.6-flash";
 	const rawRepeats = Number(args.repeats ?? "1");
 	if (!Number.isFinite(rawRepeats) || rawRepeats < 1 || !Number.isInteger(rawRepeats)) {
 		console.error(`error: --repeats must be a positive integer (got ${JSON.stringify(args.repeats)})`);

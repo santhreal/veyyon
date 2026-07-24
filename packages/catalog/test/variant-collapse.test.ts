@@ -21,6 +21,7 @@ import {
 	isVariantCollapsedSpec,
 	resolveBareVariantAlias,
 	resolveVariantAlias,
+	resolveVariantAlias,
 	stripEffortTierSuffix,
 } from "@veyyon/catalog/variant-collapse";
 
@@ -389,6 +390,25 @@ describe("collapseEffortVariants", () => {
 		expect(flash?.thinking?.effortBudgets).toEqual({ minimal: 1000, low: 1000, medium: 4000, high: 10000 });
 		expect(flash?.thinking?.effortRouting?.high).toBe("gemini-3-flash-agent");
 		expect(flash?.requestModelId).toBe("gemini-3.5-flash-extra-low");
+	});
+
+	it("never aliases gemini-3.6-flash onto the 3.5 flash family", () => {
+		// Regression: `gemini-3.6-flash` used to sit in this family's extraAliases as
+		// a claimed display-vs-logical split. It is really the id of a SEPARATE
+		// family whose per-tier wire ids come from the same Antigravity discovery
+		// list, so the two can be live on one provider; they are presence filtered,
+		// not provider partitioned. Whenever discovery did not serve the 3.6 tiers,
+		// a request for 3.6 quietly resolved to 3.5 — a different model, substituted
+		// silently, invisible in the resolved id. A deepswe-bench run measured 3.5
+		// while reporting 3.6, and its argot encode gate stayed off because the
+		// allowlist named the requested id and the gate saw the resolved one.
+		// Asserted through resolveVariantAlias, the function callers actually use,
+		// so the check fails if the alias returns by any route.
+		expect(resolveVariantAlias("google-antigravity", "gemini-3.6-flash")).toBeUndefined();
+		expect(resolveVariantAlias("google-gemini-cli", "gemini-3.6-flash")).toBeUndefined();
+		// The genuinely retired bare id must still resolve, so this proves the
+		// removal was surgical rather than the whole alias set going dark.
+		expect(resolveVariantAlias("google-antigravity", "gemini-3-flash")).toBe("gemini-3.5-flash");
 	});
 
 	it("heals a stale alias row alongside the canonical row (merge coexistence)", () => {
