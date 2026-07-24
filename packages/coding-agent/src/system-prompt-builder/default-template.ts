@@ -104,3 +104,93 @@ export function assembleDefaultTemplate(overrides: Partial<DefaultTemplateSectio
 	const sections = { ...DEFAULT_TEMPLATE_SECTIONS, ...overrides };
 	return DEFAULT_TEMPLATE_SECTION_ORDER.map(key => sections[key]).join("");
 }
+
+/** The banner each section must lead with. `conventions` has no banner. */
+const SECTION_REQUIRED_BANNER: Partial<Record<keyof DefaultTemplateSections, string>> = Object.fromEntries(
+	SECTION_BANNERS.map(({ key, banner }) => [key, banner]),
+);
+
+/**
+ * Validate a raw `section -> replacement text` map (from
+ * `systemPrompt.sectionOverrides` config) into a typed override map for
+ * {@link assembleDefaultTemplate}.
+ *
+ * This is the single-section-experiment entry point, and it fails closed on
+ * both ways an override could silently corrupt the prompt:
+ *
+ * 1. An unknown section name is rejected loudly. Silently ignoring it would run
+ *    the eval against the UNMODIFIED prompt while the operator believes their
+ *    change is live — a false result with no signal.
+ * 2. A replacement that drops its section banner is rejected loudly. Each
+ *    section is a `NAME\n====` banner region; `splitDefaultTemplate` and
+ *    `prompt-sections.ts` both key off those banners. A replacement missing its
+ *    banner would collapse two sections into one on the next split and let a
+ *    later override target the wrong region — the exact silent-drop this seam
+ *    exists to prevent. Requiring the banner also forces the author to edit the
+ *    real section rather than hand-write a fresh block that quietly omits a
+ *    settings-gated branch (e.g. the `{{#if eagerTasks}}` delegation block that
+ *    lives in another section entirely).
+ *
+ * Overriding one section NEVER touches another: every non-overridden section,
+ * and every `{{#if <setting>}}` conditional inside it, is reused byte-for-byte
+ * from the shipped template, so a per-section override can never override a
+ * setting or remove an unrelated block.
+ */
+export function resolveSectionOverrides(
+	raw: Readonly<Record<string, unknown>> | undefined,
+): Partial<DefaultTemplateSections> {
+	if (!raw) return {};
+	const valid = new Set<string>(DEFAULT_TEMPLATE_SECTION_ORDER);
+	const out: Partial<DefaultTemplateSections> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if (!valid.has(key)) {
+			throw new Error(
+				`section override names unknown section "${key}"; ` +
+					`valid sections: ${DEFAULT_TEMPLATE_SECTION_ORDER.join(", ")}`,
+			);
+		}
+		if (typeof value !== "string") {
+			throw new Error(`section override for "${key}" must be a string, got ${value === null ? "null" : typeof value}`);
+		}
+		const banner = SECTION_REQUIRED_BANNER[key as keyof DefaultTemplateSections];
+		if (banner && !value.startsWith(banner)) {
+			throw new Error(
+				`section override for "${key}" must begin with its section banner ` +
+					`"${banner.replace("\n", "\\n")}…" so the banner boundary is preserved. A section override ` +
+					"replaces one banner region and MUST keep that region's banner; start from the shipped section text.",
+			);
+		}
+		out[key as keyof DefaultTemplateSections] = value;
+	}
+	return out;
+}
+
+/**
+ * Parse and validate the eval-only section-override payload carried by the
+ * `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable (a JSON object of
+ * `section -> replacement text`). This is a PURE parser — reading the env var,
+ * gating, and the loud "non-production prompt" log live in the prompt builder.
+ *
+ * Every malformed input fails loudly rather than silently disabling the
+ * override (which would run the eval against the production prompt while the
+ * operator believes their change is live): non-JSON, a non-object payload, and
+ * — via {@link resolveSectionOverrides} — unknown sections, non-string values,
+ * and banner-less replacements all throw. An empty/whitespace value is the
+ * only quiet case: it means "no override", the production prompt.
+ */
+export function parseSectionOverridesJson(raw: string | undefined): Partial<DefaultTemplateSections> {
+	if (raw === undefined || raw.trim() === "") return {};
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (err) {
+		throw new Error(`VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS is set but is not valid JSON: ${err}`);
+	}
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new Error(
+			"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS must be a JSON object of section -> replacement text, " +
+				`got ${Array.isArray(parsed) ? "an array" : parsed === null ? "null" : typeof parsed}`,
+		);
+	}
+	return resolveSectionOverrides(parsed as Record<string, unknown>);
+}

@@ -26,7 +26,7 @@ import { applyPromptSectionOrder } from "./prompt-sections";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
-import { assembleDefaultTemplate } from "./system-prompt-builder/default-template";
+import { assembleDefaultTemplate, parseSectionOverridesJson } from "./system-prompt-builder/default-template";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import { shortenPath } from "./tools/render-utils";
@@ -589,6 +589,39 @@ export interface BuildSystemPromptResult {
 	systemPrompt: string[];
 }
 
+/**
+ * Read the EVAL-ONLY per-section prompt override.
+ *
+ * WHY AN ENV VAR AND NOT CONFIG: a per-section override is a benchmark
+ * instrument, not a product feature. If it lived in the config schema, any
+ * `config.yml` — on a developer's machine or in production — could silently
+ * swap a section of the system prompt, which is exactly the contamination this
+ * must never allow. It is therefore reachable ONLY through
+ * `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`, an env var the deepswe-bench harness
+ * sets around a single arm and nothing else sets. There is no config key, no
+ * CLI flag, and no `BuildSystemPromptOptions` field — so a normal run cannot
+ * reach this path at all.
+ *
+ * FAIL-CLOSED + LOUD: when the var is absent or empty the production prompt is
+ * used verbatim (returns `{}`). When it IS present the override engages and we
+ * `logger.warn` so the operator cannot mistake a benchmark run for a production
+ * one; a malformed payload throws (see {@link parseSectionOverridesJson})
+ * rather than silently reverting to production, which would invalidate the eval
+ * while looking like it succeeded.
+ */
+function resolveEvalSectionOverrides(): ReturnType<typeof parseSectionOverridesJson> {
+	const raw = $env.VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS;
+	const overrides = parseSectionOverridesJson(raw);
+	const keys = Object.keys(overrides);
+	if (keys.length > 0) {
+		logger.warn(
+			`EVAL-ONLY system-prompt section override is ACTIVE (VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS): ` +
+				`replacing section(s) [${keys.join(", ")}]. This is NOT the production prompt — expected only inside a benchmark arm.`,
+		);
+	}
+	return overrides;
+}
+
 /** Build the system prompt with tools, guidelines, and context */
 export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}): Promise<BuildSystemPromptResult> {
 	if ($env.NULL_PROMPT === "true") {
@@ -896,7 +929,19 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree,
 		renderMermaid,
 	};
-	let rendered = prompt.render(resolvedCustomPrompt ? customSystemPromptTemplate : assembleDefaultTemplate(), data);
+	const sectionOverrides = resolveEvalSectionOverrides();
+	if (resolvedCustomPrompt && Object.keys(sectionOverrides).length > 0) {
+		// A custom prompt replaces the whole template, so it has no banner
+		// sections to override. Silently ignoring the overrides would run the
+		// eval against the custom prompt while the operator believes their
+		// section change is live — fail loudly instead.
+		throw new Error(
+			"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS cannot be combined with a custom system prompt " +
+				"(--system-prompt / SYSTEM.md): a custom prompt has no banner sections to override. Use one or the other.",
+		);
+	}
+	const baseTemplate = resolvedCustomPrompt ? customSystemPromptTemplate : assembleDefaultTemplate(sectionOverrides);
+	let rendered = prompt.render(baseTemplate, data);
 	if (sectionOrder && sectionOrder.length > 0) {
 		if (resolvedCustomPrompt) {
 			logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
