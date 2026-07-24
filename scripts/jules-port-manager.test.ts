@@ -3,12 +3,14 @@ import {
 	buildPortPrompt,
 	classifyHarvest,
 	countFailures,
+	countNudges,
 	countRecentSessions,
 	extractPrUrl,
 	failMarker,
 	findPortPr,
 	keyFingerprint,
 	latestSessionMarker,
+	nudgeMarker,
 	parseEnvKeys,
 	sessionMarker,
 	upstreamNumberFromIssue,
@@ -82,6 +84,13 @@ describe("session markers", () => {
 		expect(latestSessionMarker(["just a human comment", failMarker("sessions/x")])).toBeNull();
 	});
 
+	it("counts nudges per SESSION, so a retry session starts with a fresh nudge budget", () => {
+		const comments = [nudgeMarker("sessions/old"), nudgeMarker("sessions/old"), nudgeMarker("sessions/new")];
+		expect(countNudges(comments, "sessions/old")).toBe(2);
+		expect(countNudges(comments, "sessions/new")).toBe(1);
+		expect(countNudges(comments, "sessions/never")).toBe(0);
+	});
+
 	it("counts one failure per jules-failed marker and ignores everything else", () => {
 		expect(
 			countFailures([
@@ -124,6 +133,10 @@ describe("buildPortPrompt", () => {
 		expect(p).toContain("## Task: evaluate and port\n- `packages/ai/src/stream.ts`");
 		expect(p).toContain("NOT-APPLICABLE:");
 		expect(p).not.toContain("Previous attempt failed");
+	});
+
+	it("bans scratch artifacts in the PR (live finding: a session committed the downloaded 6227.diff to the repo root)", () => {
+		expect(buildPortPrompt(40, "body", null)).toContain("Never commit scratch artifacts");
 	});
 
 	it("folds the prior failure context into a retry so the next session sees the dead end", () => {
@@ -242,9 +255,18 @@ describe("classifyHarvest", () => {
 		expect(classifyHarvest("IN_PROGRESS", null, 30, 24).kind).toBe("failed");
 	});
 
-	it("a session stuck AWAITING_USER_FEEDBACK past the window needs a human answer, not a retry", () => {
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 30, 24).kind).toBe("review");
-		// ...but inside the window it may still auto-advance: wait.
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24).kind).toBe("wait");
+	it("a session asking for input gets the autonomy nudge while budget remains (seen live: Jules pauses mid-port to ask 'should I run the tests?')", () => {
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 0, 3).kind).toBe("nudge");
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 2, 3).kind).toBe("nudge");
+		// A questioning session is nudged even past the stale window: an answer
+		// is cheaper than abandoning a mostly-done port.
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 30, 24, 0, 3).kind).toBe("nudge");
+	});
+
+	it("a session still asking after the nudge budget, past the window, needs a human answer, not a retry", () => {
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 30, 24, 3, 3).kind).toBe("review");
+		// Out of nudges but inside the window: wait for the stale clock, a late
+		// auto-advance is still possible.
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 3, 3).kind).toBe("wait");
 	});
 });

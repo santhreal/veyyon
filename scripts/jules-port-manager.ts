@@ -29,6 +29,9 @@
  *                                                     never the key itself)
  *   <!-- jules-failed: sessions/<id> -->              one per failed attempt;
  *                                                     the count is the retry budget
+ *   <!-- jules-nudged: sessions/<id> -->              one per autonomy answer sent
+ *                                                     to a session that paused to
+ *                                                     ask for input (cap MAX_NUDGES)
  *
  * Commands:
  *   tick      harvest then dispatch (the default; what cron runs)
@@ -54,6 +57,7 @@ const MAX_DISPATCH_PER_RUN = Number(process.env.JULES_MAX_DISPATCH ?? "10");
 const KEY_DAILY_BUDGET = Number(process.env.JULES_KEY_DAILY_BUDGET ?? "40");
 const MAX_ATTEMPTS = Number(process.env.JULES_MAX_ATTEMPTS ?? "3");
 const STALE_HOURS = Number(process.env.JULES_STALE_HOURS ?? "24");
+const MAX_NUDGES = Number(process.env.JULES_MAX_NUDGES ?? "3");
 const ENV_FILE = process.env.JULES_ENV_FILE ?? "/credentials/.env";
 const WINDOW_HOURS = 24;
 const HTTP_TIMEOUT_MS = 30_000;
@@ -102,6 +106,18 @@ export function countFailures(commentBodies: string[]): number {
 	return commentBodies.filter(b => /<!-- jules-failed: sessions\/\S+ -->/.test(b)).length;
 }
 
+export const nudgeMarker = (session: string) => `<!-- jules-nudged: ${session} -->`;
+
+/** Nudges already sent to ONE session (retry sessions restart the budget). */
+export function countNudges(commentBodies: string[], session: string): number {
+	const marker = nudgeMarker(session);
+	return commentBodies.filter(b => b.includes(marker)).length;
+}
+
+/** The autonomy answer sent to a session that paused to ask permission. */
+export const NUDGE_PROMPT =
+	"Proceed autonomously; you will get no further human input. Make the decision you judge best, run the tests, finish the port, and open the PR with the mandated Closes line. If the change truly does not apply, end the session with a NOT-APPLICABLE summary. Do not pause to ask again.";
+
 /** The mirrored upstream PR number from the radar's marker, or null. */
 export function upstreamNumberFromIssue(issueBody: string): number | null {
 	const m = /<!-- upstream-pr: (\d+) -->/.exec(issueBody);
@@ -126,6 +142,7 @@ ${retry}
 ## PR requirements (mandatory)
 
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
+- Commit ONLY the ported source, tests, docs, and changelog. Never commit scratch artifacts: downloaded \`*.diff\`/\`*.patch\` files, notes, or tool output.
 - If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), do not open a PR; end the session with a summary that starts with \`NOT-APPLICABLE:\` and names the veyyon change that supersedes it.
 `;
 }
@@ -173,32 +190,39 @@ export type HarvestAction =
 	| { kind: "pr-open"; url: string }
 	| { kind: "review"; reason: string }
 	| { kind: "failed"; reason: string }
+	| { kind: "nudge" }
 	| { kind: "wait" };
 
 /**
  * What harvest does with one in-flight session. A PR wins over any state
  * (the artifact exists, whatever the session says). Terminal failure states
- * retry via the failure budget. COMPLETED with no PR, or a session stuck
- * awaiting feedback past the stale window, goes to a human: retrying an
- * identical prompt against an agent that finished or is asking a question
- * only burns quota. A session silently in-flight past the stale window is
- * treated as dead and retried.
+ * retry via the failure budget. Jules mid-run pauses in AWAITING_USER_FEEDBACK
+ * to ask "should I proceed?"; an unattended pipeline answers those itself
+ * (nudge, bounded by MAX_NUDGES so an agent looping on questions eventually
+ * reaches a human). COMPLETED with no PR, or a session still asking after the
+ * nudge budget past the stale window, goes to a human: retrying an identical
+ * prompt against an agent that finished or is asking a question only burns
+ * quota. A session silently in-flight past the stale window is treated as
+ * dead and retried.
  */
 export function classifyHarvest(
 	state: string,
 	prUrl: string | null,
 	ageHours: number,
 	staleHours: number,
+	nudges = 0,
+	maxNudges = MAX_NUDGES,
 ): HarvestAction {
 	if (prUrl) return { kind: "pr-open", url: prUrl };
 	const s = state.toUpperCase();
 	if (["FAILED", "ERROR", "CANCELLED"].includes(s)) return { kind: "failed", reason: `session state ${s}` };
 	if (s === "COMPLETED") return { kind: "review", reason: "session COMPLETED without opening a PR" };
+	if (s === "AWAITING_USER_FEEDBACK" && nudges < maxNudges) return { kind: "nudge" };
 	if (ageHours > staleHours) {
 		if (s === "AWAITING_USER_FEEDBACK")
 			return {
 				kind: "review",
-				reason: `session stuck in ${s} for ${Math.round(ageHours)}h; it needs an answer, not a retry`,
+				reason: `session stuck in ${s} for ${Math.round(ageHours)}h after ${nudges} nudges; it needs a real answer, not a retry`,
 			};
 		return { kind: "failed", reason: `session stale: ${s} for ${Math.round(ageHours)}h with no PR` };
 	}
@@ -470,10 +494,12 @@ async function harvest(): Promise<void> {
 		}
 		const laneOrder = [...lanes].sort((a, b) => (a.fp === marker.fp ? -1 : b.fp === marker.fp ? 1 : 0));
 		let session: any = null;
+		let sessionKey = "";
 		let lastErr = "";
 		for (const lane of laneOrder) {
 			try {
 				session = await jules(lane.key, `/${marker.session}`);
+				sessionKey = lane.key;
 				break;
 			} catch (e) {
 				lastErr = String(e);
@@ -495,7 +521,14 @@ async function harvest(): Promise<void> {
 			findPortPr(prs, issue.number, upstreamNumberFromIssue(issue.body ?? ""))?.html_url ??
 			null;
 		const ageHours = (Date.now() - Date.parse(session.createTime ?? "")) / 3600_000;
-		const action = classifyHarvest(session.state ?? "", prUrl, Number.isNaN(ageHours) ? 0 : ageHours, STALE_HOURS);
+		const nudges = countNudges(comments, marker.session);
+		const action = classifyHarvest(
+			session.state ?? "",
+			prUrl,
+			Number.isNaN(ageHours) ? 0 : ageHours,
+			STALE_HOURS,
+			nudges,
+		);
 
 		switch (action.kind) {
 			case "pr-open":
@@ -523,6 +556,17 @@ async function harvest(): Promise<void> {
 				);
 				await removeLabel(issue.number, DISPATCHED_LABEL);
 				console.log(`harvest: #${issue.number} failed (${action.reason}); requeued.`);
+				break;
+			case "nudge":
+				await jules(sessionKey, `/${marker.session}:sendMessage`, {
+					method: "POST",
+					body: JSON.stringify({ prompt: NUDGE_PROMPT }),
+				});
+				await comment(
+					issue.number,
+					`${nudgeMarker(marker.session)}\nSession paused to ask for input; answered with the autonomy nudge (${nudges + 1}/${MAX_NUDGES}).`,
+				);
+				console.log(`harvest: #${issue.number} nudged (${nudges + 1}/${MAX_NUDGES}).`);
 				break;
 			case "wait":
 				console.log(`harvest: #${issue.number} still running (${session.state}, ${Math.round(ageHours)}h).`);
