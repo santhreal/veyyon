@@ -143,6 +143,7 @@ ${retry}
 
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
 - Commit ONLY the ported source, tests, docs, and changelog. Never commit scratch artifacts: downloaded \`*.diff\`/\`*.patch\` files, notes, or tool output.
+- A user-facing change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too (CI's "Changelog entry" check enforces the pair). If you touch anything under \`docs/handbook/src/\`, run \`mdbook build docs/handbook\` (mdbook v0.5.2) and commit the rebuilt \`docs/handbook/book\` (CI's freshness check enforces it).
 - veyyon's product direction wins over upstream's. Where veyyon diverged (its own model catalog with its own model IDs, types, and roles; its own branding, install flow, and docs), port the underlying bug onto veyyon's design; never import upstream's scheme. The issue's "Diverged surface warning" section, when present, is binding.
 - If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the veyyon change that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
 `;
