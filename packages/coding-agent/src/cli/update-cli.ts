@@ -565,6 +565,10 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 		await unlinkIfExists(tempPath);
 		throw err;
 	}
+	// Confirm the integrity check passed, matching install.sh's "verified sha256".
+	// A security control that only speaks up on failure leaves the user unsure it
+	// ran at all; say so on success too. Silent under the auto-update reporter.
+	report(chalk.dim("Checksum verified"));
 
 	report(chalk.dim("Installing update..."));
 	await replaceBinaryForUpdate({
