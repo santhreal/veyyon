@@ -21,7 +21,7 @@
     },
     "packages/agent": {
       "name": "@veyyon/agent-core",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
         "@veyyon/ai": "catalog:",
@@ -38,7 +38,7 @@
     },
     "packages/ai": {
       "name": "@veyyon/ai",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "@veyyon/catalog": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/argot": {
       "name": "argot",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "smol-toml": "catalog:",
       },
@@ -65,7 +65,7 @@
     },
     "packages/catalog": {
       "name": "@veyyon/catalog",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
         "@veyyon/utils": "catalog:",
@@ -79,7 +79,7 @@
     },
     "packages/coding-agent": {
       "name": "@veyyon/coding-agent",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "bin": {
         "veyyon": "src/cli.ts",
       },
@@ -164,7 +164,7 @@
     },
     "packages/hashline": {
       "name": "@veyyon/hashline",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "diff": "catalog:",
         "lru-cache": "catalog:",
@@ -208,7 +208,7 @@
     },
     "packages/mnemopi": {
       "name": "@veyyon/mnemopi",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
@@ -235,7 +235,7 @@
     },
     "packages/natives": {
       "name": "@veyyon/natives",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
         "@types/bun": "catalog:",
@@ -243,7 +243,7 @@
     },
     "packages/stats": {
       "name": "@veyyon/stats",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "bin": {
         "veyyon-stats": "./src/index.ts",
       },
@@ -269,7 +269,7 @@
     },
     "packages/swarm-extension": {
       "name": "@veyyon/swarm-extension",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "bin": {
         "veyyon-swarm": "src/cli.ts",
       },
@@ -285,7 +285,7 @@
     },
     "packages/tool-render": {
       "name": "@veyyon/tool-render",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "@veyyon/utils": "catalog:",
         "@veyyon/wire": "catalog:",
@@ -302,7 +302,7 @@
     },
     "packages/tui": {
       "name": "@veyyon/tui",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "@veyyon/natives": "catalog:",
         "@veyyon/utils": "catalog:",
@@ -341,7 +341,7 @@
     },
     "packages/utils": {
       "name": "@veyyon/utils",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "dependencies": {
         "@veyyon/natives": "catalog:",
         "handlebars": "catalog:",
@@ -355,7 +355,7 @@
     },
     "packages/wire": {
       "name": "@veyyon/wire",
-      "version": "1.0.36",
+      "version": "1.0.37",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
@@ -414,21 +414,21 @@
     "@types/react-dom": "^19.2.3",
     "@types/turndown": "5.0.6",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
-    "@veyyon/agent-core": "1.0.36",
-    "@veyyon/ai": "1.0.36",
-    "@veyyon/catalog": "1.0.36",
-    "@veyyon/coding-agent": "1.0.36",
-    "@veyyon/collab-web": "1.0.36",
-    "@veyyon/hashline": "1.0.36",
-    "@veyyon/metaharness": "1.0.36",
-    "@veyyon/mnemopi": "1.0.36",
-    "@veyyon/natives": "1.0.36",
-    "@veyyon/stats": "1.0.36",
-    "@veyyon/swarm-extension": "1.0.36",
-    "@veyyon/tool-render": "1.0.36",
-    "@veyyon/tui": "1.0.36",
-    "@veyyon/utils": "1.0.36",
-    "@veyyon/wire": "1.0.36",
+    "@veyyon/agent-core": "1.0.37",
+    "@veyyon/ai": "1.0.37",
+    "@veyyon/catalog": "1.0.37",
+    "@veyyon/coding-agent": "1.0.37",
+    "@veyyon/collab-web": "1.0.37",
+    "@veyyon/hashline": "1.0.37",
+    "@veyyon/metaharness": "1.0.37",
+    "@veyyon/mnemopi": "1.0.37",
+    "@veyyon/natives": "1.0.37",
+    "@veyyon/stats": "1.0.37",
+    "@veyyon/swarm-extension": "1.0.37",
+    "@veyyon/tool-render": "1.0.37",
+    "@veyyon/tui": "1.0.37",
+    "@veyyon/utils": "1.0.37",
+    "@veyyon/wire": "1.0.37",
     "@xterm/headless": "^6.0.0",
     "arktype": "2.2.3",
     "chalk": "^5.6.2",
