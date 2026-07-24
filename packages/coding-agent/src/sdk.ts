@@ -1295,17 +1295,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	}
 	const secretsEnabled = obfuscator?.hasSecrets() === true;
 
-	// Argot per-project shorthand codec (experimental). Loading is agent-driven:
-	// the session starts unarmed and the model loads the project it intends to
-	// work in through the argot_load tool (the canonical flow in argot's SPEC —
-	// auto-arming from the launch directory picks the wrong project in a
-	// monorepo). The dictionary lives in a local cache under the config root,
-	// never committed. The notation and the load-yourself instruction are taught
+	// Argot per-project shorthand codec (experimental). The launch project's
+	// dictionary auto-loads at startup (the adoption loop: works out of the
+	// box); additional projects are agent-driven through the argot_load tool.
+	// The dictionary lives in a local cache under the config root, never
+	// committed. The notation and the load-yourself instruction are taught
 	// through the system prompt (see argotPreamble below), the loaded handles
 	// through promptFragment. Expansion runs at the same two seams as secret
-	// deobfuscation — tool-call arguments before execution and assistant content
-	// before display — so the cheap handle stays in history (the token win) while
-	// everything outside history sees full text.
+	// deobfuscation — tool-call arguments before execution and assistant
+	// content before display — so the cheap handle stays in history (the
+	// token win) while everything outside history sees full text.
 	const argotEnabled = settings.get("argot.enabled") === true;
 	// A subagent (task-spawned child) follows the `argot.subagents` policy instead
 	// of always starting empty: `off` gets no codec, `fresh` gets its own empty
@@ -1320,7 +1319,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		parentArgot: options.parentArgot,
 	});
 	if (argotEnabled && argot !== undefined && !argot.loaded) {
-		await loadArgotFolder(argot, cwd, undefined, settings.get("argot.tokenBudget")).catch(() => undefined);
+		// The adoption path auto-loads the launch project so the feature works
+		// out of the box; argot_load remains the way to teach additional
+		// projects. A missing project marker is a quiet undefined (nothing to
+		// load); a genuine failure (malformed cache, handle conflict) must log,
+		// never vanish.
+		try {
+			await loadArgotFolder(argot, cwd, undefined, settings.get("argot.tokenBudget"));
+		} catch (error) {
+			logger.warn("Argot startup load failed; session starts unarmed", { cwd, error: errorMessage(error) });
+		}
 	}
 	// Encode gate: which models may WRITE shorthand and an optional context-size
 	// cutoff. Decoding (argot.expand at the tool-arg and display seams) is
