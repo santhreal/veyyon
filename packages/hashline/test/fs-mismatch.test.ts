@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { Filesystem, InMemoryFilesystem, isNotFound, NodeFilesystem, NotFoundError } from "../src/fs";
@@ -123,6 +123,70 @@ describe("NodeFilesystem", () => {
 	it("canonicalPath resolves to an absolute path", () => {
 		const fs = new NodeFilesystem();
 		expect(isAbsolute(fs.canonicalPath("rel.txt"))).toBe(true);
+	});
+});
+
+/**
+ * A content-move (`move(from, to, content)`) writes `to` and then deletes
+ * `from`. When `from` and `to` name the SAME underlying file the delete must be
+ * skipped, or the move erases the bytes it just wrote and the user loses the
+ * file. The patcher's caller-side same-path guard compares `path.resolve`d
+ * strings, which does not fold filename case and does not resolve symlinks, so
+ * two different spellings of one file slip past it. NodeFilesystem is a public,
+ * documented primitive any adapter can call directly (LSP, sandbox subclasses),
+ * so the guard has to live here too. These tests reproduce the data-loss paths
+ * and lock in that the destination survives with its new content.
+ */
+describe("NodeFilesystem.move same-file guard (never delete the file it just wrote)", () => {
+	it("keeps the file when from and to are the exact same path", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "hashline-move-same-"));
+		try {
+			const fs = new NodeFilesystem();
+			const p = join(dir, "a.txt");
+			await fs.writeText(p, "original");
+			await fs.move(p, p, "rewritten");
+			// Without the guard this sequence writes then deletes p, losing the file.
+			expect(await fs.exists(p)).toBe(true);
+			expect(await fs.readText(p)).toBe("rewritten");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps the target when to is a symlink resolving to from (cross-spelling)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "hashline-move-link-"));
+		try {
+			const fs = new NodeFilesystem();
+			const real = join(dir, "real.txt");
+			const link = join(dir, "link.txt");
+			await fs.writeText(real, "original");
+			symlinkSync(real, link);
+			// from=real, to=link: both stat to the same inode. The write lands on the
+			// shared inode; deleting `real` would strip its only directory entry and
+			// free the bytes, leaving `link` dangling. The guard must skip the delete.
+			await fs.move(real, link, "rewritten");
+			expect(await fs.exists(real)).toBe(true);
+			expect(await fs.readText(real)).toBe("rewritten");
+			expect(await fs.readText(link)).toBe("rewritten");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("still deletes the source for a genuine different-file content-move", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "hashline-move-diff-"));
+		try {
+			const fs = new NodeFilesystem();
+			const from = join(dir, "from.txt");
+			const to = join(dir, "to.txt");
+			await fs.writeText(from, "original");
+			await fs.move(from, to, "moved");
+			// Distinct files: normal move semantics — source gone, destination written.
+			expect(await fs.exists(from)).toBe(false);
+			expect(await fs.readText(to)).toBe("moved");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 
