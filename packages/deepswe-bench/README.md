@@ -74,7 +74,13 @@ Flags:
   sessions, so accounting fixes apply retroactively).
 - `--arms <a,b,c>` — which `arms/*.yml` overlays to run. Every arm runs every
   task.
-- `--limit N` — first N tasks of the list (smoke runs).
+- `--limit N` — sample N tasks for a smoke run. The picks are spread evenly
+  across the sorted task list (an even stride), not the first N: task names are
+  repo-prefixed, so the first N would cluster on one repo and bias the pass rate.
+  The subset is deterministic (same `N` picks the same tasks) and its pass rate is
+  an estimate over that subset, not the full suite. The exact tasks sampled, `N`,
+  and the full task count are recorded in `results.json` (`tasks`, `limit`,
+  `totalTasksAvailable`) so a limited run is never mistaken for a full one.
 - `--jobs N` — concurrent Pier runs. Each task container takes 2 cpu / 8 GB;
   2 is safe on a 16-core/64 GB machine, 4 is the practical ceiling.
 - `--model <provider/id>` — the model under test. When the arm gates behavior
