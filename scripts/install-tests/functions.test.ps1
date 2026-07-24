@@ -104,46 +104,57 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
             git push -q origin HEAD:refs/heads/main 2>$null
         } finally { Pop-Location }
     }
-    function Backup-BranchName {
+    # Discover preservation branches by ref (no `git branch` output parsing, which
+    # varies by leading marker/whitespace across git versions).
+    function Backup-BranchNames {
         param([string]$Dir)
         Push-Location $Dir
-        try { return (@(git branch --list "veyyon-local-*" 2>$null) | ForEach-Object { $_.Trim(@('*',' ')) } | Where-Object { $_ })[0] }
+        try { return @(git for-each-ref --format='%(refname:short)' 'refs/heads/veyyon-local-*' 2>$null | Where-Object { $_ }) }
         finally { Pop-Location }
+    }
+    # Null-safe `git show <ref>` that returns a trimmed string, never throws on a
+    # missing object (returns "" so the Check reports a clean mismatch, not a crash).
+    function Git-ShowTrim {
+        param([string]$Dir, [string]$Ref)
+        Push-Location $Dir
+        try {
+            $o = git show $Ref 2>$null
+            if ($null -eq $o) { return "" }
+            return (($o -join "`n").Trim())
+        } finally { Pop-Location }
     }
 
     # Preserve on a clean repo: no-op, no backup branch.
     $clean = Join-Path $sandbox "clean"
     New-TestRepo $clean
     Check "preserve returns true on a clean repo" (Preserve-LocalSrcChanges $clean) "True"
-    Push-Location $clean; $n = @(git branch --list "veyyon-local-*" 2>$null).Count; Pop-Location
-    Check "clean repo gets no backup branch" $n "0"
+    Check "clean repo gets no backup branch" (@(Backup-BranchNames $clean).Count) "0"
 
     # Preserve on a dirty repo: the edit survives a hard reset via the branch.
     $dirty = Join-Path $sandbox "dirty"
     New-TestRepo $dirty
     "MY LOCAL EDIT" | Set-Content -NoNewline -Path (Join-Path $dirty "AGENTS.md")
     Check "preserve returns true on a modified tracked file" (Preserve-LocalSrcChanges $dirty) "True"
-    $bd = Backup-BranchName $dirty
-    Push-Location $dirty
-    git reset -q --hard HEAD 2>$null
-    $afterReset = (Get-Content -Raw -Path (Join-Path $dirty "AGENTS.md")).Trim()
-    $preserved = (git show "${bd}:AGENTS.md" 2>$null).Trim()
-    Pop-Location
+    $bdNames = @(Backup-BranchNames $dirty)
+    Check "dirty repo gets exactly one backup branch" ($bdNames.Count) "1"
+    $bd = $bdNames[0]
+    Push-Location $dirty; git reset -q --hard HEAD 2>$null; Pop-Location
+    $afterReset = (Git-ShowTrim $dirty "HEAD:AGENTS.md")
+    $preserved = if ($bd) { Git-ShowTrim $dirty "${bd}:AGENTS.md" } else { "<no-branch>" }
     Check "hard reset cleared the working-tree edit" $afterReset "committed"
     Check "backup branch preserves the exact edited bytes" $preserved "MY LOCAL EDIT"
 
     # Preserve does not sweep gitignored artifacts into the backup.
     $mixed = Join-Path $sandbox "mixed"
     New-TestRepo $mixed
-    "node_modules/" | Set-Content -NoNewline -Path (Join-Path $mixed ".gitignore")
-    Push-Location $mixed; git add -A 2>$null; git commit -qm ignore 2>$null; Pop-Location
     "real edit" | Set-Content -NoNewline -Path (Join-Path $mixed "AGENTS.md")
     New-Item -ItemType Directory -Force -Path (Join-Path $mixed "node_modules") | Out-Null
     "junk" | Set-Content -NoNewline -Path (Join-Path $mixed "node_modules/x")
     Preserve-LocalSrcChanges $mixed | Out-Null
-    $bm = Backup-BranchName $mixed
+    $bmNames = @(Backup-BranchNames $mixed)
+    $bm = if ($bmNames.Count -gt 0) { $bmNames[0] } else { "" }
     Push-Location $mixed
-    $nm = @(git ls-tree -r --name-only $bm 2>$null | Where-Object { $_ -like "*node_modules*" }).Count
+    $nm = if ($bm) { @(git ls-tree -r --name-only $bm 2>$null | Where-Object { $_ -like "*node_modules*" }).Count } else { -1 }
     Pop-Location
     Check "backup does NOT sweep in gitignored node_modules" $nm "0"
 
