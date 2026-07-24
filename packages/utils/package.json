@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/utils",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "Shared utilities for pi packages",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",
