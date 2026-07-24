@@ -36,9 +36,36 @@ These are the sound pairings the shipped arms are built for. Each varies exactly
 | Feature flag | `baseline` ↔ `argot-setting-only` | `argot.enabled` false → true, nothing else |
 | The nudge rule | `argot-setting-only` ↔ `candidate-argot-nudge` | adds `arms/candidate-argot-nudge.rule.md` (an always-apply rule), same config |
 | Teaching (encode) | `decode` ↔ `full` | the model is allowlisted to encode and taught the preamble; codec/loadability held equal |
+| Dictionary budget | `full` ↔ `full-budget16k` | `argot.tokenBudget` alone, 1000 → 16000 |
 | Model | any single arm, two `--model` values | only `--model` differs |
 
 Do not compare across two of these at once (e.g. `baseline` ↔ `full` mixes the feature flag AND teaching). Pick the pair whose single variable is the effect you want to measure.
+
+## Why the default dictionary budget cannot measure argot
+
+At `argot.tokenBudget: 1000`, the default, argot's output-token claim is not
+testable on DeepSWE tasks. This is a property of the workload, not a null result,
+and reporting it as "the feature does not help" would be wrong. Measured on the
+ytt task repository:
+
+| budget | handles | agent-typeable mass | ceiling at the measured emission rate |
+|---|---|---|---|
+| 1000 | 44 | 652 ch | 1.01% |
+| 4000 | 139 | 1,654 ch | 2.56% |
+| 16000 | 529 | 12,322 ch | 19.07% |
+
+Run-to-run output-token noise on the same task and arm is about 8.15%, so at the
+default budget the best possible outcome sits nearly an order of magnitude below
+the noise. Repeats cannot fix that, because the effect being sought is smaller
+than the effect that already exists. Across the whole corpus, even assuming every
+typeable handle is emitted five times, only 2 of 110 tasks could clear the noise
+at the default budget.
+
+Use `full ↔ full-budget16k` to test the claim where it is measurable, and read
+both token rows. A larger dictionary rides in the prompt every turn, so it buys
+shorter output by spending input. The efficiency comparison scores `input tok`
+alongside `output tok` for this reason. A win means output fell by more than the
+prompt grew at the provider's own prices, not merely that output fell.
 
 ## Prerequisites (once per machine)
 

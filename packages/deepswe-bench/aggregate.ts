@@ -419,6 +419,14 @@ export interface CellSummary {
 	meanReward: number | null;
 	meanPartial: number | null;
 	meanOutputTokens: number | null;
+	/**
+	 * Mean uncached input tokens. Present so the efficiency comparison can TEST a
+	 * feature that trades input for output rather than only displaying it: a larger
+	 * argot dictionary is injected into the prompt every turn, so it buys shorter
+	 * output with longer input. A comparison that scores only output would call
+	 * that a clean win no matter how much input it cost.
+	 */
+	meanInputTokens: number | null;
 	meanCostUsd: number | null;
 	sumOutputTokens: number;
 	sumCostUsd: number;
@@ -765,6 +773,7 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		meanReward: mean(ok.map(r => r.reward)),
 		meanPartial: mean(ok.map(r => r.partial)),
 		meanOutputTokens: mean(ok.map(r => r.outputTokens)),
+		meanInputTokens: mean(ok.map(r => r.inputTokens)),
 		meanCostUsd: mean(ok.map(r => r.costUsd)),
 		sumOutputTokens: sum(r => r.outputTokens),
 		sumCostUsd: sum(r => r.costUsd),
@@ -1215,6 +1224,10 @@ export function renderReport(
 			digits: number;
 		}> = [
 			{ label: "output tok", unit: "tok", of: c => c.meanOutputTokens, raw: r => r.outputTokens, digits: 0 },
+			// Input is tested, not merely displayed. A feature can buy shorter output
+			// by spending prompt: a larger argot dictionary rides in the prompt every
+			// turn. Scoring output alone would score only one side of that trade.
+			{ label: "input tok", unit: "tok", of: c => c.meanInputTokens, raw: r => r.inputTokens, digits: 0 },
 			{ label: "cost", unit: "$", of: c => c.meanCostUsd, raw: r => r.costUsd, digits: 4 },
 		];
 		lines.push("");
