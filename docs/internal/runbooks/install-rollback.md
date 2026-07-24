@@ -40,4 +40,4 @@ binary back does not lose sessions or config:
 2. Once the new release publishes and verifies, it becomes `latest` automatically.
 3. Only then delete the bad release + tag if you want it gone.
 
-*Verified against `85b95ef5` on 2026-07-24.*
+*Verified against `b2e79db9` on 2026-07-24.*

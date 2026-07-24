@@ -131,4 +131,4 @@ is a candidate to **stay on Zod** (external-boundary exception), note it in your
 - Report: files changed, any `.strict`→`"+"`, `.refine`→`.narrow`, `.catch`→morph, and any file you
   intentionally left on Zod (with the reason).
 
-*Verified against `85b95ef5` on 2026-07-24.*
+*Verified against `b2e79db9` on 2026-07-24.*

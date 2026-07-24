@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Fixed in-progress aborts awaiting `session_stop` extension handlers whose results would be discarded ([#41](https://github.com/santhreal/veyyon/issues/41)).
-
 ## [1.0.37] - 2026-07-24
 
 ### Fixed

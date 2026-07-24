@@ -144,4 +144,4 @@ When `queueResolveHandler(...)` registers a preview, the agent runtime does **no
 - Implement `reject(reason)` when the discard needs cleanup (temp state, locks, notifications); omit it for stateless previews where the default message suffices.
 - If your tool can stage multiple previews, remember they stack as unique-keyed pending invokers (resolved head-first), not a forced tool-choice sequence and not a separate `pushPendingAction` stack.
 
-*Verified against `85b95ef5` on 2026-07-24.*
+*Verified against `b2e79db9` on 2026-07-24.*

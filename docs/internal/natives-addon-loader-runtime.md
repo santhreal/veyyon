@@ -202,4 +202,4 @@ Normal package/runtime diagnostics include:
 - local rebuild command (`bun --cwd=packages/natives run build`),
 - optional x64 variant build hint (`TARGET_VARIANT=baseline|modern bun --cwd=packages/natives run build`).
 
-*Verified against `85b95ef5` on 2026-07-24.*
+*Verified against `b2e79db9` on 2026-07-24.*

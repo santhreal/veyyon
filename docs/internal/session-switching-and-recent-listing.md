@@ -248,4 +248,4 @@ Switch/open can still throw on true I/O failures (permission errors, rewrite fai
 - First match in modified-descending order wins; there is no ambiguity UI if multiple sessions share a prefix.
 - Prefix-listing metadata is intentionally lightweight, so search text may not include messages outside the first 4KB of the session file.
 
-*Verified against `85b95ef5` on 2026-07-24.*
+*Verified against `b2e79db9` on 2026-07-24.*
