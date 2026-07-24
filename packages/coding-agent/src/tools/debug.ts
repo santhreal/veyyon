@@ -727,7 +727,7 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		_onUpdate?: AgentToolUpdateCallback<DebugToolDetails>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<DebugToolDetails>> {
-		const timeoutSec = clampTimeout("debug", params.timeout);
+		const timeoutSec = clampTimeout("debug", params.timeout, this.session.settings.get("tools.maxTimeout"));
 		// A clamp changes the budget the agent asked for; surface it on the result
 		// rather than applying it silently (Law 10). Debug actions each build their
 		// own result, so prepend the notice here in the one shared wrapper.
