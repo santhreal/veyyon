@@ -41,4 +41,63 @@ describe("hasReleasableChanges", () => {
 	it("is false for an empty set of changelogs", () => {
 		expect(hasReleasableChanges([])).toBe(false);
 	});
+
+	// Boundary cases at the wrapper: an Unreleased section that has category
+	// sub-headings but no actual bullets, or only whitespace, must NOT release —
+	// otherwise the version-bump commit (which leaves such a shell behind) would
+	// re-trigger a release and loop. And a bullet in the very last section (no
+	// following version heading) must still be detected.
+	it("is false when Unreleased has category sub-headings but no bullets", () => {
+		const headingsOnly = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Added",
+			"",
+			"### Fixed",
+			"",
+			"## [1.0.0]",
+			"",
+			"- shipped",
+		].join("\n");
+		expect(hasReleasableChanges([headingsOnly])).toBe(false);
+	});
+
+	it("is false when Unreleased contains only whitespace lines", () => {
+		const whitespaceOnly = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"   ",
+			"\t",
+			"",
+			"## [1.0.0]",
+			"",
+			"- shipped",
+		].join("\n");
+		expect(hasReleasableChanges([whitespaceOnly])).toBe(false);
+	});
+
+	it("detects a bullet in a trailing Unreleased section with no following version heading", () => {
+		const trailingUnreleased = ["# Changelog", "", "## [Unreleased]", "", "- A change with nothing below it"].join(
+			"\n",
+		);
+		expect(hasReleasableChanges([trailingUnreleased])).toBe(true);
+	});
+
+	it("detects a bullet nested under a category sub-heading inside Unreleased", () => {
+		const nested = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Fixed",
+			"",
+			"- A fix under a sub-heading",
+			"",
+			"## [1.0.0]",
+		].join("\n");
+		expect(hasReleasableChanges([nested])).toBe(true);
+	});
 });

@@ -264,13 +264,13 @@ async function cmdWatch(): Promise<void> {
 	process.exit(success ? 0 : 1);
 }
 
-function parseVersion(v: string): [number, number, number] {
+export function parseVersion(v: string): [number, number, number] {
 	const match = v.replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)/);
 	if (!match) throw new Error(`Invalid version: ${v}`);
 	return [parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3], 10)];
 }
 
-function bumpVersion(current: string, bump: "major" | "minor" | "patch"): string {
+export function bumpVersion(current: string, bump: "major" | "minor" | "patch"): string {
 	const [major, minor, patch] = parseVersion(current);
 	switch (bump) {
 		case "major":
