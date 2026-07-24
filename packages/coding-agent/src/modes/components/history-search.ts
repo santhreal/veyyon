@@ -21,8 +21,10 @@ import {
 } from "../utils/keybinding-matchers";
 import {
 	computeModalDims,
+	applyModalReveal,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
@@ -168,8 +170,18 @@ export class HistorySearchComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
-	constructor(historyStorage: HistoryStorage, onSelect: (prompt: string) => void, onCancel: () => void) {
+	constructor(
+		historyStorage: HistoryStorage,
+		onSelect: (prompt: string) => void,
+		onCancel: () => void,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
+	) {
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#historyStorage = historyStorage;
 		this.#onSelect = onSelect;
 		this.#onCancel = onCancel;
@@ -322,6 +334,6 @@ export class HistorySearchComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

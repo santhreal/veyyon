@@ -339,6 +339,7 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
+				modalRevealEnabled(),
 			);
 			return { component, focus: component };
 		});
@@ -926,6 +927,7 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
+				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});
@@ -951,7 +953,7 @@ export class SelectorController {
 				this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
 			},
 			onCancel: done,
-		});
+		}, modalRevealEnabled());
 
 		overlayHandle = this.ctx.ui.showOverlay(selector, {
 			anchor: "top-left",
@@ -1412,6 +1414,8 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
+			
+				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});
@@ -1474,6 +1478,7 @@ export class SelectorController {
 						this.ctx.ui.requestComponentRender(selector);
 					},
 					standalone: true,
+					reveal: modalRevealEnabled(),
 				},
 			);
 			return { component: selector, focus: selector };
@@ -1514,6 +1519,7 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
+				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});

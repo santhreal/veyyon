@@ -4,6 +4,7 @@ import type { ResetUsageAccount } from "../../slash-commands/helpers/reset-usage
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
@@ -11,6 +12,7 @@ import {
 	type ModalShortcut,
 	renderModalShell,
 	withCompact,
+	ModalRevealDriver,
 } from "./modal-shell";
 
 const RESET_SELECTOR_MAX_VISIBLE = 10;
@@ -42,8 +44,18 @@ export class ResetUsageSelectorComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
-	constructor(accounts: ResetUsageAccount[], onSelect: (account: ResetUsageAccount) => void, onCancel: () => void) {
+	constructor(
+		accounts: ResetUsageAccount[],
+		onSelect: (account: ResetUsageAccount) => void,
+		onCancel: () => void,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
+	) {
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#accounts = accounts;
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
@@ -232,6 +244,6 @@ export class ResetUsageSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

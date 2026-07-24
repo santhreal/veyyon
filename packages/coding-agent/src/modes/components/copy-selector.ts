@@ -20,12 +20,14 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	renderModalShell,
 	withCompact,
+	ModalRevealDriver,
 } from "./modal-shell";
 
 /** Minimum rows reserved for the tree even on short terminals. */
@@ -73,13 +75,19 @@ export class CopySelectorComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		roots: CopyTarget[],
 		private readonly callbacks: CopySelectorCallbacks,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
 	) {
 		this.#roots = roots;
 		this.#cursorId = roots[0]?.id ?? "";
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 	}
 
 	setOnRequestRender(cb: () => void): void {
@@ -274,6 +282,6 @@ export class CopySelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

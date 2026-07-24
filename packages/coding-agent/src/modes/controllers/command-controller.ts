@@ -31,6 +31,7 @@ import { BashExecutionComponent } from "../../modes/components/bash-execution";
 import { BorderedLoader } from "../../modes/components/bordered-loader";
 import { DynamicBorder } from "../../modes/components/dynamic-border";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
+import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { MoveOverlay, type MoveOverlayResult } from "../../modes/components/move-overlay";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
 import { getMarkdownTheme, getSymbolTheme, theme } from "../../modes/theme/theme";
@@ -887,7 +888,7 @@ export class CommandController {
 			this.ctx.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 			resolve(result);
-		});
+		}, modalRevealEnabled());
 		overlay.setOnRequestRender(() => this.ctx.ui.requestRender());
 		overlayHandle = this.ctx.ui.showOverlay(overlay, {
 			anchor: "top-left",

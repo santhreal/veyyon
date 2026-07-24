@@ -22,6 +22,7 @@ import {
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
@@ -29,6 +30,7 @@ import {
 	type ModalShortcut,
 	renderModalShell,
 	withCompact,
+	ModalRevealDriver,
 } from "./modal-shell";
 
 export interface MoveOverlayResult {
@@ -188,8 +190,17 @@ export class MoveOverlay implements Component, Focusable {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
-	constructor(cwd: string, done: (result: MoveOverlayResult | undefined) => void) {
+	constructor(
+		cwd: string,
+		done: (result: MoveOverlayResult | undefined) => void,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
+	) {
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#cwd = cwd;
 		this.#done = done;
 		// Warm the cache for the current directory so the first keystroke is instant.
@@ -298,7 +309,7 @@ export class MoveOverlay implements Component, Focusable {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	invalidate(): void {}

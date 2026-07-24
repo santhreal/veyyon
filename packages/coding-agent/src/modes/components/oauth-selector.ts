@@ -16,6 +16,7 @@ import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
@@ -23,6 +24,7 @@ import {
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	withCompact,
+	ModalRevealDriver,
 } from "./modal-shell";
 
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
@@ -87,6 +89,7 @@ export class OAuthSelectorComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		mode: "login" | "logout",
@@ -97,8 +100,15 @@ export class OAuthSelectorComponent implements Component {
 			validateAuth?: (providerId: string) => Promise<boolean>;
 			requestRender?: () => void;
 			standalone?: boolean;
+			/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+			reveal?: boolean;
 		},
 	) {
+		if (options?.reveal) {
+			// Same component-scoped repaint channel as the validating spinner: the
+			// unfold is an animation tick, so it must not re-walk the full tree.
+			this.#reveal.start(() => (this.#requestRenderCallback ?? this.#onRequestRender)?.());
+		}
 		this.#mode = mode;
 		this.#authStorage = authStorage;
 		this.#onSelectCallback = onSelect;
@@ -512,6 +522,6 @@ export class OAuthSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }
