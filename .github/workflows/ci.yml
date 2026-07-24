@@ -984,6 +984,10 @@ jobs:
            run: |
               set -euo pipefail
               failed=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure") | .key' | paste -sd',' -)
+              # Self-heal the label: `gh issue create --label` hard-fails when the
+              # label does not exist (killed the cut alert on 2026-07-24).
+              gh label create release-train --repo "$GITHUB_REPOSITORY" \
+                --description "Pinned release-train status issue" --color D93F0B --force
               existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-train --state open --json number --jq '.[0].number // empty')
               if [ -n "$failed" ]; then
                 title="Release train red: $RELEASE_TAG failed ($failed)"
