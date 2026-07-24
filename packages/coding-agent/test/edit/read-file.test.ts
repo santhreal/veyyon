@@ -17,10 +17,17 @@ import { readEditFileText, serializeEditFileText } from "../../src/edit/read-fil
  * (the notebook branch is exercised by notebook.test.ts).
  */
 
-const withTempDir = <T>(fn: (dir: string) => T): T => {
+// Every callback here is async, so the cleanup MUST await the work before it
+// runs. A synchronous `finally { rmSync }` around `return fn(dir)` deletes the
+// temp dir the instant the callback hits its first `await` — while the file
+// read is still pending — so `readEditFileText` races an already-deleted file
+// and fails with a spurious "File not found". `return await fn(dir)` inside the
+// try keeps the finally suspended until the promise settles. This raced green
+// locally and red on the CI runner (v1.0.35 native/unit bucket).
+const withTempDir = async <T>(fn: (dir: string) => T | Promise<T>): Promise<T> => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "read-file-"));
 	try {
-		return fn(dir);
+		return await fn(dir);
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
