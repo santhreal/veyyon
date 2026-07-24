@@ -1,0 +1,164 @@
+diff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md
+index 9e33b4a9cc9..0f3dd7cf5de 100644
+--- a/packages/coding-agent/CHANGELOG.md
++++ b/packages/coding-agent/CHANGELOG.md
+@@ -29,6 +29,8 @@
+
+ ### Fixed
+
++- Fixed isolated branch merge-back rejecting committed agent edits when the parent had unrelated uncommitted changes in the same file; dirty-baseline blobs are now seeded into the parent object database and replayed with a 3-way synthetic-tree apply ([#6135](https://github.com/can1357/oh-my-pi/issues/6135)).
++
+ - Fixed the interactive `!`/`!!` shell shortcut spawning fish as a login shell (`fish -l -c …`), which fired `status is-login` blocks in user config (agent/keychain setup, PATH mutation) on every command. fish is now started with `-i` instead — interactive shells source the same `config.fish`/`conf.d` files (so aliases and functions from #1816 keep working) without login-shell side effects. zsh behavior (`-l -i`) is unchanged.
+ - Fixed the status-line `tok/s` badge ignoring vibe worker sessions: in `/vibe` mode the director is often idle while workers stream, so the badge showed a stale/zero rate while parallel work was actively generating tokens. The rate now aggregates the main session's live tok/s with every live vibe worker's tok/s, and falls back to the main session's own cached rate when no workers are streaming.
+ - Fixed `plan.defaultOnStartup` being ignored by headless `omp -p` sessions, so the initial prompt now runs in plan mode and the persisted session remains in plan mode for later review ([#6017](https://github.com/can1357/oh-my-pi/issues/6017)).
+diff --git a/packages/coding-agent/src/prompts/system/workflow-notice.md b/packages/coding-agent/src/prompts/system/workflow-notice.md
+index d15ad9127c5..09a849bef12 100644
+--- a/packages/coding-agent/src/prompts/system/workflow-notice.md
++++ b/packages/coding-agent/src/prompts/system/workflow-notice.md
+@@ -47,7 +47,7 @@ For independent per-item chains (review → verify, fetch → extract → score)
+             schema: FINDINGS_SCHEMA,
+         });
+         return await parallel(found.findings.map((f) => async () => ({
+-            ...f,
++            …f,
+             verdict: await agent(
+                 `Refute if you can (default refuted when unsure): ${f.title}`,
+                 { label: `verify:${f.file}`, schema: VERDICT_SCHEMA },
+@@ -57,8 +57,6 @@ For independent per-item chains (review → verify, fetch → extract → score)
+     phase("Review");
+     const results = await parallel(DIMENSIONS.map((d) => async () => reviewAndVerify(d)));
+     const confirmed = results.flat().filter((f) => f.verdict.is_real);
+-
+-
+ Reach for `pipeline()` only when a stage genuinely needs ALL of the previous stage first — dedup/merge across the whole set, early-exit on zero, or "compare against the other findings" — because its inter-stage barrier makes every item wait for the slowest peer:
+
+ **Python (`eval`, Python backend):**
+@@ -80,8 +78,6 @@ Reach for `pipeline()` only when a stage genuinely needs ALL of the previous sta
+     const verdicts = await parallel(findings.map((f) => async () =>
+         await agent(verifyPrompt(f), { schema: VERDICT_SCHEMA }),
+     ));
+-
+-
+ Use ordinary code between calls to flatten/map/filter; don't add a barrier just for that. Nested `parallel()` pools each cap independently, so keep total fan-out sane.
+ </structure>
+
+diff --git a/packages/coding-agent/src/task/worktree.ts b/packages/coding-agent/src/task/worktree.ts
+index 66f37aa2b92..c7e60d8fddc 100644
+--- a/packages/coding-agent/src/task/worktree.ts
++++ b/packages/coding-agent/src/task/worktree.ts
+@@ -116,7 +116,16 @@ async function captureRepoBaseline(repoRoot: string): Promise<RepoBaseline> {
+	return { repoRoot, headCommit, staged, unstaged, untracked, untrackedPatch };
+ }
+
+-async function writeSyntheticTree(repoDir: string, baseTreeish: string, patches: readonly string[]): Promise<string> {
++interface SyntheticTreeOptions {
++	readonly threeWay?: boolean;
++}
++
++async function writeSyntheticTree(
++	repoDir: string,
++	baseTreeish: string,
++	patches: readonly string[],
++	options: SyntheticTreeOptions = {},
++): Promise<string> {
+	const tempIndex = path.join(os.tmpdir(), `omp-task-index-${Snowflake.next()}`);
+	try {
+		await git.readTree(repoDir, baseTreeish, {
+@@ -127,6 +136,7 @@ async function writeSyntheticTree(repoDir: string, baseTreeish: string, patches:
+			await git.patch.applyText(repoDir, patch, {
+				cached: true,
+				env: { GIT_INDEX_FILE: tempIndex },
++				threeWay: options.threeWay,
+			});
+		}
+		return await git.writeTree(repoDir, {
+@@ -653,11 +663,12 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
+	try {
+		await git.worktree.add(opts.repoRoot, tmpDir, opts.branchName);
+		const agentCommits = await git.revList.range(opts.isolationDir, baselineSha, opts.isolationHead);
+-		const dirtyBaselineTree = await writeSyntheticTree(opts.isolationDir, baselineSha, [
+-			opts.baseline.root.staged,
+-			opts.baseline.root.unstaged,
+-			opts.baseline.root.untrackedPatch,
+-		]);
++		const baselineWip = [opts.baseline.root.staged, opts.baseline.root.unstaged, opts.baseline.root.untrackedPatch];
++		// Seed the parent ODB with the dirty-side blobs needed by `git apply
++		// --3way`. Isolation repositories can read parent objects, but the parent
++		// cannot read objects created only inside isolation.
++		await writeSyntheticTree(opts.repoRoot, baselineSha, baselineWip);
++		const dirtyBaselineTree = await writeSyntheticTree(opts.isolationDir, baselineSha, baselineWip);
+		let previousFilteredTree = baselineSha;
+		let filteredCommitsApplied = 0;
+
+@@ -666,7 +677,9 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
+				allowFailure: true,
+				binary: true,
+			});
+-			const currentFilteredTree = await writeSyntheticTree(opts.repoRoot, baselineSha, [taskStatePatch]);
++			const currentFilteredTree = await writeSyntheticTree(opts.repoRoot, baselineSha, [taskStatePatch], {
++				threeWay: true,
++			});
+			const commitPatch = await git.diff.tree(opts.repoRoot, previousFilteredTree, currentFilteredTree, {
+				allowFailure: true,
+				binary: true,
+@@ -699,10 +712,11 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
+				await commitPatchToBranchWorktree(tmpDir, opts.taskId, opts.rootPatch, msg, undefined, opts.baseline.root);
+			}
+		} else {
+-			// A filtered commit landed; tmpDir has advanced past baselineSha and
+-			// previousFilteredTree is HEAD-derived, so writeSyntheticTree +
+-			// leftoverPatch stay HEAD-based and no WIP seed is needed.
+-			const finalFilteredTree = await writeSyntheticTree(opts.repoRoot, baselineSha, [opts.rootPatch]);
++			// A filtered commit landed; reconstruct the final HEAD-derived tree
++			// with the same dirty-side blobs and 3-way synthesis used above.
++			const finalFilteredTree = await writeSyntheticTree(opts.repoRoot, baselineSha, [opts.rootPatch], {
++				threeWay: true,
++			});
+			const leftoverPatch = await git.diff.tree(opts.repoRoot, previousFilteredTree, finalFilteredTree, {
+				allowFailure: true,
+				binary: true,
+diff --git a/packages/coding-agent/test/task/worktree.test.ts b/packages/coding-agent/test/task/worktree.test.ts
+index b75fd35bad0..4a38b210931 100644
+--- a/packages/coding-agent/test/task/worktree.test.ts
++++ b/packages/coding-agent/test/task/worktree.test.ts
+@@ -1080,6 +1080,41 @@ describe("commitToBranch preserves agent commits", () => {
+		expect(fixture).toContain("LINE5-AGENT-WITH-MESSAGE");
+	});
+
++	it("merges a committed agent edit beside unrelated dirty-parent lines", async () => {
++		const parentLines = [
++			"line1",
++			"LINE2-DIRTY-PARENT",
++			"line3",
++			"line4",
++			"line5",
++			"line6",
++			"line7",
++			"line8",
++			"line9",
++			"line10",
++			"",
++		];
++		await fs.writeFile(path.join(parent, "EXP_CLEAN_COMMIT.txt"), parentLines.join("\n"));
++		await fs.writeFile(path.join(isolation, "EXP_CLEAN_COMMIT.txt"), parentLines.join("\n"));
++		const baseline = await captureBaseline(parent);
++
++		const agentLines = parentLines.slice();
++		agentLines[4] = "LINE5-AGENT-EDIT";
++		await fs.writeFile(path.join(isolation, "EXP_CLEAN_COMMIT.txt"), agentLines.join("\n"));
++		await gitr(isolation, ["add", "EXP_CLEAN_COMMIT.txt"]);
++		await gitr(isolation, ["commit", "-q", "-m", "agent: edit line 5"]);
++
++		const taskId = "dirty-parent-committed-agent";
++		const result = await commitToBranch(isolation, baseline, taskId, undefined);
++		expect(result?.branchName).toBe(`omp/task/${taskId}`);
++
++		const merge = await mergeTaskBranches(parent, [
++			{ branchName: result!.branchName!, taskId, baseSha: result!.baseSha! },
++		]);
++		expect(merge).toEqual({ failed: [], merged: [result!.branchName!] });
++		expect(await fs.readFile(path.join(parent, "EXP_CLEAN_COMMIT.txt"), "utf8")).toBe(agentLines.join("\n"));
++	});
++
+	it("falls back to the AI-generated message when the agent never committed", async () => {
+		const baseline = await captureBaseline(parent);
