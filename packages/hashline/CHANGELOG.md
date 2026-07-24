@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.33] - 2026-07-24
+
 ### Fixed
 
 - `NodeFilesystem` (the shipped disk-backed default) now writes crash-atomically. `writeText` and the content form of `move` stream into a sibling temp file and rename it over the target, so a process death mid-write (SIGINT, OOM kill, full disk, power loss) leaves the user's source file whole rather than truncated. An existing file's permission bits and a symlinked target are preserved.
