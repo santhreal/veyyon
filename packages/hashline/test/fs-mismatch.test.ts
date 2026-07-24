@@ -79,6 +79,16 @@ describe("InMemoryFilesystem", () => {
 		await expect(fs.move("missing", "x")).rejects.toThrow(NotFoundError);
 	});
 
+	it("keeps the entry on a same-key content move instead of deleting it", async () => {
+		// `from === to` is one Map entry: set-then-delete would drop the content we
+		// just wrote. The guard mirrors the disk backends — a move never destroys
+		// the file it just wrote.
+		const fs = new InMemoryFilesystem([["a.txt", "original"]]);
+		await fs.move("a.txt", "a.txt", "rewritten");
+		expect(await fs.exists("a.txt")).toBe(true);
+		expect(await fs.readText("a.txt")).toBe("rewritten");
+	});
+
 	it("exposes sync set/get/clear/entries helpers", async () => {
 		const fs = new InMemoryFilesystem();
 		fs.set("k", "v");

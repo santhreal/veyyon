@@ -177,7 +177,11 @@ export class InMemoryFilesystem extends Filesystem {
 		if (existing === undefined) throw new NotFoundError(from);
 		const finalContent = content ?? existing;
 		this.#files.set(to, finalContent);
-		this.#files.delete(from);
+		// Same-key move: `from` and `to` are one entry, so the set above already
+		// wrote it — deleting `from` would drop the entry we just moved. Mirrors
+		// the same-file guard in the disk-backed backends: a move never destroys
+		// the file it just wrote.
+		if (to !== from) this.#files.delete(from);
 	}
 
 	async exists(path: string): Promise<boolean> {
