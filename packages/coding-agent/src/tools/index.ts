@@ -167,6 +167,10 @@ export interface ToolSession {
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
 	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
 	getArgotSession?: () => ArgotSession | undefined;
+	/** Rebuild the base system prompt after prompt-visible session state
+	 * changed (e.g. the argot teach set), so the next turn teaches the new
+	 * state. Optional: lighter tool sessions (tests, subagents) may omit it. */
+	refreshBaseSystemPrompt?(): Promise<void>;
 	/** Get Mnemopi runtime state for this agent session. */
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */

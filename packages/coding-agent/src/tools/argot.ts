@@ -127,6 +127,14 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 			};
 		}
 
+		// The handle table is taught through the system prompt, which is built
+		// once and refreshed explicitly — a mid-session load must rebuild it or
+		// the model is told to write §handles it was never shown. Skip the
+		// rebuild for an empty dictionary (nothing new to teach).
+		if (loaded.handles > 0) {
+			await this.#session.refreshBaseSystemPrompt?.();
+		}
+
 		return {
 			content: [
 				{
@@ -181,6 +189,12 @@ export class ArgotUnloadTool implements AgentTool<typeof folderSchema, ArgotUnlo
 				],
 				details: { root: folder, changed: false, requested },
 			};
+		}
+
+		// The teach set changed; rebuild the prompt so the handle table stops
+		// advertising this project's shorthand next turn.
+		if (result.changed) {
+			await this.#session.refreshBaseSystemPrompt?.();
 		}
 
 		return {
