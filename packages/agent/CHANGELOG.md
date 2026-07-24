@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Added
 
 - Outbound tool-call ids are now canonicalized per provider for compatibility.

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Added
 
 - Request details now carry their turn context instead of showing a lone reply.

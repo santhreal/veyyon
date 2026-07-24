@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Added
 
 - Every GitHub Release now includes a "What changed" section that groups the commits since the previous release by type (Features, Fixes, Performance, and so on). Releases used to show only the hand-written changelog bullets, so a release with dozens of real commits could ship with a one-line body; the summary is derived from the commit history, so each release reflects its actual work with no manual curation.
@@ -24,10 +26,6 @@
 - Only alabaster is presented in the theme picker while the light-theme slab class (painted surfaces leaking onto mismatched terminal grounds, misaligned gutter-outside-paint geometry, OSC 133 zone tints) awaits a rework. The other built-in themes stay embedded and renderable for theme work through the gallery (`getAvailableThemes({ includeHidden: true })`); `theme.dark` and `theme.light` now default to alabaster, and `tui.paintGround` defaults to `always` so the ground stays coherent on every terminal. Tracked in https://github.com/santhreal/veyyon/issues/29.
 - The run clock is unified across the session, model effort is merged into the display, and the scroll-to-bottom indicator is now clickable. The footline badge slot now eases open and closed.
 - Removed the remaining `omp` and `.omp` references from user-visible surfaces now that the shipped binary is `veyyon`: the login hint, menus, the ssh list, the terminal title, the mcp schema, the ttsr help, the autolearn prompt, and log names. Legacy environment aliases such as `VEYYON_CONFIG_DIR` and `OMP_MCP_TIMEOUT_MS` still work so existing setups do not break.
-
-### Removed
-
-- The OSC 133 prompt-zone markers around user messages. Terminals that paint prompt zones (Ghostty class) drew them as an uncontrolled background block over the message, the dark slab on titanium in operator screenshots. Multiplexer prompt grouping never justified a painted region veyyon does not own.
 
 ### Fixed
 
@@ -56,11 +54,9 @@
 - Makefiles are now detected by basename in language detection.
 - Fixed several TUI layout regressions: a blank hole in the transcript live region, the composer shortcut band losing its fixed one-row height, and the transcript viewer and composer band drifting off the shared left rail.
 
-## [1.0.23] - 2026-07-24
+### Removed
 
-### Fixed
-
-- Fixed a file move during an edit (the hashline `MV` op) deleting the file instead of renaming it when the destination resolved to the same file as the source: the two paths differed only by case on a case-insensitive filesystem, or the destination was a symlink pointing back at the source. The move now detects that both paths are one underlying file and skips the delete, so the edited content is preserved.
+- The OSC 133 prompt-zone markers around user messages. Terminals that paint prompt zones (Ghostty class) drew them as an uncontrolled background block over the message, the dark slab on titanium in operator screenshots. Multiplexer prompt grouping never justified a painted region veyyon does not own.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11332,6 +11328,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.23] - 2026-07-24
+
+### Fixed
+
+- Fixed a file move during an edit (the hashline `MV` op) deleting the file instead of renaming it when the destination resolved to the same file as the source: the two paths differed only by case on a case-insensitive filesystem, or the destination was a symlink pointing back at the source. The move now detects that both paths are one underlying file and skips the delete, so the edited content is preserved.
 
 ## [1.0.22] - 2026-07-23
 

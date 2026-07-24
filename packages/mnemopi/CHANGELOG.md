@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Fixed
 
 - A throwing memory-stream listener now surfaces its error instead of being swallowed.

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Added
 
 - Wheel scroll is now isolated to the transcript: scrolling moves the transcript while the footer stays pinned.

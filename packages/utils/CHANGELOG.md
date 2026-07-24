@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Added
 
 - Added `atomicWriteFileWith`, and routed the remaining hand-rolled atomic file writers through it, so every atomic write goes through one owner.

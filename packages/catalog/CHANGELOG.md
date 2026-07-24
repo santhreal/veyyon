@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Fixed
 
 - OpenRouter pricing is now parsed through `toPositiveNumber` instead of a bare `parseFloat`, so a malformed price is rejected rather than becoming `NaN`.
