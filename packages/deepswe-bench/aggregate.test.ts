@@ -40,6 +40,7 @@ import {
 	sweepCanReachSignificance,
 	systemPromptTeachesArgot,
 	tallyUsage,
+	typeableHandleMass,
 	wilsonInterval,
 } from "./aggregate";
 
@@ -1730,5 +1731,65 @@ describe("renderReport — the encode headroom section", () => {
 		// wrongly declare every such run unmeasurable.
 		const md = renderReport([res({ arm: "baseline", task: "t1", reward: 1 })], "m", "now");
 		expect(md).not.toContain("Encode headroom");
+	});
+});
+
+describe("typeableHandleMass — the pre-run screen for whether a repo can measure shorthand at all", () => {
+	// Calibration, not assumption: on the first run where encoding fired, all 7
+	// handles the model emitted were whitespace-free and NO whitespace-bearing
+	// handle was ever emitted (100% recall, 33% precision). That makes a low score
+	// a sound one-sided verdict — such a repo cannot show the effect — which is
+	// what lets this screen tasks before a multi-hour run instead of after.
+
+	test("prose handles are excluded however much repository mass they carry", () => {
+		// The exact shape that produced a 0.27% ceiling: license text and fixture
+		// YAML dominate the dictionary by repetition but no agent ever types them.
+		// Counting them would rank an unmeasurable repo as a great candidate.
+		const m = typeableHandleMass({
+			lic: "use, copy, modify, merge, publish, distribute, sublicense",
+			fixture: "app.kubernetes.io/component: controller",
+			pkg: "carvel.dev/ytt/pkg/orderedmap",
+		});
+		expect(m.handles).toBe(3);
+		expect(m.typeable).toBe(1);
+		// "carvel.dev/ytt/pkg/orderedmap" is 29 chars, "§pkg" is 4 => 25.
+		expect(m.savingPerEmission).toBe(25);
+		expect(m.longestTypeable).toBe(29);
+	});
+
+	test("a handle that saves nothing is not counted as reachable mass", () => {
+		// An expansion no longer than its handle would never be substituted, so
+		// including it would inflate the screen with substitutions that cannot help.
+		const m = typeableHandleMass({ averylongname: "short" });
+		expect(m.typeable).toBe(0);
+		expect(m.savingPerEmission).toBe(0);
+	});
+
+	test("an all-prose vocabulary scores zero, the sound 'cannot measure' verdict", () => {
+		// The one-sided conclusion this screen is for: whatever the run does, a repo
+		// offering nothing an agent types cannot demonstrate a shorthand effect.
+		const m = typeableHandleMass({
+			a: "the quick brown fox jumps",
+			b: "Licensed under the Apache License, Version 2.0",
+		});
+		expect(m.typeable).toBe(0);
+		expect(m.savingPerEmission).toBe(0);
+		expect(m.longestTypeable).toBe(0);
+	});
+
+	test("import paths and file paths are counted, which is what agents retype", () => {
+		// The positive case, taken from the handles the model actually did emit.
+		const m = typeableHandleMass({
+			star: "github.com/k14s/starlark-go/starlark",
+			files: "carvel.dev/ytt/pkg/files",
+			src: "packages/coding-agent/src/database/connection.ts",
+		});
+		expect(m.typeable).toBe(3);
+		expect(m.longestTypeable).toBe("packages/coding-agent/src/database/connection.ts".length);
+	});
+
+	test("an empty vocabulary is scored without dividing or throwing", () => {
+		const m = typeableHandleMass({});
+		expect(m).toEqual({ handles: 0, typeable: 0, savingPerEmission: 0, longestTypeable: 0 });
 	});
 });

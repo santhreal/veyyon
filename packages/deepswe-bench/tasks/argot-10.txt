@@ -1,15 +1,30 @@
-# @biased: repos chosen for maximal repeated-token mass (SDK estimatedSavings) — a best-case upper bound for the codec, not a real-world average. Report headline efficiency from tasks/diverse-20.txt; use this set to validate the mechanism delivers where it should.
-# Argot pilot: the 10 DeepSWE tasks whose repos carry the most repeated-token
-# mass for the codec to compress, by the SDK's estimatedSavings over a
-# generated AGENTS.dict (dicts/report.md, 2026-07-22). Spans easy to hard
-# reference patches; overlaps the hard pilot-10 where the mass is.
-kgateway-consistent-hash-policy
-psd-tools-blend-range-api
+# @biased: repos chosen for maximal AGENT-TYPEABLE compressible mass — a best-case upper bound for the codec, not a real-world average. Report headline efficiency from tasks/diverse-20.txt; use this set to validate the mechanism delivers where it should.
+# Argot pilot: the 10 DeepSWE tasks whose repos offer the most compressible mass
+# in strings a coding agent would actually type, by `typeable saving` in
+# dicts/report.md (2026-07-24), deduplicated to 10 distinct repositories.
+#
+# This set was re-selected on 2026-07-24. The previous selection ranked on the
+# SDK's raw estimatedSavings, which counts every string that repeats in a
+# repository. That is dominated by license blocks, fixture YAML, and doc URLs,
+# which earn handles but which no agent ever retypes, so the ranking did not
+# measure what it claimed to. Measured on the first run where encoding fired:
+# of 33 handles the model emitted 7, and every one was whitespace-free, while no
+# prose handle was ever emitted.
+#
+# The old set was mis-selected as a result. It contained psd-tools-blend-range-api
+# (rank 95 of 110, 9 characters of reachable mass) and two fastapi tasks at ranks
+# 70 and 71, so a set built to show the codec's best case was half filled with
+# tasks where it can do essentially nothing. Every task below carries between 707
+# and 2434 characters of reachable mass per emission.
+#
+# Regenerate with: bun gen-dicts.ts --all --jobs 8
 opa-rego-rule-profiling
-opa-template-string-reconstruction
-fastapi-deprecation-response-headers
-fastapi-implicit-head-options
-prometheus-transactional-reload-status
-prometheus-typed-label-sorting
-valibot-recursive-schema-composition
+gql-incremental-graphql-delivery
+go-git-worktree-merge-conflicts
+arcane-drift-detection-baselines
+sql-formatter-bigquery-pipe-formatting
+goreleaser-retry-publish-auditing
+updo-policy-alerting
+scriggo-method-declarations
+pebble-durability-wait-apis
 effect-sse-httpapi-streaming

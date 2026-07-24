@@ -76,6 +76,16 @@ Flags:
   prints a loud banner from this directive, and an unmarked list is flagged so it
   gets one. A headline argot number comes from `tasks/diverse-20.txt` (`@headline`);
   `argot-10` validates the codec delivers where it should, it is not the headline.
+  Choosing an argot task set is a measurement, not a guess. `bun gen-dicts.ts
+  --all` writes `dicts/report.md` ranked by `typeable saving`: the characters
+  saved per emission across handles whose expansion contains no whitespace. That
+  filter is calibrated, not assumed. On the one run where encoding fired, every
+  handle the model emitted was whitespace-free and no prose handle ever was, so
+  the column never misses a string the model would have written. A task with
+  near-zero typeable saving cannot demonstrate the codec whatever the model does,
+  and 67 of the 110 scannable tasks score under 200 characters. Ranking on the
+  SDK's raw `estimatedSavings` instead selects almost entirely different tasks:
+  only 2 of the top 10 agree.
 - `--tasks-root <dir>` — override the tasks directory (default: the
   `deep-swe/tasks` clone in this package).
 - `--reaggregate <runDir>` — rebuild `results.json` and `report.md` from a
