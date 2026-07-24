@@ -451,6 +451,18 @@ export class VirtualTerminal implements Terminal {
 				this.#eventLog.push({ columns: this.#columns, rows: this.#rows });
 				this.#historyTextCache.length = 0; // engine rewraps scrollback on resize
 				this.#pendingEngineResize = false;
+				// Rotate onto a compact synthetic state at every resize boundary.
+				// ghostty-web 0.4 deterministically corrupts its own memory once an
+				// instance accumulates history across several widths (stress seeds
+				// 0x90744a00, 0x24d2d8c2): later writes AND scrollback reads both
+				// trap out-of-bounds, and a scenario that never reads history
+				// between ops (WSL traits) accumulates the poison invisibly until
+				// recovery itself traps. Compacting here keeps each instance's raw
+				// history effectively single-width, so the trap state never forms.
+				// The read happens right after the healthy rewrap, exactly like the
+				// byte-budget rotation below.
+				this.#compactEventLog();
+				this.#rebuildEngineFromLog();
 			}
 			if (destructiveIndex >= 0 && this.#clearFollowsPaintBegin(data, destructiveIndex)) {
 				// ED3 renumbers scrollback offsets, so the offset-keyed history text

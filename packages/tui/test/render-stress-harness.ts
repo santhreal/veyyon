@@ -65,6 +65,13 @@ const REGRESSION_REPLAYS: readonly { template: string; seed: number }[] = [
 	// VirtualTerminal recovery now rebuilds the pre-write state, rotates onto
 	// the compact synthetic snapshot, and re-applies the failed write.
 	{ template: "win32-intermittentUnknown-small", seed: 0x90744a00 },
+	// 2026-07-24: same ghostty-web multi-width corruption, read side — a WSL
+	// scenario never reads scrollback between ops, so the poisoned state built
+	// up invisibly until the OOM-recovery's own compaction READ trapped
+	// (get_scrollback_line out-of-bounds). VirtualTerminal now rotates onto a
+	// compact synthetic state at every resize boundary so the multi-width trap
+	// state never forms.
+	{ template: "linux-unknown-wsl-small", seed: 0x24d2d8c2 },
 ];
 const LARGE_SCROLL = 1_000_000;
 const CORE_ITERATIONS = 120;
