@@ -187,6 +187,28 @@ verifier reports), `results.json` (every metric, machine-readable), and
   mean assistant messages that carried a `§` handle, and the fraction of runs that
   encoded at all. Encode is detected wherever a handle can land — a text block OR a
   tool call's arguments (commands and diffs carry handles too), not prose alone.
+
+  Teaching is necessary but not sufficient, so the table also reports `vocab
+  handles`: the number of handles the launch project's dictionary actually loaded,
+  read from the agent's `argot_armed` session record. You need this number because
+  a `0 encoded` result has three different meanings and the counts alone cannot
+  tell them apart:
+
+  - `vocab handles` is `0`. The repository has no repeated-token mass, so the
+    dictionary came out empty and the model had nothing to write. Encoding was
+    impossible here, and the token delta against this arm says nothing about
+    argot. Choose tasks whose repos repeat long paths and commands.
+  - `vocab handles` is positive and `runs that encoded` is `0/N`. Shorthand was in
+    front of the model and it wrote none. That is a real result about model
+    adoption, not about the corpus.
+  - `runs that encoded` is above zero. The delta is a genuine argot measurement.
+
+  A `—` in the column means the run predates this telemetry, so the loaded size is
+  unknown and a `0 encoded` result there cannot be read at all. The report prints
+  the matching interpretation in prose under the table, so you do not have to
+  reconstruct this reasoning each time. Note that `argot_load` calls stay `0.00`
+  for the launch project by design: it auto-loads at startup, and the tool is how
+  the agent adds *additional* projects.
 - **Errors (per arm)** — every sample that crashed or was refused, grouped by
   reason, across all arms including those with zero errors. An errored sample is
   excluded from every rate and mean above, so an arm that errors more is measured

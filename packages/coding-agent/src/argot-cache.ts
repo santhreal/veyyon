@@ -237,17 +237,31 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
  * unarmed and the completed load fires `onArmed` (the prompt refresh, the same
  * contract `argot_load` uses). A missing project marker resolves quietly to
  * nothing; a genuine failure (malformed cache, handle conflict) logs loudly.
+ *
+ * `onResolved` (optional) fires whenever the launch folder resolves to a project,
+ * with the exact handle count the dictionary produced — INCLUDING zero. That zero
+ * is the whole point: a repo with no repeated-token mass generates an empty
+ * dictionary, so the model has nothing to encode and the prompt is never refreshed
+ * (the `handles > 0` gate below). Downstream instruments (the deepswe-bench argot
+ * telemetry) need to see that zero to tell "the corpus had nothing to compress"
+ * apart from "the model ignored available handles"; without it, a null encode
+ * result is uninterpretable. `onResolved` runs before `onArmed` so the record is
+ * durable even if the refresh throws.
  */
 export async function armArgotAfterStartup(opts: {
 	argot: ArgotSession;
 	cwd: string;
 	tokenBudget?: number;
 	onArmed: () => Promise<void>;
+	onResolved?: (handles: number) => void;
 }): Promise<void> {
 	try {
 		const loaded = await loadArgotFolder(opts.argot, opts.cwd, undefined, opts.tokenBudget);
-		if (loaded !== undefined && loaded.handles > 0) {
-			await opts.onArmed();
+		if (loaded !== undefined) {
+			opts.onResolved?.(loaded.handles);
+			if (loaded.handles > 0) {
+				await opts.onArmed();
+			}
 		}
 	} catch (error) {
 		logger.warn("Argot startup load failed; session stays unarmed", { cwd: opts.cwd, error: errorMessage(error) });

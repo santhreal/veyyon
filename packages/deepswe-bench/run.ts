@@ -152,17 +152,31 @@ function sha256File(p: string): string {
  * really given, after catalog id resolution. `null` when no `session_init` with a
  * system prompt was seen (presence unknown), `true`/`false` otherwise. This is the
  * authoritative treatment-applied signal (see `systemPromptTeachesArgot`).
+ *
+ * `argotHandlesLoaded` reads the SDK's `argot_armed` custom_message record (also a
+ * top-level entry, `details.handles`), the actually-loaded launch-project handle
+ * count. It is what disambiguates a `0 encoded` result: `0` means the corpus had
+ * no repeated-token mass (encode impossible, not a model choice); a positive count
+ * with `0 encoded` means the model ignored available handles. `null` when no such
+ * record was seen (older run or argot off). When several records appear (a resumed
+ * session re-arms), the largest wins — a nonzero load is the informative one.
  */
-function parseSessionsUsage(trialDir: string): { usage: SessionUsage; preambleTaught: boolean | null } | null {
+function parseSessionsUsage(trialDir: string): {
+	usage: SessionUsage;
+	preambleTaught: boolean | null;
+	argotHandlesLoaded: number | null;
+} | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
 	if (!fs.existsSync(sessionsDir)) return null;
 	const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith(".jsonl"));
 	if (files.length === 0) return null;
 	// Read every session line into its message object; the pure tallyUsage does the
 	// counting (and the once-per-tool fix) so the same logic is unit-tested. The
-	// same pass reads the session_init system prompt for the preamble probe.
+	// same pass reads the session_init system prompt for the preamble probe and the
+	// argot_armed record for the loaded handle count.
 	const messages: Array<Record<string, unknown>> = [];
 	let preambleTaught: boolean | null = null;
+	let argotHandlesLoaded: number | null = null;
 	for (const file of files) {
 		for (const line of fs.readFileSync(path.join(sessionsDir, file), "utf8").split("\n")) {
 			if (!line.trim()) continue;
@@ -170,6 +184,8 @@ function parseSessionsUsage(trialDir: string): { usage: SessionUsage; preambleTa
 				const entry = JSON.parse(line) as {
 					message?: Record<string, unknown>;
 					type?: string;
+					customType?: string;
+					details?: { handles?: unknown };
 					systemPrompt?: unknown;
 				};
 				if (entry.message) messages.push(entry.message);
@@ -178,12 +194,20 @@ function parseSessionsUsage(trialDir: string): { usage: SessionUsage; preambleTa
 					// downgrade to false when a system prompt was seen and none taught it.
 					preambleTaught = preambleTaught === true || systemPromptTeachesArgot(entry.systemPrompt);
 				}
+				if (entry.type === "custom_message" && entry.customType === "argot_armed") {
+					const handles = entry.details?.handles;
+					if (typeof handles === "number" && Number.isFinite(handles)) {
+						// A resumed session can re-arm; the largest load is the informative
+						// one (a later empty re-arm must not erase a real earlier vocab).
+						argotHandlesLoaded = Math.max(argotHandlesLoaded ?? 0, handles);
+					}
+				}
 			} catch {
 				// A truncated final line (a killed run) is not a parse we can trust.
 			}
 		}
 	}
-	return { usage: tallyUsage(messages), preambleTaught };
+	return { usage: tallyUsage(messages), preambleTaught, argotHandlesLoaded };
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
@@ -203,6 +227,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		argotLoadCalls: null,
 		assistantMsgsWithSigil: null,
 		argotPreamblePresent: null,
+		argotHandlesLoaded: null,
 		toolCalls: null,
 	};
 	// Pier truncates long task names in trial dir names, and a job has exactly
@@ -229,6 +254,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.argotLoadCalls = usage.argotLoadCalls ?? null;
 		result.assistantMsgsWithSigil = usage.assistantMsgsWithSigil ?? null;
 		result.argotPreamblePresent = parsed.preambleTaught;
+		result.argotHandlesLoaded = parsed.argotHandlesLoaded;
 		result.toolCalls = usage.toolCalls ?? null;
 	} else {
 		const agent = trial.agent_result ?? {};
