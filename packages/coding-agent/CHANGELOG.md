@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed a file move during an edit (the hashline `MV` op) deleting the file instead of renaming it when the destination resolved to the same file as the source: the two paths differed only by case on a case-insensitive filesystem, or the destination was a symlink pointing back at the source. The move now detects that both paths are one underlying file and skips the delete, so the edited content is preserved.
+
 ## [1.0.22] - 2026-07-23
 
 ### Fixed
