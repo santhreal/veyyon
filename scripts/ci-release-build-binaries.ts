@@ -5,12 +5,21 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { COMPILED_EXTERNAL_DEPENDENCIES, compileCodingAgent } from "../packages/coding-agent/scripts/compile-binary";
 
-interface BinaryTarget {
+export interface BinaryTarget {
 	id: string;
 	platform: string;
 	arch: string;
 	target: Bun.Build.CompileTarget;
 	outfile: string;
+	/**
+	 * Precompile the bundle to Bun bytecode. Must be false for any target whose
+	 * build runner OS differs from the target OS: cross-compiled bytecode
+	 * executables segfault in JSC bytecode decoding at launch on the target OS
+	 * (oven-sh/bun#18416, open as of 1.3.14 — veyyon's own published
+	 * windows-x64 exe died in llint_entry on `--version`, v1.0.36 and v1.0.37,
+	 * caught by release_github_verify_windows). Costs cold-start time only.
+	 */
+	bytecode: boolean;
 }
 
 const repoRoot = path.join(import.meta.dir, "..");
@@ -30,13 +39,14 @@ const transformersVersion = transformersManifest.version;
 // modules are supplied by the in-memory compile plugin, so neither subsystem
 // needs extra `--compile` entrypoints.
 const isDryRun = process.argv.includes("--dry-run");
-const targets: BinaryTarget[] = [
+export const targets: BinaryTarget[] = [
 	{
 		id: "darwin-arm64",
 		platform: "darwin",
 		arch: "arm64",
 		target: "bun-darwin-arm64",
 		outfile: "packages/coding-agent/binaries/veyyon-darwin-arm64",
+		bytecode: true, // built natively on macos-14
 	},
 	{
 		id: "darwin-x64",
@@ -44,6 +54,7 @@ const targets: BinaryTarget[] = [
 		arch: "x64",
 		target: "bun-darwin-x64",
 		outfile: "packages/coding-agent/binaries/veyyon-darwin-x64",
+		bytecode: true, // built natively on macos-15-intel
 	},
 	{
 		id: "linux-x64",
@@ -51,6 +62,7 @@ const targets: BinaryTarget[] = [
 		arch: "x64",
 		target: "bun-linux-x64-baseline",
 		outfile: "packages/coding-agent/binaries/veyyon-linux-x64",
+		bytecode: true, // built natively on ubuntu-22.04
 	},
 	{
 		id: "linux-arm64",
@@ -58,19 +70,21 @@ const targets: BinaryTarget[] = [
 		arch: "arm64",
 		target: "bun-linux-arm64",
 		outfile: "packages/coding-agent/binaries/veyyon-linux-arm64",
+		bytecode: true, // built natively on ubuntu-24.04-arm
 	},
 	{
 		id: "win32-x64",
 		platform: "win32",
 		arch: "x64",
-		// Modern (AVX2) target, NOT baseline: Bun's baseline Windows standalone
-		// builds segfault in JIT codegen at startup (oven-sh/bun#32684, #32586 —
-		// reproduced on veyyon's own published exe by release_github_verify_windows
-		// on v1.0.36, `--version` exit 3). Every crash report is a `(baseline)`
-		// build, so shipping modern trades pre-2013 (pre-AVX2) CPU support for a
-		// binary that starts at all. Revisit when the Bun issue is fixed.
+		// Modern (AVX2) target. The earlier baseline->modern switch (blamed on
+		// oven-sh/bun#32684/#32586) did NOT fix the launch segfault: v1.0.37's
+		// modern exe crashed identically in llint_entry. The real cause is the
+		// Linux->Windows cross-compile with bytecode (oven-sh/bun#18416), fixed
+		// by bytecode: false below. Re-test baseline (wider pre-AVX2 CPU
+		// support) once a bytecode-free release verifies green on Windows.
 		target: "bun-windows-x64",
 		outfile: "packages/coding-agent/binaries/veyyon-windows-x64.exe",
+		bytecode: false, // cross-compiled on ubuntu-22.04 (oven-sh/bun#18416)
 	},
 ];
 
@@ -139,6 +153,7 @@ async function buildBinary(target: BinaryTarget): Promise<void> {
 		outfile: path.join(repoRoot, target.outfile),
 		transformersVersion,
 		target: target.target,
+		bytecode: target.bytecode,
 		minifyIdentifiers: true,
 		skipBuiltinCodesign: shouldAdhocSignDarwinBinary(target),
 	});
@@ -211,4 +226,6 @@ async function main(): Promise<void> {
 	}
 }
 
-await main();
+if (import.meta.main) {
+	await main();
+}
