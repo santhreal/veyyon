@@ -779,6 +779,33 @@ jobs:
               CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
               CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
            run: bunx wrangler@latest pages deploy website-get --project-name veyyon-get --branch main --commit-dirty=true
+         - name: Verify get.veyyon.dev serves the install script, not HTML
+           if: ${{ env.HAS_CF_TOKEN == 'true' }}
+           # The deploy step returns before Cloudflare finishes propagating, and a
+           # `wrangler deploy` exit 0 does NOT prove the root serves the script:
+           # deploying the wrong tree once put the marketing index.html at the get
+           # root, so `curl -fsSL https://get.veyyon.dev | sh` piped HTML into sh and
+           # died. Assert the documented endpoints actually serve a shell/PowerShell
+           # script (retrying for propagation) so a broken get deploy fails the
+           # release loudly instead of every new user's install.
+           run: |
+              check_script() { # url, must-contain
+                for attempt in $(seq 1 12); do
+                  body="$(curl -fsSL --max-time 20 "$1" 2>/dev/null || true)"
+                  case "$body" in
+                    *"$2"*) echo "OK  $1 serves a script"; return 0 ;;
+                  esac
+                  # A bare "<" first byte (HTML/XML) is the exact regression to catch.
+                  first="$(printf '%s' "$body" | head -c 1)"
+                  echo "attempt $attempt: $1 not ready (first byte: '${first:-<empty>}'); retrying…"
+                  sleep 10
+                done
+                echo "::error::$1 did not serve the expected install script (still serving HTML/empty after propagation)"
+                return 1
+              }
+              check_script "https://get.veyyon.dev" "#!/bin/sh"
+              check_script "https://get.veyyon.dev/install.sh" "#!/bin/sh"
+              check_script "https://get.veyyon.dev/install.ps1" "ErrorActionPreference"
          - name: No deploy token — built only
            if: ${{ env.HAS_CF_TOKEN != 'true' }}
            run: |
