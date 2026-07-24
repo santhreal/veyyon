@@ -418,8 +418,18 @@ export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boo
 	let out: string;
 	if (err instanceof Error) {
 		out = `${err.name && err.name !== "Error" ? err.name : "Error"}: ${err.message || "(no message)"}`;
+		// A wrapped error can form a cause cycle (`e.cause === e`, or A↔B), which
+		// would make this walk loop forever and hang the process at the exact moment
+		// it is trying to print a fatal error. Track visited errors and stop at the
+		// first repeat so a pathological chain degrades to a note instead of a hang.
+		const seen = new Set<unknown>([err]);
 		let cause: unknown = err.cause;
 		while (cause !== undefined && cause !== null) {
+			if (seen.has(cause)) {
+				out += `\n  caused by: (circular cause reference)`;
+				break;
+			}
+			seen.add(cause);
 			if (cause instanceof Error) {
 				out += `\n  caused by: ${cause.name && cause.name !== "Error" ? `${cause.name}: ` : ""}${cause.message}`;
 				cause = cause.cause;

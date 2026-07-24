@@ -34,6 +34,33 @@ describe("CLI fatal-error formatting", () => {
 		expect(formatCliFatal(err, { stack: false, colors: false })).toContain("  caused by: inner detail");
 	});
 
+	it("does not hang on a self-referential cause cycle", () => {
+		// A wrapped error whose cause is itself once made the cause walk loop
+		// forever, hanging the process while printing a fatal error. The walk must
+		// terminate and note the cycle instead.
+		const err = new Error("self-wrapped failure");
+		err.cause = err;
+		const out = formatCliFatal(err, { stack: false, colors: false });
+		expect(out).toContain("Error: self-wrapped failure");
+		expect(out).toContain("  caused by: (circular cause reference)");
+		expect(out).toContain("(set VEYYON_STACK=1 for the full stack trace)");
+	});
+
+	it("does not hang on a two-error cause cycle and prints each once before stopping", () => {
+		// A ↔ B mutual cause chain. Each distinct error is reported exactly once,
+		// then the repeat is caught and the walk stops.
+		const a = new Error("error A");
+		const b = new TypeError("error B");
+		a.cause = b;
+		b.cause = a;
+		const out = formatCliFatal(a, { stack: false, colors: false });
+		expect(out).toContain("Error: error A");
+		expect(out).toContain("  caused by: TypeError: error B");
+		expect(out).toContain("  caused by: (circular cause reference)");
+		// "error A" appears once as the head; it is NOT re-printed as its own cause.
+		expect(out.match(/error A/g)?.length).toBe(1);
+	});
+
 	it("returns the full inspected render when the stack opt-in is set", () => {
 		const err = new Error("boom");
 		const out = formatCliFatal(err, { stack: true, colors: false });
