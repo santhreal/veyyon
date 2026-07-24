@@ -2,15 +2,11 @@
 
 ## [Unreleased]
 
+## [1.0.23] - 2026-07-24
+
 ### Fixed
 
 - Fixed a file move during an edit (the hashline `MV` op) deleting the file instead of renaming it when the destination resolved to the same file as the source: the two paths differed only by case on a case-insensitive filesystem, or the destination was a symlink pointing back at the source. The move now detects that both paths are one underlying file and skips the delete, so the edited content is preserved.
-
-## [1.0.22] - 2026-07-23
-
-### Fixed
-
-- Fixed `curl -fsSL https://get.veyyon.dev | sh` serving the marketing page instead of the install script. The get.veyyon.dev root now returns install.sh, so the one-line install works again.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11282,6 +11278,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.22] - 2026-07-23
+
+### Fixed
+
+- Fixed `curl -fsSL https://get.veyyon.dev | sh` serving the marketing page instead of the install script. The get.veyyon.dev root now returns install.sh, so the one-line install works again.
 
 ## [1.0.21] - 2026-07-23
 

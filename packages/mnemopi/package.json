@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/mnemopi",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Local SQLite memory engine for Veyyon agents",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",
