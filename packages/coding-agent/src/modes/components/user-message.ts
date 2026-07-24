@@ -46,7 +46,6 @@ export class UserMessageComponent extends Container {
 
 	constructor(text: string, synthetic = false, imageLinks?: readonly (string | undefined)[]) {
 		super();
-		const bgColor = (value: string) => theme.bg("userMessageBg", value);
 		// Paint the magic keywords ("ultrathink"/"orchestrate"/"workflowz") inside the rendered
 		// bubble too — matching the live editor glow. The Markdown component routes code spans and
 		// fenced blocks through its own code styling (never `color`), so those are already excluded;
@@ -67,7 +66,6 @@ export class UserMessageComponent extends Container {
 			});
 		// paddingX 0: the render gutter (` › `) owns the horizontal inset.
 		const md = new Markdown(text, 0, 1, getMarkdownTheme(), {
-			bgColor,
 			color,
 		});
 		md.setIgnoreTight(true);

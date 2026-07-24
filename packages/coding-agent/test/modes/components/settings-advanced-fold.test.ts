@@ -115,7 +115,11 @@ describe("appearance advanced fold — schema", () => {
 	});
 
 	it("preserves defaults for demoted and moved keys — demotion never changes a default value", () => {
-		expect(settings.get("statusLine.transparent")).toBe(false);
+		// statusLine.transparent defaults to true since the 2026-07-24 slab-class
+		// fix (the inline TUI paints no backgrounds by default) — an intentional
+		// product change, not a demotion side effect. The lock for that default
+		// lives in status-line-transparent.test.ts; this row just tracks it.
+		expect(settings.get("statusLine.transparent")).toBe(true);
 		expect(settings.get("images.blockImages")).toBe(false);
 		expect(settings.get("display.collapseCompacted")).toBe(true);
 	});
@@ -191,7 +195,10 @@ describe("appearance advanced fold — panel rendering", () => {
 	});
 
 	it("surfaces a non-default advanced value even while the fold stays collapsed, without inflating the heading count", () => {
-		settings.set("statusLine.transparent", true);
+		// `false` is the non-default since the transparent-by-default flip
+		// (2026-07-24): opting back into the painted status bar is the change
+		// worth surfacing.
+		settings.set("statusLine.transparent", false);
 		const comp = createSelector();
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
 

@@ -9,7 +9,7 @@ export const APPEARANCE_SETTINGS = {
 	// Theme
 	"theme.dark": {
 		type: "string",
-		default: "alabaster",
+		default: "titanium",
 		ui: {
 			tab: "appearance",
 			group: "Theme",
@@ -21,7 +21,7 @@ export const APPEARANCE_SETTINGS = {
 
 	"theme.light": {
 		type: "string",
-		default: "alabaster",
+		default: "light",
 		ui: {
 			tab: "appearance",
 			group: "Theme",
@@ -121,13 +121,18 @@ export const APPEARANCE_SETTINGS = {
 
 	"statusLine.transparent": {
 		type: "boolean",
-		default: false,
+		// Transparent by default: the inline TUI paints no backgrounds, so the
+		// status line inherits the terminal ground like every other surface (the
+		// 2026-07-23/24 slab class: any painted fill renders as a colored slab on
+		// a terminal whose ground differs from the theme's). Set to false to opt
+		// back into the theme's painted `statusLineBg` bar.
+		default: true,
 		ui: {
 			tab: "appearance",
 			group: "Status Line",
 			label: "Transparent Status Line",
 			description:
-				"Use the terminal's default background for the status line instead of the theme's `statusLineBg`. Powerline end caps are dropped because they need a contrasting fill to bridge into the surrounding terminal.",
+				"Use the terminal's default background for the status line instead of the theme's `statusLineBg` (the default). When transparent, powerline end caps are dropped because they need a contrasting fill to bridge into the surrounding terminal. Turn off to paint the theme's bar.",
 			advanced: true,
 		},
 	},
@@ -390,7 +395,7 @@ export const APPEARANCE_SETTINGS = {
 	"tui.paintGround": {
 		type: "enum",
 		values: ["auto", "always", "never"] as const,
-		default: "always",
+		default: "auto",
 		ui: {
 			tab: "appearance",
 			group: "Display",

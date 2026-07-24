@@ -23,7 +23,6 @@ export class CollabPromptMessageComponent extends Container {
 						.map(content => content.text)
 						.join("");
 		const md = new Markdown(text, 1, 1, getMarkdownTheme(), {
-			bgColor: (value: string) => theme.bg("userMessageBg", value),
 			color: (value: string) => theme.fg("userMessageText", value),
 		});
 		md.setIgnoreTight(true);

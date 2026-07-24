@@ -52,17 +52,8 @@ function getBuiltinThemes(): Record<string, ThemeJson> {
 	return BUILTIN_THEMES;
 }
 
-// Only alabaster is presented while the light-theme slab class is unfixed
-// (surface paints leaking onto mismatched grounds, OSC 133 zone tints,
-// gutter-outside-paint geometry). The theme files stay embedded; they are
-// hidden from the picker and the auto mapping until a contributor owns the
-// light-theme rework. Tracked: https://github.com/santhreal/veyyon/issues/29
-const VISIBLE_BUILTIN_THEMES: Record<string, true> = { alabaster: true };
-
-export async function getAvailableThemes(options?: { includeHidden?: boolean }): Promise<string[]> {
-	const themes = new Set<string>(
-		Object.keys(getBuiltinThemes()).filter(name => options?.includeHidden === true || VISIBLE_BUILTIN_THEMES[name]),
-	);
+export async function getAvailableThemes(): Promise<string[]> {
+	const themes = new Set<string>(Object.keys(getBuiltinThemes()));
 	const customThemesDir = getCustomThemesDir();
 	try {
 		const files = await fs.promises.readdir(customThemesDir);
@@ -82,12 +73,12 @@ export interface ThemeInfo {
 	path: string | undefined;
 }
 
-export async function getAvailableThemesWithPaths(options?: { includeHidden?: boolean }): Promise<ThemeInfo[]> {
+export async function getAvailableThemesWithPaths(): Promise<ThemeInfo[]> {
 	const result: ThemeInfo[] = [];
 
 	// Built-in themes (embedded, no file path)
 	for (const name of Object.keys(getBuiltinThemes())) {
-		if (options?.includeHidden === true || VISIBLE_BUILTIN_THEMES[name]) result.push({ name, path: undefined });
+		result.push({ name, path: undefined });
 	}
 
 	// Custom themes
@@ -224,12 +215,14 @@ export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = 
 			fgColors[token] = fgColors[fallback] ?? fgColors.accent;
 		}
 	}
-	// The composer quiet card (DS-6 layer 0) is optional the same way: a theme
-	// that omits it inherits the status line's ground — both are the theme's
-	// "chrome sits on this" surface, and statusLineBg is required so this
-	// always resolves.
+	// The composer quiet card (DS-6 layer 0) defaults to UNPAINTED (the empty
+	// sentinel, `\x1b[49m`): the inline TUI's ground is the terminal's own
+	// background, and inheriting statusLineBg here is how the composer band
+	// rendered as a grey slab on mismatched terminals (2026-07-24 operator
+	// screenshot, alabaster #ececf0 on a white ground). A theme that wants a
+	// painted composer card must say so explicitly.
 	if (bgColors.composerBg === undefined) {
-		bgColors.composerBg = bgColors.statusLineBg;
+		bgColors.composerBg = "";
 	}
 	// Extract symbol configuration - settings override takes precedence over theme
 	const symbolPreset: SymbolPreset = symbolPresetOverride ?? themeJson.symbols?.preset ?? "unicode";

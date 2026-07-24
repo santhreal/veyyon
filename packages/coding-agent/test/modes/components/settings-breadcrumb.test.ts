@@ -213,10 +213,10 @@ describe("settings column alignment", () => {
 		expect(hyperlinksLine).toBeDefined();
 
 		// "Dark Theme" (10 cols) and "Terminal Hyperlinks" (19 cols) differ in
-		// length, but their default values ("alabaster" / "auto") must still
+		// length, but their default values ("titanium" / "auto") must still
 		// land in the same column — proof the label gutter is computed once
 		// across every visible row, not per-row.
-		const darkThemeValueCol = darkThemeLine!.indexOf("alabaster");
+		const darkThemeValueCol = darkThemeLine!.indexOf("titanium");
 		const hyperlinksValueCol = hyperlinksLine!.indexOf("auto");
 		expect(darkThemeValueCol).toBeGreaterThan(0);
 		expect(darkThemeValueCol).toBe(hyperlinksValueCol);
