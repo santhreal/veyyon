@@ -50,6 +50,12 @@ const GITHUB_RELEASES_API = `https://api.github.com/repos/${REPO}/releases`;
 const GITHUB_API_USER_AGENT = `${APP_NAME}-updater`;
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
+/**
+ * The `.sha256` sidecar is a few dozen bytes, so it should arrive fast; a slow
+ * fetch here is a signal something is wrong, not patience worth spending. Matches
+ * install.sh's `--max-time 30` on the same sidecar request.
+ */
+const CHECKSUM_TIMEOUT_MS = 30_000;
 
 /**
  * The in-checkout launcher a source install links onto PATH.
@@ -272,6 +278,72 @@ export function formatBinaryDownloadFailure(
 }
 
 /**
+ * Parse a `sha256sum`-style checksum sidecar (`<64-hex>  <filename>`) to its
+ * lowercased hex digest, or `null` when the text has no valid digest.
+ *
+ * The published `.sha256` files are the standard `sha256sum` output: the digest
+ * is the first whitespace-delimited token. This is the ONE place that reads that
+ * format for the self-updater, mirroring `install.sh`'s `awk '{print $1}'` and
+ * `install.ps1`'s `ConvertFrom-Sha256Sidecar`. It is strict on purpose — a token
+ * that is not exactly 64 hex characters (a truncated file, an HTML error page, an
+ * empty body) returns `null` so the caller fails closed rather than comparing
+ * against garbage.
+ */
+export function parseSha256Sidecar(text: string): string | null {
+	const token = text.trim().split(/\s+/)[0] ?? "";
+	return /^[0-9a-fA-F]{64}$/.test(token) ? token.toLowerCase() : null;
+}
+
+/**
+ * Verify a downloaded release binary against its published `.sha256` sidecar,
+ * failing closed on any problem.
+ *
+ * `install.sh` and `install.ps1` both refuse to install a binary whose checksum
+ * is missing, unparseable, or mismatched. The self-updater downloaded and swapped
+ * the binary with only a post-install `--version` check, which catches a
+ * wrong-version binary but not a corrupted or tampered same-version one. This
+ * closes that parity gap so every install path — fresh `curl`, PowerShell, and
+ * self-update — enforces the same integrity gate.
+ *
+ * There is no silent fallback (Law 10): a sidecar that is absent (HTTP error),
+ * empty, unparseable, or whose digest does not match the file on disk throws, and
+ * the caller removes the partial download instead of installing something
+ * unverified. Rolling back to a pre-sidecar release therefore fails loudly rather
+ * than installing without verification, which is the correct refusal.
+ */
+export async function verifyDownloadChecksum(filePath: string, sidecarUrl: string): Promise<void> {
+	let response: Response;
+	try {
+		response = await fetch(sidecarUrl, { redirect: "follow", signal: withTimeoutSignal(CHECKSUM_TIMEOUT_MS) });
+	} catch (err) {
+		if (isTimeoutError(err)) {
+			throw new Error(`Timed out fetching the published checksum from ${sidecarUrl}`, { cause: err });
+		}
+		throw err;
+	}
+	if (!response.ok) {
+		throw new Error(
+			`No published checksum at ${sidecarUrl} (HTTP ${response.status}) — refusing to install an unverified binary`,
+		);
+	}
+	const expected = parseSha256Sidecar(await response.text());
+	if (!expected) {
+		throw new Error(`Published checksum at ${sidecarUrl} is empty or unparseable — refusing to install an unverified binary`);
+	}
+	const hasher = new Bun.CryptoHasher("sha256");
+	const stream = fs.createReadStream(filePath);
+	for await (const chunk of stream) {
+		hasher.update(chunk as Buffer);
+	}
+	const actual = hasher.digest("hex").toLowerCase();
+	if (actual !== expected) {
+		throw new Error(
+			`Checksum mismatch for the downloaded binary (expected ${expected}, got ${actual}) — refusing to install a tampered binary`,
+		);
+	}
+}
+
+/**
  * Resolve the path that `veyyon` maps to in the user's PATH.
  */
 function resolveVeyyonPath(): string | undefined {
@@ -476,6 +548,20 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 		// behind: we throw here before reaching replaceBinaryForUpdate, whose catch
 		// would otherwise clean it up. Remove it so a failed update never litters
 		// the install dir, matching install.sh's EXIT/INT/TERM trap on its tmpbin.
+		await unlinkIfExists(tempPath);
+		throw err;
+	}
+
+	// Fail-closed integrity gate, matching install.sh / install.ps1: verify the
+	// download against its published .sha256 sidecar BEFORE swapping it in. A
+	// corrupted or tampered same-version binary would otherwise pass the
+	// post-install --version check unnoticed. No silent fallback (Law 10) — a
+	// missing, unparseable, or mismatched checksum aborts and removes the partial
+	// download rather than installing something unverified.
+	report(chalk.dim("Verifying checksum…"));
+	try {
+		await verifyDownloadChecksum(tempPath, `${url}.sha256`);
+	} catch (err) {
 		await unlinkIfExists(tempPath);
 		throw err;
 	}
