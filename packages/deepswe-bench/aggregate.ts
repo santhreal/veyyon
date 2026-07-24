@@ -752,6 +752,16 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 		const armTested = armDeltas.filter(d => d.wins + d.losses > 0);
 		const armAdj = holmBonferroni(armTested.map(d => d.signTestP));
 		const armAdjByPair = new Map(armTested.map((d, i) => [`${d.armA}→${d.armB}`, armAdj[i] as number]));
+		// Continuous-reward comparison, computed here so BOTH its own table below and the
+		// efficiency guardrail read the same tested family. Binary pass rate above
+		// (reward===1) cannot see a partial-credit regression: the DeepSWE verifier returns
+		// a fractional reward, so an arm can lower the mean reward on hard tasks without
+		// flipping any task's pass/fail. This is its own Holm family (a reward drop is a
+		// different hypothesis than a resolved-rate drop).
+		const rewardDeltas = pairwiseMetricDeltas(results, c => c.meanReward);
+		const rewardTested = rewardDeltas.filter(d => d.pos + d.neg > 0);
+		const rewardAdj = holmBonferroni(rewardTested.map(d => d.signTestP));
+		const rewardAdjByPair = new Map(rewardTested.map((d, i) => [`${d.armA}→${d.armB}`, rewardAdj[i] as number]));
 		lines.push("| A → B | paired tasks | Δ pass rate | Δ 95% CI | W-L-T | sign-test p | adj p (Holm) | verdict |");
 		lines.push("|---|---|---|---|---|---|---|---|");
 		for (const d of armDeltas) {
@@ -775,6 +785,50 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 			lines.push(
 				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 			);
+		}
+
+		// Continuous-reward table. The binary pass rate above is the headline SWE-bench
+		// "resolved" metric; this catches the partial-credit regression it is blind to and
+		// makes the efficiency guardrail's reward input operator-visible instead of hidden.
+		const rewardHasSignal = results.some(r => !r.error && r.reward !== null);
+		if (rewardHasSignal) {
+			lines.push("");
+			lines.push("## Reward comparison — continuous partial credit (paired by task)");
+			lines.push("");
+			lines.push(
+				"The pass-rate table binarizes at reward=1 (SWE-bench 'resolved'). The DeepSWE " +
+					"verifier returns a fractional reward, so an arm can lower the mean reward on hard " +
+					"tasks without flipping any task's pass/fail — invisible above, caught here. Δ is B " +
+					"minus A on each task's mean reward; a negative Δ the sign test confirms is B doing " +
+					"WORSE. The efficiency guardrail reads this: 'reward held' requires BOTH this and the " +
+					"binary pass rate to not significantly drop.",
+			);
+			lines.push("");
+			lines.push(
+				"| A → B | paired tasks | Δ mean reward | Δ 95% CI | up-B / down-B / tie | sign-test p | adj p (Holm) | verdict |",
+			);
+			lines.push("|---|---|---|---|---|---|---|---|");
+			for (const d of rewardDeltas) {
+				const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + d.meanDelta.toFixed(3);
+				const ci =
+					d.ciLow === null || d.ciHigh === null
+						? "—"
+						: `[${(d.ciLow >= 0 ? "+" : "") + d.ciLow.toFixed(3)}, ${(d.ciHigh >= 0 ? "+" : "") + d.ciHigh.toFixed(3)}]`;
+				const adjP = rewardAdjByPair.get(`${d.armA}→${d.armB}`);
+				const sig = adjP !== undefined && adjP < 0.05;
+				const rUnderpowered = !sig && !sweepCanReachSignificance(d.pos + d.neg, rewardTested.length);
+				const verdict =
+					sig && d.meanDelta !== null && d.meanDelta > 0
+						? `${d.armB} higher reward`
+						: sig && d.meanDelta !== null && d.meanDelta < 0
+							? `${d.armB} lower reward`
+							: rUnderpowered
+								? "not distinguishable (underpowered)"
+								: "not distinguishable";
+				lines.push(
+					`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.pos}/${d.neg}/${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
+				);
+			}
 		}
 
 		// Efficiency comparison. For a feature whose promise is FEWER tokens at equal
@@ -840,7 +894,14 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 				// the pass-rate table's own verdict (so the two sections cannot disagree).
 				const passAdj = armAdjByPair.get(`${d.armA}→${d.armB}`);
 				const passDelta = armDeltas.find(a => a.armA === d.armA && a.armB === d.armB)?.meanDelta ?? null;
-				const passHeld = !(passAdj !== undefined && passAdj < 0.05 && passDelta !== null && passDelta < 0);
+				const binaryHeld = !(passAdj !== undefined && passAdj < 0.05 && passDelta !== null && passDelta < 0);
+				// Reward held on the CONTINUOUS metric too: a partial-credit regression that
+				// leaves the binary rate untouched must still veto a "cheaper" win, or the
+				// "equal reward" half of argot's claim is not actually being checked.
+				const rewardAdj = rewardAdjByPair.get(`${d.armA}→${d.armB}`);
+				const rewardDelta = rewardDeltas.find(a => a.armA === d.armA && a.armB === d.armB)?.meanDelta ?? null;
+				const rewardHeld = !(rewardAdj !== undefined && rewardAdj < 0.05 && rewardDelta !== null && rewardDelta < 0);
+				const passHeld = binaryHeld && rewardHeld;
 				// Same honesty guard as the pass-rate table: a non-significant efficiency
 				// delta is only a real null if a clean sweep at this decisive-task count could
 				// have cleared the Holm bar for this metric's family. Otherwise flag it.

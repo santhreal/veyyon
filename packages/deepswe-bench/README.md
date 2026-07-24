@@ -145,18 +145,30 @@ verifier reports), `results.json` (every metric, machine-readable), and
   6 decisive tasks, since a 5-0 sweep is only p=0.0625; two pairs raise it to 7). That
   qualifier means "add tasks", not "the arms are equal"; a plain **not distinguishable**
   is a real measured null the run was powered to detect.
+- **Reward comparison — continuous partial credit (paired by task)** — the
+  pass-rate table binarizes at reward=1 (the SWE-bench "resolved" definition), so
+  it cannot see a partial-credit regression: the DeepSWE verifier returns a
+  fractional reward, and an arm can lower the mean reward on hard tasks (0.8 to
+  0.4) without flipping any task's pass/fail. This section runs the same paired
+  sign test on the per-task mean reward (Holm-corrected in its own family) and
+  names the arm that scored lower. It exists mainly to feed the efficiency
+  guardrail, but is printed in full so the reward veto is operator-visible rather
+  than hidden.
 - **Efficiency comparison (paired by task)** — the section that measures a
   compression feature's actual claim: fewer tokens (and less cost) at equal
   reward. For each arm pair it takes the per-task delta on output tokens and on
   cost (B minus A, negative means B is cheaper) and runs the same exact sign
   test, Holm-corrected across this metric's arm pairs (its own `adj p` column). The
-  verdict is guarded by the pass-rate comparison above: B is called an efficiency
-  win only when it is significantly cheaper (adj p < 0.05) AND the pass-rate test
-  did not find B worse (judged on the same Holm-adjusted p, so the two sections
-  cannot disagree), so "cheaper because it gave up and did less" cannot read as a
-  win. A metric the provider never reports (some providers return no cost, so
-  every sample is 0) is labelled `not measured` rather than a paired delta of
-  zeros, so a missing metric is never mistaken for "measured and found equal".
+  verdict is guarded by BOTH correctness comparisons above: B is called an
+  efficiency win only when it is significantly cheaper (adj p < 0.05) AND neither
+  the binary pass rate NOR the continuous mean reward dropped significantly against
+  it (each judged on its own Holm-adjusted p, so the sections cannot disagree).
+  Requiring both closes the "equal reward" loophole where a cheaper arm quietly
+  gave up partial credit while the binary rate stayed flat, so "cheaper because it
+  did less" cannot read as a win. A metric the provider never reports (some
+  providers return no cost, so every sample is 0) is labelled `not measured` rather
+  than a paired delta of zeros, so a missing metric is never mistaken for
+  "measured and found equal".
 - **Argot treatment applied? (per arm)** — proof the treatment fired before you
   trust any token delta. The `preamble taught` column is the authoritative signal:
   it reads the actual system prompt the model was given, so it reflects the model
