@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed turn-ending Codex rate-limit errors remaining hidden behind the fullscreen Plan Review overlay and leaving its approval promise pending ([#45](https://github.com/santhreal/veyyon/issues/45)).
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed
