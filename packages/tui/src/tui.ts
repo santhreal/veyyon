@@ -22,7 +22,7 @@ import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { planDeccaraFills } from "./deccara";
 import { isKeyRelease, matchesKey } from "./keys";
 import { LoopWatchdog } from "./loop-watchdog";
-import { parseSgrMouse } from "./mouse";
+import { type MouseRoutable, parseSgrMouse, type SgrMouseEvent } from "./mouse";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
 	encodeKittyDeleteImage,
@@ -2424,6 +2424,35 @@ export class TUI extends Container {
 	/** Wheel step for scroll isolation: freeze/walk the transcript region.
 	 * Anchored to the live window top so the first wheel-up starts from the
 	 * currently visible tail; walking down to the tail resumes following. */
+	/**
+	 * Route a pinned-footer click to the root child under it. `footerRow` is
+	 * 0-based from the footer's top screen row. The footer always shows the
+	 * LAST #pinnedFooterRows rows of the composed frame (both when following
+	 * the live tail with a full frame and during virtual scroll), so the
+	 * clicked frame row is `totalFrameRows - pinnedFooterRows + footerRow`;
+	 * the segment ledger then resolves it to a component and a local line.
+	 * Components opt in by implementing MouseRoutable; everyone else keeps
+	 * ignoring clicks exactly as before.
+	 */
+	#routeFooterMouse(event: SgrMouseEvent, footerRow: number): void {
+		const segments = this.#frameSegments;
+		if (segments.length === 0) return;
+		const last = segments[segments.length - 1]!;
+		const totalFrameRows = last.start + last.rowCount;
+		const frameRow = totalFrameRows - this.#pinnedFooterRows + footerRow;
+		const firstFooterIndex = Math.max(0, segments.length - this.#pinnedFooterChildCount);
+		for (let i = firstFooterIndex; i < segments.length; i++) {
+			const segment = segments[i]!;
+			if (frameRow < segment.start || frameRow >= segment.start + segment.rowCount) continue;
+			const component = segment.component as Component & Partial<MouseRoutable>;
+			if (typeof component.routeMouse === "function") {
+				component.routeMouse(event, frameRow - segment.start, event.col);
+				this.requestRender();
+			}
+			return;
+		}
+	}
+
 	#handleIsolationWheel(direction: -1 | 1): void {
 		const now = this.#renderScheduler.now();
 		if (direction === this.#lastWheelDirection && now - this.#lastWheelAtMs < TUI.#WHEEL_ACCEL_WINDOW_MS) {
@@ -2485,13 +2514,18 @@ export class TUI extends Container {
 			if (event) {
 				if (event.wheel) {
 					this.#handleIsolationWheel(event.wheel);
-				} else if (
-					event.leftClick &&
-					this.#virtualScrollTop !== null &&
-					event.row >= this.terminal.rows - this.#pinnedFooterRows
-				) {
-					// Chat idiom: engaging the composer returns to the present.
-					this.scrollToLiveTail();
+					return;
+				}
+				const footerTop = this.terminal.rows - this.#pinnedFooterRows;
+				if (event.leftClick && this.#pinnedFooterRows > 0 && event.row >= footerTop) {
+					// A click in the pinned footer is routed to the child under it
+					// (MouseRoutable components get frame-local coordinates), so
+					// footer chrome like the status footline can own click targets.
+					this.#routeFooterMouse(event, event.row - footerTop);
+					if (this.#virtualScrollTop !== null) {
+						// Chat idiom: engaging the composer returns to the present.
+						this.scrollToLiveTail();
+					}
 				}
 				return;
 			}
