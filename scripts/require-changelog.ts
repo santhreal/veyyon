@@ -1,13 +1,16 @@
 #!/usr/bin/env bun
 
-// Gate a pull request on changelog propagation.
+// Gate a change on changelog propagation.
 //
-// The release model is: contributors open PRs, but only a maintainer triggers a
-// full release (the manual `Release` workflow). For that to stay fast and still
-// be trustworthy, every source change must carry its own `## [Unreleased]`
-// changelog entry as it merges, never as a later clean-up pass. Discipline in
-// AGENTS.md is not enough once outside contributors are in the mix, so this
-// script makes the rule mechanical: if a PR changes a publishable package's
+// The release model auto-cuts a release whenever a `## [Unreleased]` bullet is
+// waiting, so every source change must carry its own entry as it lands, never as
+// a later clean-up pass. Changes land directly on `main` here (and outside
+// contributors open PRs), so the CI gate runs on BOTH: the direct-to-main push,
+// with the branch tip before the push (`github.event.before`) as the base, and
+// the pull request, with the PR base. A PR-only gate would never fire on the
+// direct-push path and shipped source would reach releases undocumented.
+// Discipline in AGENTS.md is not enough, so this script makes the rule
+// mechanical: if the diff from base to HEAD changes a publishable package's
 // shipped source but adds nothing to that package's `## [Unreleased]` section,
 // the check fails and names the exact file to edit.
 //
@@ -43,7 +46,7 @@ export interface EvaluateInput {
 	baseUnreleased: Map<string, string[]>;
 	/** Head-side `## [Unreleased]` bullets per package dir. */
 	headUnreleased: Map<string, string[]>;
-	/** True when a `[skip changelog]` marker waived the whole PR. */
+	/** True when a `[skip changelog]` marker waived the whole change. */
 	skipAll: boolean;
 	/** Package directories waived by a scoped `[skip changelog: <dir>]` marker. */
 	skipDirs: Set<string>;
@@ -179,9 +182,10 @@ export function parseUnreleasedBullets(content: string): string[] {
 
 /**
  * Parse `[skip changelog]` / `[skip changelog: <dir-or-name>]` markers out of
- * the concatenated commit messages. A bare marker waives the whole PR; a scoped
- * one waives a single package, matched later against both its directory and its
- * bare basename so `[skip changelog: coding-agent]` and
+ * the concatenated commit messages. A bare marker waives the whole change (every
+ * package, whether the change lands via a direct push or a PR); a scoped one
+ * waives a single package, matched later against both its directory and its bare
+ * basename so `[skip changelog: coding-agent]` and
  * `[skip changelog: packages/coding-agent]` both work.
  */
 export function parseSkipMarkers(commitMessages: string): { skipAll: boolean; skipTokens: Set<string> } {
