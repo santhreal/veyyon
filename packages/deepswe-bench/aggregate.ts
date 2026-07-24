@@ -276,37 +276,62 @@ export interface ArmDelta {
 	signTestP: number;
 }
 
+/** One arm-vs-arm paired comparison on an arbitrary per-cell metric. */
+export interface PairedComparison {
+	/** Reference arm (the "from" side). */
+	armA: string;
+	/** Candidate arm (the "to" side); {@link meanDelta} is B minus A on the metric. */
+	armB: string;
+	/** Tasks with a non-null metric in BOTH arms — the paired unit count. */
+	nTasks: number;
+	/** Mean over paired tasks of (metric_B - metric_A). Null when nTasks is 0. */
+	meanDelta: number | null;
+	/** 95% normal-approximation CI for {@link meanDelta} (z * sd/sqrt(nTasks)). Null when nTasks < 2. */
+	ciLow: number | null;
+	ciHigh: number | null;
+	/** Tasks where B's metric exceeded A's. */
+	pos: number;
+	/** Tasks where A's metric exceeded B's. */
+	neg: number;
+	/** Tasks where the two metrics were equal. */
+	ties: number;
+	/** Two-sided exact sign-test p-value over pos vs neg (see {@link signTestPValue}). */
+	signTestP: number;
+}
+
 /**
- * Every unordered arm pair, compared PAIRED by task. For each pair, a task counts
- * only when both arms produced at least one OK sample for it (an all-errored cell
- * cannot be paired), and the per-task delta is the difference of the two cells'
- * pass rates. Pure and deterministic: arms are compared in first-seen order, so the
- * same results always yield the same table. This is what lets the report state
- * whether B actually beat A instead of asking the reader to eyeball two overlapping
- * independent intervals.
+ * The paired-by-task core every arm comparison shares. For each unordered arm pair
+ * (first-seen order), a task counts only when `metricOf` is non-null for BOTH arms'
+ * cells; the per-task delta is `valueB - valueA`. Returns the mean delta with a
+ * normal-approximation CI (effect size) and an exact sign test over the up/down
+ * counts (the verdict). Pure and deterministic. One implementation so pass-rate and
+ * efficiency comparisons cannot drift apart.
  */
-export function pairwiseArmDeltas(results: readonly ArmResult[]): ArmDelta[] {
+function pairedByTask(
+	results: readonly ArmResult[],
+	metricOf: (cell: CellSummary) => number | null,
+): PairedComparison[] {
 	const arms = [...new Set(results.map(r => r.arm))];
 	const tasks = [...new Set(results.map(r => r.task))];
-	const rateOf = (arm: string, task: string): number | null =>
-		summarizeCell(results.filter(r => r.arm === arm && r.task === task)).passRate;
-	const out: ArmDelta[] = [];
+	const valueAt = (arm: string, task: string): number | null =>
+		metricOf(summarizeCell(results.filter(r => r.arm === arm && r.task === task)));
+	const out: PairedComparison[] = [];
 	for (let i = 0; i < arms.length; i++) {
 		for (let j = i + 1; j < arms.length; j++) {
 			const armA = arms[i] as string;
 			const armB = arms[j] as string;
 			const deltas: number[] = [];
-			let wins = 0;
-			let losses = 0;
+			let pos = 0;
+			let neg = 0;
 			let ties = 0;
 			for (const task of tasks) {
-				const a = rateOf(armA, task);
-				const b = rateOf(armB, task);
-				if (a === null || b === null) continue; // unpaired: one arm has no OK sample here
+				const a = valueAt(armA, task);
+				const b = valueAt(armB, task);
+				if (a === null || b === null) continue; // unpaired: one arm has no value here
 				const d = b - a;
 				deltas.push(d);
-				if (d > 0) wins++;
-				else if (d < 0) losses++;
+				if (d > 0) pos++;
+				else if (d < 0) neg++;
 				else ties++;
 			}
 			const nTasks = deltas.length;
@@ -326,14 +351,52 @@ export function pairwiseArmDeltas(results: readonly ArmResult[]): ArmDelta[] {
 				meanDelta,
 				ciLow,
 				ciHigh,
-				wins,
-				losses,
+				pos,
+				neg,
 				ties,
-				signTestP: signTestPValue(wins, losses),
+				signTestP: signTestPValue(pos, neg),
 			});
 		}
 	}
 	return out;
+}
+
+/**
+ * Every unordered arm pair, compared PAIRED by task on PASS RATE. A task counts only
+ * when both arms produced at least one OK sample. This is what lets the report state
+ * whether B actually beat A on correctness instead of asking the reader to eyeball
+ * two overlapping independent intervals. Thin wrapper over {@link pairedByTask};
+ * `wins`/`losses` are the pass-rate up/down counts.
+ */
+export function pairwiseArmDeltas(results: readonly ArmResult[]): ArmDelta[] {
+	return pairedByTask(results, c => c.passRate).map(p => ({
+		armA: p.armA,
+		armB: p.armB,
+		nTasks: p.nTasks,
+		meanDelta: p.meanDelta,
+		ciLow: p.ciLow,
+		ciHigh: p.ciHigh,
+		wins: p.pos,
+		losses: p.neg,
+		ties: p.ties,
+		signTestP: p.signTestP,
+	}));
+}
+
+/**
+ * Every unordered arm pair, compared PAIRED by task on an efficiency metric (mean
+ * output tokens, mean cost, ...). This is what makes an efficiency feature like argot
+ * measurable: its promise is FEWER tokens at equal reward, so the win is a negative
+ * paired delta here (B cheaper than A) that the sign test confirms, READ TOGETHER
+ * WITH the pass-rate comparison as a guardrail — cheaper only counts if correctness
+ * did not drop. `metric` picks the per-cell number to compare; a cell whose metric is
+ * null (all-errored, or the metric was never recorded) drops the task from the pair.
+ */
+export function pairwiseMetricDeltas(
+	results: readonly ArmResult[],
+	metric: (cell: CellSummary) => number | null,
+): PairedComparison[] {
+	return pairedByTask(results, metric);
 }
 
 /**
@@ -458,6 +521,79 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 				: "not distinguishable";
 			lines.push(
 				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${verdict} |`,
+			);
+		}
+
+		// Efficiency comparison. For a feature whose promise is FEWER tokens at equal
+		// reward (argot), this is the section that actually measures the claim: a win
+		// is a negative paired delta (B cheaper) the sign test confirms, READ WITH the
+		// pass-rate table above as a guardrail — cheaper only counts if correctness held.
+		const passByPair = new Map(pairwiseArmDeltas(results).map(d => [`${d.armA}→${d.armB}`, d]));
+		const metrics: Array<{ label: string; unit: string; of: (c: CellSummary) => number | null; digits: number }> = [
+			{ label: "output tok", unit: "tok", of: c => c.meanOutputTokens, digits: 0 },
+			{ label: "cost", unit: "$", of: c => c.meanCostUsd, digits: 4 },
+		];
+		lines.push("");
+		lines.push("## Efficiency comparison (paired by task)");
+		lines.push("");
+		lines.push(
+			"Δ is arm B minus arm A on the per-task mean, over tasks both arms ran. A negative Δ means B is cheaper. " +
+				"The verdict pairs the sign test on this metric with the pass-rate guardrail: B is an efficiency win only " +
+				"when it is significantly cheaper (p<0.05) AND the pass-rate comparison above did not find B worse.",
+		);
+		lines.push("");
+		lines.push(
+			"| metric | A → B | paired tasks | Δ mean | Δ 95% CI | cheaper-B / dearer-B / tie | sign-test p | verdict |",
+		);
+		lines.push("|---|---|---|---|---|---|---|---|");
+		for (const m of metrics) {
+			for (const d of pairwiseMetricDeltas(results, m.of)) {
+				const dv = (x: number) => (m.digits > 0 ? x.toFixed(m.digits) : String(Math.round(x)));
+				const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + dv(d.meanDelta);
+				const ci =
+					d.ciLow === null || d.ciHigh === null
+						? "—"
+						: `[${(d.ciLow >= 0 ? "+" : "") + dv(d.ciLow)}, ${(d.ciHigh >= 0 ? "+" : "") + dv(d.ciHigh)}]`;
+				const cheaperB = d.neg; // B < A on this cost metric
+				const dearerB = d.pos;
+				const cheaperSig = cheaperB + dearerB > 0 && d.signTestP < 0.05 && d.meanDelta !== null && d.meanDelta < 0;
+				const pass = passByPair.get(`${d.armA}→${d.armB}`);
+				// The guardrail: B is not worse on correctness (its pass-rate comparison is
+				// not a significant loss for B).
+				const passHeld = !pass || !(pass.signTestP < 0.05 && pass.meanDelta !== null && pass.meanDelta < 0);
+				const verdict = cheaperSig
+					? passHeld
+						? `${d.armB} cheaper, reward held`
+						: `${d.armB} cheaper BUT reward dropped`
+					: dearerB + cheaperB > 0 && d.signTestP < 0.05 && d.meanDelta !== null && d.meanDelta > 0
+						? `${d.armB} dearer`
+						: "not distinguishable";
+				lines.push(
+					`| ${m.label} | ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} ${m.unit} | ${ci} | ${cheaperB}/${dearerB}/${d.ties} | ${d.signTestP.toFixed(3)} | ${verdict} |`,
+				);
+			}
+		}
+	}
+	// Per-arm treatment-application probe: an argot encode arm is only measuring its
+	// treatment if the model actually LOADED a dictionary and WROTE handles. A row of
+	// zeros here means the encode never fired, so any token delta above is comparing
+	// "encode on paper" against decode — the eval is inert, not a null result.
+	const okByArm = (a: string) => results.filter(r => r.arm === a && !r.error);
+	const argotArms = arms.filter(a =>
+		okByArm(a).some(r => r.argotLoadCalls !== null || r.assistantMsgsWithSigil !== null),
+	);
+	if (argotArms.length > 0) {
+		lines.push("");
+		lines.push("## Argot treatment applied? (per arm)");
+		lines.push("");
+		lines.push("| arm | OK runs | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |");
+		lines.push("|---|---|---|---|---|");
+		for (const a of argotArms) {
+			const rows = okByArm(a);
+			const encoded = rows.filter(r => (r.assistantMsgsWithSigil ?? 0) > 0).length;
+			lines.push(
+				`| ${a} | ${rows.length} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
+					`${fmt(mean(rows.map(r => r.assistantMsgsWithSigil)), 2)} | ${encoded}/${rows.length} |`,
 			);
 		}
 	}

@@ -16,6 +16,7 @@ import {
 	jobNameOf,
 	PINNED_TEMPERATURE,
 	pairwiseArmDeltas,
+	pairwiseMetricDeltas,
 	parseJobName,
 	renderReport,
 	selectTasks,
@@ -408,6 +409,94 @@ describe("pairwiseArmDeltas — arms are compared PAIRED by task, not by overlap
 		expect(d?.nTasks).toBe(0);
 		expect(d?.meanDelta).toBeNull();
 		expect(d?.signTestP).toBe(1);
+	});
+});
+
+describe("pairwiseMetricDeltas — argot's real claim: fewer tokens, measured paired", () => {
+	// Why this exists: argot's promise is FEWER output tokens at equal reward, so the
+	// eval must compare a cost metric paired by task, not just pass rate. These lock
+	// the direction (B cheaper => negative delta), the paired unit rule, and that a
+	// metric-null cell drops the task from the pair.
+
+	test("B cheaper than A yields a negative mean delta and counts as a 'neg' task", () => {
+		// t1: A=200 tok, B=100 tok → delta -100. t2: A=300, B=150 → -150.
+		const results: ArmResult[] = [
+			res({ arm: "A", task: "t1", reward: 1, outputTokens: 200 }),
+			res({ arm: "B", task: "t1", reward: 1, outputTokens: 100 }),
+			res({ arm: "A", task: "t2", reward: 1, outputTokens: 300 }),
+			res({ arm: "B", task: "t2", reward: 1, outputTokens: 150 }),
+		];
+		const [d] = pairwiseMetricDeltas(results, c => c.meanOutputTokens);
+		expect(d?.nTasks).toBe(2);
+		expect(d?.meanDelta).toBeCloseTo(-125, 6); // (-100 + -150) / 2
+		expect(d?.neg).toBe(2); // B < A on both tasks
+		expect(d?.pos).toBe(0);
+	});
+
+	test("a task with no cost datum in one arm is dropped from the pair", () => {
+		const results: ArmResult[] = [
+			res({ arm: "A", task: "t1", reward: 1, outputTokens: 200 }),
+			res({ arm: "B", task: "t1", reward: 1, outputTokens: 100 }),
+			res({ arm: "A", task: "t2", reward: 1, outputTokens: null }), // no token datum
+			res({ arm: "B", task: "t2", reward: 1, outputTokens: 150 }),
+		];
+		const [d] = pairwiseMetricDeltas(results, c => c.meanOutputTokens);
+		expect(d?.nTasks).toBe(1); // t2 unpaired
+		expect(d?.meanDelta).toBeCloseTo(-100, 6);
+	});
+
+	test("cost metric works the same way (fractional deltas)", () => {
+		const results: ArmResult[] = [
+			res({ arm: "A", task: "t1", reward: 1, costUsd: 0.2 }),
+			res({ arm: "B", task: "t1", reward: 1, costUsd: 0.15 }),
+		];
+		const [d] = pairwiseMetricDeltas(results, c => c.meanCostUsd);
+		expect(d?.meanDelta).toBeCloseTo(-0.05, 9);
+		expect(d?.neg).toBe(1);
+	});
+});
+
+describe("renderReport — efficiency comparison and treatment-applied sections", () => {
+	const STAMP = "2026-07-24T00:00:00.000Z";
+
+	test("a decisive token saving with reward held reads 'cheaper, reward held'", () => {
+		// 6 tasks: both arms pass every task (reward held), B always uses fewer output
+		// tokens → cost sign test p=0.03125, pass-rate guardrail not a loss.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("## Efficiency comparison (paired by task)");
+		expect(report).toContain("full cheaper, reward held");
+	});
+
+	test("a token saving that came WITH a reward drop is flagged, not celebrated", () => {
+		// B is cheaper on every task, but B also FAILS every task while A passes → the
+		// pass-rate guardrail is a significant loss for B, so the verdict must warn.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 0, outputTokens: 800 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("full cheaper BUT reward dropped");
+	});
+
+	test("the treatment-applied table shows encode fired (or did not)", () => {
+		// full encoded on 2 of 2 runs (§ present); decode never encoded.
+		const results: ArmResult[] = [
+			res({ arm: "decode", task: "t1", reward: 1, argotLoadCalls: 0, assistantMsgsWithSigil: 0 }),
+			res({ arm: "decode", task: "t2", reward: 1, argotLoadCalls: 0, assistantMsgsWithSigil: 0 }),
+			res({ arm: "full", task: "t1", reward: 1, argotLoadCalls: 1, assistantMsgsWithSigil: 3 }),
+			res({ arm: "full", task: "t2", reward: 1, argotLoadCalls: 2, assistantMsgsWithSigil: 5 }),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("## Argot treatment applied? (per arm)");
+		// full encoded on both runs; decode on neither.
+		expect(report).toMatch(/\| full \| 2 \|.*\| 2\/2 \|/);
+		expect(report).toMatch(/\| decode \| 2 \|.*\| 0\/2 \|/);
 	});
 });
 
