@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-785b1849.js";
+            window.path_to_searchindex_js = "searchindex-352aad4a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-de67d70d.js"></script>
@@ -2065,8 +2065,8 @@ uses (see <code>docs/theme.md</code>). Every built-in theme declares one.</p>
 <tr><th>Value</th><th>Behavior</th></tr>
 </thead>
 <tbody>
-<tr><td><code>auto</code> (default)</td><td>Paint only when the terminal’s reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn’t report its background, inherit it.</td></tr>
-<tr><td><code>always</code></td><td>Always paint the theme ground.</td></tr>
+<tr><td><code>auto</code></td><td>Paint only when the terminal’s reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn’t report its background, inherit it.</td></tr>
+<tr><td><code>always</code> (default)</td><td>Always paint the theme ground. Default since the single-theme (alabaster) period: with one presented theme, painting its ground on every terminal keeps the UI coherent everywhere (santhreal/veyyon#29).</td></tr>
 <tr><td><code>never</code></td><td>Never touch the terminal background.</td></tr>
 </tbody>
 </table>
