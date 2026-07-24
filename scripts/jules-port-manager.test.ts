@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	buildPortPrompt,
 	classifyHarvest,
+	classifyPrOpen,
 	countFailures,
 	countNudges,
 	countRecentSessions,
@@ -182,6 +183,50 @@ describe("findPortPr", () => {
 
 	it("returns null when nothing references the issue", () => {
 		expect(findPortPr([pr(33, "chore(deps): bump flume", "dependabot body")], 167, 6413)).toBeNull();
+	});
+
+	it("never lets a bare #N in a dependabot changelog quote claim the port (live risk: dep bodies quote other repos' issue numbers)", () => {
+		const prs = [
+			pr(
+				34,
+				"chore(deps): bump flume from 0.11.1 to 0.12.0",
+				"Changelog\n- fixed shutdown race (#45)\n- perf (#167)",
+			),
+		];
+		expect(findPortPr(prs, 45, null)).toBeNull();
+		expect(findPortPr(prs, 167, null)).toBeNull();
+	});
+
+	it("accepts a bare #N inside a PR Jules itself authored (its auto-footer names the task, not a Closes line)", () => {
+		const body =
+			"Ports the thing for #45.\n\n---\n*PR created automatically by Jules for task 123 started by @santhreal*";
+		expect(findPortPr([pr(35, "some port", body)], 45, null)?.number).toBe(35);
+	});
+});
+
+/**
+ * classifyPrOpen closes the last gap in the label state machine: an issue in
+ * port-pr-open whose PR is rejected (closed unmerged) previously stranded
+ * forever, silently dropping the port; a merged PR with a mangled Closes line
+ * left a done issue open. Both are recall bugs in the pipeline itself.
+ */
+describe("classifyPrOpen", () => {
+	const base = { number: 181, title: "port(upstream#6227): fix", body: "Closes #40", html_url: "u" };
+
+	it("keeps waiting while the PR is open for review", () => {
+		expect(classifyPrOpen({ ...base, state: "open", merged_at: null })).toEqual({ kind: "keep" });
+	});
+
+	it("closes the issue when the PR merged (the Closes line should have, but must not be load-bearing)", () => {
+		expect(classifyPrOpen({ ...base, state: "closed", merged_at: "2026-07-24T20:00:00Z" }).kind).toBe("close");
+	});
+
+	it("requeues the issue when the PR was closed WITHOUT merging (a rejected port is not a done port)", () => {
+		expect(classifyPrOpen({ ...base, state: "closed", merged_at: null }).kind).toBe("requeue");
+	});
+
+	it("routes to a human when the label exists but no PR references the issue", () => {
+		expect(classifyPrOpen(null).kind).toBe("review");
 	});
 });
 
