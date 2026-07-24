@@ -2,16 +2,12 @@
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-07-24
+
 ### Fixed
 
 - A file move that overwrites an existing destination is now crash-atomic and mode-preserving, matching the edit/write path. The destination was previously written with a truncate-then-stream `Bun.write`, so a crash mid-move could corrupt the file being overwritten; it now writes a sibling temp and renames it over the destination, carrying the destination's permission bits forward.
-
-## [1.0.29] - 2026-07-24
-
-### Fixed
-
 - Edits and writes now commit crash-atomically. The file was previously written with a truncate-then-stream `Bun.write`, so a crash, `SIGINT`, out-of-memory kill, or full disk mid-write could leave your source file truncated or empty. It now writes a sibling temp file and renames it over the target, so an interrupted write leaves either the whole old file or the whole new one. The existing file's permission bits (including a script's executable bit) are preserved across the write, and a write through a symlink keeps the symlink and updates its target.
-- The CLI no longer hangs while printing a fatal error whose cause chain forms a cycle. A wrapped error whose `cause` pointed back at itself (directly or through another error) made the cause walk loop forever; it now stops at the first repeat and notes the circular reference.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11283,6 +11279,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.29] - 2026-07-24
+
+### Fixed
+
+- The CLI no longer hangs while printing a fatal error whose cause chain forms a cycle. A wrapped error whose `cause` pointed back at itself (directly or through another error) made the cause walk loop forever; it now stops at the first repeat and notes the circular reference.
 
 ## [1.0.28] - 2026-07-24
 
