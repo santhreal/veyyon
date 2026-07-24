@@ -25,7 +25,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { Snowflake } from "@veyyon/utils";
 
 describe("issue #6162 fresh launch default role from models.yml discovery provider", () => {
 	let tempDir: string;

@@ -2230,10 +2230,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// path-scoped `enabledModels` allow-list when configured. Skip when the
 		// user explicitly requested a model via --model that wasn't found.
 		if (!model && deferredModelPatterns.length === 0) {
-			// Re-resolve the allowed set: extension factories above may have
-			// registered providers/models that weren't visible at startup.
-			const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
-
 			// Retry the default-role lookup against the post-extension allowed
 			// set. Extension factories register providers AFTER the early
 			// `defaultRoleSpec` resolution, so a role pointing at an extension
