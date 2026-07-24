@@ -45,6 +45,64 @@ describe("KeybindingsManager.create", () => {
 		}
 	});
 
+	it("quarantines a keybindings.yml that parses to a YAML sequence instead of persisting garbage", async () => {
+		// A wrong-shape file parses WITHOUT error, so the corrupt-file path never
+		// fires. A top-level sequence used to flow into toKeybindingsConfig, which
+		// turned it into bogus index-keyed bindings ("0", "1", ...); the migration
+		// writer then persisted that garbage over the user's file, destroying their
+		// real map with no signal (Law 10). It must be quarantined like an
+		// unparseable file and left at defaults instead.
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-seq-"));
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+		const sequence = ["- ctrl+f", "- enter"].join("\n");
+		await Bun.write(ymlPath, sequence);
+
+		try {
+			KeybindingsManager.create(agentDir);
+
+			// The original bytes are preserved verbatim under `.corrupt`.
+			expect(await Bun.file(`${ymlPath}.corrupt`).text()).toBe(sequence);
+			// The live file was NOT overwritten with index-keyed garbage: it either
+			// still holds the user's sequence or was replaced with a real mapping, but
+			// never `"0": ctrl+f`.
+			const live = await Bun.file(ymlPath).text();
+			expect(live).not.toContain('"0"');
+			expect(live).not.toContain("'0'");
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+
+	it("quarantines a keybindings.yml that parses to a bare scalar", async () => {
+		// A scalar (`42`) parses cleanly and toKeybindingsConfig reduced it to {},
+		// so the user's file was silently ignored. Preserve and report it.
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-scalar-"));
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+		await Bun.write(ymlPath, "42\n");
+
+		try {
+			KeybindingsManager.create(agentDir);
+			expect(await Bun.file(`${ymlPath}.corrupt`).text()).toBe("42\n");
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+
+	it("leaves a blank keybindings.yml silent: an empty file is legitimately no custom map", async () => {
+		// The negative twin: a blank file parses to null and must NOT be quarantined,
+		// so the wrong-shape guard cannot flag an ordinary first-run empty file.
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-blank-"));
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+		await Bun.write(ymlPath, "");
+
+		try {
+			KeybindingsManager.create(agentDir);
+			expect(await Bun.file(`${ymlPath}.corrupt`).exists()).toBe(false);
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+
 	it("migrates legacy keybinding JSON to YAML during create", async () => {
 		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-"));
 		const jsonPath = path.join(agentDir, "keybindings.json");

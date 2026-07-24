@@ -410,14 +410,15 @@ function loadRawConfig(filePath: string): unknown {
 		return null;
 	}
 
+	let parsed: unknown;
 	try {
 		if (filePath.endsWith(".json")) {
-			return JSONC.parse(content);
+			parsed = JSONC.parse(content);
+		} else if (filePath.endsWith(".yml") || filePath.endsWith(".yaml")) {
+			parsed = YAML.parse(content);
+		} else {
+			throw new Error(`Unsupported keybindings config extension: ${filePath}`);
 		}
-		if (filePath.endsWith(".yml") || filePath.endsWith(".yaml")) {
-			return YAML.parse(content);
-		}
-		throw new Error(`Unsupported keybindings config extension: ${filePath}`);
 	} catch (error) {
 		// Preserve the bytes before anything writes over them. A parse failure
 		// drops the user's whole custom map, and the migration writer would then
@@ -426,6 +427,29 @@ function loadRawConfig(filePath: string): unknown {
 		quarantineUnparseableFileSync(filePath, content, error);
 		return null;
 	}
+
+	// A blank or comments-only file parses to null/undefined: the user has no
+	// custom keybindings, which is normal. Return null so the caller uses defaults
+	// without treating it as a corruption.
+	if (parsed === null || parsed === undefined) {
+		return null;
+	}
+	// A file that parses cleanly but to a NON-mapping (a bare scalar, a YAML
+	// sequence) is malformed exactly like an unparseable one. Left alone,
+	// toKeybindingsConfig would reduce a scalar to {} and turn a sequence into
+	// bogus index-keyed bindings ("0", "1", ...), silently discarding the user's
+	// real map and, on write-back, persisting the garbage over their file (Law 10).
+	// Quarantine + preserve it and fall back to defaults, matching the parse-error
+	// path here and the settings loader's wrong-shape guard.
+	if (typeof parsed !== "object" || Array.isArray(parsed)) {
+		quarantineUnparseableFileSync(
+			filePath,
+			content,
+			new Error("keybindings root must be a mapping, not a scalar or sequence"),
+		);
+		return null;
+	}
+	return parsed;
 }
 
 function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
