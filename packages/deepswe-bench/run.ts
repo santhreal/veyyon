@@ -18,8 +18,13 @@
  * --repeats K samples every (arm, task) cell K times (default 1). LLM agents are
  * stochastic, so a single sample per cell cannot separate a real arm effect from
  * run-to-run noise. The report aggregates each cell's K samples into a pass rate
- * with a binomial standard error, which is what makes the comparison something
- * you can iterate on rather than a coin flip.
+ * with a 95% Wilson confidence interval, which is what makes the comparison
+ * something you can iterate on rather than a coin flip.
+ *
+ * Every arm runs at a pinned sampling temperature (0, greedy) unless it sets its
+ * own, so --repeats measures a stable regime instead of a drifting provider
+ * default; the effective temperature per arm is stamped into results.json so two
+ * runs stay comparable over time.
  *
  * Prerequisites: pier (uv tool install datacurve-pier), docker, a compiled
  * binary at ../coding-agent/dist/vey (bun scripts/build-binary.ts there), and
@@ -35,7 +40,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import YAML from "yaml";
-import { type ArmResult, jobNameOf, parseJobName, renderReport, selectTasks } from "./aggregate";
+import {
+	type ArmResult,
+	effectiveTemperature,
+	jobNameOf,
+	PINNED_TEMPERATURE,
+	parseJobName,
+	renderReport,
+	selectTasks,
+} from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 import { encodeArmModelMismatch } from "./treatment-guard";
 
@@ -268,18 +281,23 @@ function reaggregate(runDir: string): void {
 	// would silently vanish from the re-rendered results.json.
 	let limit: number | null = null;
 	let totalTasksAvailable: number | null = null;
+	// Carry the recorded sampling regime forward too: a reaggregate does not re-stage
+	// arm configs, so it cannot re-derive the temperature that was actually run. Losing
+	// it would silently drop the regime provenance from the re-rendered results.json.
+	let sampling: unknown = null;
 	try {
 		const prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
 		model = prior.model ?? model;
 		limit = prior.limit ?? null;
 		totalTasksAvailable = prior.totalTasksAvailable ?? null;
+		sampling = prior.sampling ?? null;
 	} catch {
 		/* first aggregation */
 	}
 	const repeats = results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1;
 	fs.writeFileSync(
 		path.join(runDir, "results.json"),
-		JSON.stringify({ model, limit, totalTasksAvailable, arms, tasks, repeats, results }, null, 2),
+		JSON.stringify({ model, limit, totalTasksAvailable, sampling, arms, tasks, repeats, results }, null, 2),
 	);
 	fs.writeFileSync(path.join(runDir, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
@@ -397,9 +415,9 @@ async function main(): Promise<void> {
 	// run. The fingerprint enforces the single-IV floor below: two arms may not
 	// reduce to identical (config, sections, rule).
 	const armFingerprints = new Map<string, string>();
+	const armTemperature = new Map<string, number>();
 	for (const arm of arms) {
 		const ymlText = fs.readFileSync(path.join(BENCH_DIR, "arms", `${arm}.yml`), "utf8");
-		fs.writeFileSync(path.join(assetsDir, "arms", `${arm}.yml`), ymlText);
 		let config: unknown;
 		try {
 			config = YAML.parse(ymlText) ?? {};
@@ -407,6 +425,24 @@ async function main(): Promise<void> {
 			console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.yml:\n${err}`);
 			process.exit(1);
 		}
+		if (config === null || typeof config !== "object" || Array.isArray(config)) {
+			console.error(
+				`error: arm "${arm}" arms/${arm}.yml must be a mapping of setting -> value, ` +
+					`got ${Array.isArray(config) ? "a sequence" : typeof config}.`,
+			);
+			process.exit(1);
+		}
+		// Pin the sampling temperature identically for every arm (unless the arm sets
+		// its own for a deliberate temperature-as-IV experiment) so `--repeats`
+		// measures a stable regime instead of a drifting provider default, and stamp
+		// the effective value into results.json below. Injecting it into the parsed
+		// config BEFORE fingerprinting keeps the single-IV floor intact: the same
+		// value goes into every arm, so it never becomes a spurious difference, and
+		// the staged file the container reads matches exactly what was fingerprinted.
+		const temperature = effectiveTemperature(config);
+		(config as Record<string, unknown>).temperature = temperature;
+		armTemperature.set(arm, temperature);
+		fs.writeFileSync(path.join(assetsDir, "arms", `${arm}.yml`), YAML.stringify(config));
 		// Treatment-applies floor: an encode arm (argot on, non-empty allowlist) only
 		// applies its treatment if the model under test is on that allowlist. If it is
 		// not, argot silently stops encoding and the arm secretly measures decode-only
@@ -491,6 +527,13 @@ async function main(): Promise<void> {
 			`${repeats > 1 ? ` x ${repeats} repeat(s)` : ""} = ${queue.length} run(s), model ${model}`,
 	);
 	console.log(`assets: ${assetsDir} (binary sha256 ${binarySha.slice(0, 12)}) → jobs under ${outRoot}`);
+	const overrides = arms.filter(a => (armTemperature.get(a) ?? PINNED_TEMPERATURE) !== PINNED_TEMPERATURE);
+	console.log(
+		`sampling: temperature pinned to ${PINNED_TEMPERATURE} (greedy) for every arm, stamped into results.json` +
+			(overrides.length > 0
+				? `; arm(s) with an explicit override: ${overrides.map(a => `${a}=${armTemperature.get(a)}`).join(", ")}`
+				: ""),
+	);
 
 	function writeJobConfig(arm: string, task: string, repeat: number): string {
 		const jobName = jobNameOf(arm, task, repeat, repeats);
@@ -612,6 +655,11 @@ async function main(): Promise<void> {
 				binarySha,
 				limit: limit ?? null,
 				totalTasksAvailable,
+				sampling: {
+					pinnedTemperature: PINNED_TEMPERATURE,
+					perArm: Object.fromEntries(arms.map(a => [a, armTemperature.get(a) ?? PINNED_TEMPERATURE])),
+					note: "greedy at temperature 0: top-p / top-k are irrelevant, so temperature alone fixes the regime",
+				},
 				arms,
 				tasks,
 				repeats,

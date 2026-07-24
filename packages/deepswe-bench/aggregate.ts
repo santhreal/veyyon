@@ -148,6 +148,45 @@ function mean(values: Array<number | null>): number | null {
 	return nums.reduce((a, v) => a + v, 0) / nums.length;
 }
 
+/**
+ * The sampling temperature the bench pins for every arm that does not set its own.
+ *
+ * 0 means greedy/deterministic decoding. The bench pins it, rather than inheriting
+ * veyyon's own default of -1 ("use the provider default"), for two reasons that
+ * matter for an eval set meant to be iterated on for a long time:
+ *
+ *  1. Interpretability of `--repeats`. At temperature 0 the only run-to-run
+ *     variation is genuine provider nondeterminism, not sampling spread, so a small
+ *     K estimates each arm's pass rate with the tightest interval and a real arm
+ *     effect is detectable with fewer samples.
+ *  2. Longitudinal comparability. A provider default can change silently between two
+ *     runs (a model or provider update), which would make two runs non-comparable
+ *     with nothing recording the drift. A pinned, stamped value cannot drift
+ *     unnoticed.
+ *
+ * At temperature 0 the decode is greedy, so top-p / top-k are irrelevant; pinning
+ * temperature alone fully determines the sampling regime. An individual arm MAY
+ * still set its own temperature for a deliberate temperature-as-independent-variable
+ * experiment (see {@link effectiveTemperature}), and that override is recorded.
+ */
+export const PINNED_TEMPERATURE = 0;
+
+/**
+ * The temperature one arm actually runs at: the arm's own `temperature` when it
+ * sets a real (non-negative) one — a deliberate temperature-as-IV experiment —
+ * otherwise {@link PINNED_TEMPERATURE}. A value below 0 in the config means "use the
+ * provider default", which is exactly the silent-drift regime the bench refuses to
+ * leave in place, so it is treated as unset and the pinned value wins. Pure so the
+ * runner and the results.json stamp agree by construction.
+ */
+export function effectiveTemperature(config: unknown, pinned: number = PINNED_TEMPERATURE): number {
+	if (config !== null && typeof config === "object" && "temperature" in config) {
+		const t = (config as { temperature: unknown }).temperature;
+		if (typeof t === "number" && Number.isFinite(t) && t >= 0) return t;
+	}
+	return pinned;
+}
+
 /** z for a two-sided 95% interval (standard normal 0.975 quantile). */
 const Z_95 = 1.959963984540054;
 
