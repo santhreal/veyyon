@@ -28,6 +28,7 @@ import {
 	selectTasks,
 	signTestPValue,
 	summarizeCell,
+	sweepCanReachSignificance,
 	systemPromptTeachesArgot,
 	tallyUsage,
 	wilsonInterval,
@@ -639,6 +640,86 @@ describe("holmBonferroni — family-wise error control across arm pairs", () => 
 		expect(adj[0]).toBeCloseTo(0.0625, 12);
 		expect(adj[1]).toBeCloseTo(0.0625, 12);
 		expect(adj.every(p => p >= 0.05)).toBe(true);
+	});
+});
+
+describe("sweepCanReachSignificance — telling an underpowered null from a measured one", () => {
+	// The defect this locks out: a "not distinguishable" verdict was printed the same
+	// whether the run measured equality or simply lacked the tasks to detect ANY
+	// difference. The exact sign test has a hard floor — below a minimum decisive-task
+	// count no outcome, not even a clean sweep, can cross α=0.05 — and Holm raises that
+	// floor further. This predicate answers "could a perfect sweep here ever be
+	// significant?" so the report can label the truly-uninformative nulls.
+
+	test("zero or negative decisive tasks can never reach significance", () => {
+		// No informative (non-tie) tasks means no test at all — not a null, just nothing.
+		expect(sweepCanReachSignificance(0, 1)).toBe(false);
+		expect(sweepCanReachSignificance(-3, 1)).toBe(false);
+	});
+
+	test("single-pair family: 5-0 is still p=0.0625 (cannot), 6-0 is p=0.03125 (can)", () => {
+		// The concrete floor operators keep hitting: five paired tasks, even swept clean,
+		// sit at 0.0625 > 0.05 — structurally impossible to call. Six is the first N that
+		// clears with one comparison, matching signTestPValue(6,0)=0.03125.
+		expect(sweepCanReachSignificance(5, 1)).toBe(false);
+		expect(sweepCanReachSignificance(6, 1)).toBe(true);
+	});
+
+	test("a two-comparison family raises the floor from 6 to 7 decisive tasks", () => {
+		// With two arm pairs Holm multiplies the best case by 2: a 6-0 sweep becomes
+		// 0.03125*2=0.0625 (still short), and only a 7-0 sweep (0.015625*2=0.03125) clears.
+		// This is why a 3-arm run needs more tasks per pair than a 2-arm run to conclude.
+		expect(sweepCanReachSignificance(6, 2)).toBe(false);
+		expect(sweepCanReachSignificance(7, 2)).toBe(true);
+	});
+
+	test("the α argument is honoured: a stricter α lifts the required task count", () => {
+		// 6-0 clears the default 0.05 but not a 0.01 bar (0.03125 > 0.01); the predicate
+		// must key off the passed threshold, not a hardcoded one.
+		expect(sweepCanReachSignificance(6, 1, 0.05)).toBe(true);
+		expect(sweepCanReachSignificance(6, 1, 0.01)).toBe(false);
+	});
+
+	test("a family size below 1 is floored to 1, never dividing the requirement away", () => {
+		// A degenerate 0 (or negative) family must not make everything trivially reachable
+		// by multiplying the best-case p by zero. It is clamped to a single comparison.
+		expect(sweepCanReachSignificance(6, 0)).toBe(true);
+		expect(sweepCanReachSignificance(5, 0)).toBe(false);
+	});
+});
+
+describe("renderReport — an underpowered null is labelled, a measured null is not", () => {
+	const STAMP = "2026-07-23T00:00:00.000Z";
+
+	test("a clean 4-0 sweep that still cannot reach significance reads '(underpowered)'", () => {
+		// Four tasks, B wins every one: the strongest possible signal at this N, yet
+		// signTestPValue(4,0)=0.125 can never clear 0.05. The reader must be told to add
+		// tasks, not that the arms are equivalent — so the qualifier must appear.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 4; i++) {
+			results.push(res({ arm: "baseline", task: `t${i}`, reward: 0 }));
+			results.push(res({ arm: "cand", task: `t${i}`, reward: 1 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("4-0-0");
+		expect(report).toContain("not distinguishable (underpowered)");
+	});
+
+	test("a genuinely-powered 3-3 split at N=6 reads a plain null, NOT '(underpowered)'", () => {
+		// Six decisive tasks CAN detect a difference (a 6-0 would be p=0.03125), so a 3-3
+		// tie is a real measured null. The qualifier must be absent here — otherwise it
+		// would fire on every non-significant result and lose all meaning.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			const baselineReward = i <= 3 ? 1 : 0;
+			results.push(res({ arm: "baseline", task: `t${i}`, reward: baselineReward }));
+			results.push(res({ arm: "cand", task: `t${i}`, reward: i <= 3 ? 0 : 1 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		// The arm-comparison row is a 3-3-0 split: not significant, but adequately powered.
+		expect(report).toContain("3-3-0");
+		expect(report).toContain("not distinguishable");
+		expect(report).not.toContain("not distinguishable (underpowered)");
 	});
 });
 

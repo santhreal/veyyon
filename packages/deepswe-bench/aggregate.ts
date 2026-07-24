@@ -427,6 +427,29 @@ export function signTestPValue(wins: number, losses: number): number {
 }
 
 /**
+ * Whether a paired comparison could reach significance AT ALL at its current task
+ * count — the honest reading of a "not distinguishable" verdict. `nDecisive` is the
+ * number of informative (non-tie) tasks; `familySize` is how many pairs are being
+ * Holm-corrected together.
+ *
+ * The exact sign test cannot beat α=0.05 below a minimum decisive-task count: a
+ * perfect 3-0 sweep is p=0.25, 4-0 is p=0.125, 5-0 is p=0.0625 — all above 0.05 —
+ * and only 6-0 (p=0.03125) clears it. So a run with 4 paired tasks CANNOT produce a
+ * significant pass-rate result no matter how lopsided, and Holm makes the bar
+ * stricter still. A verdict of "not distinguishable" from such a run means "too few
+ * tasks to decide", NOT "measured and found equal". This flags exactly that case by
+ * asking whether the best possible outcome — a clean sweep, taking the maximum Holm
+ * penalty ×familySize — would clear α. If not, the comparison is structurally
+ * underpowered and the reader must add tasks, not conclude a null.
+ */
+export function sweepCanReachSignificance(nDecisive: number, familySize: number, alpha = 0.05): boolean {
+	if (nDecisive <= 0) return false;
+	const bestCaseRaw = signTestPValue(nDecisive, 0);
+	const bestCaseAdjusted = Math.min(1, bestCaseRaw * Math.max(1, familySize));
+	return bestCaseAdjusted < alpha;
+}
+
+/**
  * Holm–Bonferroni step-down adjustment of a family of p-values, returned aligned to
  * the input order. Each adjusted value is the number to compare against a single α:
  * a test is significant at family-wise error rate α iff its adjusted p is below α.
@@ -739,9 +762,16 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 					: `[${(d.ciLow >= 0 ? "+" : "") + d.ciLow.toFixed(3)}, ${(d.ciHigh >= 0 ? "+" : "") + d.ciHigh.toFixed(3)}]`;
 			const adjP = armAdjByPair.get(`${d.armA}→${d.armB}`);
 			const decisive = adjP !== undefined && adjP < 0.05;
+			// A non-significant verdict is only "measured equal" if the run COULD have shown
+			// a difference. If even a clean sweep at this decisive-task count can't clear the
+			// Holm-adjusted bar, the null is uninformative — say "underpowered" so the reader
+			// adds tasks instead of concluding the arms are equivalent.
+			const underpowered = !decisive && !sweepCanReachSignificance(d.wins + d.losses, armTested.length);
 			const verdict = decisive
 				? `${d.meanDelta !== null && d.meanDelta > 0 ? d.armB : d.armA} better (adj p<0.05)`
-				: "not distinguishable";
+				: underpowered
+					? "not distinguishable (underpowered)"
+					: "not distinguishable";
 			lines.push(
 				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 			);
@@ -811,13 +841,19 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 				const passAdj = armAdjByPair.get(`${d.armA}→${d.armB}`);
 				const passDelta = armDeltas.find(a => a.armA === d.armA && a.armB === d.armB)?.meanDelta ?? null;
 				const passHeld = !(passAdj !== undefined && passAdj < 0.05 && passDelta !== null && passDelta < 0);
+				// Same honesty guard as the pass-rate table: a non-significant efficiency
+				// delta is only a real null if a clean sweep at this decisive-task count could
+				// have cleared the Holm bar for this metric's family. Otherwise flag it.
+				const effUnderpowered = !sig && !sweepCanReachSignificance(d.pos + d.neg, metricTested.length);
 				const verdict = cheaperSig
 					? passHeld
 						? `${d.armB} cheaper, reward held`
 						: `${d.armB} cheaper BUT reward dropped`
 					: sig && d.meanDelta !== null && d.meanDelta > 0
 						? `${d.armB} dearer`
-						: "not distinguishable";
+						: effUnderpowered
+							? "not distinguishable (underpowered)"
+							: "not distinguishable";
 				lines.push(
 					`| ${m.label} | ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} ${m.unit} | ${ci} | ${cheaperB}/${dearerB}/${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 				);
