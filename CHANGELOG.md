@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- Plugin command errors no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace now reads `Failed to install foo: <reason>` instead of `Failed to install foo: Error: <reason>`.
+- Error messages no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace, applying a personality, or changing the Mermaid rendering setting now reads `Failed to …: <reason>` instead of `Failed to …: Error: <reason>`.
 
 ## [1.0.35] - 2026-07-24
 
