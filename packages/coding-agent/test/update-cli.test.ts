@@ -335,6 +335,26 @@ describe("runUpdateCommand fetch cancellation", () => {
 	});
 });
 
+describe("runUpdateCommand --check --force messaging", () => {
+	it("reports what --force would do rather than announcing a reinstall in check mode", async () => {
+		// --check installs nothing. With --force on an already-up-to-date install the
+		// command used to print "Forcing reinstall of X" and then return silently,
+		// which reads as a reinstall that broke. In check mode it must instead state
+		// that --force WOULD reinstall, so the output matches what actually happens.
+		spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ tag_name: "v0.0.1" }));
+		const logs: string[] = [];
+		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			logs.push(args.map(String).join(" "));
+		});
+
+		await updateCli.runUpdateCommand({ force: true, check: true });
+
+		const combined = logs.join("\n");
+		expect(combined).toContain("Up to date at 0.0.1; --force would reinstall it");
+		expect(combined).not.toContain("Forcing reinstall");
+	});
+});
+
 describe("runAutoUpdate", () => {
 	// runAutoUpdate is the form a running TUI session calls: unlike
 	// runUpdateCommand it must never write to stdout (that would corrupt the

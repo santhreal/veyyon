@@ -760,6 +760,12 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 
 	if (comparison > 0) {
 		console.log(chalk.cyan(`New version available: ${release.version}`));
+	} else if (opts.check) {
+		// Up to date, but --force was passed alongside --check. Check mode installs
+		// nothing, so report what --force WOULD do rather than announce a reinstall
+		// that is not going to happen ("Forcing reinstall of X" then a silent exit
+		// read as a broken command).
+		console.log(chalk.yellow(`Up to date at ${release.version}; --force would reinstall it`));
 	} else {
 		console.log(chalk.yellow(`Forcing reinstall of ${release.version}`));
 	}
