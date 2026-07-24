@@ -68,6 +68,13 @@ export class BankManager {
 	}
 	renameBank(oldName: string, newName: string): string {
 		if (oldName === "default") throw new ValueError("Cannot rename 'default' bank");
+		// Validate BOTH names. Every other bank operation validates its name, but
+		// renameBank historically checked only newName — so an oldName containing a
+		// path separator or `..` escaped banksDir on the rename SOURCE, letting
+		// `renameBank("../../somedir", "captured")` move an out-of-tree directory
+		// into the bank store. The name charset (validateName) rejects `/` and `.`,
+		// so this closes the traversal boundary that newName already had.
+		this.validateName(oldName);
 		this.validateName(newName);
 		const oldDir = join(this.banksDir, oldName);
 		const newDir = join(this.banksDir, newName);
