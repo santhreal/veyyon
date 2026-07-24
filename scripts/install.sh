@@ -422,6 +422,13 @@ install_via_bun() {
     [ -x "$launcher" ] || die "source launcher not found or not executable: $launcher"
     say "installing workspace dependencies (bun install)..."
     ( cd "$VEYYON_SRC_DIR" && bun install ) || die "failed to install workspace dependencies"
+    # Bun runs no root lifecycle scripts on workspace installs, so gitignored
+    # build artifacts must be generated explicitly: without this, the checkout
+    # ships a stale or missing tool-views bundle (missing = launch relies on
+    # the launcher's self-heal; the installer should hand over a complete tree).
+    say "generating build artifacts (gen:tool-views)..."
+    ( cd "$VEYYON_SRC_DIR" && bun --cwd=packages/collab-web run gen:tool-views ) \
+        || die "failed to generate build artifacts (bun --cwd=packages/collab-web run gen:tool-views)"
     mkdir -p "$INSTALL_DIR"
     ln -sfn "$launcher" "$INSTALL_DIR/$BIN_NAME" || die "failed to link $BIN_NAME into $INSTALL_DIR"
     ok "installed $BIN_NAME (source) -> $launcher"
