@@ -50,10 +50,11 @@ import {
 	renderReport,
 	type SessionUsage,
 	selectTasks,
+	systemPromptTeachesArgot,
 	tallyUsage,
 } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
-import { encodeArmModelMismatch } from "./treatment-guard";
+import { encodeArmModelMismatch, encodePreambleSilentlyDropped, isEncodeArm } from "./treatment-guard";
 
 const BENCH_DIR = path.dirname(new URL(import.meta.url).pathname);
 const CODING_AGENT_DIR = path.resolve(BENCH_DIR, "../coding-agent");
@@ -138,26 +139,47 @@ function sha256File(p: string): string {
 	return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 }
 
-function parseSessionsUsage(trialDir: string): SessionUsage | null {
+/**
+ * Parse a trial's session jsonl(s) into token/tool usage AND whether the argot
+ * encode preamble actually reached the model.
+ *
+ * `preambleTaught` reads the `session_init` entry's `systemPrompt` (a top-level
+ * jsonl entry, NOT an `entry.message`) so it reflects the prompt the model was
+ * really given, after catalog id resolution. `null` when no `session_init` with a
+ * system prompt was seen (presence unknown), `true`/`false` otherwise. This is the
+ * authoritative treatment-applied signal (see `systemPromptTeachesArgot`).
+ */
+function parseSessionsUsage(trialDir: string): { usage: SessionUsage; preambleTaught: boolean | null } | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
 	if (!fs.existsSync(sessionsDir)) return null;
 	const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith(".jsonl"));
 	if (files.length === 0) return null;
 	// Read every session line into its message object; the pure tallyUsage does the
-	// counting (and the once-per-tool fix) so the same logic is unit-tested.
+	// counting (and the once-per-tool fix) so the same logic is unit-tested. The
+	// same pass reads the session_init system prompt for the preamble probe.
 	const messages: Array<Record<string, unknown>> = [];
+	let preambleTaught: boolean | null = null;
 	for (const file of files) {
 		for (const line of fs.readFileSync(path.join(sessionsDir, file), "utf8").split("\n")) {
 			if (!line.trim()) continue;
 			try {
-				const entry = JSON.parse(line) as { message?: Record<string, unknown> };
+				const entry = JSON.parse(line) as {
+					message?: Record<string, unknown>;
+					type?: string;
+					systemPrompt?: unknown;
+				};
 				if (entry.message) messages.push(entry.message);
+				if (entry.type === "session_init" && typeof entry.systemPrompt === "string") {
+					// Any session_init that taught the preamble means encode fired; only
+					// downgrade to false when a system prompt was seen and none taught it.
+					preambleTaught = preambleTaught === true || systemPromptTeachesArgot(entry.systemPrompt);
+				}
 			} catch {
 				// A truncated final line (a killed run) is not a parse we can trust.
 			}
 		}
 	}
-	return tallyUsage(messages);
+	return { usage: tallyUsage(messages), preambleTaught };
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
@@ -176,6 +198,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		agentSeconds: null,
 		argotLoadCalls: null,
 		assistantMsgsWithSigil: null,
+		argotPreamblePresent: null,
 		toolCalls: null,
 	};
 	// Pier truncates long task names in trial dir names, and a job has exactly
@@ -192,14 +215,16 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 	// Usage comes from the session files themselves: pier's agent_result is
 	// frozen at run time, and recomputing keeps reaggregated reports correct
 	// even when the accounting code changes after a run.
-	const usage = parseSessionsUsage(trialDirPath);
-	if (usage) {
+	const parsed = parseSessionsUsage(trialDirPath);
+	if (parsed) {
+		const { usage } = parsed;
 		result.inputTokens = usage.inputTokens ?? null;
 		result.outputTokens = usage.outputTokens ?? null;
 		result.cacheTokens = usage.cacheTokens ?? null;
 		result.costUsd = usage.costUsd ?? null;
 		result.argotLoadCalls = usage.argotLoadCalls ?? null;
 		result.assistantMsgsWithSigil = usage.assistantMsgsWithSigil ?? null;
+		result.argotPreamblePresent = parsed.preambleTaught;
 		result.toolCalls = usage.toolCalls ?? null;
 	} else {
 		const agent = trial.agent_result ?? {};
@@ -259,6 +284,8 @@ function reaggregate(runDir: string): void {
 				agentSeconds: null,
 				argotLoadCalls: null,
 				assistantMsgsWithSigil: null,
+				argotPreamblePresent: null,
+				toolCalls: null,
 				error: String(err),
 			});
 		}
@@ -329,7 +356,13 @@ async function main(): Promise<void> {
 		console.error("error: --arms must specify at least one valid arm name");
 		process.exit(1);
 	}
-	const model = args.model ?? "google-antigravity/gemini-3.6-flash";
+	// Default to the RESOLVED logical id (`gemini-3.5-flash`), not the display alias
+	// `gemini-3.6-flash`. On google-antigravity the catalog serves the flash family
+	// under logical id `gemini-3.5-flash` with `gemini-3.6-flash` as an alias, so a
+	// requested `.../gemini-3.6-flash` runs as logical `.../gemini-3.5-flash`. Keeping
+	// requested == resolved is what lets an encode arm's allowlist match the model the
+	// gate actually sees; the post-run preamble check fails the run closed if it drifts.
+	const model = args.model ?? "google-antigravity/gemini-3.5-flash";
 	const rawRepeats = Number(args.repeats ?? "1");
 	if (!Number.isFinite(rawRepeats) || rawRepeats < 1 || !Number.isInteger(rawRepeats)) {
 		console.error(`error: --repeats must be a positive integer (got ${JSON.stringify(args.repeats)})`);
@@ -419,6 +452,11 @@ async function main(): Promise<void> {
 	// reduce to identical (config, sections, rule).
 	const armFingerprints = new Map<string, string>();
 	const armTemperature = new Map<string, number>();
+	// Arms that declare an ENCODE treatment (argot on, non-empty allowlist). After
+	// the run, every such arm MUST have actually taught the encode preamble to the
+	// model, or it silently degraded to decode-only and measured the wrong condition
+	// (the pre-run allowlist guard cannot catch a post-resolution model mismatch).
+	const encodeArms = new Set<string>();
 	for (const arm of arms) {
 		const ymlText = fs.readFileSync(path.join(BENCH_DIR, "arms", `${arm}.yml`), "utf8");
 		let config: unknown;
@@ -445,6 +483,7 @@ async function main(): Promise<void> {
 		const temperature = effectiveTemperature(config);
 		(config as Record<string, unknown>).temperature = temperature;
 		armTemperature.set(arm, temperature);
+		if (isEncodeArm(config)) encodeArms.add(arm);
 		fs.writeFileSync(path.join(assetsDir, "arms", `${arm}.yml`), YAML.stringify(config));
 		// Treatment-applies floor: an encode arm (argot on, non-empty allowlist) only
 		// applies its treatment if the model under test is on that allowlist. If it is
@@ -628,6 +667,7 @@ async function main(): Promise<void> {
 				agentSeconds: null,
 				argotLoadCalls: null,
 				assistantMsgsWithSigil: null,
+				argotPreamblePresent: null,
 				toolCalls: null,
 				error: errStr,
 			};
@@ -680,6 +720,31 @@ async function main(): Promise<void> {
 	);
 	fs.writeFileSync(path.join(outRoot, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`\nwrote ${path.join(outRoot, "report.md")} and results.json`);
+
+	// Authoritative post-run treatment check. The pre-run allowlist guard matched the
+	// REQUESTED --model, but the runtime resolves that id through the catalog (provider
+	// aliases, effort-tier collapsing) to a different logical id before argot's encode
+	// gate runs. So an encode arm can pass the pre-run guard yet run decode-only if the
+	// RESOLVED model fell off the allowlist. Read whether the preamble actually reached
+	// the model (from the session system prompt) and FAIL CLOSED if an encode arm never
+	// taught it: a silent decode-only degrade makes every token delta against that arm
+	// measure nothing, so the run is invalid and must not be reported as sound.
+	const degraded: string[] = [];
+	for (const arm of encodeArms) {
+		const flags = results.filter(r => r.arm === arm && !r.error).map(r => r.argotPreamblePresent);
+		if (encodePreambleSilentlyDropped(flags)) degraded.push(arm);
+	}
+	if (degraded.length > 0) {
+		console.error(
+			`\nerror: encode arm(s) [${degraded.join(", ")}] never taught the argot preamble in ANY\n` +
+				`OK trial, so they SILENTLY ran decode-only and every token delta against them is inert.\n` +
+				`The likely cause is a model-id resolution mismatch: the requested --model = ${model}\n` +
+				`resolves through the catalog to a different logical id that is not on the arm's\n` +
+				`argot.models allowlist. Check the run's session_init model vs arms/<arm>.yml argot.models,\n` +
+				`and set the allowlist to the RESOLVED logical id (see report.md "Argot treatment applied?").`,
+		);
+		process.exitCode = 1;
+	}
 }
 
 await main();
