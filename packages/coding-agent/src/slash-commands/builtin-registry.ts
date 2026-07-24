@@ -8,7 +8,6 @@ import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest"
 import { CollabHost } from "../collab/host";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
-import type { SettingPath, SettingValue } from "../config/settings";
 import { settings } from "../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
@@ -292,7 +291,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		// Palette rows lead with what the command DOES; live state is secondary
 		// context after the dot. "Plan: off" told a new user nothing.
 		getTuiAutocompleteDescription: runtime => {
-			if (!runtime.ctx.settings.get("plan.enabled" as SettingPath)) return "Toggle plan mode · disabled in settings";
+			if (!runtime.ctx.settings.get("plan.enabled")) return "Toggle plan mode · disabled in settings";
 			if (runtime.ctx.planModeEnabled) {
 				const planFile = runtime.ctx.planModePlanFilePath;
 				return `Toggle plan mode · on${planFile ? ` (${path.basename(planFile)})` : ""}`;
@@ -347,7 +346,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		inlineHint: "[objective]",
 		allowArgs: true,
 		getTuiAutocompleteDescription: runtime => {
-			if (!runtime.ctx.settings.get("goal.enabled" as SettingPath)) return "Toggle goal mode · disabled in settings";
+			if (!runtime.ctx.settings.get("goal.enabled")) return "Toggle goal mode · disabled in settings";
 			if (runtime.ctx.planModeEnabled) return "Toggle goal mode · blocked by plan mode";
 			const state = runtime.ctx.session.getGoalModeState();
 			return state
@@ -905,23 +904,23 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		],
 		allowArgs: true,
 		getTuiAutocompleteDescription: runtime => {
-			if (!runtime.ctx.settings.get("browser.enabled" as SettingPath))
+			if (!runtime.ctx.settings.get("browser.enabled"))
 				return "Toggle browser headless/visible · disabled in settings";
-			return runtime.ctx.settings.get("browser.headless" as SettingPath)
+			return runtime.ctx.settings.get("browser.headless")
 				? "Toggle browser headless/visible · headless"
 				: "Toggle browser headless/visible · visible";
 		},
 		handle: async (command, runtime) => {
 			const arg = command.args.toLowerCase();
-			const enabled = runtime.settings.get("browser.enabled" as SettingPath) as boolean;
+			const enabled = runtime.settings.get("browser.enabled");
 			if (!enabled) return usage("Browser tool is disabled (enable in settings).", runtime);
-			const current = runtime.settings.get("browser.headless" as SettingPath) as boolean;
+			const current = runtime.settings.get("browser.headless");
 			let next = current;
 			if (!arg) next = !current;
 			else if (arg === "headless" || arg === "hidden") next = true;
 			else if (arg === "visible" || arg === "show" || arg === "headful") next = false;
 			else return usage("Usage: /browser [headless|visible]", runtime);
-			runtime.settings.set("browser.headless" as SettingPath, next as SettingValue<SettingPath>);
+			runtime.settings.set("browser.headless", next);
 			const tool = runtime.session.getToolByName("browser");
 			if (tool && "restartForModeChange" in tool) {
 				try {
@@ -940,9 +939,9 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		},
 		handleTui: async (command, runtime) => {
 			const arg = command.args.toLowerCase();
-			const current = settings.get("browser.headless" as SettingPath) as boolean;
+			const current = settings.get("browser.headless");
 			let next = current;
-			if (!(settings.get("browser.enabled" as SettingPath) as boolean)) {
+			if (!settings.get("browser.enabled")) {
 				runtime.ctx.showWarning("Browser tool is disabled (enable in settings)");
 				runtime.ctx.editor.setText("");
 				return;
@@ -958,7 +957,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				runtime.ctx.editor.setText("");
 				return;
 			}
-			settings.set("browser.headless" as SettingPath, next as SettingValue<SettingPath>);
+			settings.set("browser.headless", next);
 			const tool = runtime.ctx.session.getToolByName("browser");
 			if (tool && "restartForModeChange" in tool) {
 				try {
