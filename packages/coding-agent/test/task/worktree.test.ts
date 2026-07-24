@@ -822,6 +822,41 @@ describe("commitToBranch preserves agent commits", () => {
 		expect(fixture).toContain("LINE5-AGENT-WITH-MESSAGE");
 	});
 
+	it("merges a committed agent edit beside unrelated dirty-parent lines", async () => {
+		const parentLines = [
+			"line1",
+			"LINE2-DIRTY-PARENT",
+			"line3",
+			"line4",
+			"line5",
+			"line6",
+			"line7",
+			"line8",
+			"line9",
+			"line10",
+			"",
+		];
+		await fs.writeFile(path.join(parent, "EXP_CLEAN_COMMIT.txt"), parentLines.join("\n"));
+		await fs.writeFile(path.join(isolation, "EXP_CLEAN_COMMIT.txt"), parentLines.join("\n"));
+		const baseline = await captureBaseline(parent);
+
+		const agentLines = parentLines.slice();
+		agentLines[4] = "LINE5-AGENT-EDIT";
+		await fs.writeFile(path.join(isolation, "EXP_CLEAN_COMMIT.txt"), agentLines.join("\n"));
+		await gitr(isolation, ["add", "EXP_CLEAN_COMMIT.txt"]);
+		await gitr(isolation, ["commit", "-q", "-m", "agent: edit line 5"]);
+
+		const taskId = "dirty-parent-committed-agent";
+		const result = await commitToBranch(isolation, baseline, taskId, undefined);
+		expect(result?.branchName).toBe(`veyyon/task/${taskId}`);
+
+		const merge = await mergeTaskBranches(parent, [
+			{ branchName: result!.branchName!, taskId, baseSha: result!.baseSha! },
+		]);
+		expect(merge).toEqual({ failed: [], merged: [result!.branchName!] });
+		expect(await fs.readFile(path.join(parent, "EXP_CLEAN_COMMIT.txt"), "utf8")).toBe(agentLines.join("\n"));
+	});
+
 	it("falls back to the AI-generated message when the agent never committed", async () => {
 		const baseline = await captureBaseline(parent);
 
