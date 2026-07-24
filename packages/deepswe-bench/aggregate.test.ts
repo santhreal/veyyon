@@ -1922,3 +1922,46 @@ describe("withinTaskSpreadPct — the noise floor must measure chance, not task 
 		expect(md).not.toContain("CANNOT MEASURE");
 	});
 });
+
+describe("renderReport is reproducible — output depends on data, not row order", () => {
+	// An eval set is iterated on for months, so two renders of the SAME run must
+	// produce the same bytes or report-to-report diffs become unreadable. Rows do
+	// NOT arrive in a stable order: a live run appends them as jobs finish (which
+	// depends on --jobs and on which container is slow) while a reaggregate rebuilds
+	// them in readdir order. Arm order was previously taken from that arrival order,
+	// so the same run could render "baseline → full" once and "full → baseline" the
+	// next time, inverting the sign of every delta.
+
+	function sampleRows(): ArmResult[] {
+		const rows: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			rows.push(res({ arm: "full", task: `t${i}`, reward: i <= 4 ? 1 : 0, outputTokens: 900 + i }));
+			rows.push(res({ arm: "baseline", task: `t${i}`, reward: i <= 2 ? 1 : 0, outputTokens: 1000 + i }));
+			rows.push(res({ arm: "decode", task: `t${i}`, reward: i <= 3 ? 1 : 0, outputTokens: 950 + i }));
+		}
+		return rows;
+	}
+
+	test("a reversed row order renders byte-identically", () => {
+		const forward = renderReport(sampleRows(), "m", "now", 1);
+		const reversed = renderReport([...sampleRows()].reverse(), "m", "now", 1);
+		expect(reversed).toBe(forward);
+	});
+
+	test("grouping rows by arm renders byte-identically to interleaved rows", () => {
+		// The realistic divergence: a reaggregate walks one arm's job directory at a
+		// time, while a live run interleaves arms as containers finish.
+		const grouped = [...sampleRows()].sort((a, b) => a.arm.localeCompare(b.arm));
+		expect(renderReport(grouped, "m", "now", 1)).toBe(renderReport(sampleRows(), "m", "now", 1));
+	});
+
+	test("pair direction is fixed by name, so deltas never invert between renders", () => {
+		// The concrete consequence. Whichever arm's rows land first, the comparison
+		// must always read baseline → full, never the reverse.
+		for (const rows of [sampleRows(), [...sampleRows()].reverse()]) {
+			const md = renderReport(rows, "m", "now", 1);
+			expect(md).toContain("| baseline → full |");
+			expect(md).not.toContain("| full → baseline |");
+		}
+	});
+});
