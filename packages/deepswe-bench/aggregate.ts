@@ -169,7 +169,32 @@ export function providerFinishReason(text: string): string | null {
  * report can show WHICH failure mode hit each arm and expose an asymmetry rather
  * than an anonymous count. Never throws on non-JSON input.
  */
+/**
+ * Error string stamped on a trial the agent RAN to completion (no exception) but the
+ * verifier never scored — `verifier_result` is missing or its `reward` is not a
+ * finite number. This is NOT a task failure: a failure is reward=0 (a real number the
+ * verifier assigned), whereas a missing reward means the scorer itself did not run.
+ */
+export const NO_REWARD_ERROR = "verifier produced no reward: missing verifier_result.rewards.reward";
+
+/**
+ * Whether a parsed verifier reward means "the verifier did not score this trial".
+ * True for null/undefined/NaN/±Infinity; false for any finite number INCLUDING 0
+ * (0 is a legitimate scored failure, not a missing score). The runner uses this to
+ * fail closed — reclassifying an unscored trial as an error so it is excluded from
+ * every rate and mean instead of being silently counted as a fail (reward !== 1),
+ * which would understate the pass rate and, if the verifier trips more on one arm's
+ * outputs, score a scorer confound as a correctness loss (Law 10, no silent fallback).
+ */
+export function noRewardError(reward: number | null): boolean {
+	return !Number.isFinite(reward ?? Number.NaN);
+}
+
 export function classifyError(error: string): string {
+	// A verifier-no-reward is a runner-side string with no exception_type; give it its
+	// own stable label so a scorer outage shows as a distinct, comparable failure mode
+	// (and its per-arm asymmetry is visible) rather than dissolving into "other".
+	if (error.includes(NO_REWARD_ERROR)) return "verifier-no-reward";
 	const finish = providerFinishReason(error);
 	let base = "other";
 	// Regex rather than JSON.parse: run.ts appends a recovered `finish_reason: …`
@@ -900,7 +925,12 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 				// "equal reward" half of argot's claim is not actually being checked.
 				const rewardAdj = rewardAdjByPair.get(`${d.armA}→${d.armB}`);
 				const rewardDelta = rewardDeltas.find(a => a.armA === d.armA && a.armB === d.armB)?.meanDelta ?? null;
-				const rewardHeld = !(rewardAdj !== undefined && rewardAdj < 0.05 && rewardDelta !== null && rewardDelta < 0);
+				const rewardHeld = !(
+					rewardAdj !== undefined &&
+					rewardAdj < 0.05 &&
+					rewardDelta !== null &&
+					rewardDelta < 0
+				);
 				const passHeld = binaryHeld && rewardHeld;
 				// Same honesty guard as the pass-rate table: a non-significant efficiency
 				// delta is only a real null if a clean sweep at this decisive-task count could

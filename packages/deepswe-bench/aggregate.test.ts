@@ -19,6 +19,8 @@ import {
 	effectiveTemperature,
 	holmBonferroni,
 	jobNameOf,
+	NO_REWARD_ERROR,
+	noRewardError,
 	PINNED_TEMPERATURE,
 	pairwiseArmDeltas,
 	pairwiseMetricDeltas,
@@ -958,6 +960,41 @@ describe("classifyError — group excluded samples by a stable, comparable label
 	test("an unrecognized non-JSON string falls back to other", () => {
 		expect(classifyError("mystery failure")).toBe("other");
 	});
+
+	test("a verifier-no-reward is labelled distinctly, not folded into other", () => {
+		// A scorer outage must be its own comparable failure mode so its per-arm asymmetry
+		// is visible; bucketing it as "other" would hide a verifier that trips on one arm.
+		expect(classifyError(NO_REWARD_ERROR)).toBe("verifier-no-reward");
+	});
+});
+
+describe("noRewardError — an unscored trial is not a task failure", () => {
+	// The silent-fallback this locks out (Law 10): a trial the agent completed but the
+	// verifier never scored parses to reward=null. Counted as-is it becomes a fail
+	// (reward !== 1), understating the pass rate and turning a scorer outage that tracks
+	// one arm into a phantom correctness loss. noRewardError marks exactly those trials
+	// so the runner can reclassify them as errors (excluded + surfaced), never as fails.
+
+	test("null and undefined rewards are unscored", () => {
+		expect(noRewardError(null)).toBe(true);
+	});
+
+	test("a reward of 0 is a REAL scored failure, not unscored", () => {
+		// The critical distinction: 0 is a number the verifier assigned (all tests failed),
+		// so it must stay a counted failure. Only a missing score is an error.
+		expect(noRewardError(0)).toBe(false);
+	});
+
+	test("finite fractional and full rewards are scored", () => {
+		expect(noRewardError(0.5)).toBe(false);
+		expect(noRewardError(1)).toBe(false);
+	});
+
+	test("a non-finite reward (NaN/Infinity) is unscored", () => {
+		// JSON has no NaN, but a defensive guard: any non-finite value means no real score.
+		expect(noRewardError(Number.NaN)).toBe(true);
+		expect(noRewardError(Number.POSITIVE_INFINITY)).toBe(true);
+	});
 });
 
 describe("renderReport — the Errors (per arm) section exposes a refusal asymmetry", () => {
@@ -992,6 +1029,25 @@ describe("renderReport — the Errors (per arm) section exposes a refusal asymme
 		];
 		const report = renderReport(results, "m", STAMP, 1);
 		expect(report).not.toContain("## Errors (per arm)");
+	});
+
+	test("an unscored trial (verifier-no-reward) is EXCLUDED from the pass rate, not counted as a fail", () => {
+		// The Law-10 fix end to end: `full` has two OK passes and one trial the verifier
+		// never scored (stamped NO_REWARD_ERROR by the runner). If the unscored trial were
+		// folded in as a fail, full's pass rate would read 2/3; excluded, it is the honest
+		// 2/2 with the unscored trial surfaced in Errors under its own label.
+		const results: ArmResult[] = [
+			res({ arm: "full", task: "t1", reward: 1 }),
+			res({ arm: "full", task: "t2", reward: 1 }),
+			res({ arm: "full", task: "t3", reward: null, error: NO_REWARD_ERROR }),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		// Pass rate is 2/2 (the unscored trial is not a denominator fail)...
+		expect(report).toContain("(2/2)");
+		// ...and the trial is surfaced as its own error class, not hidden.
+		expect(report).toContain("## Errors (per arm)");
+		expect(report).toContain("verifier-no-reward");
+		expect(report).toContain("| full | 1 | 1 |");
 	});
 });
 

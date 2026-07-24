@@ -188,7 +188,13 @@ verifier reports), `results.json` (every metric, machine-readable), and
   one arm — say an injected preamble — is a confound you must see, not an
   anonymous "+N err". If one arm shows a refusal asymmetry, raise `--repeats` so a
   single flake does not decide the comparison, and read whether the asymmetry
-  persists.
+  persists. A trial the agent ran to completion but the verifier never scored
+  (missing `verifier_result`, so the reward is not a number) is its own error class,
+  `verifier-no-reward` — NOT a task failure. A failure is reward=0, a real number the
+  verifier assigned; a missing reward means the scorer did not run, so folding it into
+  the pass rate as a fail would understate correctness and, if the verifier trips more
+  on one arm's diffs, score a scorer confound as a correctness loss. The runner fails
+  closed on it: the trial is excluded from every rate and mean and surfaced here.
 - **Argot probes** (feature-specific metadata) — how many times the agent
   called `argot_load` and how many assistant messages carried a `§` handle.
   Probe rows only appear for arms that engaged the mechanism; every feature
