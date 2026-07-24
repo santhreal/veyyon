@@ -4,12 +4,6 @@
 
 ## [Unreleased]
 
-## [1.0.33] - 2026-07-24
-
-### Fixed
-
-- `NodeFilesystem` (the shipped disk-backed default) now writes crash-atomically. `writeText` and the content form of `move` stream into a sibling temp file and rename it over the target, so a process death mid-write (SIGINT, OOM kill, full disk, power loss) leaves the user's source file whole rather than truncated. An existing file's permission bits and a symlinked target are preserved.
-
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
@@ -373,6 +367,12 @@ All notable changes to this package will be documented in this file.
 - Fixed repeated patch application mutating cached `after_anchor` edits between target snapshots
 - Fixed multi-section patching to preflight write policies and reject duplicate canonical targets before any section is committed
 - Fixed mixed line-ending restoration to preserve the first newline style instead of rewriting ties to LF
+
+## [1.0.33] - 2026-07-24
+
+### Fixed
+
+- `NodeFilesystem` (the shipped disk-backed default) now writes crash-atomically. `writeText` and the content form of `move` stream into a sibling temp file and rename it over the target, so a process death mid-write (SIGINT, OOM kill, full disk, power loss) leaves the user's source file whole rather than truncated. An existing file's permission bits and a symlinked target are preserved.
 
 ## [1.0.25] - 2026-07-24
 
