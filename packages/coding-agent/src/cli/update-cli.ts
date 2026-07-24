@@ -62,10 +62,11 @@ const CHECKSUM_TIMEOUT_MS = 30_000;
  *
  * `install.sh --source` clones the repo under `~/.veyyon/src` and symlinks
  * `~/.local/bin/veyyon` at `<checkout>/packages/coding-agent/scripts/veyyon`.
- * That launcher runs veyyon straight from TypeScript, so a source install must
- * update with `git pull`, never by swapping in a downloaded release binary. The
- * resolved (realpath) veyyon path ending in this suffix is how we tell the two
- * apart; see {@link resolveUpdateMethod}.
+ * That launcher runs veyyon straight from TypeScript, so a source install
+ * updates by advancing the checkout ({@link updateViaSourceAt}), never by
+ * swapping in a downloaded release binary. The resolved (realpath) veyyon path
+ * ending in this suffix is how we tell the two apart; see
+ * {@link resolveUpdateMethod}.
  */
 const SOURCE_LAUNCHER_SUFFIX = path.join("packages", "coding-agent", "scripts", APP_NAME);
 
@@ -103,9 +104,10 @@ function tryRealpath(p: string): string | undefined {
  *
  * `binary` is the `curl | sh` standalone binary: update by downloading the new
  * release binary and swapping it in place. `source` is `install.sh --source`,
- * whose PATH entry is a symlink to the in-checkout launcher: a binary swap would
- * overwrite the checkout's launcher, so it must not self-update at all (update
- * with `git pull`). Veyyon ships GitHub-only, so there is no package-manager
+ * whose PATH entry is a symlink to the in-checkout launcher: it updates by
+ * advancing the checkout (fetch, ff-only merge, reinstall, regen — see
+ * {@link updateViaSourceAt}), never by a binary swap that would overwrite the
+ * launcher. Veyyon ships GitHub-only, so there is no package-manager
  * (bun/npm/Homebrew/mise) install path to detect.
  */
 type UpdateMethod = "binary" | "source";
@@ -328,7 +330,9 @@ export async function verifyDownloadChecksum(filePath: string, sidecarUrl: strin
 	}
 	const expected = parseSha256Sidecar(await response.text());
 	if (!expected) {
-		throw new Error(`Published checksum at ${sidecarUrl} is empty or unparseable — refusing to install an unverified binary`);
+		throw new Error(
+			`Published checksum at ${sidecarUrl} is empty or unparseable — refusing to install an unverified binary`,
+		);
 	}
 	const hasher = new Bun.CryptoHasher("sha256");
 	const stream = fs.createReadStream(filePath);
@@ -535,7 +539,9 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 		throw err;
 	}
 	if (!response.ok) {
-		throw new Error(formatBinaryDownloadFailure(response.status, response.statusText, url, expectedVersion, binaryName));
+		throw new Error(
+			formatBinaryDownloadFailure(response.status, response.statusText, url, expectedVersion, binaryName),
+		);
 	}
 	if (!response.body) {
 		throw new Error(`Release binary download from ${url} returned HTTP ${response.status} with an empty body`);
@@ -585,28 +591,98 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 }
 
 /**
- * Human-facing guidance for why a source install cannot be self-updated, and
- * what to run instead. Shared by the interactive path and the auto-update skip
- * so both say the same thing.
+ * Human-facing guidance shown when a source checkout cannot be updated
+ * automatically (dirty tree, diverged branch, missing git). Shared by every
+ * source-update failure so they all name the same manual recovery.
  */
 export function sourceInstallUpdateGuidance(launcherPath: string): string {
 	return (
 		`${APP_NAME} is installed from source (its launcher is ${launcherPath}). ` +
-		`A binary self-update would overwrite that launcher, so it is refused. ` +
-		`Update the checkout instead: cd into it and run \`git pull && bun setup\`, ` +
+		`Update the checkout manually: cd into it and run \`git pull && bun install\`, ` +
 		`or re-run the installer with \`--source\`.`
 	);
+}
+
+/** A command the source updater runs, with a human label for reporting. */
+interface SourceUpdateStep {
+	label: string;
+	command: string[];
+	cwd: string;
+}
+
+/**
+ * Run one source-update step; injectable so tests exercise the sequencing and
+ * failure surfaces without a real git checkout or network.
+ */
+export type SourceUpdateExec = (step: SourceUpdateStep) => Promise<{ exitCode: number; stderr: string }>;
+
+const defaultSourceUpdateExec: SourceUpdateExec = async step => {
+	const proc = Bun.spawn(step.command, { cwd: step.cwd, stdout: "ignore", stderr: "pipe" });
+	const stderr = await new Response(proc.stderr).text();
+	const exitCode = await proc.exited;
+	return { exitCode, stderr };
+};
+
+/**
+ * Update a source install in place: fast-forward the checkout, then reinstall
+ * workspace dependencies (whose postinstall regenerates gitignored build
+ * artifacts like tool-views.generated.js — a pulled checkout without that
+ * regen step does not even boot, which is why this owns BOTH steps instead of
+ * telling the user to run them).
+ *
+ * Fails closed with the manual guidance on anything unexpected: a dirty tree
+ * or diverged branch must never be force-resolved by an updater (the checkout
+ * is the user's working tree; see the git safety rules).
+ */
+export async function updateViaSourceAt(
+	launcherPath: string,
+	version: string,
+	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
+	exec: SourceUpdateExec = defaultSourceUpdateExec,
+): Promise<void> {
+	// launcher = <checkout>/packages/coding-agent/scripts/veyyon
+	const resolvedLauncher = tryRealpath(launcherPath) ?? launcherPath;
+	const checkoutRoot = path.join(path.dirname(resolvedLauncher), "..", "..", "..");
+	const steps: SourceUpdateStep[] = [
+		{ label: "Fetching", command: ["git", "fetch", "--tags", "origin"], cwd: checkoutRoot },
+		{ label: "Fast-forwarding checkout", command: ["git", "merge", "--ff-only", "@{u}"], cwd: checkoutRoot },
+		{ label: "Installing dependencies", command: ["bun", "install"], cwd: checkoutRoot },
+		// Bun runs NO root lifecycle scripts on workspace installs (verified
+		// empirically 2026-07-24: neither prepare nor postinstall fire), so the
+		// gitignored build artifacts must be regenerated explicitly — a pulled
+		// checkout keeps a STALE tool-views bundle otherwise, and a fresh one
+		// has none and cannot boot.
+		{
+			label: "Regenerating build artifacts",
+			command: ["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"],
+			cwd: checkoutRoot,
+		},
+	];
+	report(`Updating source checkout at ${checkoutRoot} to ${version}`);
+	for (const step of steps) {
+		report(`${step.label}...`);
+		const { exitCode, stderr } = await exec(step);
+		if (exitCode !== 0) {
+			const detail = stderr.trim().length > 0 ? `: ${stderr.trim()}` : "";
+			throw new Error(
+				`${step.label} failed (\`${step.command.join(" ")}\` exited ${exitCode})${detail}. ` +
+					sourceInstallUpdateGuidance(launcherPath),
+			);
+		}
+	}
+	report(`Updated source checkout to ${version}. Restart ${APP_NAME} to run it.`);
 }
 
 /**
  * Install a specific release for the veyyon currently first in PATH.
  *
  * A binary install is updated by downloading the release binary and swapping it
- * in place. A source install (`install.sh --source`) is refused loudly: its PATH
- * entry is a symlink into the checkout, so a binary swap would overwrite the
- * launcher — never fall back to clobbering it (Law 10). This is the single owner
- * of that dispatch: both `veyyon update` and the automatic startup update go
- * through it, so they can never drift into updating by different rules.
+ * in place. A source install (`install.sh --source`) is updated in its own
+ * terms — fast-forward the checkout and reinstall dependencies — NEVER by a
+ * binary swap, which would overwrite the in-checkout launcher (Law 10). This is
+ * the single owner of that dispatch: both `veyyon update` and the automatic
+ * startup update go through it, so they can never drift into updating by
+ * different rules.
  *
  * `force` is accepted for API symmetry with callers (the rollback path passes
  * it); a binary swap is unconditional, so it does not change binary behavior.
@@ -619,7 +695,8 @@ export async function installRelease(
 	void force;
 	const target = await resolveUpdateTarget();
 	if (target.method === "source") {
-		throw new Error(sourceInstallUpdateGuidance(target.path));
+		await updateViaSourceAt(target.path, version, report);
+		return;
 	}
 	await updateViaBinaryAt(target.path, version, report);
 }

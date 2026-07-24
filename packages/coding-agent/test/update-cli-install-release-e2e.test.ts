@@ -207,9 +207,14 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		expect(leftovers).toEqual([]);
 	});
 
-	/** A source install (PATH resolves into the checkout launcher) must refuse
-	 * the binary swap outright — before any network request happens. */
-	it("refuses to self-update a source install without fetching anything", async () => {
+	/** A source install (PATH resolves into the checkout launcher) must never
+	 * touch the release-binary path: no fetch, no swap. It updates in its own
+	 * terms — the git/bun source steps — and a failing first step surfaces the
+	 * manual guidance while leaving the launcher untouched. (A user hit the
+	 * dead-end version of this on 2026-07-24: the updater refused source
+	 * installs with advice instead of updating, stranding them on a version
+	 * whose TUI bug had already been fixed.) */
+	it("updates a source install via the source steps, never fetching a release binary", async () => {
 		const dir = await makeTempDir();
 		// The real source-launcher suffix: packages/coding-agent/scripts/veyyon.
 		const launcherDir = path.join(dir, "checkout", "packages", "coding-agent", "scripts");
@@ -219,7 +224,11 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		vi.spyOn(veyUtils, "$which").mockImplementation(bin => (bin === "veyyon" ? launcherPath : null));
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-		await expect(installRelease("9.9.9", false, () => {})).rejects.toThrow(/installed from source|git pull/i);
+		// The temp dir is not a git checkout, so the first source step (git
+		// fetch) fails — proving the dispatch went to the source path and that
+		// its failure carries the manual recovery, not a binary-swap error.
+		await expect(installRelease("9.9.9", false, () => {})).rejects.toThrow(/git pull && bun install/);
 		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(await fs.readFile(launcherPath, "utf8")).toBe(fakeBinaryScript("1.0.0"));
 	});
 });

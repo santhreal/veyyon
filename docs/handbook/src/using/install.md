@@ -116,11 +116,14 @@ Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the `curl` installer from veyyon.dev) replaces its own binary
 with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
-place a binary ever comes from. A source checkout does not self-update the
-binary; update it with `git pull` and a rebuild (`bun setup`). There is no npm,
-Homebrew, or other package-manager channel to go through. If an automatic update
-fails, Veyyon says so and tells you to retry with `veyyon update`; it never fails
-quietly and leaves you on an old version without a word.
+place a binary ever comes from. A source checkout updates in its own terms:
+`veyyon update` fast-forwards the checkout, reinstalls dependencies, and
+regenerates build artifacts, all in one command. The background updater leaves
+source checkouts alone (it never runs git against your working tree); it tells
+you a version exists and you run `veyyon update` when you want it. There is no
+npm, Homebrew, or other package-manager channel to go through. If an update
+fails, Veyyon says so and tells you to retry with `veyyon update`; it never
+fails quietly and leaves you on an old version without a word.
 
 If the same version fails to install twice, the cause is usually the machine
 rather than the release: a binary owned by another user, a read-only image, or a
