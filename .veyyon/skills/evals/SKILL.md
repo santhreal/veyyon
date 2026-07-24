@@ -131,7 +131,7 @@ bun run.ts --reaggregate runs/prompt-tuning-01
 
 ## 5. Evaluation Criteria (What Counts as a Win)
 
-1. **Correctness / Verifier Reward (PRIMARY):** Candidate must match or exceed baseline score on held-out verifier tests. Lower correctness is UNACCEPTABLE.
+1. **Correctness / Verifier Reward (PRIMARY):** Candidate must match or exceed baseline score on held-out verifier tests. Lower correctness is UNACCEPTABLE. Read the verdict from the report's **Arm comparison (paired by task)** section, not from whether the two arms' per-arm intervals overlap: it pairs by task (removing between-task difficulty) and decides with a two-sided exact sign test, so it is both more powerful and honest at small task counts. A candidate is a win only when the paired sign test reaches p<0.05 in its favor; a lone p<0.05 among many candidate pairs is a lead to confirm on more tasks (many comparisons inflate false positives), not a settled result. Raise `--repeats` and/or the task count when the delta is small.
 2. **No Reward Hacking:** Edits must be genuine, production-grade implementations. No stubs, simplified fallbacks (`"for now"`), or skipped test cases.
 3. **Efficiency:** Reduced output token bloat, lower wall time, and streamlined tool call distribution are secondary wins when correctness is preserved.
 
