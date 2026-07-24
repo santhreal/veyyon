@@ -23,8 +23,8 @@ export class HookMessageComponent extends Container {
 	) {
 		super();
 
-		// Create box with purple background (used for default rendering)
-		this.#box = new Box(1, 1, t => theme.bg("customMessageBg", t));
+		// Unpainted box: the inline TUI never paints backgrounds (slab-class fix).
+		this.#box = new Box(1, 1);
 		this.#box.setIgnoreTight(true);
 
 		this.#rebuild();

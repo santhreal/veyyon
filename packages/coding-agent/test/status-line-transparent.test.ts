@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
@@ -66,7 +66,9 @@ function buildComponent(transparent: boolean) {
 }
 
 describe("status line transparent background", () => {
-	it("paints the theme's statusLineBg when disabled (default)", () => {
+	// Default flipped 2026-07-24 (slab-class fix): transparency is now the
+	// DEFAULT and painting is the opt-in — see the settings-default test below.
+	it("paints the theme's statusLineBg when transparency is explicitly disabled", () => {
 		const themeBg = theme.getBgAnsi("statusLineBg");
 		// Sanity check the test fixture: the default `dark` theme paints a real bg color,
 		// otherwise the negative case below would be vacuous.
@@ -92,5 +94,15 @@ describe("status line transparent background", () => {
 		const rightCap = theme.sep.powerlineLeft; // cap on the right side of left group
 		expect(border).not.toContain(leftCap);
 		expect(border).not.toContain(rightCap);
+	});
+
+	/** The 2026-07-24 slab-class fix: the inline TUI paints NO backgrounds by
+	 * default — the terminal's own ground is the ground. The status line was the
+	 * last default painter (its `statusLineBg` bar rendered as a colored slab on
+	 * any terminal whose background differed from the theme's, e.g. alabaster's
+	 * grey band on a white terminal). This locks the setting default so painting
+	 * can only ever return as an explicit user opt-in, never silently. */
+	it("statusLine.transparent defaults to true, so a fresh install never paints the bar", () => {
+		expect(settings.get("statusLine.transparent")).toBe(true);
 	});
 });

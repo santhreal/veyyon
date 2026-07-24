@@ -147,15 +147,19 @@ describe("composerBg — the quiet card ground (DS-6 layer 0)", () => {
 		expect(theme.getBgAnsi("composerBg")).toBe("\x1b[49m");
 	});
 
-	/** A theme that omits composerBg inherits statusLineBg at load time — the
-	 * same one-owner default pattern as the accent tokens, so ~100 legacy
-	 * themes keep loading and get a coherent card for free. */
-	it("defaults to the theme's statusLineBg when omitted", () => {
+	/** A theme that omits composerBg gets the UNPAINTED sentinel (`\x1b[49m`),
+	 * never a painted fallback. The old default inherited statusLineBg, which
+	 * painted the composer band as a colored slab on any terminal whose ground
+	 * differed from the theme (2026-07-24 operator screenshot: alabaster's
+	 * #ececf0 band on a white terminal). Locks the slab-class fix: the inline
+	 * TUI's ground is the terminal's own background unless a theme explicitly
+	 * declares a composer card. */
+	it("defaults to the unpainted terminal ground when omitted", () => {
 		for (const [name, json] of Object.entries(defaultThemes)) {
 			const colors = (json as ThemeJson).colors as Record<string, unknown>;
 			if ("composerBg" in colors) continue;
 			const t = createTheme(json as ThemeJson, { mode: "truecolor" });
-			expect(t.getBgAnsi("composerBg"), name).toBe(t.getBgAnsi("statusLineBg"));
+			expect(t.getBgAnsi("composerBg"), name).toBe("\x1b[49m");
 		}
 	});
 

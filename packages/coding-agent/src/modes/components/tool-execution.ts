@@ -888,12 +888,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#renderState.isPartial = this.#isPartial;
 		this.#renderState.spinnerFrame = this.#spinnerFrame;
 
-		// Non-self-framing tools (custom/extension renderers and the generic
-		// fallback) get a padded, state-tinted block — built-ins that draw their
-		// own frame opt out below via the framed-component mark.
-		const stateBgKey = this.#isPartial ? "toolPendingBg" : this.#result?.isError ? "toolErrorBg" : "toolSuccessBg";
-		const stateBgFn = (t: string) => theme.bg(stateBgKey, t);
-
 		// Check for custom tool rendering
 		if (this.#tool && (this.#tool.renderCall || this.#tool.renderResult)) {
 			const tool = this.#tool;
@@ -965,10 +959,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				}
 			}
 			// Custom tools that draw their own frame (task) render flush; plain
-			// extension renderers get the padded, state-tinted block back.
+			// extension renderers keep the padded block. No background is painted
+			// either way: the terminal's own ground is the ground (slab class fix).
 			const customFramed = this.#contentBox.children.some(isFramedBlockComponent);
 			this.#contentBox.setPaddingX(customFramed ? 0 : 1);
-			this.#contentBox.setBgFn(customFramed ? undefined : stateBgFn);
+			this.#contentBox.setBgFn(undefined);
 		} else if (this.#toolName in toolRenderers) {
 			// Built-in tools with renderers
 			const renderer = toolRenderers[this.#toolName];
@@ -1087,7 +1082,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// Generic fallback (no custom/built-in renderer). WidthAwareText
 			// reformats at render time so output fills the actual terminal width
 			// instead of a fixed column cap.
-			this.#contentText.setCustomBgFn(stateBgFn);
+			this.#contentText.setCustomBgFn(undefined);
 			this.#contentText.invalidate();
 		}
 
