@@ -2,14 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.24] - 2026-07-24
-
-### Fixed
-
-- OpenRouter pricing is now parsed through `toPositiveNumber` instead of a bare `parseFloat`, so a malformed price is rejected rather than becoming `NaN`.
-- Hand-authored thinking-effort ladders are now canonicalized at build time.
-- Model compatibility overrides are now applied by own key rather than prototype membership, so an override named after a prototype member is handled correctly.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
@@ -714,6 +706,14 @@
 ### Removed
 
 - Removed the runtime enrichment layer: `enrichModelThinking` (and its non-enumerable memo-slot cache), `refreshModelThinking`, `modelOmitsReasoningEffort`, and the `model-thinking` re-exports of generator-only policies. Thinking metadata is resolved exactly once inside `buildModel`; runtime helpers (`getSupportedEfforts`, `clampThinkingLevelForModel`, `requireSupportedEffort`, the effort mappers) are pure field reads.
+
+## [1.0.24] - 2026-07-24
+
+### Fixed
+
+- OpenRouter pricing is now parsed through `toPositiveNumber` instead of a bare `parseFloat`, so a malformed price is rejected rather than becoming `NaN`.
+- Hand-authored thinking-effort ladders are now canonicalized at build time.
+- Model compatibility overrides are now applied by own key rather than prototype membership, so an override named after a prototype member is handled correctly.
 
 ## [1.0.14] - 2026-07-23
 

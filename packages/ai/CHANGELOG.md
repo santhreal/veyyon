@@ -2,20 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.24] - 2026-07-24
-
-### Fixed
-
-- Hardened JSON Schema and provider handling against prototype-named keys. Object keywords, the omit and membership checks in the Responses equality chain, Codex client metadata, and prototype-named header and effort keys are all now matched by own property rather than `in`, so a field named after a prototype member (`__proto__`, `constructor`) is no longer dropped or mishandled. Model-controlled tool-argument keys go through a prototype-safe setter shared with `@veyyon/utils`, which also fixes a loop-guard hash collision.
-- `multipleOf` is now validated float-safely through one shared owner used by both schema validators.
-- The Cursor grep integration no longer mislabels a date-bearing match line as a context line.
-- The Kimi device-id file's config directory is now created before the file is written.
-- The sign-in success page text now sits below the sun graphic instead of over it.
-
-### Performance
-
-- JSON Schema pattern compilation is now cached instead of recompiled for every value validated.
-
 ## [16.5.2] - 2026-07-14
 
 ### Added
@@ -4210,6 +4196,20 @@
 ## [1.337.0] - 2026-01-02
 
 Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mono](https://github.com/badlogic/pi-mono).
+
+## [1.0.24] - 2026-07-24
+
+### Fixed
+
+- Hardened JSON Schema and provider handling against prototype-named keys. Object keywords, the omit and membership checks in the Responses equality chain, Codex client metadata, and prototype-named header and effort keys are all now matched by own property rather than `in`, so a field named after a prototype member (`__proto__`, `constructor`) is no longer dropped or mishandled. Model-controlled tool-argument keys go through a prototype-safe setter shared with `@veyyon/utils`, which also fixes a loop-guard hash collision.
+- `multipleOf` is now validated float-safely through one shared owner used by both schema validators.
+- The Cursor grep integration no longer mislabels a date-bearing match line as a context line.
+- The Kimi device-id file's config directory is now created before the file is written.
+- The sign-in success page text now sits below the sun graphic instead of over it.
+
+### Performance
+
+- JSON Schema pattern compilation is now cached instead of recompiled for every value validated.
 
 ## [1.0.20] - 2026-07-23
 
