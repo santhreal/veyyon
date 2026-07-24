@@ -35,7 +35,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import YAML from "yaml";
-import { type ArmResult, renderReport } from "./aggregate";
+import { type ArmResult, jobNameOf, parseJobName, renderReport } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 import { encodeArmModelMismatch } from "./treatment-guard";
 
@@ -65,30 +65,6 @@ function requireFile(p: string, hint: string): void {
 		console.error(`missing: ${p}\n${hint}`);
 		process.exit(1);
 	}
-}
-
-// The job name is the single identifier for a container run, a config file, and a
-// jobs/ subdirectory, so its format lives in exactly one pair of functions. A
-// repeat suffix (`__r<n>`) is appended only when a cell is sampled more than once;
-// a single-sample run keeps the historic `arm__task` name so old runs still
-// reaggregate. Arm names never contain `__` and DeepSWE task names are hyphenated,
-// so the first `__` splits arm from the rest and a trailing `__r<digits>` is the
-// repeat index.
-function jobNameOf(arm: string, task: string, repeat: number, repeats: number): string {
-	return repeats > 1 ? `${arm}__${task}__r${repeat}` : `${arm}__${task}`;
-}
-
-function parseJobName(jobName: string): { arm: string; task: string; repeat: number } {
-	const sep = jobName.indexOf("__");
-	const arm = jobName.slice(0, sep);
-	let task = jobName.slice(sep + 2);
-	let repeat = 0;
-	const m = task.match(/__r(\d+)$/);
-	if (m) {
-		repeat = Number(m[1]);
-		task = task.slice(0, m.index);
-	}
-	return { arm, task, repeat };
 }
 
 async function ensureBinaryUpToDate(): Promise<void> {

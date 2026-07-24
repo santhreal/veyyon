@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { type ArmResult, renderReport, summarizeCell } from "./aggregate";
+import { type ArmResult, jobNameOf, parseJobName, renderReport, summarizeCell } from "./aggregate";
 
 /** Build an ArmResult with sane defaults, overriding only what a test cares about. */
 function res(over: Partial<ArmResult>): ArmResult {
@@ -34,6 +34,55 @@ function res(over: Partial<ArmResult>): ArmResult {
 		...over,
 	};
 }
+
+describe("jobNameOf / parseJobName — the reaggregate round-trip", () => {
+	// reaggregate rebuilds results from job-name strings alone, so a mismatch
+	// between how a name is written and how it is read would silently file a
+	// sample under the wrong task or repeat. These lock the two functions as exact
+	// inverses across the shapes the bench actually produces.
+
+	test("a single-sample run keeps the historic arm__task name (no suffix)", () => {
+		// Backward compatibility: runs produced before --repeats existed have no
+		// suffix and must still parse to repeat 0, or old runs stop reaggregating.
+		expect(jobNameOf("full", "koota-query-predicates", 0, 1)).toBe("full__koota-query-predicates");
+		expect(parseJobName("full__koota-query-predicates")).toEqual({
+			arm: "full",
+			task: "koota-query-predicates",
+			repeat: 0,
+		});
+	});
+
+	test("a repeated run appends __r<n> and parses it back to the repeat index", () => {
+		expect(jobNameOf("baseline", "etree-xml-diff-patch", 2, 3)).toBe("baseline__etree-xml-diff-patch__r2");
+		expect(parseJobName("baseline__etree-xml-diff-patch__r2")).toEqual({
+			arm: "baseline",
+			task: "etree-xml-diff-patch",
+			repeat: 2,
+		});
+	});
+
+	test("round-trips every cell of a small grid so no sample is misfiled", () => {
+		for (const arm of ["baseline", "argot-setting-only", "candidate-argot-nudge"]) {
+			for (const task of ["fastapi-implicit-head-options", "ytt-jsonpath-query-api"]) {
+				for (const repeats of [1, 5]) {
+					for (let repeat = 0; repeat < repeats; repeat++) {
+						const name = jobNameOf(arm, task, repeat, repeats);
+						expect(parseJobName(name)).toEqual({ arm, task, repeat: repeats > 1 ? repeat : 0 });
+					}
+				}
+			}
+		}
+	});
+
+	test("a two-digit repeat index (K > 9) still parses", () => {
+		// The suffix regex is \d+, not a single digit; K=20 must not truncate r10.
+		expect(parseJobName(jobNameOf("full", "some-task", 10, 20))).toEqual({
+			arm: "full",
+			task: "some-task",
+			repeat: 10,
+		});
+	});
+});
 
 describe("summarizeCell — pass rate and standard error", () => {
 	test("all passes gives rate 1 and zero standard error", () => {
