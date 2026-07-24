@@ -38,12 +38,14 @@ import {
 } from "../utils/keybinding-matchers";
 import type { HookSelectorSlider } from "./hook-selector";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
+	ModalRevealDriver,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
@@ -113,6 +115,10 @@ export interface PlanReviewOverlayOptions {
 	slider?: HookSelectorSlider;
 	/** Display label for the external-editor key, surfaced in the footer help. */
 	externalEditorLabel?: string;
+	/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+	reveal?: boolean;
+	/** Repaint hook for the unfold ticks (the overlay is otherwise static). */
+	requestRender?: () => void;
 }
 
 /** Default trailing footer hint when the caller supplies none. */
@@ -121,6 +127,7 @@ const DEFAULT_HELP_SUFFIX = "esc cancel";
 export class PlanReviewOverlay implements Component {
 	#mdTheme: MarkdownTheme;
 	#scrollView: ScrollView;
+	#reveal = new ModalRevealDriver();
 	#sections: OverlaySection[] = [];
 	#toc: number[] = [];
 	/** Shallowest level among ToC entries, used to flatten indentation. */
@@ -167,6 +174,9 @@ export class PlanReviewOverlay implements Component {
 		options: PlanReviewOverlayOptions,
 		private readonly callbacks: PlanReviewOverlayCallbacks,
 	) {
+		if (options.reveal) {
+			this.#reveal.start(() => options.requestRender?.());
+		}
 		this.#mdTheme = getMarkdownTheme();
 		this.#scrollView = new ScrollView([], {
 			height: MIN_BODY_ROWS,
@@ -927,6 +937,6 @@ export class PlanReviewOverlay implements Component {
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowOffset = shell.geometry?.bodyRowStart ?? 0;
 		this.#sidebarClickMaxCol = sidebarShown ? (shell.geometry?.leftPad ?? 0) + 2 + sidebarWidth + 1 : 0;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

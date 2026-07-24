@@ -30,12 +30,14 @@ import { getMarkdownTheme, highlightCode, theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
+	ModalRevealDriver,
 } from "./modal-shell";
 import { handleTabSwitchKey } from "./selector-helpers";
 
@@ -94,6 +96,8 @@ interface AskDialogOptions {
 	timeout?: number;
 	onTimeout?: () => void;
 	tui?: TUI;
+	/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+	reveal?: boolean;
 }
 
 interface QuestionState {
@@ -321,6 +325,7 @@ export class AskDialogComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRenderExternal: (() => void) | undefined;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		private readonly questions: ExtensionAskDialogQuestion[],
@@ -347,6 +352,9 @@ export class AskDialogComponent implements Component {
 		// status to `ask` so any concurrent shimmer surface reads the green
 		// "your turn" breath. `dispose()` returns it to rest.
 		setShimmerActivity("ask");
+		if (options.reveal) {
+			this.#reveal.start(() => this.#onRequestRenderExternal?.());
+		}
 		if (options.timeout && options.timeout > 0) {
 			this.#countdown = new CountdownTimer(
 				options.timeout,
@@ -366,6 +374,7 @@ export class AskDialogComponent implements Component {
 
 	dispose(): void {
 		this.#closed = true;
+		this.#reveal.stop();
 		this.#countdown?.dispose();
 		// The user answered (or it timed out): drop the `ask` breath back to rest.
 		// The next agent turn's `agent_start` flips it to `thinking`.
@@ -425,7 +434,7 @@ export class AskDialogComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	/** Footer chips for the active tab (browse vs submit review), mirroring
