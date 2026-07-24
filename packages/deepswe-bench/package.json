@@ -8,6 +8,7 @@
 		"argot": "workspace:*"
 	},
 	"scripts": {
-		"bench": "bun run.ts"
+		"bench": "bun run.ts",
+		"test": "bun test"
 	}
 }

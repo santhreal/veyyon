@@ -1,3 +1,0 @@
-# Candidate v6 arm: candidate-v5 base + recursive LSP symbol grounding & mandatory build/test verification
-argot:
-  enabled: false

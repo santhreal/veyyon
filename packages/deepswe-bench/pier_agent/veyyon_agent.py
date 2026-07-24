@@ -96,25 +96,52 @@ class VeyyonAgent(BaseInstalledAgent):
             host_assets / "arms" / f"{self._arm_name}.yml",
             f"{CONTAINER_ASSETS_DIR}/arm.yml",
         )
-        has_custom_prompt = (host_assets / "arms" / f"{self._arm_name}.prompt.md").is_file()
-        if has_custom_prompt:
+        # An arm MAY carry a .rule.md, staged by run.ts, injected as an
+        # always-apply rule.
+        has_rule = (host_assets / "rules" / f"{self._arm_name}.md").is_file()
+        if has_rule:
+            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/rules", user="root")
             await environment.upload_file(
-                host_assets / "arms" / f"{self._arm_name}.prompt.md",
-                f"{CONTAINER_ASSETS_DIR}/prompt.md",
+                host_assets / "rules" / f"{self._arm_name}.md",
+                f"{CONTAINER_ASSETS_DIR}/rules/{self._arm_name}.md",
+            )
+        # An arm MAY carry a per-section prompt override, staged by run.ts as
+        # sections/<arm>.json. It reaches the agent ONLY through the eval-only
+        # VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS env var — never a config key — so a
+        # normal run cannot see it and it cannot contaminate production behavior.
+        # It swaps exactly one banner region and leaves every other section, and
+        # its {{#if <setting>}} gating, byte-for-byte intact. Whole-prompt
+        # replacement and --append-system-prompt are deliberately NOT wired: they
+        # freeze a snapshot that stops responding to settings and can silently
+        # drop a settings-gated section (the delegation-block catastrophe).
+        has_sections = (host_assets / "sections" / f"{self._arm_name}.json").is_file()
+        if has_sections:
+            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/sections", user="root")
+            await environment.upload_file(
+                host_assets / "sections" / f"{self._arm_name}.json",
+                f"{CONTAINER_ASSETS_DIR}/sections/{self._arm_name}.json",
             )
         await environment.exec(
             command=f"chmod +x {CONTAINER_ASSETS_DIR}/vey", user="root"
         )
+        rule_setup = f" && mkdir -p ~/.veyyon/rules && cp {CONTAINER_ASSETS_DIR}/rules/* ~/.veyyon/rules/" if has_rule else ""
         setup = (
             "mkdir -p ~/.veyyon/profiles/default/shared-auth && "
             f"cp {CONTAINER_ASSETS_DIR}/auth-agent.db ~/.veyyon/profiles/default/shared-auth/agent.db && "
-            f"cp {CONTAINER_ASSETS_DIR}/arm.yml ~/.veyyon/arm.yml"
+            f"cp {CONTAINER_ASSETS_DIR}/arm.yml ~/.veyyon/arm.yml{rule_setup}"
         )
-        prompt_flag = f" --system-prompt {CONTAINER_ASSETS_DIR}/prompt.md" if has_custom_prompt else ""
+        # Read the section-override JSON into the env var IN the vey process only.
+        # `VAR="$(cat file)" vey ...` scopes it to that one command and captures
+        # the JSON verbatim (quotes, braces) with no shell re-parsing of content.
+        sections_env = (
+            f'VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS="$(cat {CONTAINER_ASSETS_DIR}/sections/{self._arm_name}.json)" '
+            if has_sections
+            else ""
+        )
         command = (
             f"{setup} && "
-            f"{CONTAINER_ASSETS_DIR}/vey --model {shlex.quote(self.model_name)} "
-            f"--auto-approve --config $HOME/.veyyon/arm.yml{prompt_flag} "
+            f"{sections_env}{CONTAINER_ASSETS_DIR}/vey --model {shlex.quote(self.model_name)} "
+            f"--auto-approve --config $HOME/.veyyon/arm.yml "
             f"--print {shlex.quote(instruction)} "
             "2>&1 </dev/null | stdbuf -oL tee /logs/agent/veyyon.txt"
         )

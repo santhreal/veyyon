@@ -11,6 +11,17 @@ that differs between runs of the same task is the arm. Benching a feature means:
 add an arm that turns it on, keep or add one that leaves it off, run, read the
 table. That is the entire workflow, and it is the same for every feature.
 
+### BINDING RULE: Single Independent Variable Rule (Controlled Experiments)
+Every evaluation comparison MUST vary **EXACTLY ONE independent variable** between arms:
+- **Prompt Benchmark:** Same model, same feature flags; ONLY one section of the system prompt differs. Override exactly one banner section via the candidate's `arms/<arm>.sections.yml`; its control is the same config with no sections file. Every other section — and every settings-gated block in it — stays byte-for-byte. The override reaches the agent only through the eval-only `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` env var, never a config key, so it cannot leak into a normal run. See "Prompt section arms" below.
+- **Feature Flag Benchmark:** Same model, same prompt; ONLY the setting flag differs (e.g. `argot.enabled: false` vs `argot.enabled: true`).
+- **Model Benchmark:** Same prompt, same feature flags; ONLY the `--model <id>` differs.
+
+**NEVER vary multiple factors in a single arm comparison.** If an arm alters the prompt AND the model AND a setting simultaneously, the benchmark is invalid because observed deltas cannot be attributed to a single cause.
+
+**NEVER replace the whole system prompt to test a prompt change.** A whole-prompt override (a custom `SYSTEM.md` / `--system-prompt` snapshot) freezes a point-in-time copy that no longer responds to settings, and it silently drops every settings-gated section it forgets to copy — the delegation block renders only when the delegation setting is on, so a hand-compressed snapshot that omits it inverts that setting invisibly. That is two hidden variables, not one. Override one named section instead; the engine renders all the others.
+
+The runner enforces the mechanical floor of this rule: if any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module), it fails loudly with the colliding arm names instead of running. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
 ## Prerequisites (once per machine)
 
 0. Clone the tasks into this package: `git clone --depth 1
@@ -88,9 +99,11 @@ rerun or expand the task set before trusting the sign of the difference.
   unchanged. Pier executes: the agent works in the task's isolated container,
   commits its work, and the verifier grades the patch in a pristine container.
 - `pier_agent/veyyon_agent.py` is the only custom piece: a Pier agent that
-  uploads the locally built `vey` binary, auth DB, and arm overlay into the
-  container, runs `vey --print` with `--config`, copies the persisted session
-  out, and reports usage to Pier's `agent_result`.
+  uploads the locally built `vey` binary, auth DB, arm overlay, any `.rule.md`,
+  and any per-section prompt override into the container, runs `vey --print`
+  with `--config` (setting `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` only when the arm
+  carries an override), copies the persisted session out, and reports usage to
+  Pier's `agent_result`.
 - `pier_agent/oneshot_prompt.md.j2` wraps every task instruction in a
   one-shot contract (finish end to end, integrate subagent results, commit
   before stopping). Without it the model treats the run like an interactive
@@ -103,14 +116,55 @@ rerun or expand the task set before trusting the sign of the difference.
 - Failed runs are recorded with their error and counted separately, never
   silently dropped from the table.
 
-## System Prompt Candidate Arms
+## Prompt section arms
 
-To evaluate a **system prompt variation**:
-1. Create `arms/<arm_name>.yml` with your config overrides (e.g. `arms/candidate.yml`).
-2. Create `arms/<arm_name>.prompt.md` containing your candidate system prompt template (e.g. `arms/candidate.prompt.md`).
-3. Run `bun run.ts --arms baseline,candidate --tasks tasks/pilot-10.txt`.
+The system prompt is benched one section at a time. The default prompt is built
+from named banner sections — `conventions`, `role`, `runtime`, `toolPolicy`,
+`executionWorkflow`, `deliveryContract` — and a per-section override swaps
+exactly one of them while every other section, and every `{{#if <setting>}}`
+conditional inside it, is reused byte-for-byte from the shipped prompt. That is
+why this is the only sanctioned way to bench a prompt change: overriding
+`executionWorkflow` cannot touch the settings-gated delegation block in
+`toolPolicy`, so an eval can never silently override a setting the way a
+whole-prompt snapshot does.
 
-The runner will automatically stage the candidate system prompt into the Docker container and pass `--system-prompt` to `vey`.
+The override is EVAL-ONLY and uncontaminatable. It is not a config key and not a
+CLI flag: `vey` reads it exclusively from the `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`
+environment variable (a JSON object of `section -> replacement text`), which the
+bench sets around a single arm and nothing else sets. A normal run — yours or
+production — has no way to reach the path, so no `config.yml` can shift a prompt
+section. When the var is present `vey` logs a loud warning that the prompt is not
+the production one; when it is absent the production prompt is used verbatim.
+
+Put the override in the candidate arm's `arms/<arm>.sections.yml` (a YAML mapping,
+authored for readability; `run.ts` compiles it to the JSON the env var carries).
+Each value MUST begin with that section's banner — `vey` rejects a banner-less
+override, an unknown section name, and a non-string value loudly, so a section
+change never fails silently:
+
+```yaml
+# arms/candidate-lean-workflow.sections.yml
+executionWorkflow: |
+  EXECUTION WORKFLOW
+  ==============
+  # ... your compressed workflow section, banner included ...
+```
+
+Workflow:
+
+1. Copy the control arm's `.yml` to `arms/<arm>.yml` (the config stays identical).
+2. Add `arms/<arm>.sections.yml` with exactly one section's replacement.
+3. Run `bun run.ts --arms <control>,<arm> --tasks tasks/pilot-10.txt`.
+
+If the candidate ends up identical to its control (empty override, or a config
+copied with nothing else changed), the runner refuses to run and names the
+collision — see the Single Independent Variable Rule above.
+
+An arm may also carry `arms/<arm>.rule.md`, injected as one always-apply rule
+into `~/.veyyon/rules/` — a separate single-IV vehicle for benching an additive
+behavioral nudge rather than a section rewrite (this is what
+`candidate-argot-nudge` uses).
+
 ## The argot pilot arms (2026-07-21)
 
 - `none` — `argot.enabled: false`.

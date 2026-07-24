@@ -28,6 +28,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import YAML from "yaml";
+import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 
 interface ArmResult {
 	arm: string;
@@ -353,12 +355,80 @@ async function main(): Promise<void> {
 	fs.copyFileSync(VEY_BINARY, path.join(assetsDir, "vey"));
 	fs.chmodSync(path.join(assetsDir, "vey"), 0o755);
 	fs.copyFileSync(AUTH_DB, path.join(assetsDir, "auth-agent.db"));
+	// Stage each arm's config overlay, an optional per-section prompt override,
+	// and an optional .rule.md, then fingerprint the exact inputs the container
+	// will see. A per-section prompt experiment lives in a SEPARATE
+	// arms/<arm>.sections.yml file (section -> replacement text), staged as
+	// sections/<arm>.json — the exact JSON bytes the agent reads through the
+	// eval-only VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS env var. It is deliberately NOT
+	// a config key: no config.yml can reach it, so it cannot contaminate a normal
+	// run. The fingerprint enforces the single-IV floor below: two arms may not
+	// reduce to identical (config, sections, rule).
+	const armFingerprints = new Map<string, string>();
 	for (const arm of arms) {
-		const armYamlPath = path.join(BENCH_DIR, "arms", `${arm}.yml`);
-		fs.copyFileSync(armYamlPath, path.join(assetsDir, "arms", `${arm}.yml`));
-		const promptPathCandidate = path.join(BENCH_DIR, "arms", `${arm}.prompt.md`);
-		if (fs.existsSync(promptPathCandidate)) {
-			fs.copyFileSync(promptPathCandidate, path.join(assetsDir, "arms", `${arm}.prompt.md`));
+		const ymlText = fs.readFileSync(path.join(BENCH_DIR, "arms", `${arm}.yml`), "utf8");
+		fs.writeFileSync(path.join(assetsDir, "arms", `${arm}.yml`), ymlText);
+		let config: unknown;
+		try {
+			config = YAML.parse(ymlText) ?? {};
+		} catch (err) {
+			console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.yml:\n${err}`);
+			process.exit(1);
+		}
+		let sections: unknown;
+		const sectionsPath = path.join(BENCH_DIR, "arms", `${arm}.sections.yml`);
+		if (fs.existsSync(sectionsPath)) {
+			try {
+				sections = YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {};
+			} catch (err) {
+				console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.sections.yml:\n${err}`);
+				process.exit(1);
+			}
+			if (sections === null || typeof sections !== "object" || Array.isArray(sections)) {
+				console.error(
+					`error: arm "${arm}" arms/${arm}.sections.yml must be a mapping of section -> replacement text, ` +
+						`got ${Array.isArray(sections) ? "a sequence" : typeof sections}.`,
+				);
+				process.exit(1);
+			}
+			fs.mkdirSync(path.join(assetsDir, "sections"), { recursive: true });
+			// Stage the exact JSON the env var will carry (compact, deterministic).
+			fs.writeFileSync(path.join(assetsDir, "sections", `${arm}.json`), JSON.stringify(sections));
+		}
+		let rule: Uint8Array | undefined;
+		const rulePath = path.join(BENCH_DIR, "arms", `${arm}.rule.md`);
+		if (fs.existsSync(rulePath)) {
+			rule = fs.readFileSync(rulePath);
+			fs.mkdirSync(path.join(assetsDir, "rules"), { recursive: true });
+			fs.writeFileSync(path.join(assetsDir, "rules", `${arm}.md`), rule);
+		}
+		const mod: ArmInputs = {
+			config,
+			...(sections !== undefined ? { sections } : {}),
+			...(rule !== undefined ? { rule } : {}),
+		};
+		armFingerprints.set(arm, computeArmFingerprint(mod));
+	}
+	// Single-IV floor: a controlled comparison must vary exactly one independent
+	// variable (README, "Single Independent Variable Rule"). Byte-identical arms
+	// vary ZERO, so every delta between them is noise — the silent no-op arm
+	// (candidate-vN copied from baseline with nothing changed). Fail loudly with
+	// the exact collision rather than emit a result-shaped table with no cause.
+	if (arms.length >= 2) {
+		const collisions = findZeroIvCollisions(armFingerprints);
+		if (collisions.length > 0) {
+			const detail = collisions
+				.map(group => `  {${group.join(", ")}} reduce to identical inputs`)
+				.join("\n");
+			console.error(
+				"error: zero-IV arm collision — a controlled comparison must vary exactly one\n" +
+					"independent variable, but these arms reduce to the same (config, sections, rule),\n" +
+					`so every delta between them is noise:\n${detail}\n` +
+					"Fix: give each arm a distinct config, a distinct .sections.yml, or a distinct\n" +
+					".rule.md, or drop the redundant arm from --arms. See README 'Single Independent\n" +
+					"Variable Rule'.",
+			);
+			process.exit(1);
 		}
 	}
 
