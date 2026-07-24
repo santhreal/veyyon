@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Plugin command errors no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace now reads `Failed to install foo: <reason>` instead of `Failed to install foo: Error: <reason>`.
+
 ## [1.0.35] - 2026-07-24
 
 ### Changed
