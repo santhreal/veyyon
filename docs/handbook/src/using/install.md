@@ -35,7 +35,7 @@ $ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific rele
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
 ```
 
-`--source` is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. On Windows the same options are `-Source`, `-Binary`, `-Ref`, and `-Uninstall`. Pass them with the scriptblock form, for example `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source` (see the header of `install.ps1`).
+`--source` is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are `-Source`, `-Binary`, `-Ref`, and `-Uninstall`. Pass them with the scriptblock form, for example `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source` (see the header of `install.ps1`).
 
 If you would rather clone and drive the workspace yourself:
 
@@ -118,7 +118,7 @@ with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
 place a binary ever comes from. A source checkout updates in its own terms:
 `veyyon update` fast-forwards the checkout, reinstalls dependencies, and
-regenerates build artifacts, all in one command. The background updater leaves
+regenerates build artifacts, and refreshes the native addon, all in one command. The background updater leaves
 source checkouts alone (it never runs git against your working tree); it tells
 you a version exists and you run `veyyon update` when you want it. There is no
 npm, Homebrew, or other package-manager channel to go through. If an update

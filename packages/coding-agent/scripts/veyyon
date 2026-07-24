@@ -45,6 +45,26 @@ if [ ! -f "$tool_views" ]; then
 	fi
 fi
 
+# The native addon is the other gitignored built artifact a fresh clone or a
+# bare `git pull` leaves missing; without it veyyon dies at boot with a raw
+# resolve dump. Cheap same-platform glob here; the ensure script (single owner
+# of provisioning: prebuilt release download, then cargo build, then a
+# fail-closed paragraph) runs only on a miss so normal boots pay one stat.
+case "$(uname -s)" in
+Darwin) native_plat=darwin ;;
+*) native_plat=linux ;;
+esac
+case "$(uname -m)" in
+arm64 | aarch64) native_arch=arm64 ;;
+*) native_arch=x64 ;;
+esac
+native_dir=$scripts_dir/../../natives/native
+if ! ls "$native_dir/veyyon_natives.$native_plat-$native_arch"*.node >/dev/null 2>&1; then
+	if ! bun "$scripts_dir/../../natives/scripts/ensure-native.ts" >&2; then
+		exit 1
+	fi
+fi
+
 launch_dir=${VEYYON_DEV_LAUNCH_DIR:-${HOME}/.veyyon/.dev-cwd}
 mkdir -p "$launch_dir"
 
