@@ -5,6 +5,7 @@
 ### Fixed
 
 - Editing a file that starts with a UTF-8 BOM no longer strips the BOM. The `old_text`/`new_text` edit mode read the file through a decoder that silently drops a leading BOM and then wrote the file back without it; it now recovers the BOM from the raw bytes, so the marker survives the edit (line endings were already preserved).
+- Format-on-write no longer fails silently. When an LSP formatter crashes or errors, the edit still saves (unformatted) as before, but the failure is now logged with the server and file instead of being swallowed, and a cancelled or timed-out format is no longer misreported as a formatter failure.
 
 ## [1.0.24] - 2026-07-24
 
