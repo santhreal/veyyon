@@ -262,7 +262,11 @@ describe("Settings", () => {
 
 			expect(fs.existsSync(`${getConfigPath()}.corrupt`)).toBe(false);
 			expect(settings.quarantinedFiles).toEqual([]);
-			expect(settings.get("setupVersion" as SettingPath)).toBe(5);
+			// No `as SettingPath` cast here: setupVersion is a real key, so passing the
+			// bare literal lets get<P>()'s per-key inference resolve the return to number.
+			// Widening it to the SettingPath union collapses SettingValue<P> to undefined
+			// and 5 stops type-checking (the TS2769 that skipped the release publish).
+			expect(settings.get("setupVersion")).toBe(5);
 		});
 	});
 
