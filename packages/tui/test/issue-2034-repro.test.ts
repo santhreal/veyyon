@@ -281,7 +281,32 @@ describe("issue #2034: chunk large terminal writes on Windows ConPTY", () => {
 			expect(conptyChunks.join("")).toBe(payload);
 		});
 
-		it("marks the terminal dead when stdout emits EIO after a write (#2284)", () => {
+		it("marks the terminal dead when stdout emits EPIPE after a write (#2284)", () => {
+			const writes = captureStdoutWrites();
+			const terminal = new ProcessTerminal();
+			const err = Object.assign(new Error("EPIPE: broken pipe, write"), {
+				code: "EPIPE",
+				fd: 5,
+				syscall: "write",
+				errno: -32,
+			});
+
+			try {
+				terminal.write("first frame");
+				process.stdout.emit("error", err);
+				terminal.write("second frame");
+
+				expect(writes).toEqual(["first frame"]);
+			} finally {
+				terminal.stop();
+			}
+		});
+
+		it("keeps rendering after a transient EIO: the terminal is not bricked by one hiccup", () => {
+			// Since 7fdf44fa a single transient write failure (EAGAIN/EIO/EINTR)
+			// must NOT latch the terminal dead — one hiccup used to blank the TUI
+			// for the rest of the session. Only fatal codes and the consecutive-
+			// failure backstop disable. EIO is transient, so the next write retries.
 			const writes = captureStdoutWrites();
 			const terminal = new ProcessTerminal();
 			const err = Object.assign(new Error("EIO: i/o error, write"), {
@@ -296,7 +321,7 @@ describe("issue #2034: chunk large terminal writes on Windows ConPTY", () => {
 				process.stdout.emit("error", err);
 				terminal.write("second frame");
 
-				expect(writes).toEqual(["first frame"]);
+				expect(writes).toEqual(["first frame", "second frame"]);
 			} finally {
 				terminal.stop();
 			}
