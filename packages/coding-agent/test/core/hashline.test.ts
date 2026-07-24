@@ -525,6 +525,71 @@ describe("hashline — filename+tag path recovery", () => {
 		});
 	});
 
+	/**
+	 * `HashlineFilesystem.move(from, to, content)` writes `to` then removes
+	 * `from`. When `from` and `to` are the same underlying file — a case-only
+	 * rename on a case-insensitive volume, or a destination reached through a
+	 * symlink — the removal would delete the bytes just written and the user
+	 * loses the file. The patcher's MV guard normally rejects same-file moves,
+	 * but the FS primitive must be self-safe: it cannot rely on one caller's
+	 * check surviving refactors or covering every future caller. These tests
+	 * drive the primitive directly and assert the destination survives.
+	 */
+	describe("HashlineFilesystem.move same-file guard (never delete the file it just wrote)", () => {
+		function makeGuardFs(session: ToolSession): HashlineFilesystem {
+			return new HashlineFilesystem({
+				session,
+				writethrough: async () => undefined,
+				beginDeferredDiagnosticsForPath: () => ({
+					onDeferredDiagnostics: () => {},
+					signal: new AbortController().signal,
+					finalize: () => {},
+				}),
+			});
+		}
+
+		it("keeps the file when from and to resolve to the exact same path", async () => {
+			await withTempDir(async tempDir => {
+				const guardFs = makeGuardFs(makeHashlineSession(tempDir));
+				const abs = path.join(tempDir, "same.ts");
+				await Bun.write(abs, "original");
+				await guardFs.move("same.ts", "same.ts", "rewritten");
+				// Without the guard this writes then removes the file, losing it.
+				expect(await Bun.file(abs).exists()).toBe(true);
+				expect(await Bun.file(abs).text()).toBe("rewritten");
+			});
+		});
+
+		it("keeps the target when the destination is a symlink to the source", async () => {
+			await withTempDir(async tempDir => {
+				const guardFs = makeGuardFs(makeHashlineSession(tempDir));
+				const real = path.join(tempDir, "real.ts");
+				const link = path.join(tempDir, "link.ts");
+				await Bun.write(real, "original");
+				await fs.symlink(real, link);
+				// from=real, to=link: both stat to one inode. Writing lands on the
+				// shared inode; removing `real` would free the bytes and dangle `link`.
+				await guardFs.move("real.ts", "link.ts", "rewritten");
+				expect(await Bun.file(real).exists()).toBe(true);
+				expect(await Bun.file(real).text()).toBe("rewritten");
+				expect(await Bun.file(link).text()).toBe("rewritten");
+			});
+		});
+
+		it("still removes the source for a genuine different-file content-move", async () => {
+			await withTempDir(async tempDir => {
+				const guardFs = makeGuardFs(makeHashlineSession(tempDir));
+				const from = path.join(tempDir, "from.ts");
+				const to = path.join(tempDir, "to.ts");
+				await Bun.write(from, "original");
+				await guardFs.move("from.ts", "to.ts", "moved");
+				// Distinct files: normal move — source removed, destination written.
+				expect(await Bun.file(from).exists()).toBe(false);
+				expect(await Bun.file(to).text()).toBe("moved");
+			});
+		});
+	});
+
 	it("recovers a bare plan-file name onto the local:// sandbox in plan mode", async () => {
 		await withTempDir(async tempDir => {
 			const artifactsDir = await fs.mkdtemp(path.join(os.tmpdir(), "hashline-plan-art-"));
