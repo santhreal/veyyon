@@ -127,8 +127,14 @@ export function shouldEncode(gate: ArgotGate, input: ArgotGateInput): boolean {
  * provider wildcard that matches when it equals the active id's model segment —
  * the part after the last `/`. There is no substring or fuzzy match: a bare
  * `flash` never matches `gemini-2.5-flash`.
+ *
+ * Exported so a caller that needs to know, ahead of a run, whether a given model
+ * would be encoded under a gate can ask with the exact same predicate the runtime
+ * uses, rather than re-deriving the matching rule and risking drift. The eval
+ * harness uses this to refuse an encode arm whose allowlist would not match the
+ * model under test (which would silently degrade the arm to decode-only).
  */
-function modelAllowed(entry: string, activeModel: string): boolean {
+export function modelAllowed(entry: string, activeModel: string): boolean {
 	if (entry.includes("/")) {
 		return entry === activeModel;
 	}
@@ -136,7 +142,7 @@ function modelAllowed(entry: string, activeModel: string): boolean {
 }
 
 /** The model-id segment of a possibly provider-qualified id: the part after the last `/`. */
-function modelIdSegment(id: string): string {
+export function modelIdSegment(id: string): string {
 	const slash = id.lastIndexOf("/");
 	return slash === -1 ? id : id.slice(slash + 1);
 }

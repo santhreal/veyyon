@@ -80,6 +80,8 @@ const EXPECTED: Record<string, "function" | "string" | "number" | "object"> = {
 	// policy.ts
 	EMPTY_GATE: "object",
 	makeGate: "function",
+	modelAllowed: "function",
+	modelIdSegment: "function",
 	shouldEncode: "function",
 	// preamble.ts
 	ARGOT_PREAMBLE: "string",
@@ -114,6 +116,22 @@ describe("argot public export surface", () => {
 		expect(argot.ARGOT_UNLOAD_TOOL).toBe("argot_unload");
 		expect(argot.PROJECT_MARKERS).toEqual([".git", ".argot"]);
 		expect(argot.EMPTY_GATE).toEqual({ models: [], disableAboveTokens: 0 });
+	});
+
+	it("exposes the model-matching predicate through the barrel with its two entry kinds", () => {
+		// A harness (the eval runner) checks ahead of a run whether a gate's allowlist
+		// would encode the model under test, using the SAME predicate the runtime gate
+		// uses so the two cannot drift. Prove both entry kinds are reachable and behave:
+		// a bare entry is a provider wildcard matching the id's last segment; a
+		// provider-qualified entry (with a slash) matches only its exact id.
+		expect(argot.modelAllowed("gemini-3.6-flash", "google-antigravity/gemini-3.6-flash")).toBe(true);
+		expect(argot.modelAllowed("google-antigravity/gemini-3.6-flash", "google-antigravity/gemini-3.6-flash")).toBe(
+			true,
+		);
+		expect(argot.modelAllowed("openai/gemini-3.6-flash", "google-antigravity/gemini-3.6-flash")).toBe(false);
+		expect(argot.modelAllowed("flash", "google-antigravity/gemini-3.6-flash")).toBe(false);
+		expect(argot.modelIdSegment("google-antigravity/gemini-3.6-flash")).toBe("gemini-3.6-flash");
+		expect(argot.modelIdSegment("bare-id")).toBe("bare-id");
 	});
 
 	it("exposes constructible error and session classes through the barrel", () => {

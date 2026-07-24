@@ -2,3 +2,5 @@ repo-cache/
 runs/
 assets/auth-agent.db
 deep-swe/
+# Compiled artifact of the TS entrypoint (run.ts is the source; bench runs via `bun run.ts`).
+run.js

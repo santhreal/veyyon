@@ -11,9 +11,15 @@
  * turns it on and one that leaves it off, then run this script. See README.md.
  *
  * Usage:
- *   bun run.ts --tasks tasks/pilot-10.txt --arms none,decode,full \
+ *   bun run.ts --tasks tasks/pilot-10.txt --arms baseline,decode,full \
  *     --tasks-root /path/to/deep-swe/tasks [--limit N] [--jobs 2] [--model M] \
- *     [--out runs/<label>]
+ *     [--repeats K] [--out runs/<label>]
+ *
+ * --repeats K samples every (arm, task) cell K times (default 1). LLM agents are
+ * stochastic, so a single sample per cell cannot separate a real arm effect from
+ * run-to-run noise. The report aggregates each cell's K samples into a pass rate
+ * with a binomial standard error, which is what makes the comparison something
+ * you can iterate on rather than a coin flip.
  *
  * Prerequisites: pier (uv tool install datacurve-pier), docker, a compiled
  * binary at ../coding-agent/dist/vey (bun scripts/build-binary.ts there), and
@@ -29,25 +35,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import YAML from "yaml";
+import { type ArmResult, renderReport } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
-
-interface ArmResult {
-	arm: string;
-	task: string;
-	reward: number | null;
-	partial: number | null;
-	f2p: number | null;
-	p2p: number | null;
-	inputTokens: number | null;
-	outputTokens: number | null;
-	cacheTokens: number | null;
-	costUsd: number | null;
-	agentSeconds: number | null;
-	argotLoadCalls: number | null;
-	assistantMsgsWithSigil: number | null;
-	toolCalls: Record<string, number> | null;
-	error: string | null;
-}
+import { encodeArmModelMismatch } from "./treatment-guard";
 
 const BENCH_DIR = path.dirname(new URL(import.meta.url).pathname);
 const CODING_AGENT_DIR = path.resolve(BENCH_DIR, "../coding-agent");
@@ -75,6 +65,30 @@ function requireFile(p: string, hint: string): void {
 		console.error(`missing: ${p}\n${hint}`);
 		process.exit(1);
 	}
+}
+
+// The job name is the single identifier for a container run, a config file, and a
+// jobs/ subdirectory, so its format lives in exactly one pair of functions. A
+// repeat suffix (`__r<n>`) is appended only when a cell is sampled more than once;
+// a single-sample run keeps the historic `arm__task` name so old runs still
+// reaggregate. Arm names never contain `__` and DeepSWE task names are hyphenated,
+// so the first `__` splits arm from the rest and a trailing `__r<digits>` is the
+// repeat index.
+function jobNameOf(arm: string, task: string, repeat: number, repeats: number): string {
+	return repeats > 1 ? `${arm}__${task}__r${repeat}` : `${arm}__${task}`;
+}
+
+function parseJobName(jobName: string): { arm: string; task: string; repeat: number } {
+	const sep = jobName.indexOf("__");
+	const arm = jobName.slice(0, sep);
+	let task = jobName.slice(sep + 2);
+	let repeat = 0;
+	const m = task.match(/__r(\d+)$/);
+	if (m) {
+		repeat = Number(m[1]);
+		task = task.slice(0, m.index);
+	}
+	return { arm, task, repeat };
 }
 
 async function ensureBinaryUpToDate(): Promise<void> {
@@ -180,10 +194,11 @@ function parseSessionsUsage(trialDir: string): Partial<ArmResult> | null {
 	return { inputTokens, outputTokens, cacheTokens, costUsd, argotLoadCalls, assistantMsgsWithSigil, toolCalls };
 }
 
-function parseTrialResult(arm: string, task: string, jobDir: string): ArmResult {
+function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
 	const result: ArmResult = {
 		arm,
 		task,
+		repeat,
 		reward: null,
 		partial: null,
 		f2p: null,
@@ -244,15 +259,14 @@ function reaggregate(runDir: string): void {
 	const results: ArmResult[] = [];
 	for (const file of fs.readdirSync(configDir).filter(f => f.endsWith(".yaml"))) {
 		const jobName = file.slice(0, -".yaml".length);
-		const sep = jobName.indexOf("__");
-		const arm = jobName.slice(0, sep);
-		const task = jobName.slice(sep + 2);
+		const { arm, task, repeat } = parseJobName(jobName);
 		try {
-			results.push(parseTrialResult(arm, task, path.join(jobsRoot, jobName)));
+			results.push(parseTrialResult(arm, task, repeat, path.join(jobsRoot, jobName)));
 		} catch (err) {
 			results.push({
 				arm,
 				task,
+				repeat,
 				reward: null,
 				partial: null,
 				f2p: null,
@@ -268,7 +282,7 @@ function reaggregate(runDir: string): void {
 			});
 		}
 	}
-	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task));
+	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
 	const arms = [...new Set(results.map(r => r.arm))];
 	const tasks = [...new Set(results.map(r => r.task))];
 	let model = "unknown";
@@ -277,8 +291,12 @@ function reaggregate(runDir: string): void {
 	} catch {
 		/* first aggregation */
 	}
-	fs.writeFileSync(path.join(runDir, "results.json"), JSON.stringify({ model, arms, tasks, results }, null, 2));
-	fs.writeFileSync(path.join(runDir, "report.md"), renderReport(results, model));
+	const repeats = results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1;
+	fs.writeFileSync(
+		path.join(runDir, "results.json"),
+		JSON.stringify({ model, arms, tasks, repeats, results }, null, 2),
+	);
+	fs.writeFileSync(path.join(runDir, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
 }
 
@@ -296,13 +314,22 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 	const tasksRoot = path.resolve(BENCH_DIR, tasksRootArg);
-	const armsArg = args.arms ?? "none,full";
-	const arms = armsArg.split(",").map(a => a.trim()).filter(Boolean);
+	const armsArg = args.arms ?? "baseline,full";
+	const arms = armsArg
+		.split(",")
+		.map(a => a.trim())
+		.filter(Boolean);
 	if (arms.length === 0) {
 		console.error("error: --arms must specify at least one valid arm name");
 		process.exit(1);
 	}
 	const model = args.model ?? "google-antigravity/gemini-3.6-flash";
+	const rawRepeats = Number(args.repeats ?? "1");
+	if (!Number.isFinite(rawRepeats) || rawRepeats < 1 || !Number.isInteger(rawRepeats)) {
+		console.error(`error: --repeats must be a positive integer (got ${JSON.stringify(args.repeats)})`);
+		process.exit(1);
+	}
+	const repeats = rawRepeats;
 	const rawJobs = Number(args.jobs ?? "2");
 	const jobParallel = Number.isFinite(rawJobs) && rawJobs > 0 ? Math.floor(rawJobs) : 2;
 	const rawTrialTimeout = Number(args["trial-timeout"] ?? "900");
@@ -375,6 +402,25 @@ async function main(): Promise<void> {
 			console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.yml:\n${err}`);
 			process.exit(1);
 		}
+		// Treatment-applies floor: an encode arm (argot on, non-empty allowlist) only
+		// applies its treatment if the model under test is on that allowlist. If it is
+		// not, argot silently stops encoding and the arm secretly measures decode-only
+		// while still being labelled as the encode condition — a Law-10 silent fallback
+		// inside the eval set. Refuse to run it, using argot's OWN matching rule.
+		const mismatch = encodeArmModelMismatch(config, model);
+		if (mismatch !== null) {
+			console.error(
+				`error: arm "${arm}" enables argot encoding with an allowlist that does not\n` +
+					`include the model under test, so it would SILENTLY degrade to decode-only\n` +
+					`and measure the wrong condition:\n` +
+					`  arms/${arm}.yml argot.models = [${mismatch.join(", ")}]\n` +
+					`  --model = ${model}\n` +
+					`Fix: add the model to arms/${arm}.yml argot.models (a bare name like\n` +
+					`"${model.slice(model.lastIndexOf("/") + 1)}" matches any provider), or bench a --model the arm\n` +
+					`already lists, or use arms/decode.yml if you meant the decode-only condition.`,
+			);
+			process.exit(1);
+		}
 		let sections: unknown;
 		const sectionsPath = path.join(BENCH_DIR, "arms", `${arm}.sections.yml`);
 		if (fs.existsSync(sectionsPath)) {
@@ -417,9 +463,7 @@ async function main(): Promise<void> {
 	if (arms.length >= 2) {
 		const collisions = findZeroIvCollisions(armFingerprints);
 		if (collisions.length > 0) {
-			const detail = collisions
-				.map(group => `  {${group.join(", ")}} reduce to identical inputs`)
-				.join("\n");
+			const detail = collisions.map(group => `  {${group.join(", ")}} reduce to identical inputs`).join("\n");
 			console.error(
 				"error: zero-IV arm collision — a controlled comparison must vary exactly one\n" +
 					"independent variable, but these arms reduce to the same (config, sections, rule),\n" +
@@ -433,19 +477,23 @@ async function main(): Promise<void> {
 	}
 
 	const results: ArmResult[] = [];
-	const queue: Array<{ arm: string; task: string }> = arms.flatMap(arm => tasks.map(task => ({ arm, task })));
+	const queue: Array<{ arm: string; task: string; repeat: number }> = arms.flatMap(arm =>
+		tasks.flatMap(task => Array.from({ length: repeats }, (_, repeat) => ({ arm, task, repeat }))),
+	);
 
 	console.log(
-		`deepswe-bench: ${arms.length} arm(s) x ${tasks.length} task(s) = ${queue.length} run(s), model ${model}`,
+		`deepswe-bench: ${arms.length} arm(s) x ${tasks.length} task(s)` +
+			`${repeats > 1 ? ` x ${repeats} repeat(s)` : ""} = ${queue.length} run(s), model ${model}`,
 	);
 	console.log(`assets: ${assetsDir} (binary sha256 ${binarySha.slice(0, 12)}) → jobs under ${outRoot}`);
 
-	function writeJobConfig(arm: string, task: string): string {
+	function writeJobConfig(arm: string, task: string, repeat: number): string {
+		const jobName = jobNameOf(arm, task, repeat, repeats);
 		const configDir = path.join(outRoot, "configs");
 		fs.mkdirSync(configDir, { recursive: true });
-		const configPath = path.join(configDir, `${arm}__${task}.yaml`);
+		const configPath = path.join(configDir, `${jobName}.yaml`);
 		const yaml = [
-			`job_name: ${arm}__${task}`,
+			`job_name: ${jobName}`,
 			`jobs_dir: ${path.join(outRoot, "jobs")}`,
 			"quiet: true",
 			"n_concurrent_trials: 1",
@@ -465,18 +513,21 @@ async function main(): Promise<void> {
 		return configPath;
 	}
 
-	async function runOne(arm: string, task: string, attempt = 1): Promise<void> {
-		const jobName = `${arm}__${task}`;
+	async function runOne(arm: string, task: string, repeat: number, attempt = 1): Promise<void> {
+		const jobName = jobNameOf(arm, task, repeat, repeats);
 		const jobDir = path.join(outRoot, "jobs", jobName);
 		if (attempt > 1 && fs.existsSync(jobDir)) {
 			fs.rmSync(jobDir, { recursive: true, force: true });
 			try {
-				await Bun.spawn(["sh", "-c", `docker rm -f $(docker ps -aq --filter name=${jobName}) 2>/dev/null || true`]).exited;
+				await Bun.spawn(["sh", "-c", `docker rm -f $(docker ps -aq --filter name=${jobName}) 2>/dev/null || true`])
+					.exited;
 				await Bun.spawn(["docker", "network", "prune", "-f"]).exited;
-			} catch { /* best effort */ }
+			} catch {
+				/* best effort */
+			}
 		}
 		const started = Date.now();
-		const proc = Bun.spawn([pier, "run", "-c", writeJobConfig(arm, task), "-q"], {
+		const proc = Bun.spawn([pier, "run", "-c", writeJobConfig(arm, task, repeat), "-q"], {
 			cwd: path.join(BENCH_DIR, "pier_agent"),
 			env: { ...process.env, PYTHONPATH: path.join(BENCH_DIR, "pier_agent") },
 			stdout: "pipe",
@@ -496,16 +547,25 @@ async function main(): Promise<void> {
 		let result: ArmResult;
 		try {
 			if (timedOut) throw new Error(`trial timed out after ${trialTimeoutSec}s`);
-			result = parseTrialResult(arm, task, jobDir);
+			result = parseTrialResult(arm, task, repeat, jobDir);
 		} catch (err) {
 			const errStr = `${err}; pier exit ${exitCode}; ${stderr.slice(-300) || stdout.slice(-300)}`;
-			if (attempt === 1 && !timedOut && (errStr.includes("Docker compose command failed") || errStr.includes("FileExistsError") || errStr.includes("ENOENT"))) {
-				console.log(`[retry] ${jobName} hit container startup collision; pruning docker network & retrying (attempt 2)...`);
-				return await runOne(arm, task, 2);
+			if (
+				attempt === 1 &&
+				!timedOut &&
+				(errStr.includes("Docker compose command failed") ||
+					errStr.includes("FileExistsError") ||
+					errStr.includes("ENOENT"))
+			) {
+				console.log(
+					`[retry] ${jobName} hit container startup collision; pruning docker network & retrying (attempt 2)...`,
+				);
+				return await runOne(arm, task, repeat, 2);
 			}
 			result = {
 				arm,
 				task,
+				repeat,
 				reward: null,
 				partial: null,
 				f2p: null,
@@ -533,95 +593,18 @@ async function main(): Promise<void> {
 		for (;;) {
 			const next = queue.shift();
 			if (!next) return;
-			await runOne(next.arm, next.task);
+			await runOne(next.arm, next.task, next.repeat);
 		}
 	});
 	await Promise.all(workers);
 
-	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task));
+	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
 	fs.writeFileSync(
 		path.join(outRoot, "results.json"),
-		JSON.stringify({ model, binarySha, arms, tasks, results }, null, 2),
+		JSON.stringify({ model, binarySha, arms, tasks, repeats, results }, null, 2),
 	);
-	fs.writeFileSync(path.join(outRoot, "report.md"), renderReport(results, model));
+	fs.writeFileSync(path.join(outRoot, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
 	console.log(`\nwrote ${path.join(outRoot, "report.md")} and results.json`);
-}
-
-function fmt(n: number | null, digits = 0): string {
-	if (n === null || n === undefined) return "—";
-	return digits > 0 ? n.toFixed(digits) : String(Math.round(n));
-}
-
-function renderReport(results: ArmResult[], model: string): string {
-	const arms = [...new Set(results.map(r => r.arm))];
-	const tasks = [...new Set(results.map(r => r.task))];
-	const lines: string[] = [];
-	lines.push(`# DeepSWE bench — ${new Date().toISOString()}`);
-	lines.push("");
-	lines.push(`Model: \`${model}\`. Tasks: ${tasks.length}. Arms: ${arms.join(", ")}.`);
-	lines.push("");
-	lines.push("## Per arm totals");
-	lines.push("");
-	lines.push(
-		"| arm | runs | pass (reward=1) | mean partial | input tok | output tok | cache tok | cost USD | agent wall |",
-	);
-	lines.push("|---|---|---|---|---|---|---|---|---|");
-	for (const arm of arms) {
-		const rows = results.filter(r => r.arm === arm);
-		const ok = rows.filter(r => !r.error);
-		const sum = (f: (r: ArmResult) => number | null) => ok.reduce((a, r) => a + (f(r) ?? 0), 0);
-		const meanPartial = ok.length ? ok.reduce((a, r) => a + (r.partial ?? 0), 0) / ok.length : null;
-		const passes = ok.filter(r => r.reward === 1).length;
-		lines.push(
-			`| ${arm} | ${rows.length} | ${passes} | ${meanPartial === null ? "\u2014" : meanPartial.toFixed(2)} | ${fmt(sum(r => r.inputTokens))} | ${fmt(sum(r => r.outputTokens))} | ${fmt(sum(r => r.cacheTokens))} | $${sum(r => r.costUsd).toFixed(3)} | ${fmt(sum(r => r.agentSeconds))}s |`,
-		);
-	}
-	lines.push("");
-	lines.push("## Per task");
-	lines.push("");
-	lines.push(`| task | ${arms.map(a => `${a}: reward | ${a}: out tok | ${a}: cost`).join(" | ")} |`);
-	lines.push(`|---|${arms.map(() => "---|---|---|").join("")}`);
-	for (const task of tasks) {
-		const cells = arms.flatMap(a => {
-			const r = results.find(x => x.arm === a && x.task === task);
-			if (!r) return ["—", "—", "—"];
-			return [
-				r.error ? "ERR" : fmt(r.reward, 2),
-				fmt(r.outputTokens),
-				r.costUsd === null ? "—" : `$${r.costUsd.toFixed(3)}`,
-			];
-		});
-		lines.push(`| ${task} | ${cells.join(" | ")} |`);
-	}
-	const probeArms = arms.filter(a => results.some(r => r.arm === a && (r.argotLoadCalls ?? 0) > 0));
-	if (probeArms.length > 0) {
-		lines.push("");
-		lines.push("## Argot probes");
-		lines.push("");
-		lines.push("| arm | task | argot_load calls | assistant msgs containing § |");
-		lines.push("|---|---|---|---|");
-		for (const r of results.filter(x => probeArms.includes(x.arm))) {
-			lines.push(`| ${r.arm} | ${r.task} | ${fmt(r.argotLoadCalls)} | ${fmt(r.assistantMsgsWithSigil)} |`);
-		}
-	}
-	const allTools = [...new Set(results.flatMap(r => Object.keys(r.toolCalls ?? {})))].sort();
-	if (allTools.length > 0) {
-		lines.push("");
-		lines.push("## Tool Call Distribution (per arm totals)");
-		lines.push("");
-		lines.push(`| arm | ${allTools.join(" | ")} |`);
-		lines.push(`|---|${allTools.map(() => "---|").join("")}`);
-		for (const arm of arms) {
-			const rows = results.filter(r => r.arm === arm && !r.error);
-			const cells = allTools.map(t => {
-				const sum = rows.reduce((acc, r) => acc + (r.toolCalls?.[t] ?? 0), 0);
-				return fmt(sum);
-			});
-			lines.push(`| ${arm} | ${cells.join(" | ")} |`);
-		}
-	}
-	lines.push("");
-	return `${lines.join("\n")}\n`;
 }
 
 await main();

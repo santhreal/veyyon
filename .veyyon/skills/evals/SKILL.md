@@ -93,6 +93,7 @@ bun run.ts \
   --tasks tasks/pilot-10.txt \
   --model google-antigravity/gemini-3.6-flash \
   --jobs 2 \
+  --repeats 3 \
   --out runs/prompt-tuning-01
 ```
 
@@ -101,7 +102,19 @@ bun run.ts \
 - `--tasks <file>`: Task list (e.g. `tasks/smoke.txt` for 1 task, `tasks/pilot-10.txt` for 10 pilot tasks, `tasks/argot-10.txt`, or omit for full 113 DeepSWE tasks).
 - `--model <id>`: Provider & model under test (default: `google-antigravity/gemini-3.6-flash`).
 - `--jobs N`: Number of parallel task containers (default: `2`).
+- `--repeats K`: Samples per (arm, task) cell (default `1`). LLM agents are stochastic; a single sample cannot tell a real arm effect from noise. With `K > 1` the report shows each cell's pass RATE with a binomial standard error (shrinks as `1/sqrt(K)`). Raise `K` when the expected delta is small, and do not read a delta smaller than a couple of standard errors as real.
 - `--out <dir>`: Directory where results and verbatim traces are stored.
+
+### Two guards the runner enforces before it runs
+1. **Zero-IV collision:** two arms that stage byte-identical `(config, sections, rule)` inputs fail loudly — a comparison of identical arms varies nothing, so its delta is noise.
+2. **Treatment-not-applied:** an arm that enables argot encoding with a non-empty `argot.models` allowlist that excludes the `--model` under test fails loudly. argot only encodes for an allowlisted model, so such an arm would SILENTLY become decode-only while labelled "encode". The guard uses argot's own `modelAllowed` predicate so it cannot drift from the runtime gate. A deliberately decode-only arm (empty allowlist, like `decode.yml`) is allowed.
+
+### Canonical single-IV comparisons
+Use the pairing whose one variable is the effect you want; never compare across two at once (`baseline` ↔ `full` mixes the flag AND teaching):
+- `baseline` ↔ `argot-setting-only` — the feature flag alone.
+- `argot-setting-only` ↔ `candidate-argot-nudge` — the additive rule alone.
+- `decode` ↔ `full` — the teaching (encode) alone, codec/loadability held equal.
+- one arm, two `--model` values — the model alone.
 
 ---
 
