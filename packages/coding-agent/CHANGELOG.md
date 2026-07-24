@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- The Windows binary is now built as a modern (AVX2) Bun target instead of baseline. Baseline Windows standalone builds crash in the Bun runtime at startup before any Veyyon code runs (oven-sh/bun#32684), which made every published `veyyon-windows-x64.exe` exit with a segmentation fault on launch. The modern target requires a CPU with AVX2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).
+
 - The inline TUI no longer paints backgrounds by default, so nothing renders as a colored slab on a terminal whose background differs from the theme: the user-message bubble, custom/skill/hook message cards, tool-state tints, the composer band, and the status line all inherit the terminal's own background. The status line's painted bar is still available by turning off the new `statusLine.transparent` default, and a theme can still declare an explicit `composerBg`.
 - Every built-in theme is presented again. The temporary alabaster-only picker is reverted along with its `tui.paintGround: always` default, which repainted the terminal's background color on launch; `tui.paintGround` is back to `auto` (paint only when it cannot produce a visible seam) and the dark/light defaults are back to `titanium`/`light`.
 

@@ -31,7 +31,10 @@ export function resolveCrossBuild(value: string | undefined): CrossBuild | null 
 			return { id: value, platform: "linux", arch: "x64", target: "bun-linux-x64-baseline" };
 		case "win32-x64":
 		case "windows-x64":
-			return { id: value, platform: "win32", arch: "x64", target: "bun-windows-x64-baseline" };
+			// Modern, not baseline: Bun baseline Windows standalones segfault at
+			// startup (oven-sh/bun#32684). Kept in lockstep with the release target
+			// in scripts/ci-release-build-binaries.ts.
+			return { id: value, platform: "win32", arch: "x64", target: "bun-windows-x64" };
 		default:
 			throw new Error(`Unsupported CROSS_TARGET: ${value}`);
 	}

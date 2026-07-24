@@ -63,7 +63,13 @@ const targets: BinaryTarget[] = [
 		id: "win32-x64",
 		platform: "win32",
 		arch: "x64",
-		target: "bun-windows-x64-baseline",
+		// Modern (AVX2) target, NOT baseline: Bun's baseline Windows standalone
+		// builds segfault in JIT codegen at startup (oven-sh/bun#32684, #32586 —
+		// reproduced on veyyon's own published exe by release_github_verify_windows
+		// on v1.0.36, `--version` exit 3). Every crash report is a `(baseline)`
+		// build, so shipping modern trades pre-2013 (pre-AVX2) CPU support for a
+		// binary that starts at all. Revisit when the Bun issue is fixed.
+		target: "bun-windows-x64",
 		outfile: "packages/coding-agent/binaries/veyyon-windows-x64.exe",
 	},
 ];
