@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- OpenRouter pricing is now parsed through `toPositiveNumber` instead of a bare `parseFloat`, so a malformed price is rejected rather than becoming `NaN`.
+- Hand-authored thinking-effort ladders are now canonicalized at build time.
+- Model compatibility overrides are now applied by own key rather than prototype membership, so an override named after a prototype member is handled correctly.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

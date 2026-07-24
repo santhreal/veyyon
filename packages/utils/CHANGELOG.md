@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `atomicWriteFileWith`, and routed the remaining hand-rolled atomic file writers through it, so every atomic write goes through one owner.
+
+### Fixed
+
+- Closed an unhandled-rejection window in `ChildProcess.wait`.
+- The CLI parser now rejects positional arguments beyond the declared set instead of ignoring them, and an unknown command exits 1 on the help path with a single message.
+- `formatNumber` and `formatBytes` now promote a boundary value that rounds up to a full unit to the next unit, so it reads `1.0 MB` rather than `1024.0 KB`.
+- Dotted version components are now detected strictly rather than through `parseInt`, so a component like `1.2abc` is no longer treated as numeric.
+- The relaxed and streaming JSON parsers now store a `__proto__` key safely instead of polluting the object prototype.
+- Legacy default-profile migration is now resumable, so an interrupted migration can finish on the next run.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

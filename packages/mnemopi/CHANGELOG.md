@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A throwing memory-stream listener now surfaces its error instead of being swallowed.
+- Conversation text is now substituted into the extraction prompt verbatim.
+- The SHMR and scratchpad environment tunables are now parsed through `envInt`/`envFloat`, so a malformed value is handled consistently rather than silently.
+- Named times (for example `noon`) are now matched as whole words rather than substrings.
+- Removed decorative voice weights that never reached RRF scoring, so recall ranking reflects only the weights that actually apply.
+
 ## [16.3.9] - 2026-07-06
 
 ### Fixed

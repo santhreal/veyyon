@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Request details now carry their turn context instead of showing a lone reply.
+
+### Fixed
+
+- The browser bundles now deep-import their format and error helpers, keeping the Bun-mixed `@veyyon/utils` barrel out of the browser graph so the bundle stays browser-safe.
+
 ## [16.4.7] - 2026-07-12
 
 ### Fixed

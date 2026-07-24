@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Wheel scroll is now isolated to the transcript: scrolling moves the transcript while the footer stays pinned.
+- The mouse is now released back to the terminal when the frame fits the viewport, so normal terminal selection works when there is nothing to scroll.
+
+### Fixed
+
+- The editor now re-anchors at the bottom of the viewport when a tall transient block collapses, even when the transcript overflows, and the composer anchor is now stateless so it no longer latches off on a transient height spike.
+- A settings value now cycles by click-then-choose rather than Left/Right.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

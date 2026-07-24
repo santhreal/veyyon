@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The build and loader no longer silently fall back to a baseline (non-AVX2) build when AVX2 detection fails. The failure is surfaced instead of quietly shipping a slower binary.
+- The loader now refuses to embed a native addon built for the wrong version instead of loading it.
+- Declared the four new loader-state exports in the TypeScript definitions.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
