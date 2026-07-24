@@ -15,9 +15,11 @@ import {
 	effectiveTemperature,
 	jobNameOf,
 	PINNED_TEMPERATURE,
+	pairwiseArmDeltas,
 	parseJobName,
 	renderReport,
 	selectTasks,
+	signTestPValue,
 	summarizeCell,
 	wilsonInterval,
 } from "./aggregate";
@@ -283,6 +285,163 @@ describe("renderReport — the pass cell shows the Wilson interval, not ±se", (
 		expect(report).toContain("1.00 [0.44–1.00] (3/3)");
 		expect(report).not.toContain("±0.00");
 		expect(report).not.toContain("±");
+	});
+});
+
+describe("signTestPValue — exact two-sided sign test for a paired arm comparison", () => {
+	// Why this exists: the honest arm-vs-arm verdict must use the paired structure
+	// (both arms ran the same tasks) and must not understate uncertainty at small
+	// task counts. The exact sign test does both. These pin the exact closed-form
+	// probabilities so a refactor cannot silently swap in a normal approximation
+	// (which would call a 5-0 sweep "significant" when it is not) or misbuild the CDF.
+
+	test("no decisive tasks (all ties) is no evidence — p = 1", () => {
+		expect(signTestPValue(0, 0)).toBe(1);
+	});
+
+	test("a 5-0 sweep is NOT significant at 0.05 (exact p = 0.0625)", () => {
+		// The classic small-sample trap: five straight wins looks decisive but the
+		// exact two-sided sign test says p=2*(1/2)^5=0.0625. A normal approximation
+		// would wrongly cross 0.05 here.
+		expect(signTestPValue(5, 0)).toBeCloseTo(0.0625, 12);
+	});
+
+	test("a 6-0 sweep clears 0.05 (exact p = 0.03125)", () => {
+		expect(signTestPValue(6, 0)).toBeCloseTo(0.03125, 12);
+	});
+
+	test("an 8-1 split is significant (exact p = 0.0390625)", () => {
+		expect(signTestPValue(8, 1)).toBeCloseTo(0.0390625, 12);
+	});
+
+	test("an even split is maximally inconclusive — p = 1", () => {
+		expect(signTestPValue(3, 3)).toBe(1);
+	});
+
+	test("is symmetric in wins and losses (direction does not change the p-value)", () => {
+		for (const [w, l] of [
+			[7, 2],
+			[10, 4],
+			[1, 9],
+		]) {
+			expect(signTestPValue(w as number, l as number)).toBeCloseTo(signTestPValue(l as number, w as number), 12);
+		}
+	});
+
+	test("stays numerically sane at a large, lopsided task count (no overflow)", () => {
+		// 100 tasks, 100-0: 2 * 0.5^100, a tiny but finite, positive probability.
+		const p = signTestPValue(100, 0);
+		expect(p).toBeGreaterThan(0);
+		expect(p).toBeLessThan(1e-29);
+		expect(Number.isFinite(p)).toBe(true);
+	});
+});
+
+describe("pairwiseArmDeltas — arms are compared PAIRED by task, not by overlapping intervals", () => {
+	// Why this exists: comparing two arms' independent Wilson intervals ignores that
+	// both ran the same tasks, where task difficulty is the dominant variance. Pairing
+	// by task removes it. These lock the paired bookkeeping: only tasks with OK samples
+	// in BOTH arms are paired, the delta is B minus A, and wins/losses/ties feed the
+	// sign test.
+
+	test("pairs only tasks both arms ran, and reports B-minus-A per-task deltas", () => {
+		const results: ArmResult[] = [
+			// t1: A fails, B passes (a win for B). t2: A fails, B passes (win).
+			// t3: both pass (tie). t4: B errored, so the pair is dropped entirely.
+			res({ arm: "A", task: "t1", reward: 0 }),
+			res({ arm: "B", task: "t1", reward: 1 }),
+			res({ arm: "A", task: "t2", reward: 0 }),
+			res({ arm: "B", task: "t2", reward: 1 }),
+			res({ arm: "A", task: "t3", reward: 1 }),
+			res({ arm: "B", task: "t3", reward: 1 }),
+			res({ arm: "A", task: "t4", reward: 1 }),
+			res({ arm: "B", task: "t4", error: "boom" }), // B has no OK sample on t4
+		];
+		const [d] = pairwiseArmDeltas(results);
+		expect(d?.armA).toBe("A");
+		expect(d?.armB).toBe("B");
+		expect(d?.nTasks).toBe(3); // t4 excluded — unpaired
+		expect(d?.wins).toBe(2);
+		expect(d?.losses).toBe(0);
+		expect(d?.ties).toBe(1);
+		expect(d?.meanDelta).toBeCloseTo((1 + 1 + 0) / 3, 12);
+		// The CI brackets the mean and, with only 3 tasks, is wide.
+		expect(d?.ciLow).not.toBeNull();
+		expect(d?.ciLow as number).toBeLessThan(d?.meanDelta as number);
+		expect(d?.ciHigh as number).toBeGreaterThan(d?.meanDelta as number);
+		// 2-0 is not significant (exact sign-test p = 0.5), so the report must NOT
+		// crown a winner off two lucky tasks.
+		expect(d?.signTestP).toBeCloseTo(0.5, 12);
+	});
+
+	test("with repeats, a per-task delta uses each arm's aggregated pass rate, not one sample", () => {
+		// A on t1: 1 of 2 passes → 0.5. B on t1: 2 of 2 → 1.0. Delta = +0.5.
+		const results: ArmResult[] = [
+			res({ arm: "A", task: "t1", repeat: 0, reward: 1 }),
+			res({ arm: "A", task: "t1", repeat: 1, reward: 0 }),
+			res({ arm: "B", task: "t1", repeat: 0, reward: 1 }),
+			res({ arm: "B", task: "t1", repeat: 1, reward: 1 }),
+		];
+		const [d] = pairwiseArmDeltas(results);
+		expect(d?.nTasks).toBe(1);
+		expect(d?.meanDelta).toBeCloseTo(0.5, 12);
+		expect(d?.wins).toBe(1);
+		expect(d?.ciLow).toBeNull(); // nTasks < 2: no spread to estimate
+	});
+
+	test("every unordered arm pair is compared, in first-seen order", () => {
+		const results: ArmResult[] = [
+			res({ arm: "baseline", task: "t1", reward: 0 }),
+			res({ arm: "cand1", task: "t1", reward: 1 }),
+			res({ arm: "cand2", task: "t1", reward: 1 }),
+		];
+		const pairs = pairwiseArmDeltas(results).map(d => `${d.armA}->${d.armB}`);
+		expect(pairs).toEqual(["baseline->cand1", "baseline->cand2", "cand1->cand2"]);
+	});
+
+	test("no pair has a null-crowned winner when all tasks are unpaired", () => {
+		const results: ArmResult[] = [
+			res({ arm: "A", task: "t1", reward: 1 }),
+			res({ arm: "B", task: "t1", error: "x" }),
+		];
+		const [d] = pairwiseArmDeltas(results);
+		expect(d?.nTasks).toBe(0);
+		expect(d?.meanDelta).toBeNull();
+		expect(d?.signTestP).toBe(1);
+	});
+});
+
+describe("renderReport — the paired arm comparison section", () => {
+	const STAMP = "2026-07-23T00:00:00.000Z";
+
+	test("a decisive paired win (6-0) is called out with p<0.05; a 2-0 is not", () => {
+		// Build two arms over 6 tasks where B wins every one → sign-test p = 0.03125.
+		const decisive: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			decisive.push(res({ arm: "baseline", task: `t${i}`, reward: 0 }));
+			decisive.push(res({ arm: "cand", task: `t${i}`, reward: 1 }));
+		}
+		const report = renderReport(decisive, "m", STAMP, 1);
+		expect(report).toContain("## Arm comparison (paired by task)");
+		expect(report).toContain("baseline → cand");
+		expect(report).toContain("cand better (p<0.05)");
+		expect(report).toContain("6-0-0");
+
+		// Two tasks only → 2-0 → p=0.5 → not distinguishable.
+		const weak: ArmResult[] = [
+			res({ arm: "baseline", task: "t1", reward: 0 }),
+			res({ arm: "cand", task: "t1", reward: 1 }),
+			res({ arm: "baseline", task: "t2", reward: 0 }),
+			res({ arm: "cand", task: "t2", reward: 1 }),
+		];
+		const weakReport = renderReport(weak, "m", STAMP, 1);
+		expect(weakReport).toContain("not distinguishable");
+		expect(weakReport).not.toContain("better (p<0.05)");
+	});
+
+	test("a single-arm run has no comparison section", () => {
+		const report = renderReport([res({ arm: "only", task: "t1", reward: 1 })], "m", STAMP, 1);
+		expect(report).not.toContain("## Arm comparison");
 	});
 });
 

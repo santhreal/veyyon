@@ -216,6 +216,127 @@ export function wilsonInterval(
 }
 
 /**
+ * Two-sided exact sign-test p-value for a paired comparison: given `wins` tasks
+ * where arm B beat arm A and `losses` where A beat B (ties excluded), the
+ * probability, under the null that B and A are equally good, of a win/loss split
+ * at least this lopsided in either direction.
+ *
+ * This is the honest arm-vs-arm test. Comparing two arms' independent Wilson
+ * intervals for overlap throws away the fact that BOTH arms ran the SAME tasks:
+ * task difficulty is the dominant source of variance, and pairing by task removes
+ * it, so the paired test has far more power. The sign test is chosen over a
+ * normal-approximation paired t because it is exact and makes no distributional
+ * assumption — it cannot understate uncertainty at the small task counts a bench
+ * usually runs, which is the same failure mode the Wilson interval fixes for a
+ * single cell. Computed from the Binomial(n, 0.5) CDF with an iterative PMF, so
+ * there is no overflow even at 100+ tasks and no floating factorial.
+ *
+ * Returns 1 when there are no decisive tasks (all ties): no evidence either way.
+ */
+export function signTestPValue(wins: number, losses: number): number {
+	const n = wins + losses;
+	if (n <= 0) return 1;
+	const k = Math.min(wins, losses);
+	// Cumulative P(X <= k) for X ~ Binomial(n, 0.5), built from pmf(0) = 0.5^n and
+	// the ratio pmf(i) = pmf(i-1) * (n-i+1)/i. Stable and exact-in-spirit.
+	let pmf = 0.5 ** n;
+	let cdf = pmf;
+	for (let i = 1; i <= k; i++) {
+		pmf *= (n - i + 1) / i;
+		cdf += pmf;
+	}
+	return Math.min(1, 2 * cdf);
+}
+
+/** One arm-vs-arm paired comparison over the tasks both arms ran. */
+export interface ArmDelta {
+	/** Reference arm (the "from" side of the delta). */
+	armA: string;
+	/** Candidate arm (the "to" side); {@link meanDelta} is B minus A. */
+	armB: string;
+	/** Tasks with at least one OK (non-errored) sample in BOTH arms — the paired unit count. */
+	nTasks: number;
+	/** Mean over paired tasks of (passRate_B - passRate_A). Positive = B better. Null when nTasks is 0. */
+	meanDelta: number | null;
+	/**
+	 * 95% CI for {@link meanDelta} from the per-task deltas (normal approximation,
+	 * z * sd/sqrt(nTasks)). An effect-size aid, secondary to {@link signTestP}; at a
+	 * small nTasks read the sign test, not this. Null when nTasks < 2 (no spread to
+	 * estimate).
+	 */
+	ciLow: number | null;
+	ciHigh: number | null;
+	/** Tasks where B's pass rate exceeded A's. */
+	wins: number;
+	/** Tasks where A's pass rate exceeded B's. */
+	losses: number;
+	/** Tasks where the two pass rates were equal. */
+	ties: number;
+	/** Two-sided exact sign-test p-value over wins/losses (see {@link signTestPValue}). */
+	signTestP: number;
+}
+
+/**
+ * Every unordered arm pair, compared PAIRED by task. For each pair, a task counts
+ * only when both arms produced at least one OK sample for it (an all-errored cell
+ * cannot be paired), and the per-task delta is the difference of the two cells'
+ * pass rates. Pure and deterministic: arms are compared in first-seen order, so the
+ * same results always yield the same table. This is what lets the report state
+ * whether B actually beat A instead of asking the reader to eyeball two overlapping
+ * independent intervals.
+ */
+export function pairwiseArmDeltas(results: readonly ArmResult[]): ArmDelta[] {
+	const arms = [...new Set(results.map(r => r.arm))];
+	const tasks = [...new Set(results.map(r => r.task))];
+	const rateOf = (arm: string, task: string): number | null =>
+		summarizeCell(results.filter(r => r.arm === arm && r.task === task)).passRate;
+	const out: ArmDelta[] = [];
+	for (let i = 0; i < arms.length; i++) {
+		for (let j = i + 1; j < arms.length; j++) {
+			const armA = arms[i] as string;
+			const armB = arms[j] as string;
+			const deltas: number[] = [];
+			let wins = 0;
+			let losses = 0;
+			let ties = 0;
+			for (const task of tasks) {
+				const a = rateOf(armA, task);
+				const b = rateOf(armB, task);
+				if (a === null || b === null) continue; // unpaired: one arm has no OK sample here
+				const d = b - a;
+				deltas.push(d);
+				if (d > 0) wins++;
+				else if (d < 0) losses++;
+				else ties++;
+			}
+			const nTasks = deltas.length;
+			const meanDelta = nTasks > 0 ? deltas.reduce((s, d) => s + d, 0) / nTasks : null;
+			let ciLow: number | null = null;
+			let ciHigh: number | null = null;
+			if (nTasks >= 2 && meanDelta !== null) {
+				const variance = deltas.reduce((s, d) => s + (d - meanDelta) ** 2, 0) / (nTasks - 1);
+				const se = Math.sqrt(variance / nTasks);
+				ciLow = meanDelta - Z_95 * se;
+				ciHigh = meanDelta + Z_95 * se;
+			}
+			out.push({
+				armA,
+				armB,
+				nTasks,
+				meanDelta,
+				ciLow,
+				ciHigh,
+				wins,
+				losses,
+				ties,
+				signTestP: signTestPValue(wins, losses),
+			});
+		}
+	}
+	return out;
+}
+
+/**
  * Reduce a group of samples to a {@link CellSummary}. Pure: same input, same
  * output, no IO. Used for both the per-arm rollup (all of an arm's samples) and
  * each per-task cell (one arm, one task, all repeats).
@@ -311,6 +432,34 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 			return [fmtRate(s), fmt(s.meanOutputTokens), s.meanCostUsd === null ? "—" : `$${s.meanCostUsd.toFixed(3)}`];
 		});
 		lines.push(`| ${task} | ${cells.join(" | ")} |`);
+	}
+	if (arms.length >= 2) {
+		lines.push("");
+		lines.push("## Arm comparison (paired by task)");
+		lines.push("");
+		lines.push(
+			"Δ pass rate is arm B minus arm A, averaged over tasks both arms ran. The verdict is a two-sided exact " +
+				"sign test over per-task wins/losses (ties excluded); it uses the paired structure, so it has far more " +
+				"power than comparing the two arms' independent intervals above. The Δ 95% CI is a normal-approximation " +
+				"effect-size aid — at a small task count, trust the sign test.",
+		);
+		lines.push("");
+		lines.push("| A → B | paired tasks | Δ pass rate | Δ 95% CI | W-L-T | sign-test p | verdict |");
+		lines.push("|---|---|---|---|---|---|---|");
+		for (const d of pairwiseArmDeltas(results)) {
+			const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + d.meanDelta.toFixed(3);
+			const ci =
+				d.ciLow === null || d.ciHigh === null
+					? "—"
+					: `[${(d.ciLow >= 0 ? "+" : "") + d.ciLow.toFixed(3)}, ${(d.ciHigh >= 0 ? "+" : "") + d.ciHigh.toFixed(3)}]`;
+			const decisive = d.wins + d.losses > 0 && d.signTestP < 0.05;
+			const verdict = decisive
+				? `${d.meanDelta !== null && d.meanDelta > 0 ? d.armB : d.armA} better (p<0.05)`
+				: "not distinguishable";
+			lines.push(
+				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${verdict} |`,
+			);
+		}
 	}
 	const probeArms = arms.filter(a => results.some(r => r.arm === a && (r.argotLoadCalls ?? 0) > 0));
 	if (probeArms.length > 0) {
