@@ -144,7 +144,7 @@ ${retry}
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
 - Commit ONLY the ported source, tests, docs, and changelog. Never commit scratch artifacts: downloaded \`*.diff\`/\`*.patch\` files, notes, or tool output.
 - veyyon's product direction wins over upstream's. Where veyyon diverged (its own model catalog with its own model IDs, types, and roles; its own branding, install flow, and docs), port the underlying bug onto veyyon's design; never import upstream's scheme. The issue's "Diverged surface warning" section, when present, is binding.
-- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), do not open a PR; end the session with a summary that starts with \`NOT-APPLICABLE:\` and names the veyyon change that supersedes it.
+- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the veyyon change that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
 `;
 }
 
@@ -194,9 +194,21 @@ export type PrOpenAction =
  * pass a port PR closed WITHOUT merging strands its issue in pr-open forever
  * (the pipeline never revisits it), and a merged PR whose Closes line was
  * mangled leaves a done issue open, polluting every queue count.
+ *
+ * A NOT-APPLICABLE PR is a verdict, not a port: Jules's AUTO_CREATE_PR mode
+ * always opens a PR at completion, so "does not apply" arrives as an empty
+ * PR titled `NOT-APPLICABLE: ...` (seen live on the first day). That issue
+ * goes to port-review for verification; closing such a PR unmerged must
+ * never requeue the port, or every confirmed non-applicable change would be
+ * re-attempted forever.
  */
 export function classifyPrOpen(pr: PortPrRef | null): PrOpenAction {
 	if (pr === null) return { kind: "review", reason: "labeled port-pr-open but no PR references this issue" };
+	if (/^\s*NOT-APPLICABLE\b/i.test(pr.title) || /^\s*NOT-APPLICABLE\b/im.test(pr.body ?? ""))
+		return {
+			kind: "review",
+			reason: `PR #${pr.number} is a NOT-APPLICABLE verdict, not a port; verify its reasoning, then close both PR and issue`,
+		};
 	if (pr.merged_at) return { kind: "close", reason: `port PR #${pr.number} merged` };
 	if ((pr.state ?? "open") === "closed")
 		return { kind: "requeue", reason: `port PR #${pr.number} was closed without merging` };
