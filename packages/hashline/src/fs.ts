@@ -68,6 +68,70 @@ export async function sameExistingFile(a: string, b: string): Promise<boolean> {
 	}
 }
 
+/** Monotonic suffix so two writes to the same target in one process never
+ *  collide on a temp name. */
+let atomicTempCounter = 0;
+
+/**
+ * Write `content` to `targetPath` crash-atomically: stream into a sibling temp
+ * file, then rename it over the target. A rename is atomic on POSIX, so a death
+ * mid-write (SIGINT, out-of-memory kill, full disk, power loss) leaves the
+ * target as either the whole old file or the whole new one, never a truncated
+ * mix. A plain `Bun.write`/`writeFile` truncates the target in place and streams
+ * into it, so the same interruption corrupts the user's real source file.
+ *
+ * This is deliberately a small self-contained copy of the temp+rename pattern
+ * rather than a dependency on `@veyyon/utils` (which owns the fuller
+ * `atomicWriteFile`): hashline is a lean, standalone patch library with only
+ * `diff` and `lru-cache` as dependencies, and pulling in the utils package would
+ * drag its logging/templating/native transitive deps into every hashline
+ * consumer. Keep the two in sync by behavior, not by import.
+ *
+ * A symlinked target is resolved so the link's target is replaced and the link
+ * itself is preserved. The existing file's permission bits are carried forward
+ * because the rename swaps the inode (a new file defaults to 0o644).
+ */
+async function writeFileAtomic(targetPath: string, content: string): Promise<void> {
+	let target = targetPath;
+	try {
+		const linkStat = await fs.lstat(targetPath);
+		if (linkStat.isSymbolicLink()) {
+			target = pathModule.resolve(pathModule.dirname(targetPath), await fs.readlink(targetPath));
+		}
+	} catch (error) {
+		if (!isNotFound(error)) throw error;
+	}
+
+	let mode = 0o644;
+	try {
+		mode = (await fs.stat(target)).mode & 0o777;
+	} catch (error) {
+		if (!isNotFound(error)) throw error;
+	}
+
+	const dir = pathModule.dirname(target);
+	const tempPath = pathModule.join(dir, `.${pathModule.basename(target)}.${process.pid}.${atomicTempCounter++}.tmp`);
+	try {
+		await fs.writeFile(tempPath, content, { mode });
+		try {
+			await fs.rename(tempPath, target);
+		} catch (error) {
+			// Windows cannot rename onto an existing file; drop it and retry so the
+			// overwrite still happens (POSIX rename already replaces atomically).
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code === "EEXIST" || code === "EPERM" || code === "EACCES") {
+				await fs.rm(target, { force: true });
+				await fs.rename(tempPath, target);
+			} else {
+				throw error;
+			}
+		}
+	} catch (error) {
+		await fs.rm(tempPath, { force: true }).catch(() => {});
+		throw error;
+	}
+}
+
 /**
  * Abstract storage backend the {@link Patcher} reads from and writes to.
  * Subclass for new backends; the package ships {@link InMemoryFilesystem} and
@@ -231,7 +295,7 @@ export class NodeFilesystem extends Filesystem {
 	}
 
 	async writeText(path: string, content: string): Promise<WriteResult> {
-		await Bun.write(path, content);
+		await writeFileAtomic(path, content);
 		return { text: content };
 	}
 
@@ -253,7 +317,13 @@ export class NodeFilesystem extends Filesystem {
 			// file. `path.resolve` (the caller-side same-path guard in the patcher)
 			// does not fold case or resolve symlinks, so this cannot be left to the
 			// caller: detect same-file here by device + inode and skip the delete.
-			await Bun.write(to, content);
+			//
+			// The destination write is crash-atomic (temp + rename), so a death
+			// mid-move cannot corrupt a pre-existing file the move overwrites. For a
+			// symlinked `to`, the atomic write resolves the link and replaces the
+			// shared target, so the post-rename inode is identical under both names
+			// and `sameExistingFile` still correctly skips the delete.
+			await writeFileAtomic(to, content);
 			if (!(await sameExistingFile(from, to))) {
 				await this.delete(from);
 			}
