@@ -1043,6 +1043,14 @@ export class TUI extends Container {
 	// Wheel scroll step in rows per tick. Three rows reads as a calm scroll;
 	// one row is sluggish on a long transcript.
 	static readonly #WHEEL_SCROLL_ROWS = 3;
+	// Acceleration (the opencode scrollbox lesson): repeated same-direction
+	// ticks inside this window step the multiplier up to the cap, so flying
+	// through a long transcript does not cost one wrist-flick per screen.
+	static readonly #WHEEL_ACCEL_WINDOW_MS = 300;
+	static readonly #WHEEL_ACCEL_MAX_STREAK = 3;
+	#lastWheelDirection: -1 | 1 | null = null;
+	#lastWheelAtMs = 0;
+	#wheelStreak = 0;
 	// Exactly what is painted on the screen rows (post-composite, prepared).
 	#previousWindow: string[] = [];
 	#nativeScrollbackLiveRegionStart: number | undefined;
@@ -2405,13 +2413,22 @@ export class TUI extends Container {
 	 * Anchored to the live window top so the first wheel-up starts from the
 	 * currently visible tail; walking down to the tail resumes following. */
 	#handleIsolationWheel(direction: -1 | 1): void {
+		const now = this.#renderScheduler.now();
+		if (direction === this.#lastWheelDirection && now - this.#lastWheelAtMs < TUI.#WHEEL_ACCEL_WINDOW_MS) {
+			this.#wheelStreak = Math.min(this.#wheelStreak + 1, TUI.#WHEEL_ACCEL_MAX_STREAK);
+		} else {
+			this.#wheelStreak = 0;
+		}
+		this.#lastWheelDirection = direction;
+		this.#lastWheelAtMs = now;
+		const step = TUI.#WHEEL_SCROLL_ROWS * (1 + this.#wheelStreak);
 		if (direction === -1) {
 			// Nothing above the live window to scroll to (short frame): stay
 			// following instead of entering a frozen state with zero new rows.
 			if (this.#windowTopRow === 0 && this.#virtualScrollTop === null) return;
-			this.#virtualScrollTop = Math.max(0, (this.#virtualScrollTop ?? this.#windowTopRow) - TUI.#WHEEL_SCROLL_ROWS);
+			this.#virtualScrollTop = Math.max(0, (this.#virtualScrollTop ?? this.#windowTopRow) - step);
 		} else if (this.#virtualScrollTop !== null) {
-			const next = this.#virtualScrollTop + TUI.#WHEEL_SCROLL_ROWS;
+			const next = this.#virtualScrollTop + step;
 			this.#virtualScrollTop = next >= this.#windowTopRow ? null : next;
 		}
 		this.requestRender();

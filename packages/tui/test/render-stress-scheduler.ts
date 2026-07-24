@@ -12,6 +12,11 @@ export class StressRenderScheduler implements RenderScheduler {
 		return this.#time;
 	}
 
+	/** Bump the synthetic clock without firing callbacks (time-gap simulation). */
+	advance(ms: number): void {
+		this.#time += ms;
+	}
+
 	scheduleImmediate(callback: () => void): void {
 		this.#immediateCallbacks.push(callback);
 	}

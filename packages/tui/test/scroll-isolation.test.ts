@@ -194,6 +194,33 @@ describe("scroll isolation", () => {
 		}
 	});
 
+	it("accelerates repeated same-direction wheel ticks and resets after a pause", async () => {
+		// The opencode scrollbox lesson: flying through a long transcript must
+		// not cost one flick per screen. Three rapid ticks step 3, 6, 9 rows
+		// (streak multiplier); a pause longer than the accel window resets the
+		// streak to the base step.
+		const { term, tui, scheduler } = await setup(60);
+		try {
+			// Live tail top is 51 (61-row frame in a 10-row viewport).
+			term.sendInput(WHEEL_UP); // 51 -> 48
+			await scheduler.drain(term);
+			term.sendInput(WHEEL_UP); // streak 1: 48 -> 42
+			await scheduler.drain(term);
+			term.sendInput(WHEEL_UP); // streak 2: 42 -> 33
+			await scheduler.drain(term);
+			expect(viewportText(term)[0]).toBe("hist-33");
+
+			// After the accel window lapses, the next tick is the base step again.
+			scheduler.advance(400);
+			term.sendInput(WHEEL_UP); // 33 -> 30
+			await scheduler.drain(term);
+			expect(viewportText(term)[0]).toBe("hist-30");
+		} finally {
+			tui.stop();
+			await term.flush();
+		}
+	});
+
 	it("resumes following when the pinned footer is clicked", async () => {
 		// The operator's ask (2026-07-23): the scroll indicator says "click to
 		// go to the bottom" — a left click anywhere in the pinned footer (band
