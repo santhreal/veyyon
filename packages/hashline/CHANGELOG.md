@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Exported `hasUtf8Bom(bytes)`, the canonical byte-level UTF-8 BOM check, next to `stripBom`. A text reader silently drops a leading BOM, so callers that need to round-trip the BOM must sniff the raw bytes; this gives them one shared detector instead of re-open-coding the `EF BB BF` check.
+
 ## [1.0.24] - 2026-07-24
 
 ### Performance

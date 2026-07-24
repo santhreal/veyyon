@@ -21,9 +21,8 @@ import {
 	normalizeToLF,
 	normalizeUnicode,
 	restoreLineEndings,
-	stripBom,
 } from "../normalize";
-import { readEditFileText, serializeEditFileText } from "../read-file";
+import { readEditFileTextWithBom, serializeEditFileText } from "../read-file";
 import type { EditToolDetails, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
@@ -1034,8 +1033,10 @@ export async function executeReplaceSingle(
 	}
 
 	const absolutePath = resolvePlanPath(session, path);
-	const rawContent = await readEditFileText(absolutePath, path);
-	const { bom, text: content } = stripBom(rawContent);
+	// Recover the BOM from raw bytes: the text reader drops a leading UTF-8 BOM,
+	// so a plain read + stripBom would rewrite the file without it (regression:
+	// "should preserve UTF-8 BOM after edit").
+	const { bom, content } = await readEditFileTextWithBom(absolutePath, path);
 	const originalEnding = detectLineEnding(content);
 	const normalizedContent = normalizeToLF(content);
 	const normalizedOldText = normalizeToLF(old_text);
@@ -1103,7 +1104,7 @@ export async function executeReplaceSingle(
 			firstChangedLine: diffResult.firstChangedLine,
 			diagnostics,
 			meta,
-			oldText: rawContent,
+			oldText: content,
 			newText: finalContent,
 		}),
 	};

@@ -2246,8 +2246,11 @@ describe("edit tool CRLF handling", () => {
 		).rejects.toThrow(/Found 2 occurrences/);
 	});
 
-	// TODO: CRLF preservation broken by LSP formatting - fix later
-	it.skip("should preserve UTF-8 BOM after edit", async () => {
+	// REGRESSION: replace mode read the file via a text reader that silently
+	// drops a leading UTF-8 BOM, then `stripBom` on the already-BOM-free string
+	// saw nothing, so the write dropped the BOM. It now recovers the BOM from the
+	// raw bytes (readEditFileTextWithBom), matching the hashline/apply-patch modes.
+	it("preserves a UTF-8 BOM (and CRLF endings) after a replace edit", async () => {
 		const testFile = path.join(testDir, "bom-test.txt");
 		fs.writeFileSync(testFile, "\uFEFFfirst\r\nsecond\r\nthird\r\n");
 
@@ -2256,7 +2259,40 @@ describe("edit tool CRLF handling", () => {
 			edits: [{ old_text: "second\n", new_text: "REPLACED\n" }],
 		});
 
-		const content = await Bun.file(testFile).text();
-		expect(content).toBe("\uFEFFfirst\r\nREPLACED\r\nthird\r\n");
+		// Assert the exact bytes: the BOM (EF BB BF) leads and every line keeps CRLF.
+		const bytes = new Uint8Array(await Bun.file(testFile).arrayBuffer());
+		expect([bytes[0], bytes[1], bytes[2]]).toEqual([0xef, 0xbb, 0xbf]);
+		expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes)).toBe("\uFEFFfirst\r\nREPLACED\r\nthird\r\n");
+	});
+
+	it("preserves a UTF-8 BOM with LF endings after a replace edit", async () => {
+		// The BOM recovery must not depend on CRLF: an LF file with a BOM keeps both.
+		const testFile = path.join(testDir, "bom-lf.txt");
+		fs.writeFileSync(testFile, "\uFEFFalpha\nbeta\ngamma\n");
+
+		await editTool.execute("test-bom-lf", {
+			path: testFile,
+			edits: [{ old_text: "beta\n", new_text: "DELTA\n" }],
+		});
+
+		const bytes = new Uint8Array(await Bun.file(testFile).arrayBuffer());
+		expect([bytes[0], bytes[1], bytes[2]]).toEqual([0xef, 0xbb, 0xbf]);
+		expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes)).toBe("\uFEFFalpha\nDELTA\ngamma\n");
+	});
+
+	it("does not add a BOM to a file that never had one", async () => {
+		// The inverse guard: recovery must be conditional on the source bytes, or
+		// every edited file would sprout a spurious BOM.
+		const testFile = path.join(testDir, "no-bom.txt");
+		fs.writeFileSync(testFile, "one\ntwo\nthree\n");
+
+		await editTool.execute("test-no-bom", {
+			path: testFile,
+			edits: [{ old_text: "two\n", new_text: "TWO\n" }],
+		});
+
+		const bytes = new Uint8Array(await Bun.file(testFile).arrayBuffer());
+		expect(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf).toBe(false);
+		expect(new TextDecoder().decode(bytes)).toBe("one\nTWO\nthree\n");
 	});
 });

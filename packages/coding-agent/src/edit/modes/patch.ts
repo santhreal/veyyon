@@ -42,6 +42,7 @@ import {
 	countLeadingWhitespace,
 	detectLineEnding,
 	getLeadingWhitespace,
+	hasUtf8Bom,
 	normalizeForFuzzy,
 	normalizeToLF,
 	restoreLineEndings,
@@ -1572,12 +1573,10 @@ async function applyNormalizedPatch(input: PatchInput, options: ApplyPatchOption
 
 	const originalContent = await readExistingPatchFile(fs, absolutePath, input.path);
 	const { bom: bomFromText, text: strippedContent } = stripBom(originalContent);
+	// The text read drops a leading UTF-8 BOM, so recover it from the raw bytes.
 	let bom = bomFromText;
-	if (!bom && fs.readBinary) {
-		const bytes = await fs.readBinary(absolutePath);
-		if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-			bom = "\uFEFF";
-		}
+	if (!bom && fs.readBinary && hasUtf8Bom(await fs.readBinary(absolutePath))) {
+		bom = "\uFEFF";
 	}
 	const lineEnding = detectLineEnding(strippedContent);
 	const normalizedContent = normalizeToLF(strippedContent);
