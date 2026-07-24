@@ -17,6 +17,23 @@ set "cli=%scripts_dir%..\src\cli.ts"
 set "preload=%scripts_dir%veyyon.ts"
 set "timing_preload=%scripts_dir%..\..\utils\src\module-timer.ts"
 
+rem Self-heal gitignored build artifacts a bare `git pull` leaves missing —
+rem the parity twin of the POSIX launcher's self-heal. tool-views.generated.js
+rem is resolved at module PARSE time, and the native addon is version-checked
+rem at boot; without either, veyyon dies before main() with a raw resolve dump.
+if not exist "%scripts_dir%..\src\export\html\tool-views.generated.js" (
+  echo veyyon: regenerating missing build artifact ^(tool-views.generated.js^)... 1>&2
+  call bun --cwd="%scripts_dir%..\..\collab-web" run gen:tool-views 1>&2
+  if errorlevel 1 (
+    echo veyyon: could not regenerate it. Run: bun install in the checkout root. 1>&2
+    exit /b 1
+  )
+)
+if not exist "%scripts_dir%..\..\natives\native\veyyon_natives.win32-x64*.node" (
+  call bun "%scripts_dir%..\..\natives\scripts\ensure-native.ts" 1>&2
+  if errorlevel 1 exit /b 1
+)
+
 if not defined VEYYON_DEV_LAUNCH_DIR set "VEYYON_DEV_LAUNCH_DIR=%USERPROFILE%\.veyyon\.dev-cwd"
 if not exist "%VEYYON_DEV_LAUNCH_DIR%" mkdir "%VEYYON_DEV_LAUNCH_DIR%" >nul 2>&1
 
