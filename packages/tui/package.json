@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/tui",
-  "version": "1.0.36",
+  "version": "1.0.37",
   "description": "Terminal User Interface library with differential rendering for efficient text-based applications",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

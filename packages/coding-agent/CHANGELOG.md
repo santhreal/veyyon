@@ -2,20 +2,16 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- The inline TUI no longer paints backgrounds by default, so nothing renders as a colored slab on a terminal whose background differs from the theme: the user-message bubble, custom/skill/hook message cards, tool-state tints, the composer band, and the status line all inherit the terminal's own background. The status line's painted bar is still available by turning off the new `statusLine.transparent` default, and a theme can still declare an explicit `composerBg`.
-- Every built-in theme is presented again. The temporary alabaster-only picker is reverted along with its `tui.paintGround: always` default, which repainted the terminal's background color on launch; `tui.paintGround` is back to `auto` (paint only when it cannot produce a visible seam) and the dark/light defaults are back to `titanium`/`light`.
+## [1.0.37] - 2026-07-24
 
 ### Added
 
 - Added an eval-only per-section system-prompt override, reachable only through the `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable (a JSON object of section name to replacement text). It swaps individual banner sections of the default prompt (`conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, `deliveryContract`) for a benchmark while leaving every other section, and every settings-gated block in it, byte-for-byte untouched. It is deliberately NOT a config key or CLI flag, so no `config.yml` can reach it and it cannot contaminate a normal run; when the variable is set, `vey` logs a loud warning that the prompt is not the production one. Unlike a whole-prompt override it cannot freeze a snapshot that stops responding to settings or silently drop a settings-gated section (for example the delegation block that renders only when delegation is on). Malformed JSON, an unknown section name, a non-string value, a replacement that drops its section banner, and combining the override with a custom whole-prompt template each fail loudly rather than silently.
 
-## [1.0.36] - 2026-07-24
-
 ### Fixed
 
-- Error messages no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace, applying a personality, or changing the Mermaid rendering setting now reads `Failed to …: <reason>` instead of `Failed to …: Error: <reason>`.
+- The inline TUI no longer paints backgrounds by default, so nothing renders as a colored slab on a terminal whose background differs from the theme: the user-message bubble, custom/skill/hook message cards, tool-state tints, the composer band, and the status line all inherit the terminal's own background. The status line's painted bar is still available by turning off the new `statusLine.transparent` default, and a theme can still declare an explicit `composerBg`.
+- Every built-in theme is presented again. The temporary alabaster-only picker is reverted along with its `tui.paintGround: always` default, which repainted the terminal's background color on launch; `tui.paintGround` is back to `auto` (paint only when it cannot produce a visible seam) and the dark/light defaults are back to `titanium`/`light`.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11288,6 +11284,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
 
+## [1.0.36] - 2026-07-24
+
+### Fixed
+
+- Error messages no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace, applying a personality, or changing the Mermaid rendering setting now reads `Failed to …: <reason>` instead of `Failed to …: Error: <reason>`.
+
 ## [1.0.35] - 2026-07-24
 
 ### Changed
@@ -11311,12 +11313,6 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 
 - A `keybindings.yml`/`.json` that parses cleanly but is not a mapping (a top-level sequence or a bare scalar) is now quarantined and left at defaults instead of silently corrupting the user's map. Such a file previously reduced a scalar to an empty map and turned a sequence into bogus index-keyed bindings, which the migration writer then persisted over the original file. A blank or comments-only file still loads as an empty config with no complaint.
 - A settings file that parses cleanly but is not a mapping (a top-level YAML sequence, a bare scalar, or a string) is now preserved and reported instead of silently discarded. The loader previously collapsed any non-mapping root to an empty config with no signal, so a mis-edited settings file erased the user's whole configuration invisibly. Such a file is now quarantined and surfaced through `quarantinedFiles`, exactly like an unparseable one, while a blank or comments-only file stays silent as a legitimately empty config.
-
-## [1.0.31] - 2026-07-24
-
-### Fixed
-
-- The `apply_patch` default filesystem now commits crash-atomically. The interactive editor already wrote through the crash-atomic LSP path, but the default filesystem behind programmatic and SDK `apply_patch` callers still used a truncate-then-stream `Bun.write`, so a crash mid-write could leave the target file truncated. Create, update, and move writes through the default now write a sibling temp and rename it over the target, preserving an existing file's permission bits.
 
 ## [1.0.31] - 2026-07-24
 
@@ -11349,13 +11345,6 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 
 - The install script now adds `veyyon` to your PATH in a file that a new shell actually reads on macOS. A macOS Terminal window opens a login `bash` shell, which reads `~/.bash_profile` (then `~/.bash_login`, `~/.profile`) and not `~/.bashrc`, so the previous PATH line written to `~/.bashrc` never took effect and `veyyon` stayed off PATH after install. The installer now writes to the correct login-shell file on macOS and keeps using `~/.bashrc` on Linux.
 - The Windows installer now detects whether the install directory is already on PATH by comparing whole PATH entries instead of a substring. A substring check treated `C:\...\bin` as present when PATH only contained a different entry sharing that prefix (for example `C:\...\bin2`), so it skipped adding the real directory and `veyyon` stayed off PATH. It also no longer produces an empty PATH entry (which Windows reads as the current directory) when the existing user PATH is empty.
-
-## [1.0.25] - 2026-07-24
-
-### Fixed
-
-- Editing a file that starts with a UTF-8 BOM no longer strips the BOM. The `old_text`/`new_text` edit mode read the file through a decoder that silently drops a leading BOM and then wrote the file back without it; it now recovers the BOM from the raw bytes, so the marker survives the edit (line endings were already preserved).
-- Format-on-write no longer fails silently. When an LSP formatter crashes or errors, the edit still saves (unformatted) as before, but the failure is now logged with the server and file instead of being swallowed, and a cancelled or timed-out format is no longer misreported as a formatter failure.
 
 ## [1.0.25] - 2026-07-24
 
