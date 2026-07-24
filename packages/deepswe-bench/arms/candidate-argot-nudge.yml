@@ -1,0 +1,3 @@
+# Arm overlay: Argot Enabled Candidate
+argot:
+  enabled: true

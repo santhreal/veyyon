@@ -1,0 +1,3 @@
+# Arm overlay: Argot Setting Only (Control)
+argot:
+  enabled: true
