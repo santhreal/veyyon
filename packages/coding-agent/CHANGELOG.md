@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- **SDK:** Fixed a race condition where launching with a cache-cold configured discovery default role could silently fall back to an unrelated provider's default model (issues #6114, #6162).
 
 ## [1.0.37] - 2026-07-24
 
