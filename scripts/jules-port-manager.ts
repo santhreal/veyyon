@@ -148,25 +148,59 @@ ${retry}
 `;
 }
 
+export interface PortPrRef {
+	number: number;
+	title: string;
+	body: string | null;
+	html_url: string;
+	state?: string;
+	merged_at?: string | null;
+}
+
 /**
- * The port PR for an issue among a PR list: its body carries `Closes #N` (the
- * prompt mandates it), or its title carries the radar's `port(upstream#M)`
- * prefix for the mirrored upstream PR M. Word-boundary match so #16 never
- * claims #167's PR.
+ * The port PR for an issue among a PR list. Three signals, each intentional:
+ * a closing keyword + `#N` (the prompt mandates `Closes #N`), the radar's
+ * `port(upstream#M)` title prefix, or a bare `#N` ONLY inside a PR that
+ * Jules itself authored (its auto-footer). A bare `#N` in an arbitrary PR
+ * body is NOT a signal: dependabot bodies quote changelogs full of other
+ * repos' `#numbers`, and one collision would mark a port done that never
+ * landed. Word-boundary match so #16 never claims #167's PR.
  */
-export function findPortPr(
-	prs: Array<{ number: number; title: string; body: string | null; html_url: string }>,
+export function findPortPr<T extends PortPrRef>(
+	prs: T[],
 	issueNumber: number,
 	upstreamNumber: number | null,
-): { number: number; html_url: string } | null {
+): T | null {
 	const closes = new RegExp(`(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+#${issueNumber}\\b`, "i");
 	const bare = new RegExp(`#${issueNumber}\\b`);
+	const julesFooter = /PR created automatically by Jules/i;
 	for (const pr of prs) {
 		const body = pr.body ?? "";
-		if (closes.test(body) || bare.test(body)) return pr;
+		if (closes.test(body)) return pr;
 		if (upstreamNumber !== null && pr.title.includes(`port(upstream#${upstreamNumber})`)) return pr;
+		if (julesFooter.test(body) && bare.test(body)) return pr;
 	}
 	return null;
+}
+
+export type PrOpenAction =
+	| { kind: "keep" }
+	| { kind: "requeue"; reason: string }
+	| { kind: "close"; reason: string }
+	| { kind: "review"; reason: string };
+
+/**
+ * What harvest does with an issue already marked port-pr-open. Without this
+ * pass a port PR closed WITHOUT merging strands its issue in pr-open forever
+ * (the pipeline never revisits it), and a merged PR whose Closes line was
+ * mangled leaves a done issue open, polluting every queue count.
+ */
+export function classifyPrOpen(pr: PortPrRef | null): PrOpenAction {
+	if (pr === null) return { kind: "review", reason: "labeled port-pr-open but no PR references this issue" };
+	if (pr.merged_at) return { kind: "close", reason: `port PR #${pr.number} merged` };
+	if ((pr.state ?? "open") === "closed")
+		return { kind: "requeue", reason: `port PR #${pr.number} was closed without merging` };
+	return { kind: "keep" };
 }
 
 /** Sessions created inside the rolling window, given a newest-first list. */
@@ -471,13 +505,52 @@ async function harvest(): Promise<void> {
 	const inflight = (await ghAll(`/repos/${ORIGIN}/issues?labels=${DISPATCHED_LABEL}&state=open`, 2000)).filter(
 		i => !i.pull_request,
 	);
-	if (inflight.length === 0) {
+	const prOpen = (await ghAll(`/repos/${ORIGIN}/issues?labels=${PR_OPEN_LABEL}&state=open`, 2000)).filter(
+		i => !i.pull_request && !hasLabel(i, DISPATCHED_LABEL),
+	);
+	if (inflight.length === 0 && prOpen.length === 0) {
 		console.log("harvest: nothing in flight.");
 		return;
 	}
 	const lanes = resolveKeys().map(key => ({ key, fp: keyFingerprint(key) }));
 	// One PR listing serves every issue this run.
 	const prs = await ghAll(`/repos/${ORIGIN}/pulls?state=all&sort=created&direction=desc`, 300);
+
+	// Phase 1 — issues whose port PR is out for review: notice merges (close
+	// the issue if the Closes line failed to) and rejections (requeue).
+	if (prOpen.length > 0) console.log(`harvest: ${prOpen.length} port PRs out for review.`);
+	for (const issue of prOpen) {
+		const pr = findPortPr(prs, issue.number, upstreamNumberFromIssue(issue.body ?? ""));
+		const action = classifyPrOpen(pr);
+		switch (action.kind) {
+			case "keep":
+				break;
+			case "close":
+				await comment(issue.number, `${action.reason}; closing.`);
+				await gh(`/repos/${ORIGIN}/issues/${issue.number}`, {
+					method: "PATCH",
+					body: JSON.stringify({ state: "closed" }),
+				});
+				console.log(`harvest: #${issue.number} closed (${action.reason}).`);
+				break;
+			case "requeue":
+				await comment(
+					issue.number,
+					`${failMarker(`sessions/pr-${pr?.number}`)}\n${action.reason}; requeued (attempt budget ${MAX_ATTEMPTS}).`,
+				);
+				await removeLabel(issue.number, PR_OPEN_LABEL);
+				console.log(`harvest: #${issue.number} requeued (${action.reason}).`);
+				break;
+			case "review":
+				await addLabels(issue.number, [REVIEW_LABEL]);
+				await removeLabel(issue.number, PR_OPEN_LABEL);
+				await comment(issue.number, `Needs a human: ${action.reason}.`);
+				console.log(`harvest: #${issue.number} -> ${REVIEW_LABEL} (${action.reason}).`);
+				break;
+		}
+	}
+
+	if (inflight.length === 0) return;
 	console.log(`harvest: ${inflight.length} sessions in flight.`);
 
 	for (const issue of inflight) {
