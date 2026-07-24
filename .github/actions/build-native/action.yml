@@ -81,7 +81,9 @@ runs:
 
       # --- Rust toolchain -----------------------------------------------------
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        # The explicit `toolchain:` input below selects the compiler, so the ref
+        # here is only the action version — sha-pinned like every other action.
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-07-24
         with:
            toolchain: nightly-2026-04-29
            components: ${{ inputs.rust_checks == 'true' && 'clippy, rustfmt' || '' }}
@@ -144,7 +146,7 @@ runs:
       # fingerprints, so a version bump could otherwise get an exact hit for
       # artifacts Cargo must rebuild.
       - name: Cache Rust target/
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
         with:
            shared-key: native-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.variant || 'default' }}-h${{ inputs.hash }}
            cache-on-failure: true
@@ -153,7 +155,7 @@ runs:
 
       # --- sccache ------------------------------------------------------------
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
       - name: Enable sccache for cargo
         # CARGO_INCREMENTAL=0 is required: sccache silently skips caching when
         # incremental is enabled, turning the wrapper into a no-op.
@@ -169,7 +171,7 @@ runs:
       # --- cargo-nextest (native test runner; non-cross builds only) ----------
       - name: Install cargo-nextest
         if: inputs.target == ''
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7572810d7dd469b651bb7793945692cf78da5dd7 # v2.85.0
         with:
            tool: nextest
 
@@ -182,12 +184,12 @@ runs:
       # --cross-compile flag picks the backend; we just install what it needs.
       - name: Setup zig (non-MSVC cross)
         if: steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
            version: 0.16.0
       - name: Install cargo-zigbuild (non-MSVC cross)
         if: steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7572810d7dd469b651bb7793945692cf78da5dd7 # v2.85.0
         with:
            tool: cargo-zigbuild
       - name: Install LLVM tooling (MSVC cross)
@@ -198,12 +200,12 @@ runs:
            sudo apt-get install -y clang lld llvm
       - name: Install cargo-xwin (MSVC cross)
         if: endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7572810d7dd469b651bb7793945692cf78da5dd7 # v2.85.0
         with:
            tool: cargo-xwin
       - name: Cache cargo-xwin Windows SDK
         if: endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
            path: ~/.cache/cargo-xwin
            key: cargo-xwin-${{ runner.os }}-v1
@@ -234,7 +236,7 @@ runs:
            TARGET_VARIANTS: ${{ inputs.variant }}
         run: bun run ci:build:native
       - name: Upload native addon(s)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
            name: veyyon-natives-${{ inputs.platform }}-${{ inputs.arch }}${{ inputs.variant && format('-{0}', inputs.variant) || '' }}-h${{ inputs.hash }}
            path: packages/natives/native/veyyon_natives.${{ inputs.platform }}-${{ inputs.arch }}*.node

@@ -47,7 +47,7 @@ jobs:
     if: needs.preflight.outputs.has_key == 'true'
     steps:
       - name: PR Agent review
-        uses: qodo-ai/pr-agent@main
+        uses: qodo-ai/pr-agent@1885eb4056887b8c8a530f0a35b842bba05cb425 # main 2026-07-24
         env:
           OPENAI_KEY: ${{ secrets.QODO_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

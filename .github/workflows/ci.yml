@@ -54,7 +54,7 @@ jobs:
          # tag straight from `github.ref_name`, and fetching `--tags` while
          # checkout uses an explicit tag refspec makes git refuse — so scope
          # fetch-tags to main refs.
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
            with:
               fetch-tags: ${{ github.ref == 'refs/heads/main' }}
          - name: Detect release tag at HEAD
@@ -146,7 +146,7 @@ jobs:
          linux-x64-run-id: ${{ steps.find.outputs.linux-x64-run-id }}
          cross-platform-run-id: ${{ steps.find.outputs.cross-platform-run-id }}
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - name: Compute native source hash
            id: compute
            shell: bash
@@ -233,7 +233,7 @@ jobs:
       name: Lint, type check & web build
       runs-on: ubuntu-22.04
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/bun-install
          - name: Type check workspace
            run: bun run ci:check:full
@@ -255,7 +255,7 @@ jobs:
                - { variant: baseline, rust_checks: true }
                - { variant: modern }
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/build-native
            with:
               hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
@@ -281,7 +281,7 @@ jobs:
                - { os: ubuntu-22.04, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
       runs-on: ${{ matrix.os }}
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/build-native
            with:
               hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
@@ -304,7 +304,7 @@ jobs:
                - { os: macos-14, platform: darwin, arch: arm64 }
       runs-on: ${{ matrix.os }}
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/build-native
            with:
               hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
@@ -320,7 +320,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -333,7 +333,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -350,7 +350,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -363,7 +363,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -382,7 +382,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -396,7 +396,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -413,7 +413,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -427,7 +427,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -444,7 +444,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -457,7 +457,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -476,7 +476,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -490,7 +490,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -507,7 +507,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 15
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -521,7 +521,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@v4
+           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -535,12 +535,12 @@ jobs:
       name: Install method smoke tests
       runs-on: ubuntu-22.04
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/ensure-rust-toolchain
            with:
               toolchain: nightly-2026-04-29
          - name: Setup sccache
-           uses: mozilla-actions/sccache-action@v0.0.10
+           uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
          - name: Enable sccache for cargo
            # sccache-action exports the GHA cache URL/token; CARGO_INCREMENTAL=0
            # keeps sccache from silently no-oping.
@@ -564,7 +564,7 @@ jobs:
       # Linux runners) is actually gated. pwsh ships on windows-latest.
       runs-on: windows-latest
       steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - name: install.ps1 function tests
            shell: pwsh
            run: pwsh -File scripts/install-tests/functions.test.ps1
@@ -957,3 +957,47 @@ jobs:
               & .\veyyon-windows-x64.exe --smoke-test
               if ($LASTEXITCODE -ne 0) { throw "veyyon-windows-x64.exe --smoke-test failed with exit $LASTEXITCODE" }
 
+
+   release_train_alert:
+      # Eight consecutive releases (v1.0.28-v1.0.35) were tagged and then died red
+      # with zero signal anywhere; the jam was only found by manual audit hours
+      # later while `releases/latest` served stale binaries. This job is the loud
+      # failure that makes that impossible: whenever a release run ends with any
+      # failed job it files (or updates) ONE pinned issue labeled `release-train`,
+      # and the next green release run closes that issue automatically. `always()`
+      # because it must run precisely when something upstream failed.
+      name: Release train alert
+      if: ${{ always() && needs.release_metadata.result == 'success' && needs.release_metadata.outputs.is-release == 'true' }}
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows]
+      runs-on: ubuntu-22.04
+      permissions:
+         contents: read
+         issues: write
+      env:
+         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+         NEEDS_JSON: ${{ toJSON(needs) }}
+         RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
+         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      steps:
+         - name: File or clear the pinned release-train issue
+           shell: bash
+           run: |
+              set -euo pipefail
+              failed=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure") | .key' | paste -sd',' -)
+              existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-train --state open --json number --jq '.[0].number // empty')
+              if [ -n "$failed" ]; then
+                title="Release train red: $RELEASE_TAG failed ($failed)"
+                body=$(printf 'Release run for `%s` failed in: `%s`.\n\nRun: %s\n\nPublishing stays jammed until a green release run closes this issue automatically.' "$RELEASE_TAG" "$failed" "$RUN_URL")
+                if [ -n "$existing" ]; then
+                  gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+                  gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title"
+                else
+                  gh issue create --repo "$GITHUB_REPOSITORY" --label release-train --title "$title" --body "$body"
+                fi
+                echo "::error::release train red for $RELEASE_TAG: $failed (release-train issue updated)"
+                exit 1
+              fi
+              if [ -n "$existing" ]; then
+                gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment "Green release run for \`$RELEASE_TAG\` published: $RUN_URL"
+              fi
+              echo "release train green for $RELEASE_TAG"
