@@ -101,6 +101,10 @@ export const CONTENT_SKIP_SUFFIXES: readonly string[] = [
  *
  * - `content-budget-reached`: the total content budget was hit, so the remaining
  *   files are ranked on their path alone.
+ * - `unreadable-files-skipped`: some listed files could not be read (permissions,
+ *   a race, a dangling symlink), so they contribute their path but no content
+ *   signal. Reported once with a count, not per file, so a widespread permissions
+ *   problem is visible instead of leaving the dictionary silently path-ranked.
  * - `walk-file-cap-reached`: a non-git project tree had more than
  *   {@link WALK_FILE_CAP} files, so the listing was truncated and the rest of the
  *   tree contributes no handles. Without this notice a huge tree would look fully
@@ -116,6 +120,11 @@ export type CorpusNotice =
 			code: "content-budget-reached";
 			message: string;
 			data: { budgetBytes: number; totalFiles: number };
+	  }
+	| {
+			code: "unreadable-files-skipped";
+			message: string;
+			data: { count: number; totalFiles: number };
 	  }
 	| {
 			code: "walk-file-cap-reached";
@@ -164,6 +173,7 @@ export async function gatherRepoFiles(
 	const files: RepoFile[] = [];
 	let scannedBytes = 0;
 	let budgetHit = false;
+	let unreadable = 0;
 
 	for (const rel of sorted) {
 		if (budgetHit || !shouldScanContent(rel)) {
@@ -185,8 +195,12 @@ export async function gatherRepoFiles(
 			}
 		} catch {
 			// Unreadable file (permissions, race, symlink to nowhere): fall back to
-			// path-only for this entry. The path still contributes a candidate.
+			// path-only for this entry. The path still contributes a candidate, but the
+			// content signal is lost, so count it and surface the total below rather
+			// than swallow it. A NUL-byte (binary) file is NOT counted here: it is
+			// intentionally path-only, not a failure.
 			content = undefined;
+			unreadable++;
 		}
 		files.push(content === undefined ? { path: rel } : { path: rel, content });
 	}
@@ -196,6 +210,16 @@ export async function gatherRepoFiles(
 			code: "content-budget-reached",
 			message: "argot: content budget reached during dict generation; ranking remaining files on path only",
 			data: { budgetBytes: TOTAL_CONTENT_BUDGET_BYTES, totalFiles: sorted.length },
+		});
+	}
+	// One aggregate notice, not one per file: a permissions problem that makes many
+	// listed files unreadable would otherwise be invisible, leaving the dictionary
+	// ranked on paths alone with no signal that content was missing.
+	if (unreadable > 0 && onNotice !== undefined) {
+		onNotice({
+			code: "unreadable-files-skipped",
+			message: `argot: ${unreadable} of ${sorted.length} files could not be read during dict generation; those are ranked on path only`,
+			data: { count: unreadable, totalFiles: sorted.length },
 		});
 	}
 	return files;
