@@ -4093,6 +4093,17 @@ export function anthropicModelManagerOptions(
 		},
 		...(apiKey && {
 			fetchDynamicModels: async () => {
+				// models.dev is a best-effort ENRICHMENT layer here, not a recall path.
+				// `buildAnthropicReferenceMap` always merges the shipped bundled catalog
+				// (`getBundledModels("anthropic")`) on top of whatever models.dev returns,
+				// and the bundle is canonical — so an empty models.dev result still yields
+				// the full bundled reference map. Every model stays discoverable from the
+				// live `/v1/models` call below regardless; the only thing lost when
+				// models.dev is unreachable is pricing/token-limit metadata for models that
+				// are BOTH newer than the bundle AND already catalogued by models.dev, and
+				// those still return (unenriched) rather than disappearing. The generate-time
+				// `modelsDev.fetch` above deliberately does NOT swallow (an incomplete
+				// bundled catalog must fail loud); this runtime path degrades to the bundle.
 				const modelsDevModels = await fetchModelsDevPayload(config?.fetch)
 					.then(payload => mapAnthropicModelsDev(payload, baseUrl))
 					.catch(() => []);
