@@ -122,6 +122,17 @@ verifier reports), `results.json` (every metric, machine-readable), and
 - **cost USD** — from veyyon's own pricing accounting.
 - **agent wall** — seconds inside the agent phase (env setup and verifier time
   excluded).
+- **Arm comparison (paired by task)** — the actual arm-vs-arm verdict, and the
+  number to read for "did B beat A". For each arm pair it pairs by task (a task
+  counts only when both arms produced an OK sample), takes the per-task pass-rate
+  delta (B minus A), and decides with a two-sided **exact sign test** over
+  per-task wins and losses. Pairing removes between-task difficulty, so this is
+  far more powerful than checking whether the two arms' independent intervals
+  above overlap. The sign test is exact and makes no normality assumption, so it
+  does not overclaim at small task counts: a 5-0 sweep is p=0.0625 (not
+  significant), 6-0 is p=0.03125. The **Δ 95% CI** column is a normal-approximation
+  effect-size aid; at a small task count trust the sign-test verdict, not the CI.
+  A winner is named only at p<0.05.
 - **Argot probes** (feature-specific metadata) — how many times the agent
   called `argot_load` and how many assistant messages carried a `§` handle.
   Probe rows only appear for arms that engaged the mechanism; every feature
@@ -129,8 +140,12 @@ verifier reports), `results.json` (every metric, machine-readable), and
 
 Compare arms only on the same model and the same task set. For a feature with a
 small expected delta, raise `--repeats` (more samples per cell) and/or expand the
-task set before trusting the sign of the difference; the confidence interval
-tells you when you have enough samples to read the delta (non-overlapping intervals).
+task set before trusting the sign of the difference; read the paired arm
+comparison (sign-test p) for the verdict, not the overlap of the two per-arm
+intervals. When you compare one baseline against several candidate arms at once,
+remember that testing many pairs inflates the chance of a spurious p<0.05 — treat
+a single significant pair among many as a lead to confirm on more tasks, not a
+settled result.
 
 ## How it works (and why it is not slop)
 
