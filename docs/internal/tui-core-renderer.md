@@ -397,4 +397,4 @@ bottom.
   Shift+drag (the standard convention in mouse-capturing TUIs). The setting
   documents this and can be switched off to return to native scrollback.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `54f074f0` on 2026-07-24.*
