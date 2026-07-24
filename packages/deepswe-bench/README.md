@@ -154,6 +154,15 @@ tells you when you have enough samples to read the delta (non-overlapping interv
   benchable this way, which is itself a finding about the feature.
 - Failed runs are recorded with their error and counted separately, never
   silently dropped from the table.
+- Every arm runs at a pinned sampling temperature. The bench sets `temperature: 0`
+  (greedy) into each staged arm config unless the arm sets its own, so `--repeats`
+  measures a stable regime rather than veyyon's `-1` provider default, which can
+  drift silently between runs. Temperature 0 is greedy, so top-p / top-k are
+  irrelevant and temperature alone fixes the regime. The effective temperature per
+  arm is stamped into `results.json` under `sampling`, so two runs weeks apart are
+  comparable and any change of regime is visible in a diff. An arm may set its own
+  non-negative `temperature` for a deliberate temperature-as-variable experiment;
+  that override is respected and recorded.
 
 ## Prompt section arms
 

@@ -12,7 +12,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	type ArmResult,
+	effectiveTemperature,
 	jobNameOf,
+	PINNED_TEMPERATURE,
 	parseJobName,
 	renderReport,
 	selectTasks,
@@ -176,6 +178,47 @@ describe("summarizeCell — pass rate and standard error", () => {
 		expect(s.passes).toBe(1);
 		expect(s.passRate).toBe(0.5);
 		expect(s.meanReward).toBeCloseTo(0.75, 12);
+	});
+});
+
+describe("effectiveTemperature — the bench pins a stable regime and stamps overrides", () => {
+	// Why this exists: the bench must run every arm at one fixed temperature so
+	// --repeats measures a stable regime, and it must record the value so two runs
+	// stay longitudinally comparable. The trap is veyyon's own default of -1 ("use the
+	// provider default"), which can drift silently between runs; the bench treats any
+	// negative/unset temperature as unpinned and substitutes PINNED_TEMPERATURE. An arm
+	// that sets a real temperature (a deliberate temperature-as-IV experiment) keeps it.
+
+	test("the pinned default is greedy (0), not the drifting provider default (-1)", () => {
+		expect(PINNED_TEMPERATURE).toBe(0);
+	});
+
+	test("an arm that sets no temperature runs at the pinned default", () => {
+		expect(effectiveTemperature({ argot: { enabled: false } })).toBe(0);
+		expect(effectiveTemperature({})).toBe(0);
+	});
+
+	test("a config of -1 (provider default) is treated as unset and pinned, not passed through", () => {
+		// This is the exact silent-drift value the pin exists to eliminate.
+		expect(effectiveTemperature({ temperature: -1 })).toBe(0);
+	});
+
+	test("an explicit non-negative temperature is respected (a temperature-as-IV arm)", () => {
+		expect(effectiveTemperature({ temperature: 0.7 })).toBe(0.7);
+		expect(effectiveTemperature({ temperature: 0 })).toBe(0);
+		expect(effectiveTemperature({ temperature: 1 })).toBe(1);
+	});
+
+	test("a non-number or non-finite temperature falls back to the pin, never NaN", () => {
+		expect(effectiveTemperature({ temperature: "hot" })).toBe(0);
+		expect(effectiveTemperature({ temperature: Number.NaN })).toBe(0);
+		expect(effectiveTemperature(null)).toBe(0);
+		expect(effectiveTemperature(undefined)).toBe(0);
+	});
+
+	test("the pinned default is a parameter, so a caller can pin a different regime", () => {
+		expect(effectiveTemperature({}, 0.2)).toBe(0.2);
+		expect(effectiveTemperature({ temperature: 0.9 }, 0.2)).toBe(0.9);
 	});
 });
 
