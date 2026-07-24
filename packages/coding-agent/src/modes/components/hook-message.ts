@@ -1,7 +1,6 @@
 import type { Component } from "@veyyon/tui";
 import { Box, Container } from "@veyyon/tui";
 import type { HookMessageRenderer } from "../../extensibility/hooks/types";
-import { theme } from "../../modes/theme/theme";
 import type { HookMessage } from "../../session/messages";
 import { renderFramedMessage } from "./message-frame";
 
