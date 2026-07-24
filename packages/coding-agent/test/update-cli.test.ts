@@ -12,9 +12,11 @@ import * as pluginCli from "@veyyon/coding-agent/cli/plugin-cli";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
 import {
 	formatBinaryDownloadFailure,
+	parseSha256Sidecar,
 	replaceBinaryForUpdate,
 	resolveUpdateMethod,
 	sweepStaleBackups,
+	verifyDownloadChecksum,
 } from "@veyyon/coding-agent/cli/update-cli";
 import Update from "@veyyon/coding-agent/commands/update";
 import { removeWithRetries } from "@veyyon/utils";
@@ -599,5 +601,89 @@ describe("formatBinaryDownloadFailure names the version, asset, and fix", () => 
 		const msg = formatBinaryDownloadFailure(404, "", URL, "1.0.99", "veyyon-linux-x64");
 		expect(msg).toContain("HTTP 404 — release v1.0.99");
 		expect(msg).not.toContain("HTTP 404  ");
+	});
+});
+
+/**
+ * The published `.sha256` sidecars are standard `sha256sum` output
+ * (`<64-hex>  <filename>`). This parser is the single reader of that format for
+ * the self-updater, and its strictness is a security boundary: anything that is
+ * not exactly a 64-hex digest must return null so the caller fails closed rather
+ * than comparing a downloaded binary against garbage. These assert the exact
+ * digest, never `!is_empty`.
+ */
+describe("parseSha256Sidecar reads the sha256sum format strictly", () => {
+	const HASH = "ab5722f6f0414851db42ca3014f9da3d1ea3afe708a1417bd0441cccd5bf7562";
+
+	it("takes the first token of `<hash>  <filename>` and lowercases it", () => {
+		expect(parseSha256Sidecar(`${HASH}  veyyon-linux-x64`)).toBe(HASH);
+		expect(parseSha256Sidecar(`${HASH.toUpperCase()}  veyyon-linux-x64`)).toBe(HASH);
+	});
+
+	it("accepts a bare digest with surrounding whitespace or a trailing newline", () => {
+		expect(parseSha256Sidecar(HASH)).toBe(HASH);
+		expect(parseSha256Sidecar(`  ${HASH}\n`)).toBe(HASH);
+	});
+
+	it("returns null for anything that is not a 64-hex digest (fail closed)", () => {
+		// An empty body, an HTML error page, a truncated file, and an over-long token
+		// must all reject so verifyDownloadChecksum refuses rather than trusts them.
+		expect(parseSha256Sidecar("")).toBeNull();
+		expect(parseSha256Sidecar("   \n  ")).toBeNull();
+		expect(parseSha256Sidecar("<!DOCTYPE html><html>Not Found</html>")).toBeNull();
+		expect(parseSha256Sidecar(HASH.slice(0, 63))).toBeNull();
+		expect(parseSha256Sidecar(`${HASH}0`)).toBeNull();
+		expect(parseSha256Sidecar("g".repeat(64))).toBeNull();
+	});
+});
+
+/**
+ * Fresh `curl` and PowerShell installs both refuse a binary whose `.sha256`
+ * checksum is missing, unparseable, or mismatched. The self-updater used to
+ * download and swap with only a post-install `--version` check, so a corrupted or
+ * tampered same-version binary sailed through. verifyDownloadChecksum closes that
+ * parity gap. These tests hash a real on-disk file and prove the gate PASSES on a
+ * matching sidecar and FAILS CLOSED (throws, so the caller deletes the download)
+ * on a mismatch, a 404, and an empty/unparseable body — no silent fallback
+ * (Law 10). The mismatch message must name both digests so the operator sees it.
+ */
+describe("verifyDownloadChecksum is a fail-closed integrity gate", () => {
+	const SIDECAR = "https://github.com/santhreal/veyyon/releases/download/v1.0.99/veyyon-linux-x64.sha256";
+
+	async function writeBinary(bytes: string): Promise<{ filePath: string; hash: string }> {
+		const dir = await makeTempDir();
+		const filePath = path.join(dir, "veyyon-linux-x64");
+		await fs.writeFile(filePath, bytes);
+		const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+		return { filePath, hash };
+	}
+
+	it("resolves when the file's digest matches the published sidecar", async () => {
+		const { filePath, hash } = await writeBinary("fake-binary-contents-v1.0.99");
+		spyOn(globalThis, "fetch").mockResolvedValue(new Response(`${hash}  veyyon-linux-x64\n`, { status: 200 }));
+		await expect(verifyDownloadChecksum(filePath, SIDECAR)).resolves.toBeUndefined();
+	});
+
+	it("throws naming both digests when the file does not match (tampered/corrupted)", async () => {
+		const { filePath, hash } = await writeBinary("fake-binary-contents-v1.0.99");
+		const wrong = "0".repeat(64);
+		spyOn(globalThis, "fetch").mockResolvedValue(new Response(`${wrong}  veyyon-linux-x64\n`, { status: 200 }));
+		await expect(verifyDownloadChecksum(filePath, SIDECAR)).rejects.toThrow(
+			`Checksum mismatch for the downloaded binary (expected ${wrong}, got ${hash}) — refusing to install a tampered binary`,
+		);
+	});
+
+	it("refuses when the sidecar 404s instead of silently installing unverified", async () => {
+		const { filePath } = await writeBinary("fake-binary");
+		spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404, statusText: "Not Found" }));
+		await expect(verifyDownloadChecksum(filePath, SIDECAR)).rejects.toThrow(
+			/No published checksum at .* \(HTTP 404\) — refusing to install an unverified binary/,
+		);
+	});
+
+	it("refuses when the sidecar body is empty or unparseable", async () => {
+		const { filePath } = await writeBinary("fake-binary");
+		spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 200 }));
+		await expect(verifyDownloadChecksum(filePath, SIDECAR)).rejects.toThrow(/empty or unparseable — refusing to install/);
 	});
 });

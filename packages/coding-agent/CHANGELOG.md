@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Security
+
+- The self-updater now verifies a downloaded release binary against its published `.sha256` sidecar before installing it, the same fail-closed integrity gate the `curl` and PowerShell installers already enforce. Previously `veyyon update` and the automatic startup update downloaded and swapped the binary with only a post-install `--version` check, which catches a wrong-version binary but not a corrupted or tampered same-version one. A missing, unparseable, or mismatched checksum now aborts the update and removes the partial download instead of installing something unverified.
+
 ### Fixed
 
 - A failed release-binary download now reports the URL, the HTTP status, the requested version, and the missing asset instead of the bare `Download failed: Not Found`. A 404 explains that the version may not exist or its build for your platform was not published and points at `veyyon update --check`; a 403/429 gives the rate-limit retry hint. This most helps installing a specific older version, where a mistyped or unpublished version previously failed with no clue what went wrong.
