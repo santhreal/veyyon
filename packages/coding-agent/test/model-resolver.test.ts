@@ -894,9 +894,7 @@ describe("resolveModelOverride", () => {
 });
 describe("resolveCliModel", () => {
 	test("resolves --model provider/id without --provider", () => {
-		const registry = {
-			getAll: () => allModels,
-		} as unknown as Parameters<typeof resolveCliModel>[0]["modelRegistry"];
+		const registry = { getAll: () => allModels } as unknown as Parameters<typeof resolveCliModel>[0]["modelRegistry"];
 
 		const result = resolveCliModel({
 			cliModel: "openai/gpt-4o",
@@ -908,10 +906,25 @@ describe("resolveCliModel", () => {
 		expect(result.model?.id).toBe("gpt-4o");
 	});
 
-	test("resolves configured custom, legacy, and default role aliases from --model", () => {
+	test("prefers an authenticated provider for an unqualified exact model id", () => {
+		const availableModels = openaiGpt55Models.filter(model => model.provider === "openai-codex");
 		const registry = {
-			getAll: () => allModels,
+			getAll: () => openaiGpt55Models,
 		};
+
+		const result = resolveCliModel({
+			cliModel: "gpt-5.5",
+			modelRegistry: registry,
+			availableModels,
+		});
+
+		expect(result.error).toBeUndefined();
+		expect(result.model?.provider).toBe("openai-codex");
+		expect(result.model?.id).toBe("gpt-5.5");
+	});
+
+	test("resolves configured custom, legacy, and default role aliases from --model", () => {
+		const registry = { getAll: () => allModels };
 		const settings = Settings.isolated({
 			modelRoles: {
 				default: "openai/gpt-4o",

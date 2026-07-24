@@ -1585,10 +1585,11 @@ export function resolveCliModel(options: {
 	cliProvider?: string;
 	cliModel?: string;
 	modelRegistry: CliModelRegistry;
+	availableModels?: Model<Api>[];
 	settings?: Settings;
 	preferences?: ModelMatchPreferences;
 }): ResolveCliModelResult {
-	const { cliProvider, cliModel, modelRegistry, settings, preferences: callerPreferences } = options;
+	const { cliProvider, cliModel, modelRegistry, availableModels: callerAvailableModels, settings, preferences: callerPreferences } = options;
 	// Default the ambiguity tie-break to the registry's own credential check so
 	// every CLI resolution path prefers providers the user can actually call.
 	const preferences: ModelMatchPreferences = {
@@ -1647,9 +1648,19 @@ export function resolveCliModel(options: {
 		// provider+id match over flat id match. Without this, a model with id
 		// "zai/glm-5" on provider "vercel-ai-gateway" wins over provider "zai"
 		// with id "glm-5", because Array.find returns the first catalog hit.
-		let exact = findExactModelReferenceMatch(trimmedModel, availableModels);
+			let exact = callerAvailableModels
+				? findExactModelReferenceMatch(trimmedModel, callerAvailableModels)
+				: undefined;
+			if (!exact && callerAvailableModels) {
+				exact = callerAvailableModels.find(
+					model => model.id.toLowerCase() === lower || `${model.provider}/${model.id}`.toLowerCase() === lower,
+				);
+			}
+			if (!exact) {
+				exact = findExactModelReferenceMatch(trimmedModel, availableModels);
+			}
 		if (!exact) {
-			// Flat exact id (or full selector), preferring providers with stored
+				// Fall back to the full catalog, preferring providers with stored
 			// credentials: several providers can expose the same bare id (e.g.
 			// `xai/grok-4.3` and `xai-oauth/grok-4.3`), and picking the first
 			// catalog hit used to select a credential-less provider and die on
@@ -1707,10 +1718,24 @@ export function resolveCliModel(options: {
 		}
 	}
 
-	const candidates = provider ? availableModels.filter(model => model.provider === provider) : availableModels;
-	const { model, thinkingLevel, warning, upstream } = parseModelPattern(pattern, candidates, preferences, {
+	const candidates = provider
+		? availableModels.filter(model => model.provider === provider)
+		: callerAvailableModels && callerAvailableModels.length > 0
+			? callerAvailableModels
+			: availableModels;
+
+	let parsed = parseModelPattern(pattern, candidates, preferences, {
 		allowInvalidThinkingSelectorFallback: false,
 	});
+	// If the authenticated scope missed, fall back to the full catalog (e.g.
+	// exact provider/id for a missing credential, yielding a clear "no auth").
+	if (!parsed.model && candidates !== availableModels) {
+		const fallbackCandidates = provider ? availableModels.filter(model => model.provider === provider) : availableModels;
+		parsed = parseModelPattern(pattern, fallbackCandidates, preferences, {
+			allowInvalidThinkingSelectorFallback: false,
+		});
+	}
+	const { model, thinkingLevel, warning, upstream } = parsed;
 
 	if (!model) {
 		const display = provider ? `${provider}/${pattern}` : cliModel;
