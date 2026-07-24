@@ -437,12 +437,17 @@ async function main(): Promise<void> {
 		console.error("error: --arms must specify at least one valid arm name");
 		process.exit(1);
 	}
-	// Name the model you actually want to bench. The catalog used to alias
-	// `gemini-3.6-flash` onto the 3.5 flash family on this provider, so a request
-	// for 3.6 could resolve to 3.5 and the encode gate (which sees the RESOLVED
-	// id) would not match an allowlist naming the requested one. That alias is
-	// gone, so 3.6 now resolves to 3.6 or fails loudly, and requested == resolved.
-	const model = args.model ?? "google-antigravity/gemini-3.6-flash";
+	// Name the model you actually want to bench. It must be one the SANDBOX can
+	// serve: every task runs in a container with a copied static auth DB and NO
+	// live provider discovery, so a model whose wire ids come from live antigravity
+	// discovery (the `gemini-3.6-flash` family) resolves to NOTHING there and every
+	// run errors `Model "..." not found` at out=0tok. `gemini-3.5-flash` is the
+	// flash model statically servable in that environment, and it is requested ==
+	// resolved (the 3.6→3.5 alias was removed), so the encode gate — which matches
+	// the RESOLVED id against an arm's allowlist — still fires for the encode arms.
+	// The preflight below fails fast if the chosen model does not resolve, so a
+	// typo or a discovery-gated id can never burn a whole multi-hour run again.
+	const model = args.model ?? "google-antigravity/gemini-3.5-flash";
 	const rawRepeats = Number(args.repeats ?? "1");
 	if (!Number.isFinite(rawRepeats) || rawRepeats < 1 || !Number.isInteger(rawRepeats)) {
 		console.error(`error: --repeats must be a positive integer (got ${JSON.stringify(args.repeats)})`);
@@ -648,6 +653,14 @@ async function main(): Promise<void> {
 	const queue: Array<{ arm: string; task: string; repeat: number }> = arms.flatMap(arm =>
 		tasks.flatMap(task => Array.from({ length: repeats }, (_, repeat) => ({ arm, task, repeat }))),
 	);
+	// Fail-fast canary state (see runOne). The canary window is the first wave of
+	// completed jobs — the smaller of the worker-pool width and the total queue —
+	// so a systematic config failure trips as soon as one full concurrent batch has
+	// all hard-errored, not after the whole queue drains.
+	const totalQueued = queue.length;
+	const canarySize = Math.max(1, Math.min(Math.max(1, jobParallel), totalQueued));
+	const hardErrors: string[] = [];
+	let canaryTripped = false;
 
 	console.log(
 		`deepswe-bench: ${arms.length} arm(s) x ${tasks.length} task(s)` +
@@ -753,6 +766,8 @@ async function main(): Promise<void> {
 				argotLoadCalls: null,
 				assistantMsgsWithSigil: null,
 				argotPreamblePresent: null,
+				argotHandlesLoaded: null,
+				encodeHeadroom: null,
 				toolCalls: null,
 				error: errStr,
 			};
@@ -762,17 +777,47 @@ async function main(): Promise<void> {
 		console.log(
 			`[${results.length}/${queue.length}] ${jobName}: ${mark} out=${result.outputTokens ?? "?"}tok cost=$${result.costUsd?.toFixed(3) ?? "?"} (${((Date.now() - started) / 1000).toFixed(0)}s)`,
 		);
+		// Fail-fast canary: a config that makes EVERY run error (an unservable model,
+		// a bad auth DB, a missing binary) otherwise burns the whole run — 120 jobs ×
+		// ~1min of container setup — to prove one typo. A "hard error" is a trial the
+		// agent never produced output for (error set AND no session parsed, so
+		// outputTokens is null); a scored fail or a partial run is NOT hard. If the
+		// first wave (`canarySize` completed jobs) are ALL hard errors, abort the rest
+		// and surface the single most common agent-side reason, so the operator sees
+		// `Model "..." not found` in seconds instead of after an hour of red.
+		if (isHardError(result)) hardErrors.push(result.error ?? "");
+		if (!canaryTripped && results.length >= canarySize && hardErrors.length === results.length) {
+			canaryTripped = true;
+			console.error(
+				`\nABORTING: the first ${results.length} trials ALL failed before the agent produced any output ` +
+					`(0 successful runs). This is a systematic config failure, not task flakiness — the remaining ` +
+					`${queue.length} queued trials would fail identically. Most common agent-side reason:\n\n` +
+					`  ${mostCommonAgentReason(hardErrors)}\n\n` +
+					`Fix the config (model id must be servable in the sandbox; see run.ts) and rerun. No report was written.`,
+			);
+		}
 	}
 
 	// Small bounded pool: task containers take 2 cpu / 8 GB each.
 	const workers = Array.from({ length: Math.max(1, jobParallel) }, async () => {
 		for (;;) {
+			if (canaryTripped) return;
 			const next = queue.shift();
 			if (!next) return;
 			await runOne(next.arm, next.task, next.repeat);
 		}
 	});
 	await Promise.all(workers);
+
+	// If the fail-fast canary tripped, every completed trial was a hard error: no
+	// arm produced usable output, so any report would be a page of red with no
+	// measurable metric. Exit non-zero WITHOUT writing results.json/report.md, so a
+	// CI gate or a watching operator treats it as the config failure it is rather
+	// than a "run finished" that silently contains nothing (Law 10: fail closed, no
+	// silent degrade). The abort reason was already printed by runOne.
+	if (canaryTripped) {
+		process.exit(1);
+	}
 
 	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
 	fs.writeFileSync(
