@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The CLI no longer hangs while printing a fatal error whose cause chain forms a cycle. A wrapped error whose `cause` pointed back at itself (directly or through another error) made the cause walk loop forever; it now stops at the first repeat and notes the circular reference.
+
 ## [1.0.27] - 2026-07-24
 
 ### Fixed
