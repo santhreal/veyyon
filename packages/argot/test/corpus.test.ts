@@ -6,9 +6,10 @@
  * a real temp filesystem: lockfiles and assets contribute their path but never
  * their content, source files contribute bounded content, binary (NUL-byte)
  * content is dropped, the total budget is respected and surfaced (never a silent
- * truncation), gathering is deterministic, and the non-git walk ignores VCS and
- * build output. A regression to any threshold or skip-list changes which handles
- * a project gets, so it goes red here.
+ * truncation), unreadable files fall back to path-only WITH a loud aggregate
+ * notice, gathering is deterministic, and the non-git walk ignores VCS and build
+ * output. A regression to any threshold or skip-list changes which handles a
+ * project gets, so it goes red here.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -87,10 +88,56 @@ describe("gatherRepoFiles", () => {
 		expect(file).toEqual({ path: "data.ts" });
 	});
 
-	it("falls back to path-only for an unreadable file without failing the gather", async () => {
+	it("falls back to path-only for an unreadable file AND surfaces it loudly, not silently", async () => {
+		// A file the harness listed but that cannot be read (permissions, a race, a
+		// dangling symlink) must still contribute its path, but the lost content signal
+		// cannot vanish silently: on the git path a listed-but-unreadable file is a real
+		// anomaly, and a whole directory of them would otherwise leave the dict
+		// path-ranked with no sign anything was missing. Assert both the fallback shape
+		// and the aggregate notice carrying the real count.
 		const root = await tempRoot();
-		const files = await gatherRepoFiles(root, ["does/not/exist.ts"]);
+		const notices: CorpusNotice[] = [];
+		const files = await gatherRepoFiles(root, ["does/not/exist.ts"], n => notices.push(n));
 		expect(files).toEqual([{ path: "does/not/exist.ts" }]);
+		expect(notices).toHaveLength(1);
+		const notice = notices[0];
+		expect(notice?.code).toBe("unreadable-files-skipped");
+		if (notice?.code === "unreadable-files-skipped") {
+			expect(notice.data).toEqual({ count: 1, totalFiles: 1 });
+		}
+	});
+
+	it("counts only the unreadable files in the aggregate notice, mixing readable and missing", async () => {
+		// The count must be exact, not a boolean "some failed": a harness logs how many
+		// of how many files went path-only, so a 1-of-100 fluke reads differently from a
+		// 90-of-100 permissions wall. One readable file plus two missing ones must report
+		// count 2 of totalFiles 3, and the readable file must keep its content.
+		const root = await tempRoot();
+		await write(root, "src/real.ts", "export const x = 1;");
+		const notices: CorpusNotice[] = [];
+		const files = await gatherRepoFiles(root, ["src/real.ts", "gone/a.ts", "gone/b.ts"], n => notices.push(n));
+		const byPath = new Map(files.map(f => [f.path, f]));
+		expect(byPath.get("src/real.ts")?.content).toBe("export const x = 1;");
+		expect(byPath.get("gone/a.ts")).toEqual({ path: "gone/a.ts" });
+		expect(byPath.get("gone/b.ts")).toEqual({ path: "gone/b.ts" });
+		const notice = notices.find(n => n.code === "unreadable-files-skipped");
+		expect(notice).toBeDefined();
+		if (notice?.code === "unreadable-files-skipped") {
+			expect(notice.data).toEqual({ count: 2, totalFiles: 3 });
+		}
+	});
+
+	it("emits NO unreadable-files notice when every listed file reads (no false positives)", async () => {
+		// A binary (NUL-byte) file dropping to path-only is intentional, not a failure,
+		// so it must NOT trip the unreadable notice: the signal is reserved for real read
+		// errors. A source file plus a binary-sniffed one, both present, must gather with
+		// no notice at all.
+		const root = await tempRoot();
+		await write(root, "code.ts", "export const y = 2;");
+		await write(root, "blob.ts", Buffer.from([0x61, 0x00, 0x62])); // a\0b: sniffed binary, path-only by design
+		const notices: CorpusNotice[] = [];
+		await gatherRepoFiles(root, ["code.ts", "blob.ts"], n => notices.push(n));
+		expect(notices).toEqual([]);
 	});
 
 	it("is deterministic: output is sorted by path regardless of input order", async () => {

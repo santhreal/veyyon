@@ -737,9 +737,9 @@ returns `{ root, vocab }` (or `undefined` when `folder` has no marker). It exist
 so every harness runs this identically instead of reimplementing it: the harness
 supplies only the git access it owns (an `io` wrapping `git rev-parse HEAD` and
 `git ls-files`, each `null` for a non-git folder) and the `cacheDir` path, and
-wires `onNotice` to its logger so a reached content budget, a truncated or
-partially-unreadable non-git tree, or an invalid budget is surfaced, never
-swallowed. The stage functions above (`resolveProjectRoot`,
+wires `onNotice` to its logger so a reached content budget, files that could not
+be read (path-only, with a count), a truncated or partially-unreadable non-git
+tree, or an invalid budget is surfaced, never swallowed. The stage functions above (`resolveProjectRoot`,
 `projectCacheId`, `resolveProjectCache`, `gatherRepoFiles`, `listingSignature`)
 stay exported for a harness that must drive one stage directly, but the composed
 call is the intended entry point and a harness should not hand-roll a second copy
