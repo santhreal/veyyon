@@ -31,12 +31,14 @@ import { getTabBarTheme } from "../../../modes/shared";
 import { theme } from "../../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../../modes/utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	renderModalShell,
 	withCompact,
+	ModalRevealDriver,
 } from "../modal-shell";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
@@ -94,6 +96,7 @@ export class ExtensionDashboard implements Component {
 
 	onClose?: () => void;
 	onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	private constructor(
 		private readonly cwd: string,
@@ -105,8 +108,13 @@ export class ExtensionDashboard implements Component {
 		cwd: string,
 		settings: Settings | null = null,
 		terminalHeight?: number,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
 	): Promise<ExtensionDashboard> {
 		const dashboard = new ExtensionDashboard(cwd, settings, terminalHeight ?? process.stdout.rows ?? 24);
+		if (reveal) {
+			dashboard.#reveal.start(() => dashboard.onRequestRender?.());
+		}
 		await dashboard.#init();
 		return dashboard;
 	}
@@ -198,7 +206,7 @@ export class ExtensionDashboard implements Component {
 		this.#tabRowCount = tabLines.length;
 		this.#bodyRowStart = this.#tabRowStart + tabLines.length;
 		this.#bodyRowCount = contentRows;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	invalidate(): void {

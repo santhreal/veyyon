@@ -59,6 +59,7 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
@@ -66,6 +67,7 @@ import {
 	type ModalShortcut,
 	renderModalShell,
 	withCompact,
+	ModalRevealDriver,
 } from "./modal-shell";
 import { clampSelection, handleTabSwitchKey, searchableChar } from "./selector-helpers";
 
@@ -398,6 +400,7 @@ export class AgentDashboard extends Container {
 
 	onClose?: () => void;
 	onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	private constructor(
 		private readonly cwd: string,
@@ -413,8 +416,13 @@ export class AgentDashboard extends Container {
 		settings: Settings | null = null,
 		terminalHeight?: number,
 		modelContext: AgentDashboardModelContext = {},
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
 	): Promise<AgentDashboard> {
 		const dashboard = new AgentDashboard(cwd, settings, terminalHeight ?? process.stdout.rows ?? 24, modelContext);
+		if (reveal) {
+			dashboard.#reveal.start(() => dashboard.onRequestRender?.());
+		}
 		await dashboard.#init();
 		return dashboard;
 	}
@@ -578,7 +586,7 @@ export class AgentDashboard extends Container {
 		});
 
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	#clampSelection(): void {
