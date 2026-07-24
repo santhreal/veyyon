@@ -228,6 +228,31 @@ describe("classifyPrOpen", () => {
 	it("routes to a human when the label exists but no PR references the issue", () => {
 		expect(classifyPrOpen(null).kind).toBe("review");
 	});
+
+	it("treats a NOT-APPLICABLE PR as a verdict to verify, never a port (live: AUTO_CREATE_PR opened empty PR #183 to carry the verdict)", () => {
+		const na = {
+			number: 183,
+			title: "NOT-APPLICABLE: port(upstream#6240): fix(tui): lock plan",
+			body: "Closes #32\n\nNOT-APPLICABLE: superseded",
+			html_url: "u",
+		};
+		expect(classifyPrOpen({ ...na, state: "open", merged_at: null }).kind).toBe("review");
+		// Closing the verdict PR unmerged must NOT requeue: the port would be
+		// re-attempted forever on a change that provably does not apply.
+		expect(classifyPrOpen({ ...na, state: "closed", merged_at: null }).kind).toBe("review");
+	});
+
+	it("detects the verdict from the body when only the body carries NOT-APPLICABLE", () => {
+		const pr = {
+			number: 9,
+			title: "port(upstream#1): fix",
+			body: "NOT-APPLICABLE: veyyon rewrote this",
+			html_url: "u",
+			state: "open",
+			merged_at: null,
+		};
+		expect(classifyPrOpen(pr).kind).toBe("review");
+	});
 });
 
 /**
