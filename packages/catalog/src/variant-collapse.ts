@@ -279,15 +279,19 @@ function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily
 		// Retired bare id; the alias only fires when no live model holds it
 		// (exact match wins in every resolver).
 		//
-		// `gemini-3.6-flash` here is a DISPLAY-vs-LOGICAL split, not a stale
-		// copy of the CCA family below: Antigravity brands its flash as 3.6
-		// while serving the 3.5-family deployments, so requesting
-		// `google-antigravity/gemini-3.6-flash` intentionally resolves to this
-		// 3.5 logical family. Cloud Code Assist providers have their own real
-		// `gemini-3.6-flash` family (gemini36FlashFamily); the two never meet
-		// on one provider, so the same bare name means different logical
-		// models on different providers by design.
-		extraAliases: ["gemini-3-flash", "gemini-3.6-flash"],
+		// `gemini-3.6-flash` is deliberately NOT aliased here. It is the id of a
+		// real, separate family ({@link gemini36FlashFamily}) whose per-tier wire
+		// ids come from the same Antigravity discovery list this family is built
+		// from, so the two CAN be live on one provider — they are presence
+		// filtered, not provider partitioned. Aliasing it meant that whenever
+		// discovery happened not to serve the 3.6 tiers, a request for 3.6
+		// quietly resolved to this 3.5 family instead: a different model, chosen
+		// silently, with nothing in the resolved id to show the substitution. A
+		// deepswe-bench run hit exactly that and measured 3.5 while reporting 3.6,
+		// which also disabled its argot encode gate because the allowlist named
+		// the requested id rather than the resolved one. Without the alias, asking
+		// for 3.6 either gets 3.6 or fails loudly, which is the honest outcome.
+		extraAliases: ["gemini-3-flash"],
 	};
 }
 
