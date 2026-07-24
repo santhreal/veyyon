@@ -1,8 +1,8 @@
 # Upstream radar: veyyon forked can1357/oh-my-pi and diverged, but upstream
 # ships real-world fixes faster than any human can triage. Every 30 minutes
 # this mirrors each newly MERGED upstream PR into one issue labeled
-# `upstream-port` + `jules`; the Jules async coding agent (connected to this
-# repo, label trigger `jules`) evaluates applicability post-divergence and
+# `upstream-port` + `jules`; scripts/jules-port-manager.ts (run from a local
+# cron with the Jules API keys) dispatches each issue as a Jules session that
 # opens an adapted port PR. Humans and autoreview.yml gate the merge.
 # Idempotent: dedup is a marker in the issue body (see scripts/upstream-radar.ts).
 name: Upstream radar
