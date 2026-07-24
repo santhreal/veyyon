@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `veyyon update` now prints `Checksum verified` after it validates a downloaded binary against its published `.sha256` sidecar, so you can see the integrity check ran and passed rather than only hearing about it when it fails. This matches the `verified sha256` confirmation the `curl` installer already prints. The automatic startup update stays silent to avoid corrupting the session UI.
+
 ## [1.0.34] - 2026-07-24
 
 ### Fixed
