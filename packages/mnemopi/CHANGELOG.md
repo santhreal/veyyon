@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `BankManager.renameBank` now validates the source bank name, not only the destination. Every other bank operation rejects a name containing a path separator or `..`, but rename validated only the new name, so a source name like `../outside` escaped the bank store and silently moved an out-of-tree directory into it. Both names are now validated before any filesystem change.
+
 ## [1.0.32] - 2026-07-24
 
 ### Fixed
