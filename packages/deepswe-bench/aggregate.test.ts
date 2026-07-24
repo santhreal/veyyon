@@ -15,8 +15,11 @@ import {
 	ARGOT_PREAMBLE_HEADING,
 	type ArmResult,
 	blockContainsSigil,
+	ceilingBelowNoise,
 	classifyError,
+	collectEmittedText,
 	effectiveTemperature,
+	encodeHeadroom,
 	holmBonferroni,
 	interpretEncodeArm,
 	jobNameOf,
@@ -28,6 +31,7 @@ import {
 	parseJobName,
 	parseTaskListProvenance,
 	providerFinishReason,
+	relativeSpreadPct,
 	renderReport,
 	renderTaskSetProvenanceBanner,
 	selectTasks,
@@ -58,6 +62,7 @@ function res(over: Partial<ArmResult>): ArmResult {
 		assistantMsgsWithSigil: null,
 		argotPreamblePresent: null,
 		argotHandlesLoaded: null,
+		encodeHeadroom: null,
 		toolCalls: null,
 		error: null,
 		...over,
@@ -1510,5 +1515,220 @@ describe("renderReport — the vocab handles column and its interpretation", () 
 		);
 		expect(md).toContain("| full | 2 | 2/2 | 12 |");
 		expect(md).toContain("12 handles WERE loaded");
+	});
+});
+
+describe("encodeHeadroom — the effect-size ceiling that decides if a run can measure argot at all", () => {
+	// The finding this encodes: on the real ytt task the loaded dictionary offered
+	// a maximum saving of 0.27% of emitted output while run-to-run token variance
+	// was ~9%. Every argot delta that run produced was noise, and no repeat count
+	// could have fixed it, because the limit was the WORKLOAD, not the sample size.
+	// Nothing in the bench could say so. These lock the arithmetic and the verdict.
+
+	test("counts only handles the model actually emitted, and prices each at expansion minus handle", () => {
+		// The core sum. `§pkg` (4 chars with the sigil) standing for a 24-char path
+		// emitted twice saves 2*(24-4)=40; a handle never emitted saves nothing and
+		// must not inflate the ceiling just by existing in the dictionary.
+		const emitted = "edit packages/server/db.ts then packages/server/db.ts again";
+		const h = encodeHeadroom(emitted, { pkg: "packages/server/db.ts", unused: "never/typed/path.ts" });
+		expect(h.handles).toBe(2);
+		expect(h.usableHandles).toBe(1);
+		// "packages/server/db.ts" is 21 chars; "§pkg" is 4; twice => 2*17 = 34.
+		expect(h.maxSavedChars).toBe(34);
+		expect(h.emittedChars).toBe(emitted.length);
+		expect(h.maxSavedPct).toBeCloseTo((100 * 34) / emitted.length, 6);
+	});
+
+	test("a vocabulary of long strings the model never writes yields a zero ceiling", () => {
+		// Exactly the real failure: the dictionary was dominated by license text and
+		// example-fixture YAML, which repeat heavily in the repo but which a coding
+		// agent never types. Handle count looks healthy, achievable saving is zero.
+		const h = encodeHeadroom("fix the bug in pkg/orderedmap/map.go", {
+			lic: "use, copy, modify, merge, publish, distribute, sublicense",
+			fixture: "app.kubernetes.io/component: controller",
+		});
+		expect(h.handles).toBe(2);
+		expect(h.usableHandles).toBe(0);
+		expect(h.maxSavedChars).toBe(0);
+		expect(h.maxSavedPct).toBe(0);
+	});
+
+	test("occurrences are counted non-overlapping, the way a real encoder substitutes", () => {
+		// A self-overlapping expansion must not be double-counted into a ceiling the
+		// encoder could never actually realize.
+		const h = encodeHeadroom("aaaa", { a: "aa" });
+		expect(h.maxSavedChars).toBe(0); // "aa" (2) vs "§a" (2): no saving per occurrence
+		expect(h.usableHandles).toBe(1);
+	});
+
+	test("an expansion no longer than its handle contributes nothing, never a negative saving", () => {
+		// An encoder would simply decline such a handle; letting it subtract would
+		// let a junk vocabulary hide real headroom from other handles.
+		const h = encodeHeadroom("id id id", { averylongname: "id" });
+		expect(h.maxSavedChars).toBe(0);
+	});
+
+	test("an empty emission reports a zero percentage rather than dividing by zero", () => {
+		const h = encodeHeadroom("", { pkg: "packages/server/db.ts" });
+		expect(h.maxSavedPct).toBe(0);
+		expect(h.emittedChars).toBe(0);
+		expect(Number.isNaN(h.maxSavedPct)).toBe(false);
+	});
+});
+
+describe("relativeSpreadPct / ceilingBelowNoise — is the ceiling big enough to see", () => {
+	test("spread is measured relative to the mean so it compares against a percentage ceiling", () => {
+		// Identical samples have no spread: a run whose repeats agree exactly can
+		// resolve arbitrarily small effects, so the floor must fall to zero.
+		expect(relativeSpreadPct([100, 100, 100])).toBe(0);
+		const spread = relativeSpreadPct([90, 110]);
+		expect(spread).toBeCloseTo((100 * Math.sqrt(200)) / 100, 6);
+	});
+
+	test("fewer than two samples has no observable spread and must not fabricate one", () => {
+		// With one sample the run cannot estimate its own noise; claiming 0 would
+		// declare every tiny ceiling measurable, which is the error this prevents.
+		expect(relativeSpreadPct([100])).toBeNull();
+		expect(relativeSpreadPct([])).toBeNull();
+	});
+
+	test("the real ytt numbers are correctly judged unmeasurable", () => {
+		// 0.27% achievable against ~9% observed noise: the exact case that motivated
+		// this instrument. It must come back as cannot-measure.
+		expect(ceilingBelowNoise(0.27, 9)).toBe(true);
+	});
+
+	test("a ceiling above the noise is measurable", () => {
+		expect(ceilingBelowNoise(15, 9)).toBe(false);
+	});
+
+	test("with no noise estimate a conservative one-percent floor applies", () => {
+		// A single-sample run still must not bless a 0.3% ceiling as detectable.
+		expect(ceilingBelowNoise(0.3, null)).toBe(true);
+		expect(ceilingBelowNoise(4, null)).toBe(false);
+	});
+});
+
+describe("collectEmittedText — the denominator must match where handles are counted", () => {
+	test("collects assistant text AND tool-call arguments, the same seams the sigil probe scans", () => {
+		// If the two disagreed, the ceiling could claim a saving in a place the
+		// encode probe never inspects, and the report's two argot numbers would
+		// silently describe different runs.
+		const text = collectEmittedText([
+			{
+				role: "assistant",
+				content: [{ text: "editing the file" }, { type: "toolCall", arguments: { path: "a/b.ts" } }],
+			},
+		]);
+		expect(text).toContain("editing the file");
+		expect(text).toContain("a/b.ts");
+	});
+
+	test("excludes tool results, which the model receives rather than emits", () => {
+		// Tool output is harness-produced context, not output the model pays for.
+		// Counting it would inflate the denominator and understate the ceiling.
+		const text = collectEmittedText([
+			{ role: "assistant", content: [{ text: "run it" }] },
+			{ role: "toolResult", content: [{ text: "MASSIVE COMPILER OUTPUT" }] },
+			{ role: "user", content: [{ text: "user text" }] },
+		]);
+		expect(text).toContain("run it");
+		expect(text).not.toContain("MASSIVE COMPILER OUTPUT");
+		expect(text).not.toContain("user text");
+	});
+});
+
+describe("renderReport — the encode headroom section", () => {
+	test("a below-noise ceiling is called out as CANNOT MEASURE, not as a null result", () => {
+		// The whole point: without this the same run reads "not distinguishable",
+		// which invites "we measured argot and it does not help" when the truth is
+		// "this workload cannot show it either way".
+		const md = renderReport(
+			[
+				res({
+					arm: "full",
+					task: "t1",
+					repeat: 0,
+					reward: 1,
+					outputTokens: 70000,
+					encodeHeadroom: {
+						emittedChars: 100000,
+						handles: 33,
+						usableHandles: 7,
+						maxSavedChars: 270,
+						maxSavedPct: 0.27,
+					},
+				}),
+				res({
+					arm: "full",
+					task: "t1",
+					repeat: 1,
+					reward: 1,
+					outputTokens: 84000,
+					encodeHeadroom: {
+						emittedChars: 100000,
+						handles: 33,
+						usableHandles: 7,
+						maxSavedChars: 270,
+						maxSavedPct: 0.27,
+					},
+				}),
+			],
+			"m",
+			"now",
+			2,
+		);
+		expect(md).toContain("Encode headroom");
+		expect(md).toContain("CANNOT MEASURE");
+		expect(md).toContain("| full | 200000 | 33 | 7 | 540 | 0.27% |");
+	});
+
+	test("a ceiling above the noise is reported as measurable", () => {
+		// The instrument must not cry wolf on a workload that CAN show the effect,
+		// or operators will learn to ignore it.
+		const md = renderReport(
+			[
+				res({
+					arm: "full",
+					task: "t1",
+					repeat: 0,
+					reward: 1,
+					outputTokens: 70000,
+					encodeHeadroom: {
+						emittedChars: 1000,
+						handles: 10,
+						usableHandles: 9,
+						maxSavedChars: 200,
+						maxSavedPct: 20,
+					},
+				}),
+				res({
+					arm: "full",
+					task: "t1",
+					repeat: 1,
+					reward: 1,
+					outputTokens: 70100,
+					encodeHeadroom: {
+						emittedChars: 1000,
+						handles: 10,
+						usableHandles: 9,
+						maxSavedChars: 200,
+						maxSavedPct: 20,
+					},
+				}),
+			],
+			"m",
+			"now",
+			2,
+		);
+		expect(md).toContain("measurable — the ceiling exceeds");
+		expect(md).not.toContain("CANNOT MEASURE");
+	});
+
+	test("the section is absent entirely when no run recorded a vocabulary", () => {
+		// An older run has nothing to bound, and inventing a ceiling of zero would
+		// wrongly declare every such run unmeasurable.
+		const md = renderReport([res({ arm: "baseline", task: "t1", reward: 1 })], "m", "now");
+		expect(md).not.toContain("Encode headroom");
 	});
 });

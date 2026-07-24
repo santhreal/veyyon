@@ -3171,18 +3171,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				cwd,
 				tokenBudget: settings.get("argot.tokenBudget"),
 				onArmed: () => session.refreshBaseSystemPrompt(),
-				// Record the actually-loaded handle count (including 0) as durable
-				// session telemetry. An eval reading the transcript otherwise cannot
-				// tell an empty-dictionary corpus (nothing to encode) from a loaded
-				// dictionary the model ignored: session_init snapshots the startup
-				// prompt before this async arm, so the handle table never appears in
-				// any recorded prompt. Same custom_message channel as cwd_changed.
-				onResolved: handles => {
+				// Record the actually-loaded vocabulary (including an empty one) as
+				// durable session telemetry. An eval reading the transcript otherwise
+				// cannot tell an empty-dictionary corpus (nothing to encode) from a
+				// loaded dictionary the model ignored: session_init snapshots the
+				// startup prompt before this async arm, so the handle table never
+				// appears in any recorded prompt. The entries ride along because a
+				// count cannot bound the effect — computing how much the model COULD
+				// have saved needs the actual expansions. Same custom_message channel
+				// as cwd_changed; a few KB at most, written once per session.
+				onResolved: vocab => {
 					sessionManager.appendCustomMessageEntry(
 						"argot_armed",
-						`argot: launch project armed with ${handles} handle${handles === 1 ? "" : "s"}`,
+						`argot: launch project armed with ${vocab.handles} handle${vocab.handles === 1 ? "" : "s"}`,
 						false,
-						{ handles },
+						vocab,
 						"agent",
 					);
 				},

@@ -676,16 +676,27 @@ describe("armArgotAfterStartup", () => {
 		// had. The count must be the real loaded size, matching what the codec
 		// will actually teach.
 		const argot = new ArgotSession();
-		const reported: number[] = [];
+		const reported: Array<{ handles: number; entries: Record<string, string> }> = [];
 		await armArgotAfterStartup({
 			argot,
 			cwd: repoDir,
 			onArmed: async () => {},
-			onResolved: handles => reported.push(handles),
+			onResolved: vocab => reported.push(vocab),
 		});
 		expect(reported.length).toBe(1);
-		expect(reported[0]).toBeGreaterThan(0);
-		expect(reported[0]).toBe(argot.vocabulary().handles.size);
+		expect(reported[0]!.handles).toBeGreaterThan(0);
+		expect(reported[0]!.handles).toBe(argot.vocabulary().handles.size);
+		// The entries ride along because a count cannot bound the achievable saving:
+		// an eval needs the real expansions to compute what the model could have
+		// saved. They must be the SAME table the codec will teach, or the ceiling
+		// would be computed against a vocabulary the model never had.
+		expect(Object.keys(reported[0]!.entries).length).toBe(reported[0]!.handles);
+		for (const [name, expansion] of argot.vocabulary().handles) {
+			expect(reported[0]!.entries[name]).toBe(expansion);
+		}
+		// The dictionary must actually contain the repeated path this fixture repo
+		// was built around, proving a real expansion and not an empty placeholder.
+		expect(Object.values(reported[0]!.entries)).toContain(CONNECTION);
 	});
 
 	it("fires onResolved BEFORE onArmed so the count is durable even if the refresh throws", async () => {

@@ -42,7 +42,10 @@ import * as path from "node:path";
 import YAML from "yaml";
 import {
 	type ArmResult,
+	collectEmittedText,
+	type EncodeHeadroom,
 	effectiveTemperature,
+	encodeHeadroom,
 	jobNameOf,
 	NO_REWARD_ERROR,
 	noRewardError,
@@ -165,6 +168,7 @@ function parseSessionsUsage(trialDir: string): {
 	usage: SessionUsage;
 	preambleTaught: boolean | null;
 	argotHandlesLoaded: number | null;
+	headroom: EncodeHeadroom | null;
 } | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
 	if (!fs.existsSync(sessionsDir)) return null;
@@ -177,6 +181,7 @@ function parseSessionsUsage(trialDir: string): {
 	const messages: Array<Record<string, unknown>> = [];
 	let preambleTaught: boolean | null = null;
 	let argotHandlesLoaded: number | null = null;
+	let vocabEntries: Record<string, string> | null = null;
 	for (const file of files) {
 		for (const line of fs.readFileSync(path.join(sessionsDir, file), "utf8").split("\n")) {
 			if (!line.trim()) continue;
@@ -185,7 +190,7 @@ function parseSessionsUsage(trialDir: string): {
 					message?: Record<string, unknown>;
 					type?: string;
 					customType?: string;
-					details?: { handles?: unknown };
+					details?: { handles?: unknown; entries?: unknown };
 					systemPrompt?: unknown;
 				};
 				if (entry.message) messages.push(entry.message);
@@ -201,13 +206,28 @@ function parseSessionsUsage(trialDir: string): {
 						// one (a later empty re-arm must not erase a real earlier vocab).
 						argotHandlesLoaded = Math.max(argotHandlesLoaded ?? 0, handles);
 					}
+					const entries = entry.details?.entries;
+					if (entries !== null && typeof entries === "object") {
+						// Keep the vocabulary that goes with the largest load, so the
+						// headroom is computed against the handles the model actually had.
+						const table: Record<string, string> = {};
+						for (const [name, expansion] of Object.entries(entries as Record<string, unknown>)) {
+							if (typeof expansion === "string") table[name] = expansion;
+						}
+						if (vocabEntries === null || Object.keys(table).length >= Object.keys(vocabEntries).length) {
+							vocabEntries = table;
+						}
+					}
 				}
 			} catch {
 				// A truncated final line (a killed run) is not a parse we can trust.
 			}
 		}
 	}
-	return { usage: tallyUsage(messages), preambleTaught, argotHandlesLoaded };
+	// The ceiling is only computable when the run recorded the vocabulary the model
+	// actually had; without it there is nothing to measure the emitted text against.
+	const headroom = vocabEntries === null ? null : encodeHeadroom(collectEmittedText(messages), vocabEntries);
+	return { usage: tallyUsage(messages), preambleTaught, argotHandlesLoaded, headroom };
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
@@ -228,6 +248,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		assistantMsgsWithSigil: null,
 		argotPreamblePresent: null,
 		argotHandlesLoaded: null,
+		encodeHeadroom: null,
 		toolCalls: null,
 	};
 	// Pier truncates long task names in trial dir names, and a job has exactly
@@ -255,6 +276,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.assistantMsgsWithSigil = usage.assistantMsgsWithSigil ?? null;
 		result.argotPreamblePresent = parsed.preambleTaught;
 		result.argotHandlesLoaded = parsed.argotHandlesLoaded;
+		result.encodeHeadroom = parsed.headroom;
 		result.toolCalls = usage.toolCalls ?? null;
 	} else {
 		const agent = trial.agent_result ?? {};

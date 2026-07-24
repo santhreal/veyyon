@@ -366,6 +366,14 @@ export interface ArmResult {
 	 * loaded vocabulary size is unknown and the report says so rather than guessing.
 	 */
 	argotHandlesLoaded: number | null;
+	/**
+	 * The effect-size ceiling for this trial: how much shorthand could have saved at
+	 * perfect adoption (see {@link encodeHeadroom}). `null` when the trial carried no
+	 * `argot_armed` vocabulary to measure against, so no ceiling is computable.
+	 * Without this a reader cannot tell a feature that did not help from a workload
+	 * on which it could not possibly have helped.
+	 */
+	encodeHeadroom: EncodeHeadroom | null;
 	toolCalls: Record<string, number> | null;
 	error: string | null;
 }
@@ -787,6 +795,145 @@ function fmtRate(s: CellSummary): string {
 }
 
 /**
+ * Concatenate everything the model actually emitted across a session's messages.
+ *
+ * "Emitted" means exactly what {@link blockContainsSigil} scans for handles: the
+ * assistant's text blocks AND its tool-call arguments. The two must agree, because
+ * one measures where handles DID land and the other measures where they COULD
+ * have; scanning different seams would let the headroom claim a saving in a place
+ * the encode probe never looks (or the reverse), and the two numbers would quietly
+ * describe different runs.
+ *
+ * Only assistant messages count. Tool RESULTS are the harness feeding text back to
+ * the model, not output the model pays for, so including them would inflate the
+ * denominator and understate the achievable saving.
+ */
+export function collectEmittedText(messages: Array<Record<string, unknown>>): string {
+	const parts: string[] = [];
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		for (const block of (message.content ?? []) as Array<Record<string, unknown>>) {
+			if (typeof block !== "object" || block === null) continue;
+			if (typeof block.text === "string") parts.push(block.text);
+			if (block.type === "toolCall" && block.arguments !== undefined) {
+				try {
+					parts.push(JSON.stringify(block.arguments));
+				} catch {
+					// A non-serializable arguments object cannot carry a plain expansion
+					// we could have counted; skip it rather than throwing out of a probe.
+				}
+			}
+		}
+	}
+	return parts.join("\n");
+}
+
+/** The ceiling on what shorthand could have saved a run, at perfect adoption. */
+export interface EncodeHeadroom {
+	/** Characters the model actually emitted (assistant text plus tool-call arguments). */
+	emittedChars: number;
+	/** Handles in the loaded vocabulary. */
+	handles: number;
+	/** Handles whose expansion appears at least once in what the model emitted. */
+	usableHandles: number;
+	/** Characters saved if EVERY occurrence of every expansion had been written as its handle. */
+	maxSavedChars: number;
+	/** {@link maxSavedChars} as a percentage of {@link emittedChars}; 0 when nothing was emitted. */
+	maxSavedPct: number;
+}
+
+/**
+ * Compute the maximum saving shorthand could possibly have delivered on a run.
+ *
+ * This is the effect-size ceiling, and it is the instrument that decides whether a
+ * run can measure argot AT ALL. It answers a question no amount of repeats can:
+ * if the model had encoded perfectly — every occurrence of every expansion written
+ * as its handle — how much shorter would its output be? When that ceiling sits
+ * below the run's token noise, the comparison is measuring variance, and adding
+ * samples cannot help, because the effect being sought is smaller than the effect
+ * that exists. Note how this differs from {@link sweepCanReachSignificance}: that
+ * detects too few DECISIVE TASKS (a sample-size limit), this detects too small an
+ * ACHIEVABLE EFFECT (a workload limit). A run can be fine on one and hopeless on
+ * the other.
+ *
+ * Measured against the real ytt task this caught the case it was built for: 33
+ * handles loaded, only 7 ever emitted, ceiling 0.27% of output — while run-to-run
+ * token variance was around 9%. Every argot delta on that workload was noise, and
+ * the report had no way to say so.
+ *
+ * Occurrences are counted non-overlapping, the same way a real encoder would
+ * substitute them, and each one saves the expansion's length minus the handle's
+ * (plus its sigil). Expansions shorter than their handle contribute nothing rather
+ * than a negative saving: an encoder would simply not use them.
+ */
+export function encodeHeadroom(
+	emitted: string,
+	handles: Readonly<Record<string, string>>,
+	sigil: string = DEFAULT_SIGIL,
+): EncodeHeadroom {
+	let usableHandles = 0;
+	let maxSavedChars = 0;
+	for (const [name, expansion] of Object.entries(handles)) {
+		if (expansion.length === 0) continue;
+		let occurrences = 0;
+		let from = 0;
+		for (;;) {
+			const at = emitted.indexOf(expansion, from);
+			if (at === -1) break;
+			occurrences++;
+			from = at + expansion.length;
+		}
+		if (occurrences === 0) continue;
+		usableHandles++;
+		const perOccurrence = expansion.length - (sigil.length + name.length);
+		if (perOccurrence > 0) maxSavedChars += occurrences * perOccurrence;
+	}
+	return {
+		emittedChars: emitted.length,
+		handles: Object.keys(handles).length,
+		usableHandles,
+		maxSavedChars,
+		maxSavedPct: emitted.length === 0 ? 0 : (100 * maxSavedChars) / emitted.length,
+	};
+}
+
+/**
+ * Relative spread of a set of values, as a percentage of their mean.
+ *
+ * Used as the run's own noise floor: the token totals of repeated samples of the
+ * SAME arm on the SAME task differ only by run-to-run variance, so their spread is
+ * a direct, assumption-free estimate of how large a difference this workload can
+ * produce by chance. Returns `null` when fewer than two values are available (no
+ * spread is observable) or the mean is zero.
+ */
+export function relativeSpreadPct(values: readonly number[]): number | null {
+	if (values.length < 2) return null;
+	const avg = values.reduce((a, b) => a + b, 0) / values.length;
+	if (avg === 0) return null;
+	const variance = values.reduce((a, b) => a + (b - avg) ** 2, 0) / (values.length - 1);
+	return (100 * Math.sqrt(variance)) / Math.abs(avg);
+}
+
+/**
+ * Decide whether a run's achievable saving is large enough to be detectable at all.
+ *
+ * The rule is deliberately blunt because the failure it prevents is severe: if the
+ * BEST possible outcome (perfect encoding of every handle) is smaller than the
+ * noise the workload already produces between identical samples, then no delta the
+ * report prints can be attributed to the feature, and no number of repeats changes
+ * that. Reporting such a run as "not distinguishable" is technically true and
+ * badly misleading, because it invites "we measured it and it does not help" when
+ * the truth is "this workload cannot show it either way".
+ *
+ * `noisePct` is `null` when the run had no repeats to estimate spread from; then
+ * the ceiling alone is judged against a conservative floor of one percent, below
+ * which a token effect is not credibly separable from ordinary drift.
+ */
+export function ceilingBelowNoise(maxSavedPct: number, noisePct: number | null): boolean {
+	return maxSavedPct < (noisePct ?? 1);
+}
+
+/**
  * Explain what an encode arm's `0 encoded` (or nonzero) result actually means, by
  * reading the loaded vocabulary size alongside the taught/encoded counts.
  *
@@ -1178,6 +1325,54 @@ export function renderReport(
 		if (interpretations.length > 0) {
 			lines.push("");
 			for (const note of interpretations) lines.push(`- ${note}`);
+		}
+	}
+	// Effect-size ceiling. This section answers a question the significance tests
+	// structurally cannot: not "did we see a difference" but "could a difference
+	// large enough to see have existed at all on this workload". A run whose ceiling
+	// sits under its own noise is unmeasurable no matter how many repeats it gets.
+	const headroomArms = arms.filter(a => okByArm(a).some(r => r.encodeHeadroom !== null));
+	if (headroomArms.length > 0) {
+		lines.push("");
+		lines.push("## Encode headroom — the maximum saving that was ever available");
+		lines.push("");
+		lines.push(
+			"`max saving` is what shorthand would have saved if the model had encoded PERFECTLY: every " +
+				"occurrence of every loaded handle's expansion, in text and in tool-call arguments, written as the " +
+				"handle instead. It is an upper bound the feature cannot beat on this workload. `noise` is the " +
+				"observed run-to-run spread of output tokens across repeated samples of the same arm and task, which " +
+				"is the smallest difference this run could distinguish from chance. When the ceiling is below the " +
+				"noise, the efficiency comparison above is measuring variance and NOTHING can be concluded about the " +
+				"feature — more repeats cannot help, because the effect being sought is smaller than the effect that " +
+				"exists. Fix the workload (tasks whose repos repeat long paths and commands the agent actually " +
+				"retypes) or the vocabulary, not the sample count.",
+		);
+		lines.push("");
+		lines.push(
+			"| arm | emitted chars | handles | handles ever emitted | max saving | max saving % | noise % | verdict |",
+		);
+		lines.push("|---|---|---|---|---|---|---|---|");
+		for (const a of headroomArms) {
+			const rows = okByArm(a).filter(r => r.encodeHeadroom !== null);
+			const emitted = rows.reduce((s, r) => s + (r.encodeHeadroom?.emittedChars ?? 0), 0);
+			const saved = rows.reduce((s, r) => s + (r.encodeHeadroom?.maxSavedChars ?? 0), 0);
+			const handles = Math.max(...rows.map(r => r.encodeHeadroom?.handles ?? 0));
+			const usable = Math.max(...rows.map(r => r.encodeHeadroom?.usableHandles ?? 0));
+			const pct = emitted === 0 ? 0 : (100 * saved) / emitted;
+			// Noise is estimated from this arm's own repeated samples, so it needs no
+			// assumption about the provider or the task: identical cells differ only by
+			// run-to-run variance, which is exactly the floor a real effect must clear.
+			const tokens = okByArm(a)
+				.map(r => r.outputTokens)
+				.filter((t): t is number => t !== null);
+			const noise = relativeSpreadPct(tokens);
+			const verdict = ceilingBelowNoise(pct, noise)
+				? "**CANNOT MEASURE** — ceiling below noise; any delta here is variance"
+				: "measurable — the ceiling exceeds this run's noise";
+			lines.push(
+				`| ${a} | ${emitted} | ${handles} | ${usable} | ${saved} | ${pct.toFixed(2)}% | ` +
+					`${noise === null ? "—" : `${noise.toFixed(2)}%`} | ${verdict} |`,
+			);
 		}
 	}
 	const probeArms = arms.filter(a => results.some(r => r.arm === a && (r.argotLoadCalls ?? 0) > 0));

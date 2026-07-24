@@ -239,26 +239,35 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
  * nothing; a genuine failure (malformed cache, handle conflict) logs loudly.
  *
  * `onResolved` (optional) fires whenever the launch folder resolves to a project,
- * with the exact handle count the dictionary produced — INCLUDING zero. That zero
- * is the whole point: a repo with no repeated-token mass generates an empty
+ * with the vocabulary the dictionary produced — INCLUDING an empty one. That empty
+ * case is the whole point: a repo with no repeated-token mass generates an empty
  * dictionary, so the model has nothing to encode and the prompt is never refreshed
- * (the `handles > 0` gate below). Downstream instruments (the deepswe-bench argot
- * telemetry) need to see that zero to tell "the corpus had nothing to compress"
- * apart from "the model ignored available handles"; without it, a null encode
- * result is uninterpretable. `onResolved` runs before `onArmed` so the record is
- * durable even if the refresh throws.
+ * (the size gate below). Downstream instruments (the deepswe-bench argot telemetry)
+ * need to see it to tell "the corpus had nothing to compress" apart from "the model
+ * ignored available handles"; without it, a null encode result is uninterpretable.
+ *
+ * The callback receives the handle ENTRIES, not just a count, because a count alone
+ * cannot bound the effect: an eval needs the actual expansions to compute how much
+ * the model could have saved at perfect adoption. A vocabulary of long, never-typed
+ * strings (license text, fixture YAML) and one of hot file paths both report the
+ * same size while offering wildly different headroom. `onResolved` runs before
+ * `onArmed` so the record is durable even if the refresh throws.
  */
 export async function armArgotAfterStartup(opts: {
 	argot: ArgotSession;
 	cwd: string;
 	tokenBudget?: number;
 	onArmed: () => Promise<void>;
-	onResolved?: (handles: number) => void;
+	onResolved?: (vocab: { handles: number; entries: Record<string, string> }) => void;
 }): Promise<void> {
 	try {
 		const loaded = await loadArgotFolder(opts.argot, opts.cwd, undefined, opts.tokenBudget);
 		if (loaded !== undefined) {
-			opts.onResolved?.(loaded.handles);
+			if (opts.onResolved !== undefined) {
+				const entries: Record<string, string> = {};
+				for (const [name, expansion] of opts.argot.vocabulary().handles) entries[name] = expansion;
+				opts.onResolved({ handles: loaded.handles, entries });
+			}
 			if (loaded.handles > 0) {
 				await opts.onArmed();
 			}
