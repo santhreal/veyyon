@@ -405,17 +405,22 @@ behavioral nudge rather than a section rewrite (this is what
 
 ## Argot on DeepSWE: what is and is not measurable
 
-Veyyon's argot flow is agent-driven over a generated vocabulary: when the
-model calls `argot_load <folder>`, the harness generates the dictionary from
-the repo's git-tracked listing and caches it outside the repo. There is no
-committed dictionary file to stage, and nothing about the task environment
-differs between arms — which keeps the arm comparison clean.
+Veyyon's argot flow runs over a generated vocabulary, and the launch project is
+loaded FOR the model, not by it. At startup the agent resolves the project it was
+launched in and generates the dictionary from that repo's git-tracked listing,
+caching it outside the repository; the handle table then reaches the model on a
+prompt refresh. `argot_load <folder>` exists for adding FURTHER projects, so it
+stays uncalled on a single-repo task and its count is not an adoption signal.
+There is no committed dictionary file to stage, and nothing about the task
+environment differs between arms, which keeps the arm comparison clean.
 
 That makes the bench measure three distinct things:
 
 1. **Enablement overhead** (baseline vs decode vs full, all tasks): what the
    preamble, the tools, and the decode seams cost when the feature exists.
-   Pilot answer: within noise, ~0.7% input tokens.
+   An early pilot put this within noise at roughly 0.7% of input tokens, but that
+   run predates the treatment-applied check and its encode arm never actually
+   taught the preamble, so treat the figure as unmeasured rather than confirmed.
 2. **Adoption** (full arm): whether the model writes handles once it has them.
    Read `runs that encoded` and `vocab handles` together, and do NOT read
    `argot_load calls` as an adoption signal. That counter is zero by design:
