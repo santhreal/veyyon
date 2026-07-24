@@ -686,7 +686,7 @@ jobs:
       name: Publish GitHub release
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_binary.result == 'success' }}
-      needs: [release_metadata, release_binary]
+      needs: [release_metadata, release_binary, native_artifact_lookup]
       runs-on: ubuntu-22.04
       permissions:
          contents: write
@@ -718,12 +718,24 @@ jobs:
               pattern: veyyon-binary-*
               path: packages/coding-agent/binaries
               merge-multiple: true
+         - name: Download native addons
+           # Published as release assets so SOURCE installs stay toolchain-free:
+           # ensure-native.ts fetches `veyyon_natives.<platform>-<arch>[-variant].node`
+           # from the checkout's own release tag instead of requiring cargo.
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+           with:
+              pattern: veyyon-natives-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              path: packages/coding-agent/binaries
+              merge-multiple: true
          - name: Generate SHA-256 sidecars
-           # install.sh / install.ps1 fail closed when a release binary has no
-           # published <asset>.sha256 sidecar, so every binary must get one here.
+           # install.sh / install.ps1 / ensure-native.ts fail closed when a
+           # published asset has no <asset>.sha256 sidecar, so every binary and
+           # native addon must get one here.
            run: |
               cd packages/coding-agent/binaries
-              for f in veyyon-*; do
+              ls -la
+              for f in veyyon-* veyyon_natives.*; do
+                [ -f "$f" ] || continue
                 case "$f" in *.sha256) continue ;; esac
                 sha256sum "$f" > "$f.sha256"
               done
@@ -734,6 +746,7 @@ jobs:
               tag_name: ${{ needs.release_metadata.outputs.release-tag }}
               files: |
                  packages/coding-agent/binaries/veyyon-*
+                 packages/coding-agent/binaries/veyyon_natives.*
               body_path: release-notes.md
               generate_release_notes: true
 

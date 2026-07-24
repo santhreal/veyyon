@@ -657,6 +657,15 @@ export async function updateViaSourceAt(
 			command: ["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"],
 			cwd: checkoutRoot,
 		},
+		// The native addon is version-sentinel-checked at boot, so an advanced
+		// checkout with the previous release's addon dies just like a missing
+		// one. `ensure` is the single owner of provisioning (skip if current,
+		// else prebuilt release download, else cargo build, else fail closed).
+		{
+			label: "Ensuring native addon",
+			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
+			cwd: checkoutRoot,
+		},
 	];
 	report(`Updating source checkout at ${checkoutRoot} to ${version}`);
 	for (const step of steps) {

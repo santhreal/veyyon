@@ -429,6 +429,12 @@ install_via_bun() {
     say "generating build artifacts (gen:tool-views)..."
     ( cd "$VEYYON_SRC_DIR" && bun --cwd=packages/collab-web run gen:tool-views ) \
         || die "failed to generate build artifacts (bun --cwd=packages/collab-web run gen:tool-views)"
+    # The native addon is the other gitignored built artifact: a fresh clone has
+    # none and veyyon dies at boot without it. The ensure script provisions it
+    # (prebuilt release download, else local cargo build) or fails with the fix.
+    say "ensuring native addon (packages/natives)..."
+    ( cd "$VEYYON_SRC_DIR" && bun --cwd=packages/natives run ensure ) \
+        || die "failed to provision the native addon (bun --cwd=packages/natives run ensure)"
     mkdir -p "$INSTALL_DIR"
     ln -sfn "$launcher" "$INSTALL_DIR/$BIN_NAME" || die "failed to link $BIN_NAME into $INSTALL_DIR"
     ok "installed $BIN_NAME (source) -> $launcher"
