@@ -2,12 +2,11 @@
 
 ## [Unreleased]
 
-## [1.0.30] - 2026-07-24
+## [1.0.31] - 2026-07-24
 
 ### Fixed
 
-- A file move that overwrites an existing destination is now crash-atomic and mode-preserving, matching the edit/write path. The destination was previously written with a truncate-then-stream `Bun.write`, so a crash mid-move could corrupt the file being overwritten; it now writes a sibling temp and renames it over the destination, carrying the destination's permission bits forward.
-- Edits and writes now commit crash-atomically. The file was previously written with a truncate-then-stream `Bun.write`, so a crash, `SIGINT`, out-of-memory kill, or full disk mid-write could leave your source file truncated or empty. It now writes a sibling temp file and renames it over the target, so an interrupted write leaves either the whole old file or the whole new one. The existing file's permission bits (including a script's executable bit) are preserved across the write, and a write through a symlink keeps the symlink and updates its target.
+- The `apply_patch` default filesystem now commits crash-atomically. The interactive editor already wrote through the crash-atomic LSP path, but the default filesystem behind programmatic and SDK `apply_patch` callers still used a truncate-then-stream `Bun.write`, so a crash mid-write could leave the target file truncated. Create, update, and move writes through the default now write a sibling temp and rename it over the target, preserving an existing file's permission bits.
 
 ## Upstream history
 
