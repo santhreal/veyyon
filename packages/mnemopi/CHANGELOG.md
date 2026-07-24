@@ -7,6 +7,7 @@
 ### Fixed
 
 - Content-addressed blob storage now writes crash-atomically. `storeBlob` wrote the extracted blob straight to its final `sha256`-named path with `writeFileSync`, so a crash mid-write left a truncated file whose bytes no longer matched its name; the `existsSync` fast-path then treated that corrupt blob as present forever and every reader silently got wrong bytes. The write now goes through a sibling temp and rename, so a blob is always either absent or the exact correct bytes.
+- The one-time legacy triples-database migration now copies crash-atomically. It wrote the old database into its new location with `copyFileSync`, which streams bytes into the destination, so a crash mid-copy left a truncated SQLite file that the `existsSync` guard then treated as a completed migration, silently losing the triple store. The copy now goes through a sibling temp and rename, so the destination only ever appears as the whole, valid database.
 
 ## [16.3.9] - 2026-07-06
 
