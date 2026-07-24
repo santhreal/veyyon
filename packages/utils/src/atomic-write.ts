@@ -147,6 +147,37 @@ export async function atomicWriteFile(
 }
 
 /**
+ * Atomic write that carries the target's CURRENT permission bits forward.
+ *
+ * {@link atomicWriteFile} replaces the file by renaming a fresh temp over it, so
+ * the result takes the temp's mode — `0o600` by default. That is right for a
+ * secret-bearing config file, but wrong when you are rewriting a file whose mode
+ * matters: an executable script would silently lose its `+x`, a group-readable
+ * file its group bit. Use this when you are overwriting an existing file and must
+ * not change how it is permissioned — source files an editor rewrites, a move
+ * that overwrites a destination, any content update to a pre-existing path.
+ *
+ * The current mode is read with `stat` (which follows a symlink to the file that
+ * will actually be replaced), so a symlinked path preserves its target's mode. A
+ * path that does not exist yet is created with `defaultMode` (0o644 — a normal,
+ * non-secret file default), still subject to the process umask at creation.
+ */
+export async function atomicWriteFilePreservingMode(
+	filePath: string,
+	data: string | NodeJS.ArrayBufferView,
+	options: { fsync?: boolean; defaultMode?: number } = {},
+): Promise<void> {
+	const { fsync, defaultMode = 0o644 } = options;
+	let mode = defaultMode;
+	try {
+		mode = (await fsp.stat(filePath)).mode & 0o777;
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+	}
+	await atomicWriteFile(filePath, data, fsync === undefined ? { mode } : { mode, fsync });
+}
+
+/**
  * Serialize `data` as pretty-printed JSON (2-space indent, trailing newline)
  * and write it to `filePath` atomically via {@link atomicWriteFile}. The
  * trailing newline keeps the file POSIX-clean and diff-friendly. Use this for

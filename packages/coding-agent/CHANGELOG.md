@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A file move that overwrites an existing destination is now crash-atomic and mode-preserving, matching the edit/write path. The destination was previously written with a truncate-then-stream `Bun.write`, so a crash mid-move could corrupt the file being overwritten; it now writes a sibling temp and renames it over the destination, carrying the destination's permission bits forward.
+
 ## [1.0.29] - 2026-07-24
 
 ### Fixed

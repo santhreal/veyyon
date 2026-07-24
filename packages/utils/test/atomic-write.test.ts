@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith, atomicWriteJson } from "../src/atomic-write";
+import {
+	atomicWriteFile,
+	atomicWriteFilePreservingMode,
+	atomicWriteFileSync,
+	atomicWriteFileWith,
+	atomicWriteJson,
+} from "../src/atomic-write";
 import { TempDir } from "../src/temp";
 import { collectPackageSources } from "./support/package-sources";
 
@@ -410,5 +416,86 @@ describe("atomicWriteJson", () => {
 		await atomicWriteJson(target, { token: "abc" });
 
 		expect(fs.statSync(target).mode & 0o777).toBe(0o600);
+	});
+});
+
+/**
+ * `atomicWriteFilePreservingMode` is the variant for overwriting an existing
+ * file whose permissions must not change. Plain `atomicWriteFile` replaces the
+ * inode via rename and stamps the temp's `0o600`, which would silently strip a
+ * script's `+x` or a file's group-read; this variant stats the target first and
+ * carries its mode forward. These tests lock that no-regret behavior (the reason
+ * the edit/write and move paths use it) plus the new-file default and the
+ * symlink-target preservation it inherits.
+ */
+describe("atomicWriteFilePreservingMode", () => {
+	let dir: TempDir;
+
+	beforeEach(async () => {
+		dir = await TempDir.create("@pi-atomic-preserve-mode-");
+	});
+
+	afterEach(async () => {
+		await dir.remove();
+	});
+
+	it("writes the exact new content over an existing file", async () => {
+		const target = path.join(dir.path(), "code.ts");
+		await fsp.writeFile(target, "old\n");
+		await atomicWriteFilePreservingMode(target, "brand new content\n");
+		expect(fs.readFileSync(target, "utf8")).toBe("brand new content\n");
+	});
+
+	it("preserves an executable file's mode (0o755) across the rewrite", async () => {
+		if (process.platform === "win32") return; // POSIX mode bits only
+		const target = path.join(dir.path(), "run.sh");
+		await fsp.writeFile(target, "#!/bin/sh\necho old\n");
+		await fsp.chmod(target, 0o755);
+		await atomicWriteFilePreservingMode(target, "#!/bin/sh\necho new\n");
+		expect(fs.statSync(target).mode & 0o777).toBe(0o755);
+	});
+
+	it("preserves a restrictive mode (0o640) rather than widening or clamping it", async () => {
+		if (process.platform === "win32") return;
+		const target = path.join(dir.path(), "data.env");
+		await fsp.writeFile(target, "OLD\n");
+		await fsp.chmod(target, 0o640);
+		await atomicWriteFilePreservingMode(target, "NEW\n");
+		expect(fs.statSync(target).mode & 0o777).toBe(0o640);
+	});
+
+	it("creates a brand-new file at the 0o644 default (masked by umask), not 0o600", async () => {
+		if (process.platform === "win32") return;
+		const target = path.join(dir.path(), "fresh.txt");
+		await atomicWriteFilePreservingMode(target, "hi\n");
+		expect(fs.statSync(target).mode & 0o777).toBe(0o644 & ~process.umask());
+	});
+
+	it("honors an explicit defaultMode for a new file", async () => {
+		if (process.platform === "win32") return;
+		const target = path.join(dir.path(), "exec-new.sh");
+		await atomicWriteFilePreservingMode(target, "#!/bin/sh\n", { defaultMode: 0o700 });
+		expect(fs.statSync(target).mode & 0o777).toBe(0o700 & ~process.umask());
+	});
+
+	it("leaves no temp sibling behind after a successful write", async () => {
+		const target = path.join(dir.path(), "note.txt");
+		await atomicWriteFilePreservingMode(target, "content\n");
+		expect(fs.readdirSync(dir.path())).toEqual(["note.txt"]);
+	});
+
+	it("writes through a symlink, keeping the link and preserving the target's mode", async () => {
+		if (process.platform === "win32") return; // symlink creation needs privilege on Windows
+		const realTarget = path.join(dir.path(), "real.txt");
+		const link = path.join(dir.path(), "link.txt");
+		await fsp.writeFile(realTarget, "before\n");
+		await fsp.chmod(realTarget, 0o600);
+		fs.symlinkSync(realTarget, link);
+		await atomicWriteFilePreservingMode(link, "after\n");
+		// The link survived (was not replaced by a regular file)...
+		expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+		// ...the target got the bytes, and its 0o600 mode was carried forward.
+		expect(fs.readFileSync(realTarget, "utf8")).toBe("after\n");
+		expect(fs.statSync(realTarget).mode & 0o777).toBe(0o600);
 	});
 });

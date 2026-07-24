@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `atomicWriteFilePreservingMode`: an atomic write that carries the target file's current permission bits forward instead of stamping the `0o600` default (a new file gets `0o644`). Use it when overwriting an existing file whose mode must not change, such as a source file an editor rewrites or a script that must stay executable.
+
 ## [1.0.29] - 2026-07-24
 
 ### Added
