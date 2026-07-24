@@ -4,15 +4,11 @@
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-07-24
+
 ### Added
 
 - Added `atomicWriteFilePreservingMode`: an atomic write that carries the target file's current permission bits forward instead of stamping the `0o600` default (a new file gets `0o644`). Use it when overwriting an existing file whose mode must not change, such as a source file an editor rewrites or a script that must stay executable.
-
-## [1.0.29] - 2026-07-24
-
-### Added
-
-- Added `splitReadSelector`, `stripReadSelector`, and the `READ_SELECTOR_RANGE_LIST_SRC` grammar fragment: the one shared owner of the read-tool path-selector grammar (`file.ts:50-200`, `:raw`, `:conflicts`, and `range:raw` compounds). This grammar was previously hand-duplicated across packages with "keep in sync" comments; consolidating it here removes the drift risk.
 
 ## [16.5.2] - 2026-07-14
 
@@ -310,6 +306,12 @@
 ### Added
 
 - Added an XDG-aware tiny-title model cache directory helper for coding-agent local title models.
+
+## [1.0.29] - 2026-07-24
+
+### Added
+
+- Added `splitReadSelector`, `stripReadSelector`, and the `READ_SELECTOR_RANGE_LIST_SRC` grammar fragment: the one shared owner of the read-tool path-selector grammar (`file.ts:50-200`, `:raw`, `:conflicts`, and `range:raw` compounds). This grammar was previously hand-duplicated across packages with "keep in sync" comments; consolidating it here removes the drift risk.
 
 ## [1.0.26] - 2026-07-24
 
