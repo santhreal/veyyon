@@ -102,4 +102,37 @@ describe("ScrollView", () => {
 		expect(view.getScrollOffset()).toBe(1);
 		expect(view.handleScrollKey("x")).toBe(false);
 	});
+
+	/**
+	 * PERF-RENDER-3: setLines is called every frame by the transcript viewer
+	 * with the container's memoized render output. Per the render contract,
+	 * the same array reference means byte-identical rows, so the same ref must
+	 * short-circuit — the defensive copy was the last per-frame cost that
+	 * scaled with transcript length instead of viewport height.
+	 */
+	it("setLines with the identical array reference is a no-op that preserves rendered output", () => {
+		const source = ["alpha", "beta", "gamma", "delta"];
+		const view = new ScrollView(source, { height: 2, scrollbar: "never", theme });
+		view.setScrollOffset(1);
+		const before = view.render(10);
+
+		view.setLines(source);
+		expect(view.getScrollOffset()).toBe(1);
+		expect(view.render(10)).toEqual(before);
+	});
+
+	/**
+	 * The twin: a NEW array (even with different content length) must still be
+	 * adopted fully — the fast path may only trigger on reference identity,
+	 * never on shallow equality guesses. Shrinking content must re-clamp.
+	 */
+	it("setLines with a new array reference adopts the new content and re-clamps", () => {
+		const view = new ScrollView(["a", "b", "c", "d", "e"], { height: 2, scrollbar: "never", theme });
+		view.scrollToBottom();
+		expect(view.getScrollOffset()).toBe(3);
+
+		view.setLines(["x", "y"]);
+		expect(view.getScrollOffset()).toBe(0);
+		expect(view.render(5)).toEqual(["x", "y"]);
+	});
 });
