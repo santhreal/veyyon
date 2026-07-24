@@ -18,6 +18,7 @@ import {
 	classifyError,
 	effectiveTemperature,
 	holmBonferroni,
+	interpretEncodeArm,
 	jobNameOf,
 	NO_REWARD_ERROR,
 	noRewardError,
@@ -56,6 +57,7 @@ function res(over: Partial<ArmResult>): ArmResult {
 		argotLoadCalls: null,
 		assistantMsgsWithSigil: null,
 		argotPreamblePresent: null,
+		argotHandlesLoaded: null,
 		toolCalls: null,
 		error: null,
 		...over,
@@ -1373,5 +1375,140 @@ describe("renderTaskSetProvenanceBanner / renderReport — the provenance banner
 		expect(withBias).toContain("best-case repos");
 		const without = renderReport(results, "m", STAMP, 1);
 		expect(without).not.toContain("SELECTION-BIASED");
+	});
+});
+
+describe("interpretEncodeArm — making a 0-encoded argot result interpretable", () => {
+	// The bug this locks out: the first real encode-fixed run reported
+	// `full: preamble taught 4/4` alongside `encoded 0/4`, and NOTHING in the
+	// report could say whether argot failed, the model declined, or the corpus
+	// simply had no repeated-token mass to compress. Reading a token delta from
+	// that state is unsound in all three cases, but only one of them is a real
+	// argot measurement. These lock the three-way disambiguation.
+
+	test("zero handles loaded says encode was IMPOSSIBLE and the delta is not an argot measure", () => {
+		// The trap case. An empty launch dictionary means the model had no handle
+		// to write, so `0 encoded` is a property of the CORPUS, not of argot and
+		// not of the model. The note must forbid reading the delta as "argot does
+		// not help", which is exactly the wrong conclusion a bare 0 invites.
+		const note = interpretEncodeArm({ arm: "full", okRuns: 4, taught: 4, handlesLoaded: 0, encoded: 0 });
+		expect(note).toContain("loaded 0 handles");
+		expect(note).toContain("IMPOSSIBLE");
+		expect(note).toContain("NOT a measure of argot");
+	});
+
+	test("handles available but nothing encoded is charged to the MODEL, not the corpus", () => {
+		// The genuinely interesting negative result: shorthand was in front of the
+		// model and it wrote none. That is a model-adoption finding and must be
+		// worded as such, never conflated with the empty-dictionary case above.
+		const note = interpretEncodeArm({ arm: "full", okRuns: 4, taught: 4, handlesLoaded: 37, encoded: 0 });
+		expect(note).toContain("37 handles WERE loaded");
+		expect(note).toContain("ignored");
+		expect(note).toContain("model-adoption result");
+		expect(note).not.toContain("IMPOSSIBLE");
+	});
+
+	test("actual encoding is declared a real measurement, with the vocabulary size", () => {
+		// The only state in which a token delta against the encode arm means what
+		// the report says it means. It reports both counts so the reader can judge
+		// how much of the arm's mass actually used shorthand.
+		const note = interpretEncodeArm({ arm: "full", okRuns: 5, taught: 5, handlesLoaded: 37, encoded: 4 });
+		expect(note).toContain("encoded in 4/5 runs");
+		expect(note).toContain("37 handles");
+		expect(note).toContain("real argot measurement");
+	});
+
+	test("an unknown vocabulary size (pre-telemetry run) is declared uninterpretable, not assumed empty", () => {
+		// A run recorded before the `argot_armed` telemetry existed has null, which
+		// must NOT be silently treated as zero — that would fabricate a confident
+		// "the corpus had nothing" verdict from missing data (a silent fallback).
+		// The honest answer is that the result cannot be read and the run must be
+		// repeated.
+		const note = interpretEncodeArm({ arm: "full", okRuns: 4, taught: 4, handlesLoaded: null, encoded: 0 });
+		expect(note).toContain("UNKNOWN");
+		expect(note).toContain("uninterpretable");
+		expect(note).toContain("rerun");
+		expect(note).not.toContain("IMPOSSIBLE");
+	});
+
+	test("an arm that never taught the preamble gets no interpretation", () => {
+		// A decode-only or baseline arm is SUPPOSED to show 0 encoded; emitting a
+		// note there would read as a defect report on a correctly-behaving arm and
+		// bury the one arm whose interpretation matters.
+		expect(interpretEncodeArm({ arm: "decode", okRuns: 5, taught: 0, handlesLoaded: 12, encoded: 0 })).toBeNull();
+	});
+
+	test("an all-errored arm gets no interpretation rather than a divide-by-nothing claim", () => {
+		// With zero completed runs there is no evidence either way; the arm's own
+		// Errors row is the honest signal, not a fabricated adoption verdict.
+		expect(interpretEncodeArm({ arm: "full", okRuns: 0, taught: 0, handlesLoaded: null, encoded: 0 })).toBeNull();
+	});
+});
+
+describe("renderReport — the vocab handles column and its interpretation", () => {
+	// End-to-end proof that the instrument reaches the operator-visible report
+	// (WIRING): a helper that is never rendered fixes nothing.
+
+	test("an empty-dictionary encode arm renders the handle count AND the corpus-inert warning", () => {
+		// Reproduces the exact runs/argot-encode-fixed shape (taught, never
+		// encoded) with the missing fact supplied: 0 handles. The report must now
+		// state the size in the table and explain the null in prose.
+		const md = renderReport(
+			[
+				res({ arm: "full", task: "t1", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: 0 }),
+				res({ arm: "full", task: "t2", reward: 0, argotPreamblePresent: true, argotHandlesLoaded: 0 }),
+			],
+			"m",
+			"now",
+		);
+		expect(md).toContain("vocab handles");
+		expect(md).toContain("| full | 2 | 2/2 | 0 |");
+		expect(md).toContain("IMPOSSIBLE");
+		expect(md).toContain("NOT a measure of argot");
+	});
+
+	test("a loaded-but-unused vocabulary renders the size and the model-adoption reading", () => {
+		// The other real state: the table shows 37, and the prose charges the null
+		// to the model rather than to the corpus.
+		const md = renderReport(
+			[
+				res({ arm: "full", task: "t1", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: 37 }),
+				res({ arm: "full", task: "t2", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: 37 }),
+			],
+			"m",
+			"now",
+		);
+		expect(md).toContain("| full | 2 | 2/2 | 37 |");
+		expect(md).toContain("37 handles WERE loaded");
+		expect(md).toContain("model-adoption result");
+	});
+
+	test("a pre-telemetry run renders an em-dash size, never a fabricated zero", () => {
+		// Guards the silent-fallback: an older run's missing record must render as
+		// unknown, not as the load-produced-nothing verdict.
+		const md = renderReport(
+			[res({ arm: "full", task: "t1", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: null })],
+			"m",
+			"now",
+		);
+		expect(md).toContain("| full | 1 | 1/1 | — |");
+		expect(md).toContain("uninterpretable");
+		expect(md).not.toContain("IMPOSSIBLE");
+	});
+
+	test("the handle count survives a stray row that lacks the record", () => {
+		// A per-repo property is constant across a task's repeats, so one row
+		// missing the record (a crashed early session) must not blank the column
+		// for the whole arm and destroy the interpretation.
+		const md = renderReport(
+			[
+				res({ arm: "full", task: "t1", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: null }),
+				res({ arm: "full", task: "t2", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: 12 }),
+			],
+			"m",
+			"now",
+		);
+		expect(md).toContain("| full | 2 | 2/2 | 12 |");
+		expect(md).toContain("12 handles WERE loaded");
 	});
 });

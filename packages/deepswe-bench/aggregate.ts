@@ -354,6 +354,18 @@ export interface ArmResult {
 	 * signal, resolved from the prompt the model was actually given.
 	 */
 	argotPreamblePresent: boolean | null;
+	/**
+	 * The handle count the launch project's argot dictionary actually loaded for
+	 * this trial, read from the SDK's `argot_armed` telemetry record. This is what
+	 * makes a `0 encoded` result interpretable — the number the report cannot infer
+	 * from the prompt (the handle table is injected asynchronously AFTER the
+	 * `session_init` snapshot, so it never appears in any recorded prompt). `0` is a
+	 * real, informative value: the repo had no repeated-token mass, so encode was
+	 * impossible for a CORPUS reason, not a model choice. `null` = no `argot_armed`
+	 * record was seen (argot off, or an older run predating the telemetry), so the
+	 * loaded vocabulary size is unknown and the report says so rather than guessing.
+	 */
+	argotHandlesLoaded: number | null;
 	toolCalls: Record<string, number> | null;
 	error: string | null;
 }
@@ -775,6 +787,64 @@ function fmtRate(s: CellSummary): string {
 }
 
 /**
+ * Explain what an encode arm's `0 encoded` (or nonzero) result actually means, by
+ * reading the loaded vocabulary size alongside the taught/encoded counts.
+ *
+ * This is the instrument that makes an argot token delta interpretable. Three
+ * distinct realities produce a "full ≈ decode" report, and the raw counts alone
+ * cannot tell them apart:
+ *
+ * - The preamble was taught but the launch dictionary loaded ZERO handles: the
+ *   corpus has no repeated-token mass, so encoding was structurally impossible.
+ *   The token delta measures nothing about argot — do NOT read it as "argot does
+ *   not help". This is the trap the whole helper exists to catch.
+ * - Handles WERE available (a positive load) yet the model wrote none: a genuine
+ *   model-adoption result, chargeable to the model, not the corpus.
+ * - The model did encode (`encoded > 0`): the delta is a real argot measurement.
+ *
+ * `handlesLoaded` is `null` for a run that predates the `argot_armed` telemetry;
+ * then the loaded size is unknown and the verdict says so rather than guessing.
+ * Returns `null` when there is nothing to say (no OK runs, or the arm never taught
+ * the preamble in any run — a non-encode arm needs no interpretation here).
+ */
+export function interpretEncodeArm(opts: {
+	arm: string;
+	okRuns: number;
+	taught: number;
+	handlesLoaded: number | null;
+	encoded: number;
+}): string | null {
+	const { arm, okRuns, taught, handlesLoaded, encoded } = opts;
+	if (okRuns === 0 || taught === 0) return null;
+	if (encoded > 0) {
+		const size = handlesLoaded === null ? "an unknown number of" : `${handlesLoaded}`;
+		return (
+			`**${arm}**: the model encoded in ${encoded}/${okRuns} runs with ${size} handles loaded — ` +
+			"the token delta against this arm is a real argot measurement."
+		);
+	}
+	if (handlesLoaded === null) {
+		return (
+			`**${arm}**: taught the preamble but encoded in 0/${okRuns} runs, and the loaded vocabulary size is ` +
+			"UNKNOWN (this run predates the `argot_armed` telemetry). The 0-encoded result is uninterpretable — " +
+			"rerun so the loaded handle count is recorded before reading any token delta as an argot effect."
+		);
+	}
+	if (handlesLoaded === 0) {
+		return (
+			`**${arm}**: taught the preamble but the launch dictionary loaded 0 handles, so encoding was ` +
+			"IMPOSSIBLE — this corpus has no repeated-token mass to compress. The token delta against this arm " +
+			"is NOT a measure of argot; pick tasks whose repos carry repeated paths/commands to measure encode."
+		);
+	}
+	return (
+		`**${arm}**: ${handlesLoaded} handles WERE loaded but the model encoded in 0/${okRuns} runs — it ignored ` +
+		"the available shorthand. This is a model-adoption result (chargeable to the model), not a corpus limit; " +
+		"the token delta reflects the model declining to encode, not argot being ineffective."
+	);
+}
+
+/**
  * Render the full markdown report. `repeats` is passed so the header can state the
  * sample count; it is not re-derived from the rows, so an all-errored run still
  * reports the intended repeat count rather than collapsing to 1. `taskSet`, when
@@ -1060,7 +1130,11 @@ export function renderReport(
 	const okByArm = (a: string) => results.filter(r => r.arm === a && !r.error);
 	const argotArms = arms.filter(a =>
 		okByArm(a).some(
-			r => r.argotLoadCalls !== null || r.assistantMsgsWithSigil !== null || r.argotPreamblePresent !== null,
+			r =>
+				r.argotLoadCalls !== null ||
+				r.assistantMsgsWithSigil !== null ||
+				r.argotPreamblePresent !== null ||
+				r.argotHandlesLoaded !== null,
 		),
 	);
 	if (argotArms.length > 0) {
@@ -1068,26 +1142,42 @@ export function renderReport(
 		lines.push("## Argot treatment applied? (per arm)");
 		lines.push("");
 		lines.push(
-			"`preamble taught` is the authoritative signal: it reads the actual system prompt the model was " +
-				"given, so it reflects the model AFTER catalog id resolution. An encode arm whose `preamble taught` " +
-				"is `0/N` never fired the treatment (a silent degrade to decode-only) and every token delta against " +
-				"it is inert, whatever the § counts say.",
+			"`preamble taught` is the authoritative signal that the treatment REACHED the model: it reads the " +
+				"actual system prompt, so it reflects the model AFTER catalog id resolution. An encode arm whose " +
+				"`preamble taught` is `0/N` never fired the treatment (a silent degrade to decode-only). But teaching " +
+				"is NOT sufficient — `vocab handles` is the launch dictionary's actual size, and encode is only " +
+				"POSSIBLE when it is above zero. `0` handles means the corpus has no repeated-token mass, so a " +
+				"`0 encoded` result there measures nothing about argot. `—` handles means the run predates the " +
+				"telemetry, so its 0-encoded is uninterpretable. Read the per-arm interpretation below the table.",
 		);
 		lines.push("");
 		lines.push(
-			"| arm | OK runs | preamble taught | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |",
+			"| arm | OK runs | preamble taught | vocab handles | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |",
 		);
-		lines.push("|---|---|---|---|---|---|");
+		lines.push("|---|---|---|---|---|---|---|");
+		const interpretations: string[] = [];
 		for (const a of argotArms) {
 			const rows = okByArm(a);
 			const encoded = rows.filter(r => (r.assistantMsgsWithSigil ?? 0) > 0).length;
 			const taught = rows.filter(r => r.argotPreamblePresent === true).length;
 			const known = rows.filter(r => r.argotPreamblePresent !== null).length;
 			const taughtCell = known === 0 ? "unknown" : `${taught}/${known}`;
+			// The loaded handle count is a per-repo property, so across a single task's
+			// repeats it is constant; the max over OK rows recovers it even if a stray
+			// row lacked the record (null), and stays null only when EVERY row lacked it.
+			const handleVals = rows.map(r => r.argotHandlesLoaded).filter((h): h is number => h !== null);
+			const handlesLoaded = handleVals.length === 0 ? null : Math.max(...handleVals);
+			const handlesCell = handlesLoaded === null ? "—" : `${handlesLoaded}`;
 			lines.push(
-				`| ${a} | ${rows.length} | ${taughtCell} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
+				`| ${a} | ${rows.length} | ${taughtCell} | ${handlesCell} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
 					`${fmt(mean(rows.map(r => r.assistantMsgsWithSigil)), 2)} | ${encoded}/${rows.length} |`,
 			);
+			const note = interpretEncodeArm({ arm: a, okRuns: rows.length, taught, handlesLoaded, encoded });
+			if (note !== null) interpretations.push(note);
+		}
+		if (interpretations.length > 0) {
+			lines.push("");
+			for (const note of interpretations) lines.push(`- ${note}`);
 		}
 	}
 	const probeArms = arms.filter(a => results.some(r => r.arm === a && (r.argotLoadCalls ?? 0) > 0));

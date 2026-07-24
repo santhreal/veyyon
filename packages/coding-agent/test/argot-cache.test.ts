@@ -667,4 +667,60 @@ describe("armArgotAfterStartup", () => {
 		expect(armedCalls).toBe(0);
 		expect(argot.loaded).toBe(false);
 	});
+
+	it("reports the resolved handle count so an eval can size the loaded vocabulary", async () => {
+		// The telemetry contract behind the bench's "vocab handles" column. The
+		// handle table is injected into the prompt asynchronously, AFTER the
+		// session_init snapshot, so no recorded prompt ever contains it; without
+		// this callback an eval literally cannot tell how many handles the model
+		// had. The count must be the real loaded size, matching what the codec
+		// will actually teach.
+		const argot = new ArgotSession();
+		const reported: number[] = [];
+		await armArgotAfterStartup({
+			argot,
+			cwd: repoDir,
+			onArmed: async () => {},
+			onResolved: handles => reported.push(handles),
+		});
+		expect(reported.length).toBe(1);
+		expect(reported[0]).toBeGreaterThan(0);
+		expect(reported[0]).toBe(argot.vocabulary().handles.size);
+	});
+
+	it("fires onResolved BEFORE onArmed so the count is durable even if the refresh throws", async () => {
+		// Ordering matters: the prompt refresh is the risky side effect (it can
+		// throw), and losing the handle count to an unrelated refresh failure
+		// would leave the eval with the same uninterpretable null this telemetry
+		// exists to remove.
+		const argot = new ArgotSession();
+		const order: string[] = [];
+		await armArgotAfterStartup({
+			argot,
+			cwd: repoDir,
+			onArmed: async () => {
+				order.push("armed");
+				throw new Error("refresh blew up");
+			},
+			onResolved: () => order.push("resolved"),
+		});
+		expect(order).toEqual(["resolved", "armed"]);
+	});
+
+	it("does not fire onResolved for a folder that is not a project at all", async () => {
+		// `0 handles` and "no project here" are different facts and must not be
+		// conflated: a marker-free folder never resolved a dictionary, so
+		// reporting 0 would assert an empty vocabulary that was never computed.
+		const argot = new ArgotSession();
+		let resolvedCalls = 0;
+		await armArgotAfterStartup({
+			argot,
+			cwd: plainDir,
+			onArmed: async () => {},
+			onResolved: () => {
+				resolvedCalls += 1;
+			},
+		});
+		expect(resolvedCalls).toBe(0);
+	});
 });
