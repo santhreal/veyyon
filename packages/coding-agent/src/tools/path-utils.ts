@@ -5,6 +5,8 @@ import {
 	expandTilde,
 	isEnoent,
 	isEnotdir,
+	READ_SELECTOR_RANGE_LIST_SRC,
+	splitReadSelector,
 	stripWindowsExtendedLengthPathPrefix,
 	trimTrailingSlashes,
 	tryParseJson,
@@ -17,20 +19,17 @@ import { ToolError } from "./tool-errors";
 export { expandTilde };
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-// A single line-range chunk: `N`, `N-M`, `N+K`, or open-ended `N-`. `..` is
-// accepted everywhere `-` is, as a forgiving alias for Rust/Python-style ranges
-// (e.g. `2724..2727` == `2724-2727`, `2724..` == `2724-`); it is normalized to
-// `-` in parseLineRangeChunk. Keep this fragment and LINE_RANGE_CHUNK_RE in sync.
-const RANGE_CHUNK_SRC = String.raw`L?\d+(?:(?:[-+]|\.\.)L?\d+|-|\.\.)?`;
-const RANGE_LIST_SRC = `${RANGE_CHUNK_SRC}(?:,${RANGE_CHUNK_SRC})*`;
-const FILE_LINE_RANGE_RE = new RegExp(`^(?:${RANGE_LIST_SRC}|raw|conflicts)$`, "i");
-const FILE_LINE_RANGE_ONLY_RE = new RegExp(`^${RANGE_LIST_SRC}$`, "i");
-const FILE_RAW_ONLY_RE = /^raw$/i;
+// The line-range/`raw`/`conflicts` selector grammar and `splitPathAndSel` (the
+// canonical filesystem splitter) live in @veyyon/utils (read-selector.ts), shared
+// with agent-core compaction so the two can never drift.
+// `READ_SELECTOR_RANGE_LIST_SRC` is the range-list fragment; LINE_RANGE_CHUNK_RE
+// below is a separate CAPTURING variant used by parseLineRangeChunk, kept in sync
+// with that same fragment.
 // Permissive selector chunk for internal URLs — accepts well-formed selectors
 // plus common malformed shapes (e.g. `:-N`) so the read tool peels the entire
 // selector chain off before dispatching to a protocol handler.
 const INTERNAL_URL_SELECTOR_PART_RE = new RegExp(
-	String.raw`^(?:raw|conflicts|${RANGE_LIST_SRC}|-\d+(?:[-+]\d+)?)$`,
+	String.raw`^(?:raw|conflicts|${READ_SELECTOR_RANGE_LIST_SRC}|-\d+(?:[-+]\d+)?)$`,
 	"i",
 );
 // Schemes whose host grammar is identifier-shaped, so any trailing
@@ -293,33 +292,14 @@ export function isLineInRanges(lineNumber: number, ranges: readonly LineRange[])
 	return false;
 }
 
-export function splitPathAndSel(rawPath: string): { path: string; sel?: string } {
-	const colon = rawPath.lastIndexOf(":");
-	if (colon <= 0) return { path: rawPath };
-
-	const candidate = rawPath.slice(colon + 1);
-	if (!FILE_LINE_RANGE_RE.test(candidate)) return { path: rawPath };
-
-	let basePath = rawPath.slice(0, colon);
-	let sel = candidate;
-
-	// Allow a compound trailing selector: `path:1-50:raw` or `path:raw:1-50`.
-	// The two chunks must be one line-range plus one `raw`, in either order.
-	const innerColon = basePath.lastIndexOf(":");
-	if (innerColon > 0) {
-		const innerCandidate = basePath.slice(innerColon + 1);
-		const innerIsRaw = FILE_RAW_ONLY_RE.test(innerCandidate);
-		const outerIsRaw = FILE_RAW_ONLY_RE.test(candidate);
-		const innerIsRange = FILE_LINE_RANGE_ONLY_RE.test(innerCandidate);
-		const outerIsRange = FILE_LINE_RANGE_ONLY_RE.test(candidate);
-		if ((innerIsRaw && outerIsRange) || (innerIsRange && outerIsRaw)) {
-			sel = `${innerCandidate}:${candidate}`;
-			basePath = basePath.slice(0, innerColon);
-		}
-	}
-
-	return { path: basePath, sel };
-}
+/**
+ * Split a read-tool path into its base path and trailing selector. The read
+ * tool's canonical splitter: delegates to the ONE-PLACE owner in @veyyon/utils
+ * ({@link splitReadSelector}), which agent-core compaction also imports so the
+ * grammar cannot drift between the read tool and the compaction dedup that keys
+ * on it.
+ */
+export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string } = splitReadSelector;
 
 /**
  * Three-way probe for whether the exact filesystem entry named by `filePath`

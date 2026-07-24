@@ -36,6 +36,7 @@ export * as prompt from "./prompt";
 export * as ptree from "./ptree";
 export { AbortError, ChildProcess, Exception, NonZeroExitError } from "./ptree";
 export * from "./quarantine-file";
+export * from "./read-selector";
 export * from "./regex";
 export * from "./runtime-install";
 export * from "./sanitize-text";
