@@ -472,7 +472,7 @@ export class SelectorController {
 				break;
 			case "personality":
 				void this.ctx.session.refreshBaseSystemPrompt().catch(err => {
-					this.ctx.showError(`Failed to apply personality: ${err}`);
+					this.ctx.showError(`Failed to apply personality: ${errorMessage(err)}`);
 				});
 				break;
 
@@ -543,7 +543,7 @@ export class SelectorController {
 			case "tui.renderMermaid":
 				setMarkdownMermaidRendering(value as boolean);
 				this.ctx.session.refreshBaseSystemPrompt().catch(err => {
-					this.ctx.showError(`Failed to apply Mermaid rendering setting: ${err}`);
+					this.ctx.showError(`Failed to apply Mermaid rendering setting: ${errorMessage(err)}`);
 				});
 				this.ctx.rebuildChatFromMessages();
 				this.ctx.ui.resetDisplay();
