@@ -66,8 +66,13 @@ Upstream keeps merging fixes after the fork point, so the repo runs an
 automated port pipeline. It has two halves:
 
 1. The radar (`.github/workflows/upstream-radar.yml`, every 30 minutes)
-   mirrors each newly merged upstream PR into one issue labeled
+   mirrors each newly merged upstream **bug fix** into one issue labeled
    `upstream-port`, carrying the diff surface and porting instructions.
+   Only fixes are ported: features, refactors, and docs follow veyyon's own
+   direction, and fixes touching deliberately diverged surfaces (the model
+   catalog with its own model IDs, types, and roles; branding and install)
+   carry a warning so the port adapts to veyyon's design. The policy is
+   data: `scripts/upstream-port-policy.json`.
 2. The manager (`scripts/jules-port-manager.ts`, run from a local cron with
    the Jules API keys) dispatches each queued issue as a Jules session that
    evaluates applicability post-divergence and opens an adapted port PR.

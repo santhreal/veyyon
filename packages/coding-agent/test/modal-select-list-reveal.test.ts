@@ -40,7 +40,6 @@ function makeList(reveal?: boolean): ModalSelectListComponent {
 }
 
 function strip(lines: string[]): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI
 	return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
 }
 

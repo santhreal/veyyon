@@ -172,12 +172,15 @@ export class ModelPickerComponent implements Component {
 			}
 			return true;
 		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
+		if (chrome.kind === "close" || chrome.kind === "outside") {
+			// The [x] and an outside click are hard closes regardless of query.
 			this.#onCancel();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "close") {
+			// The esc chip performs exactly what its label promises: the same
+			// cancel ladder as the esc key (clear a live query, then close).
+			this.#browser.handleCancel();
 			return true;
 		}
 		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
@@ -212,7 +215,10 @@ export class ModelPickerComponent implements Component {
 				{ label: "up/down models" },
 				{ label: "enter use", clickable: true, id: "confirm" },
 				{ label: "type to search" },
-				{ label: "esc close", clickable: true, id: "close" },
+				// The esc chip mirrors the browser's cancel ladder: with a live
+				// query esc clears the search (close comes on the next press), so
+				// the chip must not advertise "close" it will not perform.
+				{ label: this.#browser.query.length > 0 ? "esc clear" : "esc close", clickable: true, id: "close" },
 			],
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
