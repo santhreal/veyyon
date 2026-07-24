@@ -4,12 +4,6 @@
 
 ## [Unreleased]
 
-## [1.0.26] - 2026-07-24
-
-### Fixed
-
-- Base URL normalization no longer leaves a trailing space when a slash sat directly in front of interior whitespace (`"http://x /"` now normalizes to `"http://x"` instead of `"http://x "`), so a stray space in a configured base URL can no longer break request URL joins.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
@@ -306,6 +300,12 @@
 ### Added
 
 - Added an XDG-aware tiny-title model cache directory helper for coding-agent local title models.
+
+## [1.0.26] - 2026-07-24
+
+### Fixed
+
+- Base URL normalization no longer leaves a trailing space when a slash sat directly in front of interior whitespace (`"http://x /"` now normalizes to `"http://x"` instead of `"http://x "`), so a stray space in a configured base URL can no longer break request URL joins.
 
 ## [1.0.24] - 2026-07-24
 
