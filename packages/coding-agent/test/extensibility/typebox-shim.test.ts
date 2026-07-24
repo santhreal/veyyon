@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import type { Tool } from "@veyyon/ai/types";
 import { isValidJsonSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type TSchema, Type } from "@veyyon/coding-agent/extensibility/typebox";
 
 /**
@@ -23,6 +25,41 @@ describe("pi.typebox compatibility shim", () => {
 
 		expect(safeParse(schema, { path: "README.md" }).success).toBe(true);
 		expect(safeParse(schema, { path: "README.md", mode: "delete" }).success).toBe(false);
+	});
+
+	it("preserves and enforces raw JSON Schema wrapped with Type.Unsafe", () => {
+		const rawSchema = {
+			type: "object",
+			properties: { path: { type: "string" } },
+			required: ["path"],
+			additionalProperties: false,
+		};
+		const schema = Type.Unsafe<{ path: string }>(rawSchema);
+		const tool: Tool = { name: "unsafe-schema", description: "", parameters: schema };
+		const validArgs = { path: "README.md" };
+
+		expect(schema.__validator(validArgs)).toBe(validArgs);
+		expect(schema.safeParse({}).success).toBe(false);
+		const composed = Type.Object({ input: schema });
+		expect(composed.safeParse({ input: validArgs }).success).toBe(true);
+		expect(composed.safeParse({ input: {} }).success).toBe(false);
+		expect(toolWireSchema(tool)).toEqual(rawSchema);
+		expect(
+			validateToolArguments(tool, {
+				type: "toolCall",
+				id: "valid",
+				name: tool.name,
+				arguments: validArgs,
+			}),
+		).toEqual(validArgs);
+		expect(() =>
+			validateToolArguments(tool, {
+				type: "toolCall",
+				id: "invalid",
+				name: tool.name,
+				arguments: {},
+			}),
+		).toThrow('Validation failed for tool "unsafe-schema"');
 	});
 
 	it("preserves numeric enum values from TypeScript enum objects", () => {
