@@ -79,4 +79,4 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 handoff prompt, preserve behavior. If it touches model-routing *settings knobs*, follow the shipped
 model-slots design above, do not resurrect a role→model matrix because an old fork had one.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `85b95ef5` on 2026-07-24.*

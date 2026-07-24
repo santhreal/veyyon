@@ -270,4 +270,4 @@ Legacy manifest key still accepted:
 }
 ```
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `85b95ef5` on 2026-07-24.*
