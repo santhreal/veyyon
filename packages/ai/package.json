@@ -46,7 +46,8 @@
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "catalog:",
-    "@types/bun": "catalog:"
+    "@types/bun": "catalog:",
+    "fast-check": "4.9.0"
   },
   "engines": {
     "bun": ">=1.3.14"

@@ -685,6 +685,21 @@ function normalizeOptionalNullsForSchema(
 		const branches = schemaObject[keyword];
 		if (!Array.isArray(branches)) return { value, changed: false };
 
+		// If the RAW value already satisfies any branch, the union is met and no
+		// repair is warranted — return it untouched. These passes exist to rescue
+		// values that would otherwise FAIL validation; a value that already passes
+		// must never be mutated. Without this guard, a `string | number` field
+		// (wire `anyOf:[{type:"string"},{type:"number"}]`) receiving the quoted
+		// numeric string "123" would coerce to the number 123 via the number
+		// branch below, even though the string branch already accepts "123"
+		// verbatim — corrupting the argument's type and losing data outright
+		// (e.g. "007" -> 7). The intended coercion target, `number | null`
+		// receiving "123", matches NEITHER branch raw, so this guard leaves it for
+		// the coercion loop, preserving that behavior.
+		for (const branch of branches) {
+			if (branchMatchesSchema(branch, value)) return { value, changed: false };
+		}
+
 		let changedCandidate: { value: unknown; changed: true } | null = null;
 
 		for (const branch of branches) {
