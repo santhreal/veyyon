@@ -1002,14 +1002,22 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 	const allTools = [...new Set(results.flatMap(r => Object.keys(r.toolCalls ?? {})))].sort();
 	if (allTools.length > 0) {
 		lines.push("");
-		lines.push("## Tool Call Distribution (per arm totals)");
+		// MEAN calls per completed run, not raw per-arm totals: arms rarely have the same
+		// number of OK samples (one arm errors more), and a raw sum divided by nothing makes
+		// the arm with fewer completed runs look like it "streamlined" its tool use when it
+		// merely ran less. Dividing by each arm's completed-run count `n` (shown per row)
+		// makes the columns comparable across arms, which is the whole point of the table.
+		lines.push("## Tool call distribution (mean calls per completed run)");
 		lines.push("");
 		lines.push(`| arm | ${allTools.join(" | ")} |`);
 		lines.push(`|---|${allTools.map(() => "---|").join("")}`);
 		for (const arm of arms) {
 			const rows = results.filter(r => r.arm === arm && !r.error);
-			const cells = allTools.map(t => fmt(rows.reduce((acc, r) => acc + (r.toolCalls?.[t] ?? 0), 0)));
-			lines.push(`| ${arm} | ${cells.join(" | ")} |`);
+			const n = rows.length;
+			const cells = allTools.map(t =>
+				n === 0 ? "—" : fmt(rows.reduce((acc, r) => acc + (r.toolCalls?.[t] ?? 0), 0) / n, 2),
+			);
+			lines.push(`| ${arm} (n=${n}) | ${cells.join(" | ")} |`);
 		}
 	}
 	lines.push("");
