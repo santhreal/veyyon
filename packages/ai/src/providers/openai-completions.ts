@@ -51,6 +51,7 @@ import { OpenAIHttpError, postOpenAIStream } from "../utils/openai-http";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { callWithCopilotModelRetry } from "../utils/retry";
 import { adaptSchemaForStrict, NO_STRICT, normalizeSchemaForMoonshot, toolWireSchema } from "../utils/schema";
+import { resolveOpenAiSseEventName } from "../utils/sse-debug";
 import {
 	type HealedToolCall,
 	StreamMarkupHealing,
@@ -617,21 +618,7 @@ const streamOpenAICompletionsOnce = (
 		const onSseEvent = options?.onSseEvent;
 		const rawSseObserver = onSseEvent
 			? (event: RawSseEvent) => {
-					if (!event.event && event.data && event.data !== "[DONE]") {
-						try {
-							const parsed = JSON.parse(event.data);
-							const resolvedEvent =
-								typeof parsed.type === "string"
-									? parsed.type
-									: typeof parsed.object === "string"
-										? parsed.object
-										: null;
-							if (resolvedEvent) {
-								event.event = resolvedEvent;
-								event.raw = [`event: ${resolvedEvent}`, ...event.raw];
-							}
-						} catch {}
-					}
+					resolveOpenAiSseEventName(event);
 					onSseEvent(event, model);
 				}
 			: undefined;

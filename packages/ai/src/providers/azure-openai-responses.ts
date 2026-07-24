@@ -21,6 +21,7 @@ import {
 } from "../utils/idle-iterator";
 import { OpenAIHttpError, postOpenAIStream } from "../utils/openai-http";
 import { sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
+import { resolveOpenAiSseEventName } from "../utils/sse-debug";
 import { mapToOpenAIResponsesToolChoice } from "../utils/tool-choice";
 import {
 	applyOpenAIReasoningEffortFallback,
@@ -104,21 +105,7 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 		const onSseEvent = options?.onSseEvent;
 		const rawSseObserver = onSseEvent
 			? (event: RawSseEvent) => {
-					if (!event.event && event.data && event.data !== "[DONE]") {
-						try {
-							const parsed = JSON.parse(event.data);
-							const resolvedEvent =
-								typeof parsed.type === "string"
-									? parsed.type
-									: typeof parsed.object === "string"
-										? parsed.object
-										: null;
-							if (resolvedEvent) {
-								event.event = resolvedEvent;
-								event.raw = [`event: ${resolvedEvent}`, ...event.raw];
-							}
-						} catch {}
-					}
+					resolveOpenAiSseEventName(event);
 					onSseEvent(event, model);
 				}
 			: undefined;
