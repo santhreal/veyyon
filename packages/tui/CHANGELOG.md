@@ -11,6 +11,7 @@
 
 ### Fixed
 
+- A single transient terminal write failure (stdout backpressure, a momentary PTY I/O hiccup) no longer disables rendering for the rest of the session. Rendering only latches off on a fatal error (the terminal or piped reader has closed) or after a sustained run of failures with no successful write in between; a lone hiccup now recovers on the next frame.
 - The editor now re-anchors at the bottom of the viewport when a tall transient block collapses, even when the transcript overflows, and the composer anchor is now stateless so it no longer latches off on a transient height spike.
 - A settings value now cycles by click-then-choose rather than Left/Right.
 

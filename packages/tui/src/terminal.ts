@@ -163,6 +163,54 @@ export function chunkForConPTY(data: string, maxChunkBytes: number = MAX_CONPTY_
 }
 
 /**
+ * Codes that mean the terminal is genuinely gone: every future write will fail
+ * the same way, so rendering must latch off once (loudly) rather than repaint
+ * into the void and spam the log. `EPIPE`/`ERR_STREAM_*` = the reader (terminal
+ * or piped consumer) closed; `EBADF`/`ENXIO` = the fd is no longer a valid
+ * device. Anything else (notably `EAGAIN`/`EWOULDBLOCK`/`EINTR` backpressure and
+ * transient PTY `EIO` hiccups) is recoverable and must NOT brick the UI.
+ */
+const FATAL_WRITE_CODES = new Set(["EPIPE", "EBADF", "ENXIO", "ERR_STREAM_DESTROYED", "ERR_STREAM_WRITE_AFTER_END"]);
+
+/**
+ * Latch rendering off after this many CONSECUTIVE non-fatal write failures. A
+ * single transient error must never disable the terminal (the next frame
+ * retries and the display recovers), but a sustained run of failures with no
+ * success in between means the device is effectively dead even without a fatal
+ * code, so this backstop stops an unbounded per-frame retry-and-fail loop.
+ */
+const MAX_CONSECUTIVE_WRITE_FAILURES = 8;
+
+/** Extract a Node/libuv error `code` string from an unknown thrown value. */
+export function terminalWriteErrorCode(err: unknown): string | undefined {
+	if (err && typeof err === "object" && "code" in err) {
+		const code = (err as { code?: unknown }).code;
+		if (typeof code === "string") return code;
+	}
+	return undefined;
+}
+
+export type WriteFailureDecision = "disable-fatal" | "disable-exhausted" | "retry";
+
+/**
+ * Decide what a write failure means, given the error and the number of
+ * consecutive failures INCLUDING this one (the caller increments first, resets
+ * to 0 on any success). `disable-fatal` → the terminal closed, latch off now;
+ * `disable-exhausted` → too many failures in a row with no success, latch off as
+ * a backstop; `retry` → transient, keep rendering and let the next paint retry.
+ *
+ * Pure and exported so the policy is unit-tested without a live terminal — the
+ * old code latched off on the FIRST error of any kind, so one momentary
+ * `EAGAIN`/`EIO` blanked the whole session permanently.
+ */
+export function decideTerminalWriteFailure(err: unknown, consecutiveFailures: number): WriteFailureDecision {
+	const code = terminalWriteErrorCode(err);
+	if (code !== undefined && FATAL_WRITE_CODES.has(code)) return "disable-fatal";
+	if (consecutiveFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) return "disable-exhausted";
+	return "retry";
+}
+
+/**
  * Minimal terminal interface for TUI
  */
 
@@ -514,6 +562,10 @@ export class ProcessTerminal implements Terminal {
 	#stdinBuffer?: StdinBuffer;
 	#stdinDataHandler?: (data: string) => void;
 	#dead = false;
+	// Consecutive write failures with no intervening success. Reset to 0 by any
+	// successful write; only a run of MAX_CONSECUTIVE_WRITE_FAILURES (or a fatal
+	// code) latches #dead. A single transient failure must not disable rendering.
+	#consecutiveWriteFailures = 0;
 	// Captured at construction and re-read at start(): when true, every real
 	// terminal side effect (writes, probes, raw mode, SIGWINCH, timers) is
 	// suppressed. Defaults on under `bun test` — see isTerminalHeadless().
@@ -1537,8 +1589,25 @@ export class ProcessTerminal implements Terminal {
 
 	#markTerminalWriteFailed(err: unknown): void {
 		if (this.#dead) return;
+		this.#consecutiveWriteFailures++;
+		const decision = decideTerminalWriteFailure(err, this.#consecutiveWriteFailures);
+		if (decision === "retry") {
+			// Transient (backpressure, a momentary PTY EIO). Do NOT latch — the
+			// renderer repaints a full frame next tick, so the display recovers on
+			// its own. Debug, not warn, so an intermittent hiccup does not spam.
+			logger.debug("terminal write failed transiently; retrying on next paint", {
+				code: terminalWriteErrorCode(err),
+				failures: this.#consecutiveWriteFailures,
+			});
+			return;
+		}
 		this.#dead = true;
-		logger.warn("terminal write failed; disabling terminal rendering", { err });
+		logger.warn(
+			decision === "disable-fatal"
+				? "terminal closed (fatal write error); disabling rendering"
+				: "terminal rendering disabled after repeated write failures",
+			{ code: terminalWriteErrorCode(err), failures: this.#consecutiveWriteFailures, err },
+		);
 	}
 
 	write(data: string): void {
@@ -1584,6 +1653,10 @@ export class ProcessTerminal implements Terminal {
 			} else {
 				process.stdout.write(data);
 			}
+			// A clean write ends any transient-failure streak, so a later single
+			// failure starts counting from zero again rather than inheriting a stale
+			// count that could latch #dead prematurely.
+			if (this.#consecutiveWriteFailures !== 0) this.#consecutiveWriteFailures = 0;
 		} catch (err) {
 			this.#markTerminalWriteFailed(err);
 		}
