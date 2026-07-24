@@ -487,6 +487,24 @@ describe("renderReport — efficiency comparison and treatment-applied sections"
 		expect(report).toContain("full cheaper BUT reward dropped");
 	});
 
+	test("a metric the provider never reports reads 'not measured', not 'not distinguishable'", () => {
+		// The real gemini/antigravity case: 82k output tokens but cost is 0 for every
+		// sample (no pricing entry). A paired delta of all-zeros would render "not
+		// distinguishable" — reading as "measured, found equal" when cost was never
+		// measured. The guard must label the cost row explicitly while the output-token
+		// row (which DOES carry signal) still produces a real verdict.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000, costUsd: 0 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800, costUsd: 0 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		// cost carried no signal → named as unmeasured, not a false "equal" verdict.
+		expect(report).toContain("| cost | — | — | — | — | — | — | not measured (all 0/null for this provider) |");
+		// output tokens DID carry signal → still a real efficiency verdict.
+		expect(report).toContain("full cheaper, reward held");
+	});
+
 	test("the treatment-applied table shows encode fired (or did not)", () => {
 		// full encoded on 2 of 2 runs (§ present); decode never encoded.
 		const results: ArmResult[] = [
