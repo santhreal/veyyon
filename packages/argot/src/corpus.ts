@@ -95,15 +95,38 @@ export const CONTENT_SKIP_SUFFIXES: readonly string[] = [
 
 /**
  * A recall-preserving degrade the corpus builder took, surfaced so the harness
- * can log it (never a silent truncation). Today the only case is reaching the
- * total content budget, after which the remaining files are ranked on their path
- * alone: the dictionary is still correct, just built from fewer signals.
+ * can log it (never a silent truncation). Each case leaves the generated
+ * dictionary correct but built from fewer signals, so the harness must be able to
+ * see it happened rather than silently ship a thinner dictionary.
+ *
+ * - `content-budget-reached`: the total content budget was hit, so the remaining
+ *   files are ranked on their path alone.
+ * - `walk-file-cap-reached`: a non-git project tree had more than
+ *   {@link WALK_FILE_CAP} files, so the listing was truncated and the rest of the
+ *   tree contributes no handles. Without this notice a huge tree would look fully
+ *   covered when it was not.
+ * - `unreadable-directory-skipped`: a directory could not be read while walking a
+ *   non-git project (permissions, a race, a broken symlink), so its whole subtree
+ *   is absent from the corpus. When `isRoot` is true the project root itself was
+ *   unreadable and the listing is empty, which is a total silent recall loss this
+ *   notice makes loud.
  */
-export interface CorpusNotice {
-	code: "content-budget-reached";
-	message: string;
-	data: { budgetBytes: number; totalFiles: number };
-}
+export type CorpusNotice =
+	| {
+			code: "content-budget-reached";
+			message: string;
+			data: { budgetBytes: number; totalFiles: number };
+	  }
+	| {
+			code: "walk-file-cap-reached";
+			message: string;
+			data: { cap: number };
+	  }
+	| {
+			code: "unreadable-directory-skipped";
+			message: string;
+			data: { path: string; isRoot: boolean };
+	  };
 
 /** Whether a path's content should be scanned for centrality, or only the path itself proposed. */
 export function shouldScanContent(relPath: string): boolean {
@@ -185,20 +208,38 @@ export async function gatherRepoFiles(
  * plus dotfiles other than `.argot`. Returns repo-relative paths;
  * {@link gatherRepoFiles} reads their bounded content. For a git project use the
  * harness's `git ls-files` instead, which respects `.gitignore`.
+ *
+ * Both ways the listing can come back incomplete are surfaced through `onNotice`
+ * rather than swallowed: reaching {@link WALK_FILE_CAP} (the tree is truncated) and
+ * an unreadable directory (its subtree is absent). A failed read of the root emits
+ * a notice with `isRoot: true`, because an empty listing there would otherwise be a
+ * silent, total recall loss. The walk still returns whatever it did reach.
  */
-export async function walkProjectTree(root: string): Promise<string[]> {
+export async function walkProjectTree(root: string, onNotice?: (notice: CorpusNotice) => void): Promise<string[]> {
 	const out: string[] = [];
 	const stack: string[] = [""];
+	let capHit = false;
 	while (stack.length > 0 && out.length < WALK_FILE_CAP) {
 		const rel = stack.pop() as string;
 		let entries: Dirent[];
 		try {
 			entries = await readdir(join(root, rel), { withFileTypes: true });
 		} catch {
+			const isRoot = rel === "";
+			onNotice?.({
+				code: "unreadable-directory-skipped",
+				message: isRoot
+					? `argot: project root ${root} could not be read during dict generation; the listing is empty`
+					: `argot: directory ${rel} could not be read during dict generation; its subtree is omitted`,
+				data: { path: isRoot ? root : rel, isRoot },
+			});
 			continue;
 		}
 		for (const entry of entries) {
-			if (out.length >= WALK_FILE_CAP) break;
+			if (out.length >= WALK_FILE_CAP) {
+				capHit = true;
+				break;
+			}
 			if (entry.name.startsWith(".") && entry.name !== ".argot") continue;
 			if (WALK_IGNORE_NAMES.has(entry.name)) continue;
 			const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
@@ -208,6 +249,15 @@ export async function walkProjectTree(root: string): Promise<string[]> {
 				out.push(childRel);
 			}
 		}
+	}
+	// The while loop can also stop with directories still queued once the cap is
+	// reached; either way the tree was truncated and the rest contributes nothing.
+	if (capHit || stack.length > 0) {
+		onNotice?.({
+			code: "walk-file-cap-reached",
+			message: `argot: project tree exceeded ${WALK_FILE_CAP} files during dict generation; the listing is truncated and the remaining files contribute no handles`,
+			data: { cap: WALK_FILE_CAP },
+		});
 	}
 	return out;
 }

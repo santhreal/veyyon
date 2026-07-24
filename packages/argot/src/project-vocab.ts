@@ -45,8 +45,10 @@ export interface ResolveProjectVocabOptions {
 	/** Dictionary token budget. Omitted or invalid uses {@link DEFAULT_TOKEN_BUDGET}. */
 	tokenBudget?: number;
 	/**
-	 * Sink for notices Argot must not swallow: a reached content budget, an invalid
-	 * budget. A harness should wire this to its logger so no degrade is silent.
+	 * Sink for notices Argot must not swallow: a reached content budget, a
+	 * truncated or partially-unreadable non-git project tree (see
+	 * {@link CorpusNotice}), or an invalid budget. A harness should wire this to its
+	 * logger so no degrade is silent.
 	 */
 	onNotice?: (notice: ProjectVocabNotice) => void;
 	signal?: AbortSignal;
@@ -140,7 +142,7 @@ export async function resolveProjectVocab(
 		return { root, vocab: result.vocab };
 	}
 
-	const paths = await walkProjectTree(root);
+	const paths = await walkProjectTree(root, options.onNotice);
 	const files = await gatherRepoFiles(root, paths, options.onNotice);
 	const contentSig = budgetKeyedSignature(listingSignature(files), tokenBudget);
 	const result = await resolveProjectCache({

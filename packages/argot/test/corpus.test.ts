@@ -134,8 +134,12 @@ describe("gatherRepoFiles", () => {
 		expect(withContent).toBe(filesToBudget); // exactly the budget's worth scanned
 		expect(withContent).toBeLessThan(total); // the surplus dropped to path-only
 		expect(notices).toHaveLength(1);
-		expect(notices[0]?.code).toBe("content-budget-reached");
-		expect(notices[0]?.data.totalFiles).toBe(total);
+		const notice = notices[0];
+		expect(notice?.code).toBe("content-budget-reached");
+		// Narrow the union by its discriminant before reading budget-specific data.
+		if (notice?.code === "content-budget-reached") {
+			expect(notice.data.totalFiles).toBe(total);
+		}
 	});
 });
 
@@ -155,7 +159,11 @@ describe("walkProjectTree", () => {
 		expect(paths).toEqual([".argot", "src/index.ts", "src/util/helper.ts"]);
 	});
 
-	it("returns at most WALK_FILE_CAP files from a large tree", async () => {
+	it("returns at most WALK_FILE_CAP files from a large tree AND surfaces the truncation", async () => {
+		// A tree larger than the cap is truncated, but that must never be silent: a
+		// harness that logs the notice can tell the operator the dictionary was built
+		// from a partial listing rather than shipping a thinner dict that looks
+		// complete. Before this notice existed, a huge tree looked fully covered.
 		const root = await tempRoot();
 		await mkdir(join(root, "many"), { recursive: true });
 		const writes: Promise<void>[] = [];
@@ -163,7 +171,41 @@ describe("walkProjectTree", () => {
 			writes.push(writeFile(join(root, "many", `f${i}.ts`), "x"));
 		}
 		await Promise.all(writes);
-		const paths = await walkProjectTree(root);
+		const notices: CorpusNotice[] = [];
+		const paths = await walkProjectTree(root, n => notices.push(n));
 		expect(paths.length).toBeLessThanOrEqual(WALK_FILE_CAP);
+		const capNotice = notices.find(n => n.code === "walk-file-cap-reached");
+		expect(capNotice).toBeDefined();
+		expect(capNotice?.data).toEqual({ cap: WALK_FILE_CAP });
+	});
+
+	it("emits NO notice for a small, fully-readable tree (no false positives)", async () => {
+		// The notice must fire only on a real degrade. A normal small project walks
+		// completely, so a harness sees nothing to log — otherwise the signal is noise.
+		const root = await tempRoot();
+		await write(root, ".argot", "");
+		await write(root, "src/a.ts", "1");
+		await write(root, "src/b.ts", "2");
+		const notices: CorpusNotice[] = [];
+		const paths = await walkProjectTree(root, n => notices.push(n));
+		expect(paths.sort()).toEqual([".argot", "src/a.ts", "src/b.ts"]);
+		expect(notices).toEqual([]);
+	});
+
+	it("surfaces an unreadable project root as a loud, isRoot notice instead of a silent empty listing", async () => {
+		// The worst silent case: the root itself cannot be read, so the listing is
+		// empty and the generated dictionary would have zero handles with no signal
+		// that anything went wrong. A vanished/never-created root reproduces the same
+		// readdir failure deterministically (no chmod, so it holds even when tests run
+		// as root). The walk must still return [], but loudly.
+		const root = join(await tempRoot(), "does-not-exist");
+		const notices: CorpusNotice[] = [];
+		const paths = await walkProjectTree(root, n => notices.push(n));
+		expect(paths).toEqual([]);
+		const skip = notices.find(n => n.code === "unreadable-directory-skipped");
+		expect(skip).toBeDefined();
+		expect(skip?.data).toEqual({ path: root, isRoot: true });
+		// A missing root is not a truncation; the cap notice must NOT also fire.
+		expect(notices.some(n => n.code === "walk-file-cap-reached")).toBe(false);
 	});
 });
