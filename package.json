@@ -148,7 +148,7 @@
     "ci:test:coding-agent:runtime": "bun scripts/ci-test-ts.ts coding-agent-runtime",
     "ci:test:coding-agent:native": "bun scripts/ci-test-ts.ts coding-agent-native",
     "ci:test:coding-agent:heavy": "bun scripts/ci-test-ts.ts coding-agent-heavy",
-    "ci:test:smoke": "bun packages/coding-agent/src/cli.ts --version && bun packages/coding-agent/src/cli.ts --help && bun packages/coding-agent/src/cli.ts --smoke-test",
+    "ci:test:smoke": "bun packages/coding-agent/src/cli.ts --version && bun packages/coding-agent/src/cli.ts --help && bun packages/coding-agent/src/cli.ts --smoke-test && bun scripts/ci-smoke-source-launch.ts",
     "ci:test:install-methods": "bash scripts/install-tests/run-ci.sh",
     "ci:release:build-binaries": "bun scripts/ci-release-build-binaries.ts",
     "bench:gen-fixtures": "bun --cwd=packages/typescript-edit-benchmark run src/generate.ts --typescript-dir /tmp/typescript-source --count-per-type 8",
