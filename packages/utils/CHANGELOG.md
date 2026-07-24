@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `splitReadSelector`, `stripReadSelector`, and the `READ_SELECTOR_RANGE_LIST_SRC` grammar fragment: the one shared owner of the read-tool path-selector grammar (`file.ts:50-200`, `:raw`, `:conflicts`, and `range:raw` compounds). This grammar was previously hand-duplicated across packages with "keep in sync" comments; consolidating it here removes the drift risk.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
