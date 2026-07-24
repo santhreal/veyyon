@@ -1,4 +1,5 @@
 import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
+import { isRecord } from "@veyyon/utils";
 
 /**
  * Composition seam for the default system-prompt template.
@@ -186,11 +187,11 @@ export function parseSectionOverridesJson(raw: string | undefined): Partial<Defa
 	} catch (err) {
 		throw new Error(`VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS is set but is not valid JSON: ${err}`);
 	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+	if (!isRecord(parsed)) {
 		throw new Error(
 			"VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS must be a JSON object of section -> replacement text, " +
 				`got ${Array.isArray(parsed) ? "an array" : parsed === null ? "null" : typeof parsed}`,
 		);
 	}
-	return resolveSectionOverrides(parsed as Record<string, unknown>);
+	return resolveSectionOverrides(parsed);
 }
