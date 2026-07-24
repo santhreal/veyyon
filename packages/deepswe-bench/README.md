@@ -133,14 +133,21 @@ verifier reports), `results.json` (every metric, machine-readable), and
   does not overclaim at small task counts: a 5-0 sweep is p=0.0625 (not
   significant), 6-0 is p=0.03125. The **Δ 95% CI** column is a normal-approximation
   effect-size aid; at a small task count trust the sign-test verdict, not the CI.
-  A winner is named only at p<0.05.
+  A run with k arms tests k(k-1)/2 pairs, so judging each raw p at 0.05 would
+  manufacture a false winner as the arm count grows (about a 40% chance of at least
+  one at 10 pairs). The **adj p (Holm)** column is the Holm–Bonferroni-corrected
+  p-value across all decisive pairs in the run, and a winner is named only at
+  **adj p < 0.05** — which holds the family-wise false-positive rate at 5% no matter
+  how many arms you compare. With a single pair (two arms) the correction is a no-op.
 - **Efficiency comparison (paired by task)** — the section that measures a
   compression feature's actual claim: fewer tokens (and less cost) at equal
   reward. For each arm pair it takes the per-task delta on output tokens and on
   cost (B minus A, negative means B is cheaper) and runs the same exact sign
-  test. The verdict is guarded by the pass-rate comparison above: B is called an
-  efficiency win only when it is significantly cheaper AND the pass-rate test did
-  not find B worse, so "cheaper because it gave up and did less" cannot read as a
+  test, Holm-corrected across this metric's arm pairs (its own `adj p` column). The
+  verdict is guarded by the pass-rate comparison above: B is called an efficiency
+  win only when it is significantly cheaper (adj p < 0.05) AND the pass-rate test
+  did not find B worse (judged on the same Holm-adjusted p, so the two sections
+  cannot disagree), so "cheaper because it gave up and did less" cannot read as a
   win. A metric the provider never reports (some providers return no cost, so
   every sample is 0) is labelled `not measured` rather than a paired delta of
   zeros, so a missing metric is never mistaken for "measured and found equal".

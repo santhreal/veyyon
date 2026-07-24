@@ -426,6 +426,39 @@ export function signTestPValue(wins: number, losses: number): number {
 	return Math.min(1, 2 * cdf);
 }
 
+/**
+ * Holm–Bonferroni step-down adjustment of a family of p-values, returned aligned to
+ * the input order. Each adjusted value is the number to compare against a single α:
+ * a test is significant at family-wise error rate α iff its adjusted p is below α.
+ *
+ * Why the report needs this: the arm comparison runs one sign test PER arm pair, and
+ * a run with k arms tests k(k-1)/2 pairs. Judging each at α=0.05 independently means
+ * the probability of AT LEAST ONE spurious "winner" grows with the pair count — about
+ * 40% at 10 pairs (5 arms). That is the exact way a multi-arm bench manufactures a
+ * false result, so the "winner" verdict must be judged against the corrected value,
+ * not the raw one. Holm controls the family-wise error rate while being uniformly
+ * more powerful than plain Bonferroni: it multiplies the smallest p by m, the next by
+ * m-1, and so on, inflating each only as much as its rank requires.
+ *
+ * The running max enforces the step-down monotonicity the procedure requires (a
+ * larger raw p can never adjust below a smaller one) and each value is clamped to 1.
+ * An empty family returns an empty array; a single test is returned unchanged (×1).
+ */
+export function holmBonferroni(pValues: readonly number[]): number[] {
+	const m = pValues.length;
+	if (m === 0) return [];
+	const order = pValues.map((p, i) => ({ p, i })).sort((a, b) => a.p - b.p);
+	const adjusted = new Array<number>(m);
+	let running = 0;
+	order.forEach((entry, rank) => {
+		// rank is 0-based; the step-down factor is (m - rank), i.e. m for the smallest.
+		const val = Math.min(1, entry.p * (m - rank));
+		running = Math.max(running, val);
+		adjusted[entry.i] = running;
+	});
+	return adjusted;
+}
+
 /** One arm-vs-arm paired comparison over the tasks both arms ran. */
 export interface ArmDelta {
 	/** Reference arm (the "from" side of the delta). */
@@ -682,23 +715,35 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 			"Δ pass rate is arm B minus arm A, averaged over tasks both arms ran. The verdict is a two-sided exact " +
 				"sign test over per-task wins/losses (ties excluded); it uses the paired structure, so it has far more " +
 				"power than comparing the two arms' independent intervals above. The Δ 95% CI is a normal-approximation " +
-				"effect-size aid — at a small task count, trust the sign test.",
+				"effect-size aid — at a small task count, trust the sign test. `adj p` is the Holm–Bonferroni-corrected " +
+				"p-value across all decisive arm pairs in this run: with k arms there are k(k-1)/2 pairs, so the raw " +
+				"p-value manufactures a false winner as the pair count grows. The verdict is decided on `adj p < 0.05`, " +
+				"which holds the family-wise false-positive rate at 5% no matter how many arms you compare.",
 		);
 		lines.push("");
-		lines.push("| A → B | paired tasks | Δ pass rate | Δ 95% CI | W-L-T | sign-test p | verdict |");
-		lines.push("|---|---|---|---|---|---|---|");
-		for (const d of pairwiseArmDeltas(results)) {
+		const armDeltas = pairwiseArmDeltas(results);
+		// The family being corrected is the set of pairs that actually ran a test (at
+		// least one decisive task); a pair with only ties/unpaired tasks is not a
+		// hypothesis and must not inflate the correction factor. Holm is applied to that
+		// family and the adjusted p is looked up per row by the ordered A→B key.
+		const armTested = armDeltas.filter(d => d.wins + d.losses > 0);
+		const armAdj = holmBonferroni(armTested.map(d => d.signTestP));
+		const armAdjByPair = new Map(armTested.map((d, i) => [`${d.armA}→${d.armB}`, armAdj[i] as number]));
+		lines.push("| A → B | paired tasks | Δ pass rate | Δ 95% CI | W-L-T | sign-test p | adj p (Holm) | verdict |");
+		lines.push("|---|---|---|---|---|---|---|---|");
+		for (const d of armDeltas) {
 			const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + d.meanDelta.toFixed(3);
 			const ci =
 				d.ciLow === null || d.ciHigh === null
 					? "—"
 					: `[${(d.ciLow >= 0 ? "+" : "") + d.ciLow.toFixed(3)}, ${(d.ciHigh >= 0 ? "+" : "") + d.ciHigh.toFixed(3)}]`;
-			const decisive = d.wins + d.losses > 0 && d.signTestP < 0.05;
+			const adjP = armAdjByPair.get(`${d.armA}→${d.armB}`);
+			const decisive = adjP !== undefined && adjP < 0.05;
 			const verdict = decisive
-				? `${d.meanDelta !== null && d.meanDelta > 0 ? d.armB : d.armA} better (p<0.05)`
+				? `${d.meanDelta !== null && d.meanDelta > 0 ? d.armB : d.armA} better (adj p<0.05)`
 				: "not distinguishable";
 			lines.push(
-				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${verdict} |`,
+				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 			);
 		}
 
@@ -706,7 +751,6 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 		// reward (argot), this is the section that actually measures the claim: a win
 		// is a negative paired delta (B cheaper) the sign test confirms, READ WITH the
 		// pass-rate table above as a guardrail — cheaper only counts if correctness held.
-		const passByPair = new Map(pairwiseArmDeltas(results).map(d => [`${d.armA}→${d.armB}`, d]));
 		const metrics: Array<{
 			label: string;
 			unit: string;
@@ -723,13 +767,15 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 		lines.push(
 			"Δ is arm B minus arm A on the per-task mean, over tasks both arms ran. A negative Δ means B is cheaper. " +
 				"The verdict pairs the sign test on this metric with the pass-rate guardrail: B is an efficiency win only " +
-				"when it is significantly cheaper (p<0.05) AND the pass-rate comparison above did not find B worse.",
+				"when it is significantly cheaper (Holm-adjusted p<0.05 within this metric's pairs) AND the pass-rate " +
+				"comparison above did not find B worse (also on the Holm-adjusted p). `adj p` is corrected across this " +
+				"metric's arm pairs for the same reason the pass-rate table is.",
 		);
 		lines.push("");
 		lines.push(
-			"| metric | A → B | paired tasks | Δ mean | Δ 95% CI | cheaper-B / dearer-B / tie | sign-test p | verdict |",
+			"| metric | A → B | paired tasks | Δ mean | Δ 95% CI | cheaper-B / dearer-B / tie | sign-test p | adj p (Holm) | verdict |",
 		);
-		lines.push("|---|---|---|---|---|---|---|---|");
+		lines.push("|---|---|---|---|---|---|---|---|---|");
 		for (const m of metrics) {
 			// A metric the provider never reports (e.g. cost is 0 for a provider with no
 			// pricing entry) is uniformly 0/null across every OK sample. Its paired delta
@@ -739,10 +785,15 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 			// is never mistaken for a null result.
 			const hasSignal = results.some(r => !r.error && (m.raw(r) ?? 0) !== 0);
 			if (!hasSignal) {
-				lines.push(`| ${m.label} | — | — | — | — | — | — | not measured (all 0/null for this provider) |`);
+				lines.push(`| ${m.label} | — | — | — | — | — | — | — | not measured (all 0/null for this provider) |`);
 				continue;
 			}
-			for (const d of pairwiseMetricDeltas(results, m.of)) {
+			// Each metric is its own family of arm-pair tests, corrected independently.
+			const metricDeltas = pairwiseMetricDeltas(results, m.of);
+			const metricTested = metricDeltas.filter(d => d.pos + d.neg > 0);
+			const metricAdj = holmBonferroni(metricTested.map(d => d.signTestP));
+			const metricAdjByPair = new Map(metricTested.map((d, i) => [`${d.armA}→${d.armB}`, metricAdj[i] as number]));
+			for (const d of metricDeltas) {
 				const dv = (x: number) => (m.digits > 0 ? x.toFixed(m.digits) : String(Math.round(x)));
 				const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + dv(d.meanDelta);
 				const ci =
@@ -751,20 +802,24 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 						: `[${(d.ciLow >= 0 ? "+" : "") + dv(d.ciLow)}, ${(d.ciHigh >= 0 ? "+" : "") + dv(d.ciHigh)}]`;
 				const cheaperB = d.neg; // B < A on this cost metric
 				const dearerB = d.pos;
-				const cheaperSig = cheaperB + dearerB > 0 && d.signTestP < 0.05 && d.meanDelta !== null && d.meanDelta < 0;
-				const pass = passByPair.get(`${d.armA}→${d.armB}`);
-				// The guardrail: B is not worse on correctness (its pass-rate comparison is
-				// not a significant loss for B).
-				const passHeld = !pass || !(pass.signTestP < 0.05 && pass.meanDelta !== null && pass.meanDelta < 0);
+				const adjP = metricAdjByPair.get(`${d.armA}→${d.armB}`);
+				const sig = adjP !== undefined && adjP < 0.05;
+				const cheaperSig = sig && d.meanDelta !== null && d.meanDelta < 0;
+				// The guardrail: B is not worse on correctness — its pass-rate comparison is
+				// not a significant loss for B, judged on the SAME Holm-adjusted standard as
+				// the pass-rate table's own verdict (so the two sections cannot disagree).
+				const passAdj = armAdjByPair.get(`${d.armA}→${d.armB}`);
+				const passDelta = armDeltas.find(a => a.armA === d.armA && a.armB === d.armB)?.meanDelta ?? null;
+				const passHeld = !(passAdj !== undefined && passAdj < 0.05 && passDelta !== null && passDelta < 0);
 				const verdict = cheaperSig
 					? passHeld
 						? `${d.armB} cheaper, reward held`
 						: `${d.armB} cheaper BUT reward dropped`
-					: dearerB + cheaperB > 0 && d.signTestP < 0.05 && d.meanDelta !== null && d.meanDelta > 0
+					: sig && d.meanDelta !== null && d.meanDelta > 0
 						? `${d.armB} dearer`
 						: "not distinguishable";
 				lines.push(
-					`| ${m.label} | ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} ${m.unit} | ${ci} | ${cheaperB}/${dearerB}/${d.ties} | ${d.signTestP.toFixed(3)} | ${verdict} |`,
+					`| ${m.label} | ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} ${m.unit} | ${ci} | ${cheaperB}/${dearerB}/${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 				);
 			}
 		}

@@ -17,6 +17,7 @@ import {
 	blockContainsSigil,
 	classifyError,
 	effectiveTemperature,
+	holmBonferroni,
 	jobNameOf,
 	PINNED_TEMPERATURE,
 	pairwiseArmDeltas,
@@ -505,7 +506,7 @@ describe("renderReport — efficiency comparison and treatment-applied sections"
 		}
 		const report = renderReport(results, "m", STAMP, 1);
 		// cost carried no signal → named as unmeasured, not a false "equal" verdict.
-		expect(report).toContain("| cost | — | — | — | — | — | — | not measured (all 0/null for this provider) |");
+		expect(report).toContain("| cost | — | — | — | — | — | — | — | not measured (all 0/null for this provider) |");
 		// output tokens DID carry signal → still a real efficiency verdict.
 		expect(report).toContain("full cheaper, reward held");
 	});
@@ -539,7 +540,9 @@ describe("renderReport — the paired arm comparison section", () => {
 		const report = renderReport(decisive, "m", STAMP, 1);
 		expect(report).toContain("## Arm comparison (paired by task)");
 		expect(report).toContain("baseline → cand");
-		expect(report).toContain("cand better (p<0.05)");
+		// One arm pair → Holm leaves the p unchanged (×1), so 0.03125 stays decisive; the
+		// verdict is now phrased against the Holm-adjusted p.
+		expect(report).toContain("cand better (adj p<0.05)");
 		expect(report).toContain("6-0-0");
 
 		// Two tasks only → 2-0 → p=0.5 → not distinguishable.
@@ -551,12 +554,91 @@ describe("renderReport — the paired arm comparison section", () => {
 		];
 		const weakReport = renderReport(weak, "m", STAMP, 1);
 		expect(weakReport).toContain("not distinguishable");
-		expect(weakReport).not.toContain("better (p<0.05)");
+		expect(weakReport).not.toContain("adj p<0.05");
 	});
 
 	test("a single-arm run has no comparison section", () => {
 		const report = renderReport([res({ arm: "only", task: "t1", reward: 1 })], "m", STAMP, 1);
 		expect(report).not.toContain("## Arm comparison");
+	});
+
+	test("multiple arm pairs are Holm-corrected: two individually-significant 6-0 wins both lose significance", () => {
+		// The multiple-comparisons defect this locks out: a run with 3 arms tests 2
+		// informative pairs. Here baseline fails every task while B and C pass every task
+		// (B and C are identical, so B↔C is all ties and not a test). Each of baseline→B
+		// and baseline→C is 6-0, raw sign-test p = 0.03125 — individually "significant".
+		// But judging both at 0.05 inflates the family-wise false-positive rate, so Holm
+		// multiplies the smaller by 2 → 0.0625 > 0.05 and BOTH must read not distinguishable.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			results.push(res({ arm: "baseline", task: `t${i}`, reward: 0 }));
+			results.push(res({ arm: "b", task: `t${i}`, reward: 1 }));
+			results.push(res({ arm: "c", task: `t${i}`, reward: 1 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		// Each pair really did go 6-0 (the raw signal is there)...
+		expect(report).toContain("6-0-0");
+		expect(report).toContain("0.031"); // raw sign-test p, individually significant
+		// ...but after correcting for two comparisons, neither survives.
+		expect(report).not.toContain("adj p<0.05");
+		expect(report).toContain("not distinguishable");
+	});
+});
+
+describe("holmBonferroni — family-wise error control across arm pairs", () => {
+	// The correction that stops a multi-arm run from manufacturing a false winner: with
+	// k arms and k(k-1)/2 pairs, judging each raw p at 0.05 lets the family-wise
+	// false-positive rate climb toward 40% at 10 pairs. Holm adjusts each p so a single
+	// 0.05 threshold controls that rate, and is uniformly more powerful than Bonferroni.
+
+	test("an empty family returns an empty array", () => {
+		expect(holmBonferroni([])).toEqual([]);
+	});
+
+	test("a single test is returned unchanged (multiplied by 1)", () => {
+		// One arm pair is the common 2-arm case; there is nothing to correct for.
+		expect(holmBonferroni([0.03125])).toEqual([0.03125]);
+	});
+
+	test("multiplies the smallest p by m, the next by m-1, aligned to input order", () => {
+		// Ascending, well-separated ps so the step-down max never rebinds: sorted values
+		// 0.01,0.02,0.04 over m=3 → 0.03, 0.04, 0.04. Input is already ascending here.
+		const adj = holmBonferroni([0.01, 0.02, 0.04]);
+		expect(adj[0]).toBeCloseTo(0.03, 12); // 0.01 * 3
+		expect(adj[1]).toBeCloseTo(0.04, 12); // 0.02 * 2
+		expect(adj[2]).toBeCloseTo(0.04, 12); // 0.04 * 1
+	});
+
+	test("preserves alignment to the ORIGINAL (unsorted) input order", () => {
+		// The caller looks up each pair's adjusted p by index, so a wrong-order return
+		// would attach the correction to the wrong arm pair. Input 0.04,0.01,0.02 must
+		// map back to 0.04,0.03,0.04 at those exact positions.
+		const adj = holmBonferroni([0.04, 0.01, 0.02]);
+		expect(adj[0]).toBeCloseTo(0.04, 12); // the 0.04 (rank 3) → *1
+		expect(adj[1]).toBeCloseTo(0.03, 12); // the 0.01 (rank 1) → *3
+		expect(adj[2]).toBeCloseTo(0.04, 12); // the 0.02 (rank 2) → *2
+	});
+
+	test("enforces step-down monotonicity: a larger raw p never adjusts below a smaller one", () => {
+		// 0.03*2 = 0.06 but 0.04*1 = 0.04 < 0.06. The running max must lift the second to
+		// 0.06 so the corrected sequence is non-decreasing in rank, as Holm requires.
+		const adj = holmBonferroni([0.03, 0.04]);
+		expect(adj[0]).toBeCloseTo(0.06, 12);
+		expect(adj[1]).toBeCloseTo(0.06, 12);
+	});
+
+	test("clamps every adjusted value to at most 1", () => {
+		// 0.5 * 2 = 1.0 (clamped), and the monotone max keeps the larger raw p at 1 too.
+		expect(holmBonferroni([0.5, 0.9])).toEqual([1, 1]);
+	});
+
+	test("the two-comparison threshold case: 0.03125 twice both cross above 0.05", () => {
+		// The concrete render scenario above: two 6-0 pairs. Holm pushes both to 0.0625,
+		// so a 0.05 cutoff correctly rejects both — no false winner from a 3-arm run.
+		const adj = holmBonferroni([0.03125, 0.03125]);
+		expect(adj[0]).toBeCloseTo(0.0625, 12);
+		expect(adj[1]).toBeCloseTo(0.0625, 12);
+		expect(adj.every(p => p >= 0.05)).toBe(true);
 	});
 });
 
