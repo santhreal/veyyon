@@ -6,19 +6,6 @@
 
 - The Windows binary is now built as a modern (AVX2) Bun target instead of baseline. Baseline Windows standalone builds crash in the Bun runtime at startup before any Veyyon code runs (oven-sh/bun#32684), which made every published `veyyon-windows-x64.exe` exit with a segmentation fault on launch. The modern target requires a CPU with AVX2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).
 
-- The inline TUI no longer paints backgrounds by default, so nothing renders as a colored slab on a terminal whose background differs from the theme: the user-message bubble, custom/skill/hook message cards, tool-state tints, the composer band, and the status line all inherit the terminal's own background. The status line's painted bar is still available by turning off the new `statusLine.transparent` default, and a theme can still declare an explicit `composerBg`.
-- Every built-in theme is presented again. The temporary alabaster-only picker is reverted along with its `tui.paintGround: always` default, which repainted the terminal's background color on launch; `tui.paintGround` is back to `auto` (paint only when it cannot produce a visible seam) and the dark/light defaults are back to `titanium`/`light`.
-## [1.0.37] - 2026-07-24
-
-### Added
-
-- Added an eval-only per-section system-prompt override, reachable only through the `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable (a JSON object of section name to replacement text). It swaps individual banner sections of the default prompt (`conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, `deliveryContract`) for a benchmark while leaving every other section, and every settings-gated block in it, byte-for-byte untouched. It is deliberately NOT a config key or CLI flag, so no `config.yml` can reach it and it cannot contaminate a normal run; when the variable is set, `vey` logs a loud warning that the prompt is not the production one. Unlike a whole-prompt override it cannot freeze a snapshot that stops responding to settings or silently drop a settings-gated section (for example the delegation block that renders only when delegation is on). Malformed JSON, an unknown section name, a non-string value, a replacement that drops its section banner, and combining the override with a custom whole-prompt template each fail loudly rather than silently.
-
-### Fixed
-
-- The inline TUI no longer paints backgrounds by default, so nothing renders as a colored slab on a terminal whose background differs from the theme: the user-message bubble, custom/skill/hook message cards, tool-state tints, the composer band, and the status line all inherit the terminal's own background. The status line's painted bar is still available by turning off the new `statusLine.transparent` default, and a theme can still declare an explicit `composerBg`.
-- Every built-in theme is presented again. The temporary alabaster-only picker is reverted along with its `tui.paintGround: always` default, which repainted the terminal's background color on launch; `tui.paintGround` is back to `auto` (paint only when it cannot produce a visible seam) and the dark/light defaults are back to `titanium`/`light`.
-
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes
@@ -11289,6 +11276,17 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.37] - 2026-07-24
+
+### Added
+
+- Added an eval-only per-section system-prompt override, reachable only through the `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable (a JSON object of section name to replacement text). It swaps individual banner sections of the default prompt (`conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, `deliveryContract`) for a benchmark while leaving every other section, and every settings-gated block in it, byte-for-byte untouched. It is deliberately NOT a config key or CLI flag, so no `config.yml` can reach it and it cannot contaminate a normal run; when the variable is set, `vey` logs a loud warning that the prompt is not the production one. Unlike a whole-prompt override it cannot freeze a snapshot that stops responding to settings or silently drop a settings-gated section (for example the delegation block that renders only when delegation is on). Malformed JSON, an unknown section name, a non-string value, a replacement that drops its section banner, and combining the override with a custom whole-prompt template each fail loudly rather than silently.
+
+### Fixed
+
+- The inline TUI no longer paints backgrounds by default, so nothing renders as a colored slab on a terminal whose background differs from the theme: the user-message bubble, custom/skill/hook message cards, tool-state tints, the composer band, and the status line all inherit the terminal's own background. The status line's painted bar is still available by turning off the new `statusLine.transparent` default, and a theme can still declare an explicit `composerBg`.
+- Every built-in theme is presented again. The temporary alabaster-only picker is reverted along with its `tui.paintGround: always` default, which repainted the terminal's background color on launch; `tui.paintGround` is back to `auto` (paint only when it cannot produce a visible seam) and the dark/light defaults are back to `titanium`/`light`.
 
 ## [1.0.36] - 2026-07-24
 
