@@ -143,6 +143,7 @@ ${retry}
 
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
 - Commit ONLY the ported source, tests, docs, and changelog. Never commit scratch artifacts: downloaded \`*.diff\`/\`*.patch\` files, notes, or tool output.
+- veyyon's product direction wins over upstream's. Where veyyon diverged (its own model catalog with its own model IDs, types, and roles; its own branding, install flow, and docs), port the underlying bug onto veyyon's design; never import upstream's scheme. The issue's "Diverged surface warning" section, when present, is binding.
 - If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), do not open a PR; end the session with a summary that starts with \`NOT-APPLICABLE:\` and names the veyyon change that supersedes it.
 `;
 }
