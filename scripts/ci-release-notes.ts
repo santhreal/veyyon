@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Generate aggregated release notes from per-package CHANGELOG.md files.
  *
@@ -28,6 +29,7 @@
  * underneath; this only adds curated context.
  */
 
+import { $, Glob } from "bun";
 // Import compareSemver by RELATIVE PATH, not the "@veyyon/utils/semver"
 // workspace specifier. The release_github job that runs this script checks out
 // the repo and sets up bun but does NOT `bun install`, so the workspace symlink
@@ -37,7 +39,6 @@
 // semver.ts is self-contained (no imports of its own), so a direct file import
 // needs no install and cannot regress this way.
 import { compareSemver } from "../packages/utils/src/semver.ts";
-import { $, Glob } from "bun";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
@@ -185,6 +186,140 @@ export function mergePackageSection(content: string, floorExclusive: string | nu
 	return out.join("\n");
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Commit-history summary
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// The curated per-package CHANGELOG sections above are high-signal but sparse:
+// only bullets a PR author hand-wrote appear, and this repo pushes straight to
+// main, so `action-gh-release`'s PR-based `generate_release_notes` list is also
+// near-empty. The result was releases whose whole body was one bullet even when
+// dozens of real commits landed ("400 commits says nothing"). This section
+// closes that gap: it groups every non-merge commit in the release range by its
+// conventional-commit type so each release reflects its actual work with no
+// manual curation. It is derived, additive context — never a replacement for the
+// curated sections, which stay first.
+
+/** Conventional-commit type prefix → release-notes heading. First match wins. */
+const COMMIT_TYPE_HEADINGS: ReadonlyArray<readonly [RegExp, string]> = [
+	[/^feat$/, "Features"],
+	[/^fix$/, "Fixes"],
+	[/^perf$/, "Performance"],
+	[/^refactor$/, "Refactors"],
+	[/^revert$/, "Reverts"],
+	[/^docs$/, "Documentation"],
+	[/^test$/, "Tests"],
+	[/^(build|ci)$/, "Build & CI"],
+	[/^(chore|style)$/, "Chores"],
+];
+const BREAKING_HEADING = "Breaking Changes";
+const OTHER_HEADING = "Other changes";
+// Display order for the grouped sections. Breaking changes lead; unmatched
+// commits ("Other changes") trail. Everything else follows the type table.
+const HEADING_ORDER: readonly string[] = [
+	BREAKING_HEADING,
+	...COMMIT_TYPE_HEADINGS.map(([, heading]) => heading),
+	OTHER_HEADING,
+];
+
+function headingForCommitType(type: string): string | null {
+	for (const [pattern, heading] of COMMIT_TYPE_HEADINGS) {
+		if (pattern.test(type)) return heading;
+	}
+	return null;
+}
+
+export interface GroupedCommitSection {
+	heading: string;
+	subjects: string[];
+}
+
+/**
+ * Bucket commit subject lines by conventional-commit type, preserving the full
+ * `type(scope): description` subject for display and deduplicating identical
+ * subjects (a cherry-pick or a forward-merge can repeat one). A subject with a
+ * `!` breaking marker (`feat!:` / `fix(x)!:`) goes to {@link BREAKING_HEADING}
+ * regardless of its base type; a subject with no recognizable conventional
+ * prefix goes to {@link OTHER_HEADING} so nothing is dropped. Sections come back
+ * in {@link HEADING_ORDER}; empty buckets are omitted.
+ */
+export function groupCommitsByType(subjects: readonly string[]): GroupedCommitSection[] {
+	const buckets = new Map<string, string[]>();
+	const seen = new Set<string>();
+	for (const raw of subjects) {
+		const subject = raw.trim();
+		if (subject.length === 0) continue;
+		if (seen.has(subject)) continue;
+		seen.add(subject);
+		const match = subject.match(/^(\w+)(?:\([^)]*\))?(!)?:\s*.+$/);
+		let heading: string;
+		if (!match) {
+			heading = OTHER_HEADING;
+		} else if (match[2] === "!") {
+			heading = BREAKING_HEADING;
+		} else {
+			heading = headingForCommitType(match[1].toLowerCase()) ?? OTHER_HEADING;
+		}
+		const bucket = buckets.get(heading);
+		if (bucket) bucket.push(subject);
+		else buckets.set(heading, [subject]);
+	}
+	const sections: GroupedCommitSection[] = [];
+	for (const heading of HEADING_ORDER) {
+		const bucket = buckets.get(heading);
+		if (bucket && bucket.length > 0) sections.push({ heading, subjects: bucket });
+	}
+	return sections;
+}
+
+/**
+ * Render the grouped commit summary as a markdown section, or "" when there are
+ * no commits. `floorLabel` is the previous published version (unprefixed) used
+ * for the "N commits since vX" line, or null for the first-ever release.
+ */
+export function formatCommitSummary(subjects: readonly string[], floorLabel: string | null): string {
+	const sections = groupCommitsByType(subjects);
+	const total = sections.reduce((n, s) => n + s.subjects.length, 0);
+	if (total === 0) return "";
+	const since = floorLabel ? ` since v${floorLabel}` : "";
+	const out: string[] = ["## What changed", "", `_${total} commit${total === 1 ? "" : "s"}${since}._`, ""];
+	for (const section of sections) {
+		out.push(`### ${section.heading}`, "");
+		for (const subject of section.subjects) out.push(`- ${subject}`);
+		out.push("");
+	}
+	while (out.length > 0 && out[out.length - 1] === "") out.pop();
+	return out.join("\n");
+}
+
+/**
+ * Read the non-merge commit subjects in `(floor, target]` and render the grouped
+ * summary. `floor`/`version` are unprefixed; the tags are `v<floor>`/`v<version>`.
+ *
+ * A `git log` failure (shallow checkout with the range refs missing, no git)
+ * is LOUD — a warning naming the range and the `fetch-depth: 0` fix — and yields
+ * "" so the curated sections still publish. This is an additive summary, not a
+ * primary mechanism, so degrading it loudly (never silently) is correct; the
+ * release body is still produced from the curated CHANGELOG sections.
+ */
+async function summarizeCommitRange(floor: string | null, version: string): Promise<string> {
+	const range = floor ? `v${floor}..v${version}` : `v${version}`;
+	const res = await $`git log --no-merges --pretty=format:%s ${range}`.quiet().nothrow();
+	if (res.exitCode !== 0) {
+		console.warn(
+			`Skipping the commit summary: \`git log ${range}\` exited ${res.exitCode}.\n` +
+				`stderr: ${res.stderr.toString().trim() || "(empty)"}\n` +
+				`Hint: the release_github checkout needs full history and tags (fetch-depth: 0) for the range to resolve.`,
+		);
+		return "";
+	}
+	const subjects = res.stdout
+		.toString()
+		.split("\n")
+		.filter(line => line.trim().length > 0);
+	return formatCommitSummary(subjects, floor);
+}
+
 async function loadPackageName(pkgDir: string): Promise<string> {
 	try {
 		const pkg = (await Bun.file(`${pkgDir}/package.json`).json()) as { name?: unknown };
@@ -272,16 +407,27 @@ async function main(): Promise<void> {
 		sections.push(`## ${name}\n\n${merged}`);
 	}
 
-	if (sections.length === 0) {
-		console.warn(`No CHANGELOG entries found for version ${version}; writing empty release notes to ${outputPath}.`);
+	// Derived commit-history overview for the release range. Additive: it follows
+	// the curated per-package sections, and it carries the body on its own when a
+	// release has no hand-written CHANGELOG bullets (the "400 commits says nothing"
+	// case) so no release ever ships an empty body when real commits landed.
+	const commitSummary = await summarizeCommitRange(floor, version);
+
+	if (sections.length === 0 && commitSummary === "") {
+		console.warn(
+			`No CHANGELOG entries or commits found for version ${version}; writing empty release notes to ${outputPath}.`,
+		);
 		await Bun.write(outputPath, "");
 		process.exit(0);
 	}
 
-	const body = `${sections.join("\n\n")}\n`;
+	const parts = [...sections];
+	if (commitSummary !== "") parts.push(commitSummary);
+	const body = `${parts.join("\n\n")}\n`;
 	await Bun.write(outputPath, body);
 	console.log(
-		`Wrote ${sections.length} package section(s) to ${outputPath} (version ${version}${floor ? `, floor ${floor}` : ""}).`,
+		`Wrote ${sections.length} package section(s)${commitSummary ? " + commit summary" : ""} to ${outputPath} ` +
+			`(version ${version}${floor ? `, floor ${floor}` : ""}).`,
 	);
 }
 

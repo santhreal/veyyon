@@ -1,7 +1,14 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { compareVersions, enumerateChangelogVersions, mergePackageSection } from "./ci-release-notes";
+import {
+	compareVersions,
+	enumerateChangelogVersions,
+	formatCommitSummary,
+	groupCommitsByType,
+	mergePackageSection,
+} from "./ci-release-notes";
 
 const FIXTURE = [
 	"# Changelog",
@@ -174,5 +181,319 @@ describe("ci-release-notes.ts must run without a workspace install", () => {
 		const src = fs.readFileSync(path.join(import.meta.dir, "ci-release-notes.ts"), "utf8");
 		const workspaceImports = [...src.matchAll(/\bfrom\s+["'](@veyyon\/[^"']+)["']/g)].map(m => m[1]);
 		expect(workspaceImports).toEqual([]);
+	});
+});
+
+// The commit-history summary is the answer to "400 commits since forking says
+// nothing more than a one-line changelog": with straight-to-main pushes there
+// are few PRs for `generate_release_notes` and only a handful of hand-written
+// CHANGELOG bullets, so the release body was near-empty even when dozens of real
+// commits landed. `groupCommitsByType`/`formatCommitSummary` derive a grouped
+// overview from the commit range so every release reflects its actual work. These
+// tests lock the grouping, ordering, dedup, breaking/other fallbacks, and the
+// "commits-only release still gets a body" guarantee.
+describe("groupCommitsByType", () => {
+	it("buckets conventional-commit types under their headings in canonical order", () => {
+		// Input order is deliberately shuffled across types to prove the OUTPUT
+		// order is HEADING_ORDER (Features, Fixes, Performance, ...), not input order.
+		const sections = groupCommitsByType([
+			"fix(onboarding): run the setup wizard on first install only",
+			"perf(scan): reuse the prefilter buffer across files",
+			"feat(rollback): add an interactive version picker",
+			"docs: document get.veyyon.dev install",
+			"feat: aggregate release notes from commits",
+		]);
+		expect(sections.map(s => s.heading)).toEqual(["Features", "Fixes", "Performance", "Documentation"]);
+		expect(sections[0].subjects).toEqual([
+			"feat(rollback): add an interactive version picker",
+			"feat: aggregate release notes from commits",
+		]);
+		expect(sections[1].subjects).toEqual(["fix(onboarding): run the setup wizard on first install only"]);
+	});
+
+	it("routes a `!` breaking marker to Breaking Changes above every other section", () => {
+		// `feat!:`/`fix(x)!:` mean a breaking change regardless of base type, and a
+		// release's breaking notes must lead. Assert both the routing and the order.
+		const sections = groupCommitsByType(["feat(api)!: drop the legacy writeLine contract", "fix: correct a typo"]);
+		expect(sections.map(s => s.heading)).toEqual(["Breaking Changes", "Fixes"]);
+		expect(sections[0].subjects).toEqual(["feat(api)!: drop the legacy writeLine contract"]);
+	});
+
+	it("puts non-conventional subjects in Other changes so nothing is dropped", () => {
+		// A bare subject with no `type:` prefix must still appear — dropping it would
+		// silently hide real work from the release notes.
+		const sections = groupCommitsByType(["Merge branch mess", "wip stuff", "fix: real fix"]);
+		expect(sections.map(s => s.heading)).toEqual(["Fixes", "Other changes"]);
+		expect(sections.find(s => s.heading === "Other changes")?.subjects).toEqual(["Merge branch mess", "wip stuff"]);
+	});
+
+	it("deduplicates identical subjects and ignores blank lines", () => {
+		// A cherry-pick or forward-merge repeats a subject; git output can carry blank
+		// lines. Neither may produce a duplicate or empty bullet.
+		const sections = groupCommitsByType(["fix: dup me", "", "  ", "fix: dup me", "fix: distinct"]);
+		expect(sections).toHaveLength(1);
+		expect(sections[0].subjects).toEqual(["fix: dup me", "fix: distinct"]);
+	});
+
+	it("maps build and ci to one Build & CI section and chore/style to Chores", () => {
+		const sections = groupCommitsByType([
+			"ci: pin the runner",
+			"build: bump the native toolchain",
+			"chore: tidy deps",
+			"style: reformat",
+		]);
+		expect(sections.map(s => s.heading)).toEqual(["Build & CI", "Chores"]);
+		expect(sections[0].subjects).toEqual(["ci: pin the runner", "build: bump the native toolchain"]);
+		expect(sections[1].subjects).toEqual(["chore: tidy deps", "style: reformat"]);
+	});
+});
+
+describe("formatCommitSummary", () => {
+	it("renders a count line with the floor version and grouped bullets", () => {
+		const body = formatCommitSummary(
+			["feat: add a picker", "fix: stop re-onboarding", "fix: stop re-onboarding"],
+			"1.0.22",
+		);
+		expect(body).toBe(
+			[
+				"## What changed",
+				"",
+				"_2 commits since v1.0.22._",
+				"",
+				"### Features",
+				"",
+				"- feat: add a picker",
+				"",
+				"### Fixes",
+				"",
+				"- fix: stop re-onboarding",
+			].join("\n"),
+		);
+	});
+
+	it("uses the singular 'commit' and omits the since-clause for the first release", () => {
+		const body = formatCommitSummary(["feat: first ever"], null);
+		expect(body).toContain("_1 commit._");
+		expect(body).not.toContain("since");
+	});
+
+	it("returns an empty string when there are no commits, so the caller can skip it", () => {
+		expect(formatCommitSummary([], "1.0.22")).toBe("");
+		expect(formatCommitSummary(["", "   "], "1.0.22")).toBe("");
+	});
+});
+
+// Adversarial and boundary cases for the type parser. Commit subjects in the
+// wild are messy: uppercase types, colons inside the description, nested
+// parens in the scope, unknown-but-conventional-looking prefixes, and the
+// `revert`/`perf` families. Each of these has silently mis-bucketed a commit in
+// other changelog generators; these lock the exact bucket so a parser change
+// can't quietly move real work into "Other changes" (or drop it).
+describe("groupCommitsByType adversarial parsing", () => {
+	it("lowercases the type so an uppercase prefix still buckets correctly", () => {
+		// A `Fix:`/`FEAT:` subject is still a fix/feature; the type match must be
+		// case-insensitive or the commit lands in Other changes.
+		const sections = groupCommitsByType(["Fix: uppercase type", "FEAT: shouty feature"]);
+		expect(sections.map(s => s.heading)).toEqual(["Features", "Fixes"]);
+	});
+
+	it("keeps a colon inside the description without splitting the subject", () => {
+		// The description itself often contains a colon ("fix: parse a:b pairs").
+		// Only the FIRST `:` after the type/scope delimits; the rest is prose.
+		const sections = groupCommitsByType(["fix: parse key:value pairs correctly"]);
+		expect(sections[0].heading).toBe("Fixes");
+		expect(sections[0].subjects).toEqual(["fix: parse key:value pairs correctly"]);
+	});
+
+	it("handles a scope containing parentheses-adjacent text and a breaking bang together", () => {
+		const sections = groupCommitsByType(["refactor(core-api)!: collapse the two settings layers"]);
+		expect(sections.map(s => s.heading)).toEqual(["Breaking Changes"]);
+		expect(sections[0].subjects).toEqual(["refactor(core-api)!: collapse the two settings layers"]);
+	});
+
+	it("routes revert commits to a Reverts section", () => {
+		const sections = groupCommitsByType(["revert: undo the risky prefilter change", "feat: keep this"]);
+		expect(sections.map(s => s.heading)).toEqual(["Features", "Reverts"]);
+	});
+
+	it("treats an unknown conventional-looking prefix as Other, not as a new heading", () => {
+		// `wip:`/`hotfix:` look conventional but are not in the type table. They must
+		// fall to Other changes, never invent an ad-hoc heading.
+		const sections = groupCommitsByType(["wip: half-done thing", "hotfix: urgent patch"]);
+		expect(sections.map(s => s.heading)).toEqual(["Other changes"]);
+		expect(sections[0].subjects).toEqual(["wip: half-done thing", "hotfix: urgent patch"]);
+	});
+
+	it("does not treat a bare word without a colon as a typed commit", () => {
+		// "feat something" (no colon) is not a conventional commit; it is prose and
+		// belongs in Other changes so the `feat` prefix can't smuggle it into Features.
+		const sections = groupCommitsByType(["feat something with no colon"]);
+		expect(sections.map(s => s.heading)).toEqual(["Other changes"]);
+	});
+});
+
+// End-to-end: the unit tests above cover the pure grouping/merging, but nothing
+// exercises `summarizeCommitRange` (the real `git log` call) or `main()`'s
+// assembly of curated sections + commit summary + the "commits-only still gets a
+// body" path. This suite builds a throwaway tagged git repo with real commits
+// and package changelogs and runs the ACTUAL script, so a regression in the git
+// invocation, the range boundaries, the section ordering, or the empty-body
+// guard is caught here — the parts a pure-function test structurally cannot see.
+describe("ci-release-notes end-to-end against a real tagged git repo", () => {
+	const scriptPath = path.join(import.meta.dir, "ci-release-notes.ts");
+	let repo: string;
+
+	function git(args: string[], cwd: string): void {
+		const res = Bun.spawnSync({
+			cmd: ["git", ...args],
+			cwd,
+			env: {
+				...process.env,
+				GIT_AUTHOR_NAME: "t",
+				GIT_AUTHOR_EMAIL: "t@example.com",
+				GIT_COMMITTER_NAME: "t",
+				GIT_COMMITTER_EMAIL: "t@example.com",
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		if (res.exitCode !== 0) {
+			throw new Error(`git ${args.join(" ")} failed: ${res.stderr.toString()}`);
+		}
+	}
+
+	function commit(subject: string): void {
+		git(["commit", "--allow-empty", "-m", subject], repo);
+	}
+
+	/** Run the real generator in `repo` with an explicit floor, return the body. */
+	function runNotes(target: string, floor: string): { code: number; body: string; stderr: string } {
+		const out = path.join(repo, "notes.md");
+		const res = Bun.spawnSync({
+			cmd: ["bun", scriptPath, target, out],
+			cwd: repo,
+			env: { ...process.env, VEYYON_RELEASE_NOTES_FLOOR: floor },
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const body = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "";
+		return { code: res.exitCode, body, stderr: res.stderr.toString() };
+	}
+
+	beforeEach(() => {
+		repo = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-notes-e2e-"));
+		git(["init", "-q", "-b", "main"], repo);
+		fs.mkdirSync(path.join(repo, "packages", "alpha"), { recursive: true });
+		fs.writeFileSync(path.join(repo, "packages", "alpha", "package.json"), JSON.stringify({ name: "@veyyon/alpha" }));
+	});
+
+	afterEach(() => {
+		fs.rmSync(repo, { recursive: true, force: true });
+	});
+
+	function writeChangelog(body: string): void {
+		fs.writeFileSync(path.join(repo, "packages", "alpha", "CHANGELOG.md"), body);
+	}
+
+	it("emits curated sections then the commit summary for the (floor, target] range", () => {
+		writeChangelog(
+			[
+				"# Changelog",
+				"",
+				"## [1.1.0]",
+				"",
+				"### Added",
+				"",
+				"- Added a shiny flag.",
+				"",
+				"## [1.0.0]",
+				"",
+				"### Added",
+				"",
+				"- Initial release.",
+				"",
+			].join("\n"),
+		);
+		git(["add", "-A"], repo);
+		commit("feat: initial alpha release"); // this is AT v1.0.0, must be excluded
+		git(["tag", "v1.0.0"], repo);
+		commit("feat(cli): add a shiny flag");
+		commit("fix(parser): stop dropping trailing args");
+		commit("docs: explain the shiny flag");
+		commit("chore: bump version to 1.1.0");
+		git(["tag", "v1.1.0"], repo);
+
+		const { code, body, stderr } = runNotes("v1.1.0", "1.0.0");
+		expect(code).toBe(0);
+		expect(stderr).not.toContain("Skipping the commit summary"); // git range resolved
+
+		// Curated section from the changelog leads.
+		expect(body).toContain("## @veyyon/alpha");
+		expect(body).toContain("- Added a shiny flag.");
+		// The commit summary follows and reflects exactly the 4 in-range commits.
+		expect(body).toContain("## What changed");
+		expect(body).toContain("_4 commits since v1.0.0._");
+		expect(body).toContain("- feat(cli): add a shiny flag");
+		expect(body).toContain("- fix(parser): stop dropping trailing args");
+		expect(body).toContain("- docs: explain the shiny flag");
+		// The v1.0.0 commit is at the floor and must NOT appear.
+		expect(body).not.toContain("initial alpha release");
+		// Ordering: curated package section precedes the derived summary.
+		expect(body.indexOf("## @veyyon/alpha")).toBeLessThan(body.indexOf("## What changed"));
+	});
+
+	it("still writes a real body from commits alone when no changelog bullet exists", () => {
+		// The "400 commits says nothing" case: a release whose changelog has no
+		// in-range section. The body must NOT be empty — it carries the commit summary.
+		writeChangelog(["# Changelog", "", "## [1.0.0]", "", "### Added", "", "- Initial release.", ""].join("\n"));
+		git(["add", "-A"], repo);
+		commit("chore: seed");
+		git(["tag", "v1.0.0"], repo);
+		commit("feat: a feature with no changelog entry");
+		commit("fix: a fix with no changelog entry");
+		git(["tag", "v1.1.0"], repo);
+
+		const { code, body } = runNotes("v1.1.0", "1.0.0");
+		expect(code).toBe(0);
+		expect(body).not.toBe("");
+		expect(body).toContain("## What changed");
+		expect(body).toContain("_2 commits since v1.0.0._");
+		expect(body).toContain("- feat: a feature with no changelog entry");
+		// No curated package section, because no in-range changelog bullet exists.
+		expect(body).not.toContain("## @veyyon/alpha");
+	});
+
+	it("degrades LOUDLY when the git range fails, still publishing curated sections (Law 10)", () => {
+		// The commit summary is additive context, not a primary mechanism, so a git
+		// failure (here: the target tag ref does not exist, as on a shallow checkout)
+		// must NOT crash the release and must NOT silently drop to a smaller body. It
+		// must warn loudly with the fetch-depth fix and still emit the curated
+		// changelog section, so the release always publishes with real notes.
+		writeChangelog(
+			["# Changelog", "", "## [1.1.0]", "", "### Added", "", "- A curated bullet.", "", "## [1.0.0]", ""].join("\n"),
+		);
+		git(["add", "-A"], repo);
+		commit("feat: seed");
+		git(["tag", "v1.0.0"], repo);
+		// Deliberately do NOT create the v1.1.0 tag, so `git log v1.0.0..v1.1.0` fails.
+
+		const { code, body, stderr } = runNotes("v1.1.0", "1.0.0");
+		expect(code).toBe(0); // release still succeeds
+		expect(stderr).toContain("Skipping the commit summary");
+		expect(stderr).toContain("fetch-depth: 0"); // the actionable fix is named
+		expect(body).toContain("- A curated bullet."); // curated notes still ship
+		expect(body).not.toContain("## What changed"); // summary skipped, not faked
+	});
+
+	it("writes an empty body only when there are neither changelog bullets nor commits in range", () => {
+		// floor == target means an empty commit range and no new changelog section.
+		writeChangelog(["# Changelog", "", "## [1.0.0]", "", "### Added", "", "- Initial release.", ""].join("\n"));
+		git(["add", "-A"], repo);
+		commit("chore: seed");
+		git(["tag", "v1.0.0"], repo);
+
+		const { code, body } = runNotes("v1.0.0", "1.0.0");
+		expect(code).toBe(0);
+		expect(body).toBe("");
 	});
 });
