@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { __veyyonNativesV1_0_37 } from "@veyyon/natives";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -1218,33 +1219,54 @@ class StressDriver {
 			// Mirror the engine's render-time ledger transitions here: the audit
 			// resync and the shrink-into-prefix re-anchor can both fire on frames
 			// that emit zero bytes, which the write hook would never observe.
+			let shadowResynced = false;
 			if (!this.#shadowFrameGeometryChanged && this.#shadowRawPrefix.length > 0) {
 				const resyncTo = findCommittedPrefixResync(stripped, this.#shadowRawPrefix);
 				if (resyncTo >= 0) {
 					this.#shadowCommitted = resyncTo;
 					this.#shadowRawPrefix.length = resyncTo;
-					// Mirror the engine's cursor-tail re-anchor: a resync that
-					// leaves a focused cursor tail shorter than the viewport pulls
-					// the window back down to the frame tail and restarts commit
-					// bookkeeping there. The shrink-into-prefix block below owns
-					// the frame-shorter-than-prefix case with the same formula.
-					const rows = Math.max(1, this.#term.rows);
-					let cursorInTail = false;
-					for (let i = this.#shadowCommitted; i < lines.length; i++) {
-						if (lines[i]!.includes(CURSOR_MARKER)) {
-							cursorInTail = true;
-							break;
-						}
+					shadowResynced = true;
+				}
+			}
+			// Mirror the engine's cursor-tail re-anchor ("the prompt NEVER
+			// floats", tui.ts window classification): whenever the live tail
+			// below the committed boundary underfills the viewport while the
+			// focused cursor sits in it, the engine pulls the window back to the
+			// frame tail and restarts commit bookkeeping there — resync or not,
+			// geometry frame or not (multiplexer resizes repaint in place and
+			// still take this branch). Two subtleties, both learned from the
+			// seed 0x0ddc0ffe viewport-fidelity failure: (1) mirroring only
+			// inside the resync branch strands the shadow window at a stale
+			// commit boundary on a grow-resize; (2) the hooked render output
+			// can NEVER carry markers (the engine's marker ledger persists per
+			// composed row while the rows the hook sees are already stripped),
+			// so the cursor must be read from the model side — the same source
+			// #expectedFrame uses.
+			// Gate mirrored from the engine's window classification: a DIRECT
+			// terminal with scrollback rebuild enabled routes a resync into the
+			// divergenceRebuild full paint (ED3 erase-and-replay, observed by
+			// the write hook), so the tail re-anchor is only reachable there
+			// WITHOUT a resync; multiplexers cannot ED3, and with rebuild
+			// disabled (the default, and the harness configuration) the
+			// re-anchor branch stays reachable resync or not.
+			if (isInsideTerminalMultiplexer() || !this.#tui.getScrollbackRebuild() || !shadowResynced) {
+				const rows = Math.max(1, this.#term.rows);
+				const modelLines = this.#baseFrameLines(width);
+				let cursorInTail = false;
+				for (let i = this.#shadowCommitted; i < modelLines.length; i++) {
+					if (modelLines[i]!.includes(CURSOR_MARKER)) {
+						cursorInTail = true;
+						break;
 					}
-					if (
-						cursorInTail &&
-						stripped.length > this.#shadowCommitted &&
-						stripped.length - this.#shadowCommitted < rows
-					) {
-						this.#shadowCommitted = Math.max(0, stripped.length - rows);
-						this.#shadowWindowTop = this.#shadowCommitted;
-						this.#shadowRawPrefix = stripped.slice(0, this.#shadowCommitted);
-					}
+				}
+				if (
+					cursorInTail &&
+					stripped.length > this.#shadowCommitted &&
+					stripped.length - this.#shadowCommitted < rows
+				) {
+					this.#shadowCommitted = Math.max(0, stripped.length - rows);
+					this.#shadowWindowTop = this.#shadowCommitted;
+					this.#shadowRawPrefix = stripped.slice(0, this.#shadowCommitted);
 				}
 			}
 			if (stripped.length <= this.#shadowCommitted) {
