@@ -8,9 +8,8 @@ import type {
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
 import {
-	atomicWriteFile,
+	atomicWriteFilePreservingMode,
 	errorMessage,
-	isEnoent,
 	logger,
 	once,
 	prompt,
@@ -1042,11 +1041,11 @@ export type WritethroughCallback = (
  * symlinks (the link survives instead of being replaced by a regular file).
  *
  * Two overrides of the atomic-write defaults are load-bearing here:
- *  - MODE: the rename swaps in a fresh inode, so without this the replacement
- *    would take the temp file's `0o600` default and silently strip a script's
- *    `+x` or a file's group/other read bits. Carry the current file's mode
- *    forward; a brand-new file gets `0o644` (a normal source-file default,
- *    still subject to the process umask via the open call).
+ *  - MODE: the rename swaps in a fresh inode, so without preservation the
+ *    replacement would take the temp file's `0o600` default and silently strip a
+ *    script's `+x` or a file's group/other read bits.
+ *    {@link atomicWriteFilePreservingMode} carries the current file's mode
+ *    forward (a brand-new file gets `0o644`).
  *  - FSYNC OFF: this is the interactive edit hot path. The rename alone already
  *    defeats the truncation-on-crash class; forcing an fsync + directory fsync on
  *    every edit would add a disk round-trip per write purely for power-loss
@@ -1054,15 +1053,7 @@ export type WritethroughCallback = (
  *    off preserves the prior latency while adding crash-atomicity.
  */
 async function commitFileContentAtomic(dst: string, content: string): Promise<void> {
-	let mode = 0o644;
-	try {
-		// `stat` (not `lstat`) follows a symlink to the file atomicWriteFile will
-		// actually replace, so the preserved mode matches the real target.
-		mode = (await fs.promises.stat(dst)).mode & 0o777;
-	} catch (error) {
-		if (!isEnoent(error)) throw error;
-	}
-	await atomicWriteFile(dst, content, { mode, fsync: false });
+	await atomicWriteFilePreservingMode(dst, content, { fsync: false });
 }
 
 /** No-op writethrough callback */

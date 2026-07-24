@@ -19,7 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Filesystem, NotFoundError, type PreflightWriteOptions, sameExistingFile, type WriteResult } from "@veyyon/hashline";
-import { isEnoent } from "@veyyon/utils";
+import { atomicWriteFilePreservingMode, isEnoent } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";
 import type { ToolSession } from "../../tools";
@@ -180,7 +180,14 @@ export class HashlineFilesystem extends Filesystem {
 			// compares realpath-collapsed keys and normally catches this, but the
 			// primitive must not depend on one caller's check: detect same-file here
 			// by device + inode and skip the removal.
-			await Bun.write(toAbsolute, content);
+			//
+			// The destination write is atomic (temp + rename) so a crash mid-write
+			// cannot corrupt a pre-existing file the move overwrites, and it carries
+			// that file's mode forward. The same-file guard still holds: for a
+			// symlinked `to`, the atomic write resolves the link and replaces the
+			// shared target, so `sameExistingFile` compares the post-rename inode of
+			// both names, sees they match, and correctly skips the `rm`.
+			await atomicWriteFilePreservingMode(toAbsolute, content);
 			if (!(await sameExistingFile(fromAbsolute, toAbsolute))) {
 				await fs.rm(fromAbsolute);
 			}
