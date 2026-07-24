@@ -36,10 +36,12 @@ export const ARGOT_PREAMBLE_HEADING: string = ARGOT_PREAMBLE.split("\n", 1)[0] ?
  * structurally cannot make: the pre-run guard matches the REQUESTED `--model`
  * string against the allowlist, but the runtime resolves that id through the
  * catalog (provider aliases, effort-tier collapsing) to a different logical id
- * BEFORE the encode gate sees it. A requested `google-antigravity/gemini-3.6-flash`
- * that resolves to logical `gemini-3.5-flash` passes the pre-run guard (3.6 is on
- * the list) yet fails the gate (the resolved 3.5 is not), so the arm silently
- * degrades to decode-only. Reading the actual system prompt the model was given
+ * BEFORE the encode gate sees it. This really happened: `google-antigravity` once
+ * aliased `gemini-3.6-flash` onto the 3.5 flash family, so a run requesting 3.6
+ * passed the pre-run guard (3.6 was on the list) yet failed the gate (the resolved
+ * 3.5 was not) and silently degraded to decode-only. The alias is gone, but the
+ * gap is permanent, because no pre-run check can see a resolution that has not
+ * happened yet. Reading the actual system prompt the model was given
  * reflects the model AFTER resolution and catches exactly that silent degrade.
  */
 export function systemPromptTeachesArgot(systemPrompt: string): boolean {
