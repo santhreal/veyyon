@@ -36,3 +36,15 @@ export interface BomResult {
 export function stripBom(content: string): BomResult {
 	return content.startsWith("\uFEFF") ? { bom: "\uFEFF", text: content.slice(1) } : { bom: "", text: content };
 }
+
+/**
+ * Whether `bytes` begins with the 3-byte UTF-8 BOM (EF BB BF).
+ *
+ * The canonical byte-level BOM check. A text reader (`Bun.file().text()`,
+ * `TextDecoder`) silently consumes a leading BOM, so `stripBom` on decoded text
+ * cannot see it; callers that need to round-trip the BOM must detect it from the
+ * raw bytes here instead of re-open-coding the sniff.
+ */
+export function hasUtf8Bom(bytes: Uint8Array | undefined): boolean {
+	return bytes !== undefined && bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+}

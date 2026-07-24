@@ -37,7 +37,14 @@ import {
 	unseenLinesMessage,
 } from "./messages";
 import { MismatchError } from "./mismatch";
-import { detectLineEnding, type LineEnding, normalizeToLF, restoreLineEndings, stripBom } from "./normalize";
+import {
+	detectLineEnding,
+	hasUtf8Bom,
+	type LineEnding,
+	normalizeToLF,
+	restoreLineEndings,
+	stripBom,
+} from "./normalize";
 import { Recovery, type RecoveryResult } from "./recovery";
 import type { Snapshot, SnapshotStore } from "./snapshots";
 import type { ApplyResult, BlockResolution, BlockResolver, Edit, FileOp } from "./types";
@@ -158,10 +165,6 @@ function mergeWarnings(...sources: ReadonlyArray<readonly string[] | undefined>)
 		for (const warning of source) out.push(warning);
 	}
 	return out;
-}
-
-function hasUtf8Bom(bytes: Uint8Array | undefined): boolean {
-	return bytes !== undefined && bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
 }
 
 function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A single transient terminal write failure (stdout backpressure, a momentary PTY I/O hiccup) no longer disables rendering for the rest of the session. Rendering only latches off on a fatal error (the terminal or piped reader has closed) or after a sustained run of failures with no successful write in between; a lone hiccup now recovers on the next frame.
+
 ## [1.0.24] - 2026-07-24
 
 ### Added

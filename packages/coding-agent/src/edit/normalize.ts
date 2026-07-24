@@ -11,6 +11,7 @@ import { padding } from "@veyyon/tui";
 export {
 	type BomResult,
 	detectLineEnding,
+	hasUtf8Bom,
 	type LineEnding,
 	normalizeToLF,
 	restoreLineEndings,
