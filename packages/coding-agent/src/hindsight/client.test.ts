@@ -31,6 +31,33 @@ describe("HindsightApi fetch cancellation", () => {
 		expect(requestSignal?.aborted).toBe(true);
 		expect(requestSignal?.reason).toBe(caller.signal.reason);
 	});
+
+	it("reports the effective per-op deadline in timeout errors", async () => {
+		const fetchStub = Object.assign(
+			async (_input: FetchInput, init?: FetchInit) => {
+				const err = new Error("Timeout");
+				err.name = "TimeoutError";
+				return Promise.reject(err);
+			},
+			{ preconnect: globalThis.fetch.preconnect },
+		);
+		vi.spyOn(globalThis, "fetch").mockImplementation(fetchStub);
+
+		const client = new HindsightApi({
+			baseUrl: "https://hindsight.example",
+			timeouts: { reflect: 90_000, recall: 15_000, request: 5_000 },
+		});
+
+		await expect(client.reflect("bank", "query")).rejects.toThrow(
+			"reflect request timed out after 90s"
+		);
+		await expect(client.recall("bank", "query")).rejects.toThrow(
+			"recall request timed out after 15s"
+		);
+		await expect(client.listDocuments("bank")).rejects.toThrow(
+			"listDocuments request timed out after 5s"
+		);
+	});
 });
 
 describe("HindsightApi User-Agent identity (SPEC-MEMORY #2)", () => {
