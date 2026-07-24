@@ -111,7 +111,21 @@ ensure_on_path() {
     rc=""
     case "${SHELL##*/}" in
         zsh) rc="$HOME/.zshrc" ;;
-        bash) rc="$HOME/.bashrc" ;;
+        bash)
+            # macOS Terminal.app opens *login* bash shells, which read
+            # ~/.bash_profile (then ~/.bash_login, ~/.profile) and NOT ~/.bashrc,
+            # so a PATH line written only to ~/.bashrc never takes effect there.
+            # Linux terminals open interactive non-login shells that read ~/.bashrc.
+            if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+                if [ -f "$HOME/.bash_profile" ]; then rc="$HOME/.bash_profile"
+                elif [ -f "$HOME/.bash_login" ]; then rc="$HOME/.bash_login"
+                elif [ -f "$HOME/.profile" ]; then rc="$HOME/.profile"
+                else rc="$HOME/.bash_profile"
+                fi
+            else
+                rc="$HOME/.bashrc"
+            fi
+            ;;
         fish) rc="$HOME/.config/fish/config.fish"; line="fish_add_path $dir" ;;
         *) rc="$HOME/.profile" ;;
     esac

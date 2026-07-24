@@ -78,6 +78,44 @@ check "vey resolves to veyyon" "$(readlink "$VEYYON_INSTALL_DIR/vey")" "$VEYYON_
   check "bash completions dir honors XDG_DATA_HOME" "$(completions_dir_for bash)" "/xdg/data/bash-completion/completions"
   check "fish completions dir honors XDG_CONFIG_HOME" "$(completions_dir_for fish)" "/xdg/config/fish/completions" )
 
+# --- ensure_on_path: writes the PATH line to the rc a NEW shell actually reads ---
+# Locks the macOS login-shell bug: Terminal.app opens *login* bash shells, which
+# read ~/.bash_profile (then ~/.bash_login, ~/.profile) and NOT ~/.bashrc, so a
+# PATH line written only to ~/.bashrc never took effect and `veyyon` stayed
+# off PATH after a fresh install. `uname` is shadowed to pin the OS, and SHELL
+# selects the login shell; each case uses a dir that is NOT already on PATH so
+# the early return does not short-circuit the rc-selection logic under test.
+eop_home() { printf '%s' "$SANDBOX/eop-$1"; } # a fresh, empty HOME per case
+run_eop() { # os, shell, dir  — returns nothing; writes into a per-case HOME
+    _os="$1"; _shell="$2"; _dir="$3"; _h="$4"
+    mkdir -p "$_h"
+    ( uname() { [ "$1" = "-s" ] && printf '%s\n' "$_os" || command uname "$@"; }
+      HOME="$_h"; SHELL="$_shell"
+      ensure_on_path "$_dir" >/dev/null 2>&1 )
+}
+rc_has_dir() { [ -f "$1" ] && grep -Fq "$2" "$1" && echo yes || echo no; }
+
+h="$(eop_home mac-bash)"
+run_eop Darwin /bin/bash "/opt/mac-bash-bin" "$h"
+check "macOS bash writes PATH to ~/.bash_profile, not ~/.bashrc" "$(rc_has_dir "$h/.bash_profile" /opt/mac-bash-bin)" "yes"
+check "macOS bash did NOT write to ~/.bashrc" "$(rc_has_dir "$h/.bashrc" /opt/mac-bash-bin)" "no"
+
+# macOS with a pre-existing ~/.profile: honor it (login bash reads it) rather
+# than creating a second ~/.bash_profile that would then shadow ~/.profile.
+h="$(eop_home mac-profile)"; mkdir -p "$h"; printf '# existing\n' > "$h/.profile"
+run_eop Darwin /bin/bash "/opt/mac-profile-bin" "$h"
+check "macOS bash appends to an existing ~/.profile" "$(rc_has_dir "$h/.profile" /opt/mac-profile-bin)" "yes"
+check "macOS bash did not create a shadowing ~/.bash_profile" "$( [ -f "$h/.bash_profile" ] && echo present || echo absent )" "absent"
+
+h="$(eop_home linux-bash)"
+run_eop Linux /bin/bash "/opt/linux-bash-bin" "$h"
+check "Linux bash writes PATH to ~/.bashrc" "$(rc_has_dir "$h/.bashrc" /opt/linux-bash-bin)" "yes"
+check "Linux bash did NOT write to ~/.bash_profile" "$(rc_has_dir "$h/.bash_profile" /opt/linux-bash-bin)" "no"
+
+h="$(eop_home zsh)"
+run_eop Darwin /bin/zsh "/opt/zsh-bin" "$h"
+check "zsh writes PATH to ~/.zshrc on any OS" "$(rc_has_dir "$h/.zshrc" /opt/zsh-bin)" "yes"
+
 # --- do_uninstall: removes veyyon + vey from the sandboxed install dir only ---
 do_uninstall >/dev/null 2>&1
 check "uninstall removed veyyon" "$( [ -e "$VEYYON_INSTALL_DIR/veyyon" ] && echo present || echo gone )" "gone"
