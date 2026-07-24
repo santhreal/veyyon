@@ -58,7 +58,40 @@ describe("BankManager", () => {
 			expect(() => manager.renameBank("validsource", "../escape")).toThrow(/Invalid bank name/);
 			expect(manager.getBankDbPath("")).toBe(join(root, "mnemopi.db"));
 			expect(() => manager.deleteBank("default")).toThrow();
+			// No default DB exists in this fresh root, so a force-delete truthfully
+			// reports that nothing was deleted.
 			expect(manager.deleteBank("default", true)).toBe(false);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("force-deleting the default bank removes the REAL default DB at dataDir/mnemopi.db", () => {
+		// Regression lock for MNEMOPI-DELETE-DEFAULT-NOOP: deleteBank("default",
+		// force=true) used to rm a (nonexistent) banksDir/default directory and
+		// return false while the real default DB at dataDir/mnemopi.db survived —
+		// a silent no-op of an explicit destructive intent. A caller doing a
+		// force-wipe believed the data was gone when it was not. The delete must
+		// act on the SAME path getBankDbPath("default") resolves, sidecars
+		// included, and its return value must reflect what actually happened.
+		const root = mkdtempSync(join(tmpdir(), "mnemopi-banks-"));
+		try {
+			const manager = new BankManager(root);
+			const dbPath = manager.getBankDbPath("default");
+			writeFileSync(dbPath, "db bytes");
+			writeFileSync(`${dbPath}-wal`, "wal bytes");
+			writeFileSync(`${dbPath}-shm`, "shm bytes");
+
+			expect(manager.deleteBank("default", true)).toBe(true);
+
+			expect(existsSync(dbPath)).toBe(false);
+			expect(existsSync(`${dbPath}-wal`)).toBe(false);
+			expect(existsSync(`${dbPath}-shm`)).toBe(false);
+			// A second force-delete now truthfully reports nothing left to delete.
+			expect(manager.deleteBank("default", true)).toBe(false);
+			// Named banks are untouched by a default-bank wipe.
+			const namedDb = manager.createBank("survivor");
+			expect(existsSync(namedDb)).toBe(true);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

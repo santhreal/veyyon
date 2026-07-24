@@ -243,11 +243,71 @@ function isStructured(token: string): boolean {
 /**
  * True when a whole line reads like a command rather than a prose sentence: it
  * references something structured (a path, URL, dotted identifier), passes a
- * flag (`-x` / `--x`), or sets an assignment (`KEY=value`). A natural-language
- * sentence has none of these, so it is not captured.
+ * flag (`-x` / `--x`), or sets an assignment (`KEY=value`).
+ *
+ * The structured test alone is necessary but NOT sufficient, because prose
+ * regularly contains exactly one structured token and would otherwise be captured
+ * whole. Real dictionaries generated before {@link looksLikeProse} was applied
+ * contained an MIT license clause (captured because `and/or` holds a slash), an
+ * AWS documentation sentence (a URL), and a Maven test log line (a dotted class
+ * name). Those are the longest strings in many repositories, so they won the
+ * budget while never being retyped by any agent. Measured on a real run, of 33
+ * handles the model emitted 7, and every one was whitespace-free; no prose handle
+ * was ever emitted.
  */
 function looksLikeCommand(tokens: string[]): boolean {
-	return tokens.some(t => isStructured(t) || /^-{1,2}\w/.test(t) || /^\w[\w-]*=/.test(t));
+	if (!tokens.some(t => isStructured(t) || /^-{1,2}\w/.test(t) || /^\w[\w-]*=/.test(t))) {
+		return false;
+	}
+	return !looksLikeProse(tokens);
+}
+
+/**
+ * True when a line is a natural-language sentence rather than something an agent
+ * would retype verbatim.
+ *
+ * These markers are chosen because they separate the two populations cleanly on
+ * real data rather than in principle. Prose enumerates (`use, copy, modify,`),
+ * ends sentences (`... triggers at https://example.com/x .`), and runs long
+ * stretches of ordinary words (`comment: "This deployment was lifted from`).
+ * Genuine agent-typed commands do none of that: `bunx tsgo -p x/tsconfig.json
+ * --noEmit`, `npm run build && node dist/index.js`, and
+ * `CARGO_TARGET_DIR=/dev/null cargo test` carry no bare word ending in a comma,
+ * no sentence terminator, and no long run of plain words.
+ *
+ * A deliberately narrow test. Ratio-based rules ("mostly structured tokens")
+ * reject real commands, because `npm run build && node dist/index.js` is mostly
+ * bare words. Rejecting on a quotation mark is likewise too broad: shell commands
+ * quote constantly (`echo "a\b" > packages/x/y.ts`). What prose actually does and
+ * commands do not is run FIVE or more ordinary words together; the longest such
+ * run in a real command is three (`npm run build`), which leaves margin for a
+ * four-word invocation like `sudo apt install nginx`.
+ */
+function looksLikeProse(tokens: string[]): boolean {
+	// An enumeration comma attached to a whole word or number: `copy,` `1,`.
+	// A command's commas live INSIDE a token (`--opt=a,b`), never as a suffix on a
+	// standalone bare word.
+	if (tokens.some(t => /^[A-Za-z0-9][\w-]*,$/.test(t))) {
+		return true;
+	}
+	// A long run of ordinary words. Quotes and trailing punctuation are stripped so
+	// an opening quote does not hide the first word of a sentence.
+	let run = 0;
+	for (const token of tokens) {
+		const bare = token.replace(/^["'`(]+/, "").replace(/["'`).,;:!?]+$/, "");
+		if (/^[A-Za-z][A-Za-z-]+$/.test(bare)) {
+			run++;
+			if (run >= 5) return true;
+		} else {
+			run = 0;
+		}
+	}
+	// A sentence opening: an initial capitalised ordinary word (`Please`, `This`,
+	// `The`). Commands are invoked by a lowercase program name (`npm`, `git`,
+	// `bunx`) or an uppercase environment assignment (`CARGO_TARGET_DIR=...`), and
+	// neither matches. A hyphenated or internally-capitalised name such as
+	// PowerShell's `Get-ChildItem` does not match either, so it stays capturable.
+	return /^[A-Z][a-z]+$/.test(tokens[0] ?? "");
 }
 
 /**

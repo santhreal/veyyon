@@ -11,41 +11,23 @@
  * stacked, each showing its tool calls and streamed text as it works.
  */
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
 import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
-import type { Theme } from "../modes/theme/theme";
 import vibeKillDescription from "../prompts/tools/vibe-kill.md" with { type: "text" };
 import vibeListDescription from "../prompts/tools/vibe-list.md" with { type: "text" };
 import vibeSendDescription from "../prompts/tools/vibe-send.md" with { type: "text" };
 import vibeSpawnDescription from "../prompts/tools/vibe-spawn.md" with { type: "text" };
 import vibeWaitDescription from "../prompts/tools/vibe-wait.md" with { type: "text" };
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
-import { oneLineLabel } from "../task/types";
-import { renderStatusLine } from "../tui";
 import {
 	type VibeCli,
 	type VibeKillOutcome,
 	type VibeScreenSnapshot,
 	type VibeSendOutcome,
 	VibeSessionRegistry,
-	type VibeSessionState,
 	type VibeWaitOutcome,
 } from "../vibe/runtime";
 import type { Tool, ToolSession } from "./index";
-import {
-	Ellipsis,
-	formatBadge,
-	formatDuration,
-	formatStatusIcon,
-	replaceTabs,
-	type ToolUIColor,
-	type ToolUIStatus,
-	truncateToWidth,
-} from "./render-utils";
 
 export const VIBE_TOOL_NAMES = ["vibe_spawn", "vibe_send", "vibe_wait", "vibe_kill", "vibe_list"] as const;
 
