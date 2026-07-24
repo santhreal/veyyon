@@ -25,8 +25,10 @@ import {
 	pairwiseArmDeltas,
 	pairwiseMetricDeltas,
 	parseJobName,
+	parseTaskListProvenance,
 	providerFinishReason,
 	renderReport,
+	renderTaskSetProvenanceBanner,
 	selectTasks,
 	signTestPValue,
 	summarizeCell,
@@ -1290,5 +1292,86 @@ describe("renderReport — tool call distribution is normalized per completed ru
 		expect(report).toContain("| ok (n=1) | 3.00 |");
 		expect(report).toContain("| dead (n=0) | — |");
 		expect(report).not.toContain("NaN");
+	});
+});
+
+describe("parseTaskListProvenance — a selection-biased task set is never a silent headline", () => {
+	// The methodology defect this locks out: argot-10.txt is EXPLICITLY the tasks whose
+	// repos compress best ("most repeated-token mass"), so a big saving on it is a
+	// best-case upper bound, not argot's real effect. A task list declares its status in
+	// a header directive so the report can warn; this parses exactly that directive.
+
+	test("a @biased directive marks the set biased and captures its reason", () => {
+		const prov = parseTaskListProvenance("# @biased: repos chosen for max compressible mass\ntask-a\ntask-b\n");
+		expect(prov).toEqual({ marked: true, biased: true, note: "repos chosen for max compressible mass" });
+	});
+
+	test("a @headline directive marks the set unbiased", () => {
+		const prov = parseTaskListProvenance("# @headline: unbiased held-out set\nytt-jsonpath-query-api\n");
+		expect(prov).toEqual({ marked: true, biased: false, note: "unbiased held-out set" });
+	});
+
+	test("a bare @headline with no note is still marked, note null", () => {
+		expect(parseTaskListProvenance("# @headline\ntask-a\n")).toEqual({ marked: true, biased: false, note: null });
+	});
+
+	test("no directive at all reads unmarked, so the report can nudge for one", () => {
+		// The old plain task lists: the report must not silently assume headline; it flags
+		// the missing provenance instead.
+		expect(parseTaskListProvenance("# just a description\ntask-a\ntask-b\n")).toEqual({
+			marked: false,
+			biased: false,
+			note: null,
+		});
+	});
+
+	test("a directive only counts in the HEADER, above the first task (no spoofing)", () => {
+		// Scanning stops at the first non-comment line, so a task named to look like a
+		// directive (or a trailing comment) cannot flip a headline set to biased.
+		const prov = parseTaskListProvenance("# @headline\ntask-a\n# @biased: sneaky trailing comment\n");
+		expect(prov).toEqual({ marked: true, biased: false, note: null });
+	});
+
+	test("real argot-10 and diverse-20 headers classify correctly", () => {
+		// The two real files this feature exists for: the compression-optimized pilot is
+		// biased, the held-out diverse set is a headline.
+		expect(parseTaskListProvenance("# @biased: maximal repeated-token mass\nkgateway-x\n").biased).toBe(true);
+		expect(parseTaskListProvenance("# @headline: unbiased held-out\nytt-x\n").biased).toBe(false);
+	});
+});
+
+describe("renderTaskSetProvenanceBanner / renderReport — the provenance banner is loud", () => {
+	const STAMP = "2026-07-24T00:00:00.000Z";
+
+	test("a biased set renders a prominent best-case warning with its reason", () => {
+		const banner = renderTaskSetProvenanceBanner({ marked: true, biased: true, note: "max compressible mass" });
+		expect(banner).toContain("SELECTION-BIASED");
+		expect(banner).toContain("NOT a headline");
+		expect(banner).toContain("max compressible mass");
+	});
+
+	test("a headline set renders a calm confirmation, no warning", () => {
+		const banner = renderTaskSetProvenanceBanner({ marked: true, biased: false, note: "held-out" });
+		expect(banner).toContain("headline (unbiased)");
+		expect(banner).not.toContain("SELECTION-BIASED");
+	});
+
+	test("an unmarked set nudges the author to declare provenance", () => {
+		const banner = renderTaskSetProvenanceBanner({ marked: false, biased: false, note: null });
+		expect(banner).toContain("unmarked");
+		expect(banner).toContain("@headline");
+		expect(banner).toContain("@biased");
+	});
+
+	test("renderReport prints the biased banner near the top when a task set is given", () => {
+		// End to end: a report built from a biased set must carry the warning so no reader
+		// mistakes a best-case saving for a headline. Omitting the task set (older runs /
+		// fixtures) prints no banner, keeping every prior report test valid.
+		const results: ArmResult[] = [res({ arm: "full", task: "t1", reward: 1 })];
+		const withBias = renderReport(results, "m", STAMP, 1, { marked: true, biased: true, note: "best-case repos" });
+		expect(withBias).toContain("SELECTION-BIASED");
+		expect(withBias).toContain("best-case repos");
+		const without = renderReport(results, "m", STAMP, 1);
+		expect(without).not.toContain("SELECTION-BIASED");
 	});
 });

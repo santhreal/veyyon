@@ -1,3 +1,4 @@
+# @biased: repos chosen for maximal repeated-token mass (SDK estimatedSavings) — a best-case upper bound for the codec, not a real-world average. Report headline efficiency from tasks/diverse-20.txt; use this set to validate the mechanism delivers where it should.
 # Argot pilot: the 10 DeepSWE tasks whose repos carry the most repeated-token
 # mass for the codec to compress, by the SDK's estimatedSavings over a
 # generated AGENTS.dict (dicts/report.md, 2026-07-22). Spans easy to hard

@@ -253,6 +253,68 @@ export function selectTasks(sorted: readonly string[], limit: number | undefined
 	return out;
 }
 
+/**
+ * Provenance of a task list: is it safe to report as a headline number, or is it a
+ * selection-biased subset? A task-list `.txt` may declare this in its header comments
+ * with a directive line:
+ *
+ *   `# @headline` (optionally `: note`) — an unbiased set (held-out, representative),
+ *   whose efficiency/pass numbers can be reported as a headline.
+ *   `# @biased: <reason>` — a set curated to favour the feature under test (e.g. the
+ *   repos with the most repeated-token mass for a compressor), which yields a
+ *   best-case UPPER BOUND, never a headline.
+ *
+ * This matters because a feature measured only on the tasks hand-picked to make it
+ * look good is not measured honestly. Marking the set lets the report warn loudly so
+ * a best-case subset is never mistaken for the real-world expected effect.
+ */
+export interface TaskSetProvenance {
+	/** Whether a `@headline` or `@biased` directive was found in the header. */
+	marked: boolean;
+	/** True for a selection-biased set (`@biased`) that must not be a headline. */
+	biased: boolean;
+	/** The directive's explanatory note, if any. */
+	note: string | null;
+}
+
+/**
+ * Parse a task list's header comments for its {@link TaskSetProvenance} directive.
+ * Only the leading comment block is scanned — a directive must sit in the header,
+ * above the first task line — so a `@`-looking token in a task name cannot spoof it.
+ * Returns `marked: false` when no directive is present, which the report surfaces as
+ * "provenance unmarked" so every task list is nudged toward declaring its status.
+ */
+export function parseTaskListProvenance(content: string): TaskSetProvenance {
+	for (const raw of content.split("\n")) {
+		const line = raw.trim();
+		if (line === "") continue;
+		if (!line.startsWith("#")) break; // header ended: first task reached
+		const body = line.replace(/^#+\s*/, "");
+		const biased = body.match(/^@biased\b:?\s*(.*)$/i);
+		if (biased) return { marked: true, biased: true, note: (biased[1] as string).trim() || null };
+		const headline = body.match(/^@headline\b:?\s*(.*)$/i);
+		if (headline) return { marked: true, biased: false, note: (headline[1] as string).trim() || null };
+	}
+	return { marked: false, biased: false, note: null };
+}
+
+/**
+ * The one-line banner the report prints for a task set's provenance, so a reader can
+ * never miss that a set is selection-biased (or unmarked). Blockquoted so it stands
+ * out at the top of the markdown report.
+ */
+export function renderTaskSetProvenanceBanner(prov: TaskSetProvenance): string {
+	if (prov.biased) {
+		const why = prov.note ? ` ${prov.note}` : "";
+		return `> ⚠️ **Task set is SELECTION-BIASED — a best-case upper bound, NOT a headline number.**${why}`;
+	}
+	if (prov.marked) {
+		const why = prov.note ? ` ${prov.note}` : "";
+		return `> Task set: headline (unbiased).${why}`;
+	}
+	return "> ⚠️ Task-set provenance is unmarked. Add `# @headline` or `# @biased: <reason>` to the task list header so a best-case subset is never read as a headline.";
+}
+
 /** Inverse of {@link jobNameOf}: recover (arm, task, repeat) from a job name. */
 export function parseJobName(jobName: string): { arm: string; task: string; repeat: number } {
 	const sep = jobName.indexOf("__");
@@ -715,9 +777,17 @@ function fmtRate(s: CellSummary): string {
 /**
  * Render the full markdown report. `repeats` is passed so the header can state the
  * sample count; it is not re-derived from the rows, so an all-errored run still
- * reports the intended repeat count rather than collapsing to 1.
+ * reports the intended repeat count rather than collapsing to 1. `taskSet`, when
+ * given, prints a provenance banner so a selection-biased set is never read as a
+ * headline; omit it (older runs, unit fixtures) to skip the banner.
  */
-export function renderReport(results: readonly ArmResult[], model: string, nowIso: string, repeats = 1): string {
+export function renderReport(
+	results: readonly ArmResult[],
+	model: string,
+	nowIso: string,
+	repeats = 1,
+	taskSet?: TaskSetProvenance,
+): string {
 	const arms = [...new Set(results.map(r => r.arm))];
 	const tasks = [...new Set(results.map(r => r.task))];
 	const cell = (arm: string, task: string) => results.filter(r => r.arm === arm && r.task === task);
@@ -726,6 +796,10 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 	lines.push("");
 	lines.push(`Model: \`${model}\`. Tasks: ${tasks.length}. Repeats/cell: ${repeats}. Arms: ${arms.join(", ")}.`);
 	lines.push("");
+	if (taskSet) {
+		lines.push(renderTaskSetProvenanceBanner(taskSet));
+		lines.push("");
+	}
 	lines.push("## Per arm totals");
 	lines.push("");
 	lines.push(

@@ -1,3 +1,4 @@
+# @headline: unbiased held-out set across Go, TypeScript, and Python; not curated to favour any feature, so its efficiency and pass numbers can be reported as headline.
 # DeepSWE Diverse-20 Benchmark Suite
 # 20 real-repository held-out tasks across Go, TypeScript, and Python.
 # Go tasks

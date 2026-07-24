@@ -1,3 +1,4 @@
+# @biased: the 10 HARDEST tasks by patch size — a difficulty-skewed stress set, so its pass rate runs pessimistic and is not a representative headline. Report headline numbers from tasks/diverse-20.txt.
 # DeepSWE pilot: the 10 hardest tasks by reference-solution patch size
 # (lines of solution/*.patch; all tasks share the same 90-min agent timeout,
 # so patch size is the difficulty differentiator). Selected 2026-07-21.
