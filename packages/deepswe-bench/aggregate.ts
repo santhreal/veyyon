@@ -192,6 +192,48 @@ export function noRewardError(reward: number | null): boolean {
 	return !Number.isFinite(reward ?? Number.NaN);
 }
 
+/**
+ * A "hard error" is a trial the agent never produced any output for: an error is
+ * recorded AND no session was parsed, so `outputTokens` is null. This is the
+ * signature of a SYSTEMATIC config failure — an unservable model id, a bad auth
+ * DB, a missing binary — where the agent process died before running. It is
+ * deliberately distinct from a SCORED FAIL (real output, `reward` 0, error null)
+ * and from a partial/timed-out run that still produced tokens: those reflect the
+ * task or the arm, and must never trip the fail-fast canary. Keeping the predicate
+ * here (one place) lets the canary and any future report annotation agree on what
+ * "the agent never ran" means.
+ */
+export function isHardError(result: { error: string | null; outputTokens: number | null }): boolean {
+	return result.error !== null && result.outputTokens === null;
+}
+
+/**
+ * The single most common failure reason across a set of hard-error strings, for
+ * the fail-fast canary's abort message. Each string is the agent-side reason the
+ * bench captured (e.g. `Model "…" not found`); this returns the mode so the
+ * operator sees the ONE cause that is killing every run, not a wall of repeats.
+ * Ties break toward the first-seen reason (stable across identical counts). An
+ * empty input returns a generic message rather than throwing, since the caller
+ * only reaches it when at least one hard error exists.
+ */
+export function mostCommonAgentReason(reasons: readonly string[]): string {
+	const counts = new Map<string, number>();
+	for (const raw of reasons) {
+		const reason = raw.trim();
+		if (reason === "") continue;
+		counts.set(reason, (counts.get(reason) ?? 0) + 1);
+	}
+	let best: string | null = null;
+	let bestCount = 0;
+	for (const [reason, count] of counts) {
+		if (count > bestCount) {
+			best = reason;
+			bestCount = count;
+		}
+	}
+	return best ?? "(no agent-side reason captured; check a failed job's agent/veyyon.txt)";
+}
+
 export function classifyError(error: string): string {
 	// A verifier-no-reward is a runner-side string with no exception_type; give it its
 	// own stable label so a scorer outage shows as a distinct, comparable failure mode

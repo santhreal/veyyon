@@ -26,5 +26,7 @@
 argot:
   enabled: true
   models:
-    - gemini-3.6-flash
+    # The sandbox-servable flash model (see run.ts and full.yml): the 3.6 family is
+    # live-discovery-gated and does not resolve in the offline bench container.
+    - gemini-3.5-flash
   tokenBudget: 16000
