@@ -302,6 +302,25 @@ export function planSentinelRewrite(prevVersion: string, nextVersion: string): {
 }
 
 /**
+ * Classify lib.rs' sentinel state for a cut of `sentinelName` (previous release
+ * emitted `prevSentinelName`). `rewrite`: the ordinary cut — lib.rs still emits
+ * the previous sentinel and the rename applies. `alreadyBumped`: a RE-CUT of a
+ * version whose bump commit already landed on main but whose tag died before
+ * publish (dead-tag delete, v1.0.37 2026-07-24) — the tree is already correct
+ * and the cut must proceed without rewriting. `missing`: neither sentinel is
+ * present — a genuinely inconsistent tree the cut must refuse.
+ */
+export function classifySentinelBumpState(
+	libRsText: string,
+	prevSentinelName: string,
+	sentinelName: string,
+): "rewrite" | "alreadyBumped" | "missing" {
+	if (libRsText.includes(`js_name = "${prevSentinelName}"`)) return "rewrite";
+	if (libRsText.includes(`js_name = "${sentinelName}"`)) return "alreadyBumped";
+	return "missing";
+}
+
+/**
  * True for a source file the sentinel rewrite must NEVER touch even when it holds
  * the previous sentinel. Test files carry the sentinel as an intentional
  * historical FIXTURE (a `.toBe("__veyyonNativesV<prev>")` where `<prev>` is a
@@ -455,7 +474,9 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 			sentinelFiles.push(file);
 		}
 	}
-	if (!sentinelFiles.includes("crates/veyyon-natives/src/lib.rs")) {
+	const libRsBefore = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
+	const sentinelState = classifySentinelBumpState(libRsBefore, prevSentinelName, sentinelName);
+	if (sentinelState === "missing") {
 		console.error(
 			`Error: could not locate the previous veyyon-natives sentinel ${prevSentinelName} in ` +
 				"crates/veyyon-natives/src/lib.rs. It must currently emit the previous release's sentinel; " +
@@ -463,16 +484,24 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		);
 		process.exit(1);
 	}
-	await $`sd -F ${prevSentinelName} ${sentinelName} ${sentinelFiles}`;
-	const libRs = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
-	if (!libRs.includes(`js_name = "${sentinelName}"`)) {
-		console.error(
-			`Error: veyyon-natives version sentinel did not move to ${sentinelName} in crates/veyyon-natives/src/lib.rs. ` +
-				"The `__veyyonNativesV…` literal may have been removed or renamed; restore it before releasing.",
-		);
-		process.exit(1);
+	if (sentinelState === "alreadyBumped") {
+		// Re-cut tolerance: a prior cut of this exact version landed its bump
+		// commit on main but its tag died before publish (dead-tag delete,
+		// v1.0.37 2026-07-24). The tree is already correct; failing here wedges
+		// the whole release train.
+		console.log(`  sentinel: ${sentinelName} (already bumped by a prior cut of v${version})\n`);
+	} else {
+		await $`sd -F ${prevSentinelName} ${sentinelName} ${sentinelFiles}`;
+		const libRs = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
+		if (!libRs.includes(`js_name = "${sentinelName}"`)) {
+			console.error(
+				`Error: veyyon-natives version sentinel did not move to ${sentinelName} in crates/veyyon-natives/src/lib.rs. ` +
+					"The `__veyyonNativesV…` literal may have been removed or renamed; restore it before releasing.",
+			);
+			process.exit(1);
+		}
+		console.log(`  sentinel: ${sentinelName}\n`);
 	}
-	console.log(`  sentinel: ${sentinelName}\n`);
 
 	// 4. Regenerate lockfiles
 	console.log("Regenerating lockfiles...");
@@ -508,10 +537,19 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	await $`bun run check`;
 	console.log();
 
-	// 7. Commit
+	// 7. Commit. A re-cut of a version whose bump commit already landed (dead
+	// tag deleted after a failed publish) can produce a zero diff here — every
+	// version/sentinel/changelog write above was an idempotent no-op. `git
+	// commit` on an empty tree fails and would wedge the train on a state that
+	// is already correct, so tag the existing HEAD instead.
 	console.log("Committing...");
 	await git(["add", "."]);
-	await git(["commit", "-m", `chore: bump version to ${version}`]);
+	const staged = (await git(["status", "--porcelain"]).text()).trim();
+	if (staged.length === 0) {
+		console.log(`  nothing to commit (a prior cut of v${version} already landed the bump); tagging HEAD`);
+	} else {
+		await git(["commit", "-m", `chore: bump version to ${version}`]);
+	}
 	console.log();
 
 	// 8. Tag, then push branch + tag atomically — pushing the tag by object id.

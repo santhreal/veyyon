@@ -228,6 +228,11 @@ jobs:
               set -euo pipefail
               title="Release train red: the release cut failed (gate=$GATE_RESULT, release=$RELEASE_RESULT)"
               body=$(printf 'The release CUT failed before any tag was published (gate=%s, release=%s).\n\nRun: %s\n\nNo new version ships until a green cut; the next successful publish closes this issue automatically.' "$GATE_RESULT" "$RELEASE_RESULT" "$RUN_URL")
+              # Self-heal the label: `gh issue create --label` hard-fails when the
+              # label does not exist, which killed this alert on 2026-07-24 — a
+              # dead alert is the worst failure mode this job can have.
+              gh label create release-train --repo "$GITHUB_REPOSITORY" \
+                --description "Pinned release-train status issue" --color D93F0B --force
               existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-train --state open --json number --jq '.[0].number // empty')
               if [ -n "$existing" ]; then
                 gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"

@@ -13,7 +13,7 @@
  * come back.
  */
 import { describe, expect, it } from "bun:test";
-import { isSentinelRewriteExcluded, planSentinelRewrite, sentinelExportName } from "./release.ts";
+import { classifySentinelBumpState, isSentinelRewriteExcluded, planSentinelRewrite, sentinelExportName } from "./release.ts";
 
 describe("sentinelExportName", () => {
 	it("maps a clean semver to its sentinel export symbol", () => {
@@ -122,5 +122,43 @@ describe("isSentinelRewriteExcluded — the file scope of the rewrite", () => {
 		// corruption that failed the native bucket.
 		expect(blanketRewritten).toContain("__veyyonNativesV1_0_17");
 		expect(blanketRewritten).not.toContain("__veyyonNativesV1_0_14");
+	});
+});
+
+describe("classifySentinelBumpState — re-cut tolerance after a dead tag", () => {
+	// Why this suite exists: the v1.0.37 tag was cut (bump commit landed on
+	// main) but its publish died and the tag was deleted. The next cut targeted
+	// the SAME version, found lib.rs already emitting the new sentinel, and the
+	// old must-hold-the-previous-sentinel check wedged the entire release train
+	// (2026-07-24, run 30076034379). These tests lock the three-way
+	// classification that lets a re-cut proceed while still refusing a
+	// genuinely inconsistent tree.
+	const prev = "__veyyonNativesV1_0_36";
+	const next = "__veyyonNativesV1_0_37";
+
+	it("classifies an ordinary cut (lib.rs still emits the previous sentinel) as rewrite", () => {
+		const libRs = `#[napi(js_name = "${prev}")]\npub fn version_sentinel() {}\n`;
+		expect(classifySentinelBumpState(libRs, prev, next)).toBe("rewrite");
+	});
+
+	it("classifies a dead-tag re-cut (lib.rs already emits the new sentinel) as alreadyBumped", () => {
+		// The exact v1.0.37 state: a prior cut of the same version already
+		// renamed the sentinel; the tree is correct and the cut must proceed.
+		const libRs = `#[napi(js_name = "${next}")]\npub fn version_sentinel() {}\n`;
+		expect(classifySentinelBumpState(libRs, prev, next)).toBe("alreadyBumped");
+	});
+
+	it("classifies a tree with neither sentinel as missing (the cut must refuse)", () => {
+		const libRs = `#[napi(js_name = "__veyyonNativesV1_0_30")]\npub fn version_sentinel() {}\n`;
+		expect(classifySentinelBumpState(libRs, prev, next)).toBe("missing");
+	});
+
+	it("requires the sentinel as a js_name emission, not a stray literal", () => {
+		// A comment or fixture mentioning the new sentinel must not read as
+		// alreadyBumped: only the actual `js_name = "…"` emission counts.
+		const libRs = `// history: ${next} ships next\n#[napi(js_name = "${prev}")]\npub fn version_sentinel() {}\n`;
+		expect(classifySentinelBumpState(libRs, prev, next)).toBe("rewrite");
+		const strayOnly = `// mentions ${next} in prose only\n`;
+		expect(classifySentinelBumpState(strayOnly, prev, next)).toBe("missing");
 	});
 });
