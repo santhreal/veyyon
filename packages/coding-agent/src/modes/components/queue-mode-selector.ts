@@ -12,6 +12,7 @@ export class QueueModeSelectorComponent {
 		currentMode: "all" | "one-at-a-time",
 		onSelect: (mode: "all" | "one-at-a-time") => void,
 		onCancel: () => void,
+		reveal?: boolean,
 	) {
 		const queueModes: SelectItem[] = [
 			{
@@ -29,6 +30,7 @@ export class QueueModeSelectorComponent {
 				theme: getSelectListTheme(),
 				selectedIndex: currentIndex,
 				maxVisible: 2,
+				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value as "all" | "one-at-a-time"),
