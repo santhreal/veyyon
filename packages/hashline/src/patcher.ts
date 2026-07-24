@@ -338,6 +338,24 @@ export class Patcher {
 		const lineEnding = detectLineEnding(text);
 		const normalized = normalizeToLF(text);
 
+		// Deleting a whole file is irreversible, so REM must be the STRICTEST op about
+		// the content tag, not the most lenient. Without this check a REM whose live
+		// content no longer hashes to its tag (the file changed since the model read
+		// it — an external edit, or a stale/fabricated tag) slips through
+		// #applyWithRecovery: empty edits carry no anchor, so the "head/tail inserts
+		// are position-stable" branch treats the drift as non-fatal and returns with a
+		// soft warning, and commit then deletes the drifted file — destroying content
+		// the model never saw. Reject on drift and force a re-read, exactly as an
+		// anchored edit on a drifted file does. A 16-bit tag match (liveMatches) is the
+		// same trust boundary every other op uses.
+		if (fileOp?.kind === "rem") {
+			const expected = target.fileHash as string;
+			if (computeFileHash(normalized) !== expected) {
+				const hashRecognized = this.snapshots.byHash(canonicalPath, expected) !== null;
+				throw this.#mismatchError(target, canonicalPath, normalized, expected, hashRecognized);
+			}
+		}
+
 		const applyResult =
 			fileOp?.kind === "rem"
 				? this.#applyWithRecovery({
