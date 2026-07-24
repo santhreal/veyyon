@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Added `tools.maxTimeout` setting to enforce a global timeout ceiling across all tool calls, including those where the agent omits the timeout field.
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed
