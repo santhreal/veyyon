@@ -54,6 +54,19 @@ describe("normalizeBaseUrl", () => {
 		expect(normalizeBaseUrl("   ")).toBeUndefined();
 		expect(normalizeBaseUrl("https://api.anthropic.com/")).toBe("https://api.anthropic.com");
 	});
+
+	// Regression (found by url.property.test.ts): the leading `.trim()` cannot see
+	// whitespace hiding IN FRONT of a trailing slash, so stripping that slash used
+	// to re-expose the space and emit a base URL ending in whitespace
+	// ("http://x /" -> "http://x "), which breaks every URL join. The trailing run
+	// of slashes-and-whitespace must be removed together so the result is fully
+	// trimmed and slash-free no matter how the two interleave at the end.
+	it("strips whitespace exposed behind a trailing slash (no trailing space survives)", () => {
+		expect(normalizeBaseUrl("http://x /", "")).toBe("http://x");
+		expect(normalizeBaseUrl("http://x / ", "")).toBe("http://x");
+		expect(normalizeBaseUrl("https://api.example.com/v1/ /", "")).toBe("https://api.example.com/v1");
+		expect(normalizeBaseUrl("https://api.example.com/v1 / \t /", "")).toBe("https://api.example.com/v1");
+	});
 });
 
 // `URL_SCHEME_PREFIX_RE` / `hasUrlScheme` / `urlScheme` are the ONE owner for

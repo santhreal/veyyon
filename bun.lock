@@ -349,6 +349,7 @@
       },
       "devDependencies": {
         "@types/bun": "catalog:",
+        "fast-check": "4.9.0",
       },
     },
     "packages/wire": {
