@@ -11,7 +11,7 @@ path = "src/lib.rs"
 # Interpreter libraries from crates.io, pinned as upstream jaq v2.3.0 pins them.
 jaq-core = "2.1.1"
 jaq-std = "2.1.0"
-jaq-json = "1.1.1"
+jaq-json = "2.0.1"
 
 codesnake = "0.2"
 hifijson = "0.2.0"
