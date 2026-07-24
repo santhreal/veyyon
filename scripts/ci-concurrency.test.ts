@@ -322,3 +322,55 @@ describe("ci.yml concurrency", () => {
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("true");
 	});
 });
+
+// The same scheduling-time cancellation bug bit the SIBLING workflows on
+// 2026-07-24: checks.yml / security.yml / docs.yml still used branch-wide
+// `cancel-in-progress: true`, so the v1.0.36 release sha had its Checks and
+// Security runs cancelled by the next main push and the release published
+// without lint or secret-scan ever completing on it. The fix copies ci.yml's
+// release-detection expression into each sibling (GitHub cannot share
+// concurrency expressions across workflow files). This suite locks two
+// contracts: (1) each sibling resolves release shas to a per-sha no-cancel
+// group and normal pushes to a cancellable branch group, and (2) the copies
+// stay BYTE-IDENTICAL to ci.yml's expression, so a future edit to one file
+// cannot silently drift the others (the lockstep rule the comments demand).
+const SIBLINGS = ["checks", "security", "docs"] as const;
+
+function extractConcurrency(yaml: string, file: string): { group: string; cancel: string } {
+	const section = yaml.slice(yaml.indexOf("\nconcurrency:") + 1);
+	const groupRaw = /^\s*group:\s*(\S.*?)\s*$/m.exec(section)?.[1];
+	const cancelRaw = /^\s*cancel-in-progress:\s*(\S.*?)\s*$/m.exec(section)?.[1];
+	const unwrap = (s: string | undefined) => (s?.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s);
+	const group = unwrap(groupRaw);
+	const cancel = unwrap(cancelRaw);
+	if (!group || !cancel) throw new Error(`could not locate concurrency in ${file}`);
+	return { group, cancel };
+}
+
+describe("sibling workflow concurrency stays in release lockstep with ci.yml", () => {
+	for (const name of SIBLINGS) {
+		const file = path.resolve(import.meta.dir, "..", ".github", "workflows", `${name}.yml`);
+
+		it(`${name}.yml: release-bump push resolves to a per-sha group with cancellation off`, async () => {
+			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
+			const ctx = baseCtx({ event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nbody` } } });
+			expect(GhaEval.template(group, ctx)).toBe(`${name}-release-deadbeefcafebabe`);
+			expect(GhaEval.template(cancel, ctx)).toBe("false");
+		});
+
+		it(`${name}.yml: ordinary main push keeps the cancellable branch-wide group`, async () => {
+			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
+			const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
+			expect(GhaEval.template(group, ctx)).toBe(`${name}-refs/heads/main`);
+			expect(GhaEval.template(cancel, ctx)).toBe("true");
+		});
+
+		it(`${name}.yml: expression is byte-identical to ci.yml's (drift guard)`, async () => {
+			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
+			// ci.yml prefixes with `${{ github.workflow }}-`; siblings hardcode
+			// their name. Everything after the prefix must match ci.yml exactly.
+			expect(group).toBe(`${name}-${groupTemplate.replace("${{ github.workflow }}-", "")}`);
+			expect(cancel).toBe(cancelTemplate);
+		});
+	}
+});

@@ -116,6 +116,7 @@ const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
 // unmatched filters when at least one other filter matches.)
 const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
+	"scripts/release-train-contracts.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/ci-release-notes.test.ts",
 	"scripts/release-watch.test.ts",

@@ -4,15 +4,19 @@
 # commit, tag and push.
 #
 # Two triggers, one job:
-#   - push to main: auto-release. The gate below cuts a `patch` release whenever
-#     a publishable package has an `## [Unreleased]` changelog bullet waiting
-#     (see scripts/has-releasable-changes.ts). This is what keeps releases
-#     frequent instead of piling up. It is self-limiting: release.ts empties the
-#     Unreleased section when it cuts the release, so the bump commit it pushes
-#     is not itself releasable and never loops, and a docs/chore-only merge with
-#     no bullet does not release.
+#   - workflow_run on a completed main CI run: auto-release, but only off a GREEN
+#     run. Releasing on raw push tagged shas whose tests then failed: v1.0.28
+#     through v1.0.35 were each tagged before ci.yml had tested the sha, two red
+#     packages/utils tests killed every publish downstream, and `releases/latest`
+#     sat at v1.0.27 while the tags marched on. Gating on the CI conclusion means
+#     a red main can never grow a release tag. The gate below then cuts a `patch`
+#     release whenever a publishable package has an `## [Unreleased]` changelog
+#     bullet waiting (see scripts/has-releasable-changes.ts). It is self-limiting:
+#     release.ts empties the Unreleased section when it cuts the release, so the
+#     bump commit it pushes is not itself releasable and never loops, and a
+#     docs/chore-only merge with no bullet does not release.
 #   - workflow_dispatch: manual release of an explicit version (major/minor/patch
-#     or x.y.z), bypassing the releasable gate.
+#     or x.y.z), bypassing both the green-CI gate and the releasable gate.
 #
 # The push is where this workflow stops. `ci.yml` recognizes the release commit
 # and tag and owns everything downstream: the platform binaries, the GitHub
@@ -21,7 +25,9 @@
 name: Release
 
 on:
-   push:
+   workflow_run:
+      workflows: [CI]
+      types: [completed]
       branches: [main]
    workflow_dispatch:
       inputs:
@@ -49,6 +55,9 @@ jobs:
    gate:
       name: Decide release
       runs-on: ubuntu-22.04
+      # Only a GREEN CI run may auto-release. A failed/cancelled run ends here;
+      # ci.yml's release_train_alert owns making that failure loud.
+      if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
       outputs:
          should-release: ${{ steps.decide.outputs.should-release }}
          version: ${{ steps.decide.outputs.version }}
@@ -63,8 +72,9 @@ jobs:
            env:
               EVENT_NAME: ${{ github.event_name }}
               DISPATCH_VERSION: ${{ inputs.version }}
-              # Only defined for push events; empty on dispatch.
-              HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+              # Only defined for workflow_run events; empty on dispatch.
+              HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+              CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
            run: |
               set -euo pipefail
               if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -73,7 +83,16 @@ jobs:
                 echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
-              # Push path. Never release the release script's own bump commit
+              # The gate releases main HEAD, so the green CI run must BE main
+              # HEAD. If main advanced past the run's sha, a newer CI run is
+              # already in flight and its completion will re-enter this gate;
+              # releasing here would ship commits CI has not finished testing.
+              main_head=$(git rev-parse HEAD)
+              if [ "$CI_HEAD_SHA" != "$main_head" ]; then
+                echo "green CI run is for $CI_HEAD_SHA but main is at $main_head; deferring to the newer run's gate."
+                echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # Never release the release script's own bump commit
               # (it empties Unreleased, so the releasable check below would also
               # say no — this is the explicit, documented guard against a loop).
               subject="$(printf '%s' "$HEAD_COMMIT_MESSAGE" | head -n1)"

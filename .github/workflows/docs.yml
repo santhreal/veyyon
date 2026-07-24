@@ -22,9 +22,11 @@ on:
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
+# Release shas keep their docs gates: byte-equivalent copy of ci.yml's
+# release-detection concurrency (see checks.yml/ci.yml comments; keep in lockstep).
 concurrency:
-  group: "docs-${{ github.ref }}"
-  cancel-in-progress: true
+  group: "docs-${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && format('release-{0}', github.sha) || github.ref }}"
+  cancel-in-progress: "${{ !(startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}"
 
 permissions:
   contents: read
@@ -38,10 +40,10 @@ jobs:
       # commit (`git cat-file -e <sha>`) and its last-edit date (`git log`). A
       # shallow (depth-1) checkout has only the tip commit, so every stamp sha
       # reads as "does not exist" and every doc looks edited at the tip date.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.14"
       - name: Checker self-tests
@@ -59,8 +61,8 @@ jobs:
     name: Docs vs code truth
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.14"
       - name: Install workspace
@@ -83,7 +85,7 @@ jobs:
     name: Handbook book freshness
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install mdbook
         run: |
           mkdir -p "$HOME/.local/bin"

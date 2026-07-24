@@ -21,9 +21,11 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+# Release shas keep their security gates: byte-equivalent copy of ci.yml's
+# release-detection concurrency (see checks.yml/ci.yml comments; keep in lockstep).
 concurrency:
-  group: "security-${{ github.ref }}"
-  cancel-in-progress: true
+  group: "security-${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && format('release-{0}', github.sha) || github.ref }}"
+  cancel-in-progress: "${{ !(startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}"
 
 permissions:
   contents: read
@@ -33,7 +35,7 @@ jobs:
     name: Secret scan (keyhog)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install Hyperscan runtime
         # keyhog links libhyperscan (libhs.so.5) for its regex engine; it isn't
         # preinstalled on the runner.
@@ -107,9 +109,9 @@ jobs:
     name: Supply chain (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7572810d7dd469b651bb7793945692cf78da5dd7 # v2.85.0
         with:
           tool: cargo-deny
       - name: cargo deny check
@@ -120,9 +122,9 @@ jobs:
     name: RUSTSEC audit (cargo-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7572810d7dd469b651bb7793945692cf78da5dd7 # v2.85.0
         with:
           tool: cargo-audit
       - name: cargo audit
@@ -134,7 +136,7 @@ jobs:
     name: npm advisory audit (bun)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/bun-install
       - name: bun audit
         # Fail on any advisory of high severity or worse in the JS/TS graph.
@@ -148,17 +150,17 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
         with:
           languages: javascript-typescript
           # security-and-quality adds maintainability/correctness queries on top
           # of the default security suite.
           queries: security-and-quality
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
       - name: Analyze
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
         with:
           category: "/language:javascript-typescript"

@@ -112,7 +112,7 @@
     "build:native": "bun --cwd=packages/natives run build",
     "test": "bun scripts/ci-test-ts.ts local",
     "test:ts": "bun scripts/ci-test-ts.ts local-ts",
-    "test:scripts": "bun test scripts/ci-build-native.test.ts scripts/ci-concurrency.test.ts scripts/ci-release-build-binaries.test.ts scripts/ci-release-notes.test.ts scripts/link-veyyon.test.ts",
+    "test:scripts": "bun test scripts/ci-build-native.test.ts scripts/ci-concurrency.test.ts scripts/release-train-contracts.test.ts scripts/ci-release-build-binaries.test.ts scripts/ci-release-notes.test.ts scripts/link-veyyon.test.ts",
     "test:rs": "bun scripts/run-rs-task.ts test:rs",
     "check": "bun run --parallel check:ts check:rs",
     "check:ts": "bun run --workspaces --if-present check:types",
