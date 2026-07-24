@@ -332,6 +332,13 @@ const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
 	// staging-sibling naming convention (`profiles/.name.<pid>.tmp`) in docs and
 	// validation, not a temp-write. Nothing here copies the owner's logic.
 	["utils/src/dirs.ts", "directory-entry moves + staging-name validation, not a temp-file write"],
+	// hashline is a lean patch library that deliberately imports no `@veyyon/*`
+	// (its consuming builds pin the published crate and exclude the vendored copy),
+	// so it cannot route through the owner without dragging utils' heavy transitive
+	// deps into it. `writeFileAtomic` there is a documented node:fs-only copy kept in
+	// sync with the owner by behavior, not by import; unifying the two behind a
+	// genuinely zero-dependency shared home is tracked as ONE-PLACE-ATOMIC-WRITE-UNIFY.
+	["hashline/src/fs.ts", "lean dependency-free patch library; documented node:fs-only copy, cannot import the owner"],
 ]);
 
 const RENAME_CALL = /\brename(?:Sync)?\s*\(/;
