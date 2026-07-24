@@ -600,6 +600,19 @@ pub fn remove(files: &[&OsStr], options: &Options) -> bool {
 	for filename in files {
 		let file = Path::new(filename);
 
+		// An empty operand can never name a real file. Guard it before
+		// `veyyon_uutils_ctx::resolve`, which joins "" onto the shell's working
+		// directory — without this, `rm -rf ""` resolves to the cwd and
+		// recursively deletes it. GNU rm reports ENOENT for an empty operand
+		// (and `rm -f` stays silent), so mirror that here.
+		if filename.is_empty() {
+			if !options.force {
+				show_error!("{}", RmError::CannotRemoveNoSuchFile(filename.to_os_string()));
+				had_err = true;
+			}
+			continue;
+		}
+
 		// Check if the path (potentially with trailing slash) resolves to root
 		// This needs to happen before symlink_metadata to catch cases like "rootlink/"
 		// where rootlink is a symlink to root.
@@ -1110,5 +1123,58 @@ mod tests {
 		let path = Path::new("/////");
 
 		assert_eq!(Path::new("/"), clean_trailing_slashes(path));
+	}
+
+	/// Regression: `rm -rf ""` must never delete the shell working directory.
+	///
+	/// An empty operand used to reach `veyyon_uutils_ctx::resolve`, which joins ""
+	/// onto the cwd and yields the cwd itself, so `-rf` recursively removed it
+	/// (issue #6287). The builtin now rejects the empty operand before
+	/// resolution, leaving the cwd and its contents intact.
+	#[test]
+	fn empty_operand_does_not_delete_cwd() {
+		use std::{
+			collections::HashMap,
+			ffi::OsString,
+			sync::{
+				Arc,
+				atomic::{AtomicBool, AtomicU32, Ordering},
+			},
+			time::{SystemTime, UNIX_EPOCH},
+		};
+
+		use veyyon_uutils_ctx::{ScopeIo, scope};
+
+		// Unique disposable working directory with a sentinel file inside it.
+		static COUNTER: AtomicU32 = AtomicU32::new(0);
+		let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+		let cwd = std::env::temp_dir()
+			.join(format!("veyyon-rm-empty-{}-{}-{}", std::process::id(), nanos, seq));
+		std::fs::create_dir_all(&cwd).unwrap();
+		let sentinel = cwd.join("sentinel");
+		std::fs::write(&sentinel, b"keep me").unwrap();
+
+		let io = ScopeIo {
+			stdin:                 Box::new(std::io::empty()),
+			stdin_fd:              None,
+			stdin_is_search_input: false,
+			stdout:                Box::new(std::io::sink()),
+			stderr:                Box::new(std::io::sink()),
+			cwd:                   cwd.clone(),
+			env:                   HashMap::new(),
+			cancel:                Arc::new(AtomicBool::new(false)),
+		};
+
+		let args =
+			vec![OsString::from("rm"), OsString::from("-rf"), OsString::new()];
+		let code = scope(io, || crate::run(args));
+
+		// `rm -f` swallows the empty-operand error, matching GNU rm's exit 0.
+		assert_eq!(code, 0, "rm -rf \"\" should exit 0 under --force");
+		assert!(cwd.is_dir(), "working directory must survive rm -rf \"\"");
+		assert!(sentinel.is_file(), "sentinel must survive rm -rf \"\"");
+
+		std::fs::remove_dir_all(&cwd).ok();
 	}
 }
