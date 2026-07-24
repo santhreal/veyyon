@@ -133,6 +133,32 @@ verifier reports), `results.json` (every metric, machine-readable), and
   significant), 6-0 is p=0.03125. The **Δ 95% CI** column is a normal-approximation
   effect-size aid; at a small task count trust the sign-test verdict, not the CI.
   A winner is named only at p<0.05.
+- **Efficiency comparison (paired by task)** — the section that measures a
+  compression feature's actual claim: fewer tokens (and less cost) at equal
+  reward. For each arm pair it takes the per-task delta on output tokens and on
+  cost (B minus A, negative means B is cheaper) and runs the same exact sign
+  test. The verdict is guarded by the pass-rate comparison above: B is called an
+  efficiency win only when it is significantly cheaper AND the pass-rate test did
+  not find B worse, so "cheaper because it gave up and did less" cannot read as a
+  win.
+- **Argot treatment applied? (per arm)** — proof the treatment fired before you
+  trust any token delta. It shows, per arm, the mean `argot_load` calls, the mean
+  assistant messages that carried a `§` handle, and the fraction of runs that
+  encoded at all. A `full` arm whose row is all zeros means encode never
+  happened (for example the model was not on the allowlist), so a "no token
+  savings" result would be inert, not a real null. Encode is detected wherever a
+  handle can land — a text block OR a tool call's arguments (commands and diffs
+  carry handles too), not prose alone.
+- **Errors (per arm)** — every sample that crashed or was refused, grouped by
+  reason, across all arms including those with zero errors. An errored sample is
+  excluded from every rate and mean above, so an arm that errors more is measured
+  on fewer, possibly easier samples: a delta against it can be a selection effect.
+  A provider content-filter stop is named by its finish reason (for example
+  `NonZeroAgentExitCodeError (PROHIBITED_CONTENT)`), because a refusal that tracks
+  one arm — say an injected preamble — is a confound you must see, not an
+  anonymous "+N err". If one arm shows a refusal asymmetry, raise `--repeats` so a
+  single flake does not decide the comparison, and read whether the asymmetry
+  persists.
 - **Argot probes** (feature-specific metadata) — how many times the agent
   called `argot_load` and how many assistant messages carried a `§` handle.
   Probe rows only appear for arms that engaged the mechanism; every feature

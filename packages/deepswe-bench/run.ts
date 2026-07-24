@@ -42,10 +42,12 @@ import * as path from "node:path";
 import YAML from "yaml";
 import {
 	type ArmResult,
+	blockContainsSigil,
 	effectiveTemperature,
 	jobNameOf,
 	PINNED_TEMPERATURE,
 	parseJobName,
+	providerFinishReason,
 	renderReport,
 	selectTasks,
 } from "./aggregate";
@@ -165,8 +167,10 @@ function parseSessionsUsage(trialDir: string): Partial<ArmResult> | null {
 				cacheTokens += ((usage.cacheRead as number) || 0) + ((usage.cacheWrite as number) || 0);
 				costUsd += (usage.cost as Record<string, number>)?.total || 0;
 				const content = (message.content ?? []) as Array<Record<string, unknown>>;
-				if (content.some(b => typeof b === "object" && String(b.text ?? "").includes("\u00a7")))
-					assistantMsgsWithSigil++;
+				// Count encode wherever a handle can land: a text block OR a tool
+				// call's arguments (commands and diffs carry handles too). See
+				// blockContainsSigil \u2014 scanning text only would undercount encode.
+				if (content.some(b => blockContainsSigil(b))) assistantMsgsWithSigil++;
 				for (const block of content) {
 					if (typeof block === "object" && block.type === "toolCall" && typeof block.name === "string") {
 						toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
@@ -238,7 +242,22 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.agentSeconds =
 			(Date.parse(trial.agent_execution.finished_at) - Date.parse(trial.agent_execution.started_at)) / 1000;
 	}
-	if (trial.exception_info) result.error = JSON.stringify(trial.exception_info).slice(0, 300);
+	if (trial.exception_info) {
+		let err = JSON.stringify(trial.exception_info).slice(0, 300);
+		// pier's exception_info carries the failed command, not WHY the model
+		// stopped. A provider content-filter stop (finish reason PROHIBITED_CONTENT /
+		// SAFETY / RECITATION) is written to the agent's own log, so read its tail and
+		// fold the finish reason into the error. This lets classifyError separate a
+		// provider refusal from a genuine crash — an asymmetry that would otherwise be
+		// invisible and could silently bias an arm comparison.
+		const agentLog = path.join(trialDirPath, "agent", "veyyon.txt");
+		if (fs.existsSync(agentLog)) {
+			const tail = fs.readFileSync(agentLog, "utf8").slice(-2000);
+			const finish = providerFinishReason(tail);
+			if (finish) err += ` finish_reason: ${finish}`;
+		}
+		result.error = err;
+	}
 	return result;
 }
 

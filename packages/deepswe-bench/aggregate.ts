@@ -15,6 +15,83 @@
  * zero-width standard error a boundary cell produces.
  */
 
+import { DEFAULT_SIGIL } from "argot";
+
+/**
+ * Whether an assistant content block carries an argot handle (a `§name` token).
+ *
+ * This is the primitive behind the "did the encode treatment fire" probe. The
+ * subtlety it exists to fix: encode does NOT only surface in prose. The argot
+ * preamble tells the model to write a handle "in prose, a command, or a diff", so
+ * on a coding agent a handle most often lands inside a tool call's `arguments` (a
+ * shell command string, an edit diff), NOT a text block. A probe that scanned only
+ * text blocks would undercount encode and could read a heavy-encode arm as
+ * `0 encoded`, which would falsely conclude the treatment never fired and silently
+ * invalidate every token delta. So this checks the text block AND the serialized
+ * tool-call arguments. The sigil is argot's own {@link DEFAULT_SIGIL} (one place —
+ * the bench never customizes it, and a divergence would show up as zero encoded
+ * rows rather than a wrong count).
+ */
+export function blockContainsSigil(block: unknown, sigil: string = DEFAULT_SIGIL): boolean {
+	if (typeof block !== "object" || block === null) return false;
+	const b = block as Record<string, unknown>;
+	if (typeof b.text === "string" && b.text.includes(sigil)) return true;
+	if (b.type === "toolCall" && b.arguments !== undefined) {
+		try {
+			return JSON.stringify(b.arguments).includes(sigil);
+		} catch {
+			// A non-serializable arguments object (cycles) cannot carry a plain
+			// handle string we could have counted; treat it as sigil-free rather
+			// than throwing out of a read-only probe.
+			return false;
+		}
+	}
+	return false;
+}
+
+/**
+ * Extract a provider "finish reason" (e.g. `PROHIBITED_CONTENT`, `SAFETY`,
+ * `RECITATION`) from captured agent output, if one is present.
+ *
+ * These are content-filter / policy stops: the provider aborts generation
+ * mid-turn and the agent process exits non-zero, which the bench records as an
+ * errored (excluded) sample. Naming the reason matters because a provider refusal
+ * is NOT the same failure as a genuine agent crash, and — critically — a refusal
+ * that hits one arm more than another is a confound (or, if it tracks the
+ * treatment such as an injected preamble, a real effect). Either way it must be
+ * distinguishable, not folded into a generic error bucket. Returns null when no
+ * finish-reason marker is found. Matches both `finish reason:` and `finish_reason`.
+ */
+export function providerFinishReason(text: string): string | null {
+	const m = text.match(/finish[ _]reason:?\s*([A-Z][A-Z_]{2,})/);
+	return m ? (m[1] as string) : null;
+}
+
+/**
+ * Group an errored sample under a short, comparable failure label.
+ *
+ * The stored error is either pier's stringified `exception_info`
+ * (`{"exception_type":"…","exception_message":"…"}`) or a runner-side string
+ * (a timeout, a pier exit line). This pulls out a stable label — the exception
+ * type, refined with a provider finish reason when one is embedded — so the
+ * report can show WHICH failure mode hit each arm and expose an asymmetry rather
+ * than an anonymous count. Never throws on non-JSON input.
+ */
+export function classifyError(error: string): string {
+	const finish = providerFinishReason(error);
+	let base = "other";
+	// Regex rather than JSON.parse: run.ts appends a recovered `finish_reason: …`
+	// after the exception_info JSON, so the whole string is not valid JSON. Pulling
+	// the type out directly stays robust to that (and to any trailing pier text).
+	const typeMatch = error.match(/"exception_type"\s*:\s*"([^"]+)"/);
+	if (typeMatch) {
+		base = typeMatch[1] as string;
+	} else if (/timed out/i.test(error)) {
+		base = "timeout";
+	}
+	return finish ? `${base} (${finish})` : base;
+}
+
 /**
  * The job name is the single identifier for a container run, a config file, and a
  * jobs/ subdirectory, so its format lives in exactly this pair of functions and
@@ -572,6 +649,34 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 					`| ${m.label} | ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} ${m.unit} | ${ci} | ${cheaperB}/${dearerB}/${d.ties} | ${d.signTestP.toFixed(3)} | ${verdict} |`,
 				);
 			}
+		}
+	}
+	// Errors (per arm): a crashed or provider-refused sample is EXCLUDED from every
+	// rate and mean above, so an arm that errors more is silently measured on fewer
+	// (and possibly easier) samples. If a content-filter refusal or a crash hits one
+	// arm more than another — most of all if it tracks the treatment, e.g. an
+	// injected preamble — a token or pass-rate delta against that arm may be a
+	// selection effect, not a real difference. This groups every excluded sample by
+	// failure reason across ALL arms (including arms with zero errors, so the
+	// asymmetry is visible), turning an anonymous "+N err" count into evidence.
+	const errored = results.filter(r => r.error);
+	if (errored.length > 0) {
+		const reasons = [...new Set(errored.map(r => classifyError(r.error as string)))].sort();
+		lines.push("");
+		lines.push("## Errors (per arm)");
+		lines.push("");
+		lines.push(
+			"Each sample counted here is EXCLUDED from every rate and mean above. Watch for an asymmetry: " +
+				"an arm that refuses or crashes more is measured on fewer samples, so a delta against it can be a " +
+				"selection effect rather than a real effect of the arm.",
+		);
+		lines.push("");
+		lines.push(`| arm | total err | ${reasons.join(" | ")} |`);
+		lines.push(`|---|---|${reasons.map(() => "---|").join("")}`);
+		for (const arm of arms) {
+			const armErrs = errored.filter(r => r.arm === arm);
+			const cells = reasons.map(reason => armErrs.filter(r => classifyError(r.error as string) === reason).length);
+			lines.push(`| ${arm} | ${armErrs.length} | ${cells.join(" | ")} |`);
 		}
 	}
 	// Per-arm treatment-application probe: an argot encode arm is only measuring its

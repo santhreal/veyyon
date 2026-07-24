@@ -12,12 +12,15 @@
 import { describe, expect, test } from "bun:test";
 import {
 	type ArmResult,
+	blockContainsSigil,
+	classifyError,
 	effectiveTemperature,
 	jobNameOf,
 	PINNED_TEMPERATURE,
 	pairwiseArmDeltas,
 	pairwiseMetricDeltas,
 	parseJobName,
+	providerFinishReason,
 	renderReport,
 	selectTasks,
 	signTestPValue,
@@ -601,5 +604,162 @@ describe("renderReport — aggregates repeated cells rather than showing one sam
 		const report = renderReport(results, "m", STAMP, 3);
 		summaryFor(report);
 		expect(report).toContain("| t1 | ERR |");
+	});
+});
+
+describe("blockContainsSigil — encode is detected in tool calls, not just prose", () => {
+	// The argot preamble tells the model to write a handle "in prose, a command, or
+	// a diff". On a coding agent most output is tool calls (shell commands, edit
+	// diffs), so a probe that scanned only text blocks would miss the handles that
+	// actually appear and could read a heavy-encode arm as "0 encoded", falsely
+	// concluding the treatment never fired. These tests lock the tool-call scan in.
+
+	test("a text block containing § counts", () => {
+		// The obvious case: a handle written in the assistant's prose.
+		expect(blockContainsSigil({ type: "text", text: "edit §dbconn now" })).toBe(true);
+	});
+
+	test("a text block with no § does not count", () => {
+		expect(blockContainsSigil({ type: "text", text: "no handles here" })).toBe(false);
+	});
+
+	test("a handle inside a tool call's command argument counts — the regression this fixes", () => {
+		// A shell command referencing a path by handle. The old text-only probe
+		// returned false here; that is exactly the undercount being closed.
+		const block = { type: "toolCall", name: "bash", arguments: { command: "cat §dbconn" } };
+		expect(blockContainsSigil(block)).toBe(true);
+	});
+
+	test("a handle inside a tool call's diff argument counts", () => {
+		const block = {
+			type: "toolCall",
+			name: "apply_patch",
+			arguments: { patch: "--- a/§dbconn\n+++ b/§dbconn\n" },
+		};
+		expect(blockContainsSigil(block)).toBe(true);
+	});
+
+	test("a tool call whose arguments hold no § does not count", () => {
+		const block = { type: "toolCall", name: "bash", arguments: { command: "ls -la" } };
+		expect(blockContainsSigil(block)).toBe(false);
+	});
+
+	test("a § nested deep in the arguments object still counts (serialized scan)", () => {
+		const block = {
+			type: "toolCall",
+			name: "multi_edit",
+			arguments: { edits: [{ path: "clean" }, { path: "§dbconn" }] },
+		};
+		expect(blockContainsSigil(block)).toBe(true);
+	});
+
+	test("a custom sigil is honored, and the default § is then not matched", () => {
+		const block = { type: "toolCall", name: "bash", arguments: { command: "cat ¶dbconn" } };
+		expect(blockContainsSigil(block, "¶")).toBe(true);
+		expect(blockContainsSigil(block)).toBe(false);
+	});
+
+	test("non-object and null blocks are sigil-free, never throw", () => {
+		expect(blockContainsSigil(null)).toBe(false);
+		expect(blockContainsSigil(undefined)).toBe(false);
+		expect(blockContainsSigil("§ raw string is not a block")).toBe(false);
+	});
+
+	test("a non-serializable (cyclic) arguments object is treated as sigil-free, not thrown", () => {
+		// A read-only probe must never crash the parse; a cyclic object cannot hold
+		// a plain countable handle string anyway.
+		const cyclic: Record<string, unknown> = { command: "x" };
+		cyclic.self = cyclic;
+		const block = { type: "toolCall", name: "bash", arguments: cyclic };
+		expect(blockContainsSigil(block)).toBe(false);
+	});
+});
+
+describe("providerFinishReason — a content-filter stop is not a generic crash", () => {
+	// A provider that aborts generation (PROHIBITED_CONTENT/SAFETY/RECITATION) makes
+	// the agent exit non-zero, which the bench excludes as an error. Recovering the
+	// finish reason is what lets the report tell a refusal apart from a real crash —
+	// and a refusal that tracks the treatment is a confound, not a null result.
+
+	test("extracts PROHIBITED_CONTENT from the real gemini message", () => {
+		// The exact string the smoke run produced.
+		expect(providerFinishReason("Working...\nGeneration failed with finish reason: PROHIBITED_CONTENT")).toBe(
+			"PROHIBITED_CONTENT",
+		);
+	});
+
+	test("matches the underscore spelling finish_reason too", () => {
+		expect(providerFinishReason("stopped, finish_reason SAFETY, aborting")).toBe("SAFETY");
+	});
+
+	test("returns null when there is no finish-reason marker", () => {
+		expect(providerFinishReason("some ordinary stdout with no policy stop")).toBeNull();
+	});
+
+	test("does not match lowercase prose that merely contains the words", () => {
+		// Guards against a false positive on narration like "the finish reason was fine".
+		expect(providerFinishReason("the finish reason was fine")).toBeNull();
+	});
+});
+
+describe("classifyError — group excluded samples by a stable, comparable label", () => {
+	// The report groups errors by this label to expose an arm asymmetry. It must pull
+	// a stable label out of pier's exception_info JSON, refine it with a provider
+	// finish reason when present, and never throw on a runner-side string.
+
+	test("a bare exception_info JSON classifies by its exception type", () => {
+		expect(classifyError('{"exception_type":"NonZeroAgentExitCodeError","exception_message":"boom"}')).toBe(
+			"NonZeroAgentExitCodeError",
+		);
+	});
+
+	test("a content-filter refusal is named distinctly from a plain crash", () => {
+		// The run.ts path appends the finish reason it recovered from the agent log.
+		const err =
+			'{"exception_type":"NonZeroAgentExitCodeError","exception_message":"exit 1"} finish_reason: PROHIBITED_CONTENT';
+		expect(classifyError(err)).toBe("NonZeroAgentExitCodeError (PROHIBITED_CONTENT)");
+	});
+
+	test("a runner-side timeout string classifies as timeout, never throws", () => {
+		expect(classifyError("trial timed out after 1800s; pier exit 1; ...")).toBe("timeout");
+	});
+
+	test("an unrecognized non-JSON string falls back to other", () => {
+		expect(classifyError("mystery failure")).toBe("other");
+	});
+});
+
+describe("renderReport — the Errors (per arm) section exposes a refusal asymmetry", () => {
+	const STAMP = "2026-07-24T00:00:00.000Z";
+
+	test("shows every arm (including zero-error arms) so the asymmetry is visible", () => {
+		// The smoke shape: decode passed, full was refused by the content filter. The
+		// section must show full's 1 refusal AND decode's 0, side by side, because a
+		// delta measured against an arm that lost a sample can be a selection effect.
+		const results: ArmResult[] = [
+			res({ arm: "decode", task: "t1", reward: 1, outputTokens: 80000 }),
+			res({
+				arm: "full",
+				task: "t1",
+				reward: null,
+				error: '{"exception_type":"NonZeroAgentExitCodeError","exception_message":"exit 1"} finish_reason: PROHIBITED_CONTENT',
+			}),
+		];
+		const report = renderReport(results, "google-antigravity/gemini-3.6-flash", STAMP, 1);
+		expect(report).toContain("## Errors (per arm)");
+		expect(report).toContain("NonZeroAgentExitCodeError (PROHIBITED_CONTENT)");
+		// full errored once under that reason; decode errored zero times — both rows
+		// present so the reader sees the imbalance, not just full's count.
+		expect(report).toContain("| full | 1 | 1 |");
+		expect(report).toContain("| decode | 0 | 0 |");
+	});
+
+	test("omits the Errors section entirely when no sample errored", () => {
+		const results: ArmResult[] = [
+			res({ arm: "decode", task: "t1", reward: 1 }),
+			res({ arm: "full", task: "t1", reward: 0 }),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).not.toContain("## Errors (per arm)");
 	});
 });
