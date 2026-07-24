@@ -304,6 +304,7 @@ export class SelectorController {
 						},
 					},
 					initialItemId,
+					modalRevealEnabled(),
 				);
 				overlayHandle = this.ctx.ui.showOverlay(selector, {
 					anchor: "bottom-center",
@@ -1149,6 +1150,7 @@ export class SelectorController {
 				loadAllSessions: () => SessionManager.listAll(),
 				getTerminalRows: () => this.ctx.ui.terminal.rows,
 				fillHeight: true,
+				reveal: modalRevealEnabled(),
 			},
 		);
 		selector.setOnRequestRender(() => this.ctx.ui.requestRender());

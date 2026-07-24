@@ -52,10 +52,12 @@ import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { getTabBarTheme } from "../shared";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
+	applyModalReveal,
 	BREADCRUMB_HOVER_ID,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_SETTINGS,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
@@ -796,6 +798,7 @@ export class SettingsSelectorComponent implements Component {
 	 * return to the settings rows — matching the visual left/right layout.
 	 */
 	#sidebarFocused = false;
+	#reveal = new ModalRevealDriver();
 
 	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
 	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;
@@ -805,7 +808,12 @@ export class SettingsSelectorComponent implements Component {
 		private readonly callbacks: SettingsCallbacks,
 		/** Setting path to pre-select on the default (appearance) tab, e.g. `/statusline` jumping to `statusLine.preset`. */
 		initialItemId?: string,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
 	) {
+		if (reveal) {
+			this.#reveal.start(() => this.context.requestRender?.());
+		}
 		// No label prefix (the frame title already says Settings) and no
 		// "(tab to cycle)" hint (folded into the footer hint line).
 		this.#tabBar = new TabBar("", getSettingsTabs(), getTabBarTheme());
@@ -1009,7 +1017,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#contentRowStart = this.#tabRowStart;
 		this.#contentRowCount = shell.geometry?.bodyRowCount ?? 0;
 		this.#sidebarCols = sidebarWidth;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	/**

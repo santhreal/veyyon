@@ -24,6 +24,8 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
+	applyModalReveal,
+	ModalRevealDriver,
 	renderModalShell,
 	withCompact,
 } from "./modal-shell";
@@ -743,6 +745,12 @@ export interface SessionSelectorOptions {
 	 * always tracks the content — a short session list renders a short card.
 	 */
 	fillHeight?: boolean;
+	/**
+	 * Play the open unfold (TOUCH-5). Honored blindly; the ambient gate is the
+	 * SHOW site's job via modalRevealEnabled(), so direct constructions stay
+	 * deterministic.
+	 */
+	reveal?: boolean;
 }
 
 /**
@@ -780,6 +788,7 @@ export class SessionSelectorComponent extends Container {
 	#hoveredShortcutId: string | null = null;
 	readonly #getTerminalRows: () => number;
 	readonly #fillHeight: boolean;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		sessions: SessionInfo[],
@@ -797,6 +806,9 @@ export class SessionSelectorComponent extends Container {
 		this.#globalSessions = options.allSessions ?? null;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => 24);
 		this.#fillHeight = options.fillHeight ?? false;
+		if (options.reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#headerText = new Text(this.#headerLabel(), 1, 0);
 		this.addChild(this.#headerText);
 		this.addChild(this.#messageContainer);
@@ -883,6 +895,7 @@ export class SessionSelectorComponent extends Container {
 	 * child-walking dispose would miss its pending history-merge timer.
 	 */
 	dispose(): void {
+		this.#reveal.stop();
 		this.#sessionList.dispose();
 		super.dispose();
 	}
@@ -987,7 +1000,7 @@ export class SessionSelectorComponent extends Container {
 		this.#shellGeometry = shell.geometry;
 		this.#listLineOffset = (shell.geometry?.bodyRowStart ?? 0) + this.#listLineOffset;
 		this.#footerStart = shell.geometry?.footerRowStart ?? shell.lines.length;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	handleInput(keyData: string): void {
