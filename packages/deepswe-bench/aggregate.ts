@@ -13,6 +13,36 @@
  * error, which is what lets a reader tell a real arm effect from run-to-run noise.
  */
 
+/**
+ * The job name is the single identifier for a container run, a config file, and a
+ * jobs/ subdirectory, so its format lives in exactly this pair of functions and
+ * nowhere else. A repeat suffix (`__r<n>`) is appended only when a cell is sampled
+ * more than once; a single-sample run keeps the historic `arm__task` name so runs
+ * produced before --repeats existed still reaggregate. The scheme relies on two
+ * facts about the inputs: arm names never contain `__`, and DeepSWE task names are
+ * hyphenated (never `__`). So the FIRST `__` splits arm from the rest, and a
+ * trailing `__r<digits>` is the repeat index. {@link parseJobName} is the exact
+ * inverse of {@link jobNameOf}; the round-trip is what keeps reaggregate from
+ * mis-attributing a sample to the wrong task or repeat.
+ */
+export function jobNameOf(arm: string, task: string, repeat: number, repeats: number): string {
+	return repeats > 1 ? `${arm}__${task}__r${repeat}` : `${arm}__${task}`;
+}
+
+/** Inverse of {@link jobNameOf}: recover (arm, task, repeat) from a job name. */
+export function parseJobName(jobName: string): { arm: string; task: string; repeat: number } {
+	const sep = jobName.indexOf("__");
+	const arm = jobName.slice(0, sep);
+	let task = jobName.slice(sep + 2);
+	let repeat = 0;
+	const m = task.match(/__r(\d+)$/);
+	if (m) {
+		repeat = Number(m[1]);
+		task = task.slice(0, m.index);
+	}
+	return { arm, task, repeat };
+}
+
 export interface ArmResult {
 	arm: string;
 	task: string;
