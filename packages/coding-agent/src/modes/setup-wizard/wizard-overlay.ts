@@ -9,7 +9,7 @@ import {
 	TERMINAL,
 } from "@veyyon/tui";
 import { APP_NAME } from "@veyyon/utils";
-import { sunMark } from "../components/sun";
+import { paintCanvasBlack, sunMark } from "../components/sun";
 import { silverEscape } from "../components/welcome";
 import { theme } from "../theme/theme";
 import { renderSetupOutro, SETUP_OUTRO_MS } from "./scenes/outro";
@@ -205,7 +205,11 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		}
 		this.#lastWidth = safeWidth;
 		this.#lastHeight = height;
-		return this.#fitToScreen(lines, safeWidth, height);
+		// The wizard owns the whole viewport, so it realizes the design.md Canvas
+		// rule: every row — content, dissolve frames, and the fit-to-screen filler
+		// alike — sits on the pure-black ground, edge to edge. Painted here, once,
+		// so all phases (splash/transition/scene/outro) can never drift apart.
+		return paintCanvasBlack(this.#fitToScreen(lines, safeWidth, height), safeWidth);
 	}
 
 	/** Step dots: solid for steps done, an ember core for the current, dots ahead.

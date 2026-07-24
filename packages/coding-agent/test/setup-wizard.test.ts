@@ -362,7 +362,10 @@ describe("setup wizard mouse routing", () => {
 			const frame = component.render(80);
 			const row = frame.findIndex(line => line.includes("MARKER-ROW"));
 			expect(row).toBeGreaterThan(0);
-			const indent = /^ */.exec(frame[row])?.[0].length ?? 0;
+			// Measure the indent on VISIBLE cells: every frame row now opens with
+			// the Canvas ground escape (paintCanvasBlack), which a raw leading-space
+			// regex would read as zero indent.
+			const indent = /^ */.exec(frame[row].replace(/\x1b\[[0-9;]*m/g, ""))?.[0].length ?? 0;
 			expect(indent).toBeGreaterThan(0);
 			// SGR reports are 1-based; two columns into the marker text.
 			component.handleInput(`\x1b[<35;${indent + 3};${row + 1}M`);

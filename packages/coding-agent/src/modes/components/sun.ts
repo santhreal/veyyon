@@ -14,7 +14,33 @@
  * itself holds no state. Ripples (cursor/keypress flares) are passed in as data.
  */
 
+import { padLineToWidth } from "@veyyon/tui";
 import { clamp01 } from "@veyyon/utils";
+
+/**
+ * The Canvas ground (design.md "Canvas"): a surface that owns the whole
+ * viewport paints pure black edge to edge. One owner for the escape so the
+ * sun's under-glyph ground and the full-surface painter can never drift.
+ */
+export const CANVAS_BG_ESCAPE = "\x1b[48;2;0;0;0m";
+
+/**
+ * Paint a full-viewport surface's rows onto the pure-black Canvas ground.
+ *
+ * Each row is prefixed with the black background, padded (ANSI-aware) to the
+ * full width so the ground reaches the right edge, and closed with a reset so
+ * nothing leaks past the surface. A row's own `\x1b[0m` / `\x1b[49m` resets
+ * would punch holes in the ground from that point on, so the ground is
+ * re-armed immediately after every one. For full-viewport overlays ONLY
+ * (setup wizard splash/scenes/outro); the inline transcript never paints
+ * backgrounds.
+ */
+export function paintCanvasBlack(lines: readonly string[], width: number): string[] {
+	return lines.map(line => {
+		const rearmed = line.replaceAll("\x1b[0m", `\x1b[0m${CANVAS_BG_ESCAPE}`).replaceAll("\x1b[49m", CANVAS_BG_ESCAPE);
+		return `${CANVAS_BG_ESCAPE}${padLineToWidth(rearmed, width)}\x1b[0m`;
+	});
+}
 
 /**
  * Intensity → glyph. Eight stops, dark core of the void to a solid disc.
@@ -113,7 +139,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 	const R = Math.max(1, radius);
 	// Animation step for the dither so it shimmers without thrashing every frame.
 	const step = Math.floor(time * 5);
-	const bgPrefix = o.paintBackground ? "\x1b[48;2;0;0;0m" : "";
+	const bgPrefix = o.paintBackground ? CANVAS_BG_ESCAPE : "";
 	const out: string[] = [];
 
 	for (let y = 0; y < rows; y++) {
