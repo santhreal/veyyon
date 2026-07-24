@@ -209,6 +209,28 @@ verifier reports), `results.json` (every metric, machine-readable), and
   reconstruct this reasoning each time. Note that `argot_load` calls stay `0.00`
   for the launch project by design: it auto-loads at startup, and the tool is how
   the agent adds *additional* projects.
+- **Encode headroom (maximum achievable saving)** — the ceiling on what shorthand
+  could ever have saved, and the section that decides whether the run can measure
+  argot at all. `max saving` is what the model would have saved by encoding
+  perfectly: every occurrence of every loaded handle's expansion, in text and in
+  tool-call arguments, written as the handle instead. `noise` is the observed
+  run-to-run spread of output tokens across repeated samples of the same arm and
+  task, which is the smallest difference the run can tell from chance.
+
+  When the ceiling falls below the noise, the report says `CANNOT MEASURE`, and you
+  should believe it: the efficiency comparison is reading variance, and more
+  repeats cannot help, because the effect you are looking for is smaller than the
+  effect that already exists. This is a different failure from the `(underpowered)`
+  qualifier on a verdict. That one means too few decisive tasks, which more tasks
+  fix. This one means the workload itself has no room for the feature to act, which
+  only a different workload or a different vocabulary fixes.
+
+  The first measured run showed exactly this: 33 handles loaded, 7 of them ever
+  emitted, and a ceiling of 0.27% against 8.15% token noise. The dictionary was
+  dominated by license text, example fixtures, and documentation URLs, which repeat
+  heavily in the repository but which a coding agent never types, while the paths
+  the agent retyped constantly received no handle. Pick tasks whose repositories
+  repeat long paths and commands the agent actually writes.
 - **Errors (per arm)** — every sample that crashed or was refused, grouped by
   reason, across all arms including those with zero errors. An errored sample is
   excluded from every rate and mean above, so an arm that errors more is measured
