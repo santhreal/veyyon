@@ -4,12 +4,6 @@
 
 ## [Unreleased]
 
-## [1.0.25] - 2026-07-24
-
-### Added
-
-- Exported `hasUtf8Bom(bytes)`, the canonical byte-level UTF-8 BOM check, next to `stripBom`. A text reader silently drops a leading BOM, so callers that need to round-trip the BOM must sniff the raw bytes; this gives them one shared detector instead of re-open-coding the `EF BB BF` check.
-
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
@@ -373,6 +367,12 @@ All notable changes to this package will be documented in this file.
 - Fixed repeated patch application mutating cached `after_anchor` edits between target snapshots
 - Fixed multi-section patching to preflight write policies and reject duplicate canonical targets before any section is committed
 - Fixed mixed line-ending restoration to preserve the first newline style instead of rewriting ties to LF
+
+## [1.0.25] - 2026-07-24
+
+### Added
+
+- Exported `hasUtf8Bom(bytes)`, the canonical byte-level UTF-8 BOM check, next to `stripBom`. A text reader silently drops a leading BOM, so callers that need to round-trip the BOM must sniff the raw bytes; this gives them one shared detector instead of re-open-coding the `EF BB BF` check.
 
 ## [1.0.24] - 2026-07-24
 
