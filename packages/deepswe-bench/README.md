@@ -193,6 +193,14 @@ verifier reports), `results.json` (every metric, machine-readable), and
   called `argot_load` and how many assistant messages carried a `§` handle.
   Probe rows only appear for arms that engaged the mechanism; every feature
   should add probes like these to prove engagement, not just outcomes.
+- **Tool call distribution (mean calls per completed run)** — how each arm spent
+  its tool budget, one column per tool. The cells are the MEAN calls per completed
+  run, not raw per-arm totals, and each row shows its completed-run count as `n`.
+  Normalizing matters because arms rarely finish the same number of samples (one
+  errors more), and raw totals would make the arm that ran fewer samples look like
+  it streamlined its tools when it merely did less. This table is descriptive, not
+  a win/loss verdict: fewer calls at equal reward is leaner, but fewer calls is not
+  a good on its own, so read it alongside the reward comparison.
 
 Compare arms only on the same model and the same task set. For a feature with a
 small expected delta, raise `--repeats` (more samples per cell) and/or expand the

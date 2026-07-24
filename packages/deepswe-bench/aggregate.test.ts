@@ -1197,3 +1197,42 @@ describe("renderReport — Argot treatment applied? surfaces `preamble taught` a
 		expect(report).toContain("| decode | 1 | unknown |");
 	});
 });
+
+describe("renderReport — tool call distribution is normalized per completed run, not raw totals", () => {
+	const STAMP = "2026-07-24T00:00:00.000Z";
+
+	test("two arms with identical per-run tool use read EQUAL even when one arm errored more", () => {
+		// The bias this locks out: the table used to print RAW per-arm sums. Arm `a`
+		// completes 3 runs (6 read calls total) and arm `b` completes 2 runs + 1 error (4
+		// read calls total). Raw sums would show 6 vs 4 and read as "b streamlined its
+		// tools" when b merely ran one fewer sample. Dividing by each arm's completed-run
+		// count makes both read 2.00 — the truth — and the count is disclosed as n.
+		const results: ArmResult[] = [
+			res({ arm: "a", task: "t1", reward: 1, toolCalls: { read: 2 } }),
+			res({ arm: "a", task: "t2", reward: 1, toolCalls: { read: 2 } }),
+			res({ arm: "a", task: "t3", reward: 1, toolCalls: { read: 2 } }),
+			res({ arm: "b", task: "t1", reward: 1, toolCalls: { read: 2 } }),
+			res({ arm: "b", task: "t2", reward: 1, toolCalls: { read: 2 } }),
+			res({ arm: "b", task: "t3", error: "boom" }),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("## Tool call distribution (mean calls per completed run)");
+		// Both arms used 2 read calls per run; the normalized table must say so for both,
+		// and expose the differing sample counts (n=3 vs n=2) that raw totals would hide.
+		expect(report).toContain("| a (n=3) | 2.00 |");
+		expect(report).toContain("| b (n=2) | 2.00 |");
+	});
+
+	test("an all-errored arm shows n=0 and '—', never a divide-by-zero NaN", () => {
+		// A cell with no completed run must not render NaN or Infinity from a 0 denominator;
+		// it is honestly blank so the reader sees the arm produced no tool-call signal.
+		const results: ArmResult[] = [
+			res({ arm: "ok", task: "t1", reward: 1, toolCalls: { read: 3 } }),
+			res({ arm: "dead", task: "t1", error: "boom" }),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("| ok (n=1) | 3.00 |");
+		expect(report).toContain("| dead (n=0) | — |");
+		expect(report).not.toContain("NaN");
+	});
+});
