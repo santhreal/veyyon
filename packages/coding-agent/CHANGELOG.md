@@ -2,13 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.25] - 2026-07-24
-
-### Fixed
-
-- Editing a file that starts with a UTF-8 BOM no longer strips the BOM. The `old_text`/`new_text` edit mode read the file through a decoder that silently drops a leading BOM and then wrote the file back without it; it now recovers the BOM from the raw bytes, so the marker survives the edit (line endings were already preserved).
-- Format-on-write no longer fails silently. When an LSP formatter crashes or errors, the edit still saves (unformatted) as before, but the failure is now logged with the server and file instead of being swallowed, and a cancelled or timed-out format is no longer misreported as a formatter failure.
-
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes
@@ -11279,6 +11272,13 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.25] - 2026-07-24
+
+### Fixed
+
+- Editing a file that starts with a UTF-8 BOM no longer strips the BOM. The `old_text`/`new_text` edit mode read the file through a decoder that silently drops a leading BOM and then wrote the file back without it; it now recovers the BOM from the raw bytes, so the marker survives the edit (line endings were already preserved).
+- Format-on-write no longer fails silently. When an LSP formatter crashes or errors, the edit still saves (unformatted) as before, but the failure is now logged with the server and file instead of being swallowed, and a cancelled or timed-out format is no longer misreported as a formatter failure.
 
 ## [1.0.24] - 2026-07-24
 

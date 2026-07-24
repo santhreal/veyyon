@@ -2,12 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.25] - 2026-07-24
-
-### Fixed
-
-- A single transient terminal write failure (stdout backpressure, a momentary PTY I/O hiccup) no longer disables rendering for the rest of the session. Rendering only latches off on a fatal error (the terminal or piped reader has closed) or after a sustained run of failures with no successful write in between; a lone hiccup now recovers on the next frame.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
@@ -1754,6 +1748,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 ### Added
 
 - Added `getText()` method to Text component for retrieving current text content
+
+## [1.0.25] - 2026-07-24
+
+### Fixed
+
+- A single transient terminal write failure (stdout backpressure, a momentary PTY I/O hiccup) no longer disables rendering for the rest of the session. Rendering only latches off on a fatal error (the terminal or piped reader has closed) or after a sustained run of failures with no successful write in between; a lone hiccup now recovers on the next frame.
 
 ## [1.0.24] - 2026-07-24
 
