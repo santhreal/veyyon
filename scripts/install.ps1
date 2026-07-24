@@ -265,9 +265,103 @@ function Invoke-Doctor {
 # veyyon.cmd shim at the committed launcher (packages\coding-agent\scripts\veyyon.cmd).
 # The launcher runs straight from TypeScript, so there is no build step; -Ref
 # pins a tag, branch, or commit.
+# A stamp unique enough that two installer runs in the same second do not collide
+# on a backup branch/dir name ($PID disambiguates).
+function Get-BackupStamp {
+    return "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID"
+}
+
+# Commit any uncommitted local edits in a source checkout onto a durable backup
+# branch BEFORE the update resets over them. The update path runs
+# `git reset --hard origin/<ref>`, which would otherwise silently discard a
+# user's local edits to a tracked file (this is how an edited ~/.veyyon/src
+# AGENTS.md kept vanishing on every update). Uses `git commit-tree` so the backup
+# commit is built from the staged tree without moving HEAD, leaving the checkout
+# exactly as it was for the reset that follows. `git add -A` honors .gitignore, so
+# build artifacts are not swept in. Returns $true on success or when there is
+# nothing to preserve; $false if preservation cannot complete, so the caller can
+# refuse to reset rather than risk destroying the changes (fail closed).
+function Preserve-LocalSrcChanges {
+    param([string]$Src = $SrcDir)
+    if (-not (Test-Path (Join-Path $Src ".git"))) { return $true }
+    Push-Location $Src
+    try {
+        $status = git status --porcelain 2>$null
+        if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) { return $true }
+        $stamp = Get-BackupStamp
+        $branch = "veyyon-local-$stamp"
+        git add -A 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        $tree = (git write-tree 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tree)) { return $false }
+        $parent = (git rev-parse -q --verify HEAD 2>$null)
+        $msg = "veyyon: preserve local changes before update ($stamp)"
+        if ($parent) {
+            $commit = (git -c user.name=veyyon-installer -c user.email=installer@veyyon.dev commit-tree $tree -p $parent -m $msg 2>$null)
+        } else {
+            $commit = (git -c user.name=veyyon-installer -c user.email=installer@veyyon.dev commit-tree $tree -m $msg 2>$null)
+        }
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) { return $false }
+        git branch $branch $commit 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        Write-Host "preserved your local changes on branch '$branch'" -ForegroundColor Yellow
+        Write-Host "recover them with: git -C $Src checkout $branch" -ForegroundColor Yellow
+        return $true
+    } finally {
+        Pop-Location
+    }
+}
+
+# Move an existing tree aside instead of deleting it. The clone path used to
+# `Remove-Item -Recurse -Force $SrcDir` before cloning, which destroys any files a
+# user put there (or a partial/corrupt checkout with no .git). Moving to
+# `<dir>.bak-<stamp>` preserves everything and lets the fresh clone proceed. An
+# empty directory is simply removed. Fail closed: if the move cannot happen, throw
+# rather than fall back to a destructive delete.
+function Move-AsideExistingSrc {
+    param([string]$Src = $SrcDir)
+    if (-not (Test-Path $Src)) { return }
+    if ((Test-Path $Src -PathType Container) -and -not (Get-ChildItem -Force -Path $Src -ErrorAction SilentlyContinue)) {
+        Remove-Item -Recurse -Force $Src -ErrorAction SilentlyContinue
+        return
+    }
+    $stamp = Get-BackupStamp
+    $backup = "$Src.bak-$stamp"
+    Move-Item -Path $Src -Destination $backup -ErrorAction Stop
+    Write-Host "moved existing $Src aside to $backup (nothing was deleted)" -ForegroundColor Yellow
+}
+
+# Whether a source checkout holds work the installer did not create and must not
+# delete on uninstall: uncommitted edits, commits on a local branch that live on
+# no remote (this includes `veyyon-local-*` preservation branches, so a preserved
+# AGENTS.md is never silently deleted by -Uninstall), or a non-git but non-empty
+# tree. $false means the tree is pristine and safe to remove outright.
+function Test-SrcHasLocalWork {
+    param([string]$Src = $SrcDir)
+    if (-not (Test-Path $Src -PathType Container)) { return $false }
+    if (-not (Test-Path (Join-Path $Src ".git"))) {
+        return [bool](Get-ChildItem -Force -Path $Src -ErrorAction SilentlyContinue)
+    }
+    Push-Location $Src
+    try {
+        $status = git status --porcelain 2>$null
+        if (-not [string]::IsNullOrWhiteSpace(($status -join "`n"))) { return $true }
+        $unpushed = git log --branches --not --remotes --oneline 2>$null
+        if (-not [string]::IsNullOrWhiteSpace(($unpushed -join "`n"))) { return $true }
+        return $false
+    } finally {
+        Pop-Location
+    }
+}
+
 function Fetch-SourceTree {
     if (Test-Path (Join-Path $SrcDir ".git")) {
         Write-Host "Updating veyyon source in $SrcDir..."
+        # Commit local edits to a backup branch before resetting. If that fails,
+        # refuse the update rather than destroy uncommitted work.
+        if (-not (Preserve-LocalSrcChanges $SrcDir)) {
+            throw "refusing to update: could not preserve local changes in $SrcDir"
+        }
         Push-Location $SrcDir
         try {
             git fetch --tags --force origin
@@ -289,7 +383,8 @@ function Fetch-SourceTree {
         Write-Host "Cloning veyyon source into $SrcDir..."
         $parent = Split-Path -Parent $SrcDir
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-        if (Test-Path $SrcDir) { Remove-Item -Recurse -Force $SrcDir }
+        # Never rm -rf an existing tree: move it aside so nothing is lost.
+        Move-AsideExistingSrc $SrcDir
         if ($Ref) {
             git clone --depth 1 --branch $Ref $RepoUrl $SrcDir 2>$null
             if ($LASTEXITCODE -ne 0) {
@@ -445,8 +540,16 @@ function Uninstall-Veyyon {
         bun remove -g $Package 2>$null | Out-Null
     }
     if (Test-Path $SrcDir) {
-        Remove-Item -Recurse -Force $SrcDir
-        Write-Host "OK  removed source checkout $SrcDir" -ForegroundColor Green
+        # Never delete a checkout that holds uncommitted edits or unpushed local
+        # branches (e.g. a veyyon-local-* preservation branch carrying the user's
+        # AGENTS.md). Move it aside so uninstall can never destroy work the
+        # installer did not create; only a pristine tree is deleted outright.
+        if (Test-SrcHasLocalWork $SrcDir) {
+            Move-AsideExistingSrc $SrcDir
+        } else {
+            Remove-Item -Recurse -Force $SrcDir
+            Write-Host "OK  removed source checkout $SrcDir" -ForegroundColor Green
+        }
         $removed = $true
     }
     if ($removed) {

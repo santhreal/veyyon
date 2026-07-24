@@ -8,6 +8,7 @@
 
 - The install script now adds `veyyon` to your PATH in a file that a new shell actually reads on macOS. A macOS Terminal window opens a login `bash` shell, which reads `~/.bash_profile` (then `~/.bash_login`, `~/.profile`) and not `~/.bashrc`, so the previous PATH line written to `~/.bashrc` never took effect and `veyyon` stayed off PATH after install. The installer now writes to the correct login-shell file on macOS and keeps using `~/.bashrc` on Linux.
 - The Windows installer now detects whether the install directory is already on PATH by comparing whole PATH entries instead of a substring. A substring check treated `C:\...\bin` as present when PATH only contained a different entry sharing that prefix (for example `C:\...\bin2`), so it skipped adding the real directory and `veyyon` stayed off PATH. It also no longer produces an empty PATH entry (which Windows reads as the current directory) when the existing user PATH is empty.
+- The Windows installer no longer destroys local edits in the source checkout. A source update ran `git reset --hard`, and uninstall deleted the checkout outright, so local edits under `~/.veyyon/src` (an edited `AGENTS.md`) were lost. It now commits any local changes to a `veyyon-local-<timestamp>` branch before updating, moves an existing tree aside to `<dir>.bak-<timestamp>` instead of deleting it before a fresh clone, and refuses to delete a checkout that holds unpushed work on uninstall. This matches the protection the POSIX installer already had.
 
 ## [16.5.2] - 2026-07-14
 
