@@ -8,7 +8,7 @@
  */
 
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Component } from "@veyyon/tui";
+import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
 import { Spacer, TERMINAL } from "@veyyon/tui";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
@@ -171,7 +171,18 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
  * content off the terminal's left edge so the composer zone shares one
  * left margin (the mockups pad the composer; nothing sits at column 0).
  */
-export class QuietZoneLine implements Component {
+export class QuietZoneLine implements Component, MouseRoutable {
+	/**
+	 * Optional click handler for the line's content. `col` is 0-based within
+	 * the line as the provider rendered it (the indent is already subtracted),
+	 * matching the coordinate space of StatusLineComponent.quietSegmentAt.
+	 */
+	onClick?: (col: number) => void;
+
+	// The indent actually applied on the last render; clicks must subtract the
+	// same amount, and it can differ from `indent` on very narrow widths.
+	#lastPad = 0;
+
 	constructor(
 		private readonly line: (width: number) => string | null,
 		private readonly indent = 0,
@@ -179,8 +190,15 @@ export class QuietZoneLine implements Component {
 
 	render(width: number): string[] {
 		const pad = Math.max(0, Math.min(this.indent, width - 1));
+		this.#lastPad = pad;
 		const line = this.line(width - pad);
 		return line === null ? [] : [" ".repeat(pad) + line];
+	}
+
+	routeMouse(event: SgrMouseEvent, _line: number, col: number): void {
+		if (!event.leftClick) return;
+		const inner = col - this.#lastPad;
+		if (inner >= 0) this.onClick?.(inner);
 	}
 
 	invalidate(): void {}

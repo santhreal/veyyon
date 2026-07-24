@@ -126,6 +126,21 @@ describe("non-TTY stdin contract (e2e)", () => {
 		expect(stderr).toContain("`veyyon config`");
 	}, 60_000);
 
+	it("an unknown flag with non-TTY stdin is diagnosed as the unknown flag, not as a missing terminal", async () => {
+		// `veyyon --contiune` (typo of --continue) in a script used to die with
+		// ONLY "Interactive mode needs a terminal..." — the unrecognized-flag
+		// check ran later, after extension flags load, a point this run never
+		// reaches. The flag error must win: a misleading diagnosis sends the
+		// scripting user hunting for a TTY problem they do not have.
+		const { done } = spawnCli(["--contiune"], "ignore");
+		const { stderr, exitCode } = await done;
+
+		expect(exitCode).toBe(2);
+		expect(stderr).toContain("unknown flag: --contiune");
+		expect(stderr).toContain("veyyon --help");
+		expect(stderr).not.toContain("Interactive mode needs a terminal");
+	}, 60_000);
+
 	it("`-p` with a piped prompt consumes it (reaches the runner) instead of silently exiting 0", async () => {
 		const { done } = spawnCli(["-p"], new Blob(["Reply with exactly: ok\n"]));
 		const { stdout, stderr, exitCode } = await done;

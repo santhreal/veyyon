@@ -29,6 +29,9 @@
  *                                                     never the key itself)
  *   <!-- jules-failed: sessions/<id> -->              one per failed attempt;
  *                                                     the count is the retry budget
+ *   <!-- jules-nudged: sessions/<id> -->              one per autonomy answer sent
+ *                                                     to a session that paused to
+ *                                                     ask for input (cap MAX_NUDGES)
  *
  * Commands:
  *   tick      harvest then dispatch (the default; what cron runs)
@@ -54,6 +57,7 @@ const MAX_DISPATCH_PER_RUN = Number(process.env.JULES_MAX_DISPATCH ?? "10");
 const KEY_DAILY_BUDGET = Number(process.env.JULES_KEY_DAILY_BUDGET ?? "40");
 const MAX_ATTEMPTS = Number(process.env.JULES_MAX_ATTEMPTS ?? "3");
 const STALE_HOURS = Number(process.env.JULES_STALE_HOURS ?? "24");
+const MAX_NUDGES = Number(process.env.JULES_MAX_NUDGES ?? "3");
 const ENV_FILE = process.env.JULES_ENV_FILE ?? "/credentials/.env";
 const WINDOW_HOURS = 24;
 const HTTP_TIMEOUT_MS = 30_000;
@@ -102,6 +106,18 @@ export function countFailures(commentBodies: string[]): number {
 	return commentBodies.filter(b => /<!-- jules-failed: sessions\/\S+ -->/.test(b)).length;
 }
 
+export const nudgeMarker = (session: string) => `<!-- jules-nudged: ${session} -->`;
+
+/** Nudges already sent to ONE session (retry sessions restart the budget). */
+export function countNudges(commentBodies: string[], session: string): number {
+	const marker = nudgeMarker(session);
+	return commentBodies.filter(b => b.includes(marker)).length;
+}
+
+/** The autonomy answer sent to a session that paused to ask permission. */
+export const NUDGE_PROMPT =
+	"Proceed autonomously; you will get no further human input. Make the decision you judge best, run the tests, finish the port, and open the PR with the mandated Closes line. If the change truly does not apply, end the session with a NOT-APPLICABLE summary. Do not pause to ask again.";
+
 /** The mirrored upstream PR number from the radar's marker, or null. */
 export function upstreamNumberFromIssue(issueBody: string): number | null {
 	const m = /<!-- upstream-pr: (\d+) -->/.exec(issueBody);
@@ -126,29 +142,78 @@ ${retry}
 ## PR requirements (mandatory)
 
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
-- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), do not open a PR; end the session with a summary that starts with \`NOT-APPLICABLE:\` and names the veyyon change that supersedes it.
+- Commit ONLY the ported source, tests, docs, and changelog. Never commit scratch artifacts: downloaded \`*.diff\`/\`*.patch\` files, notes, or tool output.
+- A user-facing change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too (CI's "Changelog entry" check enforces the pair). If you touch anything under \`docs/handbook/src/\`, run \`mdbook build docs/handbook\` (mdbook v0.5.2) and commit the rebuilt \`docs/handbook/book\` (CI's freshness check enforces it).
+- veyyon's product direction wins over upstream's. Where veyyon diverged (its own model catalog with its own model IDs, types, and roles; its own branding, install flow, and docs), port the underlying bug onto veyyon's design; never import upstream's scheme. The issue's "Diverged surface warning" section, when present, is binding.
+- If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the veyyon change that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
 `;
 }
 
+export interface PortPrRef {
+	number: number;
+	title: string;
+	body: string | null;
+	html_url: string;
+	state?: string;
+	merged_at?: string | null;
+}
+
 /**
- * The port PR for an issue among a PR list: its body carries `Closes #N` (the
- * prompt mandates it), or its title carries the radar's `port(upstream#M)`
- * prefix for the mirrored upstream PR M. Word-boundary match so #16 never
- * claims #167's PR.
+ * The port PR for an issue among a PR list. Three signals, each intentional:
+ * a closing keyword + `#N` (the prompt mandates `Closes #N`), the radar's
+ * `port(upstream#M)` title prefix, or a bare `#N` ONLY inside a PR that
+ * Jules itself authored (its auto-footer). A bare `#N` in an arbitrary PR
+ * body is NOT a signal: dependabot bodies quote changelogs full of other
+ * repos' `#numbers`, and one collision would mark a port done that never
+ * landed. Word-boundary match so #16 never claims #167's PR.
  */
-export function findPortPr(
-	prs: Array<{ number: number; title: string; body: string | null; html_url: string }>,
+export function findPortPr<T extends PortPrRef>(
+	prs: T[],
 	issueNumber: number,
 	upstreamNumber: number | null,
-): { number: number; html_url: string } | null {
+): T | null {
 	const closes = new RegExp(`(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+#${issueNumber}\\b`, "i");
 	const bare = new RegExp(`#${issueNumber}\\b`);
+	const julesFooter = /PR created automatically by Jules/i;
 	for (const pr of prs) {
 		const body = pr.body ?? "";
-		if (closes.test(body) || bare.test(body)) return pr;
+		if (closes.test(body)) return pr;
 		if (upstreamNumber !== null && pr.title.includes(`port(upstream#${upstreamNumber})`)) return pr;
+		if (julesFooter.test(body) && bare.test(body)) return pr;
 	}
 	return null;
+}
+
+export type PrOpenAction =
+	| { kind: "keep" }
+	| { kind: "requeue"; reason: string }
+	| { kind: "close"; reason: string }
+	| { kind: "review"; reason: string };
+
+/**
+ * What harvest does with an issue already marked port-pr-open. Without this
+ * pass a port PR closed WITHOUT merging strands its issue in pr-open forever
+ * (the pipeline never revisits it), and a merged PR whose Closes line was
+ * mangled leaves a done issue open, polluting every queue count.
+ *
+ * A NOT-APPLICABLE PR is a verdict, not a port: Jules's AUTO_CREATE_PR mode
+ * always opens a PR at completion, so "does not apply" arrives as an empty
+ * PR titled `NOT-APPLICABLE: ...` (seen live on the first day). That issue
+ * goes to port-review for verification; closing such a PR unmerged must
+ * never requeue the port, or every confirmed non-applicable change would be
+ * re-attempted forever.
+ */
+export function classifyPrOpen(pr: PortPrRef | null): PrOpenAction {
+	if (pr === null) return { kind: "review", reason: "labeled port-pr-open but no PR references this issue" };
+	if (/^\s*NOT-APPLICABLE\b/i.test(pr.title) || /^\s*NOT-APPLICABLE\b/im.test(pr.body ?? ""))
+		return {
+			kind: "review",
+			reason: `PR #${pr.number} is a NOT-APPLICABLE verdict, not a port; verify its reasoning, then close both PR and issue`,
+		};
+	if (pr.merged_at) return { kind: "close", reason: `port PR #${pr.number} merged` };
+	if ((pr.state ?? "open") === "closed")
+		return { kind: "requeue", reason: `port PR #${pr.number} was closed without merging` };
+	return { kind: "keep" };
 }
 
 /** Sessions created inside the rolling window, given a newest-first list. */
@@ -173,32 +238,39 @@ export type HarvestAction =
 	| { kind: "pr-open"; url: string }
 	| { kind: "review"; reason: string }
 	| { kind: "failed"; reason: string }
+	| { kind: "nudge" }
 	| { kind: "wait" };
 
 /**
  * What harvest does with one in-flight session. A PR wins over any state
  * (the artifact exists, whatever the session says). Terminal failure states
- * retry via the failure budget. COMPLETED with no PR, or a session stuck
- * awaiting feedback past the stale window, goes to a human: retrying an
- * identical prompt against an agent that finished or is asking a question
- * only burns quota. A session silently in-flight past the stale window is
- * treated as dead and retried.
+ * retry via the failure budget. Jules mid-run pauses in AWAITING_USER_FEEDBACK
+ * to ask "should I proceed?"; an unattended pipeline answers those itself
+ * (nudge, bounded by MAX_NUDGES so an agent looping on questions eventually
+ * reaches a human). COMPLETED with no PR, or a session still asking after the
+ * nudge budget past the stale window, goes to a human: retrying an identical
+ * prompt against an agent that finished or is asking a question only burns
+ * quota. A session silently in-flight past the stale window is treated as
+ * dead and retried.
  */
 export function classifyHarvest(
 	state: string,
 	prUrl: string | null,
 	ageHours: number,
 	staleHours: number,
+	nudges = 0,
+	maxNudges = MAX_NUDGES,
 ): HarvestAction {
 	if (prUrl) return { kind: "pr-open", url: prUrl };
 	const s = state.toUpperCase();
 	if (["FAILED", "ERROR", "CANCELLED"].includes(s)) return { kind: "failed", reason: `session state ${s}` };
 	if (s === "COMPLETED") return { kind: "review", reason: "session COMPLETED without opening a PR" };
+	if (s === "AWAITING_USER_FEEDBACK" && nudges < maxNudges) return { kind: "nudge" };
 	if (ageHours > staleHours) {
 		if (s === "AWAITING_USER_FEEDBACK")
 			return {
 				kind: "review",
-				reason: `session stuck in ${s} for ${Math.round(ageHours)}h; it needs an answer, not a retry`,
+				reason: `session stuck in ${s} for ${Math.round(ageHours)}h after ${nudges} nudges; it needs a real answer, not a retry`,
 			};
 		return { kind: "failed", reason: `session stale: ${s} for ${Math.round(ageHours)}h with no PR` };
 	}
@@ -259,6 +331,25 @@ async function jules(key: string, path: string, init?: RequestInit): Promise<any
 			`Jules API ${init?.method ?? "GET"} ${path} failed: ${res.status} ${(await res.text()).slice(0, 400)}`,
 		);
 	return res.json();
+}
+
+/** The session's last agent-authored message, or null. Review-path only. */
+async function lastAgentMessage(key: string, sessionName: string): Promise<string | null> {
+	let last: string | null = null;
+	let pageToken = "";
+	for (let page = 0; page < 50; page++) {
+		const d = await jules(
+			key,
+			`/${sessionName}/activities?pageSize=100${pageToken ? `&pageToken=${pageToken}` : ""}`,
+		);
+		for (const a of d.activities ?? []) {
+			const msg = a?.agentMessaged?.agentMessage;
+			if (typeof msg === "string" && msg.trim()) last = msg;
+		}
+		pageToken = d.nextPageToken ?? "";
+		if (!pageToken) break;
+	}
+	return last;
 }
 
 // ---------------------------------------------------------------------------
@@ -446,13 +537,52 @@ async function harvest(): Promise<void> {
 	const inflight = (await ghAll(`/repos/${ORIGIN}/issues?labels=${DISPATCHED_LABEL}&state=open`, 2000)).filter(
 		i => !i.pull_request,
 	);
-	if (inflight.length === 0) {
+	const prOpen = (await ghAll(`/repos/${ORIGIN}/issues?labels=${PR_OPEN_LABEL}&state=open`, 2000)).filter(
+		i => !i.pull_request && !hasLabel(i, DISPATCHED_LABEL),
+	);
+	if (inflight.length === 0 && prOpen.length === 0) {
 		console.log("harvest: nothing in flight.");
 		return;
 	}
 	const lanes = resolveKeys().map(key => ({ key, fp: keyFingerprint(key) }));
 	// One PR listing serves every issue this run.
 	const prs = await ghAll(`/repos/${ORIGIN}/pulls?state=all&sort=created&direction=desc`, 300);
+
+	// Phase 1 — issues whose port PR is out for review: notice merges (close
+	// the issue if the Closes line failed to) and rejections (requeue).
+	if (prOpen.length > 0) console.log(`harvest: ${prOpen.length} port PRs out for review.`);
+	for (const issue of prOpen) {
+		const pr = findPortPr(prs, issue.number, upstreamNumberFromIssue(issue.body ?? ""));
+		const action = classifyPrOpen(pr);
+		switch (action.kind) {
+			case "keep":
+				break;
+			case "close":
+				await comment(issue.number, `${action.reason}; closing.`);
+				await gh(`/repos/${ORIGIN}/issues/${issue.number}`, {
+					method: "PATCH",
+					body: JSON.stringify({ state: "closed" }),
+				});
+				console.log(`harvest: #${issue.number} closed (${action.reason}).`);
+				break;
+			case "requeue":
+				await comment(
+					issue.number,
+					`${failMarker(`sessions/pr-${pr?.number}`)}\n${action.reason}; requeued (attempt budget ${MAX_ATTEMPTS}).`,
+				);
+				await removeLabel(issue.number, PR_OPEN_LABEL);
+				console.log(`harvest: #${issue.number} requeued (${action.reason}).`);
+				break;
+			case "review":
+				await addLabels(issue.number, [REVIEW_LABEL]);
+				await removeLabel(issue.number, PR_OPEN_LABEL);
+				await comment(issue.number, `Needs a human: ${action.reason}.`);
+				console.log(`harvest: #${issue.number} -> ${REVIEW_LABEL} (${action.reason}).`);
+				break;
+		}
+	}
+
+	if (inflight.length === 0) return;
 	console.log(`harvest: ${inflight.length} sessions in flight.`);
 
 	for (const issue of inflight) {
@@ -470,10 +600,12 @@ async function harvest(): Promise<void> {
 		}
 		const laneOrder = [...lanes].sort((a, b) => (a.fp === marker.fp ? -1 : b.fp === marker.fp ? 1 : 0));
 		let session: any = null;
+		let sessionKey = "";
 		let lastErr = "";
 		for (const lane of laneOrder) {
 			try {
 				session = await jules(lane.key, `/${marker.session}`);
+				sessionKey = lane.key;
 				break;
 			} catch (e) {
 				lastErr = String(e);
@@ -495,7 +627,14 @@ async function harvest(): Promise<void> {
 			findPortPr(prs, issue.number, upstreamNumberFromIssue(issue.body ?? ""))?.html_url ??
 			null;
 		const ageHours = (Date.now() - Date.parse(session.createTime ?? "")) / 3600_000;
-		const action = classifyHarvest(session.state ?? "", prUrl, Number.isNaN(ageHours) ? 0 : ageHours, STALE_HOURS);
+		const nudges = countNudges(comments, marker.session);
+		const action = classifyHarvest(
+			session.state ?? "",
+			prUrl,
+			Number.isNaN(ageHours) ? 0 : ageHours,
+			STALE_HOURS,
+			nudges,
+		);
 
 		switch (action.kind) {
 			case "pr-open":
@@ -507,15 +646,23 @@ async function harvest(): Promise<void> {
 				);
 				console.log(`harvest: #${issue.number} -> PR ${action.url}.`);
 				break;
-			case "review":
+			case "review": {
 				await addLabels(issue.number, [REVIEW_LABEL]);
 				await removeLabel(issue.number, DISPATCHED_LABEL);
+				// Quote the session's final word so triage never needs session
+				// spelunking: for a NOT-APPLICABLE verdict the reasoning to
+				// verify is right on the issue.
+				const finalWord = await lastAgentMessage(sessionKey, marker.session).catch(() => null);
+				const quoted = finalWord
+					? `\n\nSession's final message:\n\n> ${finalWord.slice(0, 1500).replaceAll("\n", "\n> ")}`
+					: "";
 				await comment(
 					issue.number,
-					`Session [\`${marker.session}\`](${session.url ?? ""}) needs a human: ${action.reason}. If it declared NOT-APPLICABLE, verify the reasoning and close this issue; otherwise resolve and remove \`${REVIEW_LABEL}\` to requeue.`,
+					`Session [\`${marker.session}\`](${session.url ?? ""}) needs a human: ${action.reason}. If it declared NOT-APPLICABLE, verify the reasoning and close this issue; otherwise resolve and remove \`${REVIEW_LABEL}\` to requeue.${quoted}`,
 				);
 				console.log(`harvest: #${issue.number} -> ${REVIEW_LABEL} (${action.reason}).`);
 				break;
+			}
 			case "failed":
 				await comment(
 					issue.number,
@@ -523,6 +670,17 @@ async function harvest(): Promise<void> {
 				);
 				await removeLabel(issue.number, DISPATCHED_LABEL);
 				console.log(`harvest: #${issue.number} failed (${action.reason}); requeued.`);
+				break;
+			case "nudge":
+				await jules(sessionKey, `/${marker.session}:sendMessage`, {
+					method: "POST",
+					body: JSON.stringify({ prompt: NUDGE_PROMPT }),
+				});
+				await comment(
+					issue.number,
+					`${nudgeMarker(marker.session)}\nSession paused to ask for input; answered with the autonomy nudge (${nudges + 1}/${MAX_NUDGES}).`,
+				);
+				console.log(`harvest: #${issue.number} nudged (${nudges + 1}/${MAX_NUDGES}).`);
 				break;
 			case "wait":
 				console.log(`harvest: #${issue.number} still running (${session.state}, ${Math.round(ageHours)}h).`);
@@ -532,7 +690,15 @@ async function harvest(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// status: one table of pipeline truth.
+// status: one table of pipeline truth — the operator's review dashboard.
+
+/** Failing check names for a head SHA, deduped by check name (latest run wins). */
+async function failingChecks(sha: string): Promise<string[]> {
+	const runs = (await gh(`/repos/${ORIGIN}/commits/${sha}/check-runs?per_page=100`)).check_runs ?? [];
+	const latest = new Map<string, string>();
+	for (const run of runs) if (!latest.has(run.name)) latest.set(run.name, run.conclusion ?? "");
+	return [...latest.entries()].filter(([, c]) => c === "failure").map(([name]) => name);
+}
 
 async function status(): Promise<void> {
 	const all = (await ghAll(`/repos/${ORIGIN}/issues?labels=${QUEUE_LABEL}&state=open`, 2000)).filter(
@@ -553,9 +719,27 @@ async function status(): Promise<void> {
 	console.log(
 		`  needs human     ${count(REVIEW_LABEL)} (${REVIEW_LABEL}) + ${count(BLOCKED_LABEL)} (${BLOCKED_LABEL})`,
 	);
+
+	// The review pile, with the reason each item needs a human.
+	for (const issue of all.filter(i => hasLabel(i, REVIEW_LABEL) || hasLabel(i, BLOCKED_LABEL))) {
+		const comments = await issueComments(issue.number);
+		const reason =
+			comments
+				.filter(b => /needs a human|blocked/i.test(b))
+				.at(-1)
+				?.split("\n")
+				.find(l => l.trim() && !l.startsWith("<!--")) ?? "(see issue)";
+		console.log(`    #${issue.number} ${issue.title.slice(0, 60)}\n      ${reason.slice(0, 140)}`);
+	}
+
+	// Open PRs with their check health, so "what can I merge?" is one glance.
 	const openPrs = await ghAll(`/repos/${ORIGIN}/pulls?state=open`, 200);
-	console.log(`  open PRs        ${openPrs.length} total awaiting review`);
-	for (const pr of openPrs) console.log(`    #${pr.number} ${pr.title.slice(0, 80)} (${pr.user?.login})`);
+	console.log(`  open PRs        ${openPrs.length} awaiting review`);
+	for (const pr of openPrs) {
+		const failing = await failingChecks(pr.head?.sha ?? "").catch(() => ["(checks unreadable)"]);
+		const health = failing.length === 0 ? "checks green" : `failing: ${failing.join(", ")}`;
+		console.log(`    #${pr.number} ${pr.title.slice(0, 70)} (${pr.user?.login})\n      ${health}`);
+	}
 	await usableLanes(resolveKeys());
 }
 
