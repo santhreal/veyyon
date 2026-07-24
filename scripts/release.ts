@@ -491,6 +491,7 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		console.log(
 			`  Fixed ${fixed.path}: ${fixed.promotedItems} promoted, ` +
 				`${fixed.mergedDuplicateHeadings} duplicate heading(s) merged, ` +
+				`${fixed.mergedDuplicateVersions} duplicate version(s) merged, ` +
 				`${fixed.removedEmptyHeadings} empty heading(s) removed`,
 		);
 	}
