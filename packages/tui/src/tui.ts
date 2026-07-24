@@ -1335,6 +1335,18 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * Rows of the composed frame the engine has committed to native scrollback
+	 * (`frame[0..committedRows)` is the engine's claim of what terminal history
+	 * holds). Read-only diagnostic surface: the render-stress harness reads
+	 * this claim and verifies it against the terminal's actual scroll behavior
+	 * and buffer bytes, so drift between this counter and physical scrollback
+	 * is a test failure, never silently re-derived.
+	 */
+	get committedRows(): number {
+		return this.#committedRows;
+	}
+
+	/**
 	 * Total row count of the last composed frame (all root children). 0 before the
 	 * first render. Read-only; lets callers that need to bottom-anchor content
 	 * measure the exact composed height without re-rendering.

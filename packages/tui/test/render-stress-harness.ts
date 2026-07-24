@@ -4,12 +4,10 @@ import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { __veyyonNativesV1_0_37 } from "@veyyon/natives";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
-import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	type Component,
 	CURSOR_MARKER,
 	type Focusable,
-	findCommittedPrefixResync,
 	type OverlayAnchor,
 	type OverlayHandle,
 	type OverlayOptions,
@@ -31,6 +29,37 @@ import { VirtualTerminal } from "./virtual-terminal";
 const BASE_SEEDS = [
 	0x00c0ffee, 0x1badb002, 0x5eed1234, 0xdecafbad, 0x8badf00d, 0x0ddc0ffe, 0xcafed00d, 0xb16b00b5,
 ] as const;
+// Pinned regression replays: template+seed pairs that once broke an oracle or
+// the engine. BASE_SEEDS pair with templates round-robin, so a bug found on a
+// specific (scenario, seed) combination would otherwise only re-run under a
+// wide TUI_STRESS_SEEDS sweep; these are appended to EVERY default pool so the
+// exact reproduction stays in the always-on suite. Each entry documents the
+// bug it locks out.
+const REGRESSION_REPLAYS: readonly { template: string; seed: number }[] = [
+	// 2026-07-24: after collapseToFew shrank the frame into the committed
+	// prefix, the next growth frame tripped tape/physical scroll parity at
+	// op 87 — twice over: the shadow ledger re-derived the engine's window
+	// classification and drifted one frame off (fixed by reading the engine's
+	// committed counter and verifying it against physical scrolls), and the
+	// parity guard re-armed from the collapsed frame's LENGTH while the
+	// terminal history stayed saturated (baseY pinned at the line cap, every
+	// scroll evicting — fixed by gating on observed baseY saturation).
+	{ template: "darwin-normal-small", seed: 0xe19c9184 },
+	// 2026-07-24: highWaterPreviewCollapse streams a 17-row transient preview
+	// past a tiny viewport and collapses back inside ONE op. The frame ends
+	// byte-identical but the overflow rows legitimately committed into history
+	// and stay there with scrollback rebuild disabled ("duplication, never
+	// loss") — the frame-neutral growth oracle demanded zero growth unless the
+	// buffer ended clean; it now allows growth bounded by the op's tape delta.
+	{ template: "darwin-normal-tiny", seed: 0x8b0f1a71 },
+	// 2026-07-24: appendRepeatedTail while the reader is scrolled into a
+	// SATURATED history (baseY at the line cap): the commit evicts the oldest
+	// row and the offset-pinned viewport's visible content slides up one row.
+	// The anti-yank row-stability oracle read that legitimate eviction shift as
+	// a stray write; it now skips row stability only when saturated AND the op
+	// committed (tape grew).
+	{ template: "darwin-normal-small", seed: 0x40593834 },
+];
 const LARGE_SCROLL = 1_000_000;
 const CORE_ITERATIONS = 120;
 const SOAK_ITERATIONS = 300;
@@ -1126,21 +1155,20 @@ class StressDriver {
 	// the duplicate oracle must allow them cumulatively, not just against the
 	// current frame.
 	#everDuplicatedFrameLines = new Set<string>();
-	// Shadow commit ledger mirroring the engine's append-only law, fed only by
-	// observed frames (render wrap) and observed bytes (write wrap) — never by
-	// engine internals. `#shadowTape` is what native scrollback must contain;
-	// `#shadowWindowTop` is the frame row mapped to grid row 0. Double-entry
-	// bookkeeping for committedRows/windowTop: the engine and this ledger must
-	// independently arrive at the same terminal state.
+	// Shadow commit ledger. `#shadowTape` is what native scrollback must
+	// contain: the engine's CLAIM of committed content, materialized row by row
+	// from the observed frames. The commit COUNTER is read straight from the
+	// engine (`tui.committedRows`) rather than re-derived — the harness used to
+	// re-implement the engine's window classification (resync audit, cursor-tail
+	// re-anchor, geometry/overlay freezes) and every re-derivation drifted one
+	// frame off the engine on some seed (0x0ddc0ffe, 0xe19c9184). Reading the
+	// claim is not trusting it: the parity oracle checks each op's tape growth
+	// against the terminal's PHYSICAL scroll count (ghostty baseY), and the
+	// fidelity oracles check the tape's BYTES against the terminal's actual
+	// scrollback buffer, so a committed counter that lies about what scrolled —
+	// or commits the wrong rows — still fails loudly.
 	#shadowTape: string[] = [];
 	#shadowCommitted = 0;
-	// Raw-row mirror of the engine's committed prefix. The resync audit must
-	// run on the same inputs as the engine (raw rows, not normalized ones), or
-	// width-truncation collisions would let the two ledgers disagree about
-	// whether a divergence happened.
-	#shadowRawFrame: string[] = [];
-	#shadowRawPrefix: string[] = [];
-	#shadowWindowTop = 0;
 	#shadowFrame: string[] = [];
 	#shadowFrameHeight = 0;
 	#shadowFrameWidth = 0;
@@ -1205,75 +1233,20 @@ class StressDriver {
 				(this.#shadowFrameWidth > 0 &&
 					(width !== this.#shadowFrameWidth || this.#term.rows !== this.#shadowFrameHeight));
 			this.#shadowResizePending = false;
+			// Sync BEFORE overwriting the shadow frame: any commits raised by the
+			// previous frame's emit must materialize from the frame that was on
+			// screen when they scrolled off, not from the frame about to render.
+			this.#syncShadowCommitted();
 			// Markers are engine-internal sentinels; the engine strips them from
 			// this same array immediately after render returns, and its commit
 			// ledger (prefix + audit) only ever sees stripped rows — mirror that
 			// exactly. (Also: stripVTControlCharacters would otherwise swallow
 			// everything after an APC introducer during normalization.)
 			const stripped = lines.map(line => (line.includes(CURSOR_MARKER) ? line.replaceAll(CURSOR_MARKER, "") : line));
-			this.#shadowRawFrame = stripped;
 			this.#shadowFrame = stripped.map(line => expectedTerminalLine(line, width));
 			this.#shadowFrameWidth = width;
 			this.#shadowFrameHeight = this.#term.rows;
 			this.#shadowFrameOverlay = this.#tui.hasOverlay();
-			// Mirror the engine's render-time ledger transitions here: the audit
-			// resync and the shrink-into-prefix re-anchor can both fire on frames
-			// that emit zero bytes, which the write hook would never observe.
-			let shadowResynced = false;
-			if (!this.#shadowFrameGeometryChanged && this.#shadowRawPrefix.length > 0) {
-				const resyncTo = findCommittedPrefixResync(stripped, this.#shadowRawPrefix);
-				if (resyncTo >= 0) {
-					this.#shadowCommitted = resyncTo;
-					this.#shadowRawPrefix.length = resyncTo;
-					shadowResynced = true;
-				}
-			}
-			// Mirror the engine's cursor-tail re-anchor ("the prompt NEVER
-			// floats", tui.ts window classification): whenever the live tail
-			// below the committed boundary underfills the viewport while the
-			// focused cursor sits in it, the engine pulls the window back to the
-			// frame tail and restarts commit bookkeeping there — resync or not,
-			// geometry frame or not (multiplexer resizes repaint in place and
-			// still take this branch). Two subtleties, both learned from the
-			// seed 0x0ddc0ffe viewport-fidelity failure: (1) mirroring only
-			// inside the resync branch strands the shadow window at a stale
-			// commit boundary on a grow-resize; (2) the hooked render output
-			// can NEVER carry markers (the engine's marker ledger persists per
-			// composed row while the rows the hook sees are already stripped),
-			// so the cursor must be read from the model side — the same source
-			// #expectedFrame uses.
-			// Gate mirrored from the engine's window classification: a DIRECT
-			// terminal with scrollback rebuild enabled routes a resync into the
-			// divergenceRebuild full paint (ED3 erase-and-replay, observed by
-			// the write hook), so the tail re-anchor is only reachable there
-			// WITHOUT a resync; multiplexers cannot ED3, and with rebuild
-			// disabled (the default, and the harness configuration) the
-			// re-anchor branch stays reachable resync or not.
-			if (isInsideTerminalMultiplexer() || !this.#tui.getScrollbackRebuild() || !shadowResynced) {
-				const rows = Math.max(1, this.#term.rows);
-				const modelLines = this.#baseFrameLines(width);
-				let cursorInTail = false;
-				for (let i = this.#shadowCommitted; i < modelLines.length; i++) {
-					if (modelLines[i]!.includes(CURSOR_MARKER)) {
-						cursorInTail = true;
-						break;
-					}
-				}
-				if (
-					cursorInTail &&
-					stripped.length > this.#shadowCommitted &&
-					stripped.length - this.#shadowCommitted < rows
-				) {
-					this.#shadowCommitted = Math.max(0, stripped.length - rows);
-					this.#shadowWindowTop = this.#shadowCommitted;
-					this.#shadowRawPrefix = stripped.slice(0, this.#shadowCommitted);
-				}
-			}
-			if (stripped.length <= this.#shadowCommitted) {
-				this.#shadowCommitted = Math.max(0, stripped.length - Math.max(1, this.#term.rows));
-				this.#shadowWindowTop = this.#shadowCommitted;
-				this.#shadowRawPrefix = stripped.slice(0, this.#shadowCommitted);
-			}
 			return lines;
 		};
 	}
@@ -1317,6 +1290,10 @@ class StressDriver {
 	}
 
 	#snapshot(): Snapshot {
+		// The final emit of an op raises the engine counter after its write
+		// (post-write, so the write hook saw the pre-raise value); reconcile
+		// before reading tape length or the parity oracle undercounts.
+		this.#syncShadowCommitted();
 		const position = this.#term.getBufferPosition();
 		const expected = this.#expectedFrame();
 		const view = normalizeLines(this.#term.getViewport());
@@ -2196,7 +2173,7 @@ class StressDriver {
 	#assertTapeScrollParity(op: AppliedOperation, before: Snapshot, after: Snapshot, index: number): void {
 		if (!this.#traits.strictNativeScrollback) return;
 		if (op.checkpoint || op.geometryChanged) return;
-		if (this.#scrollbackCapReached(before) || this.#scrollbackCapReached(after)) return;
+		if (this.#historySaturated(before) || this.#historySaturated(after)) return;
 		const physicalDelta = after.position.baseY - before.position.baseY;
 		const tapeDelta = after.shadowTapeLength - before.shadowTapeLength;
 		if (physicalDelta !== tapeDelta) {
@@ -2402,9 +2379,22 @@ class StressDriver {
 		if (!sameLines(before.frame, after.frame)) return;
 		if (after.buffer.length > before.buffer.length) {
 			if (this.#isCleanBuffer(after.buffer, after.frame, after.height)) return;
+			// A frame-neutral OP is not a frame-neutral SEQUENCE: a transient
+			// tall block inside the op (highWaterPreviewCollapse streams a
+			// preview past the viewport, then collapses back to the original
+			// frame) legitimately commits its overflow rows into history, and
+			// with scrollback rebuild disabled the engine may not erase them
+			// ("duplication, never loss"). Every legitimate growth row is a
+			// commit, and every commit appends to the tape in the same write —
+			// so growth beyond the op's tape growth is a leak (rows entering
+			// history that the engine never accounted as committed).
+			const tapeDelta = Math.max(0, after.shadowTapeLength - before.shadowTapeLength);
+			const growth = after.buffer.length - before.buffer.length;
+			if (growth <= tapeDelta) return;
 			this.#fail("frame-neutral scrollback growth", op, before, after, index, {
 				beforeLength: before.buffer.length,
 				afterLength: after.buffer.length,
+				tapeDelta,
 			});
 		}
 	}
@@ -2461,6 +2451,15 @@ class StressDriver {
 		// Rows below the history boundary belong to the live region and may legitimately
 		// repaint — e.g. a deferred shrink pads and repaints the live viewport, and a
 		// partial scroll (by < height) keeps the top live row on screen.
+		//
+		// Saturated history is the one legitimate exception (seed 0x40593834):
+		// once baseY sits at the line cap, every commit EVICTS the oldest history
+		// row, and under an offset-pinned viewport the visible content slides up
+		// beneath the scrolled reader — a full-scrollback artifact, not a stray
+		// write. Skip row stability only when a commit actually happened this op
+		// (tape grew); a history row changing with zero commits is still a bug.
+		const scrolledTapeDelta = Math.max(0, after.shadowTapeLength - before.shadowTapeLength);
+		if ((this.#historySaturated(before) || this.#historySaturated(after)) && scrolledTapeDelta > 0) return;
 		const historyVisible = Math.max(0, Math.min(before.position.baseY - before.position.viewportY, before.height));
 		for (let i = 0; i < historyVisible; i++) {
 			if (after.view[i] !== before.view[i]) {
@@ -2469,6 +2468,10 @@ class StressDriver {
 					historyVisible,
 					beforeRow: before.view[i] ?? null,
 					afterRow: after.view[i] ?? null,
+					beforeBaseY: before.position.baseY,
+					afterBaseY: after.position.baseY,
+					beforeViewportY: before.position.viewportY,
+					afterViewportY: after.position.viewportY,
 				});
 			}
 		}
@@ -2509,7 +2512,7 @@ class StressDriver {
 
 	#assertHistoryPrefixStability(op: AppliedOperation, before: Snapshot, after: Snapshot, index: number): void {
 		if (!this.#traits.strictNativeScrollback) return;
-		if (this.#scrollbackCapReached(before) || this.#scrollbackCapReached(after)) return;
+		if (this.#historySaturated(before) || this.#historySaturated(after)) return;
 		if (!op.mutatesContent || before.redraws !== after.redraws) return;
 		const prefixLength = Math.max(0, Math.min(before.position.viewportY, before.buffer.length));
 		const beforePrefix = before.buffer.slice(0, prefixLength);
@@ -2582,23 +2585,54 @@ class StressDriver {
 	}
 
 	/**
-	 * Advance the shadow commit ledger for one observed write. Classification
-	 * is byte-driven: ED3 = destructive replay, ED2-without-ED3 =
-	 * non-destructive replay (initial paint / multiplexer replace), anything
-	 * else = ordinary update following the engine's append-only law.
+	 * The frame row mapped to grid row 0: the frame tail anchored at the
+	 * viewport, floored at the committed boundary (rows already in native
+	 * history are never re-shown on the grid). Derived, never stored — every
+	 * stored copy of this value drifted from the engine on some seed.
+	 */
+	get #shadowWindowTop(): number {
+		return Math.max(this.#shadowCommitted, this.#shadowFrame.length - Math.max(1, this.#shadowFrameHeight), 0);
+	}
+
+	/**
+	 * Reconcile the shadow ledger with the engine's committed counter. A raise
+	 * means the emit scrolled rows into native history: materialize them onto
+	 * the tape from the frame that was on screen. A drop is a render-time
+	 * re-anchor or audit resync (cursor-tail pull-down, divergence trim): the
+	 * engine rebases its counter WITHOUT erasing history — the stale committed
+	 * copy stays in the terminal ("duplication, never loss") — so the tape
+	 * keeps its rows and only the counter rebases; the re-committed rows land
+	 * on the tape again when the counter re-advances, exactly as they re-enter
+	 * the terminal physically.
+	 */
+	#syncShadowCommitted(): void {
+		const engineCommitted = this.#tui.committedRows;
+		if (engineCommitted > this.#shadowCommitted) {
+			for (let i = this.#shadowCommitted; i < engineCommitted; i++) {
+				this.#shadowTape.push(this.#shadowFrame[i] ?? "");
+			}
+		}
+		this.#shadowCommitted = engineCommitted;
+	}
+
+	/**
+	 * Advance the shadow commit ledger for one observed write. Destructive and
+	 * non-destructive replays are byte-driven (ED3/ED2 change what history
+	 * CONTAINS, which the committed counter alone cannot express); ordinary
+	 * updates flow through #syncShadowCommitted, which also runs here first so
+	 * pre-emit counter drops (classification re-anchors) are observed before
+	 * this write's own commits raise the counter again.
 	 */
 	#applyShadowWrite(data: string): void {
+		this.#syncShadowCommitted();
 		data = this.#normalScreenShadowWrite(data);
 		if (data.length === 0) return;
 		const frame = this.#shadowFrame;
-		const raw = this.#shadowRawFrame;
 		const height = Math.max(1, this.#shadowFrameHeight);
 		const length = frame.length;
 		if (data.includes("\x1b[3J")) {
 			this.#shadowCommitted = Math.max(0, length - height);
-			this.#shadowWindowTop = this.#shadowCommitted;
 			this.#shadowTape = frame.slice(0, this.#shadowCommitted);
-			this.#shadowRawPrefix = raw.slice(0, this.#shadowCommitted);
 			return;
 		}
 		if (data.includes("\x1b[2J")) {
@@ -2607,28 +2641,8 @@ class StressDriver {
 			const chunkTo = Math.max(0, length - height);
 			for (let i = 0; i < chunkTo; i++) this.#shadowTape.push(frame[i] ?? "");
 			this.#shadowCommitted = chunkTo;
-			this.#shadowWindowTop = chunkTo;
-			this.#shadowRawPrefix = raw.slice(0, chunkTo);
 			return;
 		}
-		// Audit and shrink re-anchoring are mirrored at render time (they can
-		// fire on zero-byte frames); the write hook only applies commits.
-		const windowTop = Math.max(this.#shadowCommitted, length - height, 0);
-		this.#shadowWindowTop = windowTop;
-		// Overlays and multiplexer geometry frames freeze commits; a geometry
-		// frame also re-bases the raw prefix at the new width (accepted wrap
-		// drift, mirrored from the engine).
-		if (this.#shadowFrameGeometryChanged) {
-			this.#shadowRawPrefix = raw.slice(0, this.#shadowCommitted);
-			return;
-		}
-		if (this.#shadowFrameOverlay) return;
-		const chunkTo = Math.max(this.#shadowCommitted, Math.min(length, windowTop));
-		for (let i = this.#shadowCommitted; i < chunkTo; i++) {
-			this.#shadowTape.push(frame[i] ?? "");
-			this.#shadowRawPrefix.push(raw[i] ?? "");
-		}
-		this.#shadowCommitted = chunkTo;
 	}
 
 	// Resize fast-path frames write to the alternate screen, then the settled
@@ -2651,8 +2665,19 @@ class StressDriver {
 		}
 		return data.slice(0, enterIndex) + data.slice(exitIndex + ALT_SCREEN_EXIT.length);
 	}
-	#scrollbackCapReached(snapshot: Snapshot): boolean {
-		return Math.max(snapshot.height, snapshot.frame.length) > snapshot.height + this.#scenario.scrollback;
+	/**
+	 * Whether the terminal's scrollback history is full. Once baseY sits at the
+	 * scenario's line cap, every further physical scroll EVICTS the oldest
+	 * history row and baseY stays pinned — physical deltas stop tracking
+	 * commits, and the history prefix legitimately shifts without a redraw. The
+	 * old guard here re-derived saturation from the CURRENT frame's length,
+	 * which wrongly re-armed after a frame collapse (seed 0xe19c9184 op 87:
+	 * frame shrank to 2 rows, but the terminal history stays saturated forever
+	 * — history never shrinks short of an ED3 erase, and after ED3 baseY drops
+	 * below the cap so this predicate re-arms the checks correctly).
+	 */
+	#historySaturated(snapshot: Snapshot): boolean {
+		return snapshot.position.baseY >= this.#scenario.scrollback;
 	}
 
 	#bufferReflectsFrame(buffer: readonly string[], frame: readonly string[], height: number): boolean {
@@ -3434,6 +3459,13 @@ export function buildScenarios(): Scenario[] {
 		const template = templates[i % templates.length]!;
 		const maxHeight = maxOf(template.heightChoices);
 		scenarios.push(materializeScenario(template, seeds[i]!, iterations, bulkMax, timeoutMs, maxHeight));
+	}
+	for (const pinned of REGRESSION_REPLAYS) {
+		const template = templates.find(t => t.name === pinned.template);
+		if (template === undefined) continue; // soak template set may not carry it
+		if (scenarios.some(s => s.name === pinned.template && s.seed === pinned.seed)) continue;
+		const maxHeight = maxOf(template.heightChoices);
+		scenarios.push(materializeScenario(template, pinned.seed, iterations, bulkMax, timeoutMs, maxHeight));
 	}
 	return scenarios;
 }
