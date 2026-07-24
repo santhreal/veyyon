@@ -9,8 +9,10 @@
  *
  * The statistical core is {@link summarizeCell}: with `--repeats K`, an
  * (arm, task) cell holds up to K samples, and a single number cannot describe K
- * stochastic runs. A cell is summarized as a pass RATE with a binomial standard
- * error, which is what lets a reader tell a real arm effect from run-to-run noise.
+ * stochastic runs. A cell is summarized as a pass RATE with a 95% Wilson
+ * confidence interval (see {@link wilsonInterval}), which is what lets a reader
+ * tell a real arm effect from run-to-run noise without being fooled by the
+ * zero-width standard error a boundary cell produces.
  */
 
 /**
@@ -110,12 +112,25 @@ export interface CellSummary {
 	/** passes / n, or null when n is 0. */
 	passRate: number | null;
 	/**
-	 * Binomial standard error of {@link passRate}: sqrt(p*(1-p)/n). This is the
-	 * headline uncertainty number: two arms whose pass rates differ by less than a
-	 * couple of standard errors are not distinguishable at this sample count, and
-	 * the report prints it so a reader does not over-read noise. Null when n is 0.
+	 * Binomial normal-approximation standard error of {@link passRate}:
+	 * sqrt(p*(1-p)/n). A convenient point measure of spread, kept for downstream
+	 * analysis, but NOT the displayed interval: at the boundaries it is degenerate
+	 * (all-pass or all-fail gives exactly 0, falsely implying certainty), and on a
+	 * SWE bench with small K those boundary cells are common. The report shows the
+	 * Wilson interval instead (see {@link wilsonLow}). Null when n is 0.
 	 */
 	stdErr: number | null;
+	/**
+	 * Lower / upper bound of the Wilson score 95% confidence interval for
+	 * {@link passRate}. This is the honest uncertainty the report prints: unlike the
+	 * normal-approximation {@link stdErr}, it never collapses to a zero-width claim
+	 * at the boundary — 3 of 3 passes yields roughly [0.44, 1.0], not [1.0, 1.0], so
+	 * a reader cannot mistake a lucky small sample for a certain result. Two arms
+	 * whose Wilson intervals overlap are not distinguishable at this sample count.
+	 * Null when n is 0.
+	 */
+	wilsonLow: number | null;
+	wilsonHigh: number | null;
 	meanReward: number | null;
 	meanPartial: number | null;
 	meanOutputTokens: number | null;
@@ -133,6 +148,34 @@ function mean(values: Array<number | null>): number | null {
 	return nums.reduce((a, v) => a + v, 0) / nums.length;
 }
 
+/** z for a two-sided 95% interval (standard normal 0.975 quantile). */
+const Z_95 = 1.959963984540054;
+
+/**
+ * Wilson score confidence interval for a binomial proportion (passes out of n).
+ * Returns the interval that is honest at the boundaries where the normal
+ * approximation is not: with k = n (or k = 0) it still reports real width instead
+ * of collapsing to a point, which is exactly the small-sample, near-0/near-1 regime
+ * a task-level bench spends most of its time in. Bounds are clamped to [0, 1].
+ * Returns null bounds when n is 0 (no attempts to estimate from).
+ */
+export function wilsonInterval(
+	passes: number,
+	n: number,
+	z: number = Z_95,
+): { low: number | null; high: number | null } {
+	if (n <= 0) return { low: null, high: null };
+	const p = passes / n;
+	const z2 = z * z;
+	const denom = 1 + z2 / n;
+	const center = (p + z2 / (2 * n)) / denom;
+	const halfWidth = (z / denom) * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n));
+	return {
+		low: Math.max(0, center - halfWidth),
+		high: Math.min(1, center + halfWidth),
+	};
+}
+
 /**
  * Reduce a group of samples to a {@link CellSummary}. Pure: same input, same
  * output, no IO. Used for both the per-arm rollup (all of an arm's samples) and
@@ -144,6 +187,7 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 	const passes = ok.filter(r => r.reward === 1).length;
 	const passRate = n > 0 ? passes / n : null;
 	const stdErr = passRate === null ? null : Math.sqrt((passRate * (1 - passRate)) / n);
+	const wilson = wilsonInterval(passes, n);
 	const sum = (f: (r: ArmResult) => number | null) => ok.reduce((a, r) => a + (f(r) ?? 0), 0);
 	return {
 		total: rows.length,
@@ -152,6 +196,8 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		passes,
 		passRate,
 		stdErr,
+		wilsonLow: wilson.low,
+		wilsonHigh: wilson.high,
 		meanReward: mean(ok.map(r => r.reward)),
 		meanPartial: mean(ok.map(r => r.partial)),
 		meanOutputTokens: mean(ok.map(r => r.outputTokens)),
@@ -169,11 +215,19 @@ function fmt(n: number | null, digits = 0): string {
 	return digits > 0 ? n.toFixed(digits) : String(Math.round(n));
 }
 
-/** A pass rate rendered with its standard error, e.g. `0.67 ±0.14 (4/6)`. */
+/**
+ * A pass rate rendered with its 95% Wilson confidence interval, e.g.
+ * `0.67 [0.30–0.90] (4/6)`. The interval is the Wilson score interval, not
+ * `passRate ± stdErr`: the normal-approximation error collapses to a zero-width
+ * `±0.00` at an all-pass or all-fail cell (`3/3` → `1.00 ±0.00`), which reads as
+ * false certainty. Boundary cells are common on a SWE bench, so the report shows
+ * the Wilson bounds — `3/3` becomes `1.00 [0.44–1.00]`, honestly wide.
+ */
 function fmtRate(s: CellSummary): string {
 	if (s.passRate === null) return "—";
-	const se = s.stdErr === null ? "" : ` ±${s.stdErr.toFixed(2)}`;
-	return `${s.passRate.toFixed(2)}${se} (${s.passes}/${s.n})`;
+	const ci =
+		s.wilsonLow === null || s.wilsonHigh === null ? "" : ` [${s.wilsonLow.toFixed(2)}–${s.wilsonHigh.toFixed(2)}]`;
+	return `${s.passRate.toFixed(2)}${ci} (${s.passes}/${s.n})`;
 }
 
 /**
@@ -193,7 +247,7 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 	lines.push("## Per arm totals");
 	lines.push("");
 	lines.push(
-		"| arm | samples | pass rate ±se | mean reward | mean partial | input tok | output tok | cache tok | cost USD | agent wall |",
+		"| arm | samples | pass rate [95% CI] | mean reward | mean partial | input tok | output tok | cache tok | cost USD | agent wall |",
 	);
 	lines.push("|---|---|---|---|---|---|---|---|---|---|");
 	for (const arm of arms) {
