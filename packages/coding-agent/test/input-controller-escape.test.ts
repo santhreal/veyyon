@@ -676,6 +676,24 @@ describe("InputController escape behavior", () => {
 		expect(ctx.showUserMessageSelector).not.toHaveBeenCalled();
 	});
 
+	it("silences TTS before aborting an overlapping agent turn (#6118)", () => {
+		const clear = vi.spyOn(vocalizer, "clear").mockImplementation(() => {});
+		vi.spyOn(vocalizer, "isSpeaking").mockReturnValue(true);
+		const { ctx, editor, spies } = createContext();
+		const pauseLoop = vi.fn();
+		ctx.loopModeEnabled = true;
+		ctx.pauseLoop = pauseLoop;
+		mutableSessionState(ctx).isStreaming = true;
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+		editor.onEscape?.();
+
+		expect(clear).toHaveBeenCalledTimes(1);
+		expect(pauseLoop).not.toHaveBeenCalled();
+		expect(spies.abort).not.toHaveBeenCalled();
+	});
+
 	it("silences a still-audible vocalizer on Esc instead of opening the tree selector (#4521)", () => {
 		const clear = vi.spyOn(vocalizer, "clear").mockImplementation(() => {});
 		const isSpeaking = vi.spyOn(vocalizer, "isSpeaking").mockReturnValue(true);
