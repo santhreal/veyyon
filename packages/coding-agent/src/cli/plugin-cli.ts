@@ -4,7 +4,7 @@
  * Handles `veyyon plugin <command>` subcommands for plugin lifecycle management.
  */
 
-import { APP_NAME, getProjectDir } from "@veyyon/utils";
+import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
 import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
@@ -137,7 +137,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 				await manager.addMarketplace(source);
 				console.log(chalk.green(`${theme.status.success} Added marketplace: ${source}`));
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to add marketplace: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to add marketplace: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			break;
@@ -153,7 +153,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 				await manager.removeMarketplace(name);
 				console.log(chalk.green(`${theme.status.success} Removed marketplace: ${name}`));
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to remove marketplace: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to remove marketplace: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			break;
@@ -169,7 +169,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 					console.log(chalk.green(`${theme.status.success} Updated ${results.length} marketplace(s)`));
 				}
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to update marketplace: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to update marketplace: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			break;
@@ -192,7 +192,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 					console.log(`  ${chalk.cyan(mp.name)}  ${chalk.dim(mp.sourceUri)}`);
 				}
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to list marketplaces: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to list marketplaces: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			break;
@@ -219,7 +219,7 @@ async function handleDiscover(args: string[], _flags: PluginCommandArgs["flags"]
 			}
 		}
 	} catch (err) {
-		console.error(chalk.red(`${theme.status.error} Failed to discover plugins: ${err}`));
+		console.error(chalk.red(`${theme.status.error} Failed to discover plugins: ${errorMessage(err)}`));
 		process.exit(1);
 	}
 }
@@ -256,7 +256,7 @@ async function handleUpgrade(args: string[], flags: PluginCommandArgs["flags"]):
 			}
 		}
 	} catch (err) {
-		console.error(chalk.red(`Failed to upgrade: ${err}`));
+		console.error(chalk.red(`Failed to upgrade: ${errorMessage(err)}`));
 		process.exit(1);
 	}
 }
@@ -296,7 +296,7 @@ async function handleInstall(
 					),
 				);
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to install ${spec}: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to install ${spec}: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			continue;
@@ -339,7 +339,7 @@ async function handleInstall(
 					}
 				}
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to install ${spec}: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to install ${spec}: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			continue;
@@ -374,7 +374,7 @@ async function handleInstall(
 				}
 			}
 		} catch (err) {
-			console.error(chalk.red(`${theme.status.error} Failed to install ${spec}: ${err}`));
+			console.error(chalk.red(`${theme.status.error} Failed to install ${spec}: ${errorMessage(err)}`));
 			process.exit(1);
 		}
 	}
@@ -402,7 +402,7 @@ async function handleUninstall(
 				await mktMgr.uninstallPlugin(name, flags.scope);
 				console.log(chalk.green(`${theme.status.success} Uninstalled ${name}`));
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to uninstall ${name}: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to uninstall ${name}: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			continue;
@@ -417,7 +417,7 @@ async function handleUninstall(
 				console.log(chalk.green(`${theme.status.success} Uninstalled ${name}`));
 			}
 		} catch (err) {
-			console.error(chalk.red(`${theme.status.error} Failed to uninstall ${name}: ${err}`));
+			console.error(chalk.red(`${theme.status.error} Failed to uninstall ${name}: ${errorMessage(err)}`));
 			process.exit(1);
 		}
 	}
@@ -492,7 +492,7 @@ async function handleLink(manager: PluginManager, paths: string[], flags: { json
 			console.log(chalk.green(`${theme.status.success} Linked ${result.name} from ${paths[0]}`));
 		}
 	} catch (err) {
-		console.error(chalk.red(`${theme.status.error} Failed to link: ${err}`));
+		console.error(chalk.red(`${theme.status.error} Failed to link: ${errorMessage(err)}`));
 		process.exit(1);
 	}
 }
@@ -785,7 +785,7 @@ async function handleConfigValidate(manager: PluginManager, flags: { json?: bool
 		console.log(chalk.green(`${theme.status.success} All settings valid`));
 	} else {
 		for (const { plugin, key, error } of results) {
-			console.log(chalk.red(`${theme.status.error} ${plugin}.${key}: ${error}`));
+			console.log(chalk.red(`${theme.status.error} ${plugin}.${key}: ${errorMessage(error)}`));
 		}
 		process.exit(1);
 	}
@@ -835,7 +835,7 @@ async function handleSetEnabled(
 					console.log(chalk.green(`${theme.status.success} ${pastTense} ${name}`));
 				}
 			} catch (err) {
-				console.error(chalk.red(`${theme.status.error} Failed to ${action} ${name}: ${err}`));
+				console.error(chalk.red(`${theme.status.error} Failed to ${action} ${name}: ${errorMessage(err)}`));
 				process.exit(1);
 			}
 			continue;
@@ -849,7 +849,7 @@ async function handleSetEnabled(
 				console.log(chalk.green(`${theme.status.success} ${pastTense} ${name}`));
 			}
 		} catch (err) {
-			console.error(chalk.red(`${theme.status.error} Failed to ${action} ${name}: ${err}`));
+			console.error(chalk.red(`${theme.status.error} Failed to ${action} ${name}: ${errorMessage(err)}`));
 			process.exit(1);
 		}
 	}
