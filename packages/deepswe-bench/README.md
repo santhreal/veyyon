@@ -87,9 +87,9 @@ Flags:
   per model (argot does), the arm file names the same model id.
 - `--repeats K` — sample every (arm, task) cell K times (default 1). LLM agents
   are stochastic, so one sample per cell cannot separate a real arm effect from
-  run-to-run noise. With K > 1 the report shows each cell's pass RATE with a
-  binomial standard error, and the total run is `arms x tasks x K`. Raise K when
-  the expected delta is small; the standard error shrinks as `1/sqrt(K)`.
+  run-to-run noise. With K > 1 the report shows each cell's pass RATE with a 95%
+  Wilson confidence interval, and the total run is `arms x tasks x K`. Raise K
+  when the expected delta is small; the interval tightens roughly as `1/sqrt(K)`.
 
 Assets are staged into `<out>/assets/` (the compiled binary, the auth DB, and
 the arm overlays) and uploaded into each task container at run time with
@@ -104,14 +104,18 @@ verifier reports), `results.json` (every metric, machine-readable), and
 
 ## Reading the table
 
-- **pass rate ±se** and **mean reward** — task success from the held-out
-  verifier. With `--repeats K`, each cell is `passRate ±stdErr (passes/n)`: the
-  fraction of samples that scored reward 1, its binomial standard error, and the
-  raw tally. Two arms whose pass rates differ by less than a couple of standard
-  errors are not distinguishable at that sample count — raise `--repeats` before
-  trusting the sign. A feature that changes pass rate is a correctness change,
-  not a perf change; treat accordingly. Errored samples are excluded from the
-  rate (shown as `(+N err)`), never counted as failures.
+- **pass rate [95% CI]** and **mean reward** — task success from the held-out
+  verifier. With `--repeats K`, each cell is `passRate [low–high] (passes/n)`: the
+  fraction of samples that scored reward 1, its 95% Wilson confidence interval,
+  and the raw tally. The interval is Wilson, not `rate ± standard error`, on
+  purpose: the normal-approximation error collapses to `±0.00` at an all-pass or
+  all-fail cell (a `3/3` cell would read as certain when it is not), and those
+  boundary cells are common at small K. Wilson stays honestly wide there — `3/3`
+  renders `1.00 [0.44–1.00]`. Two arms whose intervals overlap are not
+  distinguishable at that sample count — raise `--repeats` before trusting the
+  sign. A feature that changes pass rate is a correctness change, not a perf
+  change; treat accordingly. Errored samples are excluded from the rate (shown as
+  `(+N err)`), never counted as failures.
 - **input / output / cache tok** — summed per arm from the persisted veyyon
   session usage. Output tokens are the expensive ones; a compression feature
   should move output tokens down at equal reward.
@@ -125,8 +129,8 @@ verifier reports), `results.json` (every metric, machine-readable), and
 
 Compare arms only on the same model and the same task set. For a feature with a
 small expected delta, raise `--repeats` (more samples per cell) and/or expand the
-task set before trusting the sign of the difference; the standard error column
-tells you when you have enough samples to read the delta.
+task set before trusting the sign of the difference; the confidence interval
+tells you when you have enough samples to read the delta (non-overlapping intervals).
 
 ## How it works (and why it is not slop)
 

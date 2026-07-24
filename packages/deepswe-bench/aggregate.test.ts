@@ -10,7 +10,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { type ArmResult, jobNameOf, parseJobName, renderReport, selectTasks, summarizeCell } from "./aggregate";
+import {
+	type ArmResult,
+	jobNameOf,
+	parseJobName,
+	renderReport,
+	selectTasks,
+	summarizeCell,
+	wilsonInterval,
+} from "./aggregate";
 
 /** Build an ArmResult with sane defaults, overriding only what a test cares about. */
 function res(over: Partial<ArmResult>): ArmResult {
@@ -168,6 +176,70 @@ describe("summarizeCell — pass rate and standard error", () => {
 		expect(s.passes).toBe(1);
 		expect(s.passRate).toBe(0.5);
 		expect(s.meanReward).toBeCloseTo(0.75, 12);
+	});
+});
+
+describe("wilsonInterval — honest uncertainty at the boundary the normal SE hides", () => {
+	// Why this exists: with --repeats small, an all-pass or all-fail cell is common,
+	// and the normal-approximation standard error sqrt(p(1-p)/n) is exactly 0 there,
+	// so a `3/3` cell would render `1.00 ±0.00` and read as certainty. The Wilson
+	// interval keeps real width in exactly that regime. These lock the boundary
+	// behavior and the closed-form values so a future refactor cannot silently swap
+	// back to the degenerate SE or mis-transcribe the formula.
+
+	test("an all-pass cell (3/3) is NOT [1,1] — it stays honestly wide", () => {
+		const { low, high } = wilsonInterval(3, 3);
+		expect(high).toBe(1); // upper bound clamps at 1
+		expect(low).toBeLessThan(1); // but the lower bound is well below 1
+		// Closed-form Wilson lower bound for 3/3 at z=1.959963984540054.
+		expect(low).toBeCloseTo(0.4385, 3);
+	});
+
+	test("an all-fail cell (0/4) is NOT [0,0] — the upper bound admits real doubt", () => {
+		const { low, high } = wilsonInterval(0, 4);
+		expect(low).toBe(0); // lower bound clamps at 0
+		expect(high).toBeGreaterThan(0);
+		expect(high).toBeCloseTo(0.4899, 3);
+	});
+
+	test("a balanced cell (2/4) is centered near 0.5 and symmetric about it", () => {
+		const { low, high } = wilsonInterval(2, 4);
+		// p=0.5 is a fixed point of the Wilson center, so the interval is symmetric.
+		expect((low as number) + (high as number)).toBeCloseTo(1, 12);
+		expect(low).toBeCloseTo(0.1502, 3);
+		expect(high).toBeCloseTo(0.8498, 3);
+	});
+
+	test("the interval tightens as n grows for the same proportion", () => {
+		const small = wilsonInterval(5, 10);
+		const large = wilsonInterval(50, 100);
+		const widthSmall = (small.high as number) - (small.low as number);
+		const widthLarge = (large.high as number) - (large.low as number);
+		expect(widthLarge).toBeLessThan(widthSmall);
+	});
+
+	test("n of 0 yields null bounds, never a fake [0,0]", () => {
+		expect(wilsonInterval(0, 0)).toEqual({ low: null, high: null });
+	});
+});
+
+describe("renderReport — the pass cell shows the Wilson interval, not ±se", () => {
+	// The visible contract: the report must print the honest interval. A regression
+	// to the old ` ±0.00` string on an all-pass cell is exactly the false-certainty
+	// bug this guards, so assert both that the interval renders and that the
+	// degenerate ` ±0.00` is gone.
+	const STAMP = "2026-07-23T00:00:00.000Z";
+
+	test("a 3/3 cell renders `[..–1.00]`, not `±0.00`", () => {
+		const results: ArmResult[] = [
+			res({ arm: "full", task: "t1", repeat: 0, reward: 1 }),
+			res({ arm: "full", task: "t1", repeat: 1, reward: 1 }),
+			res({ arm: "full", task: "t1", repeat: 2, reward: 1 }),
+		];
+		const report = renderReport(results, "m", STAMP, 3);
+		expect(report).toContain("1.00 [0.44–1.00] (3/3)");
+		expect(report).not.toContain("±0.00");
+		expect(report).not.toContain("±");
 	});
 });
 
