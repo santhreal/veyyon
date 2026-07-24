@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- `veyyon update --check --force` on an already-up-to-date install now reports `Up to date at X; --force would reinstall it` instead of printing `Forcing reinstall of X` and then exiting without reinstalling anything. Check mode installs nothing, so the message now matches what the command actually does.
 - A failed release-binary download now reports the URL, the HTTP status, the requested version, and the missing asset instead of the bare `Download failed: Not Found`. A 404 explains that the version may not exist or its build for your platform was not published and points at `veyyon update --check`; a 403/429 gives the rate-limit retry hint. This most helps installing a specific older version, where a mistyped or unpublished version previously failed with no clue what went wrong.
 
 ## [1.0.33] - 2026-07-24
