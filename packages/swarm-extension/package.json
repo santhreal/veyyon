@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/swarm-extension",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "Swarm orchestration extension for veyyon",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

@@ -2,16 +2,11 @@
 
 ## [Unreleased]
 
+## [1.0.29] - 2026-07-24
+
 ### Fixed
 
 - The CLI no longer hangs while printing a fatal error whose cause chain forms a cycle. A wrapped error whose `cause` pointed back at itself (directly or through another error) made the cause walk loop forever; it now stops at the first repeat and notes the circular reference.
-
-## [1.0.27] - 2026-07-24
-## [1.0.28] - 2026-07-24
-
-### Fixed
-
-- The Windows installer no longer destroys local edits in the source checkout. A source update ran `git reset --hard`, and uninstall deleted the checkout outright, so local edits under `~/.veyyon/src` (an edited `AGENTS.md`) were lost. It now commits any local changes to a `veyyon-local-<timestamp>` branch before updating, moves an existing tree aside to `<dir>.bak-<timestamp>` instead of deleting it before a fresh clone, and refuses to delete a checkout that holds unpushed work on uninstall. This matches the protection the POSIX installer already had.
 
 ## [16.5.2] - 2026-07-14
 
@@ -11283,6 +11278,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.28] - 2026-07-24
+
+### Fixed
+
+- The Windows installer no longer destroys local edits in the source checkout. A source update ran `git reset --hard`, and uninstall deleted the checkout outright, so local edits under `~/.veyyon/src` (an edited `AGENTS.md`) were lost. It now commits any local changes to a `veyyon-local-<timestamp>` branch before updating, moves an existing tree aside to `<dir>.bak-<timestamp>` instead of deleting it before a fresh clone, and refuses to delete a checkout that holds unpushed work on uninstall. This matches the protection the POSIX installer already had.
 
 ## [1.0.27] - 2026-07-24
 

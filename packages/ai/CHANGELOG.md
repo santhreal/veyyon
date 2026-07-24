@@ -2,12 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.28] - 2026-07-24
-
-### Fixed
-
-- Fixed tool-call arguments for a `string | number` field being coerced to a number when the model sent a quoted numeric string (for example `"123"`), which changed the argument's type and lost data such as leading zeros (`"007"` became `7`). A value that already satisfies its schema is now left unchanged; the numeric-string coercion still applies to `number | null` fields, where the raw string matches neither branch.
-
 ## [16.5.2] - 2026-07-14
 
 ### Added
@@ -4202,6 +4196,12 @@
 ## [1.337.0] - 2026-01-02
 
 Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mono](https://github.com/badlogic/pi-mono).
+
+## [1.0.28] - 2026-07-24
+
+### Fixed
+
+- Fixed tool-call arguments for a `string | number` field being coerced to a number when the model sent a quoted numeric string (for example `"123"`), which changed the argument's type and lost data such as leading zeros (`"007"` became `7`). A value that already satisfies its schema is now left unchanged; the numeric-string coercion still applies to `number | null` fields, where the raw string matches neither branch.
 
 ## [1.0.24] - 2026-07-24
 
