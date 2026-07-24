@@ -1237,6 +1237,17 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	// `</dev/null`, an empty pipe) the TUI blocks forever with zero output.
 	// Fail fast with the fix instead of hanging.
 	if (isInteractive && !process.stdin.isTTY) {
+		// A typo'd flag must be diagnosed as the typo, not as a missing terminal:
+		// without this, `veyyon --contiune` in a script dies with only the TTY
+		// message and never mentions the bad flag (the full unrecognized-flag
+		// check runs later, after extension flags load — a point this run never
+		// reaches). Extension flags are not loaded yet, so a legitimate
+		// extension flag would also be reported here; that run was about to die
+		// on this guard regardless, and the note names the possibility.
+		if (parsedArgs.unrecognizedFlags.length > 0 && reportUnrecognizedFlags(parsedArgs)) {
+			process.stderr.write("(If this is an extension flag, extensions were not loaded because stdin is not a TTY and no prompt was given.)\n");
+			process.exit(2);
+		}
 		if (parsedArgs.messages.length > 0) {
 			// Positional args were given — either a prompt missing `-p`, or a typo'd
 			// subcommand that fell through to launch. Name both fixes instead of the

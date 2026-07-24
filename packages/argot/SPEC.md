@@ -646,6 +646,18 @@ tokens. The emitted TOML always re-parses through `parseDict`, so generation
 never produces a dictionary the loader would reject. You then curate the result:
 the guidance below applies to a generated draft exactly as to a hand-written one.
 
+Two kinds of line are deliberately never captured whole, because a model does not
+retype them and capturing one only spends budget that a real path would use. The
+first is a source-code statement, recognised by call syntax, a terminator, or a
+brace. The second is a prose sentence, recognised by an enumeration comma, a run
+of five or more ordinary words, or an opening capitalised word. Prose needs its
+own test because a single structured token is not evidence of a command: an MIT
+license clause contains `and/or`, a documentation sentence contains a URL, and a
+test-runner log line contains a dotted class name. Those sentences are among the
+longest strings in a repository, so before they were excluded they won the budget
+while never being written by any agent. Their structured tokens are still
+extracted individually, so the URL inside a sentence still earns its handle.
+
 ## Project resolution and the runtime cache
 
 The committed `AGENTS.dict` is the baseline, but a harness does not have to commit
