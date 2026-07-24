@@ -40,6 +40,7 @@ export interface ParsedItem {
 interface FixCounters {
 	promotedItems: number;
 	mergedDuplicateHeadings: number;
+	mergedDuplicateVersions: number;
 	removedEmptyHeadings: number;
 	droppedReleasedDuplicates: number;
 }
@@ -381,6 +382,7 @@ function normalizeSection(section: ReleaseSection): FixCounters {
 	const counters: FixCounters = {
 		promotedItems: 0,
 		mergedDuplicateHeadings: 0,
+		mergedDuplicateVersions: 0,
 		removedEmptyHeadings: 0,
 		droppedReleasedDuplicates: 0,
 	};
@@ -444,6 +446,58 @@ function sectionHasContent(section: ReleaseSection): boolean {
  */
 function compareVersionTitlesDesc(left: string, right: string): number {
 	return compareDottedNumeric(right, left);
+}
+
+/**
+ * Collapse release sections that share a version title into one, keeping the
+ * first occurrence in document order.
+ *
+ * WHY THIS EXISTS. A version has exactly one home (ONE-PLACE): the changelog must
+ * never carry two `## [1.0.31]` sections. A release cut inserts the new
+ * `## [X.Y.Z]` at the top and this fixer sorts it down into the historical
+ * block; a hiccup in that promote-then-sort across successive cuts left the live
+ * changelog with byte-identical duplicates ([1.0.31] and [1.0.25] each appeared
+ * twice). Duplicates force every downstream consumer — the release-notes
+ * roll-up, the root-changelog sync, the website changelog generator — to dedup
+ * defensively, and any that does not double-prints the bullets. This folds every
+ * later same-title section into the first: its leading prose and each of its
+ * subsection items are merged in by title, dropping items that already appear
+ * verbatim, and the emptied later copy is discarded. Runs before per-section
+ * normalization so the merged result is compacted like any other section.
+ * Idempotent: a changelog with no duplicate versions is returned unchanged.
+ */
+function mergeDuplicateVersionSections(document: ChangelogDocument): number {
+	const firstByTitle = new Map<string, ReleaseSection>();
+	const kept: ReleaseSection[] = [];
+	let merged = 0;
+	for (const section of document.sections) {
+		const first = firstByTitle.get(section.title);
+		if (!first) {
+			firstByTitle.set(section.title, section);
+			kept.push(section);
+			continue;
+		}
+		const incomingLead = trimBlankLines(numberedText(section.leadingLines));
+		if (incomingLead.length > 0) {
+			const existingLead = trimBlankLines(numberedText(first.leadingLines));
+			if (existingLead.join("\n") !== incomingLead.join("\n")) {
+				first.leadingLines = syntheticLines(
+					existingLead.length === 0 ? incomingLead : [...existingLead, "", ...incomingLead],
+				);
+			}
+		}
+		for (const subsection of section.subsections) {
+			const target = getOrCreateSubsection(first, subsection.title);
+			for (const item of parseItems(subsection.lines)) {
+				if (!subsectionHasItem(target, item.lines)) {
+					appendSubsectionLines(target, item.lines);
+				}
+			}
+		}
+		merged++;
+	}
+	document.sections = kept;
+	return merged;
 }
 
 function sortReleaseSections(document: ChangelogDocument): void {
@@ -560,6 +614,10 @@ export function fixChangelogContent(
 		}
 	}
 
+	// Collapse any duplicate `## [X.Y.Z]` sections BEFORE per-section normalization,
+	// so the merged single section is compacted like any other.
+	const mergedDuplicateVersions = mergeDuplicateVersionSections(document);
+
 	let mergedDuplicateHeadings = 0;
 	let removedEmptyHeadings = 0;
 	for (const section of document.sections) {
@@ -574,6 +632,7 @@ export function fixChangelogContent(
 		content: renderedContent,
 		promotedItems,
 		mergedDuplicateHeadings,
+		mergedDuplicateVersions,
 		removedEmptyHeadings,
 		droppedReleasedDuplicates,
 	};
@@ -866,6 +925,7 @@ export async function runChangelogFixer(options: RunChangelogFixerOptions = {}):
 			path: changelogPath,
 			promotedItems: result.promotedItems,
 			mergedDuplicateHeadings: result.mergedDuplicateHeadings,
+			mergedDuplicateVersions: result.mergedDuplicateVersions,
 			droppedReleasedDuplicates: result.droppedReleasedDuplicates,
 			removedEmptyHeadings: result.removedEmptyHeadings,
 		});
@@ -971,6 +1031,7 @@ function printSummary(result: RunChangelogFixerResult, mode: CliOptions["mode"])
 		const parts = [
 			`${file.promotedItems} promoted item(s)`,
 			`${file.mergedDuplicateHeadings} merged duplicate heading(s)`,
+			`${file.mergedDuplicateVersions} merged duplicate version(s)`,
 			`${file.droppedReleasedDuplicates} dropped released duplicate(s)`,
 			`${file.removedEmptyHeadings} removed empty heading(s)`,
 		];

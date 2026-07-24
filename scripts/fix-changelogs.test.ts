@@ -325,3 +325,132 @@ describe("runChangelogFixer baseline pin", () => {
 		}
 	});
 });
+
+/**
+ * A version has exactly one home in the changelog (ONE-PLACE): the file must
+ * never carry two `## [1.0.31]` sections. The live coding-agent changelog was
+ * found with byte-identical duplicate sections ([1.0.31] and [1.0.25] each
+ * appeared twice) — a promote-then-sort hiccup across successive release cuts —
+ * which forces every downstream reader (release-notes roll-up, root-changelog
+ * sync, website generator) to dedup defensively or double-print the bullets.
+ * `fixChangelogContent` now collapses same-title sections into the first, and
+ * because `runChangelogFixer` runs on every release cut, the live changelog
+ * self-heals on the next release. These tests lock that: an identical duplicate
+ * collapses, a divergent duplicate merges its unique items in, a clean file is
+ * left untouched (idempotence), and the count is reported.
+ */
+describe("fixChangelogContent merges duplicate version sections", () => {
+	const CLEAN_HEADER = ["# Changelog", "", "## [Unreleased]", ""];
+
+	it("collapses two byte-identical version sections into one, reporting the merge count", () => {
+		const content = [
+			...CLEAN_HEADER,
+			"## [1.0.31] - 2026-07-24",
+			"",
+			"### Fixed",
+			"",
+			"- The `apply_patch` default filesystem now commits crash-atomically.",
+			"",
+			"## [1.0.31] - 2026-07-24",
+			"",
+			"### Fixed",
+			"",
+			"- The `apply_patch` default filesystem now commits crash-atomically.",
+			"",
+			"## [1.0.30] - 2026-07-24",
+			"",
+			"### Fixed",
+			"",
+			"- An earlier fix.",
+			"",
+		].join("\n");
+
+		const result = fixChangelogContent(content, new Set());
+
+		// Exactly one [1.0.31] heading survives; [1.0.30] is untouched.
+		const headings = result.content.split("\n").filter(line => line.startsWith("## ["));
+		expect(headings).toEqual(["## [Unreleased]", "## [1.0.31] - 2026-07-24", "## [1.0.30] - 2026-07-24"]);
+		expect(result.mergedDuplicateVersions).toBe(1);
+		// The single surviving [1.0.31] keeps the bullet exactly once.
+		const bulletCount = result.content
+			.split("\n")
+			.filter(line => line.includes("`apply_patch` default filesystem now commits crash-atomically")).length;
+		expect(bulletCount).toBe(1);
+	});
+
+	it("merges a divergent duplicate's unique items into the first occurrence, deduping shared ones", () => {
+		const content = [
+			...CLEAN_HEADER,
+			"## [1.0.25] - 2026-07-24",
+			"",
+			"### Fixed",
+			"",
+			"- Editing a file that starts with a UTF-8 BOM no longer strips the BOM.",
+			"",
+			"## [1.0.25] - 2026-07-24",
+			"",
+			"### Fixed",
+			"",
+			"- Editing a file that starts with a UTF-8 BOM no longer strips the BOM.",
+			"- Format-on-write no longer fails silently.",
+			"",
+			"### Security",
+			"",
+			"- A separate hardening item only in the second copy.",
+			"",
+		].join("\n");
+
+		const result = fixChangelogContent(content, new Set());
+
+		expect(result.mergedDuplicateVersions).toBe(1);
+		const headings = result.content.split("\n").filter(line => line.startsWith("## ["));
+		expect(headings).toEqual(["## [Unreleased]", "## [1.0.25] - 2026-07-24"]);
+		// The shared BOM bullet appears once; the second copy's unique items are folded in.
+		const bomCount = result.content.split("\n").filter(line => line.includes("UTF-8 BOM no longer strips")).length;
+		expect(bomCount).toBe(1);
+		expect(result.content).toContain("- Format-on-write no longer fails silently.");
+		expect(result.content).toContain("### Security");
+		expect(result.content).toContain("- A separate hardening item only in the second copy.");
+	});
+
+	it("leaves a changelog with no duplicate versions unchanged (idempotence)", () => {
+		const content = [
+			...CLEAN_HEADER,
+			"## [1.0.2] - 2026-07-24",
+			"",
+			"### Fixed",
+			"",
+			"- Only fix.",
+			"",
+			"## [1.0.1] - 2026-07-24",
+			"",
+			"### Added",
+			"",
+			"- Only addition.",
+			"",
+		].join("\n");
+
+		const result = fixChangelogContent(content, new Set());
+
+		expect(result.mergedDuplicateVersions).toBe(0);
+		const headings = result.content.split("\n").filter(line => line.startsWith("## ["));
+		expect(headings).toEqual(["## [Unreleased]", "## [1.0.2] - 2026-07-24", "## [1.0.1] - 2026-07-24"]);
+		// Re-running the fixer on its own output is a no-op.
+		const second = fixChangelogContent(result.content, new Set());
+		expect(second.content).toBe(result.content);
+		expect(second.mergedDuplicateVersions).toBe(0);
+	});
+
+	it("collapses three copies of the same version in one pass", () => {
+		const section = ["## [1.0.9] - 2026-07-24", "", "### Fixed", "", "- The same fix three times.", ""];
+		const content = [...CLEAN_HEADER, ...section, ...section, ...section].join("\n");
+
+		const result = fixChangelogContent(content, new Set());
+
+		expect(result.mergedDuplicateVersions).toBe(2);
+		const headings = result.content.split("\n").filter(line => line.startsWith("## ["));
+		expect(headings).toEqual(["## [Unreleased]", "## [1.0.9] - 2026-07-24"]);
+		const bulletCount = result.content.split("\n").filter(line => line.includes("same fix three times")).length;
+		expect(bulletCount).toBe(1);
+	});
+});
