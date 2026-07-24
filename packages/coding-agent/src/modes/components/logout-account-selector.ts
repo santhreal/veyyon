@@ -11,6 +11,7 @@ import type { LogoutAccount } from "../../slash-commands/helpers/logout";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
@@ -18,6 +19,7 @@ import {
 	type ModalShortcut,
 	renderModalShell,
 	withCompact,
+	ModalRevealDriver,
 } from "./modal-shell";
 
 const LOGOUT_SELECTOR_MAX_VISIBLE = 10;
@@ -39,13 +41,19 @@ export class LogoutAccountSelectorComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		providerName: string,
 		accounts: LogoutAccount[],
 		onSelect: (account: LogoutAccount) => void,
 		onCancel: () => void,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
 	) {
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#providerName = providerName;
 		this.#accounts = accounts;
 		this.#onSelectCallback = onSelect;
@@ -193,6 +201,6 @@ export class LogoutAccountSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

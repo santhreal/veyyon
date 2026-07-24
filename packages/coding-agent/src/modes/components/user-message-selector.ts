@@ -13,8 +13,10 @@ import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import {
 	computeModalDims,
+	applyModalReveal,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
@@ -211,8 +213,18 @@ export class UserMessageSelectorComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
-	constructor(messages: UserMessageItem[], onSelect: (entryId: string) => void, onCancel: () => void) {
+	constructor(
+		messages: UserMessageItem[],
+		onSelect: (entryId: string) => void,
+		onCancel: () => void,
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
+	) {
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#onCancelCallback = onCancel;
 		this.#messageList = new UserMessageList(messages);
 		this.#messageList.onSelect = onSelect;
@@ -297,6 +309,6 @@ export class UserMessageSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }
