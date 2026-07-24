@@ -416,16 +416,21 @@ That makes the bench measure three distinct things:
 1. **Enablement overhead** (baseline vs decode vs full, all tasks): what the
    preamble, the tools, and the decode seams cost when the feature exists.
    Pilot answer: within noise, ~0.7% input tokens.
-2. **Organic adoption** (full arm, `argot_load_calls` probe): whether the
-   model chooses to load on its own. The 2026-07-22 pilot recorded zero loads
-   across every run — adoption, not the codec, is the unproven link
-   (ARG-BENCH).
+2. **Adoption** (full arm): whether the model writes handles once it has them.
+   Read `runs that encoded` and `vocab handles` together, and do NOT read
+   `argot_load calls` as an adoption signal. That counter is zero by design:
+   the launch project auto-loads at startup, so the tool is only for adding
+   FURTHER projects. An earlier pilot read its zeros as an adoption failure,
+   which was a misdiagnosis.
 3. **Codec value when engaged**: only measurable on tasks whose repos carry
-   repeated-long-token mass. `gen-dicts.ts` ranks all 113 tasks by the SDK's
-   `estimatedSavings` over a generated dictionary (`dicts/report.md`); the
-   argot pilot list (`tasks/argot-10.txt`) is the top of that ranking. The
-   same generator drives both the ranking and `argot_load`, so the estimate
-   and the harness can never disagree about what a load would contain.
+   compressible mass in strings an agent would actually type. `gen-dicts.ts`
+   ranks all 113 tasks by `typeable saving` (`dicts/report.md`) and the argot
+   pilot list (`tasks/argot-10.txt`) is the top of that ranking. The ranking
+   calls the same generator over the same tree the agent will, so a task's
+   score predicts the vocabulary the agent is really given. Confirm the exact
+   ceiling for the run you actually performed from the report's Encode
+   headroom section, and remember that the default dictionary budget puts that
+   ceiling below the noise floor (see above).
 
 If adoption stays zero on high-mass repos, the defect is the product's
 invitation (preamble, tool surface), not the bench — and the fix belongs in
