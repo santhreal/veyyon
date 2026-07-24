@@ -22,7 +22,7 @@ import { githubToolRenderer } from "./gh-renderer";
 import { globToolRenderer } from "./glob";
 import { grepToolRenderer } from "./grep";
 import { inspectImageToolRenderer } from "./inspect-image-renderer";
-import { ircToolRenderer } from "./irc";
+import { ircToolRenderer } from "./irc-render";
 import { jobToolRenderer } from "./job";
 import { launchToolRenderer } from "./launch";
 import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "./memory-render";
@@ -32,7 +32,7 @@ import { searchToolBm25Renderer } from "./search-tool-bm25";
 import { setCwdToolRenderer } from "./set-cwd";
 import { sshToolRenderer } from "./ssh";
 import { todoToolRenderer } from "./todo";
-import { createVibeToolRenderer } from "./vibe";
+import { createVibeToolRenderer } from "./vibe-render";
 import { writeToolRenderer } from "./write";
 
 /**

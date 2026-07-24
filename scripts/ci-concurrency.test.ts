@@ -293,9 +293,24 @@ describe("ci.yml concurrency", () => {
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
 	});
 
-	it("regular main push: branch-wide group, cancel-in-progress enabled", () => {
+	it("regular main push: branch-wide group, queued not cancelled (release-train starvation guard)", () => {
+		// 2026-07-24: six consecutive main CI runs were cancelled by successor
+		// pushes (bot traffic every ~2 minutes), so no run ever completed and
+		// release.yml never saw a green CI to cut from. With cancellation off,
+		// the branch-wide group serializes: the running run always completes
+		// and GitHub keeps only the NEWEST pending run for the group, so the
+		// queue never grows beyond one and the tip still gets tested.
 		const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
 		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
+		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
+	});
+
+	it("push to a non-main branch keeps cancel-on-newer-push (feedback latency wins there)", () => {
+		const ctx = baseCtx({
+			ref: "refs/heads/feature/foo",
+			event: { head_commit: { message: "wip" } },
+		});
+		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/feature/foo");
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("true");
 	});
 
@@ -313,13 +328,15 @@ describe("ci.yml concurrency", () => {
 
 	it("benign commit subject that merely contains the release prefix is not a release", () => {
 		// startsWith is anchored, so `revert: chore: bump version to 15.12.6` (a
-		// follow-up commit) keeps the cancel-on-newer-push behavior — it has no
-		// tag to publish.
+		// follow-up commit) stays in the branch-wide group — it has no tag to
+		// publish. On main that group queues rather than cancels (starvation
+		// guard above), so cancel resolves false via the ref clause, not the
+		// release clause.
 		const ctx = baseCtx({
 			event: { head_commit: { message: `revert: ${RELEASE_SUBJECT}` } },
 		});
 		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
-		expect(GhaEval.template(cancelTemplate, ctx)).toBe("true");
+		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
 	});
 });
 
@@ -358,17 +375,18 @@ describe("sibling workflow concurrency stays in release lockstep with ci.yml", (
 			expect(GhaEval.template(cancel, ctx)).toBe("false");
 		});
 
-		it(`${name}.yml: ordinary main push keeps the cancellable branch-wide group`, async () => {
+		it(`${name}.yml: ordinary main push queues in the branch-wide group without cancellation`, async () => {
 			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
 			const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
 			expect(GhaEval.template(group, ctx)).toBe(`${name}-refs/heads/main`);
-			expect(GhaEval.template(cancel, ctx)).toBe("true");
+			expect(GhaEval.template(cancel, ctx)).toBe("false");
 		});
 
 		it(`${name}.yml: expression is byte-identical to ci.yml's (drift guard)`, async () => {
 			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
 			// ci.yml prefixes with `${{ github.workflow }}-`; siblings hardcode
 			// their name. Everything after the prefix must match ci.yml exactly.
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: "${{ github.workflow }}" is GitHub Actions syntax being stripped
 			expect(group).toBe(`${name}-${groupTemplate.replace("${{ github.workflow }}-", "")}`);
 			expect(cancel).toBe(cancelTemplate);
 		});
