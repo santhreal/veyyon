@@ -140,7 +140,9 @@ verifier reports), `results.json` (every metric, machine-readable), and
   test. The verdict is guarded by the pass-rate comparison above: B is called an
   efficiency win only when it is significantly cheaper AND the pass-rate test did
   not find B worse, so "cheaper because it gave up and did less" cannot read as a
-  win.
+  win. A metric the provider never reports (some providers return no cost, so
+  every sample is 0) is labelled `not measured` rather than a paired delta of
+  zeros, so a missing metric is never mistaken for "measured and found equal".
 - **Argot treatment applied? (per arm)** — proof the treatment fired before you
   trust any token delta. It shows, per arm, the mean `argot_load` calls, the mean
   assistant messages that carried a `§` handle, and the fraction of runs that

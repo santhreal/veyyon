@@ -606,9 +606,15 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 		// is a negative paired delta (B cheaper) the sign test confirms, READ WITH the
 		// pass-rate table above as a guardrail — cheaper only counts if correctness held.
 		const passByPair = new Map(pairwiseArmDeltas(results).map(d => [`${d.armA}→${d.armB}`, d]));
-		const metrics: Array<{ label: string; unit: string; of: (c: CellSummary) => number | null; digits: number }> = [
-			{ label: "output tok", unit: "tok", of: c => c.meanOutputTokens, digits: 0 },
-			{ label: "cost", unit: "$", of: c => c.meanCostUsd, digits: 4 },
+		const metrics: Array<{
+			label: string;
+			unit: string;
+			of: (c: CellSummary) => number | null;
+			raw: (r: ArmResult) => number | null;
+			digits: number;
+		}> = [
+			{ label: "output tok", unit: "tok", of: c => c.meanOutputTokens, raw: r => r.outputTokens, digits: 0 },
+			{ label: "cost", unit: "$", of: c => c.meanCostUsd, raw: r => r.costUsd, digits: 4 },
 		];
 		lines.push("");
 		lines.push("## Efficiency comparison (paired by task)");
@@ -624,6 +630,17 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 		);
 		lines.push("|---|---|---|---|---|---|---|---|");
 		for (const m of metrics) {
+			// A metric the provider never reports (e.g. cost is 0 for a provider with no
+			// pricing entry) is uniformly 0/null across every OK sample. Its paired delta
+			// is then 0 with p=1, which the loop below would render as "not
+			// distinguishable" — reading as "measured and found equal" when it was never
+			// measured at all. Detect the no-signal case and say so, so a missing metric
+			// is never mistaken for a null result.
+			const hasSignal = results.some(r => !r.error && (m.raw(r) ?? 0) !== 0);
+			if (!hasSignal) {
+				lines.push(`| ${m.label} | — | — | — | — | — | — | not measured (all 0/null for this provider) |`);
+				continue;
+			}
 			for (const d of pairwiseMetricDeltas(results, m.of)) {
 				const dv = (x: number) => (m.digits > 0 ? x.toFixed(m.digits) : String(Math.round(x)));
 				const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + dv(d.meanDelta);
