@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.37] - 2026-07-24
+
 ### Fixed
 
 - `veyyon update` now updates source installs for real: it fast-forwards the checkout, reinstalls dependencies, and regenerates build artifacts, instead of refusing with advice to run `git pull` yourself.
