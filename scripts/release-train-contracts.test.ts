@@ -12,7 +12,7 @@ import * as path from "node:path";
 const workflowsDir = path.resolve(import.meta.dir, "..", ".github");
 
 async function loadYaml(rel: string): Promise<any> {
-	return Bun.YAML.parse(await Bun.file(path.join(workflowsDir, rel)).text());
+	return import("js-yaml").then(async yaml => yaml.load(await Bun.file(path.join(workflowsDir, rel)).text()))
 }
 
 describe("release.yml tags only after CI is green", () => {
