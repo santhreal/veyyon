@@ -51,6 +51,24 @@ export function isNotFound(error: unknown): boolean {
 }
 
 /**
+ * True when `a` and `b` both exist and name the same underlying file, compared
+ * by device + inode rather than by string. This catches the same file reached
+ * under a different spelling that a textual path comparison misses: a case-only
+ * difference on a case-insensitive volume, or a path routed through a symlink.
+ * Returns false when either path is missing or cannot be stat'd — the caller
+ * uses this to decide whether deleting the source after a content-move would
+ * destroy the destination, so "not provably the same file" must be false.
+ */
+async function sameExistingFile(a: string, b: string): Promise<boolean> {
+	try {
+		const [sa, sb] = await Promise.all([fs.stat(a), fs.stat(b)]);
+		return sa.dev === sb.dev && sa.ino === sb.ino;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Abstract storage backend the {@link Patcher} reads from and writes to.
  * Subclass for new backends; the package ships {@link InMemoryFilesystem} and
  * {@link NodeFilesystem} for the most common cases.
@@ -224,8 +242,17 @@ export class NodeFilesystem extends Filesystem {
 
 	async move(from: string, to: string, content?: string): Promise<void> {
 		if (content !== undefined) {
+			// Write-then-delete only when `from` and `to` are genuinely different
+			// files. When they are the SAME underlying file — a case-only rename on
+			// a case-insensitive volume, or a move reached through a symlink — the
+			// delete would erase the bytes we just wrote and the user loses the
+			// file. `path.resolve` (the caller-side same-path guard in the patcher)
+			// does not fold case or resolve symlinks, so this cannot be left to the
+			// caller: detect same-file here by device + inode and skip the delete.
 			await Bun.write(to, content);
-			await this.delete(from);
+			if (!(await sameExistingFile(from, to))) {
+				await this.delete(from);
+			}
 			return;
 		}
 		try {
