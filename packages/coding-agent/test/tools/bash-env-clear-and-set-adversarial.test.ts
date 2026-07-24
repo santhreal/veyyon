@@ -67,6 +67,7 @@ describe("BashTool env set/unset adversarial", () => {
 	it("unset removes a previously exported variable in the same shell", async () => {
 		const tool = new BashTool(bashSession(tmpDir) as never);
 		const result = await tool.execute("e2", {
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: ${FOO-missing} is shell parameter expansion, not a JS template
 			command: "export FOO=bar; unset FOO; printf '<%s>\\n' \"${FOO-missing}\"",
 			timeout: 15,
 		});

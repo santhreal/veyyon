@@ -11,25 +11,12 @@
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { type Component, Text } from "@veyyon/tui";
-import { errorMessage, formatAge, formatDuration, prompt } from "@veyyon/utils";
+import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
-import type { Theme } from "../modes/theme/theme";
 import ircDescription from "../prompts/tools/irc.md" with { type: "text" };
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { Ellipsis, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
-import {
-	createCachedComponent,
-	formatBadge,
-	formatErrorDetail,
-	getPreviewLines,
-	PREVIEW_LIMITS,
-	replaceTabs,
-	type ToolUIColor,
-} from "./render-utils";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
 
