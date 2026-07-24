@@ -99,6 +99,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 	let authStorage: AuthStorage | undefined;
 	let argot: ArgotSession;
 	let scripted: MockResponse[];
+	let refreshCalls: number;
 
 	beforeEach(async () => {
 		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-loop-xdg-"));
@@ -148,6 +149,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		if (codec === undefined) throw new Error("expected a codec for an enabled top-level session");
 		argot = codec;
 
+		refreshCalls = 0;
 		const toolSession: ToolSession = {
 			cwd: repoDir,
 			hasUI: false,
@@ -156,6 +158,9 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 			getSessionId: () => sessionManager.getSessionId?.() ?? null,
 			getSessionSpawns: () => "*",
 			getArgotSession: () => argot,
+			refreshBaseSystemPrompt: async () => {
+				refreshCalls += 1;
+			},
 		};
 		const loadTool = new ArgotLoadTool(toolSession);
 		const unloadTool = new ArgotUnloadTool(toolSession);
@@ -252,6 +257,42 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		// The cache entry exists on disk under the isolated root (nothing in the repo).
 		expect(fs.existsSync(getArgotCacheDir())).toBe(true);
 		expect(fs.existsSync(path.join(repoDir, "AGENTS.dict"))).toBe(false);
+	});
+
+	it("a mid-session load rebuilds the base system prompt so the model is taught the handles", async () => {
+		// Production regression (2026-07-23): argot_load told the model "you may
+		// now write §handle tokens", but the handle table only enters the system
+		// prompt at build time, and nothing rebuilt it — the model was told to
+		// write handles it was never shown. The load must trigger exactly one
+		// prompt rebuild when the teach set changes, none when it does not.
+		expect(refreshCalls).toBe(0);
+		scripted.push(toolCall("argot_load", { folder_path: repoDir }, "call_load_refresh"));
+		scripted.push(stopReply("loaded"));
+		await session!.prompt("load this repo");
+		await session!.waitForIdle();
+		expect(argot.loaded).toBe(true);
+		expect(refreshCalls).toBe(1);
+
+		// A no-marker folder changes nothing and rebuilds nothing.
+		const markerFree = fs.mkdtempSync(path.join(os.tmpdir(), "argot-loop-none-"));
+		try {
+			scripted.push(toolCall("argot_load", { folder_path: markerFree }, "call_load_none2"));
+			scripted.push(stopReply("nothing there"));
+			await session!.prompt("load that too");
+			await session!.waitForIdle();
+			expect(refreshCalls).toBe(1);
+		} finally {
+			removeSyncWithRetries(markerFree);
+		}
+
+		// Unload changes the teach set: one more rebuild. A second unload of the
+		// same folder changes nothing: no rebuild.
+		scripted.push(toolCall("argot_unload", { folder_path: repoDir }, "call_unload_1"));
+		scripted.push(toolCall("argot_unload", { folder_path: repoDir }, "call_unload_2"));
+		scripted.push(stopReply("done"));
+		await session!.prompt("drop it twice");
+		await session!.waitForIdle();
+		expect(refreshCalls).toBe(2);
 	});
 
 	it("an argot_load of a folder with no project marker is a loud no-op, not an error", async () => {
