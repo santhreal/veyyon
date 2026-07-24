@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.37] - 2026-07-24
+
 ### Fixed
 
 - `REM` no longer deletes a file whose content drifted from the section tag. A whole-file delete is now the strictest op about the content tag (it was the most lenient: empty edits took the position-stable path and deleted through drift with only a soft warning), so a stale or fabricated tag can no longer discard edits the model never saw. The delete is refused with a mismatch error that forces a re-read, matching how an anchored edit on a drifted file behaves.
