@@ -14,22 +14,17 @@
 # The old set was mis-selected as a result. It contained psd-tools-blend-range-api
 # (rank 95 of 110, 9 characters of reachable mass) and two fastapi tasks at ranks
 # 70 and 71, so a set built to show the codec's best case was half filled with
-# tasks where it can do essentially nothing. Every task below carries between 836
+# tasks where it can do essentially nothing. Every task below carries between 707
 # and 2434 characters of reachable mass per emission.
-#
-# These numbers are post-fix. The generator no longer captures prose sentences
-# whole, which freed budget for real paths and raised reachable mass across the
-# corpus by 22.7% (31,365 -> 38,483 characters). See argot's generate.ts
-# looksLikeProse and its regression tests.
 #
 # Regenerate with: bun gen-dicts.ts --all --jobs 8
 opa-rego-rule-profiling
 gql-incremental-graphql-delivery
-actionlint-action-pinning-lint
-goreleaser-retry-publish-auditing
 go-git-worktree-merge-conflicts
-sql-formatter-bigquery-pipe-formatting
 arcane-drift-detection-baselines
+sql-formatter-bigquery-pipe-formatting
+goreleaser-retry-publish-auditing
 updo-policy-alerting
-ts-pattern-match-each
 scriggo-method-declarations
+pebble-durability-wait-apis
+effect-sse-httpapi-streaming

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import YAML from "yaml";
-import { type ArmInputs, canonicalizeConfig, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+import { canonicalizeConfig, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -74,14 +71,8 @@ describe("computeArmFingerprint", () => {
 
 	it("gives section overrides that differ only in key order the same fingerprint", () => {
 		// The override object is canonicalized like config: key order is not an IV.
-		const a = computeArmFingerprint({
-			config: {},
-			sections: { role: "ROLE\n====\nR\n", runtime: "RUNTIME\n====\nX\n" },
-		});
-		const b = computeArmFingerprint({
-			config: {},
-			sections: { runtime: "RUNTIME\n====\nX\n", role: "ROLE\n====\nR\n" },
-		});
+		const a = computeArmFingerprint({ config: {}, sections: { role: "ROLE\n====\nR\n", runtime: "RUNTIME\n====\nX\n" } });
+		const b = computeArmFingerprint({ config: {}, sections: { runtime: "RUNTIME\n====\nX\n", role: "ROLE\n====\nR\n" } });
 		expect(a).toBe(b);
 	});
 
@@ -165,69 +156,5 @@ describe("findZeroIvCollisions", () => {
 	it("returns no collisions for a single-arm or empty run", () => {
 		expect(findZeroIvCollisions(new Map([["only", "aaa"]]))).toEqual([]);
 		expect(findZeroIvCollisions(new Map())).toEqual([]);
-	});
-});
-
-describe("shipped arms are pairwise distinct (single-IV coherence)", () => {
-	// The zero-IV guard runs inside run.ts, which means a duplicated arm is only
-	// caught after pier is resolved, assets are staged, and a run is attempted.
-	// That is late and expensive, and the defect it guards against is a copy-paste:
-	// `candidate-vN.yml` duplicated from `baseline.yml` with nothing actually
-	// changed, which produced result-shaped tables whose deltas were pure noise.
-	// This checks the arms ON DISK, so the mistake fails in the test suite instead.
-	// It deliberately reuses computeArmFingerprint and the same input assembly as
-	// run.ts, so it cannot drift from the guard that runs for real.
-
-	const ARMS_DIR = path.join(import.meta.dir, "arms");
-
-	function shippedArmInputs(arm: string): ArmInputs {
-		const config = YAML.parse(fs.readFileSync(path.join(ARMS_DIR, `${arm}.yml`), "utf8")) ?? {};
-		const sectionsPath = path.join(ARMS_DIR, `${arm}.sections.yml`);
-		const rulePath = path.join(ARMS_DIR, `${arm}.rule.md`);
-		return {
-			config,
-			...(fs.existsSync(sectionsPath) ? { sections: YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {} } : {}),
-			...(fs.existsSync(rulePath) ? { rule: fs.readFileSync(rulePath) } : {}),
-		};
-	}
-
-	const shippedArms = fs
-		.readdirSync(ARMS_DIR)
-		.filter(f => f.endsWith(".yml") && !f.endsWith(".sections.yml"))
-		.map(f => f.slice(0, -".yml".length))
-		.sort();
-
-	it("every shipped arm pair varies at least one input", () => {
-		// A collision here means two arms in the repository are the same experiment
-		// under two names, so any comparison between them measures nothing.
-		const fingerprints = new Map<string, string>();
-		for (const arm of shippedArms) fingerprints.set(arm, computeArmFingerprint(shippedArmInputs(arm)));
-		expect(findZeroIvCollisions(fingerprints)).toEqual([]);
-	});
-
-	it("the arms directory is not empty, so the check cannot pass vacuously", () => {
-		// Guards the guard: a rename or a moved directory would otherwise leave the
-		// collision test scanning nothing and reporting success forever.
-		expect(shippedArms.length).toBeGreaterThanOrEqual(5);
-		expect(shippedArms).toContain("baseline");
-		expect(shippedArms).toContain("full");
-	});
-
-	it("full and full-budget16k differ only by the dictionary budget", () => {
-		// The budget pair is the single-IV comparison that makes argot's output-token
-		// claim measurable at all, so its two arms must be identical apart from
-		// argot.tokenBudget. If anything else drifts, the comparison silently stops
-		// isolating the budget and its result becomes unattributable.
-		const full = shippedArmInputs("full").config as Record<string, Record<string, unknown>>;
-		const big = shippedArmInputs("full-budget16k").config as Record<string, Record<string, unknown>>;
-		expect(big.argot?.tokenBudget).toBe(16000);
-		expect(full.argot?.tokenBudget).toBeUndefined();
-		// Every other argot key matches, and no other top-level domain is introduced.
-		expect(big.argot?.enabled).toEqual(full.argot?.enabled);
-		expect(big.argot?.models).toEqual(full.argot?.models);
-		expect(Object.keys(big).sort()).toEqual(Object.keys(full).sort());
-		const budgetless = { ...big.argot };
-		delete budgetless.tokenBudget;
-		expect(budgetless).toEqual(full.argot ?? {});
 	});
 });

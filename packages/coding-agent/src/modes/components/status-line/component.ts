@@ -35,20 +35,6 @@ import type {
  */
 const SESSION_CLOCK_GAP = "      ";
 
-/**
- * One quiet-footline part: the segment id it came from plus its rendered
- * content. Ids are StatusLineSegmentId values, or the synthetic "badges"
- * (the animated badge slot) / "location_right" (owner-pinned right content).
- */
-type QuietPart = { id: string; content: string };
-
-/** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
-export interface QuietSegmentBounds {
-	id: string;
-	start: number;
-	end: number;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Context-usage memo
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1410,7 +1396,7 @@ export class StatusLineComponent implements Component {
 	 * both the two-line selector layout ({@link renderQuietLines}) and the
 	 * composer's single footline ({@link renderQuietLine}) read from here.
 	 */
-	#gatherQuietSegments(width: number): { location: QuietPart[]; capLeft: QuietPart[]; capRight: QuietPart[] } {
+	#gatherQuietSegments(width: number): { location: string[]; capLeft: string[]; capRight: string[] } {
 		const effectiveSettings = this.#resolveSettings();
 		const gitEnabled = this.#gitEnabled();
 		const leftCfg = effectiveSettings.leftSegments;
@@ -1433,13 +1419,13 @@ export class StatusLineComponent implements Component {
 		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
 		const CONTEXT_IDS: Record<string, true> = { context_pct: true, context_total: true };
 		const subagentBadge = this.#subagentBadgeText();
-		const location: QuietPart[] = [];
-		const capLeft: QuietPart[] = [];
-		const capRight: QuietPart[] = [];
-		const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
+		const location: string[] = [];
+		const capLeft: string[] = [];
+		const capRight: string[] = [];
+		const push = (id: StatusLineSegmentId, out: string[]) => {
 			if (subagentBadge && id === "subagents") return;
 			const rendered = renderSegment(id, ctx);
-			if (rendered.visible && rendered.content) out.push({ id, content: rendered.content });
+			if (rendered.visible && rendered.content) out.push(rendered.content);
 		};
 		for (const id of leftCfg) {
 			if (LOCATION_IDS[id]) push(id, location);
@@ -1457,14 +1443,9 @@ export class StatusLineComponent implements Component {
 			badgeParts.push(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
 		}
 		const badgeSlot = this.#animatedBadgeSlot(badgeParts);
-		if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
+		if (badgeSlot !== null) capRight.unshift(badgeSlot);
 		return { location, capLeft, capRight };
 	}
-
-	// Layout of the last rendered quiet footline, for click hit-testing
-	// (quietSegmentAt). Rewritten on every renderQuietLine call, so it always
-	// matches the line currently on screen; empty when no footline rendered.
-	#quietLineBounds: QuietSegmentBounds[] = [];
 
 	// Badge slot animation state. Badges ease in/out over BADGE_ANIM_MS so a
 	// spawn or finish reads as intentional motion — a smooth merge — instead
@@ -1543,11 +1524,10 @@ export class StatusLineComponent implements Component {
 		const sep = theme.fg("dim", "  ·  ");
 		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);
-		const locationContents = location.map(part => part.content);
-		let left = this.#locationWithRunClock(locationContents, sep);
+		let left = this.#locationWithRunClock(location, sep);
 		const rightParts = [...capLeft, ...capRight];
-		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
-		let right = rightParts.map(part => part.content).join(sep);
+		if (extras?.locationRight) rightParts.push(extras.locationRight);
+		let right = rightParts.join(sep);
 		// The run clock is comfort chrome; the capability segments (context
 		// gauge, mode, badges) are operating data. On a tight width the clock
 		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
@@ -1556,84 +1536,29 @@ export class StatusLineComponent implements Component {
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
-				left = this.#locationWithRunClock(locationContents, sep, "  ");
+				left = this.#locationWithRunClock(location, sep, "  ");
 				continue;
 			}
 			if (clockStage === 1) {
 				clockStage = 2;
-				left = locationContents.join(sep);
+				left = location.join(sep);
 				continue;
 			}
 			rightParts.pop();
-			right = rightParts.map(part => part.content).join(sep);
+			right = rightParts.join(sep);
 		}
-		if (!left && !right) {
-			this.#quietLineBounds = [];
-			return null;
-		}
-		// Record where each surviving segment landed, in 0-based columns of the
-		// returned line, so a footer click can be resolved back to a segment id
-		// (see quietSegmentAt). The math mirrors the assembly exactly: location
-		// parts start at column 0 and are sep-joined; the right group is
-		// right-aligned at the budget when a left group exists, else it renders
-		// from column 0 and truncates.
-		const sepWidth = visibleWidth(sep);
-		const bounds: QuietSegmentBounds[] = [];
-		if (left) {
-			let col = 0;
-			for (const part of location) {
-				const partWidth = visibleWidth(part.content);
-				bounds.push({ id: part.id, start: col, end: col + partWidth });
-				col += partWidth + sepWidth;
-			}
-		}
-		const rightStart = left && right ? budget - visibleWidth(right) : 0;
-		if (right) {
-			let col = rightStart;
-			for (const part of rightParts) {
-				const partWidth = visibleWidth(part.content);
-				bounds.push({ id: part.id, start: col, end: col + partWidth });
-				col += partWidth + sepWidth;
-			}
-		}
-		// Single-group lines truncate to the budget: clamp bounds the same way.
-		this.#quietLineBounds = bounds
-			.filter(entry => entry.start < budget)
-			.map(entry => ({ ...entry, end: Math.min(entry.end, budget) }));
+		if (!left && !right) return null;
 		if (left && right) {
 			return left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
 		}
 		return truncateToWidth(left || right, budget);
 	}
 
-	/**
-	 * Resolve a 0-based column of the LAST rendered quiet footline to the id of
-	 * the segment occupying it, or null for gaps/padding. This is the one
-	 * hit-test surface for status-line mouse routing (GMI-2b): the footline
-	 * records its layout as it renders, so the answer is always in sync with
-	 * what is actually on screen. Non-segment chrome reports as synthetic ids
-	 * ("badges", "location_right"); the run clock is unaddressable chrome.
-	 */
-	quietSegmentAt(col: number): string | null {
-		for (const entry of this.#quietLineBounds) {
-			if (col >= entry.start && col < entry.end) return entry.id;
-		}
-		return null;
-	}
-
-	/** Last rendered quiet-footline layout, for tests and debugging. */
-	getQuietSegmentBounds(): readonly QuietSegmentBounds[] {
-		return this.#quietLineBounds;
-	}
-
 	renderQuietLines(
 		width: number,
 		extras?: { locationRight?: string | null },
 	): { locationLine: string | null; capabilityLine: string | null } {
-		const gathered = this.#gatherQuietSegments(width);
-		const location = gathered.location.map(part => part.content);
-		const capLeft = gathered.capLeft.map(part => part.content);
-		const capRight = gathered.capRight.map(part => part.content);
+		const { location, capLeft, capRight } = this.#gatherQuietSegments(width);
 		const sep = theme.fg("dim", "  ·  ");
 		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);

@@ -44,7 +44,6 @@ function collectSourceFiles(dir: string): string[] {
 }
 
 describe("user-facing error output routes through errorMessage", () => {
-	// biome-ignore lint/suspicious/noTemplateCurlyInString: the title names the hunted pattern literally
 	it("interpolates no raw ${err}/${error} in any console/output/show* call across coding-agent src", () => {
 		const offenders: string[] = [];
 		for (const file of collectSourceFiles(SRC_ROOT)) {
@@ -57,7 +56,6 @@ describe("user-facing error output routes through errorMessage", () => {
 		}
 		expect(
 			offenders,
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: the message quotes the hunted pattern literally
 			"raw ${err}/${error} in a user-facing output doubles the 'Error:' prefix — wrap it in errorMessage(...) from @veyyon/utils",
 		).toEqual([]);
 	});

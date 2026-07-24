@@ -160,14 +160,6 @@ is the same centrality that predicts how often the agent will write it. Contents
 are optional: with the listing alone, ranking falls back to path length
 (longest first).
 
-Whole lines are captured only when they read like a command. A source-code
-statement is never captured, and neither is a prose sentence, because a model
-retypes neither. Prose is excluded even when it mentions something structured: a
-license clause containing `and/or`, a documentation sentence containing a URL, and
-a build log containing a dotted class name are all sentences, not commands. The
-structured tokens inside them are still extracted on their own, so a URL cited in
-a sentence still earns its handle.
-
 The budget is on the dictionary itself, because the dictionary is what a harness
 reads into context. The generator fills it highest value first, where a
 candidate's value is the output tokens it removes (how much longer the string is

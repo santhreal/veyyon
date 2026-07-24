@@ -53,6 +53,7 @@ describe("issue #980 provider-qualified model resolution", () => {
 			modelRegistry: {
 				getAll: () => availableModels,
 			},
+			availableModels,
 		});
 		expect(cliResolved.model).toBeUndefined();
 		expect(cliResolved.error).toBe(

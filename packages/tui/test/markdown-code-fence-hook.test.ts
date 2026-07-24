@@ -13,6 +13,7 @@ import { Markdown, type MarkdownTheme } from "@veyyon/tui";
 import { defaultMarkdownTheme } from "./test-themes";
 
 function plain(lines: readonly string[]): string[] {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI
 	return lines.map(line => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 }
 

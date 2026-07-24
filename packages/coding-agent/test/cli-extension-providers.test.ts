@@ -70,7 +70,7 @@ test("loadCliExtensionProviders makes extension providers resolvable by selector
 		const preferences = getModelMatchPreferences(settings);
 
 		// Before the drain the extension provider is unknown: resolution fails.
-		const before = resolveCliModel({ cliModel: "bench-gw/bench-model", modelRegistry, preferences });
+		const before = resolveCliModel({ cliModel: "bench-gw/bench-model", modelRegistry, availableModels: modelRegistry.getAvailable(), preferences });
 		expect(before.model).toBeUndefined();
 
 		await loadCliExtensionProviders(modelRegistry, settings, tmp.path(), {
@@ -79,7 +79,7 @@ test("loadCliExtensionProviders makes extension providers resolvable by selector
 		});
 
 		// After the drain the same selector resolves to the extension provider.
-		const after = resolveCliModel({ cliModel: "bench-gw/bench-model", modelRegistry, preferences });
+		const after = resolveCliModel({ cliModel: "bench-gw/bench-model", modelRegistry, availableModels: modelRegistry.getAvailable(), preferences });
 		expect(after.error).toBeUndefined();
 		expect(after.model?.provider).toBe("bench-gw");
 		expect(after.model?.id).toBe("bench-model");

@@ -113,15 +113,7 @@ release can never sit queued waiting for a runner that isn't registered (that is
 exactly how the first `v1.0.0` tag run stalled before the self-hosted routing was
 removed). Release-shaped runs, the `chore: bump version to ` push, a `v*` tag
 ref, or any manual dispatch, get a per-sha, never-cancel concurrency group so a
-later `main` push cannot kill an in-flight release. Ordinary `main` pushes also
-never cancel each other: they share the branch-wide group with
-`cancel-in-progress` off, so the running run always completes (release.yml
-needs a completed green CI run to cut from) and GitHub keeps only the newest
-pending run for the group. Before this, bot pushes landing every few minutes
-cancelled every CI run in flight and the release train starved with no
-completed run to gate on (observed 2026-07-24: six consecutive cancellations).
-Pushes to other branches keep cancel-on-newer-push for fast feedback.
-`scripts/ci-concurrency.test.ts` locks the group and cancel expressions
-against regressions.
+later `main` push cannot kill an in-flight release; `scripts/ci-concurrency.test.ts`
+locks that group expression against regressions.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `58798326` on 2026-07-24.*
