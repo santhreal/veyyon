@@ -10,7 +10,12 @@ import {
 } from "@veyyon/coding-agent/cli/auto-update-state";
 import * as pluginCli from "@veyyon/coding-agent/cli/plugin-cli";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
-import { replaceBinaryForUpdate, resolveUpdateMethod, sweepStaleBackups } from "@veyyon/coding-agent/cli/update-cli";
+import {
+	formatBinaryDownloadFailure,
+	replaceBinaryForUpdate,
+	resolveUpdateMethod,
+	sweepStaleBackups,
+} from "@veyyon/coding-agent/cli/update-cli";
 import Update from "@veyyon/coding-agent/commands/update";
 import { removeWithRetries } from "@veyyon/utils";
 import type { CliConfig } from "@veyyon/utils/cli";
@@ -532,5 +537,67 @@ describe("runAutoUpdate", () => {
 
 			expect(second).toEqual({ status: "updated", version: "9.9.9" });
 		});
+	});
+});
+
+/**
+ * The binary download is the last hop of every install: `updateViaBinaryAt`
+ * fetches a per-version, per-platform asset (`veyyon-<os>-<arch>[.exe]`) from a
+ * release tag. Before this, a failed fetch threw `Download failed: ${statusText}`
+ * — for a GitHub 404 that is the useless string "Download failed: Not Found",
+ * naming neither the version requested nor the asset that was missing. That hurts
+ * two real flows: the rollback path installs arbitrary old versions (a mistyped
+ * or unpublished version 404s), and a release whose build for one OS/arch failed
+ * to upload 404s only for those users. These tests pin the rich message so the
+ * operator always learns the URL, the status, the version, and the fix (an error
+ * message must carry context and the fix — Engineering Standards). They assert
+ * exact substrings, never `!is_empty`.
+ */
+describe("formatBinaryDownloadFailure names the version, asset, and fix", () => {
+	const URL = "https://github.com/santhreal/veyyon/releases/download/v1.0.99/veyyon-linux-x64";
+
+	it("on 404 names the missing asset, the version, and points at update --check", () => {
+		// The rollback/old-version case: the version or the platform asset does not
+		// exist. The message must say which asset and which version, not just "404".
+		const msg = formatBinaryDownloadFailure(404, "Not Found", URL, "1.0.99", "veyyon-linux-x64");
+		expect(msg).toBe(
+			"Failed to download release binary from " +
+				"https://github.com/santhreal/veyyon/releases/download/v1.0.99/veyyon-linux-x64: " +
+				"HTTP 404 Not Found — release v1.0.99 has no veyyon-linux-x64 asset. The version " +
+				"may not exist, or its build for your platform and architecture was not published. " +
+				"Run `veyyon update --check` to see the latest available version.",
+		);
+	});
+
+	it("on 403/429 gives the rate-limit retry hint, not a bare status", () => {
+		// GitHub rate-limits by address; the actionable advice is to wait, so the
+		// message must say so rather than leave the user guessing at a 403.
+		for (const status of [403, 429] as const) {
+			const msg = formatBinaryDownloadFailure(status, "Forbidden", URL, "1.0.99", "veyyon-linux-x64");
+			expect(msg).toContain(`HTTP ${status} Forbidden`);
+			expect(msg).toContain("rate-limiting this address; retry in a few minutes");
+			expect(msg).not.toContain("has no veyyon-linux-x64 asset");
+		}
+	});
+
+	it("on any other status reports the URL and status with no invented hint", () => {
+		// A 500 is neither a missing asset nor a rate limit; inventing either hint
+		// would mislead. The message stays factual: URL + status only.
+		const msg = formatBinaryDownloadFailure(500, "Internal Server Error", URL, "1.0.99", "veyyon-linux-x64");
+		expect(msg).toBe(
+			"Failed to download release binary from " +
+				"https://github.com/santhreal/veyyon/releases/download/v1.0.99/veyyon-linux-x64: " +
+				"HTTP 500 Internal Server Error",
+		);
+		expect(msg).not.toContain("rate-limiting");
+		expect(msg).not.toContain("asset");
+	});
+
+	it("omits the trailing space when the response carries no statusText", () => {
+		// Some responses have an empty statusText; the message must not render a
+		// dangling "HTTP 404 " with a hanging space before the dash.
+		const msg = formatBinaryDownloadFailure(404, "", URL, "1.0.99", "veyyon-linux-x64");
+		expect(msg).toContain("HTTP 404 — release v1.0.99");
+		expect(msg).not.toContain("HTTP 404  ");
 	});
 });

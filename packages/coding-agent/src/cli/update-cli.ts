@@ -233,6 +233,45 @@ function getBinaryName(): string {
 }
 
 /**
+ * The reason a release-binary download failed, with the URL, the HTTP status,
+ * and — for a 404 — the specific "this version or this platform's asset does not
+ * exist" hint.
+ *
+ * {@link updateViaBinaryAt} downloads a per-version, per-platform asset
+ * (`veyyon-<os>-<arch>[.exe]`), so a bare "Download failed: Not Found" hid both
+ * which version was requested (the rollback path installs arbitrary old
+ * versions, where a mistyped or unpublished version is the likeliest cause) and
+ * which platform asset was missing (a release whose build for one OS/arch did
+ * not upload). An error message carries context and the fix (Engineering
+ * Standards), so name the URL, the status, the version, and the asset.
+ *
+ * `binaryName` is passed in rather than read from {@link getBinaryName} so the
+ * message is deterministic under test instead of depending on the host's
+ * platform and architecture.
+ */
+export function formatBinaryDownloadFailure(
+	status: number,
+	statusText: string,
+	url: string,
+	version: string,
+	binaryName: string,
+): string {
+	const suffix = statusText ? ` ${statusText}` : "";
+	const head = `Failed to download release binary from ${url}: HTTP ${status}${suffix}`;
+	if (status === 404) {
+		return (
+			`${head} — release v${version} has no ${binaryName} asset. The version may not ` +
+			`exist, or its build for your platform and architecture was not published. ` +
+			`Run \`${APP_NAME} update --check\` to see the latest available version.`
+		);
+	}
+	if (status === 403 || status === 429) {
+		return `${head} — GitHub is rate-limiting this address; retry in a few minutes.`;
+	}
+	return head;
+}
+
+/**
  * Resolve the path that `veyyon` maps to in the user's PATH.
  */
 function resolveVeyyonPath(): string | undefined {
@@ -423,8 +462,11 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 		}
 		throw err;
 	}
-	if (!response.ok || !response.body) {
-		throw new Error(`Download failed: ${response.statusText}`);
+	if (!response.ok) {
+		throw new Error(formatBinaryDownloadFailure(response.status, response.statusText, url, expectedVersion, binaryName));
+	}
+	if (!response.body) {
+		throw new Error(`Release binary download from ${url} returned HTTP ${response.status} with an empty body`);
 	}
 	const fileStream = fs.createWriteStream(tempPath, { mode: 0o755 });
 	try {
