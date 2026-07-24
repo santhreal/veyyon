@@ -567,12 +567,60 @@ export class VirtualTerminal implements Terminal {
 	}
 
 	/**
-	 * Rebuild a fresh engine and replay the event log to reproduce the exact
-	 * terminal state. The failed write is already in the log, so the replay
-	 * completes it against a fresh allocator.
+	 * Recover from a trapped engine write. The naive recovery — replay the raw
+	 * event log (which already ends with the failed write) into a fresh engine —
+	 * is NOT enough: ghostty-web 0.4 traps DETERMINISTICALLY on some byte
+	 * streams once the log carries a long multi-width resize history (stress
+	 * seed 0x90744a00: a clean process with a freshly compiled module traps at
+	 * the same replay offset every time), so the replay dies exactly like the
+	 * original write. Proven recovery shape: the log MINUS the failing write
+	 * replays cleanly, and the failing write lands cleanly on a compacted
+	 * synthetic state. So: pop the failed write, rebuild the pre-write state,
+	 * compact it to the bounded synthetic snapshot (rotating onto a fresh
+	 * engine), then re-apply the failed write through the normal path. A second
+	 * trap inside this recovery has no further fallback and fails the run
+	 * loudly (#replayingLog dump path) — never silently.
 	 */
+	#recoveringFromOom = false;
+
 	#recoverFromEngineOom(): void {
-		this.#rebuildEngineFromLog();
+		if (this.#recoveringFromOom) {
+			// The re-applied write trapped even on the compacted state: there is
+			// no weaker state to retry against. Fail loudly with the dump path
+			// (never silently drop the bytes and continue with a wrong terminal).
+			const dumpPath = `${os.tmpdir()}/ghostty-trap-log-${Date.now()}.json`;
+			try {
+				fs.writeFileSync(dumpPath, JSON.stringify(this.#eventLog));
+			} catch {}
+			throw new Error(
+				`ghostty write trapped again after OOM recovery onto a compacted state; event log dumped to ${dumpPath}`,
+			);
+		}
+		const failed = this.#eventLog.pop();
+		if (typeof failed !== "string") {
+			// The log must end with the write that trapped (writeToGhostty pushes
+			// before writing). Anything else is bookkeeping corruption: restore
+			// and fail via the raw replay so the dump captures the state.
+			if (failed !== undefined) this.#eventLog.push(failed);
+			this.#rebuildEngineFromLog();
+			return;
+		}
+		this.#eventLogBytes -= failed.length;
+		this.#recoveringFromOom = true;
+		try {
+			// Pre-write state replays cleanly (the trap needed the failed bytes).
+			this.#rebuildEngineFromLog();
+			// Rotate onto the compact synthetic snapshot — the raw multi-width
+			// history is what the failed write traps against.
+			this.#compactEventLog();
+			this.#rebuildEngineFromLog();
+			// Re-apply the failed write on the compacted state; it lands back in
+			// the (now compact) event log through the normal path. A second trap
+			// re-enters this method and hits the guard above.
+			this.#writeToGhostty(failed);
+		} finally {
+			this.#recoveringFromOom = false;
+		}
 	}
 
 	/**

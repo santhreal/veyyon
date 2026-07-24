@@ -59,6 +59,12 @@ const REGRESSION_REPLAYS: readonly { template: string; seed: number }[] = [
 	// a stray write; it now skips row stability only when saturated AND the op
 	// committed (tape grew).
 	{ template: "darwin-normal-small", seed: 0x40593834 },
+	// 2026-07-24: ghostty-web 0.4 deterministically traps (out-of-bounds WASM
+	// memory) replaying a long multi-width resize history; the OOM recovery
+	// replayed the raw log and trapped identically, killing the scenario. The
+	// VirtualTerminal recovery now rebuilds the pre-write state, rotates onto
+	// the compact synthetic snapshot, and re-applies the failed write.
+	{ template: "win32-intermittentUnknown-small", seed: 0x90744a00 },
 ];
 const LARGE_SCROLL = 1_000_000;
 const CORE_ITERATIONS = 120;
