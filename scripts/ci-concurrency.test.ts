@@ -369,6 +369,7 @@ describe("sibling workflow concurrency stays in release lockstep with ci.yml", (
 			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
 			// ci.yml prefixes with `${{ github.workflow }}-`; siblings hardcode
 			// their name. Everything after the prefix must match ci.yml exactly.
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: "${{ github.workflow }}" is GitHub Actions syntax being stripped
 			expect(group).toBe(`${name}-${groupTemplate.replace("${{ github.workflow }}-", "")}`);
 			expect(cancel).toBe(cancelTemplate);
 		});
