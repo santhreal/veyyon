@@ -77,6 +77,38 @@ die()  { printf '  xx  %s\n' "$*" >&2; exit 1; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
+# Normalized host architecture (x64|arm64). On macOS this uses
+# `sysctl hw.optional.arm64` so it stays correct inside a Rosetta session,
+# where `uname -m` reports the translated x86_64.
+host_arch() {
+    if [ "$(uname -s)" = "Darwin" ]; then
+        if [ "$(sysctl -in hw.optional.arm64 2>/dev/null)" = "1" ]; then
+            echo "arm64"
+        else
+            echo "x64"
+        fi
+        return
+    fi
+    case "$(uname -m)" in
+        x86_64|amd64)  echo "x64" ;;
+        arm64|aarch64) echo "arm64" ;;
+        *)             uname -m ;;
+    esac
+}
+
+# Bun's own architecture (x64|arm64), or empty when it can't be determined.
+bun_arch() {
+    bun -e 'process.stdout.write(process.arch)' 2>/dev/null
+}
+
+# True when Bun's architecture matches the host. If Bun's arch can't be read,
+# assume a match rather than block the install.
+bun_arch_matches_host() {
+    ba="$(bun_arch)"
+    [ -z "$ba" ] && return 0
+    [ "$ba" = "$(host_arch)" ]
+}
+
 # ---- GitHub API fetch, optionally authenticated ----
 # Unauthenticated api.github.com is capped at 60 requests/hr per IP; a token
 # raises that limit. Use this ONLY for api.github.com JSON calls (release
@@ -473,15 +505,14 @@ install_local() {
 
 # ---- prebuilt binary install ----
 install_binary() {
-    OS="$(uname -s)"; ARCH="$(uname -m)"
+    OS="$(uname -s)"; ARCH="$(host_arch)"
     case "$OS" in
         Linux)  PLATFORM="linux" ;;
         Darwin) PLATFORM="darwin" ;;
         *) die "unsupported OS: $OS (try --source)" ;;
     esac
     case "$ARCH" in
-        x86_64|amd64)  ARCH="x64" ;;
-        arm64|aarch64) ARCH="arm64" ;;
+        x64|arm64) ;;
         *) die "unsupported architecture: $ARCH (try --source)" ;;
     esac
     BINARY="${BIN_NAME}-${PLATFORM}-${ARCH}"
@@ -537,7 +568,18 @@ if [ "${VEYYON_INSTALL_SOURCED:-0}" != "1" ]; then
     else
         case "$MODE" in
             local) install_local ;;
-            source) has bun || install_bun; require_bun_version; install_via_bun ;;
+            source)
+                has bun || install_bun
+                require_bun_version
+                if ! bun_arch_matches_host; then
+                    echo "Error: bun reports architecture '$(bun_arch)' but this host is '$(host_arch)'." >&2
+                    echo "Installing from source with this bun would produce a mismatched binary" >&2
+                    echo "(e.g. x86_64 under Rosetta on Apple Silicon), causing slow startup and AVX warnings." >&2
+                    echo "Install a native bun for your architecture, or re-run without --source to fetch the prebuilt $(host_arch) binary." >&2
+                    exit 1
+                fi
+                install_via_bun
+                ;;
             binary) install_binary ;;
             *) install_binary ;;
         esac

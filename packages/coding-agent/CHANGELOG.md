@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `scripts/install.sh` potentially installing an x86_64 build on Apple Silicon via source checkout when an x86_64 `bun` runs under Rosetta. `install_binary` (the default) now correctly derives the architecture from the real host instead of the Rosetta-translated `uname -m` by calling a new `host_arch` helper (detected via `sysctl -in hw.optional.arm64` so Rosetta can't spoof it). A forced `--source` install now compares `bun`'s `process.arch` to the host and errors with an actionable message instead of building a mismatched binary.
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed

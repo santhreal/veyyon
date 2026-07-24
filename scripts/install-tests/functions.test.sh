@@ -306,5 +306,51 @@ else
     printf 'SKIP: git not available; src_has_local_work/uninstall tests skipped\n' >&2
 fi
 
+# --- host_arch and bun_arch_matches_host ---
+test_arch_match() {
+    mock_uname_s="$1"
+    mock_uname_m="$2"
+    mock_sysctl="$3"
+    mock_bun_arch="$4"
+    expected_host="$5"
+    expected_match="$6"
+
+    # Run in a subshell so functions can be mocked safely
+    result=$(
+        uname() { if [ "$1" = "-s" ]; then echo "$mock_uname_s"; else echo "$mock_uname_m"; fi; }
+        sysctl() { echo "$mock_sysctl"; }
+        bun() {
+            if [ -n "$mock_bun_arch" ]; then
+                echo "$mock_bun_arch"
+            else
+                return 1 # simulate unreadable
+            fi
+        }
+
+        h="$(host_arch)"
+        if bun_arch_matches_host; then m="1"; else m="0"; fi
+        echo "$h:$m"
+    )
+
+    check "host_arch ($mock_uname_s $mock_uname_m $mock_sysctl)" "${result%:*}" "$expected_host"
+    check "bun_arch_matches_host (bun=$mock_bun_arch)" "${result#*:}" "$expected_match"
+}
+
+# Apple Silicon + Rosetta bun: uname says x86_64, sysctl says 1, bun says x64 -> host is arm64, mismatch
+test_arch_match "Darwin" "x86_64" "1" "x64" "arm64" "0"
+
+# Native arm64 mac: uname says arm64, sysctl says 1, bun says arm64 -> host is arm64, match
+test_arch_match "Darwin" "arm64" "1" "arm64" "arm64" "1"
+
+# Native intel mac: uname says x86_64, sysctl says 0 (or empty), bun says x64 -> host is x64, match
+test_arch_match "Darwin" "x86_64" "" "x64" "x64" "1"
+
+# Linux x86_64: uname says x86_64, sysctl not called, bun says x64 -> host is x64, match
+test_arch_match "Linux" "x86_64" "" "x64" "x64" "1"
+
+# Unreadable bun arch -> assumed match (1)
+test_arch_match "Linux" "x86_64" "" "" "x64" "1"
+
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
