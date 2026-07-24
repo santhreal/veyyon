@@ -836,16 +836,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			width => this.statusLine.renderQuietLine(width, { locationRight: this.#locationRightZone() }),
 			COMPOSER_INSET_COLS,
 		);
-		// GMI-2b: the goal readout in the footline (the `mode` segment while goal
-		// mode is active) is clickable — it opens the same goal detail view as
-		// the keyboard path. Hit-testing comes from the footline's own recorded
-		// layout, so the target is exactly the pixels the segment occupies.
-		this.capabilityLine.onClick = col => {
-			const segmentId = this.statusLine.quietSegmentAt(col);
-			if (segmentId === "mode" && (this.goalModeEnabled || this.goalModePaused)) {
-				void this.openGoalDetail();
-			}
-		};
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");
 		this.proseOnlyThinking = settings.get("proseOnlyThinking");

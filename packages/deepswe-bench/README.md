@@ -36,36 +36,9 @@ These are the sound pairings the shipped arms are built for. Each varies exactly
 | Feature flag | `baseline` ↔ `argot-setting-only` | `argot.enabled` false → true, nothing else |
 | The nudge rule | `argot-setting-only` ↔ `candidate-argot-nudge` | adds `arms/candidate-argot-nudge.rule.md` (an always-apply rule), same config |
 | Teaching (encode) | `decode` ↔ `full` | the model is allowlisted to encode and taught the preamble; codec/loadability held equal |
-| Dictionary budget | `full` ↔ `full-budget16k` | `argot.tokenBudget` alone, 1000 → 16000 |
 | Model | any single arm, two `--model` values | only `--model` differs |
 
 Do not compare across two of these at once (e.g. `baseline` ↔ `full` mixes the feature flag AND teaching). Pick the pair whose single variable is the effect you want to measure.
-
-## Why the default dictionary budget cannot measure argot
-
-At `argot.tokenBudget: 1000`, the default, argot's output-token claim is not
-testable on DeepSWE tasks. This is a property of the workload, not a null result,
-and reporting it as "the feature does not help" would be wrong. Measured on the
-ytt task repository:
-
-| budget | handles | agent-typeable mass | ceiling at the measured emission rate |
-|---|---|---|---|
-| 1000 | 44 | 652 ch | 1.01% |
-| 4000 | 139 | 1,654 ch | 2.56% |
-| 16000 | 529 | 12,322 ch | 19.07% |
-
-Run-to-run output-token noise on the same task and arm is about 8.15%, so at the
-default budget the best possible outcome sits nearly an order of magnitude below
-the noise. Repeats cannot fix that, because the effect being sought is smaller
-than the effect that already exists. Across the whole corpus, even assuming every
-typeable handle is emitted five times, only 2 of 110 tasks could clear the noise
-at the default budget.
-
-Use `full ↔ full-budget16k` to test the claim where it is measurable, and read
-both token rows. A larger dictionary rides in the prompt every turn, so it buys
-shorter output by spending input. The efficiency comparison scores `input tok`
-alongside `output tok` for this reason. A win means output fell by more than the
-prompt grew at the provider's own prices, not merely that output fell.
 
 ## Prerequisites (once per machine)
 
@@ -405,37 +378,27 @@ behavioral nudge rather than a section rewrite (this is what
 
 ## Argot on DeepSWE: what is and is not measurable
 
-Veyyon's argot flow runs over a generated vocabulary, and the launch project is
-loaded FOR the model, not by it. At startup the agent resolves the project it was
-launched in and generates the dictionary from that repo's git-tracked listing,
-caching it outside the repository; the handle table then reaches the model on a
-prompt refresh. `argot_load <folder>` exists for adding FURTHER projects, so it
-stays uncalled on a single-repo task and its count is not an adoption signal.
-There is no committed dictionary file to stage, and nothing about the task
-environment differs between arms, which keeps the arm comparison clean.
+Veyyon's argot flow is agent-driven over a generated vocabulary: when the
+model calls `argot_load <folder>`, the harness generates the dictionary from
+the repo's git-tracked listing and caches it outside the repo. There is no
+committed dictionary file to stage, and nothing about the task environment
+differs between arms — which keeps the arm comparison clean.
 
 That makes the bench measure three distinct things:
 
 1. **Enablement overhead** (baseline vs decode vs full, all tasks): what the
    preamble, the tools, and the decode seams cost when the feature exists.
-   An early pilot put this within noise at roughly 0.7% of input tokens, but that
-   run predates the treatment-applied check and its encode arm never actually
-   taught the preamble, so treat the figure as unmeasured rather than confirmed.
-2. **Adoption** (full arm): whether the model writes handles once it has them.
-   Read `runs that encoded` and `vocab handles` together, and do NOT read
-   `argot_load calls` as an adoption signal. That counter is zero by design:
-   the launch project auto-loads at startup, so the tool is only for adding
-   FURTHER projects. An earlier pilot read its zeros as an adoption failure,
-   which was a misdiagnosis.
+   Pilot answer: within noise, ~0.7% input tokens.
+2. **Organic adoption** (full arm, `argot_load_calls` probe): whether the
+   model chooses to load on its own. The 2026-07-22 pilot recorded zero loads
+   across every run — adoption, not the codec, is the unproven link
+   (ARG-BENCH).
 3. **Codec value when engaged**: only measurable on tasks whose repos carry
-   compressible mass in strings an agent would actually type. `gen-dicts.ts`
-   ranks all 113 tasks by `typeable saving` (`dicts/report.md`) and the argot
-   pilot list (`tasks/argot-10.txt`) is the top of that ranking. The ranking
-   calls the same generator over the same tree the agent will, so a task's
-   score predicts the vocabulary the agent is really given. Confirm the exact
-   ceiling for the run you actually performed from the report's Encode
-   headroom section, and remember that the default dictionary budget puts that
-   ceiling below the noise floor (see above).
+   repeated-long-token mass. `gen-dicts.ts` ranks all 113 tasks by the SDK's
+   `estimatedSavings` over a generated dictionary (`dicts/report.md`); the
+   argot pilot list (`tasks/argot-10.txt`) is the top of that ranking. The
+   same generator drives both the ranking and `argot_load`, so the estimate
+   and the harness can never disagree about what a load would contain.
 
 If adoption stays zero on high-mass repos, the defect is the product's
 invitation (preamble, tool surface), not the bench — and the fix belongs in

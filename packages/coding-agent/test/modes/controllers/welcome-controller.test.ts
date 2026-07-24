@@ -40,9 +40,11 @@ function makePort(topRows = 4): FakePort {
 			},
 			requestComponentRender: () => {},
 			requestRender: () => {},
+			// biome-ignore lint/suspicious/noExplicitAny: minimal TUI stand-in
 		} as any,
 		chatContainer: {
 			addChild: (c: Component) => chatChildren.push(c),
+			// biome-ignore lint/suspicious/noExplicitAny: minimal container stand-in
 		} as any,
 		topFillRows: () => topRows,
 		onHeroDismissed: rows => dismissed.push(rows),

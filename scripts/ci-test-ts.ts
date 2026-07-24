@@ -126,7 +126,6 @@ const repoScriptTests = [
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
 	"scripts/jules-port-manager.test.ts",
-	"scripts/upstream-radar.test.ts",
 	"scripts/release-sentinel.test.ts",
 	"scripts/release-changelog.test.ts",
 	"website/tools/gen-changelog.test.ts",

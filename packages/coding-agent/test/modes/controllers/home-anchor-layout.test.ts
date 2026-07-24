@@ -245,7 +245,7 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 	/** Growth shrinks the TOP fill row-for-row: content climbs from the
 	 * composer upward, and nothing ever scrolls while free rows remain. */
 	test("conversation growth eats the top fill row-for-row until the viewport fills", () => {
-		const { layout, children } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
+		const { layout, state, children } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(22);
 		children[1] = block(20);
