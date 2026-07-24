@@ -38,25 +38,41 @@ jobs:
 
   changelog:
     name: Changelog entry
-    # PRs only: a push to main is a merge or the release commit, neither of which
-    # can meaningfully be blocked here. The gate fails a PR that changes a
-    # publishable package's shipped source without adding a `## [Unreleased]`
-    # entry, so a feature can never merge without reaching the changelog.
-    if: github.event_name == 'pull_request'
+    # Gate BOTH PRs and direct pushes to main. This repo lands changes directly
+    # on main (no PR), so a PR-only gate never fires and hundreds of commits
+    # shipped source with an empty `## [Unreleased]` section — releases then
+    # documented almost nothing. On a push the base is `github.event.before`
+    # (the branch tip before the push); the gate fails when a publishable
+    # package's shipped source changed with no `## [Unreleased]` entry.
+    #
+    # Two push cases are exempt:
+    #   - `github.event.before` all-zeros: a first push / force-push / branch
+    #     create has no prior tip to diff against.
+    #   - `chore: bump version to ...`: the release workflow's own bump commit,
+    #     which drains the Unreleased section by design and legitimately adds
+    #     no new entry.
+    # The `[skip changelog]` / `[skip changelog: <pkg>]` commit markers remain
+    # the escape hatch for a genuine no-user-impact source change.
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' &&
+       github.event.before != '0000000000000000000000000000000000000000' &&
+       !startsWith(github.event.head_commit.message, 'chore: bump version to'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so the merge-base against the PR base resolves.
+          # Full history so the merge-base against the base ref resolves.
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
       - name: Require a changelog entry for changed source
         env:
-          # The base commit GitHub records for the PR; an ancestor of the merge
-          # ref checked out above, so no extra fetch is needed.
-          CHANGELOG_BASE: ${{ github.event.pull_request.base.sha }}
+          # PR: the base commit GitHub records for the PR. Push: the branch tip
+          # before this push. Either is an ancestor reachable in the full
+          # history checked out above, so no extra fetch is needed.
+          CHANGELOG_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: bun run changelog:check
       - name: Require the repo-root CHANGELOG to match the canonical source
         # The root CHANGELOG.md is generated from packages/coding-agent/CHANGELOG.md

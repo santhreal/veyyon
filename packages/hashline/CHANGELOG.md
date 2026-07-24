@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `Filesystem.move(from, to, content)` deleting the file when `from` and `to` were the same underlying file: a case-only rename on a case-insensitive volume, or a destination reached through a symlink. The content-move wrote the destination and then removed the source, which on a case-insensitive or symlinked path was the file it had just written. `NodeFilesystem` now compares device + inode and `InMemoryFilesystem` compares the map key, so a move never destroys the bytes it just wrote. Exposed `sameExistingFile` for backends that implement their own move.
+
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
