@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- Edits and writes now commit crash-atomically. The file was previously written with a truncate-then-stream `Bun.write`, so a crash, `SIGINT`, out-of-memory kill, or full disk mid-write could leave your source file truncated or empty. It now writes a sibling temp file and renames it over the target, so an interrupted write leaves either the whole old file or the whole new one. The existing file's permission bits (including a script's executable bit) are preserved across the write, and a write through a symlink keeps the symlink and updates its target.
 - The CLI no longer hangs while printing a fatal error whose cause chain forms a cycle. A wrapped error whose `cause` pointed back at itself (directly or through another error) made the cause walk loop forever; it now stops at the first repeat and notes the circular reference.
 
 ## [16.5.2] - 2026-07-14

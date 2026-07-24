@@ -7,7 +7,17 @@ import type {
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
-import { errorMessage, logger, once, prompt, trimTrailingSlashes, truncate, untilAborted } from "@veyyon/utils";
+import {
+	atomicWriteFile,
+	errorMessage,
+	isEnoent,
+	logger,
+	once,
+	prompt,
+	trimTrailingSlashes,
+	truncate,
+	untilAborted,
+} from "@veyyon/utils";
 import type { BunFile } from "bun";
 import { type Theme, theme } from "../modes/theme/theme";
 import lspDescription from "../prompts/tools/lsp.md" with { type: "text" };
@@ -1020,20 +1030,51 @@ export type WritethroughCallback = (
 	getDeferred?: (dst: string) => WritethroughDeferredHandle | undefined,
 ) => Promise<FileDiagnosticsResult | undefined>;
 
+/**
+ * Persist `content` to `dst` crash-atomically, carrying the existing file's
+ * permission bits forward. Every edit/write commit routes through here.
+ *
+ * A raw `Bun.write` truncates the target and then streams the new bytes in; if
+ * the process dies between those steps (SIGINT, OOM-kill, full disk, power loss)
+ * the user's source file is left truncated or empty. {@link atomicWriteFile}
+ * writes a sibling temp and renames it over the target, so a crash leaves either
+ * the whole old file or the whole new one — never a partial one. It also resolves
+ * symlinks (the link survives instead of being replaced by a regular file).
+ *
+ * Two overrides of the atomic-write defaults are load-bearing here:
+ *  - MODE: the rename swaps in a fresh inode, so without this the replacement
+ *    would take the temp file's `0o600` default and silently strip a script's
+ *    `+x` or a file's group/other read bits. Carry the current file's mode
+ *    forward; a brand-new file gets `0o644` (a normal source-file default,
+ *    still subject to the process umask via the open call).
+ *  - FSYNC OFF: this is the interactive edit hot path. The rename alone already
+ *    defeats the truncation-on-crash class; forcing an fsync + directory fsync on
+ *    every edit would add a disk round-trip per write purely for power-loss
+ *    durability, which the previous `Bun.write` never provided either. Keeping it
+ *    off preserves the prior latency while adding crash-atomicity.
+ */
+async function commitFileContentAtomic(dst: string, content: string): Promise<void> {
+	let mode = 0o644;
+	try {
+		// `stat` (not `lstat`) follows a symlink to the file atomicWriteFile will
+		// actually replace, so the preserved mode matches the real target.
+		mode = (await fs.promises.stat(dst)).mode & 0o777;
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+	}
+	await atomicWriteFile(dst, content, { mode, fsync: false });
+}
+
 /** No-op writethrough callback */
 export async function writethroughNoop(
 	dst: string,
 	content: string,
 	_signal?: AbortSignal,
-	file?: BunFile,
+	_file?: BunFile,
 	_batch?: LspWritethroughBatchRequest,
 	_getDeferred?: (dst: string) => WritethroughDeferredHandle | undefined,
 ): Promise<FileDiagnosticsResult | undefined> {
-	if (file) {
-		await file.write(content);
-	} else {
-		await Bun.write(dst, content);
-	}
+	await commitFileContentAtomic(dst, content);
 	return undefined;
 }
 
@@ -1238,7 +1279,7 @@ async function runLspWritethrough(
 	options: ResolvedWritethroughOptions,
 	changeType: FileChangeType,
 	signal?: AbortSignal,
-	file?: BunFile,
+	_file?: BunFile,
 	deferred?: {
 		onDeferredDiagnostics: (diagnostics: FileDiagnosticsResult) => void;
 		signal: AbortSignal;
@@ -1247,7 +1288,7 @@ async function runLspWritethrough(
 	const { enableFormat, enableDiagnostics } = options;
 
 	let finalContent = content;
-	const writeContent = async (value: string) => (file ? file.write(value) : Bun.write(dst, value));
+	const writeContent = (value: string) => commitFileContentAtomic(dst, value);
 	const getWritePromise = once(() => writeContent(finalContent));
 	let writeNotified = false;
 	const notifyWriteCommitted = async (notifySignal: AbortSignal | undefined = signal) => {
