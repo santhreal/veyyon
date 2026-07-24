@@ -265,8 +265,17 @@ export class SelectList implements Component, MouseRoutable {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		// Escape or Ctrl+C
+		// Escape or Ctrl+C. Cancel-key ladder, matching ModelBrowser.handleCancel:
+		// a non-empty search query is cleared first (the user is backing out of a
+		// mistyped search, not the picker), a second cancel closes. Without the
+		// ladder, esc mid-search discarded the whole overlay while the model
+		// browser cleared the query — the same key doing different things in two
+		// pickers.
 		if (kb.matches(keyData, "tui.select.cancel")) {
+			if (this.#filterQuery.length > 0 && this.#canEditSearch()) {
+				this.#setFilter("", true);
+				return;
+			}
 			if (this.onCancel) {
 				this.onCancel();
 			}
@@ -533,7 +542,9 @@ export class SelectList implements Component, MouseRoutable {
 		// a picker without it read as a bare list with no visible affordances.
 		// Dense one-space separator dialect; dropped first under truncation so
 		// the live search text always survives.
-		const legend = " · ↑↓ move · ↵ select · esc close";
+		// "esc clear" while a query is live: the cancel ladder clears the search
+		// first, so advertising "close" there would lie about what esc does next.
+		const legend = query ? " · ↑↓ move · ↵ select · esc clear" : " · ↑↓ move · ↵ select · esc close";
 		const statusText = (query ? `  Search: ${query}` : "  Type to search") + legend;
 		return this.theme.scrollInfo(truncateToWidth(statusText, Math.max(1, width - 2), Ellipsis.Omit));
 	}
