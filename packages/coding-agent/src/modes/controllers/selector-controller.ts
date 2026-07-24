@@ -369,6 +369,7 @@ export class SelectorController {
 					done();
 				},
 				() => done(),
+				modalRevealEnabled(),
 			);
 			return { component, focus: component };
 		});

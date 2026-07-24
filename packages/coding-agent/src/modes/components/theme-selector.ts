@@ -14,6 +14,7 @@ export class ThemeSelectorComponent {
 		onSelect: (themeName: string) => void,
 		onCancel: () => void,
 		onPreview: (themeName: string) => void,
+		reveal?: boolean,
 	) {
 		const themeItems: SelectItem[] = themes.map(name => ({
 			value: name,
@@ -29,6 +30,7 @@ export class ThemeSelectorComponent {
 				selectedIndex: currentIndex,
 				maxVisible: 10,
 				tipCandidates: ["Tip · Themes apply live as you move", "Tip · Esc cancel"],
+				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value),

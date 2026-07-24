@@ -12,9 +12,11 @@ import {
 	type SgrMouseEvent,
 } from "@veyyon/tui";
 import {
+	applyModalReveal,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
@@ -37,6 +39,12 @@ export interface ModalSelectListOptions {
 	/** Override terminal rows (tests). */
 	getTerminalRows?: () => number;
 	tipCandidates?: readonly string[];
+	/**
+	 * Play the open unfold (TOUCH-5). Honored blindly; the ambient gate
+	 * (truecolor + shimmer) is the SHOW site's job via modalRevealEnabled(), so
+	 * direct constructions render settled frames deterministically.
+	 */
+	reveal?: boolean;
 }
 
 /**
@@ -52,8 +60,14 @@ export class ModalSelectListComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	#onCancel: () => void;
 	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	constructor(options: ModalSelectListOptions, callbacks: ModalSelectListCallbacks) {
+		if (options.reveal) {
+			// The driver anchors its clock at first paint, so starting here (before
+			// setOnRequestRender wires the host) never skips the unfold.
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 		this.#title = options.title;
 		this.#tipCandidates = options.tipCandidates;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => process.stdout.rows || 40);
@@ -163,6 +177,11 @@ export class ModalSelectListComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return shell.lines;
+		return applyModalReveal(shell, width, this.#reveal.value);
+	}
+
+	/** Settle the reveal so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#reveal.stop();
 	}
 }

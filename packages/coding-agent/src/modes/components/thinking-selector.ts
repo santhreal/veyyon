@@ -15,6 +15,7 @@ export class ThinkingSelectorComponent {
 		availableLevels: Effort[],
 		onSelect: (level: Effort) => void,
 		onCancel: () => void,
+		reveal?: boolean,
 	) {
 		const thinkingLevels: SelectItem[] = availableLevels.map(getThinkingLevelMetadata);
 		const currentIndex = thinkingLevels.findIndex(item => item.value === currentLevel);
@@ -25,6 +26,7 @@ export class ThinkingSelectorComponent {
 				theme: getSelectListTheme(),
 				selectedIndex: currentIndex,
 				maxVisible: thinkingLevels.length,
+				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value as Effort),
