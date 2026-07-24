@@ -499,11 +499,20 @@ function Install-Binary {
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-    # Download binary
+    # Download binary. A mid-stream failure (network drop, timeout) leaves a
+    # partial file behind, so remove it before rethrowing — the install must never
+    # leave a truncated veyyon.exe in place (mirrors install.sh's EXIT/INT/TERM
+    # trap on its temp download). A same-run partial that still completes the
+    # request is caught afterwards by the checksum verification below.
     $BinaryUrl = "https://github.com/$Repo/releases/download/$Latest/$BinaryAsset"
     Write-Host "Downloading $BinaryAsset..."
     $OutPath = Join-Path $InstallDir "$BinName.exe"
-    Invoke-WebRequest -Uri $BinaryUrl -OutFile $OutPath -TimeoutSec 900
+    try {
+        Invoke-WebRequest -Uri $BinaryUrl -OutFile $OutPath -TimeoutSec 900
+    } catch {
+        Remove-Item $OutPath -ErrorAction SilentlyContinue
+        throw "download failed ($BinaryAsset not published for this release, or the connection dropped) - try -Source. ($_)"
+    }
 
     # Verify checksum against the release's .sha256 sidecar. Fail closed: a
     # missing or unparseable sidecar refuses the install unless -NoVerify is
