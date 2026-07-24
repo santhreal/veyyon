@@ -1,0 +1,24 @@
+# Decode-only control for `full-budget16k`. The codec is enabled and the launch
+# project's dictionary is generated and loaded at the same 16000-token budget, but
+# NO model is allowlisted to encode, so the notation preamble is never taught and
+# the model is never shown the handle table.
+#
+# `decode-budget16k ↔ full-budget16k` is the comparison that tests argot's actual
+# claim: fewer output tokens at equal reward. It varies exactly one thing, whether
+# the model is taught to write shorthand. Codec state, loadability, and dictionary
+# budget are all held equal.
+#
+# The budget is carried here even though it changes nothing this arm does, because
+# the handle table only enters the prompt when the encode gate is on. Holding it
+# identical to the treatment arm keeps the single-variable claim true on the face
+# of the config rather than resting on a reader knowing that argument.
+#
+# Prefer this pair over `decode ↔ full`. That pair varies teaching too, but at the
+# default 1000-token budget the achievable saving is about 1% against roughly 8%
+# run-to-run noise, so it cannot produce an answer no matter how many repeats it
+# is given. See the README section on the dictionary budget.
+argot:
+  enabled: true
+  models: []
+  subagents: off
+  tokenBudget: 16000
