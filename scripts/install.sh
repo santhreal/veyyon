@@ -148,7 +148,10 @@ install_completions() {
         if "$bin" completions "$sh" > "$out/$name" 2>/dev/null && [ -s "$out/$name" ]; then
             ok "installed $sh completions"
         else
+            # Remove the empty/partial file and say so: this function's contract is
+            # best-effort but never silent, so a failed shell must be visible.
             rm -f "$out/$name" 2>/dev/null || true
+            warn "could not generate $sh completions (skipped)"
         fi
     done
 }
