@@ -4,15 +4,11 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Performance
 
 - Applying a large-range edit is now O(n) instead of O(n^2), and the O(n^2) scale suites are bounded, so a big single edit no longer degrades quadratically with file size.
-
-## [1.0.23] - 2026-07-24
-
-### Fixed
-
-- Fixed `Filesystem.move(from, to, content)` deleting the file when `from` and `to` were the same underlying file: a case-only rename on a case-insensitive volume, or a destination reached through a symlink. The content-move wrote the destination and then removed the source, which on a case-insensitive or symlinked path was the file it had just written. `NodeFilesystem` now compares device + inode and `InMemoryFilesystem` compares the map key, so a move never destroys the bytes it just wrote. Exposed `sameExistingFile` for backends that implement their own move.
 
 ## [16.5.0] - 2026-07-13
 
@@ -377,6 +373,12 @@ All notable changes to this package will be documented in this file.
 - Fixed repeated patch application mutating cached `after_anchor` edits between target snapshots
 - Fixed multi-section patching to preflight write policies and reject duplicate canonical targets before any section is committed
 - Fixed mixed line-ending restoration to preserve the first newline style instead of rewriting ties to LF
+
+## [1.0.23] - 2026-07-24
+
+### Fixed
+
+- Fixed `Filesystem.move(from, to, content)` deleting the file when `from` and `to` were the same underlying file: a case-only rename on a case-insensitive volume, or a destination reached through a symlink. The content-move wrote the destination and then removed the source, which on a case-insensitive or symlinked path was the file it had just written. `NodeFilesystem` now compares device + inode and `InMemoryFilesystem` compares the map key, so a move never destroys the bytes it just wrote. Exposed `sameExistingFile` for backends that implement their own move.
 
 ## [1.0.19] - 2026-07-23
 

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.24] - 2026-07-24
+
 ### Fixed
 
 - The build and loader no longer silently fall back to a baseline (non-AVX2) build when AVX2 detection fails. The failure is surfaced instead of quietly shipping a slower binary.

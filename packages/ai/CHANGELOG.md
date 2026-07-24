@@ -2,9 +2,7 @@
 
 ## [Unreleased]
 
-### Performance
-
-- JSON Schema pattern compilation is now cached instead of recompiled for every value validated.
+## [1.0.24] - 2026-07-24
 
 ### Fixed
 
@@ -13,6 +11,10 @@
 - The Cursor grep integration no longer mislabels a date-bearing match line as a context line.
 - The Kimi device-id file's config directory is now created before the file is written.
 - The sign-in success page text now sits below the sun graphic instead of over it.
+
+### Performance
+
+- JSON Schema pattern compilation is now cached instead of recompiled for every value validated.
 
 ## [16.5.2] - 2026-07-14
 
