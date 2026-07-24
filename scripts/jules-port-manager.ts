@@ -662,7 +662,15 @@ async function harvest(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// status: one table of pipeline truth.
+// status: one table of pipeline truth — the operator's review dashboard.
+
+/** Failing check names for a head SHA, deduped by check name (latest run wins). */
+async function failingChecks(sha: string): Promise<string[]> {
+	const runs = (await gh(`/repos/${ORIGIN}/commits/${sha}/check-runs?per_page=100`)).check_runs ?? [];
+	const latest = new Map<string, string>();
+	for (const run of runs) if (!latest.has(run.name)) latest.set(run.name, run.conclusion ?? "");
+	return [...latest.entries()].filter(([, c]) => c === "failure").map(([name]) => name);
+}
 
 async function status(): Promise<void> {
 	const all = (await ghAll(`/repos/${ORIGIN}/issues?labels=${QUEUE_LABEL}&state=open`, 2000)).filter(
@@ -683,9 +691,27 @@ async function status(): Promise<void> {
 	console.log(
 		`  needs human     ${count(REVIEW_LABEL)} (${REVIEW_LABEL}) + ${count(BLOCKED_LABEL)} (${BLOCKED_LABEL})`,
 	);
+
+	// The review pile, with the reason each item needs a human.
+	for (const issue of all.filter(i => hasLabel(i, REVIEW_LABEL) || hasLabel(i, BLOCKED_LABEL))) {
+		const comments = await issueComments(issue.number);
+		const reason =
+			comments
+				.filter(b => /needs a human|blocked/i.test(b))
+				.at(-1)
+				?.split("\n")
+				.find(l => l.trim() && !l.startsWith("<!--")) ?? "(see issue)";
+		console.log(`    #${issue.number} ${issue.title.slice(0, 60)}\n      ${reason.slice(0, 140)}`);
+	}
+
+	// Open PRs with their check health, so "what can I merge?" is one glance.
 	const openPrs = await ghAll(`/repos/${ORIGIN}/pulls?state=open`, 200);
-	console.log(`  open PRs        ${openPrs.length} total awaiting review`);
-	for (const pr of openPrs) console.log(`    #${pr.number} ${pr.title.slice(0, 80)} (${pr.user?.login})`);
+	console.log(`  open PRs        ${openPrs.length} awaiting review`);
+	for (const pr of openPrs) {
+		const failing = await failingChecks(pr.head?.sha ?? "").catch(() => ["(checks unreadable)"]);
+		const health = failing.length === 0 ? "checks green" : `failing: ${failing.join(", ")}`;
+		console.log(`    #${pr.number} ${pr.title.slice(0, 70)} (${pr.user?.login})\n      ${health}`);
+	}
 	await usableLanes(resolveKeys());
 }
 
