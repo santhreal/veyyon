@@ -1793,3 +1793,42 @@ describe("typeableHandleMass — the pre-run screen for whether a repo can measu
 		expect(m).toEqual({ handles: 0, typeable: 0, savingPerEmission: 0, longestTypeable: 0 });
 	});
 });
+
+describe("efficiency comparison — input tokens are tested, not just displayed", () => {
+	// The trap this closes: a feature can buy shorter output by spending prompt.
+	// A larger argot dictionary rides in the system prompt every turn, so raising
+	// its budget trades input tokens for output tokens. When only output was
+	// scored, such an arm read as an unambiguous efficiency win however much input
+	// it burned, and the input column sat in the per-arm table where no test
+	// touched it.
+
+	test("an arm that saves output but costs input is scored on BOTH", () => {
+		// B writes less but reads far more, the exact large-dictionary shape. The
+		// report must show an output saving AND an input increase for the same pair,
+		// so the reader can weigh the trade instead of seeing only the flattering half.
+		const rows: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			rows.push(res({ arm: "a", task: `t${i}`, reward: 1, outputTokens: 1000, inputTokens: 5000 }));
+			rows.push(res({ arm: "b", task: `t${i}`, reward: 1, outputTokens: 800, inputTokens: 25000 }));
+		}
+		const md = renderReport(rows, "m", "now");
+		expect(md).toContain("| input tok | a → b |");
+		expect(md).toContain("| output tok | a → b |");
+		// Output fell by 200 per task and input rose by 20000, both on all 6 tasks.
+		expect(md).toContain("-200 tok");
+		expect(md).toContain("20000 tok");
+	});
+
+	test("the input row reports a rise as dearer, not as a saving", () => {
+		// Sign convention guard: B minus A, so a bigger prompt must read positive and
+		// be called out as dearer. Inverting it would advertise a cost as a benefit.
+		const rows: ArmResult[] = [];
+		for (let i = 1; i <= 6; i++) {
+			rows.push(res({ arm: "a", task: `t${i}`, reward: 1, outputTokens: 1000, inputTokens: 5000 }));
+			rows.push(res({ arm: "b", task: `t${i}`, reward: 1, outputTokens: 1000, inputTokens: 25000 }));
+		}
+		const md = renderReport(rows, "m", "now");
+		const inputRow = md.split("\n").find(l => l.startsWith("| input tok | a → b |")) ?? "";
+		expect(inputRow).toContain("b dearer");
+	});
+});
