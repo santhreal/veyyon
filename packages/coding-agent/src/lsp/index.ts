@@ -963,7 +963,20 @@ async function formatContent(
 
 			// Apply edits in-memory and return
 			return applyTextEditsToString(content, edits);
-		} catch {}
+		} catch (error) {
+			// Cancellation and timeouts must propagate, never be swallowed as a
+			// formatter failure that silently falls through to unformatted content.
+			if (signal?.aborted || error instanceof ToolAbortError || isTimeoutError(error)) throw error;
+			// Formatting is best-effort: a server crash or protocol error must not
+			// fail the edit (the content already saved), but it must be visible —
+			// a silent no-op leaves the operator unable to see why format-on-write
+			// stopped applying (Law: no silent fallbacks).
+			logger.warn("LSP formatting failed; wrote unformatted content", {
+				server: serverName,
+				path: formatPathRelativeToCwd(absolutePath, cwd),
+				error: errorMessage(error),
+			});
+		}
 	}
 
 	return content;
