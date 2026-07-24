@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -88,6 +88,67 @@ describe("content sanitizer blob storage", () => {
 		expect(readFileSync(path)).toEqual(data);
 		expect(storeBlob(data)).toBe(sha);
 		expect(statSync(path).mtimeMs).toBe(mtime);
+	});
+});
+
+/**
+ * The blob store is content-addressed: a blob's filename IS the sha256 of its
+ * bytes, and readers trust that. A crash mid-write must never leave a truncated
+ * blob at a hash path, because the `existsSync` fast-path would then treat that
+ * corrupt file as present forever and every reader would silently get bytes that
+ * do not match the referenced hash. `storeBlob` therefore writes through a
+ * crash-atomic temp + rename. These tests lock the observable signatures of that
+ * write so a regression back to a plain `writeFileSync` fails here.
+ */
+describe("content sanitizer blob storage crash-atomicity", () => {
+	function blobPathFor(root: string, sha: string): string {
+		return join(root, sha.slice(0, 2), sha.slice(0, 4), sha);
+	}
+
+	it("leaves no temporary sibling next to the committed blob", () => {
+		const root = useTempBlobDir();
+		const data = Buffer.from("some binary payload that gets content-addressed");
+		const sha = storeBlob(data);
+
+		const leafDir = join(root, sha.slice(0, 2), sha.slice(0, 4));
+		// A temp + rename commit removes its scratch file; a leftover sibling would
+		// mean the rename step was skipped and the write was not atomic.
+		expect(readdirSync(leafDir).sort()).toEqual([sha]);
+	});
+
+	it("commits the blob with private 0o600 perms, not writeFileSync's 0o644", () => {
+		if (process.platform === "win32") return;
+		const root = useTempBlobDir();
+		const data = Buffer.from("private extracted binary content");
+		const sha = storeBlob(data);
+
+		// The atomic writer opens its temp with mode 0o600; a plain `writeFileSync`
+		// would create the file at 0o666 & ~umask (0o644/0o664). Asserting exactly
+		// 0o600 is what makes a revert to `writeFileSync` fail instead of passing a
+		// shape-only "the bytes are there" check.
+		expect(statSync(blobPathFor(root, sha)).mode & 0o777).toBe(0o600);
+	});
+
+	it("keeps the content-address invariant: stored bytes hash to their own filename", () => {
+		const root = useTempBlobDir();
+		const data = Buffer.from("\x00\x01\x02 raw bytes \xff\xfe with high bytes", "binary");
+		const sha = storeBlob(data);
+
+		const stored = readFileSync(blobPathFor(root, sha));
+		expect(computeSha256(stored)).toBe(sha);
+		expect(stored).toEqual(data);
+	});
+
+	it("stores distinct payloads under distinct hashes without cross-contamination", () => {
+		const root = useTempBlobDir();
+		const a = Buffer.from("payload alpha");
+		const b = Buffer.from("payload beta is different");
+		const shaA = storeBlob(a);
+		const shaB = storeBlob(b);
+
+		expect(shaA).not.toBe(shaB);
+		expect(readFileSync(blobPathFor(root, shaA))).toEqual(a);
+		expect(readFileSync(blobPathFor(root, shaB))).toEqual(b);
 	});
 });
 
