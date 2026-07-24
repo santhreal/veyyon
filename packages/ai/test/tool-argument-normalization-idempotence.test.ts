@@ -122,6 +122,15 @@ function nodeArb(depth: number): fc.Arbitrary<Node> {
 }
 
 describe("validateToolArguments — global idempotence on already-valid input", () => {
+	// These are synchronous fast-check properties: `fc.assert` blocks the event
+	// loop for the whole run, so bun's default 5000ms per-test timeout is measured
+	// against the completed run and cannot interrupt it early. Under `bun test
+	// --parallel=8` on a loaded CI runner the 10k-tree run is CPU-starved to ~20s
+	// (it is ~2.5s uncontended), which exceeded the default timeout and failed the
+	// whole `packages/ai` bucket — which in turn skipped the release publish for
+	// several versions. Give the heavy property tests an explicit, generous timeout
+	// so contention can never flake them, without cutting the run count the testing
+	// contract asks for. The third `it` argument is the per-test timeout in ms.
 	it("returns a deeply-nested already-valid argument tree unchanged (10k trees)", () => {
 		fc.assert(
 			fc.property(fc.array(nodeArb(3), { minLength: 1, maxLength: 5 }), fields => {
@@ -135,7 +144,7 @@ describe("validateToolArguments — global idempotence on already-valid input", 
 			}),
 			{ numRuns: 10_000 },
 		);
-	});
+	}, 120_000);
 
 	it("keeps an enum member verbatim at every array index (no drop, no trim)", () => {
 		fc.assert(
@@ -144,7 +153,7 @@ describe("validateToolArguments — global idempotence on already-valid input", 
 			}),
 			{ numRuns: 5_000 },
 		);
-	});
+	}, 60_000);
 
 	it("keeps a populated optional and a populated nullable field untouched", () => {
 		fc.assert(
@@ -153,7 +162,7 @@ describe("validateToolArguments — global idempotence on already-valid input", 
 			}),
 			{ numRuns: 5_000 },
 		);
-	});
+	}, 60_000);
 });
 
 describe("validateToolArguments — named nested regressions", () => {
