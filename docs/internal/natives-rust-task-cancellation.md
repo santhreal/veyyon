@@ -216,4 +216,4 @@ Choose one model per API and document it explicitly.
 7. Validate no executor misuse:
    - no long sync work directly inside async futures without `spawn_blocking`/blocking task wrapper.
 
-*Verified against `54f074f0` on 2026-07-24.*
+*Verified against `f5737f29` on 2026-07-24.*

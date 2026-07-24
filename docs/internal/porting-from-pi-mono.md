@@ -386,4 +386,4 @@ These exist in our fork but not upstream. **Never overwrite:**
 - Bash interception (`checkBashInterception`)
 - Fuzzy path suggestions in read tool
 
-*Verified against `54f074f0` on 2026-07-24.*
+*Verified against `f5737f29` on 2026-07-24.*

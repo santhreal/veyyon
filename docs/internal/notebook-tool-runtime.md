@@ -186,4 +186,4 @@ If a workflow needs both notebook mutation and execution:
 
 Current implementation does not provide a single tool that both mutates `.ipynb` and executes notebook cells through kernel context.
 
-*Verified against `54f074f0` on 2026-07-24.*
+*Verified against `f5737f29` on 2026-07-24.*

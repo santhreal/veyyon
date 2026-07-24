@@ -116,4 +116,4 @@ ref, or any manual dispatch, get a per-sha, never-cancel concurrency group so a
 later `main` push cannot kill an in-flight release; `scripts/ci-concurrency.test.ts`
 locks that group expression against regressions.
 
-*Verified against `54f074f0` on 2026-07-24.*
+*Verified against `f5737f29` on 2026-07-24.*
