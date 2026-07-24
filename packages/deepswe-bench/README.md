@@ -139,6 +139,12 @@ verifier reports), `results.json` (every metric, machine-readable), and
   p-value across all decisive pairs in the run, and a winner is named only at
   **adj p < 0.05** — which holds the family-wise false-positive rate at 5% no matter
   how many arms you compare. With a single pair (two arms) the correction is a no-op.
+  A non-significant row reads **not distinguishable (underpowered)** when the run had
+  too few decisive tasks for *any* outcome to reach significance — a clean sweep at
+  that task count would still miss the Holm-adjusted bar (with one pair the floor is
+  6 decisive tasks, since a 5-0 sweep is only p=0.0625; two pairs raise it to 7). That
+  qualifier means "add tasks", not "the arms are equal"; a plain **not distinguishable**
+  is a real measured null the run was powered to detect.
 - **Efficiency comparison (paired by task)** — the section that measures a
   compression feature's actual claim: fewer tokens (and less cost) at equal
   reward. For each arm pair it takes the per-task delta on output tokens and on
