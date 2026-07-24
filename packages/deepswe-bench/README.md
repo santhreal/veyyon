@@ -67,7 +67,15 @@ bun run.ts \
 Flags:
 
 - `--tasks <file>` — newline list of task names (comments with `#`). Omit to
-  run every task under the tasks root (full DeepSWE, 113 tasks).
+  run every task under the tasks root (full DeepSWE, 113 tasks). Declare the set's
+  provenance in the header so a biased subset is never read as a headline: a first
+  comment line `# @headline` marks an unbiased, representative set whose numbers can
+  be reported as a headline, and `# @biased: <reason>` marks a set curated to favour
+  the feature under test (for example `tasks/argot-10.txt`, the repos with the most
+  compressible token mass), which yields a best-case upper bound only. The report
+  prints a loud banner from this directive, and an unmarked list is flagged so it
+  gets one. A headline argot number comes from `tasks/diverse-20.txt` (`@headline`);
+  `argot-10` validates the codec delivers where it should, it is not the headline.
 - `--tasks-root <dir>` — override the tasks directory (default: the
   `deep-swe/tasks` clone in this package).
 - `--reaggregate <runDir>` — rebuild `results.json` and `report.md` from a

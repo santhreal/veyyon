@@ -48,11 +48,13 @@ import {
 	noRewardError,
 	PINNED_TEMPERATURE,
 	parseJobName,
+	parseTaskListProvenance,
 	providerFinishReason,
 	renderReport,
 	type SessionUsage,
 	selectTasks,
 	systemPromptTeachesArgot,
+	type TaskSetProvenance,
 	tallyUsage,
 } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
@@ -320,6 +322,10 @@ function reaggregate(runDir: string): void {
 	// stops being self-identifying after a re-render.
 	let armFingerprints: unknown = null;
 	let binarySha: string | null = null;
+	// Carry the task-set provenance forward too, so a re-render reprints the same
+	// selection-bias banner instead of silently dropping it (a reaggregate has no task
+	// list to re-parse). Absent on older runs → undefined → no banner, as before.
+	let taskSet: (TaskSetProvenance & { file: string | null }) | undefined;
 	try {
 		const prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
 		model = prior.model ?? model;
@@ -328,6 +334,7 @@ function reaggregate(runDir: string): void {
 		sampling = prior.sampling ?? null;
 		armFingerprints = prior.armFingerprints ?? null;
 		binarySha = prior.binarySha ?? null;
+		taskSet = prior.taskSet ?? undefined;
 	} catch {
 		/* first aggregation */
 	}
@@ -335,12 +342,27 @@ function reaggregate(runDir: string): void {
 	fs.writeFileSync(
 		path.join(runDir, "results.json"),
 		JSON.stringify(
-			{ model, binarySha, limit, totalTasksAvailable, sampling, armFingerprints, arms, tasks, repeats, results },
+			{
+				model,
+				binarySha,
+				limit,
+				totalTasksAvailable,
+				sampling,
+				armFingerprints,
+				taskSet,
+				arms,
+				tasks,
+				repeats,
+				results,
+			},
 			null,
 			2,
 		),
 	);
-	fs.writeFileSync(path.join(runDir, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
+	fs.writeFileSync(
+		path.join(runDir, "report.md"),
+		renderReport(results, model, new Date().toISOString(), repeats, taskSet),
+	);
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
 }
 
@@ -398,9 +420,11 @@ async function main(): Promise<void> {
 	);
 	const taskListFile = args.tasks ? path.resolve(BENCH_DIR, args.tasks) : undefined;
 	let tasks: string[];
+	let taskSetProvenance: TaskSetProvenance;
 	if (taskListFile) {
-		tasks = fs
-			.readFileSync(taskListFile, "utf8")
+		const content = fs.readFileSync(taskListFile, "utf8");
+		taskSetProvenance = parseTaskListProvenance(content);
+		tasks = content
 			.split("\n")
 			.map(l => l.trim())
 			.filter(l => l && !l.startsWith("#"));
@@ -409,6 +433,9 @@ async function main(): Promise<void> {
 			.readdirSync(tasksRoot)
 			.filter(d => fs.existsSync(path.join(tasksRoot, d, "task.toml")))
 			.sort();
+		// The whole corpus is by definition the unbiased superset, so a directory scan is
+		// a headline set even though it carries no header directive to parse.
+		taskSetProvenance = { marked: true, biased: false, note: "full task corpus (directory scan)" };
 	}
 	const totalTasksAvailable = tasks.length;
 	if (limit !== undefined && limit < totalTasksAvailable) {
@@ -720,6 +747,10 @@ async function main(): Promise<void> {
 				// config produce different fingerprints, so a longitudinal diff catches the
 				// drift instead of silently comparing two different treatments.
 				armFingerprints: Object.fromEntries(arms.map(a => [a, armFingerprints.get(a) ?? null])),
+				// Whether the task set is safe to headline or a selection-biased best case,
+				// stamped so a reaggregate reprints the same provenance banner and a biased
+				// run can never be silently promoted to a headline number later.
+				taskSet: { file: args.tasks ?? null, ...taskSetProvenance },
 				arms,
 				tasks,
 				repeats,
@@ -729,7 +760,10 @@ async function main(): Promise<void> {
 			2,
 		),
 	);
-	fs.writeFileSync(path.join(outRoot, "report.md"), renderReport(results, model, new Date().toISOString(), repeats));
+	fs.writeFileSync(
+		path.join(outRoot, "report.md"),
+		renderReport(results, model, new Date().toISOString(), repeats, taskSetProvenance),
+	);
 	console.log(`\nwrote ${path.join(outRoot, "report.md")} and results.json`);
 
 	// Authoritative post-run treatment check. The pre-run allowlist guard matched the
