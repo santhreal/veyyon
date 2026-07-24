@@ -44,6 +44,8 @@ import {
 	type ArmResult,
 	effectiveTemperature,
 	jobNameOf,
+	NO_REWARD_ERROR,
+	noRewardError,
 	PINNED_TEMPERATURE,
 	parseJobName,
 	providerFinishReason,
@@ -255,6 +257,15 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 			if (finish) err += ` finish_reason: ${finish}`;
 		}
 		result.error = err;
+	}
+	// Fail closed on an unscored trial: if the agent ran without an exception but the
+	// verifier produced no numeric reward, the trial was NOT scored — do not let the
+	// null fold into the pass-rate denominator as a fail. Reclassify it as an error so
+	// it is excluded from every rate/mean and surfaced in the Errors (per arm) section,
+	// where a verifier outage that tracks one arm becomes a visible confound instead of
+	// a silent correctness penalty (Law 10). An existing exception takes precedence.
+	if (!result.error && noRewardError(result.reward)) {
+		result.error = NO_REWARD_ERROR;
 	}
 	return result;
 }
