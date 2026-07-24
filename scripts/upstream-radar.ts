@@ -6,9 +6,11 @@
  * Why: veyyon forked can1357/oh-my-pi and has diverged (~500 commits), but
  * upstream ships real-world bug fixes at a pace veyyon cannot manually track
  * (30 releases in 3 days). Each merged upstream PR becomes an issue carrying
- * the diff surface and porting instructions; Jules (label trigger: `jules`)
- * evaluates applicability post-divergence and opens an adapted port PR, which
- * autoreview.yml and a human then gate. Dedup is by an HTML-comment marker
+ * the diff surface and porting instructions; scripts/jules-port-manager.ts
+ * dispatches each issue as a Jules session via the REST API (the GitHub-app
+ * `jules` label trigger never fired; the label is kept as a human-readable
+ * tag only), and the session opens an adapted port PR, which autoreview.yml
+ * and a human then gate. Dedup is by an HTML-comment marker
  * (`upstream-pr: <number>`) in the issue body, so re-runs are idempotent and
  * concurrent runs converge.
  *

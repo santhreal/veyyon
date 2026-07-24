@@ -60,6 +60,27 @@ assert a pinned upstream commit hash it cannot verify.
   version of this provenance for handbook readers; kept reconciled with
   this file and `NOTICE`.
 
+## Staying current: the port pipeline
+
+Upstream keeps merging fixes after the fork point, so the repo runs an
+automated port pipeline. It has two halves:
+
+1. The radar (`.github/workflows/upstream-radar.yml`, every 30 minutes)
+   mirrors each newly merged upstream PR into one issue labeled
+   `upstream-port`, carrying the diff surface and porting instructions.
+2. The manager (`scripts/jules-port-manager.ts`, run from a local cron with
+   the Jules API keys) dispatches each queued issue as a Jules session that
+   evaluates applicability post-divergence and opens an adapted port PR.
+   Autoreview and a human gate the merge; the PR's `Closes #N` line closes
+   the issue.
+
+An issue's labels are its pipeline position: none beyond `upstream-port`
+means queued, `jules-dispatched` means a session is in flight,
+`port-pr-open` means a PR is awaiting review, and `port-review` /
+`port-blocked` mean a human is needed. `bun scripts/jules-port-manager.ts
+status` prints the live picture; the script's header comment documents the
+commands, knobs, and markers.
+
 ## Non-goals
 
 This file does not track ordinary runtime dependency licenses declared in
