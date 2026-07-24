@@ -52,8 +52,17 @@ function getBuiltinThemes(): Record<string, ThemeJson> {
 	return BUILTIN_THEMES;
 }
 
-export async function getAvailableThemes(): Promise<string[]> {
-	const themes = new Set<string>(Object.keys(getBuiltinThemes()));
+// Only alabaster is presented while the light-theme slab class is unfixed
+// (surface paints leaking onto mismatched grounds, OSC 133 zone tints,
+// gutter-outside-paint geometry). The theme files stay embedded; they are
+// hidden from the picker and the auto mapping until a contributor owns the
+// light-theme rework. Tracked: https://github.com/santhreal/veyyon/issues/29
+const VISIBLE_BUILTIN_THEMES: Record<string, true> = { alabaster: true };
+
+export async function getAvailableThemes(options?: { includeHidden?: boolean }): Promise<string[]> {
+	const themes = new Set<string>(
+		Object.keys(getBuiltinThemes()).filter(name => options?.includeHidden === true || VISIBLE_BUILTIN_THEMES[name]),
+	);
 	const customThemesDir = getCustomThemesDir();
 	try {
 		const files = await fs.promises.readdir(customThemesDir);
@@ -73,12 +82,12 @@ export interface ThemeInfo {
 	path: string | undefined;
 }
 
-export async function getAvailableThemesWithPaths(): Promise<ThemeInfo[]> {
+export async function getAvailableThemesWithPaths(options?: { includeHidden?: boolean }): Promise<ThemeInfo[]> {
 	const result: ThemeInfo[] = [];
 
 	// Built-in themes (embedded, no file path)
 	for (const name of Object.keys(getBuiltinThemes())) {
-		result.push({ name, path: undefined });
+		if (options?.includeHidden === true || VISIBLE_BUILTIN_THEMES[name]) result.push({ name, path: undefined });
 	}
 
 	// Custom themes

@@ -188,7 +188,7 @@ describe("gallery --theme matrix (GALLERY-THEME-FLAG)", () => {
 	});
 
 	it("renders once per theme, and each theme produces genuinely different ANSI bytes", async () => {
-		const available = new Set(await getAvailableThemes());
+		const available = new Set(await getAvailableThemes({ includeHidden: true }));
 		// Two brand grounds that must differ: titanium (silver on black) vs light
 		// (structure on white). Both are shipped builtins.
 		expect(available.has("titanium")).toBe(true);

@@ -49,11 +49,12 @@ describe("UserMessageComponent magic-keyword highlighting", () => {
 		expect(raw).toContain("orchestrate");
 	});
 
-	it("closes OSC 133 prompt zones without opening a command-output zone", () => {
+	it("emits no OSC 133 prompt-zone markers", () => {
+		// Terminals that paint prompt zones drew them as an uncontrolled
+		// background block over the message (operator screenshots 2026-07-23);
+		// the markers were removed, so none may reappear.
 		const raw = render("first line\nsecond line");
-		expect(raw).toContain("\x1b]133;A\x07");
-		expect(raw).toContain("\x1b]133;B\x07");
-		expect(raw).not.toContain("\x1b]133;C\x07");
+		expect(raw).not.toContain("\x1b]133;");
 	});
 
 	it("bolds and underlines image references in the rendered message bubble", () => {

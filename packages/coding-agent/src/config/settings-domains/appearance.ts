@@ -9,7 +9,7 @@ export const APPEARANCE_SETTINGS = {
 	// Theme
 	"theme.dark": {
 		type: "string",
-		default: "titanium",
+		default: "alabaster",
 		ui: {
 			tab: "appearance",
 			group: "Theme",
@@ -21,7 +21,7 @@ export const APPEARANCE_SETTINGS = {
 
 	"theme.light": {
 		type: "string",
-		default: "light",
+		default: "alabaster",
 		ui: {
 			tab: "appearance",
 			group: "Theme",
@@ -390,7 +390,7 @@ export const APPEARANCE_SETTINGS = {
 	"tui.paintGround": {
 		type: "enum",
 		values: ["auto", "always", "never"] as const,
-		default: "auto",
+		default: "always",
 		ui: {
 			tab: "appearance",
 			group: "Display",

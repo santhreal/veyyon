@@ -32,8 +32,8 @@ uses (see `docs/theme.md`). Every built-in theme declares one.
 
 | Value | Behavior |
 | --- | --- |
-| `auto` (default) | Paint only when the terminal's reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn't report its background, inherit it. |
-| `always` | Always paint the theme ground. |
+| `auto` | Paint only when the terminal's reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn't report its background, inherit it. |
+| `always` (default) | Always paint the theme ground. Default since the single-theme (alabaster) period: with one presented theme, painting its ground on every terminal keeps the UI coherent everywhere (santhreal/veyyon#29). |
 | `never` | Never touch the terminal background. |
 
 A custom theme that declares no page background has no ground to paint, so Veyyon inherits

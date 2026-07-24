@@ -67,12 +67,15 @@ describe("UserMessageComponent prompt gutter", () => {
 		}
 	});
 
-	/** The OSC 133 prompt-zone markers survive the gutter pass: zone start on
-	 * the first row, zone end on the last — terminal multiplexers rely on them
-	 * to group prompt jumps. */
-	it("preserves the OSC 133 zone wrapping", () => {
+	/** The OSC 133 prompt-zone markers are gone for good: terminals that paint
+	 * prompt zones (Ghostty class) drew them as an uncontrolled background
+	 * block over the message — the dark slab in operator screenshots
+	 * (2026-07-23). The markers existed for multiplexer prompt grouping, which
+	 * never justified a painted region veyyon does not own. */
+	it("emits no OSC 133 zone markers", () => {
 		const rendered = new UserMessageComponent("zoned").render(60);
-		expect(rendered[0]).toStartWith("\x1b]133;A\x07");
-		expect(rendered[rendered.length - 1]).toEndWith("\x1b]133;B\x07");
+		for (const line of rendered) {
+			expect(line).not.toContain("\x1b]133;");
+		}
 	});
 });
