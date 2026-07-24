@@ -843,7 +843,26 @@ export class Settings {
 
 		try {
 			const parsed = YAML.parse(content);
+			// A blank or comments-only file parses to null/undefined: that is a
+			// legitimately empty settings file, so an empty view is the truth.
+			if (parsed === null || parsed === undefined) {
+				return {};
+			}
+			// A file that parses cleanly but to a NON-mapping (a bare scalar, a YAML
+			// sequence, a string) is malformed exactly like an unparseable one: the
+			// user wrote a settings file, and silently returning {} would drop every
+			// setting they configured with no signal at all (Law 10) — worse than the
+			// parse-error path, which at least quarantines and reports. The strict
+			// overlay loader (#loadOverlayYaml) already rejects a non-mapping root
+			// outright; the persistent loader must be just as loud. Quarantine the
+			// file and record it so startup can tell the user, instead of pretending
+			// the file was empty.
 			if (!isRecord(parsed)) {
+				await this.#quarantineUnparseableSettings(
+					filePath,
+					content,
+					new Error("settings root must be a YAML mapping, not a scalar or sequence"),
+				);
 				return {};
 			}
 			return this.#migrateRawSettings(parsed as RawSettings);
