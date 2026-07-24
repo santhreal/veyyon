@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The CLI now prefers authenticated providers when resolving ambiguous bare model ids.
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed
