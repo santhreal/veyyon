@@ -15,7 +15,37 @@
  * zero-width standard error a boundary cell produces.
  */
 
-import { DEFAULT_SIGIL } from "argot";
+import { ARGOT_PREAMBLE, DEFAULT_SIGIL } from "argot";
+
+/**
+ * Heading line of argot's teaching preamble, taken from argot's OWN rendered
+ * preamble ({@link ARGOT_PREAMBLE}) so this marker can never drift from the text
+ * the runtime injects. `renderPreamble`'s `tools` option changes only the body,
+ * not this `## Project shorthand (Argot)` heading, so a single substring match on
+ * it is a sound "was the model taught to encode this session" probe regardless of
+ * which preamble variant fired.
+ */
+export const ARGOT_PREAMBLE_HEADING: string = ARGOT_PREAMBLE.split("\n", 1)[0] ?? "";
+
+/**
+ * True when a session's system prompt contains argot's teaching preamble, i.e.
+ * the ENCODE treatment actually fired for that session.
+ *
+ * This is the authoritative, post-run treatment-applied probe, and it is the one
+ * check the pre-run allowlist guard ({@link ../treatment-guard!encodeArmModelMismatch})
+ * structurally cannot make: the pre-run guard matches the REQUESTED `--model`
+ * string against the allowlist, but the runtime resolves that id through the
+ * catalog (provider aliases, effort-tier collapsing) to a different logical id
+ * BEFORE the encode gate sees it. A requested `google-antigravity/gemini-3.6-flash`
+ * that resolves to logical `gemini-3.5-flash` passes the pre-run guard (3.6 is on
+ * the list) yet fails the gate (the resolved 3.5 is not), so the arm silently
+ * degrades to decode-only. Reading the actual system prompt the model was given
+ * reflects the model AFTER resolution and catches exactly that silent degrade.
+ */
+export function systemPromptTeachesArgot(systemPrompt: string): boolean {
+	if (ARGOT_PREAMBLE_HEADING === "") return false;
+	return systemPrompt.includes(ARGOT_PREAMBLE_HEADING);
+}
 
 /**
  * Whether an assistant content block carries an argot handle (a `§name` token).
@@ -228,6 +258,15 @@ export interface ArmResult {
 	agentSeconds: number | null;
 	argotLoadCalls: number | null;
 	assistantMsgsWithSigil: number | null;
+	/**
+	 * Whether this trial's session system prompt actually taught argot's encode
+	 * preamble (see {@link systemPromptTeachesArgot}). `true` = encode fired,
+	 * `false` = a session was present but was NOT taught to encode (the silent
+	 * decode-only degrade an encode arm must never hide), `null` = no readable
+	 * session, so presence is unknown. This is the authoritative treatment-applied
+	 * signal, resolved from the prompt the model was actually given.
+	 */
+	argotPreamblePresent: boolean | null;
 	toolCalls: Record<string, number> | null;
 	error: string | null;
 }
@@ -764,19 +803,33 @@ export function renderReport(results: readonly ArmResult[], model: string, nowIs
 	// "encode on paper" against decode — the eval is inert, not a null result.
 	const okByArm = (a: string) => results.filter(r => r.arm === a && !r.error);
 	const argotArms = arms.filter(a =>
-		okByArm(a).some(r => r.argotLoadCalls !== null || r.assistantMsgsWithSigil !== null),
+		okByArm(a).some(
+			r => r.argotLoadCalls !== null || r.assistantMsgsWithSigil !== null || r.argotPreamblePresent !== null,
+		),
 	);
 	if (argotArms.length > 0) {
 		lines.push("");
 		lines.push("## Argot treatment applied? (per arm)");
 		lines.push("");
-		lines.push("| arm | OK runs | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |");
-		lines.push("|---|---|---|---|---|");
+		lines.push(
+			"`preamble taught` is the authoritative signal: it reads the actual system prompt the model was " +
+				"given, so it reflects the model AFTER catalog id resolution. An encode arm whose `preamble taught` " +
+				"is `0/N` never fired the treatment (a silent degrade to decode-only) and every token delta against " +
+				"it is inert, whatever the § counts say.",
+		);
+		lines.push("");
+		lines.push(
+			"| arm | OK runs | preamble taught | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |",
+		);
+		lines.push("|---|---|---|---|---|---|");
 		for (const a of argotArms) {
 			const rows = okByArm(a);
 			const encoded = rows.filter(r => (r.assistantMsgsWithSigil ?? 0) > 0).length;
+			const taught = rows.filter(r => r.argotPreamblePresent === true).length;
+			const known = rows.filter(r => r.argotPreamblePresent !== null).length;
+			const taughtCell = known === 0 ? "unknown" : `${taught}/${known}`;
 			lines.push(
-				`| ${a} | ${rows.length} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
+				`| ${a} | ${rows.length} | ${taughtCell} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
 					`${fmt(mean(rows.map(r => r.assistantMsgsWithSigil)), 2)} | ${encoded}/${rows.length} |`,
 			);
 		}

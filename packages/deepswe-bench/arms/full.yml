@@ -1,9 +1,17 @@
 # Full arm (encode + decode): the model is taught the notation preamble, loads
 # the project itself with argot_load, writes handles, and the harness expands
 # them at every seam.
+#
+# The allowlist must name the RESOLVED logical model id, not a display alias. The
+# encode gate matches against the model AFTER the catalog resolves it (provider
+# aliases, effort-tier collapsing), so on google-antigravity the flash family is
+# served under logical id `gemini-3.5-flash` even when requested as the display
+# alias `gemini-3.6-flash`. A bare name here is a provider wildcard matching the
+# id's last segment. If this list does not match the model the gate actually sees,
+# encoding silently never fires and the arm secretly measures decode-only: the
+# run's post-run preamble check fails closed on exactly that, and the report's
+# "Argot treatment applied?" shows `preamble taught 0/N`.
 argot:
   enabled: true
   models:
-    - gemini-2.5-flash
-    - gemini-3.6-flash
-    - claude-3-7-sonnet
+    - gemini-3.5-flash

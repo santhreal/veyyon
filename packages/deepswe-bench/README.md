@@ -21,10 +21,11 @@ Every evaluation comparison MUST vary **EXACTLY ONE independent variable** betwe
 
 **NEVER replace the whole system prompt to test a prompt change.** A whole-prompt override (a custom `SYSTEM.md` / `--system-prompt` snapshot) freezes a point-in-time copy that no longer responds to settings, and it silently drops every settings-gated section it forgets to copy — the delegation block renders only when the delegation setting is on, so a hand-compressed snapshot that omits it inverts that setting invisibly. That is two hidden variables, not one. Override one named section instead; the engine renders all the others.
 
-The runner enforces two mechanical floors of this rule before it runs anything:
+The runner enforces three mechanical floors of this rule:
 
 1. **Zero-IV collision.** If any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module and same/no rule), it fails loudly with the colliding arm names. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
-2. **Treatment-not-applied.** If an arm turns argot encoding on with a non-empty `argot.models` allowlist that does not include the `--model` under test, it fails loudly. argot only encodes for a model on its allowlist, so such an arm would SILENTLY degrade to decode-only while still being labelled the encode condition — a silent fallback living inside the eval set. The check uses argot's own `modelAllowed` predicate (exported from the SDK), so it can never drift from the gate the runtime actually applies. A deliberately decode-only arm (`enabled: true`, empty allowlist, as in `arms/decode.yml`) is fine and passes.
+2. **Treatment-not-applied (pre-run).** If an arm turns argot encoding on with a non-empty `argot.models` allowlist that does not include the `--model` under test, it fails loudly before running. argot only encodes for a model on its allowlist, so such an arm would SILENTLY degrade to decode-only while still being labelled the encode condition — a silent fallback living inside the eval set. The check uses argot's own `modelAllowed` predicate (exported from the SDK), so it can never drift from the gate the runtime actually applies. A deliberately decode-only arm (`enabled: true`, empty allowlist, as in `arms/decode.yml`) is fine and passes.
+3. **Treatment-not-applied (post-run, authoritative).** The pre-run check matches the model string you *requested*, but the runtime resolves that id through the catalog (provider aliases, effort-tier collapsing) to a different logical id before the encode gate sees it. A requested `google-antigravity/gemini-3.6-flash` that the catalog serves as logical `gemini-3.5-flash` passes the pre-run check (3.6 is on the list) yet fails the gate (the resolved 3.5 is not), so the arm runs decode-only anyway. After the run, the bench reads whether the encode preamble actually reached the model (from each session's system prompt) and **fails closed** if an encode arm never taught it in any OK trial. This is why the default `--model` and the `full` arm's allowlist both name the resolved logical id `gemini-3.5-flash`, not the `gemini-3.6-flash` display alias: requested and resolved must agree, or the run is inert. Watch the `preamble taught` column in the report (below).
 
 ## Canonical single-IV comparisons
 
@@ -144,13 +145,15 @@ verifier reports), `results.json` (every metric, machine-readable), and
   every sample is 0) is labelled `not measured` rather than a paired delta of
   zeros, so a missing metric is never mistaken for "measured and found equal".
 - **Argot treatment applied? (per arm)** — proof the treatment fired before you
-  trust any token delta. It shows, per arm, the mean `argot_load` calls, the mean
-  assistant messages that carried a `§` handle, and the fraction of runs that
-  encoded at all. A `full` arm whose row is all zeros means encode never
-  happened (for example the model was not on the allowlist), so a "no token
-  savings" result would be inert, not a real null. Encode is detected wherever a
-  handle can land — a text block OR a tool call's arguments (commands and diffs
-  carry handles too), not prose alone.
+  trust any token delta. The `preamble taught` column is the authoritative signal:
+  it reads the actual system prompt the model was given, so it reflects the model
+  *after* catalog id resolution. `preamble taught 0/N` on an encode arm means the
+  preamble never reached the model (a silent decode-only degrade), so every token
+  delta against it is inert whatever the `§` counts say — and the runner fails the
+  run closed on exactly that. The row also shows the mean `argot_load` calls, the
+  mean assistant messages that carried a `§` handle, and the fraction of runs that
+  encoded at all. Encode is detected wherever a handle can land — a text block OR a
+  tool call's arguments (commands and diffs carry handles too), not prose alone.
 - **Errors (per arm)** — every sample that crashed or was refused, grouped by
   reason, across all arms including those with zero errors. An errored sample is
   excluded from every rate and mean above, so an arm that errors more is measured
@@ -263,10 +266,14 @@ behavioral nudge rather than a section rewrite (this is what
 - `candidate-argot-nudge` — `argot-setting-only` plus `arms/candidate-argot-nudge.rule.md`.
 - `decode` — enabled and loadable, but the model allowlist is empty, so nothing
   is ever taught (isolates the cost of the feature being armed).
-- `full` — enabled, with an `argot.models` allowlist that includes the model
-  under test, allowed to encode; the agent loads the project itself with
-  `argot_load` and writes handles. (If you bench a `--model` the allowlist does
-  not name, the runner refuses to run rather than silently measure decode-only.)
+- `full` — enabled, with an `argot.models` allowlist that names the resolved
+  logical id of the model under test (the default is `gemini-3.5-flash`), allowed
+  to encode; the agent loads the project itself with `argot_load` and writes
+  handles. The allowlist must match the model *after* catalog resolution, not the
+  display alias you typed: if you bench a `--model` whose resolved id the allowlist
+  does not name, the pre-run guard refuses to start when the requested id misses,
+  and the post-run preamble check fails the run closed when a resolved id silently
+  misses. Confirm `preamble taught N/N` in the report before trusting a delta.
 
 ## Argot on DeepSWE: what is and is not measurable
 

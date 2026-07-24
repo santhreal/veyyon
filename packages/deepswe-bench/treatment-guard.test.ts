@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { encodeArmModelMismatch } from "./treatment-guard";
+import { encodeArmModelMismatch, encodePreambleSilentlyDropped, isEncodeArm } from "./treatment-guard";
 
 const MODEL = "google-antigravity/gemini-3.6-flash";
 
@@ -81,5 +81,73 @@ describe("encodeArmModelMismatch — arms that silently degrade (returns the all
 		// correctly flagged rather than passing by accident.
 		const config = { argot: { enabled: true, models: [123] } };
 		expect(encodeArmModelMismatch(config, MODEL)).toEqual(["123"]);
+	});
+});
+
+describe("isEncodeArm — which arms are held to the post-run preamble contract", () => {
+	// The post-run check must fire ONLY for arms that assert an encode treatment, or
+	// it would falsely fail the decode-only arm (which is designed never to teach the
+	// preamble). This must key on the exact same shape encodeArmModelMismatch uses.
+
+	test("true for argot.enabled with a non-empty allowlist (the full arm)", () => {
+		expect(isEncodeArm({ argot: { enabled: true, models: ["gemini-3.5-flash"] } })).toBe(true);
+	});
+
+	test("false for the decode-only arm (enabled, empty allowlist) — never expected to encode", () => {
+		// decode.yml is enabled:true, models:[]. It intentionally never teaches the
+		// preamble, so holding it to the encode contract would fail every sound run.
+		expect(isEncodeArm({ argot: { enabled: true, models: [] } })).toBe(false);
+		expect(isEncodeArm({ argot: { enabled: true } })).toBe(false);
+	});
+
+	test("false when encoding is off (baseline) or there is no argot block", () => {
+		expect(isEncodeArm({ argot: { enabled: false, models: ["gemini-3.5-flash"] } })).toBe(false);
+		expect(isEncodeArm({ other: true })).toBe(false);
+	});
+
+	test("false for non-object configs, never throws", () => {
+		expect(isEncodeArm(null)).toBe(false);
+		expect(isEncodeArm("nope")).toBe(false);
+		expect(isEncodeArm([1, 2])).toBe(false);
+	});
+});
+
+describe("encodePreambleSilentlyDropped — the authoritative post-run fail-closed predicate", () => {
+	// Reproduces the exact smoke defect: the full arm ran, produced OK trials, and the
+	// encode preamble reached the model in NONE of them (requested 3.6 resolved to 3.5,
+	// off the allowlist). Every known trial is false => the treatment silently dropped
+	// and the run must fail closed.
+
+	test("true when every known trial failed to teach the preamble (the silent degrade)", () => {
+		expect(encodePreambleSilentlyDropped([false, false, false])).toBe(true);
+	});
+
+	test("true even when some trials are unknown, as long as no known trial taught it", () => {
+		// An unreadable session (null) is not evidence of firing; if the readable ones
+		// all show false, the treatment still dropped.
+		expect(encodePreambleSilentlyDropped([null, false, null])).toBe(true);
+	});
+
+	test("false when at least one trial DID teach the preamble (treatment fired)", () => {
+		expect(encodePreambleSilentlyDropped([false, true, false])).toBe(false);
+		expect(encodePreambleSilentlyDropped([true])).toBe(false);
+	});
+
+	test("false when presence is entirely unknown — unreadable sessions are a separate problem", () => {
+		// All null must NOT fail the run closed: we cannot claim the treatment dropped
+		// without a single readable system prompt. This keeps the guard from firing on
+		// an infra/parse failure that has nothing to do with the encode gate.
+		expect(encodePreambleSilentlyDropped([null, null])).toBe(false);
+	});
+
+	test("false on an empty set (no trials to judge)", () => {
+		expect(encodePreambleSilentlyDropped([])).toBe(false);
+	});
+
+	test("partial firing is NOT a failure here — argot's context cutoff can legitimately disable encode", () => {
+		// A mix of taught/not-taught can be argot's disableAboveTokens cutoff kicking in
+		// on longer trials, a real feature, not a broken arm. The report surfaces the
+		// partial fraction; only a total miss fails the run closed.
+		expect(encodePreambleSilentlyDropped([true, false, true, false])).toBe(false);
 	});
 });

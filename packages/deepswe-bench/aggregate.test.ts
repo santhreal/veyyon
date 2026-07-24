@@ -10,7 +10,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { ARGOT_PREAMBLE, renderPreamble } from "argot";
 import {
+	ARGOT_PREAMBLE_HEADING,
 	type ArmResult,
 	blockContainsSigil,
 	classifyError,
@@ -25,6 +27,7 @@ import {
 	selectTasks,
 	signTestPValue,
 	summarizeCell,
+	systemPromptTeachesArgot,
 	tallyUsage,
 	wilsonInterval,
 } from "./aggregate";
@@ -46,6 +49,7 @@ function res(over: Partial<ArmResult>): ArmResult {
 		agentSeconds: null,
 		argotLoadCalls: null,
 		assistantMsgsWithSigil: null,
+		argotPreamblePresent: null,
 		toolCalls: null,
 		error: null,
 		...over,
@@ -868,5 +872,120 @@ describe("tallyUsage — a tool invocation is counted once, not once per call an
 			assistantMsgsWithSigil: 0,
 			toolCalls: {},
 		});
+	});
+});
+
+describe("systemPromptTeachesArgot — the authoritative post-run encode-fired probe", () => {
+	// Why this exists: the pre-run allowlist guard matches the REQUESTED --model, but
+	// the runtime resolves that id through the catalog to a different logical id before
+	// argot's gate runs. So an encode arm can pass the pre-run guard and still run
+	// decode-only. This probe reads the actual system prompt the model was given, which
+	// reflects the model AFTER resolution — the only signal that catches a silent
+	// decode-only degrade. A real full-arm smoke reproduced exactly that: requested
+	// google-antigravity/gemini-3.6-flash resolved to gemini-3.5-flash, off the
+	// [..., gemini-3.6-flash, ...] allowlist, so the preamble was never taught.
+
+	test("the marker is argot's OWN preamble heading, so it cannot drift from the runtime", () => {
+		// ARGOT_PREAMBLE_HEADING must be the first line of argot's rendered preamble,
+		// not a hand-copied string that could silently fall out of sync with what the
+		// harness injects. If argot renames the heading, this test moves with it.
+		expect(ARGOT_PREAMBLE_HEADING).toBe(ARGOT_PREAMBLE.split("\n")[0]);
+		expect(ARGOT_PREAMBLE_HEADING).toBe("## Project shorthand (Argot)");
+	});
+
+	test("true when the system prompt carries the real teaching preamble (tools variant)", () => {
+		// sdk.ts injects renderPreamble({ tools: true }); the heading is identical to the
+		// default variant, so the probe fires on the exact text the coding agent embeds.
+		const prompt = `You are a helpful agent.\n\n${renderPreamble({ tools: true })}\n\nMore rules.`;
+		expect(systemPromptTeachesArgot(prompt)).toBe(true);
+	});
+
+	test("true for the no-tools preamble variant as well", () => {
+		const prompt = `preamble:\n${renderPreamble({ tools: false })}`;
+		expect(systemPromptTeachesArgot(prompt)).toBe(true);
+	});
+
+	test("false for a real 83k-char system prompt that never taught encoding (the smoke bug)", () => {
+		// The decode arm — and the BROKEN full arm — produce a full system prompt with
+		// every rule EXCEPT the argot preamble. A long prompt that merely mentions
+		// "argot" or "shorthand" elsewhere must not be mistaken for the taught treatment.
+		const prompt = `${"lorem ipsum ".repeat(7000)}\nargot_load is a tool. shorthand exists.`;
+		expect(systemPromptTeachesArgot(prompt)).toBe(false);
+	});
+
+	test("false on an empty prompt", () => {
+		expect(systemPromptTeachesArgot("")).toBe(false);
+	});
+});
+
+describe("renderReport — Argot treatment applied? surfaces `preamble taught` authoritatively", () => {
+	const STAMP = "2026-07-24T00:00:00.000Z";
+	// The column that would have caught the inert full-arm run at a glance: an encode
+	// arm whose preamble never reached the model reads `0/N`, so a reader knows every
+	// token delta against it is meaningless before trusting the efficiency section.
+
+	test("an encode arm that never taught the preamble reads 0/N (the silent decode-only degrade)", () => {
+		const results: ArmResult[] = [
+			res({
+				arm: "full",
+				task: "t1",
+				reward: 1,
+				argotLoadCalls: 0,
+				assistantMsgsWithSigil: 0,
+				argotPreamblePresent: false,
+			}),
+			res({
+				arm: "full",
+				task: "t2",
+				reward: 0,
+				argotLoadCalls: 0,
+				assistantMsgsWithSigil: 0,
+				argotPreamblePresent: false,
+			}),
+		];
+		const report = renderReport(results, "google-antigravity/gemini-3.5-flash", STAMP, 1);
+		expect(report).toContain("## Argot treatment applied? (per arm)");
+		// arm | OK runs | preamble taught | ... => full ran 2 OK trials, taught 0 of 2.
+		expect(report).toContain("| full | 2 | 0/2 |");
+	});
+
+	test("an encode arm that taught the preamble on every trial reads N/N", () => {
+		const results: ArmResult[] = [
+			res({
+				arm: "full",
+				task: "t1",
+				reward: 1,
+				argotLoadCalls: 1,
+				assistantMsgsWithSigil: 3,
+				argotPreamblePresent: true,
+			}),
+			res({
+				arm: "full",
+				task: "t2",
+				reward: 1,
+				argotLoadCalls: 1,
+				assistantMsgsWithSigil: 5,
+				argotPreamblePresent: true,
+			}),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("| full | 2 | 2/2 |");
+	});
+
+	test("reads `unknown` when no trial's preamble presence could be determined", () => {
+		// argotPreamblePresent null (unreadable sessions) but argot telemetry present, so
+		// the section still renders; the taught cell must say unknown, not a false 0/0.
+		const results: ArmResult[] = [
+			res({
+				arm: "decode",
+				task: "t1",
+				reward: 1,
+				argotLoadCalls: 2,
+				assistantMsgsWithSigil: 0,
+				argotPreamblePresent: null,
+			}),
+		];
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("| decode | 1 | unknown |");
 	});
 });
