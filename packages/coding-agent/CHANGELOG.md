@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ## [1.0.23] - 2026-07-24
+### Changed
+
+- Only alabaster is presented in the theme picker while the light-theme slab class (painted surfaces leaking onto mismatched terminal grounds, misaligned gutter-outside-paint geometry, OSC 133 zone tints) awaits a rework. The other built-in themes stay embedded and renderable for theme work through the gallery (`getAvailableThemes({ includeHidden: true })`); `theme.dark` and `theme.light` now default to alabaster, and `tui.paintGround` defaults to `always` so the ground stays coherent on every terminal. Tracked in https://github.com/santhreal/veyyon/issues/29.
+
+### Removed
+
+- The OSC 133 prompt-zone markers around user messages. Terminals that paint prompt zones (Ghostty class) drew them as an uncontrolled background block over the message — the dark slab on titanium in operator screenshots. Multiplexer prompt grouping never justified a painted region veyyon does not own.
+
+### Added
+
+- Every GitHub Release now includes a "What changed" section that groups the commits since the previous release by type (Features, Fixes, Performance, and so on). Releases used to show only the hand-written changelog bullets, so a release with dozens of real commits could ship with a one-line body; the summary is derived from the commit history, so each release reflects its actual work with no manual curation.
 
 ### Fixed
 

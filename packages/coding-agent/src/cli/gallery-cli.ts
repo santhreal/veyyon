@@ -252,7 +252,9 @@ export async function renderGalleryForThemes(
 	width: number,
 	expanded: boolean,
 ): Promise<ThemedGallery[]> {
-	const available = new Set(await getAvailableThemes());
+	// The gallery is the maintainer tool for theme work: hidden themes stay
+	// renderable here even while the settings picker hides them.
+	const available = new Set(await getAvailableThemes({ includeHidden: true }));
 	const unknown = themes.filter(name => !available.has(name));
 	if (unknown.length > 0) {
 		const known = [...available].sort().join(", ");

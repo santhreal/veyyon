@@ -12,11 +12,14 @@ import { type PaintGroundSetting, resolvePaintGround } from "@veyyon/tui";
 const definition = SETTINGS_SCHEMA["tui.paintGround"];
 
 describe("tui.paintGround schema ↔ runtime contract", () => {
-	it("is an enum over exactly the runtime's PaintGroundSetting values, defaulting to auto", () => {
+	it("is an enum over exactly the runtime's PaintGroundSetting values, defaulting to always", () => {
 		expect(definition).toBeDefined();
 		if (definition?.type !== "enum") throw new Error(`expected enum, got ${definition?.type}`);
 		expect([...definition.values]).toEqual(["auto", "always", "never"]);
-		expect(definition.default).toBe("auto");
+		// Default always: with alabaster the only presented theme, auto would
+		// refuse to paint on mismatched grounds and ship the slab class
+		// (santhreal/veyyon#29).
+		expect(definition.default).toBe("always");
 	});
 
 	it("every schema value resolves to a real paint decision, not an unknown-value fallthrough", () => {

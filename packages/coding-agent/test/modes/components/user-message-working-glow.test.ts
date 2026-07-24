@@ -119,13 +119,18 @@ describe("UserMessageComponent working indicator", () => {
 		expect([...component.render(60)]).toEqual(idle);
 	});
 
-	/** The OSC 133 zone markers survive the working glyph swap untouched, so
-	 * terminal prompt-zone navigation keeps working mid-turn. */
-	it("preserves OSC 133 zone markers in both states", () => {
+	/** The OSC 133 zone markers are gone in both states: terminals painting
+	 * prompt zones drew them as an uncontrolled background block over the
+	 * message (operator screenshots, 2026-07-23). */
+	it("emits no OSC 133 zone markers in either state", () => {
 		const component = new UserMessageComponent("hi");
 		component.setWorking(true);
-		const rows = component.render(60);
-		expect(rows[0]!.startsWith("\x1b]133;A\x07")).toBe(true);
-		expect(rows[rows.length - 1]!.endsWith("\x1b]133;B\x07")).toBe(true);
+		for (const line of component.render(60)) {
+			expect(line).not.toContain("\x1b]133;");
+		}
+		component.setWorking(false);
+		for (const line of component.render(60)) {
+			expect(line).not.toContain("\x1b]133;");
+		}
 	});
 });
