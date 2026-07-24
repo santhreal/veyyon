@@ -59,7 +59,7 @@ export function isNotFound(error: unknown): boolean {
  * uses this to decide whether deleting the source after a content-move would
  * destroy the destination, so "not provably the same file" must be false.
  */
-async function sameExistingFile(a: string, b: string): Promise<boolean> {
+export async function sameExistingFile(a: string, b: string): Promise<boolean> {
 	try {
 		const [sa, sb] = await Promise.all([fs.stat(a), fs.stat(b)]);
 		return sa.dev === sb.dev && sa.ino === sb.ino;

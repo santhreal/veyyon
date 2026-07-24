@@ -18,7 +18,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { Filesystem, NotFoundError, type PreflightWriteOptions, type WriteResult } from "@veyyon/hashline";
+import { Filesystem, NotFoundError, type PreflightWriteOptions, sameExistingFile, type WriteResult } from "@veyyon/hashline";
 import { isEnoent } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";
@@ -173,8 +173,17 @@ export class HashlineFilesystem extends Filesystem {
 		const fromAbsolute = this.resolveAbsolute(fromRelative);
 		const toAbsolute = this.resolveAbsolute(toRelative);
 		if (content !== undefined) {
+			// A content-move writes the destination then removes the source. When
+			// `from` and `to` are the SAME underlying file — a case-only rename on a
+			// case-insensitive volume, or a destination reached through a symlink —
+			// the `rm` would erase the bytes just written. The patcher's MV guard
+			// compares realpath-collapsed keys and normally catches this, but the
+			// primitive must not depend on one caller's check: detect same-file here
+			// by device + inode and skip the removal.
 			await Bun.write(toAbsolute, content);
-			await fs.rm(fromAbsolute);
+			if (!(await sameExistingFile(fromAbsolute, toAbsolute))) {
+				await fs.rm(fromAbsolute);
+			}
 		} else {
 			await fs.rename(fromAbsolute, toAbsolute);
 		}
