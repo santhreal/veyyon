@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "argot",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "Per-project shorthand vocabularies for coding agents: a lossless substitution codec over an AGENTS.dict file.",
   "homepage": "https://veyyon.dev",
   "license": "MIT",
