@@ -53,7 +53,9 @@ function firstCellGlyph(value: string, fallback: string): string {
  * already-wrapped logical lines appropriate for the current render width.
  */
 export class ScrollView implements Component {
-	#lines: string[];
+	#lines: readonly string[];
+	/** Last array passed to {@link setLines}; same ref ⇒ skip the copy (render contract: same ref is byte-identical). */
+	#sourceLines: readonly string[] | undefined;
 	#height: number;
 	#scrollOffset = 0;
 	#totalRows: number | undefined;
@@ -65,6 +67,7 @@ export class ScrollView implements Component {
 	#fastScrollLines: number;
 
 	constructor(lines: readonly string[], options: ScrollViewOptions) {
+		this.#sourceLines = lines;
 		this.#lines = [...lines];
 		this.#height = Number.isFinite(options.height) ? Math.max(0, Math.trunc(options.height)) : 0;
 		this.#totalRows = options.totalRows === undefined ? undefined : Math.max(0, Math.trunc(options.totalRows));
@@ -81,6 +84,13 @@ export class ScrollView implements Component {
 	}
 
 	setLines(lines: readonly string[]): void {
+		// Callers like the transcript viewer call this every frame with the
+		// container's memoized render output: the same array reference whenever
+		// nothing changed. The per-frame O(content) copy was the last
+		// content-proportional cost in the scroll path (PERF-RENDER-3), so an
+		// identical reference skips it outright.
+		if (lines === this.#sourceLines) return;
+		this.#sourceLines = lines;
 		this.#lines = [...lines];
 		this.#clampScrollOffset();
 	}
