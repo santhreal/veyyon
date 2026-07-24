@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test, spyOn, afterEach } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -191,6 +191,35 @@ describe.skipIf(!supportsReftable)("git reftable support", () => {
 			expect(await git.repo.isReftable(repository7)).toBe(true);
 			expect(git.repo.isReftableSync(repository7)).toBe(true);
 		}
+	});
+
+
+	let spawnSyncSpy: any;
+	afterEach(() => {
+		if (spawnSyncSpy) {
+			spawnSyncSpy.mockRestore();
+			spawnSyncSpy = undefined;
+		}
+	});
+
+	test("resolves references cleanly when git is not installed (ENOENT degrade)", async () => {
+		const err = new Error('Executable not found in $PATH: "git"');
+		(err as NodeJS.ErrnoException).code = "ENOENT";
+		spawnSyncSpy = spyOn(Bun, "spawnSync").mockImplementation((args: any) => {
+			if (args && args[0] === "git") {
+				throw err;
+			}
+			return (Bun.spawnSync as any).getMockImplementation()?.(args);
+		});
+
+		const repository = await git.repo.resolve(sharedRepoDir);
+		expect(repository).not.toBeNull();
+		if (!repository) return;
+
+		const headStateSync = git.head.resolveSync(sharedRepoDir);
+		expect(headStateSync).not.toBeNull();
+		expect(headStateSync?.kind).toBe("detached");
+		expect(headStateSync?.commit).toBeNull();
 	});
 
 	test("resolves references in a reftable worktree", async () => {

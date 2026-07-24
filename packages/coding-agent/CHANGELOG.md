@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Git Fallback**: Read-only git helpers (like `git.status.summary` or `git.repo.root`) now degrade gracefully to `null` instead of crashing the process when the `git` binary is missing from `PATH`.
+
+
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed

@@ -382,6 +382,20 @@ function buildGitEnv(overrides?: Record<string, string | undefined>): Record<str
 	};
 }
 
+type SyncSubprocessOptions = Parameters<typeof Bun.spawnSync>[1];
+
+function gitSpawnSyncText(args: readonly string[], options?: SyncSubprocessOptions) {
+	try {
+		const result = Bun.spawnSync(["git", ...args], options);
+		return result;
+	} catch (error: any) {
+		if (error && error.code === "ENOENT") {
+			return { exitCode: 127, stdout: new Uint8Array(), stderr: new Uint8Array() };
+		}
+		throw error;
+	}
+}
+
 function ensureAvailable(): void {
 	if (!$which("git")) {
 		throw new Error("git is not installed.");
@@ -401,17 +415,24 @@ function formatCommandFailure(
 
 async function git(cwd: string, args: readonly string[], options: CommandOptions = {}): Promise<GitCommandResult> {
 	const commandArgs = withShortLivedGitConfig(options.readOnly ? withNoOptionalLocks(args) : [...args]);
-	const child = Bun.spawn(["git", ...commandArgs], {
-		cwd,
-		env: buildGitEnv(options.env),
-		signal: options.signal,
-		stdin: normalizeStdin(options.stdin),
-		stdout: "pipe",
-		stderr: "pipe",
-		windowsHide: true,
-	});
+	try {
+		const child = Bun.spawn(["git", ...commandArgs], {
+			cwd,
+			env: buildGitEnv(options.env),
+			signal: options.signal,
+			stdin: normalizeStdin(options.stdin),
+			stdout: "pipe",
+			stderr: "pipe",
+			windowsHide: true,
+		});
 
-	return await collectSubprocessResult("git", commandArgs, child, options);
+		return await collectSubprocessResult("git", commandArgs, child, options);
+	} catch (error: any) {
+		if (error && error.code === "ENOENT") {
+			return { exitCode: 127, stdout: "", stderr: "git is not installed." } as unknown as GitCommandResult;
+		}
+		throw error;
+	}
 }
 
 function withNoOptionalLocks(args: readonly string[]): string[] {
@@ -887,9 +908,8 @@ async function resolveHeadStateReftable(repository: GitRepository, signal?: Abor
 }
 
 function resolveHeadStateReftableSync(repository: GitRepository): GitHeadState | null {
-	ensureAvailable();
 	const symArgs = withShortLivedGitConfig(withNoOptionalLocks(["symbolic-ref", "HEAD"]));
-	const symResult = Bun.spawnSync(["git", ...symArgs], {
+	const symResult = gitSpawnSyncText(symArgs, {
 		cwd: repository.repoRoot,
 		env: buildGitEnv(),
 		stdout: "pipe",
@@ -898,7 +918,7 @@ function resolveHeadStateReftableSync(repository: GitRepository): GitHeadState |
 	});
 
 	const revArgs = withShortLivedGitConfig(withNoOptionalLocks(["rev-parse", "--verify", "HEAD"]));
-	const revResult = Bun.spawnSync(["git", ...revArgs], {
+	const revResult = gitSpawnSyncText(revArgs, {
 		cwd: repository.repoRoot,
 		env: buildGitEnv(),
 		stdout: "pipe",
@@ -930,9 +950,8 @@ function resolveHeadStateReftableSync(repository: GitRepository): GitHeadState |
 
 function readRefSync(repository: GitRepository, targetRef: string): string | null {
 	if (isReftableRepoSync(repository)) {
-		ensureAvailable();
 		const symArgs = withShortLivedGitConfig(withNoOptionalLocks(["symbolic-ref", targetRef]));
-		const symResult = Bun.spawnSync(["git", ...symArgs], {
+		const symResult = gitSpawnSyncText(symArgs, {
 			cwd: repository.repoRoot,
 			env: buildGitEnv(),
 			stdout: "pipe",
@@ -944,7 +963,7 @@ function readRefSync(repository: GitRepository, targetRef: string): string | nul
 			return `${HEAD_REF_PREFIX} ${stdoutText}`;
 		}
 		const revArgs = withShortLivedGitConfig(withNoOptionalLocks(["rev-parse", "--verify", targetRef]));
-		const revResult = Bun.spawnSync(["git", ...revArgs], {
+		const revResult = gitSpawnSyncText(revArgs, {
 			cwd: repository.repoRoot,
 			env: buildGitEnv(),
 			stdout: "pipe",
