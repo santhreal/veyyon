@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `/changelog` reporting no entries in standalone binaries by embedding veyyon's release history as the safe fallback when no package asset directory exists ([#34](https://github.com/santhreal/veyyon/issues/34)).
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed

@@ -14,7 +14,7 @@ import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries } from "@veyyon/utils";
+import { removeWithRetries, VERSION } from "@veyyon/utils";
 import {
 	type ChangelogEntry,
 	compareVersions,
@@ -145,6 +145,14 @@ describe("parseChangelogVersion", () => {
 });
 
 describe("parseChangelog", () => {
+	test("reads the embedded release history when no package path is available", async () => {
+		const entries = await parseChangelog(undefined);
+		const latest = entries[0];
+
+		expect(`${latest?.major}.${latest?.minor}.${latest?.patch}`).toBe(VERSION);
+		expect(latest?.content).toContain(`## [${VERSION}]`);
+	});
+
 	test("collects each ## [x.y.z] block and drops content outside a version heading", async () => {
 		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-changelog-parse-"));
 		try {
@@ -157,15 +165,15 @@ describe("parseChangelog", () => {
 				{ major: 1, minor: 2, patch: 0, content: "## [1.2.0] - 2026\n- feat A\n- feat B" },
 				{ major: 1, minor: 1, patch: 0, content: "## [1.1.0]\n- fix C" },
 			]);
-			expect(await parseChangelog(path.join(dir, "does-not-exist.md"))).toEqual([]);
+
+			const fallbackEntries = await parseChangelog(path.join(dir, "does-not-exist.md"));
+			expect(fallbackEntries.length).toBeGreaterThan(0);
+			expect(`${fallbackEntries[0]?.major}.${fallbackEntries[0]?.minor}.${fallbackEntries[0]?.patch}`).toBe(VERSION);
 		} finally {
 			await removeWithRetries(dir);
 		}
 	});
 
-	test("returns [] for an undefined path", async () => {
-		expect(await parseChangelog(undefined)).toEqual([]);
-	});
 });
 
 describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () => {

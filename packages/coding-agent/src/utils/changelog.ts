@@ -1,4 +1,5 @@
 import { getLastChangelogVersionPath, isEnoent, logger } from "@veyyon/utils";
+import bundledChangelog from "../../CHANGELOG.md" with { type: "text" };
 
 export interface ChangelogEntry {
 	major: number;
@@ -23,73 +24,68 @@ export interface UpdateNoticeDecision {
 }
 
 /**
- * Parse changelog entries from the file at `changelogPath`. Scans for `## [x.y.z]`
- * headings and collects each block until the next heading or EOF.
+ * Parse changelog entries from veyyon's package asset when available, falling back
+ * to the copy embedded in compiled binaries.
  *
- * Returns `[]` when `changelogPath` is `undefined` (package directory not
- * resolvable — see `getChangelogPath`) or the file is missing. Callers MUST NOT
- * synthesize a fallback path from the host project's cwd; doing so caused issue
- * #1423 (the host project's `CHANGELOG.md` was rendered as veyyon's).
+ * The embedded fallback keeps standalone binaries self-contained without
+ * resolving relative to the host project's cwd, which caused issue #1423.
  */
 export async function parseChangelog(changelogPath: string | undefined): Promise<ChangelogEntry[]> {
-	if (!changelogPath) {
-		return [];
-	}
-	try {
-		const content = await Bun.file(changelogPath).text();
-		const lines = content.split("\n");
-		const entries: ChangelogEntry[] = [];
-
-		let currentLines: string[] = [];
-		let currentVersion: { major: number; minor: number; patch: number } | null = null;
-
-		for (const line of lines) {
-			// Check if this is a version header (## [x.y.z] ...)
-			if (line.startsWith("## ")) {
-				// Save previous entry if exists
-				if (currentVersion && currentLines.length > 0) {
-					entries.push({
-						...currentVersion,
-						content: currentLines.join("\n").trim(),
-					});
-				}
-
-				// Try to parse version from this line
-				const versionMatch = line.match(/##\s+\[?(\d+)\.(\d+)\.(\d+)\]?/);
-				if (versionMatch) {
-					currentVersion = {
-						major: Number.parseInt(versionMatch[1], 10),
-						minor: Number.parseInt(versionMatch[2], 10),
-						patch: Number.parseInt(versionMatch[3], 10),
-					};
-					currentLines = [line];
-				} else {
-					// Reset if we can't parse version
-					currentVersion = null;
-					currentLines = [];
-				}
-			} else if (currentVersion) {
-				// Collect lines for current version
-				currentLines.push(line);
+	let content = bundledChangelog;
+	if (changelogPath) {
+		try {
+			content = await Bun.file(changelogPath).text();
+		} catch (error) {
+			if (!isEnoent(error)) {
+				logger.error(`Warning: Could not parse changelog: ${error}`);
 			}
 		}
-
-		// Save last entry
-		if (currentVersion && currentLines.length > 0) {
-			entries.push({
-				...currentVersion,
-				content: currentLines.join("\n").trim(),
-			});
-		}
-
-		return entries;
-	} catch (error) {
-		if (isEnoent(error)) {
-			return [];
-		}
-		logger.error(`Warning: Could not parse changelog: ${error}`);
-		return [];
 	}
+
+	return parseChangelogContent(content);
+}
+
+function parseChangelogContent(content: string): ChangelogEntry[] {
+	const lines = content.split("\n");
+	const entries: ChangelogEntry[] = [];
+
+	let currentLines: string[] = [];
+	let currentVersion: { major: number; minor: number; patch: number } | null = null;
+
+	for (const line of lines) {
+		if (line.startsWith("## ")) {
+			if (currentVersion && currentLines.length > 0) {
+				entries.push({
+					...currentVersion,
+					content: currentLines.join("\n").trim(),
+				});
+			}
+
+			const versionMatch = line.match(/##\s+\[?(\d+)\.(\d+)\.(\d+)\]?/);
+			if (versionMatch) {
+				currentVersion = {
+					major: Number.parseInt(versionMatch[1], 10),
+					minor: Number.parseInt(versionMatch[2], 10),
+					patch: Number.parseInt(versionMatch[3], 10),
+				};
+				currentLines = [line];
+			} else {
+				currentVersion = null;
+				currentLines = [];
+			}
+		} else if (currentVersion) {
+			currentLines.push(line);
+		}
+	}
+
+	if (currentVersion && currentLines.length > 0) {
+		entries.push({
+			...currentVersion,
+			content: currentLines.join("\n").trim(),
+		});
+	}
+
+	return entries;
 }
 
 /**
