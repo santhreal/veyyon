@@ -124,4 +124,4 @@ Pushes to other branches keep cancel-on-newer-push for fast feedback.
 `scripts/ci-concurrency.test.ts` locks the group and cancel expressions
 against regressions.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `0b21a326` on 2026-07-24.*
