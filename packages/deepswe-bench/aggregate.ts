@@ -660,8 +660,14 @@ function pairedByTask(
 	results: readonly ArmResult[],
 	metricOf: (cell: CellSummary) => number | null,
 ): PairedComparison[] {
-	const arms = [...new Set(results.map(r => r.arm))];
-	const tasks = [...new Set(results.map(r => r.task))];
+	// Sorted, not insertion-ordered. A live run pushes rows as jobs finish (which
+	// depends on --jobs and on which container happens to be slow) and a
+	// reaggregate rebuilds them in readdir order, so the same data can arrive in
+	// different orders. Deriving arm order from that would flip a pair's direction
+	// between two renders of ONE run, inverting every delta's sign and making two
+	// reports of the same data diff as though the result had changed.
+	const arms = [...new Set(results.map(r => r.arm))].sort();
+	const tasks = [...new Set(results.map(r => r.task))].sort();
 	const valueAt = (arm: string, task: string): number | null =>
 		metricOf(summarizeCell(results.filter(r => r.arm === arm && r.task === task)));
 	const out: PairedComparison[] = [];
@@ -1105,8 +1111,10 @@ export function renderReport(
 	repeats = 1,
 	taskSet?: TaskSetProvenance,
 ): string {
-	const arms = [...new Set(results.map(r => r.arm))];
-	const tasks = [...new Set(results.map(r => r.task))];
+	// Sorted for the same reason as pairedByTask: rendering must depend only on the
+	// DATA, never on the order rows happened to arrive in.
+	const arms = [...new Set(results.map(r => r.arm))].sort();
+	const tasks = [...new Set(results.map(r => r.task))].sort();
 	const cell = (arm: string, task: string) => results.filter(r => r.arm === arm && r.task === task);
 	const lines: string[] = [];
 	lines.push(`# DeepSWE bench — ${nowIso}`);
