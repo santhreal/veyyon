@@ -189,3 +189,37 @@ describe("ModelPicker", () => {
 		expect(onCancel).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("open reveal (TOUCH-5)", () => {
+	// Why this suite exists: the open unfold's clock must anchor at FIRST PAINT,
+	// not construction — an overlay's first paint can lag construction by more
+	// than the whole animation (alt-screen switch, session work), and a
+	// construction-anchored clock played the unfold to nobody (VHS capture
+	// 2026-07-24 showed a hard cut). The reveal option must also stay opt-in so
+	// direct constructions render settled frames deterministically.
+	test("without the reveal option, the first render is the settled card", () => {
+		const { picker } = createPicker({ models: [makeModel("prov", "alpha")] });
+		const settled = picker.render(120);
+		expect(normalize(settled)).toContain("Switch Model");
+		expect(normalize(settled)).toContain("alpha");
+	});
+
+	test("with reveal, the first paint is a collapsed card that unfolds to the settled frame", async () => {
+		const reference = createPicker({ models: [makeModel("prov", "alpha")] }).picker;
+		const settled = reference.render(120).join("\n");
+		const { picker } = createPicker({
+			models: [makeModel("prov", "alpha")],
+			picker: { reveal: true },
+		});
+		// First paint: clock starts NOW (not at construction) — even though
+		// construction happened microseconds ago, the first observed value is 0,
+		// so the card is collapsed to its two border rows and the body is hidden.
+		const first = picker.render(120);
+		expect(normalize(first)).toContain("Switch Model"); // top border + title visible
+		expect(normalize(first)).not.toContain("alpha"); // body not yet unfolded
+		// After the reveal duration the picker settles byte-identical to a
+		// never-animated card.
+		await new Promise(resolve => setTimeout(resolve, 250));
+		expect(picker.render(120).join("\n")).toBe(settled);
+	});
+});

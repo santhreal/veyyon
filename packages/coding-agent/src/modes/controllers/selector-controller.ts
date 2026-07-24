@@ -5,9 +5,10 @@ import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
-import { errorMessage, getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import { formatModelSelectorValue } from "../../config/model-resolver";
+import { modalRevealEnabled } from "../components/modal-shell";
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
 import { disableProvider, enableProvider } from "../../discovery";
@@ -736,6 +737,7 @@ export class SelectorController {
 			{
 				currentContextTokens,
 				currentSelector: current ? `${current.provider}/${current.id}` : undefined,
+				reveal: modalRevealEnabled(),
 			},
 		);
 		// Fullscreen host; ModelPicker paints a floating ModalShell medium card.
@@ -867,6 +869,7 @@ export class SelectorController {
 			},
 			{
 				initialProviderId: hubOptions.initialProviderId,
+				reveal: modalRevealEnabled(),
 			},
 		);
 		overlayHandle = this.ctx.ui.showOverlay(hub, {
@@ -1321,7 +1324,7 @@ export class SelectorController {
 					0,
 				),
 			);
-			block.addChild(new Text(theme.fg("dim", `Credentials saved to ${getAgentDbPath()}`), 1, 0));
+			block.addChild(new Text(theme.fg("dim", `Credentials saved to ${getActiveAuthDbPath()}`), 1, 0));
 			this.ctx.present(block);
 			return true;
 		} catch (error: unknown) {
@@ -1361,7 +1364,7 @@ export class SelectorController {
 					0,
 				),
 			);
-			block.addChild(new Text(theme.fg("dim", `Credential removed from ${getAgentDbPath()}`), 1, 0));
+			block.addChild(new Text(theme.fg("dim", `Credential removed from ${getActiveAuthDbPath()}`), 1, 0));
 			const remainingSource = authStorage.describeCredentialSource(providerId, this.ctx.session.sessionId);
 			if (remainingSource) {
 				block.addChild(
