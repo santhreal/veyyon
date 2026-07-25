@@ -250,6 +250,104 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "SKIP: git not available; source-checkout preservation tests skipped"
 }
 
+# --- Test-NotShadowed: an older copy earlier on PATH must be reported ---
+# The classic silent install failure: a previous install keeps winning every
+# invocation while the installer reports success, so the user "upgrades" and
+# nothing changes. Presence on PATH is not proof; where the name RESOLVES is.
+$shadowSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-shadow-$PID"
+if (Test-Path $shadowSandbox) { Remove-Item -Recurse -Force $shadowSandbox }
+$origPath = $env:PATH
+try {
+    $mine = Join-Path $shadowSandbox "mine"
+    $older = Join-Path $shadowSandbox "older"
+    New-Item -ItemType Directory -Force -Path $mine, $older | Out-Null
+    foreach ($d in @($mine, $older)) {
+        "@echo off`r`necho veyyon/9.9.9" | Set-Content -Path (Join-Path $d "veyyon.cmd")
+        "@echo off`r`necho veyyon/9.9.9" | Set-Content -Path (Join-Path $d "vey.cmd")
+    }
+
+    # Healthy: the install dir wins PATH, so both names resolve into it.
+    $env:PATH = "$mine;$origPath"
+    $healthy = (Test-NotShadowed -Name "veyyon" -WantDir $mine 6>&1 | Out-String) +
+               (Test-NotShadowed -Name "vey" -WantDir $mine 6>&1 | Out-String)
+    Check "PS doctor confirms veyyon resolves to the fresh install" ([bool]($healthy -match "'veyyon' on PATH resolves to this install")) "True"
+    Check "PS doctor confirms the vey alias resolves to the fresh install" ([bool]($healthy -match "'vey' on PATH resolves to this install")) "True"
+    Check "a healthy PS doctor warns about nothing" ([bool]($healthy -match "!!")) "False"
+
+    # Shadowed: an older copy earlier on PATH wins; the offender must be named.
+    $env:PATH = "$older;$mine;$origPath"
+    $shadowed = (Test-NotShadowed -Name "veyyon" -WantDir $mine 6>&1 | Out-String)
+    Check "PS doctor reports veyyon is shadowed" ([bool]($shadowed -match "!!")) "True"
+    Check "PS doctor names the shadowing path" ([bool]($shadowed -match [regex]::Escape((Join-Path $older "veyyon.cmd")))) "True"
+    Check "PS doctor names the install dir that lost" ([bool]($shadowed -match [regex]::Escape($mine))) "True"
+
+    # Absent from PATH: a distinct, actionable message, not a shadow warning.
+    $env:PATH = Join-Path $shadowSandbox "nonexistent"
+    $absent = (Test-NotShadowed -Name "veyyon" -WantDir $mine 6>&1 | Out-String)
+    Check "PS doctor tells the user to add the dir when the name is absent" ([bool]($absent -match "not on PATH yet")) "True"
+    Check "an absent name is not misreported as shadowed" ([bool]($absent -match "shadows this one")) "False"
+} finally {
+    $env:PATH = $origPath
+    Remove-Item -Recurse -Force $shadowSandbox -ErrorAction SilentlyContinue
+}
+
+# --- uninstall reclaims the native addon cache, never the user's data ---
+# A binary install stages ~150MB per version under getNativesDir()
+# (packages/natives/native/loader-state.js). Uninstall used to leave every one of
+# them behind, so uninstalling "succeeded" while the disk was never freed and a
+# later reinstall silently inherited stale addons. It must reclaim the cache and
+# ONLY the cache: auth/config/sessions sit beside it under ~/.veyyon and are the
+# user's data. Mirrors the same assertions in functions.test.sh.
+function Test-BunInstalled { return $false }
+$nativesSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-natives-$PID"
+if (Test-Path $nativesSandbox) { Remove-Item -Recurse -Force $nativesSandbox }
+$origUserProfile = $env:USERPROFILE
+$origXdg = $env:XDG_DATA_HOME
+try {
+    # Fallback path: no XDG, so the cache is %USERPROFILE%\.veyyon\natives.
+    $home1 = Join-Path $nativesSandbox "home1"
+    $env:USERPROFILE = $home1
+    $env:XDG_DATA_HOME = $null
+    New-Item -ItemType Directory -Force -Path (Join-Path $home1 ".veyyon\natives\1.0.37") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $home1 ".veyyon\sessions") | Out-Null
+    "STAGED-ADDON" | Set-Content -NoNewline -Path (Join-Path $home1 ".veyyon\natives\1.0.37\veyyon_natives.win32-x64-msvc.node")
+    '{"token":"keep-me"}' | Set-Content -NoNewline -Path (Join-Path $home1 ".veyyon\auth.json")
+    $SrcDir = Join-Path $nativesSandbox "no-such-src"
+    $InstallDir = Join-Path $nativesSandbox "nowhere-bin"
+    Uninstall-Veyyon | Out-Null
+    Check "uninstall removed the native addon cache (USERPROFILE\.veyyon\natives)" (Test-Path (Join-Path $home1 ".veyyon\natives")) "False"
+    Check "uninstall preserved .veyyon\auth.json (user credentials)" ((Get-Content -Raw (Join-Path $home1 ".veyyon\auth.json")).Trim()) '{"token":"keep-me"}'
+    Check "uninstall preserved .veyyon\sessions (user data)" (Test-Path (Join-Path $home1 ".veyyon\sessions")) "True"
+
+    # XDG path: getNativesDir() prefers $XDG_DATA_HOME/veyyon/natives ONLY when
+    # $XDG_DATA_HOME/veyyon already exists, so uninstall must remove exactly that
+    # directory and leave the now-inactive USERPROFILE cache alone.
+    $home2 = Join-Path $nativesSandbox "home2"
+    $xdg2 = Join-Path $nativesSandbox "xdg2"
+    $env:USERPROFILE = $home2
+    $env:XDG_DATA_HOME = $xdg2
+    New-Item -ItemType Directory -Force -Path (Join-Path $xdg2 "veyyon\natives\1.0.37") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $home2 ".veyyon\natives\1.0.37") | Out-Null
+    "XDG-ADDON" | Set-Content -NoNewline -Path (Join-Path $xdg2 "veyyon\natives\1.0.37\veyyon_natives.win32-x64-msvc.node")
+    "HOME-ADDON" | Set-Content -NoNewline -Path (Join-Path $home2 ".veyyon\natives\1.0.37\veyyon_natives.win32-x64-msvc.node")
+    Uninstall-Veyyon | Out-Null
+    Check "uninstall removed the XDG native cache when XDG_DATA_HOME\veyyon exists" (Test-Path (Join-Path $xdg2 "veyyon\natives")) "False"
+    Check "uninstall left the inactive USERPROFILE cache when XDG is active" (Test-Path (Join-Path $home2 ".veyyon\natives")) "True"
+
+    # Addons staged beside the binary are swept too: a reinstalled binary must
+    # never find a stale sibling addon left by the version it replaced.
+    $binDir = Join-Path $nativesSandbox "bin"
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    "SIBLING-ADDON" | Set-Content -NoNewline -Path (Join-Path $binDir "veyyon_natives.win32-x64-msvc.node")
+    $InstallDir = $binDir
+    Uninstall-Veyyon | Out-Null
+    Check "uninstall swept the addon staged beside the binary" (Test-Path (Join-Path $binDir "veyyon_natives.win32-x64-msvc.node")) "False"
+} finally {
+    $env:USERPROFILE = $origUserProfile
+    $env:XDG_DATA_HOME = $origXdg
+    Remove-Item -Recurse -Force $nativesSandbox -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 Write-Host "$($script:Pass) passed, $($script:Fail) failed"
 if ($script:Fail -ne 0) { exit 1 }
