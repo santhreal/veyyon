@@ -11,6 +11,7 @@
  * asserted is the shipped file's behaviour rather than a reimplementation of it.
  */
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 
@@ -27,8 +28,15 @@ interface HookRun {
 	ranCheck: boolean;
 	/** True when the check ran somewhere other than the repo's own directory. */
 	checkedInWorktree: boolean;
+	/**
+	 * Where `node_modules/@veyyon/pkg` actually resolved during the check. The
+	 * whole point of the worktree is that this lands inside it, not in the repo.
+	 */
+	workspaceLinkTarget: string;
 	/** Worktrees still registered after the hook exited; must always be empty. */
 	leftoverWorktrees: string[];
+	/** The temp repo the hook ran in, so a test can assert a path is NOT inside it. */
+	repoRoot: string;
 }
 
 /**
@@ -47,7 +55,7 @@ async function runHook(options: {
 	/** Leave uncommitted and untracked files behind before the hook runs. */
 	dirty?: boolean;
 }): Promise<HookRun> {
-	using dir = TempDir.createSync("veyyon-prepush-");
+	using dir = TempDir.createSync("veyyon-hooktest-");
 	// TempDir.path() is relative to the process cwd. The hook runs as a child
 	// with its own cwd and reads PATH, and a relative PATH entry resolves against
 	// that child's cwd, so the stub would be invisible and every case would take
@@ -55,10 +63,11 @@ async function runHook(options: {
 	const root = path.resolve(dir.path());
 	const binDir = path.join(root, "bin");
 	const marker = path.join(root, "check-ran");
+	const linkMarker = path.join(root, "workspace-link");
 	if (options.withBun !== false) {
 		await Bun.write(
 			path.join(binDir, "bun"),
-			`#!/usr/bin/env bash\nif [ "$1" = "run" ] && [ "$2" = "check:ts" ]; then pwd > ${JSON.stringify(marker)}; fi\nexit ${options.bunExit ?? 0}\n`,
+			`#!/usr/bin/env bash\nif [ "$1" = "run" ] && [ "$2" = "check:ts" ]; then\n  pwd > ${JSON.stringify(marker)}\n  readlink -f node_modules/@veyyon/pkg > ${JSON.stringify(linkMarker)} 2>/dev/null || true\nfi\nexit ${options.bunExit ?? 0}\n`,
 		);
 		await Bun.$`chmod +x ${path.join(binDir, "bun")}`.quiet();
 	}
@@ -70,6 +79,14 @@ async function runHook(options: {
 	await Bun.$`git -C ${root} config user.name t`.quiet();
 	await Bun.$`git -C ${root} add seed.txt`.quiet();
 	await Bun.$`git -C ${root} commit -qm seed`.quiet();
+	// A workspace layout: a package plus the RELATIVE link bun installs for it.
+	// The relative link is the whole hazard, so it is reproduced exactly rather
+	// than approximated with an absolute one.
+	await Bun.write(path.join(root, "packages", "pkg", "index.ts"), "export const committed = 1;\n");
+	await fs.mkdir(path.join(root, "node_modules", "@veyyon"), { recursive: true });
+	await fs.symlink("../../packages/pkg", path.join(root, "node_modules", "@veyyon", "pkg"));
+	await Bun.$`git -C ${root} add packages/pkg/index.ts`.quiet();
+	await Bun.$`git -C ${root} commit -qm workspace`.quiet();
 	const head = (await Bun.$`git -C ${root} rev-parse HEAD`.text()).trim();
 	if (options.dirty) {
 		await Bun.write(path.join(root, "seed.txt"), "locally edited, never committed\n");
@@ -97,6 +114,7 @@ async function runHook(options: {
 	]);
 	const ranCheck = await Bun.file(marker).exists();
 	const checkedIn = ranCheck ? (await Bun.file(marker).text()).trim() : "";
+	const workspaceLinkTarget = (await Bun.file(linkMarker).exists()) ? (await Bun.file(linkMarker).text()).trim() : "";
 	const worktrees = (await Bun.$`git -C ${root} worktree list`.text())
 		.split("\n")
 		.filter(Boolean)
@@ -108,7 +126,9 @@ async function runHook(options: {
 		stderr,
 		ranCheck,
 		checkedInWorktree: ranCheck && checkedIn !== root,
+		workspaceLinkTarget,
 		leftoverWorktrees: worktrees,
+		repoRoot: root,
 	};
 }
 
@@ -210,6 +230,39 @@ describe("pre-push hook", () => {
 		expect(run.ranCheck).toBe(true);
 		// The check ran somewhere other than the dirty tree.
 		expect(run.checkedInWorktree).toBe(true);
+	});
+
+	/**
+	 * The defect that made the hook lie, found when it blocked a push over an
+	 * error that existed only in an uncommitted file.
+	 *
+	 * The first version linked node_modules as a single symlink. Workspace
+	 * packages are linked RELATIVELY (`@veyyon/pkg -> ../../packages/pkg`), and a
+	 * relative link resolves against the directory it really lives in, which
+	 * through a symlinked node_modules is the main repo. So every cross-package
+	 * import was typechecked against the WORKING TREE while the hook reported it
+	 * had checked the commit: a half-finished edit could fail a sound push, and a
+	 * broken commit could pass because its fix was sitting uncommitted on disk.
+	 *
+	 * A hook that reports a check it did not perform is worse than no hook, so
+	 * this asserts the resolved path, not merely that the link exists.
+	 */
+	it("resolves workspace packages inside the checkout, not in the working tree", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			dirty: true,
+		});
+		expect(run.exitCode).toBe(0);
+		expect(run.ranCheck).toBe(true);
+		// The link resolved somewhere, that somewhere is a package directory, and it
+		// is NOT the one in the repo. The last assertion is the whole test: with the
+		// old single-symlink node_modules the relative link resolved right back into
+		// the working tree and every other assertion here still passed.
+		expect(run.workspaceLinkTarget).not.toBe("");
+		expect(run.workspaceLinkTarget).toEndWith("/packages/pkg");
+		expect(run.workspaceLinkTarget).not.toBe(path.join(run.repoRoot, "packages", "pkg"));
+		expect(run.workspaceLinkTarget).toContain("veyyon-prepush-");
 	});
 
 	/** The throwaway checkout must not survive the hook, clean run or refusal. */
