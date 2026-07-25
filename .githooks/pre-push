@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# Refuse to push a tree that does not typecheck.
+#
+# Why this exists: main has gone red from a pushed commit four separate times,
+# every one of them a TypeScript error that `bun run check:ts` reports in under
+# a minute. The gate already runs in CI (.github/workflows/checks.yml), so the
+# breakage was always found -- after the push, on every open PR at once, which
+# is where a red base stops being one person's problem. The half-committed
+# argot -> lexpack rename left 64 errors on main and every port PR inherited
+# them, so no PR's own CI meant anything until it was fixed.
+#
+# It runs on the tree you are pushing, which is the same thing CI will check.
+# Roughly 40s on a warm cache. Bypass with `git push --no-verify` when you
+# genuinely need to, for instance pushing a WIP branch that is not main.
+set -euo pipefail
+
+# Deleting a remote branch pushes the zero ref and has no tree to check.
+only_deletes=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+	[ -z "${local_sha:-}" ] && continue
+	case "$local_sha" in
+	0000000000000000000000000000000000000000) ;;
+	*) only_deletes=0 ;;
+	esac
+done
+[ "$only_deletes" -eq 1 ] && exit 0
+
+if [ "${VEYYON_SKIP_PREPUSH:-}" = "1" ]; then
+	echo "pre-push: skipped via VEYYON_SKIP_PREPUSH=1" >&2
+	exit 0
+fi
+
+# Fail closed rather than waving the push through. A hook that silently does
+# nothing when its tool is missing is worse than no hook, because everyone
+# believes they are covered.
+if ! command -v bun >/dev/null 2>&1; then
+	echo "pre-push: bun is not on PATH, so the typecheck cannot run." >&2
+	echo "          Install bun, or push with VEYYON_SKIP_PREPUSH=1 if you accept the risk." >&2
+	exit 1
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+echo "pre-push: running check:ts (bypass: git push --no-verify)" >&2
+if ! (cd "$repo_root" && bun run check:ts); then
+	echo >&2
+	echo "pre-push: REFUSED. This tree does not typecheck, and pushing it turns every" >&2
+	echo "          open PR red against a broken base, not just this branch." >&2
+	echo "          Fix the errors above, or bypass with: git push --no-verify" >&2
+	exit 1
+fi

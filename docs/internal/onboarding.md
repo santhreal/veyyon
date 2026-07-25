@@ -16,7 +16,13 @@ is the map of the code; this is the path through it.
 git clone https://github.com/santhreal/veyyon
 cd veyyon
 bun install
+bun run hooks:install
 ```
+
+`hooks:install` points `core.hooksPath` at the tracked `.githooks/` directory,
+which installs a `pre-push` hook that typechecks the tree you are about to
+push. Git does not track hooks itself, so this is a one-time command per clone.
+`bun run setup` runs it for you as part of the fuller bootstrap.
 
 ## Run from source
 
@@ -46,6 +52,29 @@ does.
 
 If your change touches native paths, build the addon first: `bun run ci:build:native`.
 Testing rules and anti-patterns: [testing.md](testing.md).
+
+### The pre-push hook
+
+The `pre-push` hook installed above runs `bun run check:ts` and refuses the
+push when it fails. It takes about 40 seconds on a warm cache.
+
+It exists because a type error reaching `main` is not one branch's problem. CI
+checks the same thing, but only after the push, and by then every open pull
+request is red against a broken base and no one's CI result means anything. A
+half-committed rename left 64 errors on `main` on 2026-07-24 and did exactly
+that to every open port PR.
+
+Two ways past it, both deliberate and both visible:
+
+```
+git push --no-verify                      # skip every hook for this push
+VEYYON_SKIP_PREPUSH=1 git push            # skip only the typecheck
+```
+
+Use them for a work-in-progress branch that is not `main`. If `bun` is not on
+your `PATH` the hook refuses rather than passing the push through, because a
+hook that quietly does nothing is worse than no hook: everyone believes they
+are covered.
 
 ## Where to start
 
