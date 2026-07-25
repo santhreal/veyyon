@@ -1093,6 +1093,10 @@ describe("TUI terminal-state regressions", () => {
 				tui.stop();
 			}
 		});
+		// 220 resize-and-settle rounds, the largest storm in this file: it failed
+		// on CI at 15063ms against the 5s default. Same class as the two above,
+		// and it is the third and last case in the set that was turning every
+		// unrelated PR red.
 		it("mixed width/height resize storm keeps scrollback bounded for static content", async () => {
 			const term = new VirtualTerminal(80, 18);
 			const tui = new TUI(term);
@@ -1191,7 +1195,7 @@ describe("TUI terminal-state regressions", () => {
 			} finally {
 				tui.stop();
 			}
-		});
+		}, 20_000);
 
 		it("keeps native scrollback row-exact when a height shrink coalesces with streamed appends", async () => {
 			// Stress repro: darwin-normal-large seed 0x5eed1234 op 1062. A height
