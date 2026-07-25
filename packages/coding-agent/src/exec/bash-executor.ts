@@ -51,6 +51,15 @@ export interface BashExecutorOptions {
 export interface BashResult {
 	output: string;
 	exitCode: number | undefined;
+	/**
+	 * The signal that killed the command, when it died from one.
+	 *
+	 * `exitCode` carries bash's `128 + signal`, which a program that calls
+	 * `exit(137)` produces just as readily as one the kernel killed with
+	 * SIGKILL. Only a real signalled death sets this, so the two can be told
+	 * apart. `undefined` for every command that exited on its own.
+	 */
+	signal?: number;
 	cancelled: boolean;
 	truncated: boolean;
 	totalLines: number;
@@ -429,6 +438,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		// Normal completion
 		return {
 			exitCode: winner.result.exitCode,
+			signal: winner.result.signal,
 			cancelled: false,
 			workingDir: winner.result.workingDir,
 			...(await sink.dump()),
