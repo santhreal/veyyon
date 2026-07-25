@@ -96,6 +96,62 @@ function Test-GitLfsInstalled {
     }
 }
 
+# The first path this checkout tracks through Git LFS, or $null when it tracks
+# none. `:(attr:filter=lfs)` is git's own pathspec magic (git >= 2.18) and needs
+# no git-lfs installed, so it answers the question on the very machine that is
+# missing the tool. Returns the string 'unknown' when git could not answer: the
+# caller must treat that as UNKNOWN, never as "no".
+function Get-LfsTrackedFile {
+    param([Parameter(Mandatory = $true)][string]$SrcDir)
+    Push-Location $SrcDir
+    try {
+        $out = git ls-files ':(attr:filter=lfs)' 2>$null
+        if ($LASTEXITCODE -ne 0) { return 'unknown' }
+        if ($null -eq $out) { return $null }
+        return (@($out) | Where-Object { $_ -ne '' } | Select-Object -First 1)
+    } finally {
+        Pop-Location
+    }
+}
+
+# Materialize Git LFS content in a source checkout.
+#
+# This used to be `if (Test-GitLfsInstalled) { git lfs pull | Out-Null }`, whose
+# every failure mode is silent: with git-lfs missing the pull never runs, and
+# with it present a failing pull was swallowed by Out-Null and an unchecked
+# $LASTEXITCODE. Either way every LFS-tracked file stays a ~130-byte pointer
+# TEXT file, the install reports success, and veyyon fails later on a file that
+# looks present. .gitattributes puts *.wasm under LFS, so this is live the
+# moment a wasm asset lands. Mirrors fetch_lfs_assets in install.sh.
+function Get-LfsAssets {
+    param([Parameter(Mandatory = $true)][string]$SrcDir)
+    $tracked = Get-LfsTrackedFile -SrcDir $SrcDir
+    if ($tracked -eq 'unknown') {
+        # git is too old to answer. Fall back to the declaration in
+        # .gitattributes: conservative, and loud about why. Never assume "no
+        # LFS" from a check that did not run.
+        $attrs = Join-Path $SrcDir '.gitattributes'
+        if (-not (Test-Path $attrs)) { return }
+        if (-not (Select-String -Path $attrs -Pattern 'filter=lfs' -Quiet)) { return }
+        Write-Host "  !!  this git cannot list LFS-tracked paths; assuming .gitattributes' LFS declaration applies"
+    } elseif ([string]::IsNullOrEmpty($tracked)) {
+        return
+    }
+    if (-not (Test-GitLfsInstalled)) {
+        throw "this checkout tracks files with Git LFS but git-lfs is not installed - those files would be left as pointer text and veyyon would fail at runtime. Install git-lfs (https://git-lfs.com), then re-run this installer"
+    }
+    Write-Host "Fetching Git LFS assets..."
+    Push-Location $SrcDir
+    try {
+        git lfs pull | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "git lfs pull failed in $SrcDir - LFS-tracked files are still pointer text. Fix the network/credential problem and re-run this installer"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Find-BashShell {
     # Check Git Bash first (most common on Windows)
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
@@ -478,10 +534,7 @@ function Fetch-SourceTree {
         }
     }
 
-    if (Test-GitLfsInstalled) {
-        Push-Location $SrcDir
-        try { git lfs pull | Out-Null } finally { Pop-Location }
-    }
+    Get-LfsAssets -SrcDir $SrcDir
 }
 
 function Install-FromSource {
