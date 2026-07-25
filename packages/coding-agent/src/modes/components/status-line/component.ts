@@ -334,7 +334,7 @@ export class StatusLineComponent implements Component {
 	#activeRepoCache: ActiveRepoCache | undefined;
 
 	// Git status caching (1s TTL)
-	#cachedGitStatus: { staged: number; unstaged: number; untracked: number } | null = null;
+	#cachedGitStatus: git.GitStatusSummary | null = null;
 	#cachedGitStatusCwd: string | undefined = undefined;
 	#gitStatusLastFetch = 0;
 	#gitStatusInFlightCwd: string | undefined = undefined;
@@ -703,7 +703,7 @@ export class StatusLineComponent implements Component {
 		return branch === this.#defaultBranch;
 	}
 
-	#getGitStatus(effectiveGitCwd?: string): { staged: number; unstaged: number; untracked: number } | null {
+	#getGitStatus(effectiveGitCwd?: string): git.GitStatusSummary | null {
 		if (!this.#gitEnabled()) return null;
 
 		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
@@ -717,7 +717,7 @@ export class StatusLineComponent implements Component {
 		this.#gitStatusInFlightCwd = gitCwd;
 
 		(async () => {
-			let nextStatus: { staged: number; unstaged: number; untracked: number } | null = null;
+			let nextStatus: git.GitStatusSummary | null = null;
 			try {
 				nextStatus = await git.status.summary(gitCwd);
 			} catch {

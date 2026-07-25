@@ -391,14 +391,19 @@ const gitSegment: StatusLineSegment = {
 		// Add status indicators
 		if (gitStatus) {
 			const indicators: string[] = [];
+			// A repository large enough to overrun git's output cap yields counts
+			// that are lower bounds, not totals. Rendering them bare would show a
+			// confident wrong number that never settles, so each one is suffixed to
+			// read as "at least this many".
+			const atLeast = gitStatus.truncated ? "+" : "";
 			if (opts.showUnstaged !== false && gitStatus.unstaged > 0) {
-				indicators.push(theme.fg("statusLineDirty", `*${gitStatus.unstaged}`));
+				indicators.push(theme.fg("statusLineDirty", `*${gitStatus.unstaged}${atLeast}`));
 			}
 			if (opts.showStaged !== false && gitStatus.staged > 0) {
-				indicators.push(theme.fg("statusLineStaged", `+${gitStatus.staged}`));
+				indicators.push(theme.fg("statusLineStaged", `+${gitStatus.staged}${atLeast}`));
 			}
 			if (opts.showUntracked !== false && gitStatus.untracked > 0) {
-				indicators.push(theme.fg("statusLineUntracked", `?${gitStatus.untracked}`));
+				indicators.push(theme.fg("statusLineUntracked", `?${gitStatus.untracked}${atLeast}`));
 			}
 			if (indicators.length > 0) {
 				const indicatorText = indicators.join(" ");
