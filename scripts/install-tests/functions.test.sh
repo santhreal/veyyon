@@ -876,6 +876,76 @@ check "version_from_output ignores trailing platform detail" "$(version_from_out
 check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')" "2.0.1"
 ( version_from_output 'veyyon (no version here)' >/dev/null 2>&1 ); check "version_from_output fails on a line with no semver" "$?" "1"
 
+# A stub binary that behaves like a real one for the two things doctor asks of
+# it: report a version, and run a search that finds the file it is pointed at.
+# The old stubs echoed their version for ANY argv, so they answered `grep` by
+# accident and could never have caught a doctor gate that depends on the search
+# actually working.
+write_stub_binary() {
+    _sb_path="$1"; _sb_version="$2"
+    printf '%s\n' '#!/bin/sh' \
+        'case "$1" in' \
+        '  grep)' \
+        '    shift' \
+        '    [ "$1" = "--help" ] && exit 0' \
+        '    printf "%s/probe.txt:1: %s\\n" "$2" "$1"' \
+        '    ;;' \
+        "  *) echo veyyon/$_sb_version ;;" \
+        'esac' > "$_sb_path"
+    chmod +x "$_sb_path"
+}
+
+# --- doctor_natives: prove the addon loads, not just that the binary starts ---
+# `--version` is served entirely by the JS entry point, so it succeeds on an
+# install whose native addon is missing, staged for the wrong architecture, or
+# built against a libc this machine does not have. doctor printed
+# "veyyon runs" for exactly that install and the user met the failure on their
+# first real command. `grep` is the cheapest command that goes through the
+# native walker and returns a result worth checking.
+( _n="$SANDBOX/natives"
+  mkdir -p "$_n"
+
+  write_stub_binary "$_n/veyyon" 1.2.3
+  out=$( doctor_natives "$_n/veyyon" 2>&1 )
+  check "a working binary reports the addon loads" "$(printf '%s' "$out" | grep -c 'native addon loads')" "1"
+  ( doctor_natives "$_n/veyyon" >/dev/null 2>&1 ); check "a working binary exits 0" "$?" "0"
+
+  # The failure this exists to catch: the binary starts, and the search does not.
+  printf '%s\n' '#!/bin/sh' 'case "$1" in' '  grep)' '    shift' \
+      '    [ "$1" = "--help" ] && exit 0' \
+      '    echo "dlopen failed: libc.musl-x86_64.so.1: No such file" >&2; exit 127 ;;' \
+      '  *) echo veyyon/1.2.3 ;;' 'esac' > "$_n/broken"; chmod +x "$_n/broken"
+  ( doctor_natives "$_n/broken" >/dev/null 2>&1 ); check "an addon that cannot load is fatal" "$?" "1"
+  out=$( doctor_natives "$_n/broken" 2>&1 || true )
+  check "the failure names the exit status of the search" "$(printf '%s' "$out" | grep -c 'exited 127')" "1"
+  check "the failure names the likely cause" "$(printf '%s' "$out" | grep -c 'platform mismatch')" "1"
+  check "the failure offers the source install as the remedy" "$(printf '%s' "$out" | grep -c 'sh -s -- --source')" "1"
+  check "the failure quotes what the binary actually said" "$(printf '%s' "$out" | grep -c 'dlopen failed')" "1"
+
+  # Worse than a crash: a search that exits 0 and finds nothing. Trusting the
+  # exit code alone would report a healthy install for a walker returning empty.
+  printf '%s\n' '#!/bin/sh' 'case "$1" in' '  grep)' '    shift' \
+      '    [ "$1" = "--help" ] && exit 0' \
+      '    echo "Total matches: 0" ;;' \
+      '  *) echo veyyon/1.2.3 ;;' 'esac' > "$_n/empty"; chmod +x "$_n/empty"
+  ( doctor_natives "$_n/empty" >/dev/null 2>&1 ); check "a search that finds nothing is fatal" "$?" "1"
+  check "the empty-result failure says the install is not usable" \
+      "$( ( doctor_natives "$_n/empty" 2>&1 || true ) | grep -c 'not usable' )" "1"
+
+  # An older build with no `grep` subcommand is not a broken install.
+  printf '#!/bin/sh\ncase "$1" in grep) exit 1 ;; *) echo veyyon/0.9.0 ;; esac\n' > "$_n/nogrep"
+  chmod +x "$_n/nogrep"
+  ( doctor_natives "$_n/nogrep" >/dev/null 2>&1 ); check "a build with no grep command is not fatal" "$?" "0"
+  check "a build with no grep command says the test was skipped" \
+      "$(doctor_natives "$_n/nogrep" 2>&1 | grep -c 'skipping the native addon self-test')" "1"
+
+  # The probe must not litter: it writes a file into TMPDIR on every install.
+  _tmp="$_n/tmpdir"; mkdir -p "$_tmp"
+  ( TMPDIR="$_tmp" doctor_natives "$_n/veyyon" >/dev/null 2>&1 )
+  check "the self-test removes its own temp directory" "$(ls -A "$_tmp" | wc -l | tr -d ' ')" "0"
+  ( TMPDIR="$_tmp" doctor_natives "$_n/broken" >/dev/null 2>&1 || true )
+  check "the self-test cleans up even when it fails" "$(ls -A "$_tmp" | wc -l | tr -d ' ')" "0" )
+
 # --- doctor: the installed binary must report the version the release claims ---
 # The checksum proves the bytes match the published asset; this proves the asset
 # is the version the tag claims. A release that uploaded a mismatched binary, or
@@ -884,7 +954,7 @@ check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')"
 # swapped-in binary; install.sh did not, which is the parity gap this closes.
 ( _d="$SANDBOX/vercheck"
   mkdir -p "$_d"
-  printf '#!/bin/sh\necho veyyon/1.0.37\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
+  write_stub_binary "$_d/veyyon" 1.0.37
 
   out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.37" 2>&1 )
   check "doctor confirms a matching version" "$(printf '%s' "$out" | grep -c 'reported version matches the v1.0.37 release')" "1"
@@ -921,9 +991,9 @@ check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')"
 ( _d="$SANDBOX/shadow"
   mine="$_d/mine"; older="$_d/older"
   mkdir -p "$mine" "$older"
-  printf '#!/bin/sh\necho veyyon/9.9.9\n' > "$mine/veyyon"; chmod +x "$mine/veyyon"
+  write_stub_binary "$mine/veyyon" 9.9.9
   ln -sf "$mine/veyyon" "$mine/vey"
-  printf '#!/bin/sh\necho veyyon/0.0.1\n' > "$older/veyyon"; chmod +x "$older/veyyon"
+  write_stub_binary "$older/veyyon" 0.0.1
   ln -sf "$older/veyyon" "$older/vey"
 
   # Healthy: the install dir wins PATH, so both names resolve to it.
@@ -964,7 +1034,7 @@ check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')"
 # other, one of them false. The alias check now runs only when the alias is ours.
 ( _d="$SANDBOX/doctor-foreign-alias"
   mkdir -p "$_d"
-  printf '#!/bin/sh\necho veyyon/9.9.9\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
+  write_stub_binary "$_d/veyyon" 9.9.9
   # The user's own vey, exactly what link_alias refuses to touch.
   printf '#!/bin/sh\necho their tool\n' > "$_d/vey"; chmod +x "$_d/vey"
   # link_alias runs first in every real install and is what records the verdict.
