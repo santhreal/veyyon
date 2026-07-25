@@ -335,7 +335,12 @@ export function visibleWidth(str: string): number {
 	// a JS printable-ASCII prepass. Escape-bearing strings stay on the scanner
 	// below so CSI/OSC-heavy render output can still bail out at the first ESC.
 	if (str.length >= LONG_WIDTH_FAST_PATH_MIN && !str.includes(ESC)) {
-		let width = Bun.stringWidth(str, STRING_WIDTH_OPTS);
+		let strippedStr = str;
+		if (strippedStr.includes("\x1b]")) {
+			strippedStr = strippedStr.replace(/\x1b\][0-9]+;[^]*(?:|\x1b\\)/g, "");
+		}
+		let width = Bun.stringWidth(strippedStr, STRING_WIDTH_OPTS);
+
 		let tabCount = 0;
 		for (let tabIndex = str.indexOf(TAB); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
 			tabCount++;
@@ -377,7 +382,13 @@ export function visibleWidth(str: string): number {
 	// `Bun.stringWidth` is a JSC builtin (no per-call N-API number box, unlike
 	// the native scanner that traps under Bun 1.3.x GC/N-API load). It strips
 	// CSI/OSC to zero cells and shares the native engine's UAX#11 width tables.
-	let width = Bun.stringWidth(str, STRING_WIDTH_OPTS);
+
+	let strippedStr = str;
+	if (strippedStr.includes("\x1b]")) {
+		strippedStr = strippedStr.replace(/\x1b\][0-9]+;[^]*(?:|\x1b\\)/g, "");
+	}
+	let width = Bun.stringWidth(strippedStr, STRING_WIDTH_OPTS);
+
 	if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
 
 	// OSC 66: add back each stripped span as `scale * (explicit w ?? payload
