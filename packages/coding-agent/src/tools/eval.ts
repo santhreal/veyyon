@@ -19,6 +19,7 @@ import { truncateForPrompt } from "./approval";
 import { type EvalBackendsAllowance, resolveEvalBackends } from "./eval-backends";
 import { upsertStatusEvent } from "./eval-render";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "./output-meta";
+import { foldPassingTestOutput } from "./test-output-fold";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "./tool-timeouts";
@@ -671,8 +672,16 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					cellResult.hasMarkdown = cellHasMarkdown || undefined;
 
 					if (cellOutput) {
-						cellOutputs.push(cellOutput);
-						appendTail(cellOutput);
+						// Fold test bookkeeping out of what the MODEL sees. `cellResult.output`
+						// was assigned the raw text just above, and the renderer reads that, so
+						// the operator still sees the run in full.
+						//
+						// This is the one accumulation point every return path below builds its
+						// `outputText` from, so folding here covers the success, non-zero-exit
+						// and cancelled paths without repeating itself in three places.
+						const folded = foldPassingTestOutput(cellOutput).text;
+						cellOutputs.push(folded);
+						appendTail(folded);
 					}
 
 					if (result.cancelled) {
