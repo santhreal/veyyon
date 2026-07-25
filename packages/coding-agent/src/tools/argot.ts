@@ -26,7 +26,7 @@ import { type } from "arktype";
 import { loadArgotFolder, unloadArgotFolder } from "../lexpack-cache";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
-import { ToolError } from "./tool-errors";
+import { ToolError, toolFailure } from "./tool-errors";
 
 const folderSchema = type({
 	folder_path: type("string").describe(
@@ -112,7 +112,7 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		} catch (err) {
 			// A genuine conflict (two projects binding one handle name to different
 			// expansions) or a malformed cache surfaces loud, never a silent skip.
-			throw new ToolError(errorMessage(err));
+			throw toolFailure(err);
 		}
 
 		if (loaded === undefined) {

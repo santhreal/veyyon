@@ -19,7 +19,7 @@ import setCwdDescription from "../prompts/tools/set-cwd.md" with { type: "text" 
 import { framedBlock, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
-import { ToolError } from "./tool-errors";
+import { ToolError, toolFailure } from "./tool-errors";
 
 const setCwdSchema = type({
 	path: type("string").describe("Absolute (preferred) or session-relative directory to become the new session cwd"),
@@ -131,7 +131,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 				details: { previous, cwd, requested: raw },
 			};
 		} catch (err) {
-			throw new ToolError(errorMessage(err));
+			throw toolFailure(err);
 		}
 	}
 }

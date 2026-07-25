@@ -14,7 +14,7 @@ import type { ToolSession } from ".";
 import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
 import { isInternalUrlPath } from "./path-utils";
 import { resolvePlanPath, targetsLocalSandbox } from "./plan-mode-guard";
-import { ToolError } from "./tool-errors";
+import { ToolError, toolFailure } from "./tool-errors";
 
 /**
  * Return `true` when an ACP client bridge write is appropriate for this path.
@@ -71,7 +71,7 @@ export async function routeWriteThroughBridge(
 	try {
 		await bridge.writeTextFile({ path: absolutePath, content });
 	} catch (error) {
-		throw new ToolError(errorMessage(error));
+		throw toolFailure(error);
 	}
 	if (session.enableLsp ?? true) {
 		await notifyWorkspaceWatchedFiles(session.cwd, [{ filePath: absolutePath, type: changeType }], signal);

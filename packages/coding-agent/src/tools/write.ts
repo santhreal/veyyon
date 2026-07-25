@@ -83,7 +83,7 @@ import {
 	updateRowByKey,
 	updateRowByRowId,
 } from "./sqlite-reader";
-import { ToolError } from "./tool-errors";
+import { ToolError, toolFailure } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
 const LOOSE_HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[^ \t\r\n]*\]\s*$/;
@@ -521,7 +521,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					entries.set(entryPath, data);
 				}
 			} catch (error) {
-				throw new ToolError(errorMessage(error));
+				throw toolFailure(error);
 			}
 		}
 		entries.set(resolvedArchivePath.archiveSubPath, content);
@@ -532,7 +532,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		try {
 			await atomicWriteFileWith(finalPath, tmpPath => writeArchive(tmpPath, format, entries));
 		} catch (error) {
-			throw new ToolError(errorMessage(error));
+			throw toolFailure(error);
 		}
 
 		invalidateFsScanAfterWrite(resolvedArchivePath.absolutePath);
@@ -666,7 +666,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			if (error instanceof ToolError) {
 				throw error;
 			}
-			throw new ToolError(errorMessage(error));
+			throw toolFailure(error);
 		} finally {
 			db?.close();
 		}
