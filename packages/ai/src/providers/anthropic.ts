@@ -202,6 +202,45 @@ const sharedHeaders = {
 	"x-app": "cli",
 };
 
+/** Header-key sets already reported, so a per-request drop is announced once. */
+const reportedDroppedEnforcedHeaders = new Set<string>();
+
+/**
+ * Announce that caller-supplied headers were thrown away.
+ *
+ * Someone set `options.headers` or `ANTHROPIC_CUSTOM_HEADERS` deliberately, and
+ * these keys carry a credential or identity this branch has to own, so their
+ * value is replaced by ours. That is the right behaviour and it is also
+ * invisible: the request succeeds, against a different identity than the one
+ * configured, and the only trace was a debug line. Someone debugging why their
+ * proxy's Authorization header never arrives needs to see this without first
+ * knowing to look for it.
+ *
+ * Warned once per key set, because the headers come from configuration and
+ * would otherwise repeat identically on every single request.
+ *
+ * Keys only, never values: the values are exactly the credentials being
+ * dropped.
+ */
+function reportDroppedEnforcedHeaders(keys: string[]): void {
+	const signature = [...keys].sort().join(",");
+	const detail = { headers: keys };
+	if (reportedDroppedEnforcedHeaders.has(signature)) {
+		logger.debug("anthropic: still ignoring caller-supplied enforced headers", detail);
+		return;
+	}
+	reportedDroppedEnforcedHeaders.add(signature);
+	logger.warn(
+		"anthropic: caller-supplied headers were replaced by this request's own values, so the configured ones are not being sent",
+		detail,
+	);
+}
+
+/** Test-only reset for {@link reportDroppedEnforcedHeaders}'s once-per-set bound. */
+export function __resetDroppedEnforcedHeaderReportsForTests(): void {
+	reportedDroppedEnforcedHeaders.clear();
+}
+
 export function buildAnthropicHeaders(options: AnthropicHeaderOptions): Record<string, string> {
 	const oauthToken = options.isOAuth ?? isAnthropicOAuthToken(options.apiKey);
 	const extraBetas = options.extraBetas ?? [];
@@ -237,7 +276,14 @@ export function buildAnthropicHeaders(options: AnthropicHeaderOptions): Record<s
 			// user-agent is always re-applied explicitly. authorization / x-api-key
 			// are silently re-applied in honoring branches and dropped + logged
 			// where the branch enforces its own credential.
-			if (lowerKey === "user-agent") continue;
+			// User-Agent is re-applied verbatim everywhere except an OAuth request,
+			// where a UA that is not a Claude Code one is replaced because the UA is
+			// part of the OAuth fingerprint. That replacement is a drop like any
+			// other and gets reported; the honoring branches stay quiet.
+			if (lowerKey === "user-agent") {
+				if (oauthToken && !isClaudeCodeClientUserAgent(value)) filteredEnforcedKeys.push(key);
+				continue;
+			}
 			if (lowerKey === "authorization" && honorAuthorization) continue;
 			if (lowerKey === "x-api-key" && honorApiKey) continue;
 			filteredEnforcedKeys.push(key);
@@ -246,12 +292,7 @@ export function buildAnthropicHeaders(options: AnthropicHeaderOptions): Record<s
 		modelHeaders[key] = value;
 	}
 	if (filteredEnforcedKeys.length > 0) {
-		// Caller/env-supplied values (options.headers, ANTHROPIC_CUSTOM_HEADERS)
-		// for enforced headers are replaced by our own values; say so instead of
-		// dropping them silently. Keys only — values may carry credentials.
-		logger.debug("anthropic: ignoring caller-supplied enforced headers", {
-			headers: filteredEnforcedKeys,
-		});
+		reportDroppedEnforcedHeaders(filteredEnforcedKeys);
 	}
 
 	if (isCloudflare) {
@@ -2483,10 +2524,19 @@ const streamAnthropicOnce = (
 						firstTokenTime === undefined &&
 						AIError.isFastModeUnsupported(streamFailure)
 					) {
-						logger.debug("anthropic: fast mode unsupported, retrying without speed", {
-							model: model.id,
-							error: errorMessage(streamFailure),
-						});
+						// Loud, not debug: the caller explicitly asked for the priority
+						// service tier and is about to be served at the standard one, and
+						// `fastModeDisabled` makes that stick for the rest of the session.
+						// A downgrade of something the user chose and pays for must not be
+						// something they need debug logging turned on to discover.
+						logger.warn(
+							"anthropic: fast mode is not available for this model, so the request was retried at the standard service tier and fast mode is off for the rest of this session",
+							{
+								model: model.id,
+								provider: model.provider,
+								error: errorMessage(streamFailure),
+							},
+						);
 						if (providerSessionState) {
 							providerSessionState.fastModeDisabled = true;
 						}

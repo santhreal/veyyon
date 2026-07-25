@@ -378,7 +378,7 @@ export interface OpenAICodexWebSocketDebugStats {
  * websocket connection pooling, and debug stats. The name is historical — SSE-only
  * sessions use it too.
  */
-type CodexWebSocketSessionState = {
+export type CodexWebSocketSessionState = {
 	disableWebsocket: boolean;
 	lastRequest?: RequestBody;
 	lastResponseId?: string;
@@ -1387,7 +1387,10 @@ async function openInitialCodexEventStream(
 					fatalWebSocketMessage.includes(pattern.toLowerCase()),
 				);
 				const activateFallback = isFatal || websocketRetries >= websocketRetryBudget;
-				recordCodexWebSocketFailure(websocketState, activateFallback);
+				recordCodexWebSocketFailure(websocketState, activateFallback, {
+					cause: isFatal ? "fatal-websocket-error" : "retry-budget-exhausted",
+					error: error.message,
+				});
 				CODEX_DEBUG &&
 					logger.debug("[codex] codex websocket fallback", {
 						error: error.message,
@@ -2230,7 +2233,7 @@ class CodexStreamProcessor {
 			this.runtime.resetAccumulators();
 			resetOutputState(this.output);
 			this.firstTokenTime = undefined;
-			recordCodexWebSocketFailure(websocketState, true);
+			recordCodexWebSocketFailure(websocketState, true, { cause: "connection-limit-after-partial-output" });
 			await this.#reopenSseStream(websocketState);
 			return true;
 		}
@@ -2243,7 +2246,7 @@ class CodexStreamProcessor {
 		this.runtime.resetAccumulators();
 		this.firstTokenTime = undefined;
 		if (this.runtime.websocketStreamRetries >= CODEX_WEBSOCKET_RETRY_BUDGET) {
-			recordCodexWebSocketFailure(websocketState, true);
+			recordCodexWebSocketFailure(websocketState, true, { cause: "connection-limit-retry-budget-exhausted" });
 			await this.#reopenSseStream(websocketState);
 			return true;
 		}
@@ -2310,7 +2313,14 @@ class CodexStreamProcessor {
 			replayingBufferedOutputOverSse ||
 			isFatal ||
 			this.runtime.websocketStreamRetries >= CODEX_WEBSOCKET_RETRY_BUDGET;
-		recordCodexWebSocketFailure(state, activateFallback);
+		recordCodexWebSocketFailure(state, activateFallback, {
+			cause: replayingBufferedOutputOverSse
+				? "stream-failed-while-replaying-over-sse"
+				: isFatal
+					? "fatal-stream-error"
+					: "stream-retry-budget-exhausted",
+			error: streamError.message,
+		});
 		CODEX_DEBUG &&
 			logger.debug("[codex] codex websocket stream fallback", {
 				error: streamError.message,
@@ -2406,7 +2416,7 @@ class CodexStreamProcessor {
 			// Reopen failed at the websocket layer (handshake refused, connect timeout, etc.).
 			// Activate fallback so subsequent turns use SSE, and replay this turn over SSE
 			// instead of surfacing a raw transport error to the caller.
-			recordCodexWebSocketFailure(state, true);
+			recordCodexWebSocketFailure(state, true, { cause: "reopen-failed", error: error.message });
 			CODEX_DEBUG &&
 				logger.debug("[codex] codex websocket reopen failed, falling back to SSE", {
 					error: error.message,
@@ -2657,7 +2667,27 @@ function resetCodexWebSocketAppendState(state: CodexWebSocketSessionState): void
 	state.lastResponseItems = undefined;
 }
 
-function recordCodexWebSocketFailure(state: CodexWebSocketSessionState, activateFallback: boolean): void {
+/**
+ * Record a codex websocket failure, and tear the socket down.
+ *
+ * `activateFallback` is the permanent decision: once it is taken, every
+ * remaining turn in this session runs over SSE instead of the websocket
+ * transport. That is a real degrade, not a neutral choice, and it used to
+ * happen with no output at all: the three call sites logged it through
+ * `CODEX_DEBUG && logger.debug(...)`, so on a default install the transport
+ * changed underneath the user and nothing anywhere said so. Someone watching
+ * their turns get slower had nothing to look at.
+ *
+ * The report lives here rather than at the call sites because this is the one
+ * place the `disableWebsocket` flag flips, so it is announced exactly once per
+ * session however the fallback was reached, and the retries that do NOT
+ * activate it stay quiet.
+ */
+export function recordCodexWebSocketFailure(
+	state: CodexWebSocketSessionState,
+	activateFallback: boolean,
+	reason?: { error?: string; cause?: string },
+): void {
 	resetCodexWebSocketAppendState(state);
 	// Never tear down a CONNECTING socket: it belongs to a concurrent caller's
 	// in-flight handshake (prewarm/request race); closing it would reject that
@@ -2671,6 +2701,10 @@ function recordCodexWebSocketFailure(state: CodexWebSocketSessionState, activate
 	if (activateFallback && !state.disableWebsocket) {
 		state.disableWebsocket = true;
 		state.fallbackCount += 1;
+		logger.warn(
+			"[codex] the websocket transport failed and has been disabled, so the rest of this session runs over SSE and turns may be slower",
+			{ cause: reason?.cause ?? "unknown", error: reason?.error, fallbackCount: state.fallbackCount },
+		);
 	}
 }
 

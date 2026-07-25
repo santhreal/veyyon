@@ -82,12 +82,15 @@ const FORMAT_ROUTES: Record<string, { module: FormatModule; label: string }> = {
 // shaping always applies.)
 
 // Options the caller's wire format may carry but the resolved provider can't
-// honour are dropped silently in `buildStreamOptions`. We used to 400 here
+// honour are stripped in `buildStreamOptions`. We used to 400 here
 // (`Unsupported option: temperature for openai-codex-responses`), but every
 // realistic client (llm-git, openai SDK, anthropic SDK) bakes some of these
-// defaults in without knowing which model they'll resolve to. Failing loudly
-// just turned that into per-call config hell. Silent strip is what the
-// upstream provider would do anyway when it ignores extra fields.
+// defaults in without knowing which model they'll resolve to. Rejecting the
+// request just turned that into per-call config hell, so the request goes
+// through with the option stripped, which is what the upstream provider would
+// do anyway when it ignores extra fields. The strip is reported once per api
+// and option set rather than passing unrecorded; see
+// `reportDroppedTypedOptions`.
 
 /**
  * Derive a stable cache identity from the parts of the request that don't
@@ -126,7 +129,41 @@ function deriveSessionId(modelId: string, context: Context): string {
 	return deterministicUuid(seed);
 }
 
-function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal: AbortSignal): SimpleStreamOptions {
+/** `api:options` combinations already reported, so each is announced once. */
+const reportedDroppedTypedOptions = new Set<string>();
+
+/**
+ * Announce request options the gateway is unable to forward.
+ *
+ * Warned once per API and option set rather than per request: a client that
+ * sends `seed` sends it on every request, and a per-request warning would bury
+ * the one line that matters. The names are logged, never the values, since
+ * `user` and `logitBias` carry caller data.
+ */
+function reportDroppedTypedOptions(api: Api, names: string[]): void {
+	const signature = `${api}:${[...names].sort().join(",")}`;
+	const detail = { api, dropped: names };
+	if (reportedDroppedTypedOptions.has(signature)) {
+		logger.debug("auth-gateway still dropping unsupported typed options", detail);
+		return;
+	}
+	reportedDroppedTypedOptions.add(signature);
+	logger.warn("auth-gateway cannot forward some request options, so they had no effect on this request", detail);
+}
+
+/** Test-only reset for {@link reportDroppedTypedOptions}'s once-per-signature bound. */
+export function __resetDroppedTypedOptionReportsForTests(): void {
+	reportedDroppedTypedOptions.clear();
+}
+
+/**
+ * Translate a parsed gateway request into the stream options pi-ai understands.
+ *
+ * Exported because this is where request options are silently lost when they
+ * have no pi-ai equivalent, and that behaviour needs asserting directly rather
+ * than through a whole gateway round trip.
+ */
+export function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal: AbortSignal): SimpleStreamOptions {
 	const opts: SimpleStreamOptions = { signal };
 	const { options } = parsed;
 	// Codex backend rejects every sampling control with
@@ -176,28 +213,28 @@ function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal: Abort
 		};
 		opts.reasoning ??= effort;
 	}
-	// Fields that don't yet have a matching pi-ai `SimpleStreamOptions` slot.
-	// Surfaced once in debug logs so they show up when wiring a new provider,
-	// but NEVER widened into `options.extra` — every consumer would have to
-	// re-implement the typed parse to read them back out.
-	// TODO(pi-ai): land first-class fields and replace these blocks.
-	if (
-		options.parallelToolCalls !== undefined ||
-		options.previousResponseId !== undefined ||
-		options.seed !== undefined ||
-		options.logitBias !== undefined ||
-		options.user !== undefined ||
-		options.responseFormat !== undefined
-	) {
-		logger.debug("auth-gateway dropped unsupported typed options", {
-			api,
-			parallelToolCalls: options.parallelToolCalls,
-			previousResponseId: options.previousResponseId,
-			seed: options.seed,
-			hasLogitBias: options.logitBias !== undefined,
-			user: options.user,
-			hasResponseFormat: options.responseFormat !== undefined,
-		});
+	// Fields that don't yet have a matching pi-ai `SimpleStreamOptions` slot, so
+	// the gateway cannot forward them. They are NEVER widened into
+	// `options.extra` — every consumer would have to re-implement the typed parse
+	// to read them back out. Landing first-class fields for these upstream is
+	// what removes this block.
+	//
+	// Dropping them has to be loud. A caller that set `responseFormat` and got
+	// prose back, or set `seed` and got different answers to identical requests,
+	// sees a request that succeeded and an option that did nothing, with no error
+	// anywhere to connect the two.
+	const droppedTypedOptions = Object.entries({
+		parallelToolCalls: options.parallelToolCalls,
+		previousResponseId: options.previousResponseId,
+		seed: options.seed,
+		logitBias: options.logitBias,
+		user: options.user,
+		responseFormat: options.responseFormat,
+	})
+		.filter(([, value]) => value !== undefined)
+		.map(([name]) => name);
+	if (droppedTypedOptions.length > 0) {
+		reportDroppedTypedOptions(api, droppedTypedOptions);
 	}
 	return opts;
 }
