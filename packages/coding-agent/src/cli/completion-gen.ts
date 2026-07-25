@@ -196,6 +196,19 @@ function buildFlags(Cmd: CommandCtor): CompletionFlag[] {
 			value: flagValue(name, desc),
 			repeatable: Boolean(desc.multiple),
 		});
+		// An alias gets its OWN completion entry, unlike in `--help` where it
+		// shares the canonical line. A completion list is the set of tokens you can
+		// type, not a description of behaviours, so leaving `--yolo` out would make
+		// an accepted, documented flag the one thing tab completion denies. The
+		// short char stays on the canonical entry: it belongs to one spelling.
+		for (const alias of desc.aliases ?? []) {
+			out.push({
+				name: alias,
+				description: desc.description ?? "",
+				value: flagValue(alias, desc),
+				repeatable: Boolean(desc.multiple),
+			});
+		}
 	}
 	return out;
 }

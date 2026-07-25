@@ -299,6 +299,13 @@ export const VALUELESS_FLAGS: ReadonlySet<string> = new Set([
 	"--allow-home",
 	"--continue",
 	"--no-session",
+	// The short forms of `--continue` and `--print`. `parseArgs` accepted these
+	// from an inline `arg === "-c"` check while the table did not list them, so
+	// "the parser knows about this flag" had two answers. Listing them here makes
+	// the table the whole answer, and the OUT-5 lock test is what keeps it that
+	// way.
+	"-c",
+	"-p",
 	"--no-tools",
 	"--no-lsp",
 	"--no-pty",

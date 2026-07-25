@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/utils";
+import { isRecord, logger } from "@veyyon/utils";
 import type { MCPToolDefinition } from "./types";
 
 /**
@@ -63,7 +63,7 @@ function describe(value: unknown): string {
  * means the server is sending something it should not.
  */
 function normalizeInputSchema(value: unknown): { schema: MCPToolDefinition["inputSchema"]; replaced: boolean } {
-	if (value && typeof value === "object" && !Array.isArray(value)) {
+	if (isRecord(value)) {
 		return { replaced: false, schema: value as MCPToolDefinition["inputSchema"] };
 	}
 	return { replaced: value !== undefined, schema: { properties: {}, type: "object" } };
@@ -79,15 +79,14 @@ function normalizeInputSchema(value: unknown): { schema: MCPToolDefinition["inpu
 export function validateToolListPage(raw: unknown, serverName: string): ToolListPage {
 	const rejected: string[] = [];
 
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+	if (!isRecord(raw)) {
 		return {
 			rejected: [`the response was ${describe(raw)}, not an object`],
 			tools: [],
 		};
 	}
 
-	const record = raw as Record<string, unknown>;
-	const rawTools = record.tools;
+	const rawTools = raw.tools;
 	if (!Array.isArray(rawTools)) {
 		// Spreading a non-array is what turned a string into one tool per
 		// character. Refuse the page outright rather than iterate whatever it is.
@@ -100,12 +99,11 @@ export function validateToolListPage(raw: unknown, serverName: string): ToolList
 	const tools: MCPToolDefinition[] = [];
 	const seen = new Set<string>();
 	for (const [index, entry] of rawTools.entries()) {
-		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+		if (!isRecord(entry)) {
 			rejected.push(`tool at index ${index} was ${describe(entry)}, not an object`);
 			continue;
 		}
-		const candidate = entry as Record<string, unknown>;
-		const name = candidate.name;
+		const name = entry.name;
 		if (typeof name !== "string" || name.trim().length === 0) {
 			// A tool with no name cannot be called. Inventing one would put a
 			// phantom in front of the model that fails only when it is used.
@@ -121,24 +119,24 @@ export function validateToolListPage(raw: unknown, serverName: string): ToolList
 			rejected.push(`tool "${name}" appeared more than once; kept the first definition`);
 			continue;
 		}
-		const { schema, replaced } = normalizeInputSchema(candidate.inputSchema);
+		const { schema, replaced } = normalizeInputSchema(entry.inputSchema);
 		if (replaced) {
 			rejected.push(
-				`tool "${name}" had an inputSchema that was ${describe(candidate.inputSchema)}; treated it as taking no arguments`,
+				`tool "${name}" had an inputSchema that was ${describe(entry.inputSchema)}; treated it as taking no arguments`,
 			);
 		}
 		seen.add(name);
 		tools.push({
 			inputSchema: schema,
 			name,
-			...(typeof candidate.description === "string" ? { description: candidate.description } : {}),
+			...(typeof entry.description === "string" ? { description: entry.description } : {}),
 		});
 	}
 
 	// A non-string cursor is not a cursor. Dropping it ends pagination, which
 	// loses later pages but keeps the pages already collected; continuing with a
 	// value the server cannot interpret would loop.
-	const rawCursor = record.nextCursor;
+	const rawCursor = raw.nextCursor;
 	const nextCursor = typeof rawCursor === "string" && rawCursor.length > 0 ? rawCursor : undefined;
 	if (rawCursor !== undefined && nextCursor === undefined) {
 		rejected.push(`"nextCursor" was ${describe(rawCursor)}, not a string; stopped paginating`);
