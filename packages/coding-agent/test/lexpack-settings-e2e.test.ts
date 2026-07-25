@@ -33,8 +33,8 @@
  */
 
 import { afterAll, describe, expect, it } from "bun:test";
-import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
-import { buildArgotGate } from "@veyyon/coding-agent/argot-wire";
+import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
+import { buildArgotGate } from "@veyyon/coding-agent/lexpack-wire";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 import { ArgotSession, DEFAULT_TOKEN_BUDGET, EMPTY_GATE, shouldEncode } from "argot";

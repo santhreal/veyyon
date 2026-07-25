@@ -442,11 +442,11 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	// session to load into, so the factory returns null and the tool is absent.
 	[ARGOT_LOAD_TOOL]: async s =>
 		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./argot")).ArgotLoadTool(s)
+			? new (await import("./lexpack")).ArgotLoadTool(s)
 			: null,
 	[ARGOT_UNLOAD_TOOL]: async s =>
 		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./argot")).ArgotUnloadTool(s)
+			? new (await import("./lexpack")).ArgotUnloadTool(s)
 			: null,
 };
 

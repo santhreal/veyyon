@@ -18,7 +18,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
+import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
 import { refreshDirsFromEnv, removeSyncWithRetries } from "@veyyon/utils";
 import { ArgotSession, DEFAULT_TOKEN_BUDGET } from "argot";
 import { makeToolSession } from "./helpers/tool-session";

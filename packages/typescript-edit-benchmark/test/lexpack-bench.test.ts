@@ -35,8 +35,8 @@ import {
 	prepareArgotWorkdir,
 	runArgotBench,
 	runContentReproBench,
-} from "../src/argot-bench";
-import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../src/argot-certify";
+} from "../src/lexpack-bench";
+import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../src/lexpack-certify";
 import { loadTasksFromDir } from "../src/tasks";
 import { verifyExpectedFileSubset } from "../src/verify";
 
