@@ -702,7 +702,7 @@ do_uninstall() {
             [ -e "$n" ] && rm -f "$n" && { ok "removed $n"; removed=1; }
         done
     done
-    src="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
+    src=$(src_dir)
     if [ -d "$src" ]; then
         # Never rm -rf a checkout that holds uncommitted edits or unpushed local
         # branches (e.g. a `veyyon-local-*` preservation branch carrying the
@@ -833,7 +833,16 @@ install_bun() {
 # links the launcher (packages/coding-agent/scripts/veyyon) onto PATH. The
 # launcher runs straight from TypeScript, so there is no build step; --ref pins
 # a tag, branch, or commit.
-VEYYON_SRC_DIR="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
+# The source checkout, resolved on every call rather than when this file is
+# sourced.
+#
+# It used to be a top-level assignment, which bound $HOME once at load. Anything
+# that sources this script and THEN sets $HOME — every case in
+# install-tests/functions.test.sh does exactly that — kept the real home's path
+# and operated on it: a sandboxed uninstall moved a developer's own
+# ~/.veyyon/src aside. An exported VEYYON_SRC_DIR still wins, which is the knob
+# a user actually has.
+src_dir() { printf '%s' "${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"; }
 REPO_URL="https://github.com/${REPO}.git"
 
 # Commit any uncommitted local edits in a source checkout onto a durable backup
@@ -852,7 +861,7 @@ REPO_URL="https://github.com/${REPO}.git"
 # user. Returns non-zero if preservation cannot complete, so the caller can
 # refuse to reset rather than risk destroying the changes (fail closed).
 preserve_local_src_changes() {
-    src="${1:-$VEYYON_SRC_DIR}"
+    src="${1:-$(src_dir)}"
     [ -d "$src/.git" ] || return 0
     [ -n "$( cd "$src" 2>/dev/null && git status --porcelain 2>/dev/null )" ] || return 0
     # pid keeps two installer runs in the same second from colliding on the
@@ -880,13 +889,13 @@ preserve_local_src_changes() {
 }
 
 # Move an existing tree aside instead of deleting it. The clone path used to
-# `rm -rf "$VEYYON_SRC_DIR"` before cloning, which destroys any files a user put
+# `rm -rf "$(src_dir)"` before cloning, which destroys any files a user put
 # there (or a partial/corrupt checkout with no .git). Moving to
 # `<dir>.bak-<stamp>` preserves everything and lets the fresh clone proceed.
 # An empty directory is simply removed (nothing to preserve). Fail closed: if
 # the move cannot happen, die rather than fall back to a destructive delete.
 move_aside_existing_src() {
-    src="${1:-$VEYYON_SRC_DIR}"
+    src="${1:-$(src_dir)}"
     [ -e "$src" ] || return 0
     if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
         rmdir "$src" 2>/dev/null || true
@@ -906,7 +915,7 @@ move_aside_existing_src() {
 # non-empty tree is also treated as local work (user files / partial checkout).
 # Exit 1 means the tree is pristine and safe to remove outright.
 src_has_local_work() {
-    src="${1:-$VEYYON_SRC_DIR}"
+    src="${1:-$(src_dir)}"
     [ -d "$src" ] || return 1
     if [ ! -d "$src/.git" ]; then
         [ -n "$(ls -A "$src" 2>/dev/null)" ] && return 0 || return 1
@@ -917,37 +926,37 @@ src_has_local_work() {
 }
 
 fetch_source_tree() {
-    if [ -d "$VEYYON_SRC_DIR/.git" ]; then
-        say "updating veyyon source in $VEYYON_SRC_DIR..."
+    if [ -d "$(src_dir)/.git" ]; then
+        say "updating veyyon source in $(src_dir)..."
         # Commit local edits to a backup branch before resetting. If that fails,
         # refuse the update rather than destroy uncommitted work.
-        preserve_local_src_changes "$VEYYON_SRC_DIR" \
-            || die "refusing to update: could not preserve local changes in $VEYYON_SRC_DIR"
-        ( cd "$VEYYON_SRC_DIR" && git fetch --tags --force origin ) || die "failed to update $VEYYON_SRC_DIR"
+        preserve_local_src_changes "$(src_dir)" \
+            || die "refusing to update: could not preserve local changes in $(src_dir)"
+        ( cd "$(src_dir)" && git fetch --tags --force origin ) || die "failed to update $(src_dir)"
         ref="$REF"
         if [ -z "$ref" ]; then
-            ref=$( cd "$VEYYON_SRC_DIR" && git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' )
+            ref=$( cd "$(src_dir)" && git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' )
             [ -z "$ref" ] && ref="main"
         fi
-        ( cd "$VEYYON_SRC_DIR" && git checkout --force "$ref" && { git reset --hard "origin/$ref" 2>/dev/null || git reset --hard "$ref"; } ) \
-            || die "failed to check out '$ref' in $VEYYON_SRC_DIR"
+        ( cd "$(src_dir)" && git checkout --force "$ref" && { git reset --hard "origin/$ref" 2>/dev/null || git reset --hard "$ref"; } ) \
+            || die "failed to check out '$ref' in $(src_dir)"
     else
-        say "cloning veyyon source into $VEYYON_SRC_DIR..."
-        mkdir -p "$(dirname "$VEYYON_SRC_DIR")"
+        say "cloning veyyon source into $(src_dir)..."
+        mkdir -p "$(dirname "$(src_dir)")"
         # Never rm -rf an existing tree: move it aside so nothing is lost.
-        move_aside_existing_src "$VEYYON_SRC_DIR"
+        move_aside_existing_src "$(src_dir)"
         if [ -n "$REF" ]; then
-            if git clone --depth 1 --branch "$REF" "$REPO_URL" "$VEYYON_SRC_DIR" >/dev/null 2>&1; then :; else
-                git clone "$REPO_URL" "$VEYYON_SRC_DIR" || die "failed to clone $REPO_URL"
-                ( cd "$VEYYON_SRC_DIR" && git checkout "$REF" ) || die "ref not found: $REF"
+            if git clone --depth 1 --branch "$REF" "$REPO_URL" "$(src_dir)" >/dev/null 2>&1; then :; else
+                git clone "$REPO_URL" "$(src_dir)" || die "failed to clone $REPO_URL"
+                ( cd "$(src_dir)" && git checkout "$REF" ) || die "ref not found: $REF"
             fi
         else
-            git clone --depth 1 "$REPO_URL" "$VEYYON_SRC_DIR" >/dev/null 2>&1 \
-                || git clone "$REPO_URL" "$VEYYON_SRC_DIR" \
+            git clone --depth 1 "$REPO_URL" "$(src_dir)" >/dev/null 2>&1 \
+                || git clone "$REPO_URL" "$(src_dir)" \
                 || die "failed to clone $REPO_URL"
         fi
     fi
-    fetch_lfs_assets "$VEYYON_SRC_DIR"
+    fetch_lfs_assets "$(src_dir)"
 }
 
 # Does this checkout actually track any file through Git LFS?
@@ -974,7 +983,7 @@ lfs_tracked_file() {
 # only in the one case where silence is correct: the checkout tracks nothing
 # through LFS, so there is nothing to fetch.
 fetch_lfs_assets() {
-    src="${1:-$VEYYON_SRC_DIR}"
+    src="${1:-$(src_dir)}"
     tracked=$(lfs_tracked_file "$src")
     case "$?" in
         0)
@@ -999,23 +1008,23 @@ install_via_bun() {
     has git || die "git is required to install veyyon from source"
     say "installing veyyon from source (bun)..."
     fetch_source_tree
-    [ -d "$VEYYON_SRC_DIR/packages/coding-agent" ] || die "expected package at $VEYYON_SRC_DIR/packages/coding-agent"
-    launcher="$VEYYON_SRC_DIR/packages/coding-agent/scripts/$BIN_NAME"
+    [ -d "$(src_dir)/packages/coding-agent" ] || die "expected package at $(src_dir)/packages/coding-agent"
+    launcher="$(src_dir)/packages/coding-agent/scripts/$BIN_NAME"
     [ -x "$launcher" ] || die "source launcher not found or not executable: $launcher"
     say "installing workspace dependencies (bun install)..."
-    ( cd "$VEYYON_SRC_DIR" && bun install ) || die "failed to install workspace dependencies"
+    ( cd "$(src_dir)" && bun install ) || die "failed to install workspace dependencies"
     # Bun runs no root lifecycle scripts on workspace installs, so gitignored
     # build artifacts must be generated explicitly: without this, the checkout
     # ships a stale or missing tool-views bundle (missing = launch relies on
     # the launcher's self-heal; the installer should hand over a complete tree).
     say "generating build artifacts (gen:tool-views)..."
-    ( cd "$VEYYON_SRC_DIR" && bun --cwd=packages/collab-web run gen:tool-views ) \
+    ( cd "$(src_dir)" && bun --cwd=packages/collab-web run gen:tool-views ) \
         || die "failed to generate build artifacts (bun --cwd=packages/collab-web run gen:tool-views)"
     # The native addon is the other gitignored built artifact: a fresh clone has
     # none and veyyon dies at boot without it. The ensure script provisions it
     # (prebuilt release download, else local cargo build) or fails with the fix.
     say "ensuring native addon (packages/natives)..."
-    ( cd "$VEYYON_SRC_DIR" && bun --cwd=packages/natives run ensure ) \
+    ( cd "$(src_dir)" && bun --cwd=packages/natives run ensure ) \
         || die "failed to provision the native addon (bun --cwd=packages/natives run ensure)"
     mkdir -p "$INSTALL_DIR"
     ln -sfn "$launcher" "$INSTALL_DIR/$BIN_NAME" || die "failed to link $BIN_NAME into $INSTALL_DIR"

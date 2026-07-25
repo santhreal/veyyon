@@ -895,6 +895,42 @@ write_stub_binary() {
     chmod +x "$_sb_path"
 }
 
+# --- src_dir: the checkout path must follow $HOME, not the $HOME at load ---
+# `VEYYON_SRC_DIR="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"` was a TOP-LEVEL
+# assignment, so it bound $HOME once when this file sourced install.sh. Every
+# case below then sets its own $HOME and the value did not follow: a sandboxed
+# `do_uninstall` resolved the checkout under the REAL home and moved a
+# developer's own ~/.veyyon/src aside. It found the tree, printed "nothing was
+# deleted", and was right about that and wrong about everything else. The same
+# default was also written twice, agreeing only because the load-time copy ran
+# first.
+check "src_dir follows a HOME set after this script was sourced" \
+    "$( ( HOME="$SANDBOX/srcdir-home"; src_dir ) )" "$SANDBOX/srcdir-home/.veyyon/src"
+
+check "src_dir tracks a second HOME in the same process" \
+    "$( ( HOME="$SANDBOX/srcdir-other"; src_dir ) )" "$SANDBOX/srcdir-other/.veyyon/src"
+
+check "an exported VEYYON_SRC_DIR still wins over HOME" \
+    "$( ( HOME="$SANDBOX/srcdir-home"; VEYYON_SRC_DIR="$SANDBOX/elsewhere"; src_dir ) )" "$SANDBOX/elsewhere"
+
+# The behavioural proof. The old bug bound $HOME as it stood when install.sh was
+# SOURCED, which in this file is $SANDBOX/home — so that is where a checkout has
+# to be planted for the escape to be visible. An uninstall run under a different
+# HOME must not touch it. (Planting under some third directory proves nothing:
+# the buggy version never pointed there either.)
+check "an uninstall under one HOME leaves the load-time HOME's checkout alone" \
+    "$( ( _loadtime="$SANDBOX/home"; _sand="$SANDBOX/sandbox-home"
+  mkdir -p "$_loadtime/.veyyon/src/.git" "$_sand/.veyyon/src/.git" "$_sand/bin"
+  printf 'planted\n' > "$_loadtime/.veyyon/src/marker"
+  HOME="$_sand" INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1
+  [ -f "$_loadtime/.veyyon/src/marker" ] && echo untouched || echo clobbered ) )" "untouched"
+
+check "and it does remove the checkout under the HOME it was given" \
+    "$( ( _sand="$SANDBOX/sandbox-home2"
+  mkdir -p "$_sand/.veyyon/src/.git" "$_sand/bin"
+  HOME="$_sand" INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1
+  [ -e "$_sand/.veyyon/src" ] && echo left || echo removed ) )" "removed"
+
 # --- doctor_natives: prove the addon loads, not just that the binary starts ---
 # `--version` is served entirely by the JS entry point, so it succeeds on an
 # install whose native addon is missing, staged for the wrong architecture, or
