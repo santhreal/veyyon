@@ -19,6 +19,7 @@ import {
 	errorMessage,
 	expandTilde,
 	getAgentDbPath,
+	findShadowedGlobalConfigFiles,
 	getAgentDir,
 	getLastChangelogVersionPath,
 	getProjectDir,
@@ -44,6 +45,7 @@ import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 import {
 	type BashInterceptorRule,
+	describeSettingTypeMismatch,
 	type GroupPrefix,
 	type GroupTypeMap,
 	getDefault,
@@ -72,6 +74,16 @@ export interface RawSettings {
  * settings layer and the keybindings layer describe the same thing one way.
  */
 export type QuarantinedSettingsFile = QuarantinedFile;
+
+/** A configured setting whose value does not match the type the schema declares. */
+export interface InvalidSettingValue {
+	/** Dotted setting path, e.g. `startup.autoUpdate`. */
+	path: SettingPath;
+	/** The file the bad value came from, so the user knows which line to edit. */
+	file: string;
+	/** Human-readable explanation naming the expected type and what was found. */
+	reason: string;
+}
 
 export interface SettingsOptions {
 	/** Current working directory for project settings discovery */
@@ -252,6 +264,8 @@ export class Settings {
 	#overrides: RawSettings = {};
 	/** Settings files that could not be parsed, and where their bytes were kept. */
 	#quarantined: QuarantinedSettingsFile[] = [];
+	/** Configured values whose type contradicts the schema, found during load. */
+	#invalidValues: InvalidSettingValue[] = [];
 	/** Merged view (global + project + overrides) */
 	#merged: RawSettings = {};
 	/** Cached resolved values from the merged view, including defaults/path scoping */
@@ -413,6 +427,21 @@ export class Settings {
 	 */
 	get quarantinedFiles(): readonly QuarantinedSettingsFile[] {
 		return this.#quarantined;
+	}
+
+	/**
+	 * Configured settings whose value does not match the schema's declared type.
+	 *
+	 * Empty in the normal case. A non-empty list means the config on disk says
+	 * something the app cannot honor, and the user has to be told: a wrong type is
+	 * usually silently WRONG rather than obviously broken. `autoUpdate: "no"` is a
+	 * truthy string, so a setting the user plainly meant to turn off stays on and
+	 * nothing explains why. Surfacing this is what keeps that from being invisible
+	 * (Law 10); the values themselves are left exactly as written, because quietly
+	 * substituting the default would hide the broken config instead of reporting it.
+	 */
+	get invalidValues(): readonly InvalidSettingValue[] {
+		return this.#invalidValues;
 	}
 
 	/**
@@ -805,6 +834,8 @@ export class Settings {
 
 		this.#project = await projectPromise;
 		this.#configOverlay = await this.#loadConfigOverlays();
+		this.#collectInvalidValues(this.#global, this.#configPath ?? "");
+		this.#reportShadowedConfigFiles();
 
 		// Build merged view (global → project → overrides; project wins over global)
 		this.#rebuildMerged();
@@ -822,8 +853,53 @@ export class Settings {
 
 		this.#project = await projectPromise;
 		this.#configOverlay = await this.#loadConfigOverlays();
+		this.#collectInvalidValues(this.#global, this.#configPath ?? "");
 		this.#rebuildMerged();
 		return this;
+	}
+
+	/**
+	 * Report a config file that exists but is ignored because a higher-precedence
+	 * one exists too.
+	 *
+	 * `dirs` finds these but cannot report them: it sits below the logger, which
+	 * imports it. This is the layer that has somewhere to say it, so it says it
+	 * here rather than letting a whole settings file be silently dead.
+	 */
+	#reportShadowedConfigFiles(): void {
+		for (const shadowed of findShadowedGlobalConfigFiles()) {
+			logger.warn("Global config file is being ignored because a higher-precedence one exists", {
+				ignored: shadowed.ignored,
+				using: shadowed.using,
+				fix: `merge ${path.basename(shadowed.ignored)} into ${path.basename(shadowed.using)} and delete it`,
+			});
+		}
+	}
+
+	/**
+	 * Check every configured value in `tree` against the schema and record the
+	 * mismatches, naming `file` so the user knows where to edit.
+	 *
+	 * Walked from the schema rather than from the tree on purpose: iterating the
+	 * file's keys would also flag keys this build does not know, which are
+	 * deliberately preserved (see the unknown-key preservation suite) and are not
+	 * errors. Only paths the schema actually declares can be judged against a
+	 * declared type.
+	 */
+	#collectInvalidValues(tree: RawSettings, file: string): void {
+		if (!file) return;
+		for (const path of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
+			const value = getByPath(tree, SETTING_PATH_SEGMENTS[path] ?? path.split("."));
+			if (value === undefined) continue;
+			const reason = describeSettingTypeMismatch(path, value);
+			if (reason === undefined) continue;
+			if (this.#invalidValues.some(entry => entry.path === path && entry.file === file)) continue;
+			this.#invalidValues.push({ path, file, reason });
+			// Logged as a warning AND exposed on the instance: the log is for a
+			// developer reading a session afterwards, the accessor is for a surface
+			// that can actually put it in front of the person who wrote the file.
+			logger.warn("Settings: configured value does not match its declared type", { file, reason });
+		}
 	}
 
 	async #loadYaml(filePath: string): Promise<RawSettings> {

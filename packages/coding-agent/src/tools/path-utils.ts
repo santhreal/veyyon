@@ -414,6 +414,118 @@ export function peelWriteUrlSelector(rawPath: string): string {
 	);
 }
 
+/**
+ * Refuse a path containing a NUL byte, before it reaches the filesystem layer.
+ *
+ * A NUL cannot appear in any real filename: the kernel takes a C string, so
+ * everything after the NUL is discarded. Passing one through means the syscall
+ * either errors with a message about argument types (which reads like an
+ * internal bug, not a bad path) or, on a less careful runtime, operates on a
+ * TRUNCATED path — `secret\0.txt` becoming `secret`. That second outcome is the
+ * dangerous one, because a containment check that passed on the full string
+ * would have been performed on a path that is not the one touched.
+ *
+ * So it is rejected here, at the one place tool paths resolve, and the message
+ * names the offending input rather than the argument type.
+ */
+function assertNoNulByte(original: string): void {
+	const index = original.indexOf("\0");
+	if (index === -1) return;
+	throw new Error(
+		`Path contains a NUL byte at position ${index} and cannot name a file: ${JSON.stringify(original)}. ` +
+			`Remove the NUL; no filesystem can store it, and a truncated path would silently target a different file.`,
+	);
+}
+
+/**
+ * The kernel's filename limit, in BYTES not characters.
+ *
+ * `NAME_MAX` is 255 on Linux and macOS, and Windows applies the same per
+ * component. Bytes matter: the limit is applied to the encoded name, so a
+ * 100-character emoji filename is 400 bytes and fails a check that counted
+ * characters and passed.
+ */
+const MAX_PATH_COMPONENT_BYTES = 255;
+
+/**
+ * The whole-path limit, in bytes.
+ *
+ * `PATH_MAX` is 4096 on Linux and 1024 on macOS; 4096 is used as the common
+ * ceiling because being slightly permissive costs nothing (the syscall still
+ * refuses, exactly as before) while being too strict would reject paths that
+ * genuinely work. Windows is deliberately not capped here: with the
+ * extended-length prefix it reaches 32767, and guessing low would break real
+ * paths.
+ */
+const MAX_PATH_TOTAL_BYTES = 4096;
+
+/**
+ * Reject a path that cannot fit the filesystem's name limits.
+ *
+ * WHY THIS IS WORTH A CHECK. Without it the failure arrives from the syscall as
+ * `ENAMETOOLONG: name too long, open '<the entire 300-character path>'`, which
+ * names an errno and then buries the useful part under the offending string. It
+ * does not say which limit was hit, which component was too long, or by how
+ * much, and for a write it surfaces only after the tool has already decided the
+ * path was acceptable.
+ *
+ * Components are measured individually because that is how the kernel measures
+ * them: a path can be far below `PATH_MAX` overall and still fail on one long
+ * segment, which is the more common mistake (a generated filename built from a
+ * title or an error message).
+ */
+function assertPathLengthWithinLimits(original: string, resolved: string): void {
+	// FAST PATH, and the reason this function is shaped the way it is. The exact
+	// check below splits the path and measures every component, which allocates an
+	// array plus a `Buffer.byteLength` call per component. On `resolveToCwd`, which
+	// every tool path goes through, that measured 332ns -> 688ns: a 2x
+	// pessimization of the hot path to catch an input almost nobody sends.
+	//
+	// UTF-8 never uses more than 3 bytes per UTF-16 code unit (a BMP character is
+	// at most 3 bytes in one unit; a surrogate pair is 4 bytes across two, so 2
+	// per unit). So a component of at most 85 code units cannot reach 256 bytes,
+	// and a path of at most 1365 cannot reach 4097. When both hold, the exact
+	// check cannot fail and is skipped entirely: one allocation-free scan.
+	const MAX_UNITS_ALWAYS_SAFE = Math.floor(MAX_PATH_COMPONENT_BYTES / 3);
+	let componentStart = 0;
+	let mustMeasure = resolved.length > Math.floor(MAX_PATH_TOTAL_BYTES / 3);
+	if (!mustMeasure) {
+		for (let i = 0; i <= resolved.length; i++) {
+			// Treat end-of-string as a separator so the final component is measured.
+			const code = i < resolved.length ? resolved.charCodeAt(i) : 0x2f;
+			if (code !== 0x2f && code !== 0x5c) continue;
+			if (i - componentStart > MAX_UNITS_ALWAYS_SAFE) {
+				mustMeasure = true;
+				break;
+			}
+			componentStart = i + 1;
+		}
+	}
+	if (!mustMeasure) return;
+
+	for (const component of resolved.split(/[/\\]/)) {
+		const bytes = Buffer.byteLength(component, "utf8");
+		if (bytes > MAX_PATH_COMPONENT_BYTES) {
+			throw new Error(
+				`Path component is ${bytes} bytes, over the ${MAX_PATH_COMPONENT_BYTES}-byte filename limit, ` +
+					`in ${JSON.stringify(original)}. Shorten the name ${JSON.stringify(
+						`${component.slice(0, 40)}…`,
+					)}; the filesystem cannot store it.`,
+			);
+		}
+	}
+	// Windows with an extended-length prefix reaches 32767, so a POSIX ceiling
+	// applied there would refuse paths that work.
+	if (process.platform === "win32") return;
+	const totalBytes = Buffer.byteLength(resolved, "utf8");
+	if (totalBytes > MAX_PATH_TOTAL_BYTES) {
+		throw new Error(
+			`Path is ${totalBytes} bytes, over the ${MAX_PATH_TOTAL_BYTES}-byte total path limit, ` +
+				`starting from ${JSON.stringify(original.slice(0, 60))}. Use a shorter directory or filename.`,
+		);
+	}
+}
+
 function assertNotInternalUrl(expanded: string, original: string): void {
 	for (const prefix of TOP_LEVEL_INTERNAL_URL_PREFIXES) {
 		if (expanded.startsWith(prefix)) {
@@ -501,6 +613,7 @@ export function globSearchBase(pattern: string): string {
  * filesystem root is almost never what they intended.
  */
 export function resolveToCwd(filePath: string, cwd: string): string {
+	assertNoNulByte(filePath);
 	const normalized = normalizeLocalScheme(filePath);
 	const expanded = normalizeWindowsDriveAliasPath(expandPath(normalized));
 	const expandedAndNormalized = normalizeLocalScheme(expanded);
@@ -510,10 +623,12 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 	if (/^\/+$/.test(expanded)) {
 		return cwd;
 	}
-	if (path.isAbsolute(expanded)) {
-		return expanded;
-	}
-	return path.resolve(cwd, expanded);
+	// Length is checked on the RESOLVED path, because that is the string the
+	// syscall receives: a short relative path under a deep cwd can exceed the
+	// total limit while looking fine on its own.
+	const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(cwd, expanded);
+	assertPathLengthWithinLimits(filePath, resolved);
+	return resolved;
 }
 
 /**
