@@ -945,7 +945,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		// must still cancel the call or job, but veyyon does not impose a deadline.
 		const requestedTimeoutSec = rawTimeout;
 		const timeoutDisabled = requestedTimeoutSec === 0;
-		const timeoutSec = timeoutDisabled ? undefined : clampTimeout("bash", requestedTimeoutSec);
+		const timeoutSec = timeoutDisabled
+			? undefined
+			: clampTimeout("bash", requestedTimeoutSec, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
 		const pendingNotices: string[] = [];
 		if (timeoutSec !== undefined) {

@@ -216,24 +216,20 @@ function uniqueEvalLanguages(cells: ResolvedEvalCell[]): EvalLanguage[] {
  * loop), so there is nothing to clamp or report. Surfacing this keeps eval from
  * silently shrinking an over-ceiling request the way bash already reports it.
  */
-function timeoutClampNotice(cell: ResolvedEvalCell): string | undefined {
+function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	if (cell.timeoutMs === 0) return undefined;
-	return formatTimeoutClampNotice("eval", cell.timeoutMs / 1000, timeoutSecondsFromMs(cell.timeoutMs));
+	return formatTimeoutClampNotice("eval", cell.timeoutMs / 1000, clampTimeout("eval", cell.timeoutMs / 1000, maxTimeout));
 }
 
-function detailsNotice(cells: ResolvedEvalCell[]): string | undefined {
+function detailsNotice(cells: ResolvedEvalCell[], maxTimeout?: number): string | undefined {
 	const notices = [
 		...new Set(
 			cells
-				.flatMap(cell => [cell.resolved.notice, timeoutClampNotice(cell)])
+				.flatMap(cell => [cell.resolved.notice, timeoutClampNotice(cell, maxTimeout)])
 				.filter((notice): notice is string => Boolean(notice)),
 		),
 	];
 	return notices.length > 0 ? notices.join(" ") : undefined;
-}
-
-function timeoutSecondsFromMs(timeoutMs: number): number {
-	return clampTimeout("eval", timeoutMs / 1000);
 }
 
 async function resolveBackend(session: ToolSession, language: EvalLanguage): Promise<ResolvedBackend> {
@@ -445,7 +441,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 			},
 		];
 		const languages = uniqueEvalLanguages(cells);
-		const notice = detailsNotice(cells);
+		const notice = detailsNotice(cells, session.settings.get("tools.maxTimeout"));
 		const sessionAbortController = new AbortController();
 		let outputSink: OutputSink | undefined;
 		let outputSummary: OutputSummary | undefined;
@@ -553,7 +549,10 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 					// ordinary tool calls all count against the budget. The watchdog drives
 					// `combinedSignal`; we pass no wall-clock deadline downstream so the
 					// backends never arm a competing fixed timer.
-					const idleTimeoutMs = cell.timeoutMs === 0 ? undefined : timeoutSecondsFromMs(cell.timeoutMs) * 1000;
+					const idleTimeoutMs =
+						cell.timeoutMs === 0
+							? undefined
+							: clampTimeout("eval", cell.timeoutMs / 1000, session.settings.get("tools.maxTimeout")) * 1000;
 					const idle = idleTimeoutMs === undefined ? undefined : new IdleTimeout(idleTimeoutMs);
 					const combinedSignal =
 						signal && idle

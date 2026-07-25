@@ -310,3 +310,89 @@ describe("bash executor default single-source regression", () => {
 		expect(TOOL_TIMEOUTS.bash.default).toBe(300);
 	});
 });
+
+describe("tools.maxTimeout global ceiling", () => {
+	// The upstream fix ported here (#6296, PR #203) exists because the global
+	// `tools.maxTimeout` ceiling was applied only to timeouts the agent passed
+	// explicitly. A call that omitted `timeout` fell through to the tool's
+	// `default` and ignored the cap entirely, so an operator who set
+	// `tools.maxTimeout` to bound runaway tools still got `bash` running for its
+	// full 300s default. The cap has to govern the resolved value, which is what
+	// these pin. The per-tool `[min, max]` range still applies afterwards, so a
+	// cap can lower a timeout but can never push it below the tool's floor.
+
+	/**
+	 * The defect itself. `bash` defaults to 300s; with a 10s global cap and no
+	 * explicit timeout the resolved value must be 10, not 300. Before the fix
+	 * this returned 300 and the ceiling did nothing on the path tools use most.
+	 */
+	it("caps the default-fallback path, which is where the ceiling used to be ignored", () => {
+		expect(clampTimeout("bash")).toBe(300);
+		expect(clampTimeout("bash", undefined, 10)).toBe(10);
+		expect(clampTimeout("eval", undefined, 5)).toBe(5);
+	});
+
+	/** An explicitly requested timeout above the cap is lowered to it. */
+	it("caps an explicitly requested timeout", () => {
+		expect(clampTimeout("bash", 1200, 60)).toBe(60);
+		expect(clampTimeout("ssh", 900, 120)).toBe(120);
+	});
+
+	/** A request already under the cap is left exactly as asked. */
+	it("leaves a request below the cap untouched", () => {
+		expect(clampTimeout("bash", 30, 60)).toBe(30);
+		expect(clampTimeout("browser", 10, 300)).toBe(10);
+	});
+
+	/**
+	 * The cap lowers a timeout, it never raises one. A cap above the tool's own
+	 * ceiling must not let a request exceed `max`, or the global setting would
+	 * quietly widen a per-tool limit that exists for a reason.
+	 */
+	it("never raises a timeout above the tool's own ceiling", () => {
+		expect(clampTimeout("fetch", 600, 3600)).toBe(TOOL_TIMEOUTS.fetch.max);
+		expect(clampTimeout("browser", 9999, 9999)).toBe(TOOL_TIMEOUTS.browser.max);
+	});
+
+	/**
+	 * The per-tool floor wins over the cap. `lsp` has `min: 5`, so a 1s global
+	 * cap must still resolve to 5 rather than aborting the tool the instant it
+	 * starts, which is the failure mode the floor exists to prevent.
+	 */
+	it("keeps the per-tool floor when the cap is lower than it", () => {
+		expect(clampTimeout("lsp", undefined, 1)).toBe(TOOL_TIMEOUTS.lsp.min);
+		expect(clampTimeout("debug", 2, 1)).toBe(TOOL_TIMEOUTS.debug.min);
+	});
+
+	/**
+	 * `tools.maxTimeout` is 0 when unset, and a naive `Math.min` against 0 would
+	 * collapse every tool to its floor and abort immediately. Zero, negative,
+	 * and undefined all have to mean "no global cap".
+	 */
+	it("treats 0, negative, and undefined as no cap at all", () => {
+		for (const tool of ALL_TOOLS) {
+			const uncapped = clampTimeout(tool);
+			expect(clampTimeout(tool, undefined, 0)).toBe(uncapped);
+			expect(clampTimeout(tool, undefined, -1)).toBe(uncapped);
+			expect(clampTimeout(tool, undefined, undefined)).toBe(uncapped);
+		}
+	});
+
+	/** A cap equal to the resolved value is a no-op, not an off-by-one. */
+	it("is inclusive at the boundary", () => {
+		expect(clampTimeout("bash", undefined, 300)).toBe(300);
+		expect(clampTimeout("bash", 300, 300)).toBe(300);
+		expect(clampTimeout("bash", 301, 300)).toBe(300);
+	});
+
+	/** The cap applies to every tool in the table, not just the ones with tests above. */
+	it("applies to every tool in TOOL_TIMEOUTS", () => {
+		for (const tool of ALL_TOOLS) {
+			const { min } = TOOL_TIMEOUTS[tool];
+			// A cap at the floor resolves to the floor for every tool.
+			expect(clampTimeout(tool, undefined, min)).toBe(min);
+			// A cap one above the floor resolves there too, since every default is higher.
+			expect(clampTimeout(tool, undefined, min + 1)).toBe(min + 1);
+		}
+	});
+});

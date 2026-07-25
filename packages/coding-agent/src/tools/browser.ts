@@ -191,7 +191,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	): Promise<AgentToolResult<BrowserToolDetails>> {
 		try {
 			throwIfAborted(signal);
-			const timeoutSeconds = clampTimeout("browser", params.timeout);
+			const timeoutSeconds = clampTimeout("browser", params.timeout, this.session.settings.get("tools.maxTimeout"));
 			const timeoutMs = timeoutSeconds * 1000;
 			// A clamp changes the budget the agent asked for; surface it on the
 			// result rather than applying it silently (Law 10). Each action builds
