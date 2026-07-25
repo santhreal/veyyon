@@ -219,4 +219,4 @@ new piece is (5): when constrained decoding masks the natural collapse
 target, the mass laundered through the un-masked plain-text shadow
 becomes a structurally-invisible exfiltration channel.
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

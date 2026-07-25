@@ -761,4 +761,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

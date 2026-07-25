@@ -205,4 +205,4 @@ message.tool_calls = [
 - NousResearch Hermes-Function-Calling (origin of the convention): https://github.com/NousResearch/Hermes-Function-Calling
 - vLLM tool-calling docs (`hermes` parser, Qwen models, auto tool choice): https://docs.vllm.ai/en/latest/features/tool_calling/
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

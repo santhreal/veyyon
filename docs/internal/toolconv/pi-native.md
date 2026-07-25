@@ -275,4 +275,4 @@ pi-native is specified here; it is not derived from a published model template. 
 - Anthropic attribute XML (`<invoke name="…">` / `<parameter name="…">`, "parsed with regular expressions", not required to be valid XML): [`anthropic.md`](./anthropic.md).
 - GLM-4.5 schema-driven, **unquoted** string values vs JSON non-strings, and positional (id-less) call↔result correlation: [`glm-4.5.md`](./glm-4.5.md).
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

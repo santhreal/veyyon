@@ -244,4 +244,4 @@ Interactive mode separately hard-handles many built-ins in `InputController` (fo
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

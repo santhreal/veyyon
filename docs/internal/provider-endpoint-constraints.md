@@ -397,4 +397,4 @@ Before adding a branch or compat field, answer these in order:
    tier multipliers, and provider-specific counters such as Copilot
    `premiumRequests`?
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

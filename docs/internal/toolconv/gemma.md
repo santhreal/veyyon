@@ -102,4 +102,4 @@ The current weather in Tokyo is 15 degrees Celsius and sunny.<turn|>
 - Function calling with Gemma 4: https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4
 - Gemma 4 prompt formatting: https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

@@ -229,4 +229,4 @@ For robust MCP authoring in this codebase:
 - [`packages/coding-agent/src/config/resolve-config-value.ts`](../../packages/coding-agent/src/config/resolve-config-value.ts)
 - [`packages/coding-agent/src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts)
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

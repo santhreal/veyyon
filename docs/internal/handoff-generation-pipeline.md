@@ -255,4 +255,4 @@ High-level state flow:
 - Manual handoff has no streaming visibility; a cancellable loader is shown until the UI updates after generation completes.
 - Auto-triggered handoffs can write a timestamped `handoff-*.md` artifact when `compaction.handoffSaveToDisk` is enabled; write failure is logged and does not fail the handoff.
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*

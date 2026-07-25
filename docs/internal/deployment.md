@@ -199,4 +199,4 @@ edits between releases:
 4. `bun run site:deploy`.
 5. If `install.sh`/`install.ps1` changed, also deploy `veyyon-get`.
 
-*Verified against `58798326` on 2026-07-24.*
+*Verified against `d95a08ad` on 2026-07-24.*
