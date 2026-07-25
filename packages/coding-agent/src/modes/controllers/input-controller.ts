@@ -4,6 +4,7 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { type AutocompleteProvider, matchesKey, type SlashCommand } from "@veyyon/tui";
 import { errorMessage, isEnoent, logger, sanitizeText } from "@veyyon/utils";
+import { EXIT_INTERRUPTED } from "../../cli/exit-codes";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { resolveLocalRoot } from "../../internal-urls";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
@@ -1059,7 +1060,7 @@ export class InputController {
 		// common case; this is the defense-in-depth ladder for everything
 		// else. See issue #2600.
 		if (this.ctx.isShuttingDown) {
-			process.exit(130); // 128 + SIGINT
+			process.exit(EXIT_INTERRUPTED);
 		}
 
 		const now = Date.now();

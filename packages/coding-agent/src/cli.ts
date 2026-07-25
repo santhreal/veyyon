@@ -33,6 +33,7 @@ import {
 	VERSION,
 } from "@veyyon/utils/dirs";
 import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/utils/worker-host";
+import { EXIT_FAILURE } from "./cli/exit-codes";
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
 import { extractProfileFlags } from "./cli/profile-bootstrap";
 import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
@@ -51,7 +52,7 @@ if (Bun.semver.order(Bun.version, MIN_BUN_VERSION) < 0) {
 	process.stderr.write(
 		`error: Bun runtime must be >= ${MIN_BUN_VERSION} (found v${Bun.version}). Please upgrade: bun upgrade\n`,
 	);
-	process.exit(1);
+	process.exit(EXIT_FAILURE);
 }
 
 process.title = APP_NAME;
@@ -362,7 +363,7 @@ export async function runCli(argv: string[]): Promise<void> {
 	} catch (error) {
 		const message = errorMessage(error);
 		process.stderr.write(`Error: ${message}\n`);
-		process.exitCode = 1;
+		process.exitCode = EXIT_FAILURE;
 		return;
 	}
 
@@ -400,7 +401,7 @@ export async function runCli(argv: string[]): Promise<void> {
 	const resolved = resolveCliArgv(resolvedArgv);
 	if ("error" in resolved) {
 		process.stderr.write(`Error: ${resolved.error}\n`);
-		process.exitCode = 1;
+		process.exitCode = EXIT_FAILURE;
 		return;
 	}
 	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
@@ -504,6 +505,6 @@ if (isProcessEntry || !Bun.isMainThread) {
 				colors: process.stderr.isTTY === true,
 			}),
 		);
-		process.exit(1);
+		process.exit(EXIT_FAILURE);
 	});
 }
