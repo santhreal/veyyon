@@ -1718,6 +1718,31 @@ export function renderReport(
 			// turn. Scoring output alone would score only one side of that trade.
 			{ label: "input tok", unit: "tok", of: c => c.meanInputTokens, raw: r => r.inputTokens, digits: 0 },
 			{ label: "cost", unit: "$", of: c => c.meanCostUsd, raw: r => r.costUsd, digits: 4 },
+			// Reference cost, and it is the row that matters. The provider prices
+			// nothing, so the `cost` row above is uniformly zero and correctly reports
+			// itself unmeasured, which left the ONLY statistically valid comparison
+			// this bench makes unable to see cost at all. Every cost claim made from
+			// this bench was therefore read off the per-arm SUM table, which pairs
+			// nothing and controls for nothing: a +4.5% "result" there sat inside a
+			// per-task noise band of +-30% and was reported as definitive.
+			//
+			// Priced per run from the same rate card as the totals table, so cost gets
+			// a paired sign test and a confidence interval like every other metric.
+			{
+				label: "ref cost",
+				unit: "$",
+				of: c => (c.refCostMeasurable ? c.refCost.total / Math.max(1, c.n) : null),
+				raw: r =>
+					r.cacheReadTokens == null || r.cacheWriteTokens == null
+						? null
+						: priceTokens({
+								inputTokens: r.inputTokens ?? 0,
+								cacheReadTokens: r.cacheReadTokens,
+								cacheWriteTokens: r.cacheWriteTokens,
+								outputTokens: r.outputTokens ?? 0,
+							}).total,
+				digits: 4,
+			},
 		];
 		lines.push("");
 		lines.push("## Efficiency comparison (paired by task)");
