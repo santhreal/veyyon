@@ -69,9 +69,16 @@ async function loadFastembedOnce(): Promise<FastembedModule> {
 		return await import("fastembed");
 	} catch (error) {
 		if (!isRecoverableFastembedLoadError(error)) throw error;
-		logger.debug("mnemopi: fastembed not loadable, using on-demand runtime install", {
-			error: String(error),
-		});
+		// Loud, not debug. This fallback is not a cheap alternative path: it
+		// downloads and installs a whole runtime before the first embedding can be
+		// produced, so the user gets a long unexplained pause the first time they
+		// index anything, and every later start pays a resolver indirection. A
+		// degrade that costs that much has to name itself. `loadFastembedOnce` is
+		// memoised, so this fires once per process.
+		logger.warn(
+			"mnemopi: the installed fastembed could not be loaded, so a runtime copy is being downloaded and installed on demand; the first indexing run will be slow",
+			{ error: String(error) },
+		);
 		return loadFromRuntimeInstall();
 	}
 }
@@ -99,7 +106,15 @@ async function loadFromRuntimeInstall(): Promise<FastembedModule> {
 	return requireRuntime(entry) as FastembedModule;
 }
 
-function isRecoverableFastembedLoadError(error: unknown): boolean {
+/**
+ * Decide whether a fastembed load failure is worth falling back for.
+ *
+ * Only a genuinely missing or unloadable module qualifies. Anything else is a
+ * real fault in an installed fastembed and is rethrown, because falling back
+ * would replace a clear error with a slow runtime install that fails the same
+ * way.
+ */
+export function isRecoverableFastembedLoadError(error: unknown): boolean {
 	if (typeof error !== "object" || error === null) return false;
 	const { name, code, message } = error as { name?: unknown; code?: unknown; message?: unknown };
 	if (name === "ResolveMessage") return true;
