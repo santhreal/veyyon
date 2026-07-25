@@ -462,8 +462,17 @@ version_from_output() {
 # catch for every cause. `grep` is the cheapest command that goes through the
 # native walker and returns a result we can check: about 130ms more than
 # --version, against a file this function writes and knows the contents of.
+#
+# $2 names the phase, because this runs twice on a binary install and the two
+# runs answer different questions. The first is a PREFLIGHT on the still-staged
+# download: it fails before the binary is moved into place, before the `vey`
+# alias is linked, before the shell profile is edited and before any completion
+# file is written, so a release with no build for this platform leaves the
+# system exactly as it was. The second is the post-install self-check, which
+# proves the binary works from where it now lives. Only the first can prevent
+# the mess; only the second can prove the finished install is good.
 doctor_natives() {
-    _dn_bin="$1"
+    _dn_bin="$1"; _dn_phase="${2:-installed}"
     # An older build with no `grep` subcommand is not a broken install, so probe
     # for it the way install_completions probes for `completions`.
     "$_dn_bin" grep --help >/dev/null 2>&1 || {
@@ -484,10 +493,10 @@ doctor_natives() {
     _dn_status=$?
     rm -rf "$_dn_dir"
     if [ "$_dn_status" -ne 0 ]; then
-        die "$BIN_NAME starts but cannot run a search: \`$BIN_NAME grep\` exited $_dn_status. The native addon did not load. This is usually a platform mismatch (a musl system, or an architecture the release does not build). Install from source instead: curl -fsSL https://get.veyyon.dev | sh -s -- --source. Output was: $_dn_out"
+        die "the $_dn_phase $BIN_NAME starts but cannot run a search: \`$BIN_NAME grep\` exited $_dn_status. The native addon did not load. This is usually a platform mismatch (a musl system, or an architecture the release does not build). Install from source instead: curl -fsSL https://get.veyyon.dev | sh -s -- --source. Output was: $_dn_out"
     fi
     case "$_dn_out" in
-        *probe.txt*) ok "native addon loads — search returned the expected match" ;;
+        *probe.txt*) ok "native addon loads ($_dn_phase) — search returned the expected match" ;;
         *) die "$BIN_NAME ran a search but did not find a file it was pointed at. The install is not usable. Output was: $_dn_out" ;;
     esac
 }
@@ -1172,6 +1181,16 @@ install_binary() {
         || die "download failed ($BINARY not published for this release?) — try --source"
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
+
+    # Prove the download RUNS before it is allowed to touch anything. The
+    # checksum proves the bytes match what was published; it cannot tell you the
+    # release has no build for this platform. Failing here costs the user a
+    # temp file the trap already removes. Failing after finalize_binary would
+    # leave them an installed binary that starts, a `vey` alias, an edited
+    # shell profile and completion files, all for a veyyon that dies on their
+    # first real command.
+    chmod +x "$tmpbin" || die "could not make the staged download at $tmpbin executable"
+    doctor_natives "$tmpbin" "downloaded"
 
     finalize_binary "$tmpbin" "$(install_dir)/$BIN_NAME" "the download did not complete — retry, or use --source"
     trap - EXIT INT TERM
