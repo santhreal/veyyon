@@ -452,6 +452,70 @@ export async function verifyBinaryVersion(
 }
 
 /**
+ * Proves an install actually functions. Returns the reason it does not, or
+ * `undefined` when it works. Injectable so step-sequencing tests can drive the
+ * update without a real checkout on disk; {@link probeSearchWorks} is the one
+ * implementation shipped.
+ */
+export type SearchProbe = (binPath: string, label: string) => Promise<string | undefined>;
+
+/**
+ * Run a real search through an installed veyyon and say why it did not work.
+ *
+ * The one owner of the "does this install actually function?" probe, shared by
+ * the binary swap ({@link verifyBinaryUsable}) and the source update
+ * ({@link updateViaSourceAt}). Both need the same evidence for the same reason
+ * and would drift if each grew its own copy. `grep` is the cheapest command
+ * that goes through the native walker and returns a checkable result, against a
+ * file this function writes itself.
+ *
+ * Returns `undefined` when the install works, or when this build has no `grep`
+ * subcommand at all: a downgrade to a release predating it is not a broken
+ * update, and treating it as one would roll back forever.
+ *
+ * That excuse must not swallow an install that is missing or not executable,
+ * which is the failure this exists to catch. Exit codes cannot tell the two
+ * apart here: Bun's shell reports a missing command as exit 1, the same code an
+ * unknown subcommand produces. So executability is checked directly, before
+ * anything is spawned.
+ */
+export async function probeSearchWorks(binPath: string, label: string): Promise<string | undefined> {
+	try {
+		await fs.promises.access(binPath, fs.constants.X_OK);
+	} catch {
+		return `${label} is missing or not executable at ${binPath}.`;
+	}
+	const help = await $`${binPath} grep --help`.quiet().nothrow();
+	if (help.exitCode !== 0) return undefined;
+
+	const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-update-check-"));
+	try {
+		await fs.promises.writeFile(path.join(dir, "probe.txt"), "veyyon-native-self-test\n");
+		const probe = await $`${binPath} grep veyyon-native-self-test ${dir}`.quiet().nothrow();
+		const output = `${probe.stdout.toString()}${probe.stderr.toString()}`;
+		if (probe.exitCode !== 0) {
+			return (
+				`${label} cannot run a search (\`grep\` exited ${probe.exitCode}), so its native ` +
+				`addon did not load. This usually means the release has no build for this ` +
+				`platform. Output was: ${output.trim()}`
+			);
+		}
+		// Exit 0 is not enough on its own: a walker that returns nothing exits 0.
+		if (!output.includes("probe.txt")) {
+			return (
+				`${label} ran a search but did not find a file it was pointed at, so the ` +
+				`install is not usable. Output was: ${output.trim()}`
+			);
+		}
+		return undefined;
+	} catch (err) {
+		return errorMessage(err);
+	} finally {
+		await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+	}
+}
+
+/**
  * Prove the swapped-in binary can actually work, not just that it reports the
  * right version.
  *
@@ -473,44 +537,8 @@ export async function verifyBinaryUsable(
 	const version = await verifyBinaryVersion(binPath, expectedVersion);
 	if (!version.ok) return version;
 
-	// A build with no `grep` subcommand is not a broken update (a downgrade to a
-	// release that predates it would otherwise roll back forever).
-	const help = await $`${binPath} grep --help`.quiet().nothrow();
-	if (help.exitCode !== 0) return version;
-
-	const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-update-check-"));
-	try {
-		await fs.promises.writeFile(path.join(dir, "probe.txt"), "veyyon-native-self-test\n");
-		const probe = await $`${binPath} grep veyyon-native-self-test ${dir}`.quiet().nothrow();
-		const output = `${probe.stdout.toString()}${probe.stderr.toString()}`;
-		if (probe.exitCode !== 0) {
-			return {
-				ok: false,
-				path: binPath,
-				actual: version.actual,
-				reason:
-					`${APP_NAME} ${expectedVersion} installed but cannot run a search ` +
-					`(\`grep\` exited ${probe.exitCode}), so its native addon did not load. ` +
-					`This usually means the release has no build for this platform. ` +
-					`Output was: ${output.trim()}`,
-			};
-		}
-		// Exit 0 is not enough on its own: a walker that returns nothing exits 0.
-		if (!output.includes("probe.txt")) {
-			return {
-				ok: false,
-				path: binPath,
-				actual: version.actual,
-				reason:
-					`${APP_NAME} ${expectedVersion} ran a search but did not find a file it was ` +
-					`pointed at, so the install is not usable. Output was: ${output.trim()}`,
-			};
-		}
-	} catch (err) {
-		return { ok: false, path: binPath, actual: version.actual, reason: errorMessage(err) };
-	} finally {
-		await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
-	}
+	const reason = await probeSearchWorks(binPath, `${APP_NAME} ${expectedVersion}, just installed,`);
+	if (reason !== undefined) return { ok: false, path: binPath, actual: version.actual, reason };
 	return version;
 }
 
@@ -933,6 +961,7 @@ export async function updateViaSourceAt(
 	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
 	exec: SourceUpdateExec = defaultSourceUpdateExec,
 	readCheckoutVersion: CheckoutVersionReader = defaultReadCheckoutVersion,
+	probe: SearchProbe = probeSearchWorks,
 ): Promise<void> {
 	// launcher = <checkout>/packages/coding-agent/scripts/veyyon
 	const resolvedLauncher = tryRealpath(launcherPath) ?? launcherPath;
@@ -994,6 +1023,17 @@ export async function updateViaSourceAt(
 				`Its branch probably does not track the branch the ${version} release was cut from. ` +
 				sourceInstallUpdateGuidance(launcherPath),
 		);
+	}
+	// A version file says what the checkout claims, not that it runs. Every step
+	// above can exit 0 and still leave a checkout that does not boot: `bun
+	// install` can land a partial tree, the regen step writes an artifact nobody
+	// loaded yet, and `natives ensure` stages an addon it never dlopens. The
+	// binary path proves the same thing the same way; a source install is a
+	// first-class consumer path and gets the same proof.
+	report("Verifying the updated checkout runs...");
+	const brokenReason = await probe(launcherPath, `The checkout at ${checkoutRoot}, now at ${version},`);
+	if (brokenReason !== undefined) {
+		throw new Error(`${brokenReason} ${sourceInstallUpdateGuidance(launcherPath)}`);
 	}
 	// Same reason as the binary path: the completion scripts on disk describe the
 	// version the checkout just left. The launcher is what the installer put on
