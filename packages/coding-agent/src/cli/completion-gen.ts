@@ -237,14 +237,22 @@ function bashFlagCase(bin: string, flags: CompletionFlag[]): string {
 }
 
 /** `case` labels for every root flag that consumes the following token. */
-function bashValueFlagLabels(flags: CompletionFlag[]): string {
+/**
+ * Every spelling of a flag that consumes the token after it.
+ *
+ * The token following one of these is that flag's VALUE, never a subcommand.
+ * bash and fish both walk the command line looking for the subcommand and both
+ * got this wrong; they share this list so the two can never disagree about
+ * which flags take a value.
+ */
+function valueFlagLabels(flags: CompletionFlag[]): string[] {
 	const labels: string[] = [];
 	for (const f of flags) {
 		if (!takesValue(f.value)) continue;
 		labels.push(`--${f.name}`);
 		if (f.char) labels.push(`-${f.char}`);
 	}
-	return labels.join("|");
+	return labels;
 }
 
 function bashFlagWords(flags: CompletionFlag[]): string {
@@ -333,8 +341,8 @@ ${bashFlagCase(bin, c.flags)}
 	// user was naming a model — so the root completions vanished and the
 	// subcommand's produced nothing. Only root flags can appear before a
 	// subcommand, so those are the only labels needed here.
-	const valueFlagLabels = bashValueFlagLabels(spec.root.flags);
-	const valueFlagArm = valueFlagLabels ? `\t\t\t${valueFlagLabels})\n\t\t\t\tskip=1\n\t\t\t\t;;` : "";
+	const rootValueFlags = valueFlagLabels(spec.root.flags).join("|");
+	const valueFlagArm = rootValueFlags ? `\t\t\t${rootValueFlags})\n\t\t\t\tskip=1\n\t\t\t\t;;` : "";
 	const dispatch: string[] = [];
 	for (const c of spec.commands) {
 		dispatch.push(`\t\t${commandTokens(c).join("|")})\n\t\t\t_veyyon_cmd_${bashFn(c.name)}\n\t\t\t;;`);
@@ -579,14 +587,55 @@ function generateFish(spec: CompletionSpec): string {
 	lines.push(`end`);
 	lines.push("");
 
-	const allTokens = spec.commands.flatMap(commandTokens);
-	lines.push(`function __fish_veyyon_no_subcommand`);
-	lines.push(`\tfor i in (commandline -opc)`);
-	lines.push(`\t\tif contains -- $i ${allTokens.join(" ")}`);
-	lines.push(`\t\t\treturn 1`);
+	// The subcommand actually in play, echoed as its canonical name, or nothing
+	// when the line is still at the root.
+	//
+	// fish ships __fish_seen_subcommand_from, but it matches any earlier token
+	// against a name list, so `veyyon --model commit` reads as the `commit`
+	// subcommand while the user is naming a model: root completions vanish and
+	// commit's appear in their place. The token after a value-taking root flag is
+	// that flag's value, so this skips it. Only root flags can precede a
+	// subcommand, which is why that is the only list needed here.
+	const rootValueFlags = valueFlagLabels(spec.root.flags);
+	lines.push(`function __veyyon_subcommand`);
+	lines.push(`\tset -l tokens (commandline -opc)`);
+	// Drop the command name itself. A slice would have to cope with the
+	// one-element list you get at `veyyon <TAB>`; erasing the first element does
+	// not.
+	lines.push(`\tset -e tokens[1]`);
+	lines.push(`\tset -l skip 0`);
+	lines.push(`\tfor i in $tokens`);
+	lines.push(`\t\tif test $skip -eq 1`);
+	lines.push(`\t\t\tset skip 0`);
+	lines.push(`\t\t\tcontinue`);
 	lines.push(`\t\tend`);
+	if (rootValueFlags.length > 0) {
+		lines.push(`\t\tif contains -- $i ${rootValueFlags.join(" ")}`);
+		lines.push(`\t\t\tset skip 1`);
+		lines.push(`\t\t\tcontinue`);
+		lines.push(`\t\tend`);
+	}
+	lines.push(`\t\tif string match -qr '^-' -- $i`);
+	lines.push(`\t\t\tcontinue`);
+	lines.push(`\t\tend`);
+	for (const c of spec.commands) {
+		lines.push(`\t\tif contains -- $i ${commandTokens(c).join(" ")}`);
+		lines.push(`\t\t\techo ${c.name}`);
+		lines.push(`\t\t\treturn`);
+		lines.push(`\t\tend`);
+	}
+	lines.push(`\t\treturn`);
 	lines.push(`\tend`);
-	lines.push(`\treturn 0`);
+	lines.push(`end`);
+	lines.push("");
+
+	lines.push(`function __fish_veyyon_no_subcommand`);
+	lines.push(`\ttest -z (__veyyon_subcommand)`);
+	lines.push(`end`);
+	lines.push("");
+
+	lines.push(`function __veyyon_using`);
+	lines.push(`\tcontains -- (__veyyon_subcommand) $argv`);
 	lines.push(`end`);
 	lines.push("");
 
@@ -608,7 +657,7 @@ function generateFish(spec: CompletionSpec): string {
 
 	// Per-subcommand flags and positional args.
 	for (const c of spec.commands) {
-		const cond = `__fish_seen_subcommand_from ${commandTokens(c).join(" ")}`;
+		const cond = `__veyyon_using ${c.name}`;
 		for (const f of c.flags) {
 			lines.push(fishFlagLine(bin, cond, f));
 		}
