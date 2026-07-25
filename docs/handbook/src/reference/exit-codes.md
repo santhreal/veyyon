@@ -17,5 +17,21 @@ Two guarantees hold everywhere:
   success.
 - A signal death is surfaced as a distinct non-zero code, never swallowed.
 
+The most useful distinction for a script is the one between `1` and `2`. A `1` means the invocation
+was valid and the attempt failed, so a retry may succeed. A `2` means the command line itself was
+wrong, so an identical retry cannot succeed. Check for `2` before you loop:
+
+```bash
+veyyon --print "$prompt"
+status=$?
+if [ "$status" -eq 2 ]; then
+  echo "fix the command line before retrying" >&2
+  exit 2
+fi
+```
+
+These codes come from one place in the source, `packages/coding-agent/src/cli/exit-codes.ts`, and a
+test asserts that this table and that module agree. If you add a code, add it to both.
+
 For the machine-readable event stream (including per-turn and per-tool outcomes), use the
 Agent Client Protocol mode (`veyyon acp`); see the [CLI reference](./cli.md).

@@ -27,6 +27,7 @@ import {
 import chalk from "chalk";
 import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
+import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "./cli/exit-codes";
 import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-flags";
 import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
@@ -916,7 +917,7 @@ export async function buildSessionOptions(
 				options.modelPattern = parsed.model;
 			} else {
 				process.stderr.write(`${chalk.red(resolved.error)}\n`);
-				process.exit(1);
+				process.exit(EXIT_FAILURE);
 			}
 		} else if (resolved.model) {
 			options.model = resolved.model;
@@ -1150,7 +1151,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 
 	if (parsedArgs.version) {
 		writeStartupNotice(parsedArgs, `${VERSION}\n`);
-		process.exit(0);
+		process.exit(EXIT_OK);
 	}
 
 	if (parsedArgs.export) {
@@ -1162,15 +1163,15 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : "Failed to export session";
 			process.stderr.write(`${chalk.red(`Error: ${message}`)}\n`);
-			process.exit(1);
+			process.exit(EXIT_FAILURE);
 		}
 		writeStartupNotice(parsedArgs, `Exported to: ${result}\n`);
-		process.exit(0);
+		process.exit(EXIT_OK);
 	}
 
 	if ((parsedArgs.mode === "rpc" || parsedArgs.mode === "rpc-ui") && parsedArgs.fileArgs.length > 0) {
 		process.stderr.write(`${chalk.red("Error: @file arguments are not supported in RPC mode")}\n`);
-		process.exit(1);
+		process.exit(EXIT_FAILURE);
 	}
 
 	// Kick off plugin-root preload in parallel with the remaining startup work.
@@ -1258,7 +1259,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			process.stderr.write(
 				"(If this is an extension flag, extensions were not loaded because stdin is not a TTY and no prompt was given.)\n",
 			);
-			process.exit(2);
+			process.exit(EXIT_USAGE);
 		}
 		if (parsedArgs.messages.length > 0) {
 			// Positional args were given — either a prompt missing `-p`, or a typo'd
@@ -1283,7 +1284,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 					'Pipe a prompt (`echo "…" | veyyon`), pass one with `-p "…"`, or run veyyon from an interactive terminal.\n',
 			);
 		}
-		process.exit(1);
+		process.exit(EXIT_FAILURE);
 	}
 	// Interactive mode's modes/components subtree is the largest single chunk of
 	// the boot module graph. Kick its load here so the parse overlaps with
@@ -1376,7 +1377,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			if (error.hint) {
 				process.stderr.write(`${chalk.dim(error.hint)}\n`);
 			}
-			process.exit(1);
+			process.exit(EXIT_FAILURE);
 		}
 		throw error;
 	}
@@ -1387,7 +1388,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	if (typeof parsedArgs.resume === "string" && !sessionManager) {
 		writeStartupNotice(parsedArgs, `${chalk.dim("Resume cancelled: session is in another project.")}\n`);
 		stopStartupWatchdog();
-		process.exit(0);
+		process.exit(EXIT_OK);
 	}
 
 	// Handle --resume (no value): show session picker
@@ -1404,7 +1405,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			if (preloadedAllSessions.length === 0) {
 				writeStartupNotice(parsedArgs, `${chalk.dim("No sessions found")}\n`);
 				stopStartupWatchdog();
-				process.exit(0);
+				process.exit(EXIT_OK);
 			}
 		}
 		pauseStartupWatchdog();
@@ -1422,7 +1423,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			// in-session `/resume` picker (selector-controller.ts) takes a different
 			// onCancel that just closes the overlay — only this startup path exits.
 			stopStartupWatchdog();
-			process.exit(0);
+			process.exit(EXIT_OK);
 		}
 		// Resuming a session from another project: switch the process into that
 		// project's directory and refresh cwd-derived caches before the session is
@@ -1500,7 +1501,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			process.stderr.write(
 				`${chalk.red("--api-key requires a model to be specified via --model, --provider/--model, or --models")}\n`,
 			);
-			process.exit(1);
+			process.exit(EXIT_FAILURE);
 		}
 		if (sessionOptions.model) {
 			authStorage.setRuntimeApiKey(sessionOptions.model.provider, parsedArgs.apiKey);
@@ -1557,7 +1558,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// tool calls (issue #2459). Exit code 2 matches the conventional
 		// "command line usage error" convention.
 		if (reportUnrecognizedFlags(initialArgs)) {
-			process.exit(2);
+			process.exit(EXIT_USAGE);
 		}
 		const processedFiles =
 			initialArgs.fileArgs.length > 0
@@ -1589,7 +1590,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			process.stderr.write(
 				'No prompt provided: pass a message (`veyyon -p "…"`) or pipe one on stdin (`echo "…" | veyyon -p`).\n',
 			);
-			process.exit(2);
+			process.exit(EXIT_USAGE);
 		}
 
 		const showStartupSplash = shouldShowStartupSplash({
@@ -1650,7 +1651,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			process.stderr.write(`${chalk.yellow("\nSet an API key environment variable:")}\n`);
 			process.stderr.write("  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, etc.\n");
 			process.stderr.write(`${chalk.yellow(`\nOr create ${ModelsConfigFile.path()}`)}\n`);
-			process.exit(1);
+			process.exit(EXIT_FAILURE);
 		}
 
 		if (mode === "rpc" || mode === "rpc-ui") {
@@ -1679,7 +1680,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			if ($env.VEYYON_TIMING) {
 				logger.printTimings();
 				if (logger.shouldExitAfterTimings()) {
-					process.exit(0);
+					process.exit(EXIT_OK);
 				}
 			}
 
