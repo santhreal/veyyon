@@ -43,6 +43,7 @@ import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import YAML from "yaml";
 import {
 	type ArmResult,
+	armCanaryFailure,
 	collectEmittedText,
 	type EncodeHeadroom,
 	effectiveTemperature,
@@ -824,6 +825,27 @@ async function main(): Promise<void> {
 					`  ${mostCommonAgentReason(hardErrors)}\n\n` +
 					`Fix the config (model id must be servable in the sandbox; see run.ts) and rerun. No report was written.`,
 			);
+		}
+		// The per-arm half. The global predicate above is disarmed permanently by a
+		// single success anywhere, so a 100%-dead arm running beside a healthy one
+		// never trips it: the run burns the whole queue and then reports a comparison
+		// against an arm that produced nothing. That is the argot failure already seen
+		// once. Aborting here names the dead arm, because "some arm is broken" sends
+		// the operator looking at the wrong config.
+		if (!canaryTripped) {
+			const deadArm = armCanaryFailure(results, canarySize);
+			if (deadArm !== undefined) {
+				canaryTripped = true;
+				const armErrors = results.filter(r => r.arm === deadArm && isHardError(r)).map(r => r.error ?? "");
+				console.error(
+					`\nABORTING: every one of the ${armErrors.length} completed trials for arm "${deadArm}" failed before ` +
+						`the agent produced any output. Other arms are running, so this is not a global config failure — ` +
+						`it is "${deadArm}" specifically, and the remaining ${queue.length} queued trials would leave you ` +
+						`with a comparison against an arm that produced nothing. Most common agent-side reason:\n\n` +
+						`  ${mostCommonAgentReason(armErrors)}\n\n` +
+						`Fix that arm's config and rerun. No report was written.`,
+				);
+			}
 		}
 	}
 
