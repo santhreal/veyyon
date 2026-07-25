@@ -37,17 +37,34 @@
 type FoldClass = "run" | "pass" | "noTestFiles" | "packageOk";
 
 /**
- * Patterns for Go's test bookkeeping.
+ * Per-test bookkeeping, across the runners an agent actually meets.
  *
- * Anchored at line start, and deliberately narrow. A pattern that matched a
- * test's own stdout would delete real output, which is unrecoverable, so each
- * one requires the exact shape `go test` emits.
+ * Anchored at line start and deliberately narrow. A pattern that matched a
+ * test's own stdout would delete real output, and that loss is unrecoverable,
+ * so each one requires the exact shape its runner emits: a bare `ok` or a line
+ * merely containing a tick mark is not enough.
+ *
+ * Every pattern here matches only a PASS, SKIP, or "ran" line. None of them can
+ * match a failure, which is what makes folding safe without inspecting the run
+ * as a whole. Adding a pattern that can match a failing line breaks that
+ * property, and the suite asserts it directly for exactly that reason.
  */
 const LINE_PATTERNS: ReadonlyArray<readonly [FoldClass, RegExp]> = [
+	// go test
 	["run", /^=== (?:RUN|CONT|PAUSE)\s+\S/],
 	["pass", /^\s*--- (?:PASS|SKIP): \S/],
 	["noTestFiles", /^\?\s+\S+\s+\[no test files\]$/],
 	["packageOk", /^ok\s+\S+\s+[\d.]+s(?: \(cached\))?$/],
+	// pytest -v: `tests/test_x.py::test_y PASSED [ 45%]`. The `::` and the
+	// terminal verdict are both required, so prose mentioning PASSED is safe.
+	["pass", /^\S+::\S+\s+(?:PASSED|SKIPPED|XFAIL|XPASS)(?:\s+\[\s*\d+%\])?$/],
+	// cargo test: `test module::name ... ok`
+	["pass", /^test \S+ \.\.\. (?:ok|ignored)$/],
+	// vitest / jest per-test tick, which always carries a leading indent and a
+	// space after the mark.
+	["pass", /^\s+[✓√] \S/],
+	// jest / vitest per-file verdict: `PASS  src/foo.test.ts`
+	["packageOk", /^\s*(?:PASS|SKIP)\s+\S+\.\S+$/],
 ];
 
 export interface FoldResult {
