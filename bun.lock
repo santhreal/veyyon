@@ -96,13 +96,13 @@
         "@veyyon/utils": "catalog:",
         "@veyyon/wire": "catalog:",
         "@xterm/headless": "catalog:",
+        "argot": "workspace:*",
         "arktype": "catalog:",
         "chalk": "catalog:",
         "diff": "catalog:",
         "fast-xml-parser": "catalog:",
         "handlebars": "catalog:",
         "header-generator": "catalog:",
-        "lexpack": "workspace:*",
         "linkedom": "catalog:",
         "lru-cache": "catalog:",
         "lucide-react": "catalog:",
@@ -149,7 +149,7 @@
       "name": "@veyyon/deepswe-bench",
       "version": "0.1.0",
       "dependencies": {
-        "lexpack": "workspace:*",
+        "argot": "workspace:*",
       },
     },
     "packages/hashline": {
@@ -165,7 +165,7 @@
       },
     },
     "packages/lexpack": {
-      "name": "lexpack",
+      "name": "argot",
       "version": "1.0.37",
       "dependencies": {
         "smol-toml": "catalog:",
@@ -328,8 +328,8 @@
         "@veyyon/hashline": "catalog:",
         "@veyyon/tui": "catalog:",
         "@veyyon/utils": "catalog:",
+        "argot": "workspace:*",
         "diff": "catalog:",
-        "lexpack": "workspace:*",
         "prettier": "catalog:",
         "regexp-tree": "catalog:",
       },
@@ -1056,6 +1056,8 @@
 
     "anynum": ["anynum@1.0.1", "", {}, "sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A=="],
 
+    "argot": ["argot@workspace:packages/lexpack"],
+
     "argparse": ["argparse@1.0.10", "", { "dependencies": { "sprintf-js": "~1.0.2" } }, "sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg=="],
 
     "arkregex": ["arkregex@0.0.8", "", { "dependencies": { "@ark/util": "0.56.2" } }, "sha512-PJcx6G1kQTgLKPUbeYlYecDRaKq15AMSGVajlKFYWlPeJRQL+j3dKE6tyMs40HZ99djS1l9Vhl3ezAHy9JBIqQ=="],
@@ -1309,8 +1311,6 @@
     "jszip": ["jszip@3.10.1", "", { "dependencies": { "lie": "~3.3.0", "pako": "~1.0.2", "readable-stream": "~2.3.6", "setimmediate": "^1.0.5" } }, "sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g=="],
 
     "kuler": ["kuler@2.0.0", "", {}, "sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A=="],
-
-    "lexpack": ["lexpack@workspace:packages/lexpack"],
 
     "lie": ["lie@3.3.0", "", { "dependencies": { "immediate": "~3.0.5" } }, "sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ=="],
 
