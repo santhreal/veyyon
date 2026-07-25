@@ -4,6 +4,7 @@
  * Tools should throw these instead of returning error text.
  * The agent loop catches and renders them appropriately.
  */
+import { errorMessage, isAbortError } from "@veyyon/utils";
 
 /**
  * Base error for tool execution failures.
@@ -79,6 +80,44 @@ export function throwIfAborted(signal?: AbortSignal, what?: string): void {
 	const { reason } = signal;
 	if (reason instanceof ToolAbortError) throw reason;
 	throw new ToolAbortError(abortMessage(reason, what), { cause: reason });
+}
+
+/**
+ * The error to throw for a tool failure, WITHOUT flattening a cancellation into
+ * one.
+ *
+ * Use `throw toolFailure(error)` instead of a bare
+ * `throw new ToolError(errorMessage(error))`, which is
+ * what nine sites across seven tools used to write. That line reads as a
+ * formatting step and is not one: it replaces whatever was thrown with a fresh
+ * object, so the name, the type, `cause` and any `ToolError.context` are gone. It
+ * costs nothing visible, because the MESSAGE is preserved and the message is what
+ * a reader looks at.
+ *
+ * What it costs is the ability of anything downstream to tell a cancellation from
+ * a failure. `write`'s atomic-commit path is the sharpest case: it calls
+ * `throwIfAborted` immediately before the rename precisely so a cancelled write
+ * leaves the original file intact, and then the surrounding catch rebuilt that
+ * `ToolAbortError` as a `ToolError`. The file was safe and the SIGNAL was lost, so
+ * the agent loop saw an ordinary write failure and its correct response to that is
+ * to try the write again.
+ *
+ * A `ToolError` is passed through rather than rewrapped for the same reason: it is
+ * already the right type, and rebuilding it discards the `context` record it
+ * carries. Only a foreign error becomes a new `ToolError`.
+ *
+ * It RETURNS the error rather than throwing it, so the `throw` stays visible at
+ * the call site. A `never`-returning helper reads slightly shorter and costs the
+ * reader the ability to see that the line terminates, which in a catch block is
+ * the only thing about it worth seeing.
+ *
+ * @param what Optional message replacing the error's own, for the cases that want
+ *   to say something more useful than the underlying failure did.
+ */
+export function toolFailure(error: unknown, what?: string): Error {
+	if (isAbortError(error)) return error as Error;
+	if (error instanceof ToolError && what === undefined) return error;
+	return new ToolError(what ?? errorMessage(error), error instanceof ToolError ? error.context : undefined);
 }
 
 /**

@@ -131,7 +131,7 @@ import {
 	renderTableList,
 	resolveTableRowLookup,
 } from "./sqlite-reader";
-import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
+import { ToolAbortError, ToolError, throwIfAborted, toolFailure } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
 // Per-session memo for tree-sitter summaries. `summarizeCode` is a pure function
@@ -1989,7 +1989,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (error instanceof ToolError) {
 				throw error;
 			}
-			throw new ToolError(errorMessage(error));
+			throw toolFailure(error);
 		} finally {
 			db?.close();
 		}
