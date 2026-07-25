@@ -1127,9 +1127,9 @@ mod tests {
 
 	/// Regression: `rm -rf ""` must never delete the shell working directory.
 	///
-	/// An empty operand used to reach `veyyon_uutils_ctx::resolve`, which joins ""
-	/// onto the cwd and yields the cwd itself, so `-rf` recursively removed it
-	/// (issue #6287). The builtin now rejects the empty operand before
+	/// An empty operand used to reach `veyyon_uutils_ctx::resolve`, which joins
+	/// "" onto the cwd and yields the cwd itself, so `-rf` recursively removed
+	/// it (issue #6287). The builtin now rejects the empty operand before
 	/// resolution, leaving the cwd and its contents intact.
 	#[test]
 	fn empty_operand_does_not_delete_cwd() {
@@ -1147,10 +1147,17 @@ mod tests {
 
 		// Unique disposable working directory with a sentinel file inside it.
 		static COUNTER: AtomicU32 = AtomicU32::new(0);
-		let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let nanos = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.unwrap()
+			.as_nanos();
 		let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-		let cwd = std::env::temp_dir()
-			.join(format!("veyyon-rm-empty-{}-{}-{}", std::process::id(), nanos, seq));
+		let cwd = std::env::temp_dir().join(format!(
+			"veyyon-rm-empty-{}-{}-{}",
+			std::process::id(),
+			nanos,
+			seq
+		));
 		std::fs::create_dir_all(&cwd).unwrap();
 		let sentinel = cwd.join("sentinel");
 		std::fs::write(&sentinel, b"keep me").unwrap();
@@ -1166,8 +1173,7 @@ mod tests {
 			cancel:                Arc::new(AtomicBool::new(false)),
 		};
 
-		let args =
-			vec![OsString::from("rm"), OsString::from("-rf"), OsString::new()];
+		let args = vec![OsString::from("rm"), OsString::from("-rf"), OsString::new()];
 		let code = scope(io, || crate::run(args));
 
 		// `rm -f` swallows the empty-operand error, matching GNU rm's exit 0.
