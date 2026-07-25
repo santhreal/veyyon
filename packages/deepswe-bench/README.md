@@ -185,12 +185,22 @@ Flags:
   bun run.ts --arms decode-budget16k,full-budget16k --tasks tasks/argot-10.txt \
     --model google-antigravity/gemini-3.5-flash --jobs 2 --dry-run
   ```
-- `--trial-timeout S` — wall-clock ceiling for a single trial, in seconds
-  (default `900`, i.e. 15 minutes). A trial that exceeds it is failed with
-  `trial timed out after Ns` rather than being allowed to hold a container
-  indefinitely. Raise it for genuinely long tasks; a run where many trials report
-  that error is measuring the timeout rather than the arm, so check this before
-  reading such a result as a difference between arms.
+- `--trial-timeout S` — wall-clock ceiling for a single trial, in seconds. There
+  is no flat default. Each task gets the budget its own `task.toml` declares:
+  `[environment].build_timeout_sec` plus `[agent].timeout_sec` plus
+  `[verifier].timeout_sec`, because the harness runs one timer across all three
+  phases. On the DeepSWE corpus that comes out at 1800 + 5400 + 1800 = 9000s for
+  a 90-minute task and correspondingly less for a 30-minute one.
+
+  Pass the flag only when you deliberately want a shorter run, and read the
+  result knowing what you gave up. A flat ceiling below a task's budget does not
+  make the task shorter, it truncates it, and the truncation is not neutral
+  between arms: any arm that is slower per turn eats more truncations, so a flat
+  timeout converts "this arm spends more wall clock per turn" into "this arm
+  solves fewer tasks". When the flag truncates any selected task, the run says so
+  before it starts. Trials the harness kills are reported separately from agent
+  failures (`n (+E err, T timed out)`), and a reward or efficiency delta between
+  two arms whose timeout counts differ is not attributable to the arms.
 - `--jobs N` — concurrent Pier runs. Each task container takes 2 cpu / 8 GB;
   2 is safe on a 16-core/64 GB machine, 4 is the practical ceiling.
 - `--model <provider/id>` — the model under test. When the arm gates behavior

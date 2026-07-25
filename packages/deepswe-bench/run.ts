@@ -67,6 +67,13 @@ import {
 	tallyUsage,
 } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+import {
+	parseTaskTimeBudget,
+	parseTrialTimeoutFlag,
+	type ResolvedTrialTimeout,
+	resolveTrialTimeout,
+	truncationWarning,
+} from "./trial-timeout";
 import { type CredentialProbe, decideAuthPreflight, describeAuthPreflightFailure } from "./auth-preflight";
 import { decideAuthSeed } from "./auth-seed";
 import { encodeArmModelMismatch, encodePreambleSilentlyDropped, isEncodeArm } from "./treatment-guard";
@@ -557,8 +564,16 @@ async function main(): Promise<void> {
 	const repeats = rawRepeats;
 	const rawJobs = Number(args.jobs ?? "2");
 	const jobParallel = Number.isFinite(rawJobs) && rawJobs > 0 ? Math.floor(rawJobs) : 2;
-	const rawTrialTimeout = Number(args["trial-timeout"] ?? "900");
-	const trialTimeoutSec = Number.isFinite(rawTrialTimeout) && rawTrialTimeout > 0 ? rawTrialTimeout : 900;
+	// No flat default. A trial's timeout comes from the task's own task.toml
+	// budget unless the operator overrides it; see trial-timeout.ts for why a
+	// flat number is a validity threat rather than a scheduling preference.
+	let trialTimeoutOverrideSec: number | undefined;
+	try {
+		trialTimeoutOverrideSec = parseTrialTimeoutFlag(args["trial-timeout"]);
+	} catch (err) {
+		console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+		process.exit(1);
+	}
 	let limit: number | undefined;
 	if (args.limit !== undefined) {
 		const parsedLimit = Number(args.limit);
@@ -615,8 +630,32 @@ async function main(): Promise<void> {
 	for (const arm of arms) {
 		requireFile(path.join(BENCH_DIR, "arms", `${arm}.yml`), `create arms/${arm}.yml`);
 	}
+	// Resolve every task's timeout up front rather than inside runOne, so a task
+	// with an unreadable budget fails at preflight instead of forty containers in.
+	const trialTimeouts = new Map<string, ResolvedTrialTimeout>();
 	for (const task of tasks) {
-		requireFile(path.join(tasksRoot, task, "task.toml"), `no such DeepSWE task: ${task}`);
+		const taskToml = path.join(tasksRoot, task, "task.toml");
+		requireFile(taskToml, `no such DeepSWE task: ${task}`);
+		try {
+			const budget = parseTaskTimeBudget(fs.readFileSync(taskToml, "utf8"), task);
+			trialTimeouts.set(task, resolveTrialTimeout(budget, trialTimeoutOverrideSec));
+		} catch (err) {
+			console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+			process.exit(1);
+		}
+	}
+	const truncation = truncationWarning(trialTimeouts);
+	if (truncation) console.error(truncation);
+	const undeclaredPhases = [...trialTimeouts].filter(([, r]) => r.missingPhases.length > 0);
+	if (undeclaredPhases.length > 0) {
+		// Summing an undeclared phase as zero under-budgets the trial by exactly
+		// the amount nobody wrote down, so say which tasks are affected.
+		const [firstTask, firstResolved] = undeclaredPhases[0] as [string, ResolvedTrialTimeout];
+		console.error(
+			`warning: ${undeclaredPhases.length} task(s) declare no budget for some trial phase ` +
+				`(e.g. ${firstTask} omits ${firstResolved.missingPhases.join(", ")}); those phases contribute 0s ` +
+				`to the derived trial timeout.`,
+		);
 	}
 	const pier = Bun.which("pier") ?? `${os.homedir()}/.local/bin/pier`;
 	if (!fs.existsSync(pier)) {
@@ -879,6 +918,11 @@ async function main(): Promise<void> {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
+		// Preflight populated this for every selected task, so a miss here is a
+		// programming error rather than a runtime condition to paper over.
+		const resolvedTimeout = trialTimeouts.get(task);
+		if (!resolvedTimeout) throw new Error(`internal: no resolved trial timeout for task ${task}`);
+		const trialTimeoutSec = resolvedTimeout.timeoutSec;
 		let timedOut = false;
 		const timer = setTimeout(() => {
 			timedOut = true;

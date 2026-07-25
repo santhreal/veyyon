@@ -1230,6 +1230,117 @@ export function costIsUnpriced(s: CellSummary): boolean {
 }
 
 /**
+ * Share of a cell's attempts the HARNESS killed rather than the agent losing.
+ *
+ * Null when the cell has no attempts, for the same reason every other rate here
+ * is: a rate over zero samples is not zero, it is absent.
+ */
+export function timeoutRate(s: CellSummary): number | null {
+	return s.n === 0 ? null : s.timedOut / s.n;
+}
+
+/** Why a pair's delta is or is not attributable to the arms. */
+export interface TimeoutAttribution {
+	/** Timed-out attempts on each side. */
+	readonly timedOutA: number;
+	readonly timedOutB: number;
+	/** {@link timeoutRate} on each side; null when that side ran nothing. */
+	readonly rateA: number | null;
+	readonly rateB: number | null;
+	/** |rateB - rateA|, or null when either side has no rate. */
+	readonly rateGap: number | null;
+	/** True when the delta cannot be charged to the arms. */
+	readonly unattributable: boolean;
+}
+
+/**
+ * Whether a REWARD-shaped delta between two arms survives their timeout gap.
+ *
+ * A timed-out attempt is folded into the pass rate and the mean reward as a
+ * zero, which is right (the arm produced no passing patch) only as long as both
+ * arms are truncated equally. They are not: an arm that is slower per turn hits
+ * the harness ceiling more often, so a timeout gap injects exactly the zeros
+ * that make the slower arm look worse. The criterion is therefore whether the
+ * gap is big enough to have PRODUCED the delta: when the timeout-rate gap is at
+ * least as large as the measured effect, the effect could be entirely harness
+ * truncation and no verdict may be printed. A smaller gap can shade the number
+ * but cannot manufacture it.
+ */
+export function rewardDeltaAttribution(
+	a: CellSummary,
+	b: CellSummary,
+	observedDelta: number | null,
+): TimeoutAttribution {
+	const rateA = timeoutRate(a);
+	const rateB = timeoutRate(b);
+	const rateGap = rateA === null || rateB === null ? null : Math.abs(rateB - rateA);
+	const base = { timedOutA: a.timedOut, timedOutB: b.timedOut, rateA, rateB, rateGap };
+	if (rateGap === null || rateGap === 0) return { ...base, unattributable: false };
+	// With no measured delta there is nothing for the gap to explain away, so the
+	// gap alone is not a reason to withhold a verdict that was never reached.
+	if (observedDelta === null) return { ...base, unattributable: false };
+	return { ...base, unattributable: rateGap >= Math.abs(observedDelta) };
+}
+
+/**
+ * Whether a TOKEN- or COST-shaped delta between two arms survives their timeout
+ * gap.
+ *
+ * Stricter than {@link rewardDeltaAttribution}, and deliberately so. A timed-out
+ * attempt records no token counts at all, so it is dropped from every token and
+ * cost mean. The dropped attempts are not a random sample: they are the slowest
+ * runs by construction, which is the same direction the metric measures. Any
+ * difference in how many each arm dropped means the two means were taken over
+ * differently-censored subsets, and no threshold makes that comparable. So the
+ * bar here is any gap at all, not a proportional one.
+ */
+export function efficiencyDeltaAttribution(a: CellSummary, b: CellSummary): TimeoutAttribution {
+	const rateA = timeoutRate(a);
+	const rateB = timeoutRate(b);
+	return {
+		timedOutA: a.timedOut,
+		timedOutB: b.timedOut,
+		rateA,
+		rateB,
+		rateGap: rateA === null || rateB === null ? null : Math.abs(rateB - rateA),
+		unattributable: a.timedOut !== b.timedOut,
+	};
+}
+
+/** The verdict text that replaces a winner when a delta is not attributable. */
+export const TIMEOUT_UNATTRIBUTABLE_VERDICT = "not attributable (timeout gap)";
+
+/**
+ * The report-wide banner for a run that lost trials to the harness.
+ *
+ * Returns `undefined` when no arm timed out, so the caller prints it only when
+ * there is something to say. It is a banner rather than a footnote because the
+ * arm tables below it are the ones a reader acts on, and a reader who has
+ * already decided which arm won will not go looking for the caveat.
+ */
+export function timeoutAttributionBanner(results: readonly ArmResult[], arms: readonly string[]): string | undefined {
+	const cells = arms.map(arm => ({ arm, s: summarizeCell(results.filter(r => r.arm === arm)) }));
+	const timedOut = cells.filter(c => c.s.timedOut > 0);
+	if (timedOut.length === 0) return undefined;
+	const counts = timedOut.map(c => `${c.arm}: ${c.s.timedOut}/${c.s.n}`).join(", ");
+	const uneven = new Set(cells.map(c => c.s.timedOut)).size > 1;
+	return (
+		`> **The harness killed trials in this run** (${counts}). A timed-out trial is not an agent failure: ` +
+		"it is a trial the bench cut off, and it records no token or cost measurement at all. Timeouts are " +
+		"counted as fails in the pass rate and mean reward, and excluded from every token and cost mean.\n" +
+		">\n" +
+		(uneven
+			? "> The arms did NOT time out equally, so some deltas below are marked " +
+				`\`${TIMEOUT_UNATTRIBUTABLE_VERDICT}\`. An arm that is slower per turn hits the ceiling more ` +
+				"often, which injects exactly the zeros that make it look worse on reward and drops exactly the " +
+				"slowest runs from its token means. Rerun without `--trial-timeout` (the per-task budget from " +
+				"`task.toml` is the default) before comparing those pairs.\n"
+			: "> Every arm timed out the same number of times, so the deltas below are still paired against a " +
+				"comparable censoring. The absolute pass rates are still depressed by the truncation.\n")
+	);
+}
+
+/**
  * Render a cell's cost honestly. When the cell is {@link costIsUnpriced}, return
  * `unpriced` (for a summed total) or `—` (for a per-task mean) instead of a
  * dollar figure, so a subscription-tier model whose provider never reported a
@@ -1670,6 +1781,19 @@ export function renderReport(
 	}
 	if (arms.length >= 2) {
 		lines.push("");
+		// Cells keyed by arm, computed once: three comparison tables below ask the
+		// same timeout question and must not each re-derive it (ONE PLACE).
+		const armCells = new Map(arms.map(arm => [arm, summarizeCell(results.filter(r => r.arm === arm))]));
+		const cellOf = (arm: string): CellSummary => {
+			const s = armCells.get(arm);
+			if (!s) throw new Error(`internal: no summary for arm ${arm}`);
+			return s;
+		};
+		const timeoutBanner = timeoutAttributionBanner(results, arms);
+		if (timeoutBanner) {
+			lines.push(timeoutBanner);
+			lines.push("");
+		}
 		lines.push("## Arm comparison (paired by task)");
 		lines.push("");
 		lines.push(
@@ -1715,11 +1839,17 @@ export function renderReport(
 			// Holm-adjusted bar, the null is uninformative — say "underpowered" so the reader
 			// adds tasks instead of concluding the arms are equivalent.
 			const underpowered = !decisive && !sweepCanReachSignificance(d.wins + d.losses, armTested.length);
-			const verdict = decisive
-				? `${d.meanDelta !== null && d.meanDelta > 0 ? d.armB : d.armA} better (adj p<0.05)`
-				: underpowered
-					? "not distinguishable (underpowered)"
-					: "not distinguishable";
+			// The timeout guard outranks significance: a delta a timeout gap could
+			// have produced is not a finding about the arms no matter how small its
+			// p-value, so it must not be printed as one.
+			const attribution = rewardDeltaAttribution(cellOf(d.armA), cellOf(d.armB), d.meanDelta);
+			const verdict = attribution.unattributable
+				? TIMEOUT_UNATTRIBUTABLE_VERDICT
+				: decisive
+					? `${d.meanDelta !== null && d.meanDelta > 0 ? d.armB : d.armA} better (adj p<0.05)`
+					: underpowered
+						? "not distinguishable (underpowered)"
+						: "not distinguishable";
 			lines.push(
 				`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.wins}-${d.losses}-${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 			);
@@ -1755,8 +1885,13 @@ export function renderReport(
 				const adjP = rewardAdjByPair.get(`${d.armA}→${d.armB}`);
 				const sig = adjP !== undefined && adjP < 0.05;
 				const rUnderpowered = !sig && !sweepCanReachSignificance(d.pos + d.neg, rewardTested.length);
-				const verdict =
-					sig && d.meanDelta !== null && d.meanDelta > 0
+				// Same guard as the pass-rate table, and it matters more here: a
+				// timeout enters the mean reward as a hard zero, so a timeout gap moves
+				// this metric directly.
+				const rAttribution = rewardDeltaAttribution(cellOf(d.armA), cellOf(d.armB), d.meanDelta);
+				const verdict = rAttribution.unattributable
+					? TIMEOUT_UNATTRIBUTABLE_VERDICT
+					: sig && d.meanDelta !== null && d.meanDelta > 0
 						? `${d.armB} higher reward`
 						: sig && d.meanDelta !== null && d.meanDelta < 0
 							? `${d.armB} lower reward`
@@ -1889,15 +2024,22 @@ export function renderReport(
 				// delta is only a real null if a clean sweep at this decisive-task count could
 				// have cleared the Holm bar for this metric's family. Otherwise flag it.
 				const effUnderpowered = !sig && !sweepCanReachSignificance(d.pos + d.neg, metricTested.length);
-				const verdict = cheaperSig
-					? passHeld
-						? `${d.armB} cheaper, reward held`
-						: `${d.armB} cheaper BUT reward dropped`
-					: sig && d.meanDelta !== null && d.meanDelta > 0
-						? `${d.armB} dearer`
-						: effUnderpowered
-							? "not distinguishable (underpowered)"
-							: "not distinguishable";
+				// A timed-out trial records no tokens, so it is dropped from these
+				// means, and the dropped runs are the slowest ones. Any gap in how many
+				// each arm dropped means the two means were censored differently, which
+				// no p-value repairs.
+				const effAttribution = efficiencyDeltaAttribution(cellOf(d.armA), cellOf(d.armB));
+				const verdict = effAttribution.unattributable
+					? TIMEOUT_UNATTRIBUTABLE_VERDICT
+					: cheaperSig
+						? passHeld
+							? `${d.armB} cheaper, reward held`
+							: `${d.armB} cheaper BUT reward dropped`
+						: sig && d.meanDelta !== null && d.meanDelta > 0
+							? `${d.armB} dearer`
+							: effUnderpowered
+								? "not distinguishable (underpowered)"
+								: "not distinguishable";
 				lines.push(
 					`| ${m.label} | ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} ${m.unit} | ${ci} | ${cheaperB}/${dearerB}/${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
 				);
