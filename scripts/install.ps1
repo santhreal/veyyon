@@ -257,6 +257,33 @@ function Invoke-Doctor {
     } else {
         throw "$BinName did not run after install ('$Command --version' failed)"
     }
+    # Both names the user might type must reach the copy just installed (mirrors
+    # check_not_shadowed in install.sh).
+    $binDir = Split-Path -Parent $Command
+    foreach ($name in @($BinName, $AliasName)) {
+        Test-NotShadowed -Name $name -WantDir $binDir
+    }
+}
+
+# Report whether `$Name` on PATH is the copy just installed into `$WantDir`.
+# A stale copy earlier on PATH (a previous `bun add -g`, an old manual install)
+# silently wins every future invocation, so mere presence on PATH is not enough:
+# the resolved location is compared and a mismatch is reported LOUDLY. Compared
+# by directory because the alias shim and the binary are different files in the
+# same directory. Not fatal: the binary itself is fine and the user fixes PATH.
+function Test-NotShadowed {
+    param([string]$Name, [string]$WantDir)
+    $found = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $found -or -not $found.Source) {
+        Write-Host "!!  '$Name' not on PATH yet (open a new terminal, or add $WantDir to PATH)" -ForegroundColor Yellow
+        return
+    }
+    $gotDir = Split-Path -Parent $found.Source
+    if ($gotDir -and $WantDir -and ($gotDir.TrimEnd('\') -ieq $WantDir.TrimEnd('\'))) {
+        Write-Host "OK  '$Name' on PATH resolves to this install" -ForegroundColor Green
+    } else {
+        Write-Host "!!  '$Name' on PATH resolves to $($found.Source), NOT the copy just installed in $WantDir - that older copy shadows this one and will keep running instead. Remove it, or put $WantDir earlier in PATH." -ForegroundColor Yellow
+    }
 }
 
 # Veyyon's packages resolve one another through Bun workspace and catalog
@@ -432,6 +459,17 @@ function Install-FromSource {
     try {
         bun install
         if ($LASTEXITCODE -ne 0) { throw "failed to install workspace dependencies" }
+        # A fresh clone lacks BOTH gitignored build artifacts, so provision them
+        # eagerly here (install.sh --source does the same, in the same order).
+        # Without this a Windows source install handed over an incomplete tree:
+        # the native addon was missing and the first launch either limped through
+        # the launcher self-heal or died at boot.
+        Write-Host "Generating tool views (packages/collab-web)..."
+        bun --cwd=packages/collab-web run gen:tool-views
+        if ($LASTEXITCODE -ne 0) { throw "failed to generate tool views (bun --cwd=packages/collab-web run gen:tool-views)" }
+        Write-Host "Ensuring native addon (packages/natives)..."
+        bun --cwd=packages/natives run ensure
+        if ($LASTEXITCODE -ne 0) { throw "failed to provision the native addon (bun --cwd=packages/natives run ensure)" }
     } finally {
         Pop-Location
     }
@@ -566,6 +604,14 @@ function Uninstall-Veyyon {
             $removed = $true
         }
     }
+    # A compiled binary probes for a staged addon next to itself; clear any
+    # veyyon_natives.*.node left beside the removed binary so uninstall leaves no
+    # orphaned native artifacts behind (mirrors the same sweep in install.sh).
+    foreach ($n in @(Get-ChildItem -Path $InstallDir -Filter "veyyon_natives.*.node" -File -ErrorAction SilentlyContinue)) {
+        Remove-Item -Force $n.FullName
+        Write-Host "OK  removed $($n.FullName)" -ForegroundColor Green
+        $removed = $true
+    }
     if (Test-BunInstalled) {
         bun remove -g $Package 2>$null | Out-Null
     }
@@ -580,6 +626,23 @@ function Uninstall-Veyyon {
             Remove-Item -Recurse -Force $SrcDir
             Write-Host "OK  removed source checkout $SrcDir" -ForegroundColor Green
         }
+        $removed = $true
+    }
+    # Reclaim the per-version native addon cache a binary install stages there
+    # (~150MB per version). The path shape is owned by getNativesDir() in
+    # packages/natives/native/loader-state.js — mirror it EXACTLY: honor
+    # $XDG_DATA_HOME/veyyon/natives only when $XDG_DATA_HOME/veyyon already exists
+    # (the loader's condition), otherwise ~/.veyyon/natives (os.homedir() is
+    # USERPROFILE on Windows). Only the `natives` cache subdir is removed; the
+    # user's auth/config/sessions under ~/.veyyon are left untouched.
+    if ($env:XDG_DATA_HOME -and (Test-Path (Join-Path $env:XDG_DATA_HOME "veyyon"))) {
+        $nativesCache = Join-Path $env:XDG_DATA_HOME "veyyon\natives"
+    } else {
+        $nativesCache = Join-Path $env:USERPROFILE ".veyyon\natives"
+    }
+    if (Test-Path $nativesCache) {
+        Remove-Item -Recurse -Force $nativesCache
+        Write-Host "OK  removed native addon cache $nativesCache" -ForegroundColor Green
         $removed = $true
     }
     if ($removed) {

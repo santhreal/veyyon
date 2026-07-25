@@ -19,10 +19,20 @@ import { engines, version } from "../package.json" with { type: "json" };
 import { atomicWriteFileSync } from "./atomic-write";
 import { withFileLockSync } from "./file-lock";
 import { isUuid } from "./regex";
+import { sleepSync } from "./sleep";
 import { errorMessage, isRecord } from "./type-guards";
 
 /** App name (e.g. "veyyon") */
 export const APP_NAME: string = "veyyon";
+
+/**
+ * The short launch alias installed next to the binary. Both installers create it
+ * (`ALIAS_NAME` in scripts/install.sh and scripts/install.ps1) and the shell
+ * completion generator registers completions under it, so every consumer must
+ * read this constant rather than re-hardcoding the string.
+ * `scripts/installer-alias-parity.test.ts` fails if the shell scripts drift.
+ */
+export const APP_ALIAS: string = "vey";
 
 /** Canonical marketing/docs site. Single owner — import, never re-hardcode. */
 export const SITE_URL: string = "https://veyyon.dev";
@@ -35,6 +45,15 @@ export const CONFIG_DIR_NAME: string = ".veyyon";
 
 /** Ordered main settings filenames: canonical write target first, legacy-compatible YAML fallback second. */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
+
+/**
+ * Bounded retry for a PRESENT-but-momentarily-unreadable global config (EMFILE /
+ * EBUSY / transient IO), so a rebuild's fd pressure cannot flip the credential
+ * posture. Small and fixed: this runs on the startup path, and the failure it
+ * covers clears in milliseconds or not at all.
+ */
+const GLOBAL_CONFIG_READ_RETRY_ATTEMPTS = 3;
+const GLOBAL_CONFIG_READ_RETRY_DELAY_MS = 5;
 
 /** Basename of the per-install UUID file at the config root (see {@link getInstallId}). */
 const INSTALL_ID_FILE = "install-id";
@@ -250,12 +269,33 @@ function readGlobalConfigRecord(): { record: Record<string, unknown>; filePath: 
 	const root = getBaseConfigRoot();
 	for (const filename of MAIN_CONFIG_FILENAMES) {
 		const filePath = path.join(root, filename);
-		let text: string;
-		try {
-			text = fs.readFileSync(filePath, "utf8");
-		} catch {
-			continue;
+		let text: string | undefined;
+		for (let attempt = 0; ; attempt++) {
+			try {
+				text = fs.readFileSync(filePath, "utf8");
+				break;
+			} catch (error) {
+				// ENOENT is the ONLY error that genuinely means "no config here" — fall
+				// through to the next candidate filename (and ultimately the empty
+				// default). Every OTHER read error (EMFILE under fd pressure while many
+				// rebuilt processes start at once, EBUSY/EIO, an NFS blip) means the file
+				// is PRESENT but momentarily unreadable. Treating that as "absent" would
+				// silently default `profileSharing` and RELOCATE the credential store to
+				// the empty shared dir — logging a `profileSharing:false` user out this
+				// run and back in the next. These are transient, so retry briefly; only a
+				// persistent failure surfaces loudly, and never as a silent posture flip.
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+				if (attempt < GLOBAL_CONFIG_READ_RETRY_ATTEMPTS) {
+					sleepSync(GLOBAL_CONFIG_READ_RETRY_DELAY_MS);
+					continue;
+				}
+				throw new Error(
+					`Global config ${filePath} could not be read: ${errorMessage(error)}. ` +
+						`The credential posture was NOT changed; restore the file's readability and retry.`,
+				);
+			}
 		}
+		if (text === undefined) continue;
 		let parsed: unknown;
 		try {
 			parsed = YAML.parse(text);
@@ -1389,6 +1429,36 @@ export function getAutoresearchRunDir(encodedProject: string, runId: number): st
 /** Get the path to agent.db (SQLite database for settings and auth storage). */
 export function getAgentDbPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "agent.db", "data");
+}
+
+/**
+ * The credential-store agent directory when profile-sharing redirects it to the
+ * machine-wide shared store, or `undefined` when each profile keeps its own
+ * store (sharing off).
+ *
+ * This is the ONE owner of the "sharing on → shared store" decision. Both the
+ * store opener (`discoverAuthStorage`, which passes this as `storeAgentDir`) and
+ * every "where do my logins live" message ({@link getActiveAuthDbPath}) resolve
+ * through it, so they can never point at different files. Before this existed,
+ * the store opened the shared `~/.veyyon/shared-auth/agent.db` while the login
+ * messages printed the per-profile `agent.db` computed straight from
+ * `getAgentDbPath()` — a sibling that is empty under sharing — so a user with
+ * working, shared credentials was told they lived in an empty file and it read
+ * as corruption.
+ */
+export function getSharedAuthStoreDirIfEnabled(): string | undefined {
+	return readGlobalProfileSharingSafe() ? getSharedAuthDir() : undefined;
+}
+
+/**
+ * The `agent.db` that actually holds credentials for the current profile right
+ * now: the machine-wide shared store when profile-sharing is on (the default),
+ * otherwise this profile's own store. Use this for any user-facing "credentials
+ * saved to …" message so it always names the exact file the store opens, never a
+ * sibling that may be empty.
+ */
+export function getActiveAuthDbPath(agentDir?: string): string {
+	return getAgentDbPath(getSharedAuthStoreDirIfEnabled() ?? agentDir ?? getAgentDir());
 }
 
 /** Get the last-seen-changelog-version marker file (~/.veyyon/agent/last-changelog-version). */

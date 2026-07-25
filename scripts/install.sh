@@ -148,6 +148,18 @@ completions_dir_for() {
     esac
 }
 
+# The filename each shell autoloads for a given command name. Single owner: both
+# install_completions and do_uninstall derive every path from this, so the two can
+# never disagree about what was written and what must be removed.
+completion_file_for() {
+    # $1 = shell, $2 = command name (BIN_NAME or ALIAS_NAME)
+    case "$1" in
+        bash) echo "$2" ;;
+        zsh)  echo "_$2" ;;
+        fish) echo "$2.fish" ;;
+    esac
+}
+
 install_completions() {
     bin="$1"
     "$bin" completions --help >/dev/null 2>&1 || {
@@ -158,16 +170,69 @@ install_completions() {
         out=$(completions_dir_for "$sh")
         [ -n "$out" ] || continue
         mkdir -p "$out" 2>/dev/null || continue
-        name="$BIN_NAME"; [ "$sh" = "zsh" ] && name="_$BIN_NAME"; [ "$sh" = "fish" ] && name="$BIN_NAME.fish"
-        if "$bin" completions "$sh" > "$out/$name" 2>/dev/null && [ -s "$out/$name" ]; then
+        name=$(completion_file_for "$sh" "$BIN_NAME")
+        # Generate to a temp first, then move into place: a completion file is
+        # sourced by the shell at startup, so a half-written one (disk full, the
+        # install killed mid-write) breaks every new shell the user opens. The
+        # binary path gets the same treatment in finalize_binary.
+        tmp="$out/.$name.$$"
+        if "$bin" completions "$sh" > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$out/$name"; then
             ok "installed $sh completions"
+            # bash and fish autoload a completion file by the command name being
+            # completed, so the `vey` alias needs its own file or it gets nothing
+            # (zsh needs none: the generated script's `#compdef` line names both).
+            alias_name=$(completion_file_for "$sh" "$ALIAS_NAME")
+            if [ -n "$alias_name" ] && [ "$sh" != "zsh" ]; then
+                if cp -f "$out/$name" "$out/$alias_name" 2>/dev/null; then
+                    ok "installed $sh completions for '$ALIAS_NAME'"
+                else
+                    warn "could not install $sh completions for '$ALIAS_NAME' (tab completion for '$ALIAS_NAME' unavailable)"
+                fi
+            fi
         else
             # Remove the empty/partial file and say so: this function's contract is
             # best-effort but never silent, so a failed shell must be visible.
-            rm -f "$out/$name" 2>/dev/null || true
+            rm -f "$tmp" 2>/dev/null || true
             warn "could not generate $sh completions (skipped)"
         fi
     done
+}
+
+# Where a command name actually resolves from, or "" when it is not on PATH.
+# Compared by DIRECTORY rather than by full path: the alias is a symlink to the
+# binary beside it, so the two names legitimately resolve to different files in
+# the same directory, and comparing dirs avoids needing a portable realpath.
+# Uses parameter expansion rather than `dirname`: doctor must keep working when
+# PATH is minimal or misconfigured, which is exactly the situation it exists to
+# diagnose, and forking an external for a string operation would fail there.
+dir_of() {
+    case "$1" in
+        */*) d="${1%/*}"; [ -n "$d" ] || d="/"; printf '%s' "$d" ;;
+        *)   printf '%s' "." ;;
+    esac
+}
+
+resolved_dir_for() {
+    p=$(command -v "$1" 2>/dev/null) || return 1
+    [ -n "$p" ] || return 1
+    dir_of "$p"
+}
+
+# Report whether `$1` on PATH is the copy we just installed into $2.
+# A stale copy earlier on PATH (an old `bun add -g` global, a distro package, a
+# previous manual install) silently wins every future invocation, so this is
+# checked and reported LOUDLY rather than assumed from mere presence on PATH.
+check_not_shadowed() {
+    name="$1"; want_dir="$2"
+    got_dir=$(resolved_dir_for "$name") || {
+        warn "'$name' not on PATH yet (restart your shell, or add $want_dir to PATH)"
+        return 0
+    }
+    if [ "$got_dir" = "$want_dir" ]; then
+        ok "'$name' on PATH resolves to this install"
+    else
+        warn "'$name' on PATH resolves to $got_dir/$name, NOT the copy just installed in $want_dir — that older copy shadows this one and will keep running instead. Remove it, or put $want_dir earlier in PATH."
+    fi
 }
 
 # ---- post-install self-check: prove the thing actually runs ----
@@ -180,7 +245,11 @@ doctor() {
     else
         die "$BIN_NAME did not run after install (\`$bin --version\` failed)"
     fi
-    if has "$ALIAS_NAME"; then ok "'$ALIAS_NAME' is on PATH"; else warn "'$ALIAS_NAME' not on PATH yet (restart your shell)"; fi
+    # Both names are checked: a user who types `veyyon` and a user who types the
+    # documented `vey` must each reach the binary that was just installed.
+    bin_dir=$(dir_of "$bin")
+    check_not_shadowed "$BIN_NAME" "$bin_dir"
+    check_not_shadowed "$ALIAS_NAME" "$bin_dir"
 }
 
 # ---- place a downloaded binary at its final path, atomically ----
@@ -242,6 +311,12 @@ do_uninstall() {
         for f in "$BIN_NAME" "$ALIAS_NAME"; do
             if [ -e "$d/$f" ] || [ -L "$d/$f" ]; then rm -f "$d/$f" && { ok "removed $d/$f"; removed=1; }; fi
         done
+        # A compiled binary probes for a staged addon next to itself; clear any
+        # `veyyon_natives.*.node` left beside the removed binary so uninstall does
+        # not leave orphaned native artifacts behind.
+        for n in "$d"/veyyon_natives.*.node; do
+            [ -e "$n" ] && rm -f "$n" && { ok "removed $n"; removed=1; }
+        done
     done
     if has bun; then bun remove -g "$PACKAGE" >/dev/null 2>&1 && ok "removed global $PACKAGE" || true; fi
     src="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"
@@ -259,10 +334,29 @@ do_uninstall() {
     fi
     for sh in bash zsh fish; do
         out=$(completions_dir_for "$sh")
-        for name in "$BIN_NAME" "_$BIN_NAME" "$BIN_NAME.fish"; do
-            [ -n "$out" ] && [ -e "$out/$name" ] && rm -f "$out/$name" && ok "removed $sh completion"
+        [ -n "$out" ] || continue
+        # Derive both filenames from the same owner install_completions writes
+        # through, so an alias completion can never be orphaned by an uninstall.
+        for cmd in "$BIN_NAME" "$ALIAS_NAME"; do
+            name=$(completion_file_for "$sh" "$cmd")
+            [ -n "$name" ] && [ -e "$out/$name" ] && rm -f "$out/$name" && ok "removed $sh completion for '$cmd'"
         done
     done
+    # Remove the per-version native addon cache a binary install stages there
+    # (~150MB per version). The path shape is owned by getNativesDir() in
+    # packages/natives/native/loader-state.js — mirror it EXACTLY: honor
+    # $XDG_DATA_HOME/veyyon/natives only when $XDG_DATA_HOME/veyyon already
+    # exists (the loader's condition), otherwise ~/.veyyon/natives. Only the
+    # `natives` cache subdir is removed; the user's auth/config/sessions under
+    # ~/.veyyon are left untouched.
+    if [ -n "${XDG_DATA_HOME:-}" ] && [ -d "$XDG_DATA_HOME/veyyon" ]; then
+        natives_cache="$XDG_DATA_HOME/veyyon/natives"
+    else
+        natives_cache="$HOME/.veyyon/natives"
+    fi
+    if [ -d "$natives_cache" ]; then
+        rm -rf "$natives_cache" && { ok "removed native addon cache $natives_cache"; removed=1; }
+    fi
     [ "$removed" -eq 1 ] && say "veyyon uninstalled." || say "nothing to uninstall."
 }
 
