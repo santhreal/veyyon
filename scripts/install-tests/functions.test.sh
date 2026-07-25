@@ -247,7 +247,10 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   fakebin="$_h/bin/veyyon"
   # Stands in for the real binary: `completions --help` succeeds, and each shell
   # emits a marker line so the test can assert real content, not just a nonempty file.
-  printf '#!/bin/sh\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon vey"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon vey"; exit 0 ;;\n  "completions fish") echo "complete -c vey -w veyyon"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  # The real binary binds the launch alias in the script itself, and drops that
+  # binding when asked with --no-alias; the stand-in mirrors both forms so the
+  # tests below can tell which one the installer requested.
+  printf '#!/bin/sh\nalias_part=" vey"\nfish_alias="\\ncomplete -c vey -w veyyon"\n[ "$3" = "--no-alias" ] && { alias_part=""; fish_alias=""; }\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon$alias_part"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon$alias_part"; exit 0 ;;\n  "completions fish") printf "complete -c veyyon -w veyyon%%b\\n" "$fish_alias"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
   # link_alias runs before install_completions, so the alias is already ours here.
   ln -s "$fakebin" "$_h/bin/vey"
@@ -260,9 +263,18 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   # zsh binds both names from the one autoloaded file's #compdef line, so a second
   # file would be dead weight — assert it is deliberately NOT written.
   check "zsh gets no redundant alias file (#compdef names both)" "$( [ -e "$zshdir/_vey" ] && echo present || echo absent )" "absent"
-  check "fish completion installed for veyyon" "$(cat "$fishdir/veyyon.fish" 2>/dev/null)" "complete -c vey -w veyyon"
-  check "fish completion installed for the vey alias" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c vey -w veyyon"
+  check "fish completion installed for veyyon" "$(cat "$fishdir/veyyon.fish" 2>/dev/null)" "complete -c veyyon -w veyyon
+complete -c vey -w veyyon"
+  check "fish completion installed for the vey alias" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c veyyon -w veyyon
+complete -c vey -w veyyon"
   check "no temp completion files were left behind" "$(ls -A "$bashdir" | grep -c '^\.')" "0"
+
+  # The positive twin of the no-alias rule: an alias this installer owns MUST be
+  # bound by the generated scripts, or the name the docs tell users to type has
+  # no completion at all.
+  check "an owned alias is bound by the bash script" "$(grep -c 'veyyon vey$' "$bashdir/veyyon")" "1"
+  check "an owned alias is bound by the zsh script" "$(grep -c 'veyyon vey$' "$zshdir/_veyyon")" "1"
+  check "an owned alias is bound by the fish script" "$(grep -c 'complete -c vey ' "$fishdir/veyyon.fish")" "1"
 
   # A failing generator must leave NO file at the final path — not an empty one,
   # and not a stale partial. This is the atomic-write half of the contract.
@@ -434,7 +446,10 @@ check "an unloaded completions dir never fails the install" "$?" "0"
   export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
   mkdir -p "$_h/bin"
   fakebin="$_h/bin/veyyon"
-  printf '#!/bin/sh\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon vey"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon vey"; exit 0 ;;\n  "completions fish") echo "complete -c vey -w veyyon"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  # The real binary binds the launch alias in the script itself, and drops that
+  # binding when asked with --no-alias; the stand-in mirrors both forms so the
+  # tests below can tell which one the installer requested.
+  printf '#!/bin/sh\nalias_part=" vey"\nfish_alias="\\ncomplete -c vey -w veyyon"\n[ "$3" = "--no-alias" ] && { alias_part=""; fish_alias=""; }\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon$alias_part"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon$alias_part"; exit 0 ;;\n  "completions fish") printf "complete -c veyyon -w veyyon%%b\\n" "$fish_alias"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
 
   # link_alias is the single owner of the verdict, and every one of its exits
@@ -473,9 +488,21 @@ check "an unloaded completions dir never fails the install" "$?" "0"
   link_alias "$_h/bin" >/dev/null 2>&1
   install_completions "$fakebin" >/dev/null 2>&1
 
-  check "our own bash completion is still installed" "$(cat "$bashdir/veyyon" 2>/dev/null)" "complete -F _veyyon veyyon vey"
+  check "our own bash completion is still installed" "$(cat "$bashdir/veyyon" 2>/dev/null)" "complete -F _veyyon veyyon"
   check "a foreign vey keeps its bash completion" "$(cat "$bashdir/vey" 2>/dev/null)" "complete -F _their_tool vey"
   check "a foreign vey keeps its fish completion" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c vey -a their-subcommand"
+
+  # Skipping only the alias FILE was never enough. The script written under OUR
+  # OWN name binds the alias too (`complete -F _veyyon veyyon vey`, `#compdef
+  # veyyon vey`), so bash and zsh applied our completions to the user's `vey`
+  # regardless of which files we did or did not copy. The installer now asks the
+  # binary not to bind it at all.
+  check "our bash script does not bind a foreign vey" \
+      "$(grep -c ' vey$' "$bashdir/veyyon" 2>/dev/null)" "0"
+  check "our zsh script does not bind a foreign vey" \
+      "$(grep -c ' vey$' "$(completions_dir_for zsh)/_veyyon" 2>/dev/null)" "0"
+  check "our fish script does not bind a foreign vey" \
+      "$(grep -c 'complete -c vey ' "$fishdir/veyyon.fish" 2>/dev/null)" "0"
 
   # And uninstall must not reclaim what install declined to write, either.
   ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )

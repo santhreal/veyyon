@@ -182,6 +182,16 @@ profile and adds one line to the profile that loads it:
 Uninstall removes that line and the script, and leaves the rest of your profile
 exactly as it was.
 
+If you already have your own `vey` command, the installer never creates that
+alias, and the completions it writes do not bind the name either. Every
+generated script normally completes both `veyyon` and `vey`, so binding it
+anyway would give your tool Veyyon's subcommands. You can ask for that form
+yourself:
+
+```console
+$ veyyon completions zsh --no-alias
+```
+
 ## Uninstall
 
 The installer removes everything it added, and only what it added: the binary, the `vey` alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.

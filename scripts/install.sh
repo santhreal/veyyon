@@ -327,12 +327,18 @@ install_completions() {
         [ -n "$out" ] || continue
         mkdir -p "$out" 2>/dev/null || continue
         name=$(completion_file_for "$sh" "$BIN_NAME")
+        # The generated script BINDS the alias as well as the binary name
+        # (`complete -F _veyyon veyyon vey`, `#compdef veyyon vey`, ...), so
+        # skipping only the alias FILE still left our completions attached to a
+        # `vey` the user owns. Ask the binary not to bind it at all.
+        alias_flag=""
+        [ "$ALIAS_IS_OURS" = 1 ] || alias_flag="--no-alias"
         # Generate to a temp first, then move into place: a completion file is
         # sourced by the shell at startup, so a half-written one (disk full, the
         # install killed mid-write) breaks every new shell the user opens. The
         # binary path gets the same treatment in finalize_binary.
         tmp="$out/.$name.$$"
-        if "$bin" completions "$sh" > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$out/$name"; then
+        if "$bin" completions "$sh" $alias_flag > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$out/$name"; then
             ok "installed $sh completions"
             # A written file that the shell never reads is not a working
             # completion, so say so here rather than letting the user discover

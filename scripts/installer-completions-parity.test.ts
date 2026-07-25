@@ -36,7 +36,7 @@ describe("every installer installs completions for the shells its platform has",
 		expect(installSh).toContain("install_completions() {");
 		expect(installSh).toContain("for sh in bash zsh fish; do");
 		expect(installSh).toContain('out=$(completions_dir_for "$sh")');
-		expect(installSh).toContain('"$bin" completions "$sh" > "$tmp"');
+		expect(installSh).toContain('"$bin" completions "$sh" $alias_flag > "$tmp"');
 	});
 
 	it("install.ps1 generates the PowerShell script from the binary it just installed", () => {

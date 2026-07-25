@@ -100,7 +100,11 @@ describe("generated completions bind the launch alias, not just the binary name"
 		expect(generateCompletion("zsh", solo).split("\n")[0]).toBe("#compdef veyyon");
 		// Matched on the word boundary, not a substring: `complete -c veyyon ...`
 		// also starts with "complete -c vey".
-		expect(generateCompletion("fish", solo).split("\n").filter(l => l.startsWith("complete -c vey "))).toEqual([]);
+		expect(
+			generateCompletion("fish", solo)
+				.split("\n")
+				.filter(l => l.startsWith("complete -c vey ")),
+		).toEqual([]);
 	});
 
 	it("ignores an alias that merely repeats the binary name", () => {
@@ -365,18 +369,30 @@ describe("generateCompletion('powershell')", () => {
 	it("carries both the long and short form of a flag", () => {
 		// PowerShell matches the token the user typed literally; omitting `-r`
 		// means `-r <tab>` offers sessions for `--resume` but not for `-r`.
-		expect(out).toContain("'--resume' = @{ Desc = 'Resume'; Value = @{ Kind = 'sessions'; Values = @(); Multiple = $false } }");
-		expect(out).toContain("'-r' = @{ Desc = 'Resume'; Value = @{ Kind = 'sessions'; Values = @(); Multiple = $false } }");
+		expect(out).toContain(
+			"'--resume' = @{ Desc = 'Resume'; Value = @{ Kind = 'sessions'; Values = @(); Multiple = $false } }",
+		);
+		expect(out).toContain(
+			"'-r' = @{ Desc = 'Resume'; Value = @{ Kind = 'sessions'; Values = @(); Multiple = $false } }",
+		);
 	});
 
 	it("bakes static enum and list candidates into the script", () => {
-		expect(out).toContain("'--thinking' = @{ Desc = 'Effort'; Value = @{ Kind = 'enum'; Values = @('low', 'high'); Multiple = $false } }");
-		expect(out).toContain("'--tools' = @{ Desc = 'Tools'; Value = @{ Kind = 'list'; Values = @('read', 'bash'); Multiple = $false } }");
+		expect(out).toContain(
+			"'--thinking' = @{ Desc = 'Effort'; Value = @{ Kind = 'enum'; Values = @('low', 'high'); Multiple = $false } }",
+		);
+		expect(out).toContain(
+			"'--tools' = @{ Desc = 'Tools'; Value = @{ Kind = 'list'; Values = @('read', 'bash'); Multiple = $false } }",
+		);
 	});
 
 	it("records whether a model flag takes one value or many", () => {
-		expect(out).toContain("'--model' = @{ Desc = 'Model to use'; Value = @{ Kind = 'models'; Values = @(); Multiple = $false } }");
-		expect(out).toContain("'--models' = @{ Desc = 'Model list'; Value = @{ Kind = 'models'; Values = @(); Multiple = $true } }");
+		expect(out).toContain(
+			"'--model' = @{ Desc = 'Model to use'; Value = @{ Kind = 'models'; Values = @(); Multiple = $false } }",
+		);
+		expect(out).toContain(
+			"'--models' = @{ Desc = 'Model list'; Value = @{ Kind = 'models'; Values = @(); Multiple = $true } }",
+		);
 	});
 
 	it("resolves dynamic candidates by asking the binary, exactly as the other shells do", () => {
@@ -397,7 +413,9 @@ describe("generateCompletion('powershell')", () => {
 	it("scopes a subcommand's flags to that subcommand", () => {
 		const table = out.slice(out.indexOf("$__veyyonCommandFlags = @{"), out.indexOf("$__veyyonCommandArgs = @{"));
 		expect(table).toContain("'commit' = @{");
-		expect(table).toContain("'--push' = @{ Desc = 'Push'; Value = @{ Kind = 'flag'; Values = @(); Multiple = $false } }");
+		expect(table).toContain(
+			"'--push' = @{ Desc = 'Push'; Value = @{ Kind = 'flag'; Values = @(); Multiple = $false } }",
+		);
 		// A subcommand alias must carry the same flags, or `wt --<tab>` is empty.
 		expect(table).toContain("'wt' = @{");
 	});
@@ -448,5 +466,62 @@ describe("generateCompletion('powershell')", () => {
 			commands: [{ name: "x", aliases: [], description: "first line\n  second line", flags: [], args: [] }],
 		});
 		expect(multiline).toContain("'x' = 'first line second line'");
+	});
+});
+
+/**
+ * Declining to CREATE the `vey` alias was never enough.
+ *
+ * The installers already refuse to overwrite a `vey` the user owns, and refuse
+ * to write a completion file under that name. But the script written under our
+ * OWN name binds the alias too — `complete -F _veyyon veyyon vey`, `#compdef
+ * veyyon vey`, `complete -c vey -w veyyon`, and a PowerShell registration
+ * naming both — so bash, zsh, fish, and PowerShell all applied our completions
+ * to the user's `vey` regardless of which files were copied. Their tool got our
+ * subcommands.
+ *
+ * `--no-alias` drops the binding at the source. Every generator reads the same
+ * `binAliases` list, so one empty list covers all four.
+ */
+describe("--no-alias omits the launch alias from every shell", () => {
+	const withoutAlias = { ...spec, binAliases: [] as readonly string[] };
+
+	it("bash binds only the binary name", () => {
+		expect(generateCompletion("bash", spec)).toContain("complete -F _veyyon veyyon vey");
+		// Matched as a whole line: `complete -F _veyyon veyyon` happens to contain
+		// the substring "veyyon vey" inside "_veyyon veyyon".
+		const lines = generateCompletion("bash", withoutAlias).split("\n");
+		expect(lines).toContain("complete -F _veyyon veyyon");
+		expect(lines).not.toContain("complete -F _veyyon veyyon vey");
+	});
+
+	it("zsh's #compdef line names only the binary", () => {
+		// zsh binds every name on that one line, so leaving `vey` there is the
+		// whole bug in a single token.
+		expect(generateCompletion("zsh", spec)).toContain("#compdef veyyon vey");
+		expect(generateCompletion("zsh", withoutAlias)).toContain("#compdef veyyon");
+		expect(generateCompletion("zsh", withoutAlias)).not.toContain("#compdef veyyon vey");
+	});
+
+	it("fish emits no wrapping rule for the alias", () => {
+		expect(generateCompletion("fish", spec)).toContain("complete -c vey -w veyyon");
+		expect(generateCompletion("fish", withoutAlias)).not.toContain("complete -c vey -w veyyon");
+	});
+
+	it("PowerShell registers the completer for the binary alone", () => {
+		expect(generateCompletion("powershell", withoutAlias)).toContain(
+			"Register-ArgumentCompleter -Native -CommandName 'veyyon' -ScriptBlock",
+		);
+		expect(generateCompletion("powershell", withoutAlias)).not.toContain("'veyyon', 'vey'");
+	});
+
+	it("everything else is unchanged, so the binary keeps full completion", () => {
+		// The alias is the only thing being dropped: a user who owns `vey` still
+		// gets every subcommand and flag when they type `veyyon`.
+		for (const shell of ["bash", "zsh", "fish", "powershell"] as const) {
+			const out = generateCompletion(shell, withoutAlias);
+			expect(out, `${shell} must still complete subcommands`).toContain("commit");
+			expect(out, `${shell} must still complete flags`).toContain("thinking");
+		}
 	});
 });

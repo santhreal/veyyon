@@ -134,3 +134,56 @@ describe("declining the alias also declines its completion file", () => {
 		expect(installSh).toContain("left $sh completion for '$ALIAS_NAME' alone");
 	});
 });
+
+/**
+ * Declining to CREATE the alias was only half the rule.
+ *
+ * Both installers already refuse to overwrite a `vey` the user owns, and refuse
+ * to write a completion file under that name. But the completion script written
+ * under our OWN name BINDS the alias too — `complete -F _veyyon veyyon vey`,
+ * `#compdef veyyon vey`, `complete -c vey -w veyyon`, and a PowerShell
+ * registration naming both — so every shell applied our completions to the
+ * user's `vey` regardless of which files were copied. Their tool completed our
+ * subcommands.
+ *
+ * `veyyon completions <shell> --no-alias` drops the binding at the source, and
+ * each installer passes it exactly when the alias is not its own.
+ */
+describe("an alias the installer does not own is not completed either", () => {
+	it("install.sh asks for --no-alias off the recorded ownership verdict", () => {
+		expect(installSh).toContain('[ "$ALIAS_IS_OURS" = 1 ] || alias_flag="--no-alias"');
+		expect(installSh).toContain('"$bin" completions "$sh" $alias_flag');
+	});
+
+	it("install.ps1 records the same verdict in one place and reads it", () => {
+		// Re-deriving ownership at the completion step is how the two answers
+		// drift; link_alias/Install-Alias is the only code that inspects the shim.
+		expect(installPs1).toContain("$Script:AliasIsOurs = $false");
+		expect(installPs1).toContain("$generated = & $BinPath completions powershell --no-alias 2>$null");
+	});
+
+	it("install.ps1 claims ownership only on the paths that wrote the shim", () => {
+		const fn = installPs1.slice(installPs1.indexOf("function Install-Alias {"));
+		const body = fn.slice(0, fn.indexOf("\n}\n"));
+		// Reset at entry, set on "already ours" and on a fresh write, and never
+		// set on the branch that leaves a foreign shim alone.
+		expect((body.match(/\$Script:AliasIsOurs = \$true/g) ?? []).length).toBe(2);
+		// The foreign branch returns immediately; nothing between the message and
+		// that return may claim ownership.
+		const from = body.indexOf("was not created by this installer");
+		const foreign = body.slice(from, body.indexOf("return", from));
+		expect(foreign).not.toContain("$Script:AliasIsOurs = $true");
+	});
+
+	it("install.ps1 decides the alias before it writes completions", () => {
+		// Reading the verdict before Install-Alias has run would read the initial
+		// false and drop the alias binding on every install.
+		for (const [alias, completions] of [
+			["Install-Alias -Target $shim", "Install-Completions -BinPath $shim"],
+			["Install-Alias -Target $OutPath", "Install-Completions -BinPath $OutPath"],
+		] as const) {
+			expect(installPs1.indexOf(alias)).toBeGreaterThan(-1);
+			expect(installPs1.indexOf(alias)).toBeLessThan(installPs1.indexOf(completions));
+		}
+	});
+});

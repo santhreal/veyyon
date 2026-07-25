@@ -4,8 +4,8 @@
  * The script is derived entirely from the declarative command/flag metadata
  * (see `cli/completion-gen.ts`), so it never drifts from the actual CLI surface.
  */
-import { APP_NAME, VERSION } from "@veyyon/utils";
-import { Args, type CliConfig, Command, type CommandCtor } from "@veyyon/utils/cli";
+import { APP_ALIAS, APP_NAME, VERSION } from "@veyyon/utils";
+import { Args, type CliConfig, Command, type CommandCtor, Flags } from "@veyyon/utils/cli";
 import { buildSpec, generateCompletion, type Shell } from "../cli/completion-gen";
 import { commands } from "../cli-commands";
 
@@ -24,6 +24,13 @@ export default class Completions extends Command {
 		}),
 	};
 
+	static flags = {
+		"no-alias": Flags.boolean({
+			description: `Do not bind the '${APP_ALIAS}' launch alias (for an install where that name is someone else's)`,
+			default: false,
+		}),
+	};
+
 	static examples = [
 		`# zsh: eval at startup, or write to a file in $fpath\n  eval "$(${APP_NAME} completions zsh)"`,
 		`# bash\n  eval "$(${APP_NAME} completions bash)"`,
@@ -32,7 +39,7 @@ export default class Completions extends Command {
 	];
 
 	async run(): Promise<void> {
-		const shell = this.argv[0];
+		const shell = this.argv.find(a => !a.startsWith("-"));
 		if (!isShell(shell)) {
 			if (shell) {
 				process.stderr.write(`Error: unsupported shell "${shell}"\n`);
@@ -54,7 +61,12 @@ export default class Completions extends Command {
 		}
 
 		const config: CliConfig = { bin: APP_NAME, version: VERSION, commands: map };
-		const spec = buildSpec(config, ROOT_COMMAND, aliasMap);
+		// Every generated script binds the launch alias as well as the binary
+		// name. An installer that declined to create `vey` (because the user
+		// already had one) must also decline to complete it, or our subcommands
+		// complete their tool.
+		const noAlias = this.argv.includes("--no-alias");
+		const spec = buildSpec(config, ROOT_COMMAND, aliasMap, { includeLaunchAlias: !noAlias });
 		await Bun.write(Bun.stdout, generateCompletion(shell, spec));
 	}
 }
