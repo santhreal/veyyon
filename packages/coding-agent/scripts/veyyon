@@ -30,6 +30,21 @@ cli=$scripts_dir/../src/cli.ts
 preload=$scripts_dir/veyyon.ts
 timing_preload=$scripts_dir/../../utils/src/module-timer.ts
 
+# Self-heal gitignored build artifacts a bare `git pull` leaves missing.
+# tool-views.generated.js is resolved at module PARSE time (a `with
+# {type:"text"}` import), so without it veyyon dies at boot, not at HTML
+# export — every freshly pulled source checkout hit this until regenerated
+# (2026-07-24). Regenerate here when absent; if that fails (deps not
+# installed), fail closed with the exact fix instead of the raw resolve error.
+tool_views=$scripts_dir/../src/export/html/tool-views.generated.js
+if [ ! -f "$tool_views" ]; then
+	echo "veyyon: regenerating missing build artifact (tool-views.generated.js)..." >&2
+	if ! bun --cwd="$scripts_dir/../../collab-web" run gen:tool-views >&2; then
+		echo "veyyon: could not regenerate it. Run: cd $scripts_dir/../../.. && bun install" >&2
+		exit 1
+	fi
+fi
+
 launch_dir=${VEYYON_DEV_LAUNCH_DIR:-${HOME}/.veyyon/.dev-cwd}
 mkdir -p "$launch_dir"
 
