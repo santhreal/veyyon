@@ -216,6 +216,32 @@ export function noRewardError(reward: number | null): boolean {
 }
 
 /**
+ * Whether an error string means "the agent ran out its whole time budget", as
+ * opposed to "the agent never got a fair run".
+ *
+ * This distinction is the difference between a measurement and a lie. A trial
+ * that hits the bench's own `--trial-timeout` (run.ts throws
+ * `trial timed out after Ns`) records an error and no token counts, which made it
+ * look exactly like an unservable model or a container-build failure, so it was
+ * dropped from the pass-rate denominator. But a timeout is the agent using every
+ * second it was given and producing no passing patch: the strongest FAIL signal
+ * the bench can collect, not missing data. Excluding it inflated every arm's pass
+ * rate by removing the hardest tasks, and worse, it hid exactly the effect an
+ * A/B run exists to find: an arm whose overhead makes it marginally slower times
+ * out MORE, and dropping those timeouts credited the slower arm instead of
+ * charging it. Seen live in `runs/argot-budget16k-diverse`, where
+ * `scriggo-method-declarations` timed out on all three repeats and all three were
+ * excluded.
+ *
+ * One place, so the canary, the classifier and the cell summary cannot disagree
+ * about what a timeout is.
+ */
+export function isAgentTimeout(error: string | null): boolean {
+	if (error === null) return false;
+	return /trial timed out after \d+s/i.test(error) || error.includes("AgentTimeoutError");
+}
+
+/**
  * A "hard error" is a trial the agent never produced any output for: an error is
  * recorded AND no session was parsed, so `outputTokens` is null. This is the
  * signature of a SYSTEMATIC config failure — an unservable model id, a bad auth
@@ -227,6 +253,11 @@ export function noRewardError(reward: number | null): boolean {
  * "the agent never ran" means.
  */
 export function isHardError(result: { error: string | null; outputTokens: number | null }): boolean {
+	// A timeout is explicitly NOT a hard error, however little the trial recorded.
+	// The canary aborts a whole run on the strength of this predicate, and a batch
+	// of genuinely long tasks against a tight `--trial-timeout` would otherwise
+	// look identical to an unservable model and kill the run.
+	if (isAgentTimeout(result.error)) return false;
 	return result.error !== null && result.outputTokens === null;
 }
 
@@ -600,9 +631,26 @@ export function emptyArmResult(arm: string, task: string, repeat: number): ArmRe
 export interface CellSummary {
 	/** All attempts in the group, including errored ones. */
 	total: number;
-	/** Attempts that errored (no trial result). */
+	/**
+	 * Attempts EXCLUDED because the agent never got a fair run: an unservable
+	 * model, a container or build failure, a verifier outage. Not timeouts, which
+	 * are counted below and charged as fails.
+	 */
 	errors: number;
-	/** OK attempts (total - errors); the denominator for every rate and mean. */
+	/**
+	 * Attempts where the agent ran its whole time budget and produced no passing
+	 * patch. Counted in {@link n} as fails, and kept out of every token and cost
+	 * mean because they carry no measurements. Reported separately so a
+	 * too-tight `--trial-timeout` is visible as a harness problem rather than
+	 * disappearing into the capability number, and so an asymmetry between arms
+	 * (one arm timing out more than another) shows up as the confound it is.
+	 */
+	timedOut: number;
+	/**
+	 * The pass-rate denominator: scored attempts plus timed-out ones. NOT the
+	 * denominator for the token and cost means, which use scored attempts alone
+	 * since a timeout records none.
+	 */
 	n: number;
 	/** OK attempts with reward exactly 1. */
 	passes: number;
@@ -1009,8 +1057,16 @@ export function pairwiseMetricDeltas(
  * each per-task cell (one arm, one task, all repeats).
  */
 export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
+	// Three classes, not two. A scored trial has a reward and token counts. A
+	// TIMED-OUT trial has neither, but the agent ran the full budget and produced
+	// no passing patch, so it is a fail with no measurements: it belongs in the
+	// pass-rate denominator and nowhere near a token or cost mean. Everything else
+	// with an error is a trial the agent never got a fair run at, and stays
+	// excluded. See {@link isAgentTimeout} for why conflating the last two
+	// inflated every pass rate and hid arm-asymmetric slowdowns.
 	const ok = rows.filter(r => !r.error);
-	const n = ok.length;
+	const timedOut = rows.filter(r => isAgentTimeout(r.error)).length;
+	const n = ok.length + timedOut;
 	const passes = ok.filter(r => r.reward === 1).length;
 	const passRate = n > 0 ? passes / n : null;
 	const stdErr = passRate === null ? null : Math.sqrt((passRate * (1 - passRate)) / n);
@@ -1018,14 +1074,19 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 	const sum = (f: (r: ArmResult) => number | null) => ok.reduce((a, r) => a + (f(r) ?? 0), 0);
 	return {
 		total: rows.length,
-		errors: rows.length - n,
+		errors: rows.length - ok.length - timedOut,
+		timedOut,
 		n,
 		passes,
 		passRate,
 		stdErr,
 		wilsonLow: wilson.low,
 		wilsonHigh: wilson.high,
-		meanReward: mean(ok.map(r => r.reward)),
+		// Timeouts enter as reward 0, the continuous form of the same fail the pass
+		// rate now counts. `partial` stays over scored rows only: a trial that never
+		// finished has no partial credit to report, and inventing a 0 there would
+		// claim the verifier looked and found nothing.
+		meanReward: mean([...ok.map(r => r.reward), ...Array.from({ length: timedOut }, () => 0)]),
 		meanPartial: mean(ok.map(r => r.partial)),
 		meanOutputTokens: mean(ok.map(r => r.outputTokens)),
 		meanInputTokens: mean(ok.map(r => r.inputTokens)),
@@ -1048,7 +1109,7 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		// 0 and the cache-read line prints as zero dollars on a run that did
 		// millions of cache reads. That is a fabricated number in the one column
 		// this section exists to report.
-		refCostMeasurable: n > 0 && ok.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
+		refCostMeasurable: ok.length > 0 && ok.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
 	};
 }
 
@@ -1560,7 +1621,14 @@ export function renderReport(
 	lines.push("|---|---|---|---|---|---|---|---|---|---|");
 	for (const arm of arms) {
 		const s = summarizeCell(results.filter(r => r.arm === arm));
-		const samples = s.errors > 0 ? `${s.n} (+${s.errors} err)` : String(s.n);
+		// Timeouts are inside `n` (they are fails), so they are annotated rather
+		// than added: a reader has to be able to see that a cell's fails include
+		// runs that never finished, which is a different story from runs that
+		// finished and failed.
+		const notes: string[] = [];
+		if (s.errors > 0) notes.push(`+${s.errors} err`);
+		if (s.timedOut > 0) notes.push(`${s.timedOut} timed out`);
+		const samples = notes.length > 0 ? `${s.n} (${notes.join(", ")})` : String(s.n);
 		lines.push(
 			`| ${arm} | ${samples} | ${fmtRate(s)} | ${fmt(s.meanReward, 2)} | ${fmt(s.meanPartial, 2)} | ` +
 				`${fmt(s.sumInputTokens)} | ${fmt(s.sumOutputTokens)} | ${fmt(s.sumCacheTokens)} | ` +

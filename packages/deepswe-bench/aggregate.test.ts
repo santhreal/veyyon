@@ -28,6 +28,7 @@ import {
 	fmtCost,
 	holmBonferroni,
 	interpretEncodeArm,
+	isAgentTimeout,
 	isHardError,
 	jobNameOf,
 	mostCommonAgentReason,
@@ -776,6 +777,199 @@ describe("renderReport — an underpowered null is labelled, a measured null is 
 		expect(report).toContain("3-3-0");
 		expect(report).toContain("not distinguishable");
 		expect(report).not.toContain("not distinguishable (underpowered)");
+	});
+});
+
+/**
+ * A timeout is a fail the agent earned, not data the harness lost.
+ *
+ * WHY THIS SUITE EXISTS (EVAL-TIMEOUT-EXCLUDED-NOT-FAILED). A trial that hit the
+ * bench's own `--trial-timeout` recorded an error and no token counts, which made
+ * it indistinguishable from an unservable model or a dead container, so it was
+ * dropped from the pass-rate denominator with them. But the agent ran every
+ * second it was given and produced no passing patch: that is the strongest fail
+ * signal the bench can collect.
+ *
+ * Excluding it did two things, and the second is worse. It inflated every arm's
+ * pass rate by removing exactly the hardest tasks. And it hid the effect an A/B
+ * run exists to find: an arm whose overhead makes it marginally slower times out
+ * MORE, so dropping those trials credited the slower arm instead of charging it.
+ * Seen live in `runs/argot-budget16k-diverse`, where `scriggo-method-declarations`
+ * timed out on all three repeats and all three were excluded.
+ *
+ * The taxonomy is three classes now: SCORED (a reward exists), AGENT-FAIL (a
+ * timeout, counted as reward 0 with no measurements), and EXCLUDED (the agent
+ * never got a fair run). These pin each class landing where it belongs.
+ */
+describe("isAgentTimeout — the one place that decides what a timeout is", () => {
+	/** THE STRING THE BENCH ACTUALLY THROWS, from run.ts's trial-timeout path. */
+	test("recognizes the runner's trial-timeout message", () => {
+		expect(isAgentTimeout("trial timed out after 900s")).toBe(true);
+		expect(isAgentTimeout("trial timed out after 60s")).toBe(true);
+	});
+
+	/** The agent-side exception spelling, which arrives through a different path. */
+	test("recognizes an AgentTimeoutError", () => {
+		expect(isAgentTimeout('{"exception_type":"AgentTimeoutError","message":"..."}')).toBe(true);
+	});
+
+	/** A message embedded in a larger error string still counts. */
+	test("recognizes the message inside a longer error", () => {
+		expect(isAgentTimeout("job failed: trial timed out after 900s (teardown ok)")).toBe(true);
+	});
+
+	/**
+	 * THE NECESSARY TWIN. A predicate that answered true for infra failures would
+	 * move them into the denominator as fails, which is the opposite error and
+	 * would understate every arm.
+	 */
+	test("does not claim an infrastructure failure is a timeout", () => {
+		expect(isAgentTimeout('Model "gpt-5.5" not found')).toBe(false);
+		expect(isAgentTimeout("container build failed")).toBe(false);
+		expect(isAgentTimeout(NO_REWARD_ERROR)).toBe(false);
+	});
+
+	/** A trial with no error is not a timeout, and must not throw on null. */
+	test("returns false for no error at all", () => {
+		expect(isAgentTimeout(null)).toBe(false);
+	});
+
+	/**
+	 * The word "timeout" alone is not enough. A provider-side read timeout inside
+	 * an exception blob is an infrastructure problem, and charging the arm for it
+	 * would be the mirror of the bug this fixes.
+	 */
+	test("does not match an unrelated use of the word timeout", () => {
+		expect(isAgentTimeout('{"exception_type":"ConnectTimeout","message":"read timeout"}')).toBe(false);
+	});
+});
+
+describe("isHardError — a timeout is not the agent failing to run", () => {
+	/**
+	 * THE CANARY SAFETY PROPERTY. The fail-fast canary aborts an entire run when a
+	 * full wave is hard errors. A batch of genuinely long tasks against a tight
+	 * `--trial-timeout` would have looked exactly like an unservable model and
+	 * killed the run.
+	 */
+	test("a timeout with no token counts is not a hard error", () => {
+		expect(isHardError({ error: "trial timed out after 900s", outputTokens: null })).toBe(false);
+	});
+
+	/** The genuine signature is unchanged: an error and nothing produced. */
+	test("an infrastructure error with no token counts is still a hard error", () => {
+		expect(isHardError({ error: 'Model "x" not found', outputTokens: null })).toBe(true);
+	});
+
+	/** A wave of pure timeouts must not trip the canary: the agent ran. */
+	test("a full wave of timeouts does not trip the canary", () => {
+		const wave = Array.from({ length: 4 }, () => ({
+			error: "trial timed out after 900s",
+			outputTokens: null,
+		}));
+
+		expect(shouldTripCanary(wave, 4)).toBe(false);
+	});
+
+	/** A full wave of infra errors still does, which is what the canary is for. */
+	test("a full wave of infrastructure errors still trips the canary", () => {
+		const wave = Array.from({ length: 4 }, () => ({ error: 'Model "x" not found', outputTokens: null }));
+
+		expect(shouldTripCanary(wave, 4)).toBe(true);
+	});
+});
+
+describe("summarizeCell — a timeout is a fail in the denominator, not missing data", () => {
+	const timeout = () => res({ error: "trial timed out after 900s", outputTokens: null, reward: null });
+
+	/**
+	 * THE REGRESSION. Two passes and a timeout used to read as a perfect 1.0 over
+	 * n=2. It is 0.67 over n=3: the agent attempted three tasks and solved two.
+	 */
+	test("a timed-out sample counts as a fail in n and the rate", () => {
+		const s = summarizeCell([res({ reward: 1 }), res({ reward: 1 }), timeout()]);
+
+		expect(s.total).toBe(3);
+		expect(s.n).toBe(3);
+		expect(s.passes).toBe(2);
+		expect(s.passRate).toBeCloseTo(2 / 3, 10);
+		expect(s.errors).toBe(0);
+		expect(s.timedOut).toBe(1);
+	});
+
+	/**
+	 * Timeouts and infra errors land in different buckets from the same cell. This
+	 * is the assertion that would have caught the original conflation, because
+	 * both rows carry an error and no tokens.
+	 */
+	test("separates timeouts from infrastructure errors in one cell", () => {
+		const s = summarizeCell([res({ reward: 1 }), timeout(), res({ error: "container build failed" })]);
+
+		expect(s.n).toBe(2);
+		expect(s.passes).toBe(1);
+		expect(s.passRate).toBe(0.5);
+		expect(s.timedOut).toBe(1);
+		expect(s.errors).toBe(1);
+	});
+
+	/**
+	 * The token and cost means must NOT move. A timeout records no tokens, and
+	 * letting it in as a zero would report an arm as cheaper for having failed to
+	 * finish, which is the token-efficiency mirror of the pass-rate bug.
+	 */
+	test("keeps timeouts out of every token and cost mean", () => {
+		const scored = [
+			res({ reward: 1, outputTokens: 100, inputTokens: 10, costUsd: 0.2 }),
+			res({ reward: 0, outputTokens: 200, inputTokens: 20, costUsd: 0.4 }),
+		];
+
+		const without = summarizeCell(scored);
+		const with_ = summarizeCell([...scored, timeout()]);
+
+		expect(with_.meanOutputTokens).toBe(without.meanOutputTokens);
+		expect(with_.meanInputTokens).toBe(without.meanInputTokens);
+		expect(with_.meanCostUsd).toBe(without.meanCostUsd);
+		expect(with_.sumOutputTokens).toBe(without.sumOutputTokens);
+	});
+
+	/**
+	 * The mean reward carries the same fail the pass rate does, in continuous
+	 * form. Leaving it over scored rows alone would have the report's two headline
+	 * numbers disagree about the same trial.
+	 */
+	test("counts a timeout as reward 0 in the mean reward", () => {
+		const s = summarizeCell([res({ reward: 1 }), timeout()]);
+
+		expect(s.meanReward).toBe(0.5);
+	});
+
+	/**
+	 * Partial credit stays over scored rows. A trial that never finished has no
+	 * partial score, and inventing a 0 would claim the verifier looked and found
+	 * nothing when it never ran at all.
+	 */
+	test("leaves the mean partial over scored samples only", () => {
+		const s = summarizeCell([res({ reward: 1, partial: 0.8 }), timeout()]);
+
+		expect(s.meanPartial).toBe(0.8);
+	});
+
+	/**
+	 * A cell that is nothing but timeouts is a real 0% pass rate over a real
+	 * denominator, not an empty cell. This is the shape the argot run hit, where
+	 * one task timed out on every repeat.
+	 */
+	test("an all-timeout cell reads as a genuine zero, not as no data", () => {
+		const s = summarizeCell([timeout(), timeout(), timeout()]);
+
+		expect(s.n).toBe(3);
+		expect(s.passRate).toBe(0);
+		expect(s.timedOut).toBe(3);
+		expect(s.errors).toBe(0);
+	});
+
+	/** A cell with no timeouts reports zero of them, so the field is always safe to read. */
+	test("reports zero timeouts when there are none", () => {
+		expect(summarizeCell([res({ reward: 1 }), res({ error: "boom" })]).timedOut).toBe(0);
 	});
 });
 
