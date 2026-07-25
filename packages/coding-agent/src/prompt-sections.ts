@@ -8,25 +8,32 @@
  * (`harness/model-profile.ts`) share one definition without an import cycle.
  */
 import { logger } from "@veyyon/utils";
+import { BANNERED_SECTION_BLOCKS } from "./prompt-blocks";
 
-/** Kebab-case names of the default template's banner sections, in template order. */
-export const PROMPT_SECTION_NAMES = [
-	"role",
-	"runtime",
-	"tool-policy",
-	"execution-workflow",
-	"delivery-contract",
-] as const;
+/**
+ * The reorderable section names, DERIVED from the one registry in
+ * `prompt-blocks.ts` rather than restated here.
+ *
+ * This list and the banner map below used to be a second, independent
+ * definition of the same five sections that `system-prompt-builder/default-template.ts`
+ * also defined, with different spellings (`tool-policy` vs `toolPolicy`) and a
+ * different parser. Keeping them in step was manual, and the divergence would
+ * have been silent: the other splitter throws on a missing banner, whereas this
+ * one simply does not recognise the line and folds the section into its
+ * predecessor. Deriving both from one source removes the possibility.
+ */
+export const PROMPT_SECTION_NAMES = BANNERED_SECTION_BLOCKS.map(b => b.id) as readonly string[];
 
-export type PromptSectionName = (typeof PROMPT_SECTION_NAMES)[number];
+export type PromptSectionName = string;
 
-const SECTION_BANNER_TO_NAME: Record<string, PromptSectionName> = {
-	ROLE: "role",
-	RUNTIME: "runtime",
-	"TOOL POLICY": "tool-policy",
-	"EXECUTION WORKFLOW": "execution-workflow",
-	"DELIVERY CONTRACT": "delivery-contract",
-};
+/**
+ * Banner text (the bare `NAME` line, without the `====` underline) to canonical
+ * id. Built from the registry's banner declarations, so a banner can never be
+ * recognised by one splitter and missed by the other.
+ */
+const SECTION_BANNER_TO_NAME: Record<string, PromptSectionName> = Object.fromEntries(
+	BANNERED_SECTION_BLOCKS.map(b => [b.banner.split("\n")[0] as string, b.id]),
+);
 
 export interface PromptSection {
 	name: PromptSectionName | "preamble";
