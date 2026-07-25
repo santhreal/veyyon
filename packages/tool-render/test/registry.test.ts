@@ -44,6 +44,7 @@ const REGISTERED_NAMES = [
 	"grep",
 	"search",
 	"search_tool_bm25",
+	"set_cwd",
 	"ssh",
 	"task",
 	"todo",

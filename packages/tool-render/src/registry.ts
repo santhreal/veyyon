@@ -29,6 +29,7 @@ import { reportFindingRenderer } from "./tools/report-finding";
 import { reportToolIssueRenderer } from "./tools/report-tool-issue";
 import { resolveRenderer } from "./tools/resolve";
 import { searchBm25Renderer } from "./tools/search-bm25";
+import { setCwdRenderer } from "./tools/set-cwd";
 import { sshRenderer } from "./tools/ssh";
 import { taskRenderer } from "./tools/task";
 import { todoRenderer } from "./tools/todo";
@@ -74,6 +75,7 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	grep: grepRenderer,
 	search: grepRenderer,
 	search_tool_bm25: searchBm25Renderer,
+	set_cwd: setCwdRenderer,
 	ssh: sshRenderer,
 	task: taskRenderer,
 	todo: todoRenderer,
