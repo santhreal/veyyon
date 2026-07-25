@@ -14,12 +14,18 @@ import type { HindsightConfig } from "./config";
 
 const USER_AGENT = "veyyon-coding-agent";
 const DEFAULT_USER_AGENT = USER_AGENT;
-const HINDSIGHT_REQUEST_TIMEOUT_MS = 30_000;
 
 export type Budget = "low" | "mid" | "high" | string;
 export type TagsMatch = "any" | "all" | "any_strict" | "all_strict";
 export type UpdateMode = "replace" | "append";
 export type ConsolidationState = "failed" | "pending" | "done";
+
+export interface HindsightTimeouts {
+	request?: number;
+	reflect?: number;
+	recall?: number;
+	retain?: number;
+}
 
 export interface HindsightApiOptions {
 	baseUrl: string;
@@ -222,6 +228,10 @@ interface RequestOptions {
 export class HindsightApi {
 	#baseUrl: string;
 	#headers: Record<string, string>;
+	#requestTimeoutMs: number;
+	#reflectTimeoutMs: number;
+	#recallTimeoutMs: number;
+	#retainTimeoutMs: number;
 
 	constructor(options: HindsightApiOptions) {
 		this.#baseUrl = trimTrailingSlashes(options.baseUrl);
@@ -232,6 +242,10 @@ export class HindsightApi {
 		if (options.apiKey) {
 			this.#headers.Authorization = `Bearer ${options.apiKey}`;
 		}
+		this.#requestTimeoutMs = options.timeouts?.request ?? 30_000;
+		this.#reflectTimeoutMs = options.timeouts?.reflect ?? 120_000;
+		this.#recallTimeoutMs = options.timeouts?.recall ?? 30_000;
+		this.#retainTimeoutMs = options.timeouts?.retain ?? 60_000;
 	}
 
 	async retain(bankId: string, content: string, options?: RetainOptions): Promise<RetainResponse> {
@@ -252,6 +266,7 @@ export class HindsightApi {
 			{
 				body: { items: [item], async: options?.async },
 				signal: options?.signal,
+				timeoutMs: this.#retainTimeoutMs,
 			},
 		);
 	}
@@ -283,6 +298,7 @@ export class HindsightApi {
 					async: options?.async,
 				},
 				signal: options?.signal,
+				timeoutMs: this.#retainTimeoutMs,
 			},
 		);
 	}
@@ -302,6 +318,7 @@ export class HindsightApi {
 					tags_match: options?.tagsMatch,
 				},
 				signal: options?.signal,
+				timeoutMs: this.#recallTimeoutMs,
 			},
 		);
 	}
@@ -320,6 +337,7 @@ export class HindsightApi {
 					tags_match: options?.tagsMatch,
 				},
 				signal: options?.signal,
+				timeoutMs: this.#reflectTimeoutMs,
 			},
 		);
 	}
@@ -507,10 +525,11 @@ export class HindsightApi {
 			if (qs) url += `?${qs}`;
 		}
 
+		const effectiveTimeoutMs = opts?.timeoutMs ?? this.#requestTimeoutMs;
 		const init: RequestInit = {
 			method,
 			headers: this.#headers,
-			signal: withTimeoutSignal(HINDSIGHT_REQUEST_TIMEOUT_MS, opts?.signal),
+			signal: withTimeoutSignal(effectiveTimeoutMs, opts?.signal),
 		};
 		if (opts?.body !== undefined) {
 			init.body = JSON.stringify(pruneUndefined(opts.body));
@@ -521,7 +540,7 @@ export class HindsightApi {
 			response = await fetch(url, init);
 		} catch (err) {
 			const message = isTimeoutError(err)
-				? `${operation} request timed out after 30s`
+				? `${operation} request timed out after ${Math.round(effectiveTimeoutMs / 1000)}s`
 				: `${operation} request failed: ${errorMessage(err)}`;
 			throw new HindsightError(message, undefined, err);
 		}

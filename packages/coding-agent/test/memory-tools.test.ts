@@ -311,7 +311,8 @@ describe("retain.execute", () => {
 	it("emits a UI-only warning notice when the batch flush fails", async () => {
 		const settings = Settings.isolated({ "memory.backend": "hindsight" });
 		const client = new HindsightApi({ baseUrl: "http://localhost:8888" });
-		vi.spyOn(HindsightApi.prototype, "retainBatch").mockRejectedValue(new Error("HTTP 503"));
+		const fetchStub = async () => Promise.reject(new Error("HTTP 503"));
+		vi.spyOn(globalThis, "fetch").mockImplementation(fetchStub as any);
 		const noticeSpy = vi.fn();
 		registerState(client, settings, { sessionOverrides: { emitNotice: noticeSpy } });
 
