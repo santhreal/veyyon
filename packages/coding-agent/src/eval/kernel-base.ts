@@ -1,15 +1,25 @@
-import { errorMessage, logger, Snowflake } from "@veyyon/utils";
+import { errorMessage, isTimeoutError, logger, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
 
 export type KernelRuntimeEnv = Record<string, string | null>;
+
+/**
+ * A per-execution environment patch: a string sets the variable, `null` CLEARS it, and
+ * `undefined` leaves it alone. The runner honours exactly that (`os.environ.pop` on null),
+ * so this is the one spelling of the type — `KernelExecuteOptions.env` used to be
+ * `Record<string, string | undefined> | Record<string, string | null>`, a union that could
+ * not express a patch doing both in one call and forced every caller building one to pick
+ * a half.
+ */
+export type KernelEnvPatch = Record<string, string | null | undefined>;
 
 export interface KernelExecuteOptions {
 	id?: string;
 	/** Runtime working directory applied immediately before this request executes. */
 	cwd?: string;
 	/** Managed runtime environment variables applied immediately before this request executes. */
-	env?: Record<string, string | undefined> | Record<string, string | null>;
+	env?: KernelEnvPatch;
 	signal?: AbortSignal;
 	onChunk?: (text: string) => Promise<void> | void;
 	onDisplay?: (output: KernelDisplayOutput) => Promise<void> | void;
@@ -121,17 +131,66 @@ export function createAbortError(name: "AbortError" | "TimeoutError", message: s
 	return err;
 }
 
-export function throwIfAborted(signal: AbortSignal | undefined, fallbackReason: string): void {
+/**
+ * Throw because a kernel operation's signal is already aborted, PRESERVING the
+ * identity of the reason.
+ *
+ * This is deliberately not `tools/tool-errors.ts`'s `throwIfAborted`, and the
+ * name says so. That one normalizes every abort to a single `ToolAbortError`
+ * because its callers catch one type. A kernel cannot: the timer at
+ * `runWithDeadline` aborts with a `TimeoutError` and the caller has to be able
+ * to tell a deadline from a cancellation, which is the same distinction
+ * `result.timedOut` carries a few lines below. Rethrowing the reason unchanged
+ * is what keeps that distinction alive.
+ *
+ * Both spellings answered to `throwIfAborted` before, in the same package, with
+ * different types and different handling of the reason. A reader who found one
+ * had no way to know the other existed.
+ */
+export function throwIfKernelAborted(signal: AbortSignal | undefined, fallbackReason: string): void {
 	if (!signal?.aborted) return;
 	const reason = signal.reason;
 	if (reason instanceof Error) throw reason;
 	throw createAbortError("AbortError", typeof reason === "string" ? reason : fallbackReason);
 }
 
-export function isTimeoutReason(reason: unknown): boolean {
-	if (reason instanceof DOMException) return reason.name === "TimeoutError";
-	if (reason instanceof Error) return reason.name === "TimeoutError";
-	return false;
+/**
+ * Run code and settle. The one execute-only kernel contract in the codebase.
+ *
+ * There used to be three overlapping spellings of "something I can hand code to":
+ * `PythonKernelExecutor` in py/executor.ts, `GenericKernel<TEnv>` in executor-base.ts,
+ * and the `execute` member of {@link SessionKernel}. All three described the same call
+ * with different amounts of precision, and only one of them could be right about the
+ * result type: `GenericKernel` declared `stdinRequested` optional while every real kernel
+ * always sets it, so a caller written against `GenericKernel` had to handle a case that
+ * cannot happen. One name, one shape, and every kernel-shaped thing (including every test
+ * fake) is checked against it.
+ *
+ * `TExecuteOptions` is the language's own options type, so a runner that accepts a wider
+ * option shape stays typed as such instead of widening this contract for everyone.
+ */
+export interface KernelExecutor<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
+	execute(code: string, options?: TExecuteOptions): Promise<KernelExecuteResult>;
+}
+
+/**
+ * The kernel surface a SESSION executor depends on: run a cell, ask whether the process is
+ * still there, and shut it down.
+ *
+ * Exported as a contract rather than left implicit in the concrete class because the
+ * session bookkeeping only ever needs these four members, and because every test fake used
+ * to be cast with `as unknown as PythonKernel` to stand in for the class. Under a cast
+ * nothing checks a fake against reality: four fakes across four suites each implemented a
+ * `ping()` method that no production code has ever called, and nobody could tell. A fake
+ * that declares `implements SessionKernel` fails to typecheck the day this contract moves.
+ */
+export interface SessionKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions>
+	extends KernelExecutor<TExecuteOptions> {
+	// No `id` here on purpose: `BaseKernel` has one, but no session code reads it, and a
+	// contract that demands members its consumers never touch pushes busywork into every
+	// implementation (including every fake) without checking anything.
+	isAlive(): boolean;
+	shutdown(options?: KernelShutdownOptions): Promise<KernelShutdownResult>;
 }
 
 /**
@@ -145,7 +204,9 @@ export function isTimeoutReason(reason: unknown): boolean {
  * `TExecuteOptions` is the language's own execute-options type so each runner's
  * `buildPayload` sees its precise option shape (e.g. environment-map variants).
  */
-export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
+export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions>
+	implements SessionKernel<TExecuteOptions>
+{
 	readonly id: string;
 	#proc: Subprocess | null = null;
 	#stdin: Bun.FileSink | null = null;
@@ -238,7 +299,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 
 		const onAbort = () => {
 			pending.cancelled = true;
-			pending.timedOut = pending.timedOut || isTimeoutReason(options?.signal?.reason);
+			pending.timedOut = pending.timedOut || isTimeoutError(options?.signal?.reason);
 			requestCancel();
 		};
 		const timeoutId =
@@ -557,7 +618,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 				: undefined;
 		if (timer) cleanups.push(() => clearTimeout(timer));
 		try {
-			throwIfAborted(controller.signal, label);
+			throwIfKernelAborted(controller.signal, label);
 			const result = await this.execute(code, {
 				signal: controller.signal,
 				silent: true,

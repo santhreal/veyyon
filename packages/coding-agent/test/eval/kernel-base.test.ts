@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import {
-	createAbortError,
-	getRemainingTimeMs,
-	isTimeoutReason,
-	throwIfAborted,
-} from "@veyyon/coding-agent/eval/kernel-base";
+import { createAbortError, getRemainingTimeMs, throwIfKernelAborted } from "@veyyon/coding-agent/eval/kernel-base";
+import { isTimeoutError } from "@veyyon/utils";
 
 /**
  * These four helpers encode the timeout/abort contract every language kernel runner
@@ -16,7 +12,7 @@ import {
  * cases discovered empirically.
  *
  * Key subtlety locked here: `AbortController.abort()` with NO reason sets the reason
- * to a DOMException, which IS `instanceof Error`, so throwIfAborted rethrows THAT
+ * to a DOMException, which IS `instanceof Error`, so throwIfKernelAborted rethrows THAT
  * (name "AbortError", the default message) rather than the caller's fallbackReason.
  * The fallbackReason is used ONLY when the reason is neither an Error nor a string
  * (a number, an object). If that ever changes, cancellation messages regress.
@@ -44,24 +40,24 @@ describe("createAbortError", () => {
 	});
 });
 
-describe("throwIfAborted", () => {
+describe("throwIfKernelAborted", () => {
 	it("does nothing when the signal is undefined or not aborted", () => {
-		expect(() => throwIfAborted(undefined, "fb")).not.toThrow();
-		expect(() => throwIfAborted(new AbortController().signal, "fb")).not.toThrow();
+		expect(() => throwIfKernelAborted(undefined, "fb")).not.toThrow();
+		expect(() => throwIfKernelAborted(new AbortController().signal, "fb")).not.toThrow();
 	});
 
 	it("rethrows the reason verbatim when it is an Error", () => {
 		const controller = new AbortController();
 		const reason = createAbortError("TimeoutError", "deadline");
 		controller.abort(reason);
-		expect(() => throwIfAborted(controller.signal, "fb")).toThrow(reason);
+		expect(() => throwIfKernelAborted(controller.signal, "fb")).toThrow(reason);
 	});
 
 	it("wraps a string reason as an AbortError carrying that string as the message", () => {
 		const controller = new AbortController();
 		controller.abort("user pressed escape");
 		try {
-			throwIfAborted(controller.signal, "unused fallback");
+			throwIfKernelAborted(controller.signal, "unused fallback");
 			throw new Error("expected throw");
 		} catch (err) {
 			expect((err as Error).name).toBe("AbortError");
@@ -73,7 +69,7 @@ describe("throwIfAborted", () => {
 		const controller = new AbortController();
 		controller.abort();
 		try {
-			throwIfAborted(controller.signal, "fallback-should-not-appear");
+			throwIfKernelAborted(controller.signal, "fallback-should-not-appear");
 			throw new Error("expected throw");
 		} catch (err) {
 			expect((err as Error).name).toBe("AbortError");
@@ -86,7 +82,7 @@ describe("throwIfAborted", () => {
 			const controller = new AbortController();
 			controller.abort(reason);
 			try {
-				throwIfAborted(controller.signal, "fallback-msg");
+				throwIfKernelAborted(controller.signal, "fallback-msg");
 				throw new Error("expected throw");
 			} catch (err) {
 				expect((err as Error).name).toBe("AbortError");
@@ -96,13 +92,19 @@ describe("throwIfAborted", () => {
 	});
 });
 
-describe("isTimeoutReason", () => {
+/**
+ * `isTimeoutReason` used to live in kernel-base and re-spell what `@veyyon/utils` already
+ * owns. The cases stay here because they are the KERNEL's contract — the reasons an eval
+ * signal actually carries, including the `createAbortError` shapes kernel-base builds —
+ * and they must keep holding against the shared predicate.
+ */
+describe("isTimeoutError, as the eval kernels rely on it", () => {
 	it("is true only for a TimeoutError DOMException or Error, false otherwise", () => {
-		expect(isTimeoutReason(new DOMException("t", "TimeoutError"))).toBe(true);
-		expect(isTimeoutReason(createAbortError("TimeoutError", "t"))).toBe(true);
-		expect(isTimeoutReason(new DOMException("a", "AbortError"))).toBe(false);
-		expect(isTimeoutReason(createAbortError("AbortError", "a"))).toBe(false);
-		expect(isTimeoutReason("TimeoutError")).toBe(false);
-		expect(isTimeoutReason(null)).toBe(false);
+		expect(isTimeoutError(new DOMException("t", "TimeoutError"))).toBe(true);
+		expect(isTimeoutError(createAbortError("TimeoutError", "t"))).toBe(true);
+		expect(isTimeoutError(new DOMException("a", "AbortError"))).toBe(false);
+		expect(isTimeoutError(createAbortError("AbortError", "a"))).toBe(false);
+		expect(isTimeoutError("TimeoutError")).toBe(false);
+		expect(isTimeoutError(null)).toBe(false);
 	});
 });

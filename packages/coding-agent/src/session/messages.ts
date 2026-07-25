@@ -15,7 +15,8 @@ import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextC
 import * as AIError from "@veyyon/ai/error";
 import { isRecord, prompt } from "@veyyon/utils";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import userInterjectionTemplate from "../prompts/steering/user-interjection.md" with { type: "text" };
+import { ToolAbortError } from "../tools/tool-errors";
+import { PROMPTS } from "../prompts/registry";
 import { contentText } from "./content-text";
 
 export {
@@ -260,7 +261,10 @@ export function resolveAbortLabel(
 	if (retryAttempt > 0) {
 		return `Aborted after ${retryAttempt} retry attempt${retryAttempt > 1 ? "s" : ""}`;
 	}
-	return "Operation aborted";
+	// The same sentence ToolAbortError falls back to, imported rather than spelled
+	// again: the banner and the thrown error must not drift into two wordings for
+	// one state.
+	return ToolAbortError.MESSAGE;
 }
 
 /** Extract the optional `__queueChipText` field from a CustomMessage's
@@ -365,7 +369,7 @@ function userMessageWithoutSteering(message: UserMessage): UserMessage {
 }
 
 function renderSteeringEnvelope(message: string): string {
-	return prompt.render(userInterjectionTemplate, { message });
+	return prompt.render(PROMPTS["steering/user-interjection"].text, { message });
 }
 
 function getArrayContentImages(content: (TextContent | ImageContent)[]): ImageContent[] {
