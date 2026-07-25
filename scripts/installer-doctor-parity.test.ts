@@ -69,6 +69,47 @@ describe("doctor verifies where the command resolves, not merely that it exists"
 	});
 });
 
+describe("doctor verifies the installed binary is the version the release claims", () => {
+	it("both installers compare the reported version against the release tag", () => {
+		// The checksum only proves the bytes match the published asset. It cannot
+		// catch a release that uploaded the wrong binary for its tag, or a stale
+		// cached download — both install "successfully" and then run the wrong
+		// version forever. The self-updater already gated on this; the installers
+		// did not, and that asymmetry is what these lock shut.
+		expect(installSh).toContain("version_from_output() {");
+		expect(installSh).toContain('doctor "$INSTALL_DIR/$BIN_NAME" "$LATEST"');
+		expect(installPs1).toContain("function ConvertFrom-VersionOutput {");
+		expect(installPs1).toContain("Invoke-Doctor -Command $OutPath -ExpectedTag $Latest");
+	});
+
+	it("both strip a leading v from the tag before comparing", () => {
+		// Tags are `v1.0.37`; `--version` reports `veyyon/1.0.37`.
+		expect(installSh).toContain('want="${want_tag#v}"');
+		expect(installPs1).toContain("$want = $ExpectedTag -replace '^v', ''");
+	});
+
+	it("a version mismatch is fatal in both, never a warning", () => {
+		// Printing "Installation complete" over a wrong-version binary is exactly
+		// the silent failure being removed, so this one must abort.
+		expect(installSh).toMatch(/die "installed \$BIN_NAME reports \$got but the \$want_tag release was requested/);
+		expect(installPs1).toContain("throw \"installed $BinName reports $got but the $ExpectedTag release was requested");
+	});
+
+	it("an unparseable version output fails closed rather than passing the gate", () => {
+		// Law 10: if the version cannot be read, the check has not passed — it has
+		// failed to run, and must not be treated as success.
+		expect(installSh).toContain("could not read a version from");
+		expect(installPs1).toContain("could not read a version from");
+	});
+
+	it("the version gate only runs when a tag is supplied", () => {
+		// A source install has no release tag to compare against, so the gate is
+		// skipped rather than fabricating an expectation.
+		expect(installSh).toContain('if [ -n "$want_tag" ]; then');
+		expect(installPs1).toContain("if ($ExpectedTag) {");
+	});
+});
+
 describe("doctor does not depend on tools a broken PATH would hide", () => {
 	it("install.sh resolves the parent directory with parameter expansion, not `dirname`", () => {
 		// doctor exists to diagnose PATH problems, so forking an external `dirname`

@@ -242,8 +242,22 @@ function Add-ToPath {
 
 # Post-install self-check: prove the thing actually runs. Fails loud (throws) if
 # the installed command cannot report its version.
+function ConvertFrom-VersionOutput {
+    # Pull the semver out of a --version line ("veyyon/1.0.37" -> "1.0.37").
+    # Returns $null when the line carries no x.y.z token, so a format change is
+    # visible as a failed check rather than a silent pass (mirrors
+    # version_from_output in install.sh).
+    param([string]$Text)
+    if (-not $Text) { return $null }
+    foreach ($tok in ($Text -split '\s+')) {
+        $cand = $tok -replace '^.*/', ''
+        if ($cand -match '^\d+\.\d+\.\d+') { return $cand }
+    }
+    return $null
+}
+
 function Invoke-Doctor {
-    param([string]$Command)
+    param([string]$Command, [string]$ExpectedTag)
     Write-Host ""
     Write-Host "doctor:"
     $ver = $null
@@ -256,6 +270,22 @@ function Invoke-Doctor {
         Write-Host "OK  $BinName runs - $ver" -ForegroundColor Green
     } else {
         throw "$BinName did not run after install ('$Command --version' failed)"
+    }
+    # The checksum proved the bytes match the published asset; this proves the
+    # published asset is the version the release claims. A release that uploaded
+    # a mismatched binary, or a stale cached download, otherwise installs
+    # "successfully" and silently runs the wrong version forever.
+    if ($ExpectedTag) {
+        $want = $ExpectedTag -replace '^v', ''
+        $got = ConvertFrom-VersionOutput -Text ([string]$ver)
+        if (-not $got) {
+            throw "could not read a version from '$Command --version' output: $ver"
+        }
+        if ($got -eq $want) {
+            Write-Host "OK  reported version matches the $ExpectedTag release" -ForegroundColor Green
+        } else {
+            throw "installed $BinName reports $got but the $ExpectedTag release was requested - the release may have published a mismatched binary. The file at $Command is NOT the version you asked for; re-run the installer or pin with -Ref."
+        }
     }
     # Both names the user might type must reach the copy just installed (mirrors
     # check_not_shadowed in install.sh).
@@ -584,7 +614,7 @@ function Install-Binary {
 
     $needsRestart = Add-ToPath
     Configure-BashShell
-    Invoke-Doctor -Command $OutPath
+    Invoke-Doctor -Command $OutPath -ExpectedTag $Latest
 
     Write-Host ""
     if ($needsRestart) {

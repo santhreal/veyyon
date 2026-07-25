@@ -251,6 +251,51 @@ check "dir_of returns . for a bare name with no slash" "$(dir_of veyyon)" "."
 check "dir_of handles a relative path" "$(dir_of ./dist/vey)" "./dist"
 check "dir_of handles a path containing spaces" "$(dir_of "/opt/my apps/bin/veyyon")" "/opt/my apps/bin"
 
+# --- version_from_output: pull the semver out of a --version line ---
+# doctor compares the installed binary's reported version against the release
+# tag, so this parser is what stands between a mismatched release and a silent
+# wrong-version install. It must return nothing (non-zero) rather than guess.
+check "version_from_output reads the standard name/semver form" "$(version_from_output 'veyyon/1.0.37')" "1.0.37"
+check "version_from_output keeps a prerelease suffix" "$(version_from_output 'veyyon/1.0.0-rc.2')" "1.0.0-rc.2"
+check "version_from_output ignores trailing platform detail" "$(version_from_output 'veyyon/1.2.3 linux-x64')" "1.2.3"
+check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')" "2.0.1"
+( version_from_output 'veyyon (no version here)' >/dev/null 2>&1 ); check "version_from_output fails on a line with no semver" "$?" "1"
+
+# --- doctor: the installed binary must report the version the release claims ---
+# The checksum proves the bytes match the published asset; this proves the asset
+# is the version the tag claims. A release that uploaded a mismatched binary, or
+# a stale cached download, otherwise installs "successfully" and runs the wrong
+# version forever. The self-updater enforces the same gate before keeping a
+# swapped-in binary; install.sh did not, which is the parity gap this closes.
+( _d="$SANDBOX/vercheck"
+  mkdir -p "$_d"
+  printf '#!/bin/sh\necho veyyon/1.0.37\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
+
+  out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.37" 2>&1 )
+  check "doctor confirms a matching version" "$(printf '%s' "$out" | grep -c 'reported version matches the v1.0.37 release')" "1"
+  ( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.37" >/dev/null 2>&1 ); check "a matching version exits 0" "$?" "0"
+
+  # Mismatch is fatal: the installer must not print "Installation complete" over
+  # a binary that is not the requested version.
+  out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.40" 2>&1 )
+  ( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.40" >/dev/null 2>&1 ); check "a version mismatch is fatal" "$?" "1"
+  check "the mismatch names the version actually installed" "$(printf '%s' "$out" | grep -c 'reports 1.0.37')" "1"
+  check "the mismatch names the release that was requested" "$(printf '%s' "$out" | grep -c 'v1.0.40 release was requested')" "1"
+  check "the mismatch tells the user the file on disk is wrong" "$(printf '%s' "$out" | grep -c "$_d/veyyon is NOT the version")" "1"
+
+  # A tag without the leading v compares the same way.
+  ( PATH="$_d:$PATH" doctor "$_d/veyyon" "1.0.37" >/dev/null 2>&1 ); check "a bare tag (no leading v) still matches" "$?" "0"
+
+  # No expected tag (source installs) skips the check entirely rather than
+  # inventing an expectation.
+  ( PATH="$_d:$PATH" doctor "$_d/veyyon" >/dev/null 2>&1 ); check "doctor without a tag skips the version gate" "$?" "0"
+  out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" 2>&1 )
+  check "no tag means no version-match line" "$(printf '%s' "$out" | grep -c 'reported version matches')" "0"
+
+  # An unparseable --version line fails closed instead of passing the gate.
+  printf '#!/bin/sh\necho veyyon build unknown\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
+  ( PATH="$_d:$PATH" doctor "$_d/veyyon" "v1.0.37" >/dev/null 2>&1 ); check "an unreadable version fails closed" "$?" "1" )
+
 # --- doctor: detects a stale copy shadowing the fresh install ---
 # The classic silent install failure: an older veyyon/vey earlier on PATH (a
 # previous `bun add -g`, a distro package, a manual copy) keeps winning every
