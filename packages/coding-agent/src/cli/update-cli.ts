@@ -5,6 +5,7 @@
  * Uses the installer that owns the active veyyon executable when it can be detected.
  */
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
 import {
@@ -89,6 +90,12 @@ export interface InstalledVersionVerification {
 	ok: boolean;
 	actual?: string;
 	path?: string;
+	/**
+	 * Why the check failed, when the reason is not "wrong version". Reported in
+	 * place of the version wording, which would be misleading for a binary that
+	 * IS the right version and still cannot run.
+	 */
+	reason?: string;
 }
 
 /** Paths and verifier used while replacing a downloaded binary update. */
@@ -445,6 +452,69 @@ export async function verifyBinaryVersion(
 }
 
 /**
+ * Prove the swapped-in binary can actually work, not just that it reports the
+ * right version.
+ *
+ * `--version` is answered by the JS entry point alone, so a release built for
+ * the wrong architecture, or one whose native addon failed to stage, passes the
+ * version check and fails on the user's first real command — with the previous
+ * working binary already deleted. `grep` is the cheapest command that goes
+ * through the native walker and returns a checkable result, against a file this
+ * function writes itself.
+ *
+ * Returning `ok: false` is what makes this worth doing here rather than in
+ * doctor: the caller rolls the previous binary back. install.sh's doctor can
+ * only report the same failure after the fact.
+ */
+export async function verifyBinaryUsable(
+	binPath: string,
+	expectedVersion: string,
+): Promise<InstalledVersionVerification> {
+	const version = await verifyBinaryVersion(binPath, expectedVersion);
+	if (!version.ok) return version;
+
+	// A build with no `grep` subcommand is not a broken update (a downgrade to a
+	// release that predates it would otherwise roll back forever).
+	const help = await $`${binPath} grep --help`.quiet().nothrow();
+	if (help.exitCode !== 0) return version;
+
+	const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-update-check-"));
+	try {
+		await fs.promises.writeFile(path.join(dir, "probe.txt"), "veyyon-native-self-test\n");
+		const probe = await $`${binPath} grep veyyon-native-self-test ${dir}`.quiet().nothrow();
+		const output = `${probe.stdout.toString()}${probe.stderr.toString()}`;
+		if (probe.exitCode !== 0) {
+			return {
+				ok: false,
+				path: binPath,
+				actual: version.actual,
+				reason:
+					`${APP_NAME} ${expectedVersion} installed but cannot run a search ` +
+					`(\`grep\` exited ${probe.exitCode}), so its native addon did not load. ` +
+					`This usually means the release has no build for this platform. ` +
+					`Output was: ${output.trim()}`,
+			};
+		}
+		// Exit 0 is not enough on its own: a walker that returns nothing exits 0.
+		if (!output.includes("probe.txt")) {
+			return {
+				ok: false,
+				path: binPath,
+				actual: version.actual,
+				reason:
+					`${APP_NAME} ${expectedVersion} ran a search but did not find a file it was ` +
+					`pointed at, so the install is not usable. Output was: ${output.trim()}`,
+			};
+		}
+	} catch (err) {
+		return { ok: false, path: binPath, actual: version.actual, reason: errorMessage(err) };
+	} finally {
+		await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+	}
+	return version;
+}
+
+/**
  * Where an in-progress update reports what it is doing.
  *
  * `veyyon update` is a plain CLI run and prints to the console. An automatic
@@ -465,6 +535,9 @@ function printVerifiedVersion(expectedVersion: string, report: UpdateReporter): 
 }
 
 function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
+	if (result.reason) {
+		return result.reason;
+	}
 	if (result.actual) {
 		return `${APP_NAME} at ${result.path} still reports ${result.actual} (expected ${expectedVersion})`;
 	}
@@ -687,7 +760,7 @@ export async function updateViaBinaryAt(
 		backupPath,
 		expectedVersion,
 		// Verify the file this update just wrote, not whatever PATH resolves now.
-		verifyInstalledVersion: version => verifyBinaryVersion(targetPath, version),
+		verifyInstalledVersion: version => verifyBinaryUsable(targetPath, version),
 	});
 	// Reclaim backups from earlier updates whose owning process has since exited.
 	await sweepStaleBackups(targetPath);
