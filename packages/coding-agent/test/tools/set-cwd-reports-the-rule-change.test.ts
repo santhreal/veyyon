@@ -91,19 +91,21 @@ describe("set_cwd rule reporting", () => {
 		return { tool: new SetCwdTool(session as never), manager };
 	}
 
-	it("inlines the content of a rule file that newly applies", async () => {
-		// THE POINT OF THE WHOLE CHANGE. Naming the path would leave a headless
-		// session no better off than before: it would still be following the old
-		// project's rules unless it happened to read the file. The instruction has to
-		// arrive in the result.
-		await fs.writeFile(path.join(inner, "AGENTS.md"), "Never run the formatter on generated output.");
+	it("names a rule file that newly applies, without inlining its content", async () => {
+		// NAMES ONLY. An earlier version inlined the text of every newly applicable
+		// rule file, which was the wrong instinct: `loadProjectContextFiles` walks up
+		// from cwd, so the next system-prompt build carries the new project's rules by
+		// itself, in the `<context>` block where they are cached. Paying for them a
+		// second time in a tool result buys nothing and crowds out the work.
+		const body = "Never run the formatter on generated output.";
+		await fs.writeFile(path.join(inner, "AGENTS.md"), body);
 
 		const { tool } = toolAt(outer);
 		const text = textOf(await tool.execute("s1", { path: inner }));
 
-		expect(text).toContain("Never run the formatter on generated output.");
 		expect(text).toContain(path.join(inner, "AGENTS.md"));
-		expect(text).toContain("NEWLY IN EFFECT");
+		expect(text).toContain("now in effect");
+		expect(text).not.toContain(body);
 	});
 
 	it("records the newly applicable path in details for the renderer", async () => {
@@ -127,7 +129,7 @@ describe("set_cwd rule reporting", () => {
 		const text = textOf(result);
 		const details = result.details as SetCwdToolDetails;
 
-		expect(text).toContain("NO LONGER IN EFFECT");
+		expect(text).toContain("No longer in effect");
 		expect(text).toContain(path.join(outer, "AGENTS.md"));
 		expect(details.rulesDropped).toEqual([path.join(outer, "AGENTS.md")]);
 	});
@@ -148,22 +150,17 @@ describe("set_cwd rule reporting", () => {
 		expect(textOf(result)).toContain("unchanged");
 	});
 
-	it("reports an oversized rule file instead of dropping it", async () => {
-		// THE FAILURE THIS MUST NEVER HAVE. A rule file omitted without a word is a
-		// silent fallback: the model is told the rules for this directory and the one
-		// that mattered most is missing, with nothing to indicate it. Over budget, the
-		// file is still named, sized, and marked as required reading.
-		const huge = `HUGE RULE\n${"x".repeat(20_000)}`;
-		await fs.writeFile(path.join(inner, "AGENTS.md"), huge);
+	it("stays the same size no matter how large the rule file is", async () => {
+		// The reason names beat content. A 40 KB AGENTS.md is common, and a result that
+		// grew with it would spend the context the re-root was supposed to save. The
+		// result is a few lines whatever the file weighs.
+		await fs.writeFile(path.join(inner, "AGENTS.md"), `HUGE RULE\n${"x".repeat(40_000)}`);
 
 		const { tool } = toolAt(outer);
 		const text = textOf(await tool.execute("s1", { path: inner }));
 
-		expect(text).toContain("NOT INLINED");
+		expect(text.length).toBeLessThan(1_000);
 		expect(text).toContain(path.join(inner, "AGENTS.md"));
-		expect(text).toContain("Read the file now and follow it.");
-		// The body must not have been inlined, which is the whole point of the budget.
-		expect(text).not.toContain("x".repeat(20_000));
 	});
 
 	it("says plainly that nothing changed when neither directory has project rules", async () => {
@@ -179,7 +176,7 @@ describe("set_cwd rule reporting", () => {
 		expect(details.rulesApplied).toEqual([]);
 		expect(details.rulesDropped).toEqual([]);
 		expect(textOf(result)).toContain("unchanged");
-		expect(textOf(result)).not.toContain("NEWLY IN EFFECT");
+		expect(textOf(result)).not.toContain("now in effect");
 	});
 
 	it("reports both halves when a move swaps one project's rules for another's", async () => {
@@ -197,8 +194,11 @@ describe("set_cwd rule reporting", () => {
 
 		expect(details.rulesApplied).toEqual([path.join(sibling, "AGENTS.md")]);
 		expect(details.rulesDropped).toEqual([path.join(outer, "AGENTS.md")]);
-		expect(text).toContain("Sibling rule: use spaces.");
-		expect(text).not.toContain("Outer rule: use tabs.");
+		expect(text).toContain("now in effect");
+		expect(text).toContain("No longer in effect");
+		// Names, not bodies: neither project's rule text appears.
+		expect(text).not.toContain("use spaces");
+		expect(text).not.toContain("use tabs");
 	});
 
 	it("still reports the re-root itself alongside the rule change", async () => {
@@ -270,7 +270,7 @@ describe("set_cwd rule reporting", () => {
 		const { tool } = toolAt(outer);
 		const text = textOf(await tool.execute("s1", { path: inner }));
 
-		expect(text).toContain("Inner rule: this package uses spaces.");
-		expect(text).not.toContain("Outer rule: use tabs.");
+		expect(text).toContain(path.join(inner, "AGENTS.md"));
+		expect(text).not.toContain(path.join(outer, "AGENTS.md"));
 	});
 });

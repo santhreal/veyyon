@@ -64,24 +64,8 @@ export interface SetCwdToolDetails {
 	rulesUnchanged?: number;
 }
 
-/**
- * How many bytes of newly-applicable rule text this result will inline.
- *
- * Rule files are usually a few KB and inlining them is the point: see
- * {@link describeRuleChange}. A repository with a very large AGENTS.md is the
- * exception, and silently dropping it would be the worst outcome, so anything
- * past the budget is still LISTED with its size and an instruction to read it.
- * The number is deliberately larger than a typical rule file and far smaller
- * than a context window.
- */
-const RULE_INLINE_BUDGET_BYTES = 16_000;
-
-interface RuleFile {
-	path: string;
-	content: string;
-}
-
 interface RuleChange {
+	/** Short lines appended to the tool result. Never rule file CONTENT. */
 	lines: string[];
 	applied: string[];
 	dropped: string[];
@@ -89,32 +73,19 @@ interface RuleChange {
 }
 
 /**
- * Describe how the rule files in effect changed across a re-root, inlining the
- * ones that newly apply.
+ * Describe how the rule files in effect changed across a re-root.
  *
- * WHY THE TOOL RESULT CARRIES THIS. Rule files (AGENTS.md, CLAUDE.md and the
- * other context layers) are discovered by walking up from the session cwd, and
- * they are baked into the system prompt when the session starts. Re-rooting
- * mid-session moves the walk's starting point, so the set of files that OUGHT to
- * apply changes immediately, while the system prompt still describes the old
- * directory.
+ * NAMES ONLY, NEVER CONTENT. An earlier version of this inlined the text of every
+ * newly applicable rule file, which was the wrong instinct: it spends context on
+ * something the session already has a channel for. `loadProjectContextFiles` walks
+ * up from cwd, so once the cwd has moved the next system-prompt build carries the
+ * new project's rules by itself, in the `<context>` block where they belong and
+ * where they are cached. Paying for them a second time in a tool result buys
+ * nothing and crowds out the work.
  *
- * The interactive TUI repairs that afterwards: its `cwd_changed` handler runs
- * `applyCwdChange`, which reloads project settings and rebuilds the base system
- * prompt for the new directory. Nothing else does. An SDK session, an ACP
- * session, a headless run and a subagent all re-root with no rule reload at all,
- * so they keep following the previous project's instructions for the rest of the
- * session. Even in the TUI the repair lands on the NEXT prompt, after the turn
- * that called `set_cwd` has already continued working under the old rules.
- *
- * Putting the rules in the tool result fixes both, because a tool result is the
- * one channel every mode already has and the model reads it in the same turn. It
- * also costs nothing in prompt-cache terms: appending to the transcript leaves
- * the cached prefix intact, whereas rebuilding the system prompt invalidates it.
- *
- * Only the DELTA is reported. Re-stating rules the model is already following
- * would be the expensive, confusing option, and the interesting question after a
- * re-root is exactly "what is different here".
+ * What the result IS for is telling the model that the governing rules moved, and
+ * which ones, so it knows to stop applying the old project's conventions. That is
+ * a few short lines regardless of how large the files are.
  */
 async function describeRuleChange(previous: string, cwd: string): Promise<RuleChange> {
 	const { loadProjectContextFiles } = await import("../system-prompt");
@@ -123,74 +94,28 @@ async function describeRuleChange(previous: string, cwd: string): Promise<RuleCh
 		loadProjectContextFiles({ cwd }),
 	]);
 
-	const beforeByPath = new Map(before.map(file => [file.path, file.content]));
+	const beforePaths = new Set(before.map(file => file.path));
 	const afterPaths = new Set(after.map(file => file.path));
-	// Keyed by path, with content as a tiebreak for the case where the same path
-	// resolves to different bytes across the two loads. Note what this CANNOT do:
-	// both loads happen now, so a rule file edited since the system prompt was built
-	// looks unchanged to it. Detecting that would need the content the prompt
-	// actually carries, which is not recorded anywhere the tool can reach.
-	const applied: RuleFile[] = after.filter(file => beforeByPath.get(file.path) !== file.content);
-	const dropped = before.filter(file => !afterPaths.has(file.path));
-	const unchanged = after.length - applied.length;
-
-	const change: RuleChange = {
-		lines: [],
-		applied: applied.map(file => file.path),
-		dropped: dropped.map(file => file.path),
-		unchanged,
-	};
+	const applied = after.filter(file => !beforePaths.has(file.path)).map(file => file.path);
+	const dropped = before.filter(file => !afterPaths.has(file.path)).map(file => file.path);
+	const change: RuleChange = { lines: [], applied, dropped, unchanged: after.length - applied.length };
 
 	if (applied.length === 0 && dropped.length === 0) {
-		change.lines = [
-			after.length === 0
-				? "No rule files (AGENTS.md and the like) apply in either directory."
-				: `The same ${after.length} rule file(s) apply here as before, so your instructions are unchanged.`,
-		];
+		change.lines = ["The rule files in effect are unchanged."];
 		return change;
 	}
 
-	const lines = [
-		`Rule files in effect changed: ${applied.length} newly apply, ${dropped.length} no longer apply, ${unchanged} unchanged.`,
-	];
-
-	if (dropped.length > 0) {
-		lines.push(
-			"",
-			`NO LONGER IN EFFECT. These belonged to ${previous} and do not govern work in the new directory; stop following them:`,
-			...dropped.map(file => `- ${file.path}`),
-		);
-	}
-
+	const lines: string[] = [];
 	if (applied.length > 0) {
 		lines.push(
-			"",
-			"NEWLY IN EFFECT. Follow these for the rest of the session, exactly as if they had been in your system prompt from the start. They are listed least specific first, so a later file overrides an earlier one:",
+			`Rule files now in effect here, which were not before: ${applied.join(", ")}. Follow them for the rest of the session.`,
 		);
-		let spent = 0;
-		for (const file of applied) {
-			const bytes = Buffer.byteLength(file.content, "utf8");
-			if (spent + bytes > RULE_INLINE_BUDGET_BYTES) {
-				// Named, sized, and actionable. A rule file dropped without saying so
-				// would be the one failure this whole result exists to prevent.
-				lines.push(
-					"",
-					`--- ${file.path} (${formatKb(bytes)}) ---`,
-					`NOT INLINED: including it would exceed this result's ${formatKb(RULE_INLINE_BUDGET_BYTES)} budget for rule text. Read the file now and follow it.`,
-				);
-				continue;
-			}
-			spent += bytes;
-			lines.push("", `--- ${file.path} ---`, file.content.trim());
-		}
 	}
-
+	if (dropped.length > 0) {
+		lines.push(`No longer in effect: ${dropped.join(", ")}. Stop applying them.`);
+	}
 	change.lines = lines;
 	return change;
-}
-
-function formatKb(bytes: number): string {
-	return `${(bytes / 1000).toFixed(1)} KB`;
 }
 
 export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDetails> {
