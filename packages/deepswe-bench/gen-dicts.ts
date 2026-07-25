@@ -54,6 +54,17 @@ interface DictRow {
 	/** Handles whose expansion an agent could plausibly type (no whitespace). */
 	typeableHandles: number;
 	/**
+	 * Handles that are LINE STRUCTURE (the expansion opens with a newline).
+	 *
+	 * Reported alongside `typeableHandles` rather than folded into it, and the two
+	 * are disjoint. Structure is whitespace-bearing, so `typeableHandles` excludes
+	 * it by construction, and structure is now most of a code repo's dictionary:
+	 * without this column a reader sees `handles=43, typeable=0` and concludes the
+	 * generator produced nothing usable, when it produced 43 rows of the class the
+	 * generator was specifically changed to find.
+	 */
+	structureHandles: number;
+	/**
 	 * Characters saved per emission across those handles: the reachable mass, and
 	 * an UPPER BOUND. It assumes every handle an agent could type is one it does.
 	 */
@@ -153,6 +164,7 @@ async function genOne(task: string): Promise<DictRow> {
 			dictTokens,
 			estimatedSavings,
 			typeableHandles: mass.typeable,
+			structureHandles: handles.filter(handle => handle.expansion.startsWith("\n")).length,
 			typeableSavings: mass.savingPerEmission,
 			expectedSavings: mass.expectedSavingPerEmission,
 			error: toml ? null : "no dictionary generated",
@@ -164,6 +176,7 @@ async function genOne(task: string): Promise<DictRow> {
 			dictTokens: 0,
 			estimatedSavings: 0,
 			typeableHandles: 0,
+			structureHandles: 0,
 			typeableSavings: 0,
 			expectedSavings: 0,
 			error: String(err).slice(0, 200),
@@ -203,7 +216,7 @@ async function main(): Promise<void> {
 				const row = await genOne(task);
 				rows.push(row);
 				console.log(
-					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} (${row.typeableHandles} typeable) typeable-saving=${row.typeableSavings}ch raw~${row.estimatedSavings}tok`}`,
+					`[${rows.length}/${tasks.length}] ${task}: ${row.error ?? `handles=${row.handles} (${row.structureHandles} structure, ${row.typeableHandles} typeable) typeable-saving=${row.typeableSavings}ch raw~${row.estimatedSavings}tok`}`,
 				);
 			}
 		}),
@@ -222,11 +235,27 @@ async function main(): Promise<void> {
 		"expansion contains no whitespace. Prose handles (license text, fixture YAML, doc",
 		"URLs) repeat heavily in a repo and inflate the raw SDK estimate, but a coding",
 		"agent never retypes them. On the one run measured, every handle the model emitted",
-		"was whitespace-free and no prose handle ever was, so this column never misses a",
-		"string the model would have written. A near-zero value means the task cannot",
-		"demonstrate codec value at all, whatever the model does: exclude it before",
-		"spending a run on it, and confirm the exact ceiling post-run from the bench",
-		"report's Encode headroom section.",
+		"was whitespace-free and no prose handle ever was.",
+		"",
+		"THAT COLUMN NOW COVERS A MINORITY OF THE DICTIONARY, AND THE `structure` COLUMN IS",
+		"WHY. It used to be sound to read a near-zero typeable saving as \"this task cannot",
+		"demonstrate codec value at all\", because whitespace-bearing handles were prose and",
+		"prose is never retyped. The generator has since learned to mint LINE STRUCTURE",
+		"(`\\n\\t\\treturn`, a bare `\\n\\t\\t`), which is whitespace-bearing and is retyped",
+		"constantly, and it now dominates: measured on this repo's own trees, a 39-file",
+		"TypeScript tree generates 43 handles of which 43 are structure, and a 28-file Rust",
+		"tree 97 of which 95 are. So a zero in `typeable saving` no longer means the task is",
+		"unmeasurable; it means the NON-STRUCTURE TAIL is unmeasurable, which is a much",
+		"narrower claim. Read it that way and read `structure` beside it.",
+		"",
+		"The structure mass is deliberately NOT folded into the ranking, and the reason is",
+		"that its sign is not known. Structure handles pay only when the model writes code",
+		"inside a tool-call argument, where JSON escaping charges for every `\\t`; the same",
+		"handles are net-NEGATIVE, every one of them, when the model writes a real newline",
+		"in a plain message. Nothing has measured that split, so a ranking that included",
+		"structure would be ranking on a number whose sign is unknown. `typeable saving`",
+		"stays the sort key because it is the part that pays either way. See",
+		"ARGOT-DICT-VALUE-IS-SIGNED-BY-THE-CHANNEL.",
 		"",
 		"READ THE `expected saving` COLUMN, NOT `typeable saving`, TO SIZE A RUN. Typeable",
 		"saving assumes every handle an agent COULD type is one it DOES type, and the one",
@@ -237,12 +266,12 @@ async function main(): Promise<void> {
 		"rate and nothing else. Ranking is unaffected: a constant factor cannot reorder",
 		"the table.",
 		"",
-		"| task | handles | typeable handles | typeable saving (ch/emission) | expected saving (ch/emission) | dict tokens | raw SDK estimate (output tok) |",
-		"|---|---|---|---|---|---|---|",
+		"| task | handles | structure | typeable handles | typeable saving (ch/emission) | expected saving (ch/emission) | dict tokens | raw SDK estimate (output tok) |",
+		"|---|---|---|---|---|---|---|---|",
 		...rows.map(r =>
 			r.error
-				? `| ${r.task} | — | — | — | — | — | ERROR: ${r.error} |`
-				: `| ${r.task} | ${r.handles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.expectedSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
+				? `| ${r.task} | — | — | — | — | — | — | ERROR: ${r.error} |`
+				: `| ${r.task} | ${r.handles} | ${r.structureHandles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.expectedSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
 		),
 		"",
 	];
