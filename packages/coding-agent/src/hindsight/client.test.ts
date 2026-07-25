@@ -34,7 +34,7 @@ describe("HindsightApi fetch cancellation", () => {
 
 	it("reports the effective per-op deadline in timeout errors", async () => {
 		const fetchStub = Object.assign(
-			async (_input: FetchInput, init?: FetchInit) => {
+			async (_input: FetchInput, _init?: FetchInit) => {
 				const err = new Error("Timeout");
 				err.name = "TimeoutError";
 				return Promise.reject(err);

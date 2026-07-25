@@ -350,6 +350,25 @@ export interface AuthCredentialStore {
 	invalidateUsageCache?(signal?: AbortSignal): Promise<void>;
 	listAuthCredentials(provider?: string): StoredAuthCredential[];
 	updateAuthCredential(id: number, credential: AuthCredential): void;
+	/**
+	 * Persist a refreshed credential AND clear any `disabled_cause` on the row.
+	 *
+	 * A successful refresh is proof the grant is alive, so a row a peer disabled on
+	 * a now-superseded token must come back. Without this, `updateAuthCredential`
+	 * writes a live token onto a row still flagged disabled, `listAuthCredentials`
+	 * filters it out, and the user is "logged out" with a working token sitting
+	 * right there.
+	 */
+	updateAuthCredentialEnabling?(id: number, credential: AuthCredential): void;
+	/**
+	 * Read one row by id INCLUDING disabled rows.
+	 *
+	 * `listAuthCredentials` deliberately hides disabled rows, so it cannot answer
+	 * "did a peer already rotate this credential?" during a refresh race — the peer's
+	 * winning row may be exactly the one that got disabled. This is the only reader
+	 * that can see it.
+	 */
+	readAuthCredentialById?(id: number): StoredAuthCredential | undefined;
 	deleteAuthCredential(id: number, disabledCause: string): void;
 	tryDisableAuthCredentialIfMatches(
 		id: number,
@@ -2020,17 +2039,72 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Persist a refreshed credential addressed by id, not a positional index.
-	 * A concurrent disable can reorder/shrink the provider's row array while an
-	 * async refresh is in flight, so a pre-await index is unsafe; resolving the
-	 * row by id at write time lands the rotated token on the correct row. Returns
-	 * the row's current index, or -1 when it was disabled/removed mid-refresh.
+	 * Persist a SUCCESSFULLY REFRESHED credential by id, healing a row that a peer
+	 * disabled while our refresh was in flight.
+	 *
+	 * This is the write that closes the "logged out after a rebuild" loop. Two
+	 * processes sharing the credential store can refresh the same credential at
+	 * once; providers that rotate the refresh token on every use hand one process
+	 * the new token and the other an `invalid_grant`, and the loser CAS-disables the
+	 * row it still believes is current. The winner then persists a perfectly LIVE
+	 * token onto a row flagged disabled, `listAuthCredentials` filters it out, and
+	 * the user sees a logout with a working token sitting on disk.
+	 *
+	 * A successful refresh is proof the grant is alive, so the row is re-enabled as
+	 * part of the same write. The guard below is what keeps that from being
+	 * dangerous: only a row disabled BY A REFRESH FAILURE may be healed. A row
+	 * disabled by a logout, a revocation, or supersession by a newer duplicate stays
+	 * disabled, because a successful refresh says nothing about the user's intent to
+	 * have that row back. Resurrecting those was a real regression introduced by an
+	 * earlier, unconditional version of this heal.
+	 *
+	 * Returns the row's current index, or -1 when the row is gone or must not be
+	 * resurrected.
 	 */
-	#replaceCredentialById(provider: string, id: number, credential: AuthCredential): number {
+	#persistRefreshedCredentialById(provider: string, id: number, credential: AuthCredential): number {
+		const readById = this.#store.readAuthCredentialById?.bind(this.#store);
+		if (readById) {
+			const latest = readById(id);
+			// Gone entirely: nothing to heal, and recreating it would resurrect a
+			// credential the store no longer has.
+			if (!latest) return -1;
+			// Disabled for a reason a refresh cannot disprove.
+			if (!isRefreshFailureDisableCause(latest.disabledCause)) return -1;
+		}
+
+		// Skip a write that would change nothing. The rotation is now committed inside
+		// the refresh single-flight (so an aborted caller cannot lose it), and the call
+		// site that awaited the same refresh then asks to persist the identical
+		// credential. Writing twice is pure redundant IO on the startup path, and it
+		// makes every observer of the store see a spurious second update.
+		// Prefer the store's own view when it can be read by id; fall back to the
+		// in-memory entry, which both the single-flight commit and the call site keep
+		// up to date, so stores without a by-id reader still avoid the double write.
+		const alreadyStored = readById?.(id);
+		const inMemory = this.#getStoredCredentials(provider).find(entry => entry.id === id);
+		const unchanged = alreadyStored
+			? alreadyStored.disabledCause === null && authCredentialEquals(alreadyStored.credential, credential)
+			: inMemory !== undefined && authCredentialEquals(inMemory.credential, credential);
+
+		if (!unchanged) {
+			const enabling = this.#store.updateAuthCredentialEnabling?.bind(this.#store);
+			if (enabling) enabling(id, credential);
+			else this.#store.updateAuthCredential(id, credential);
+		}
+
+		// The row may be absent from the in-memory list precisely because it was
+		// disabled, so rebuild the entry from the store rather than requiring it to
+		// already be present.
 		const entries = this.#getStoredCredentials(provider);
 		const index = entries.findIndex(entry => entry.id === id);
-		if (index === -1) return -1;
-		this.#store.updateAuthCredential(id, credential);
+		if (index === -1) {
+			const refreshed = this.#store.listAuthCredentials(provider);
+			this.#setStoredCredentials(
+				provider,
+				refreshed.map(row => ({ id: row.id, credential: row.credential })),
+			);
+			return this.#getStoredCredentials(provider).findIndex(entry => entry.id === id);
+		}
 		const updated = [...entries];
 		updated[index] = { id, credential };
 		this.#setStoredCredentials(provider, updated);
@@ -2222,28 +2296,6 @@ export class AuthStorage {
 			const serialized = serializeCredential(provider, current);
 			if (!serialized) return { credential: current, refreshed: false, removed: false };
 
-			let stopLeaseRenewal = false;
-			let leaseRenewalError: unknown;
-			const leaseRenewalStopped = Promise.withResolvers<void>();
-			const leaseRenewal =
-				leasedCredentialId !== undefined
-					? (async () => {
-							while (!stopLeaseRenewal) {
-								await Promise.race([Bun.sleep(OAUTH_REFRESH_LEASE_RENEW_MS), leaseRenewalStopped.promise]);
-								if (stopLeaseRenewal) return;
-								const renewed = this.#store.renewCredentialRefreshLease?.(
-									leasedCredentialId,
-									owner,
-									Date.now() + OAUTH_REFRESH_LEASE_TTL_MS,
-								);
-								if (!renewed) {
-									throw new AIError.ConfigurationError("OAuth refresh ownership was lost before persistence");
-								}
-							}
-						})().catch(error => {
-							leaseRenewalError = error;
-						})
-					: undefined;
 			const refreshAbort = new AbortController();
 			const refreshTimeout = setTimeout(() => {
 				refreshAbort.abort(
@@ -2254,55 +2306,86 @@ export class AuthStorage {
 				);
 			}, options.refreshTimeoutMs ?? OAUTH_REFRESH_OPERATION_TIMEOUT_MS);
 
-			let refreshed: OAuthCredentials;
+			// Either the rotated credentials, or a finished answer the failure handling
+			// below produced (a disabled row, a kept credential, a re-read). The refresh
+			// runs inside the shared lease-renewal helper, so the union is what crosses
+			// that boundary before this function can return.
+			type RefreshStep =
+				| { kind: "refreshed"; credentials: OAuthCredentials }
+				| { kind: "done"; result: StoredOAuthRefreshResult<T> };
+			let step: RefreshStep;
+			let leaseRenewalError: unknown;
 			try {
-				try {
-					refreshed = await options.refresh(current, refreshAbort.signal);
-				} catch (error) {
-					if (options.isDefinitiveFailure?.(error)) {
-						const disabledCause = options.disabledCause?.(error) ?? `oauth refresh failed: ${String(error)}`;
-						const disabled = this.#store.tryDisableAuthCredentialIfMatches(
-							row.id,
-							serialized.data,
-							disabledCause,
-							leasedCredentialId !== undefined ? { owner, nowMs: Date.now() } : undefined,
-						);
-						if (disabled) {
-							this.#setStoredCredentials(
-								provider,
-								rows
-									.filter(entry => entry.id !== row.id)
-									.map(entry => ({ id: entry.id, credential: entry.credential })),
-							);
-							this.#resetProviderAssignments(provider);
-							this.#emitCredentialDisabled({ provider, disabledCause });
-							return { credential: undefined, refreshed: false, removed: true };
+				({ result: step, ownershipLost: leaseRenewalError } = await this.#withRefreshLeaseRenewal<RefreshStep>(
+					leasedCredentialId,
+					owner,
+					async () => {
+						try {
+							return { kind: "refreshed", credentials: await options.refresh(current, refreshAbort.signal) };
+						} catch (error) {
+							if (options.isDefinitiveFailure?.(error)) {
+								const disabledCause =
+									options.disabledCause?.(error) ?? `oauth refresh failed: ${String(error)}`;
+								const disabled = this.#store.tryDisableAuthCredentialIfMatches(
+									row.id,
+									serialized.data,
+									disabledCause,
+									leasedCredentialId !== undefined ? { owner, nowMs: Date.now() } : undefined,
+								);
+								if (disabled) {
+									this.#setStoredCredentials(
+										provider,
+										rows
+											.filter(entry => entry.id !== row.id)
+											.map(entry => ({ id: entry.id, credential: entry.credential })),
+									);
+									this.#resetProviderAssignments(provider);
+									this.#emitCredentialDisabled({ provider, disabledCause });
+									return { kind: "done", result: { credential: undefined, refreshed: false, removed: true } };
+								}
+								await this.reload();
+								const latest = this.get(provider);
+								return {
+									kind: "done",
+									result: {
+										credential: latest?.type === "oauth" ? options.credentialFromRow(latest) : undefined,
+										refreshed: false,
+										removed: false,
+									},
+								};
+							}
+							options.onRefreshFailure?.(error);
+							const keepCredential =
+								typeof options.keepCredentialOnRefreshFailure === "function"
+									? options.keepCredentialOnRefreshFailure(error)
+									: options.keepCredentialOnRefreshFailure === true;
+							if (keepCredential) {
+								return { kind: "done", result: { credential: current, refreshed: false, removed: false } };
+							}
+							throw error;
 						}
-						await this.reload();
-						const latest = this.get(provider);
-						return {
-							credential: latest?.type === "oauth" ? options.credentialFromRow(latest) : undefined,
-							refreshed: false,
-							removed: false,
-						};
-					}
-					options.onRefreshFailure?.(error);
-					const keepCredential =
-						typeof options.keepCredentialOnRefreshFailure === "function"
-							? options.keepCredentialOnRefreshFailure(error)
-							: options.keepCredentialOnRefreshFailure === true;
-					if (keepCredential) {
-						return { credential: current, refreshed: false, removed: false };
-					}
-					throw error;
-				}
+					},
+				));
 			} finally {
-				stopLeaseRenewal = true;
-				leaseRenewalStopped.resolve();
-				await leaseRenewal;
 				clearTimeout(refreshTimeout);
 			}
-			if (leaseRenewalError) throw leaseRenewalError;
+			if (step.kind === "done") return step.result;
+			const refreshed = step.credentials;
+			// Losing the lease AFTER a successful refresh must NOT discard the rotation.
+			// The provider has already invalidated the old token, so throwing here would
+			// leave a dead token on disk and log the user out on the next run — the exact
+			// failure the lease exists to prevent. Instead, drop the lease fence from the
+			// persist and rely on the data CAS below, which still refuses to overwrite a
+			// row a peer has moved forward.
+			const lostLeaseOwnership = leaseRenewalError !== undefined;
+			if (lostLeaseOwnership) {
+				logger.warn("OAuth refresh lease lost mid-rotation; persisting on the data CAS alone", {
+					provider,
+					credentialId: row.id,
+				});
+			}
+			const persistLease =
+				leasedCredentialId !== undefined && !lostLeaseOwnership ? { owner, nowMs: Date.now() } : undefined;
 
 			const merged: T = options.mergeRefreshedCredential
 				? options.mergeRefreshedCredential(current, refreshed)
@@ -2320,14 +2403,7 @@ export class AuthStorage {
 						orgName: refreshed.orgName ?? current.orgName,
 					};
 			if (this.#store.tryUpdateAuthCredentialIfMatches) {
-				if (
-					!this.#store.tryUpdateAuthCredentialIfMatches(
-						row.id,
-						serialized.data,
-						merged,
-						leasedCredentialId !== undefined ? { owner, nowMs: Date.now() } : undefined,
-					)
-				) {
+				if (!this.#store.tryUpdateAuthCredentialIfMatches(row.id, serialized.data, merged, persistLease)) {
 					await this.reload();
 					const latest = this.get(provider);
 					return {
@@ -4264,7 +4340,7 @@ export class AuthStorage {
 					};
 					candidate.selection.credential = updated;
 					if (credentialId !== undefined) {
-						const idx = this.#replaceCredentialById(provider, credentialId, updated);
+						const idx = this.#persistRefreshedCredentialById(provider, credentialId, updated);
 						if (idx !== -1) candidate.selection.index = idx;
 					} else {
 						this.#replaceCredentialAt(provider, candidate.selection.index, updated);
@@ -4323,6 +4399,225 @@ export class AuthStorage {
 		return undefined;
 	}
 
+	/** Whether the store exposes the full durable-lease surface both fenced paths need. */
+	#storeSupportsDurableLease(): boolean {
+		return (
+			!!this.#store.tryAcquireCredentialRefreshLease &&
+			!!this.#store.getCredentialRefreshLeaseExpiresAt &&
+			!!this.#store.releaseCredentialRefreshLease &&
+			!!this.#store.renewCredentialRefreshLease
+		);
+	}
+
+	/**
+	 * Run `fn` while holding a refresh lease, renewing it in the background so a
+	 * refresh slower than the lease TTL does not lose ownership mid-flight.
+	 *
+	 * The ownership loss is REPORTED alongside the result, never thrown. By the time
+	 * it is known the provider has usually already spent the single-use refresh token,
+	 * and throwing would discard a rotation that can never be obtained again, which is
+	 * the "logged out after a rebuild" failure the lease exists to prevent. Each caller
+	 * decides what a lost lease means for its own persist.
+	 *
+	 * `credentialId === undefined` means the refresh is not lease-fenced at all (the
+	 * store lacks the durable-lease surface, or the row was never leased), so no
+	 * renewal loop runs and `ownershipLost` is always undefined.
+	 *
+	 * This is the one renewal loop. Both fenced refresh paths, `#leaseFencedRefresh`
+	 * for model providers and `refreshStoredOAuthCredential` for MCP, go through it.
+	 */
+	async #withRefreshLeaseRenewal<T>(
+		credentialId: number | undefined,
+		owner: string,
+		fn: () => Promise<T>,
+	): Promise<{ result: T; ownershipLost: unknown }> {
+		if (credentialId === undefined) return { result: await fn(), ownershipLost: undefined };
+		let stop = false;
+		let ownershipLost: unknown;
+		// The renewal loop must wake IMMEDIATELY when the refresh finishes, not at the
+		// end of its current sleep. Waiting out a full renew interval would delay the
+		// rotation's persistence by seconds — long enough for a caller that already
+		// aborted to be gone, and long enough to be a latency bug on every refresh even
+		// when nothing goes wrong.
+		const stopped = Promise.withResolvers<void>();
+		const renewal = (async () => {
+			while (!stop) {
+				await Promise.race([Bun.sleep(OAUTH_REFRESH_LEASE_RENEW_MS), stopped.promise]);
+				if (stop) return;
+				const renewed = this.#store.renewCredentialRefreshLease?.(
+					credentialId,
+					owner,
+					Date.now() + OAUTH_REFRESH_LEASE_TTL_MS,
+				);
+				if (!renewed) {
+					ownershipLost = new AIError.ConfigurationError("OAuth refresh ownership was lost before persistence");
+					return;
+				}
+			}
+		})().catch(error => {
+			ownershipLost = error;
+		});
+
+		// The teardown runs in `finally` so it happens on every path, but nothing is
+		// raised from inside it: a `throw` in `finally` replaces whatever the block was
+		// already doing, so when `fn` itself fails it would discard that error and
+		// report a generic ownership one in its place, hiding the actual cause.
+		let result: T;
+		try {
+			result = await fn();
+		} catch (error) {
+			stop = true;
+			stopped.resolve();
+			await renewal;
+			if (ownershipLost !== undefined) {
+				// `fn`'s error is the one that explains the failure and the one the caller
+				// gets. This one is real too and only one can be thrown, so surface it
+				// rather than dropping it (Law 10).
+				logger.warn("OAuth refresh lost its lease while already failing", {
+					credentialId,
+					owner,
+					ownershipError: String(ownershipLost),
+				});
+			}
+			throw error;
+		}
+		stop = true;
+		stopped.resolve();
+		await renewal;
+		return { result, ownershipLost };
+	}
+
+	/**
+	 * The credential a PEER already rotated, if one exists and is usable.
+	 *
+	 * Reads by id including disabled rows, because the peer's winning row may be the
+	 * one a loser disabled. Returns it only when the refresh token actually differs
+	 * from what we hold (proof of a rotation, not a re-read of our own row) and it is
+	 * not about to expire, so we never hand back a token that would immediately need
+	 * refreshing again.
+	 */
+	#freshRotatedCredential(
+		provider: Provider,
+		credentialId: number,
+		previous: OAuthCredential,
+	): OAuthCredentials | undefined {
+		const readById = this.#store.readAuthCredentialById?.bind(this.#store);
+		if (!readById) return undefined;
+		const latest = readById(credentialId);
+		if (!latest || latest.credential.type !== "oauth") return undefined;
+		const rotated = latest.credential;
+		if (rotated.refresh === previous.refresh) return undefined;
+		if (Date.now() + OAUTH_REFRESH_SKEW_MS >= rotated.expires) return undefined;
+		return rotated;
+	}
+
+	/**
+	 * Merge a rotated credential onto the row and persist it, independently of
+	 * whatever the caller is doing.
+	 *
+	 * This exists because the caller's `await` can be abandoned — a shutdown, a
+	 * rebuild, or an ESC aborts the caller while the refresh itself keeps going and
+	 * resolves a moment later with a rotated, single-use token. If only the caller
+	 * persisted, that token would be lost while the provider had already invalidated
+	 * the old one, and the NEXT run would refresh with a dead token, be told
+	 * `invalid_grant`, and permanently disable a perfectly good login. Committing
+	 * here, inside the single-flight, makes the rotation durable no matter who is
+	 * still listening.
+	 */
+	#commitRotatedOAuthCredential(
+		provider: Provider,
+		credentialId: number,
+		previous: OAuthCredential,
+		refreshed: OAuthCredentials,
+	): void {
+		// Never clobber a peer that rotated FORWARD while we were in flight. Our write
+		// can land arbitrarily late (the caller may have aborted seconds ago), and the
+		// stored row may by then hold a strictly newer single-use token. Overwriting it
+		// with ours would spend the peer's rotation for nothing and put a dead token on
+		// disk, which is the very failure this path exists to prevent.
+		const peerFresh = this.#freshRotatedCredential(provider, credentialId, previous);
+		if (peerFresh && peerFresh.refresh !== refreshed.refresh) return;
+
+		const merged: OAuthCredential = { ...previous, ...refreshed, type: "oauth" };
+		this.#persistRefreshedCredentialById(provider, credentialId, merged);
+	}
+
+	/**
+	 * Refresh under a CROSS-PROCESS lease, so a single-use refresh token is spent
+	 * exactly once even when several veyyon processes share one credential store.
+	 *
+	 * The in-process single-flight cannot help here: the racing refreshes live in
+	 * different processes. Whoever takes the lease refreshes; everyone else waits and
+	 * then reads the peer's rotated token instead of burning their own now-dead one.
+	 * That converts the rotation race from something to be healed after the fact into
+	 * something that cannot happen.
+	 *
+	 * Note carefully what `signal` gates: ONLY the wait for ownership. Once the
+	 * refresh is under way it must run to completion and persist, because aborting
+	 * after the provider has rotated the token would strand it — the same loss this
+	 * whole path exists to prevent.
+	 */
+	async #leaseFencedRefresh(
+		provider: Provider,
+		credential: OAuthCredential,
+		credentialId: number,
+		signal?: AbortSignal,
+	): Promise<OAuthCredentials> {
+		if (!this.#storeSupportsDurableLease()) {
+			return this.#refreshOAuthCredentialUnshared(provider, credential, credentialId);
+		}
+
+		const owner = crypto.randomUUID();
+		for (;;) {
+			if (signal?.aborted) throw new AIError.AbortError("OAuth refresh ownership aborted by caller");
+			// A peer may have finished while we waited; prefer its token over spending ours.
+			const peerFresh = this.#freshRotatedCredential(provider, credentialId, credential);
+			if (peerFresh) return peerFresh;
+			if (
+				this.#store.tryAcquireCredentialRefreshLease?.(credentialId, owner, Date.now() + OAUTH_REFRESH_LEASE_TTL_MS)
+			) {
+				break;
+			}
+			const leaseExpiresAt = this.#store.getCredentialRefreshLeaseExpiresAt?.(credentialId);
+			const waitMs =
+				leaseExpiresAt === undefined
+					? OAUTH_REFRESH_LEASE_POLL_MS
+					: clamp(leaseExpiresAt - Date.now(), OAUTH_REFRESH_LEASE_POLL_MS, 250);
+			await raceCredentialRefreshWithSignal(
+				Bun.sleep(waitMs),
+				signal,
+				"OAuth refresh ownership wait aborted by caller",
+			);
+		}
+
+		try {
+			// Re-check under the lease: a peer may have rotated between our last check
+			// and acquiring ownership.
+			const peerFresh = this.#freshRotatedCredential(provider, credentialId, credential);
+			if (peerFresh) return peerFresh;
+
+			const { result: refreshed, ownershipLost } = await this.#withRefreshLeaseRenewal(credentialId, owner, () =>
+				this.#refreshOAuthCredentialUnshared(provider, credential, credentialId),
+			);
+
+			if (ownershipLost !== undefined) {
+				// The token is already rotated and the old one is dead at the provider, so
+				// discarding it here would guarantee the logout. Commit on the data CAS
+				// alone, then prefer whatever the store ended up holding.
+				logger.warn("OAuth refresh lease lost mid-rotation; reconciling against the stored row", {
+					provider,
+					credentialId,
+				});
+				this.#commitRotatedOAuthCredential(provider, credentialId, credential, refreshed);
+				const winner = this.#freshRotatedCredential(provider, credentialId, credential);
+				if (winner) return winner;
+			}
+			return refreshed;
+		} finally {
+			this.#store.releaseCredentialRefreshLease?.(credentialId, owner);
+		}
+	}
+
 	async #refreshOAuthCredential(
 		provider: Provider,
 		credential: OAuthCredential,
@@ -4337,10 +4632,29 @@ export class AuthStorage {
 		if (credentialId === undefined) {
 			return this.#refreshOAuthCredentialUnshared(provider, credential, undefined, signal);
 		}
-		const promise = this.#refreshOAuthCredentialUnshared(provider, credential, credentialId).finally(() => {
-			this.#oauthCredentialRefreshInFlight.delete(credentialId);
-		});
-		this.#oauthCredentialRefreshInFlight.set(credentialId, promise);
+		const id = credentialId;
+		const promise = this.#leaseFencedRefresh(provider, credential, id, signal)
+			.then(refreshed => {
+				// Commit as a SAFETY NET for the one case the caller cannot cover: its own
+				// abort. Normally the caller that awaited this refresh persists the
+				// credential itself, and it often knows more than we do here (the usage path
+				// adds the provider's resolved `apiEndpoint`), so writing again would be
+				// both redundant and less complete.
+				//
+				// When the caller aborted, though, nobody persists. The refresh still
+				// completed and the provider has already invalidated the old token, so
+				// leaving it on disk is exactly the "logged out after a rebuild" failure:
+				// the next run refreshes with a dead token, gets `invalid_grant`, and
+				// disables a perfectly good login. So commit precisely then.
+				if (signal?.aborted) {
+					this.#commitRotatedOAuthCredential(provider, id, credential, refreshed);
+				}
+				return refreshed;
+			})
+			.finally(() => {
+				this.#oauthCredentialRefreshInFlight.delete(id);
+			});
+		this.#oauthCredentialRefreshInFlight.set(id, promise);
 		return raceCredentialRefreshWithSignal(promise, signal);
 	}
 
@@ -4567,7 +4881,7 @@ export class AuthStorage {
 				orgName: result.newCredentials.orgName ?? selection.credential.orgName,
 			};
 			if (credentialId !== undefined) {
-				const idx = this.#replaceCredentialById(provider, credentialId, updated);
+				const idx = this.#persistRefreshedCredentialById(provider, credentialId, updated);
 				if (idx !== -1) selection.index = idx;
 			} else {
 				this.#replaceCredentialAt(provider, selection.index, updated);
@@ -5569,7 +5883,7 @@ export class AuthStorage {
 			// refresh was in flight, so the pre-await positional index is unsafe. A
 			// -1 means the row was disabled/removed mid-refresh — surface that as a
 			// miss rather than implying a live row the snapshot won't contain.
-			if (this.#replaceCredentialById(provider, id, updated) === -1) {
+			if (this.#persistRefreshedCredentialById(provider, id, updated) === -1) {
 				throw new AIError.ValidationError(`No credential with id=${id}`);
 			}
 			return {
@@ -5820,6 +6134,30 @@ function normalizeDisabledCause(disabledCause: string): string {
 	return normalized.length > 0 ? normalized : "disabled";
 }
 
+/**
+ * Prefix of every `disabled_cause` written because an OAuth REFRESH failed.
+ *
+ * One owner for the string, because two code paths must agree on it exactly: the
+ * six places that generate the cause, and {@link isRefreshFailureDisableCause},
+ * which decides whether a later successful refresh may re-enable the row. Get that
+ * wrong in the lenient direction and a deliberate logout or a superseded duplicate
+ * gets RESURRECTED by an unrelated refresh.
+ */
+export const OAUTH_REFRESH_FAILURE_DISABLE_PREFIX = "oauth refresh failed";
+
+/**
+ * Whether a row's `disabled_cause` marks it as healable by a successful refresh.
+ *
+ * `null` means the row is active and needs no healing. A refresh-failure cause is
+ * healable: the refresh that just succeeded disproves the failure that disabled it.
+ * ANY OTHER cause (a logout, a superseded duplicate, a revoked grant) must stay
+ * disabled, because nothing about a successful refresh of a different credential
+ * says the user wants that row back.
+ */
+export function isRefreshFailureDisableCause(cause: string | null | undefined): boolean {
+	return cause === null || cause === undefined || cause.startsWith(OAUTH_REFRESH_FAILURE_DISABLE_PREFIX);
+}
+
 function toStoredAuthCredential(row: AuthRow, credential: AuthCredential): StoredAuthCredential {
 	return { id: row.id, provider: row.provider, credential, disabledCause: row.disabled_cause };
 }
@@ -5985,6 +6323,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#listDisabledByProviderStmt: Statement;
 	#insertStmt: Statement;
 	#updateStmt: Statement;
+	#updateEnablingStmt: Statement;
 	#deleteStmt: Statement;
 	#deleteIfMatchesStmt: Statement;
 	#updateIfMatchesStmt: Statement;
@@ -6033,6 +6372,9 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		);
 		this.#updateStmt = this.#db.prepare(
 			`UPDATE auth_credentials SET credential_type = ?, data = ?, identity_key = ?, updated_at = ${SQLITE_NOW_EPOCH} WHERE id = ?`,
+		);
+		this.#updateEnablingStmt = this.#db.prepare(
+			`UPDATE auth_credentials SET credential_type = ?, data = ?, identity_key = ?, disabled_cause = NULL, updated_at = ${SQLITE_NOW_EPOCH} WHERE id = ?`,
 		);
 		this.#updateIfMatchesStmt = this.#db.prepare(
 			`UPDATE auth_credentials SET credential_type = ?, data = ?, identity_key = ?, updated_at = ${SQLITE_NOW_EPOCH} WHERE id = ? AND data = ? AND disabled_cause IS NULL`,
@@ -6647,7 +6989,38 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		}
 	}
 
+	/**
+	 * The re-enabling variant of {@link updateAuthCredential}: writes the credential
+	 * and clears `disabled_cause` in one statement, so a row a peer disabled on a
+	 * superseded token comes back the moment a refresh proves the grant is alive.
+	 */
+	updateAuthCredentialEnabling(id: number, credential: AuthCredential): void {
+		this.#writeCredential(id, credential, true);
+	}
+
 	updateAuthCredential(id: number, credential: AuthCredential): void {
+		this.#writeCredential(id, credential, false);
+	}
+
+	/**
+	 * Read one row by id, INCLUDING disabled rows, which `listAuthCredentials`
+	 * filters out. Used during a refresh race to see whether a peer already rotated
+	 * the token, since the peer's row may itself have been disabled.
+	 */
+	readAuthCredentialById(id: number): StoredAuthCredential | undefined {
+		const stmt = this.#db.prepare("SELECT * FROM auth_credentials WHERE id = ?");
+		try {
+			const row = stmt.get(id) as AuthRow | undefined;
+			if (!row) return undefined;
+			const credential = deserializeCredential(row);
+			if (!credential) return undefined;
+			return toStoredAuthCredential(row, credential);
+		} finally {
+			stmt.finalize();
+		}
+	}
+
+	#writeCredential(id: number, credential: AuthCredential, reenable: boolean): void {
 		try {
 			const providerStmt = this.#db.prepare("SELECT provider FROM auth_credentials WHERE id = ?");
 			let providerRow: { provider?: string } | undefined;
@@ -6659,12 +7032,21 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			const provider = providerRow?.provider ?? "";
 			const serialized = serializeCredential(provider, credential);
 			if (!serialized) return;
-			this.#updateStmt.run(serialized.credentialType, serialized.data, serialized.identityKey, id);
+			const statement = reenable ? this.#updateEnablingStmt : this.#updateStmt;
+			statement.run(serialized.credentialType, serialized.data, serialized.identityKey, id);
 			if (provider) {
 				this.#purgeSupersededDisabledRows(provider, this.listAuthCredentials(provider));
 			}
-		} catch {
-			// Ignore update failures
+		} catch (error) {
+			// NEVER silent. A dropped credential write is the logout bug: the caller
+			// believes the rotated token is on disk, the next process reads the old one,
+			// and a single-use refresh token is already spent. There is no safe recovery
+			// here, so the least-bad outcome is that the operator can SEE it happened.
+			logger.error("Failed to persist auth credential update", {
+				id,
+				clearDisabled: reenable,
+				error: errorMessage(error),
+			});
 		}
 	}
 
