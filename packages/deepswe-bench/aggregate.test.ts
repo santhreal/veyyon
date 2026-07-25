@@ -18,8 +18,10 @@ import {
 	ceilingBelowNoise,
 	classifyError,
 	collectEmittedText,
+	costIsUnpriced,
 	effectiveTemperature,
 	encodeHeadroom,
+	fmtCost,
 	holmBonferroni,
 	interpretEncodeArm,
 	isHardError,
@@ -2060,5 +2062,88 @@ describe("mostCommonAgentReason — the single cause behind an all-errored canar
 		expect(mostCommonAgentReason(["Model X not found\n", "Model X not found", "  Model X not found  "])).toBe(
 			"Model X not found",
 		);
+	});
+});
+
+describe("costIsUnpriced / fmtCost — a provider that reports no price is never shown as $0.000", () => {
+	// WHY THIS SUITE EXISTS. The bench runs subscription-tier models (google-antigravity
+	// flash) whose provider returns `usage.cost.total: 0` on every message while the
+	// model burns thousands of tokens: the 0 means "never priced", not "free". Summing
+	// it and printing `$0.000` is a silent fallback (Law 10) — it reads as a real, cheap
+	// price and lets a cost verdict rest on a number the provider never produced. The
+	// summary and per-task columns must instead read `unpriced` / `—`, and the report
+	// must say why once, loudly. A genuinely priced arm must still show its dollars.
+	const STAMP = "2026-07-24T00:00:00.000Z";
+
+	test("an arm with 0 cost but real output tokens is unpriced, not free", () => {
+		// The exact google-antigravity signature: tokens flowed, cost stayed 0.
+		const s = summarizeCell([
+			res({ reward: 1, outputTokens: 900, costUsd: 0 }),
+			res({ reward: 0, outputTokens: 1100, costUsd: 0 }),
+		]);
+		expect(s.costPriced).toBe(false);
+		expect(costIsUnpriced(s)).toBe(true);
+		expect(fmtCost(s, "sum")).toBe("unpriced");
+		expect(fmtCost(s, "mean")).toBe("—");
+	});
+
+	test("an arm with a real positive cost is priced and shows dollars", () => {
+		// The contrast case: any positive provider cost proves the model is priced,
+		// so the dollar figure is real and must be rendered, not hidden.
+		const s = summarizeCell([
+			res({ reward: 1, outputTokens: 900, costUsd: 0.12 }),
+			res({ reward: 1, outputTokens: 800, costUsd: 0.1 }),
+		]);
+		expect(s.costPriced).toBe(true);
+		expect(costIsUnpriced(s)).toBe(false);
+		expect(fmtCost(s, "sum")).toBe("$0.220");
+		expect(fmtCost(s, "mean")).toBe("$0.110");
+	});
+
+	test("a mix where at least one run is priced counts the whole arm as priced", () => {
+		// If even one run carried a price, the model IS priced; the zeros are just
+		// runs the provider happened not to bill, not evidence of an unpriced model.
+		const s = summarizeCell([
+			res({ reward: 1, outputTokens: 900, costUsd: 0 }),
+			res({ reward: 1, outputTokens: 800, costUsd: 0.05 }),
+		]);
+		expect(s.costPriced).toBe(true);
+		expect(costIsUnpriced(s)).toBe(false);
+		expect(fmtCost(s, "sum")).toBe("$0.050");
+	});
+
+	test("an all-errored arm (no output at all) is empty, not unpriced", () => {
+		// A cell with zero OK samples produced no tokens, so calling it "unpriced"
+		// would be wrong — there is simply nothing to price. It must not trip the
+		// unpriced path and must not emit the loud note on its own.
+		const s = summarizeCell([res({ error: "boom", outputTokens: null, costUsd: null })]);
+		expect(costIsUnpriced(s)).toBe(false);
+	});
+
+	test("the summary and per-task tables render `unpriced`/`—`, never `$0.000`", () => {
+		// End to end: an unpriced run must never show a fabricated dollar amount in
+		// either table. This is the regression that the silent `$0.000` created.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 3; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000, costUsd: 0 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800, costUsd: 0 }));
+		}
+		const report = renderReport(results, "google-antigravity/gemini-3.5-flash", STAMP, 1);
+		expect(report).not.toContain("$0.000");
+		expect(report).toContain("| unpriced |"); // the per-arm totals cost cell
+		expect(report).toContain("Cost is `unpriced` for at least one arm.");
+	});
+
+	test("a priced run keeps its dollars and emits no unpriced note", () => {
+		// The guard against over-firing: when the provider DID price the run, the
+		// report shows dollars and never prints the unpriced explanation.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 3; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000, costUsd: 0.2 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800, costUsd: 0.15 }));
+		}
+		const report = renderReport(results, "m", STAMP, 1);
+		expect(report).toContain("$0.600"); // decode sum: 3 × 0.2
+		expect(report).not.toContain("Cost is `unpriced`");
 	});
 });

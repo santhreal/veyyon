@@ -477,6 +477,18 @@ export interface CellSummary {
 	sumInputTokens: number;
 	sumCacheTokens: number;
 	sumAgentSeconds: number;
+	/**
+	 * Whether the provider reported a real per-request price for this group: true
+	 * when at least one OK run carried a positive `usage.cost.total`. It exists to
+	 * separate two states that a bare `sumCostUsd` of 0 conflates — a genuinely
+	 * free/zero-cost run, and a model the provider NEVER PRICED. The bench's
+	 * subscription-tier models (google-antigravity flash) report `cost.total: 0` on
+	 * every message even while burning thousands of tokens, so a summed 0 there means
+	 * "not told", not "free". Printing that as `$0.000` is a silent fallback: it reads
+	 * as a real, cheap price and lets a cost-based verdict rest on a number the
+	 * provider never produced. See {@link costIsUnpriced} and {@link fmtCost}.
+	 */
+	costPriced: boolean;
 }
 
 function mean(values: Array<number | null>): number | null {
@@ -830,7 +842,37 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		sumInputTokens: sum(r => r.inputTokens),
 		sumCacheTokens: sum(r => r.cacheTokens),
 		sumAgentSeconds: sum(r => r.agentSeconds),
+		costPriced: ok.some(r => (r.costUsd ?? 0) > 0),
 	};
+}
+
+/**
+ * True when a cell's cost is UNPRICED: the provider reported no per-request cost
+ * (`costPriced` false) yet the model actually did work (`sumOutputTokens > 0`).
+ * This is the exact state where a `$0.000` render would lie — the tokens flowed,
+ * the provider just never attached a price. A cell with no output at all (an
+ * all-errored arm) is NOT "unpriced"; it is empty, and its cost is a plain 0.
+ * Keeping the predicate here (ONE PLACE) means the summary column, the per-task
+ * column, and the efficiency comparison all agree on when cost is adjudicable.
+ */
+export function costIsUnpriced(s: CellSummary): boolean {
+	return !s.costPriced && s.sumOutputTokens > 0;
+}
+
+/**
+ * Render a cell's cost honestly. When the cell is {@link costIsUnpriced}, return
+ * `unpriced` (for a summed total) or `—` (for a per-task mean) instead of a
+ * dollar figure, so a subscription-tier model whose provider never reported a
+ * price can never be shown as `$0.000` as if it were a real, cheap amount. When
+ * the provider DID price the run, return the dollar figure at three decimals.
+ * `kind` selects the label used for the missing case so a wide summary cell and a
+ * narrow per-task cell read appropriately.
+ */
+export function fmtCost(s: CellSummary, kind: "sum" | "mean"): string {
+	if (costIsUnpriced(s)) return kind === "sum" ? "unpriced" : "—";
+	const value = kind === "sum" ? s.sumCostUsd : s.meanCostUsd;
+	if (value === null) return "—";
+	return `$${value.toFixed(3)}`;
 }
 
 function fmt(n: number | null, digits = 0): string {
@@ -1181,7 +1223,24 @@ export function renderReport(
 		lines.push(
 			`| ${arm} | ${samples} | ${fmtRate(s)} | ${fmt(s.meanReward, 2)} | ${fmt(s.meanPartial, 2)} | ` +
 				`${fmt(s.sumInputTokens)} | ${fmt(s.sumOutputTokens)} | ${fmt(s.sumCacheTokens)} | ` +
-				`$${s.sumCostUsd.toFixed(3)} | ${fmt(s.sumAgentSeconds)}s |`,
+				`${fmtCost(s, "sum")} | ${fmt(s.sumAgentSeconds)}s |`,
+		);
+	}
+	// If any arm is unpriced, say so LOUDLY once instead of letting an `unpriced`
+	// cell read as an unexplained blank. The provider (a subscription-tier model
+	// like google-antigravity flash) reports `cost.total: 0` on every message, so a
+	// dollar cost cannot be computed from provider data and the input-for-output
+	// tradeoff cannot be weighed at prices. Token columns above still tell the whole
+	// physical story; only the money conversion is missing.
+	if (arms.some(arm => costIsUnpriced(summarizeCell(results.filter(r => r.arm === arm))))) {
+		lines.push("");
+		lines.push(
+			"> **Cost is `unpriced` for at least one arm.** The provider reported no per-request price " +
+				"(`usage.cost.total` is 0 on every message while tokens flowed), so this is a subscription/quota " +
+				"model, not a free one. A zero-dollar figure would be fabricated, so cost reads `unpriced` and the " +
+				"efficiency comparison marks cost `not measured`. Compare the **input tok** and **output tok** " +
+				"columns directly to read the tradeoff; to adjudicate it in dollars, supply reference per-token " +
+				"prices (see the README's cost section).",
 		);
 	}
 	lines.push("");
@@ -1194,7 +1253,7 @@ export function renderReport(
 			const s = summarizeCell(cell(a, task));
 			if (s.total === 0) return ["—", "—", "—"];
 			if (s.n === 0) return ["ERR", "—", "—"];
-			return [fmtRate(s), fmt(s.meanOutputTokens), s.meanCostUsd === null ? "—" : `$${s.meanCostUsd.toFixed(3)}`];
+			return [fmtRate(s), fmt(s.meanOutputTokens), fmtCost(s, "mean")];
 		});
 		lines.push(`| ${task} | ${cells.join(" | ")} |`);
 	}

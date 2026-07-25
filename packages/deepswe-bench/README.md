@@ -65,7 +65,37 @@ Use `full ↔ full-budget16k` to test the claim where it is measurable, and read
 both token rows. A larger dictionary rides in the prompt every turn, so it buys
 shorter output by spending input. The efficiency comparison scores `input tok`
 alongside `output tok` for this reason. A win means output fell by more than the
-prompt grew at the provider's own prices, not merely that output fell.
+prompt grew, not merely that output fell.
+
+Whether that trade is a win in DOLLARS depends on the input and output prices,
+and the bench's sandbox model does not supply them: the served subscription-tier
+model (google-antigravity flash) reports `usage.cost.total: 0` on every message
+while burning thousands of tokens, so its cost is `unpriced`, not free (see
+[Cost is often unpriced](#cost-is-often-unpriced)). Read the trade from the token
+columns directly; to weigh it at prices, supply reference per-token prices for the
+model.
+
+## Cost is often unpriced
+
+The bench runs the model the sandbox can serve, and that model is a
+subscription-tier one (google-antigravity flash). Such providers charge a flat
+subscription, not per token, so they report `usage.cost.total: 0` on every
+message even while the model burns thousands of tokens. That 0 means "never
+priced", not "free".
+
+The report never launders that into a dollar figure. When an arm's provider
+reported no price while tokens flowed, its **cost USD** cell reads `unpriced`
+(and its per-task mean cost reads `—`), the report prints a one-line note saying
+why, and the efficiency comparison marks the cost metric `not measured`. Showing
+`$0.000` there would be a fabricated price, and a cost verdict computed from it
+would be meaningless.
+
+To read the input-for-output trade without a price, compare the **input tok** and
+**output tok** columns directly: a feature wins on tokens when output falls by
+more than input rises. To adjudicate the trade in dollars, you must supply
+reference per-token prices for the model, because the provider does not. A run
+against a genuinely per-token-priced model (one whose `usage.cost.total` is
+nonzero) shows real dollars and needs none of this.
 
 ## Prerequisites (once per machine)
 
@@ -165,7 +195,9 @@ verifier reports), `results.json` (every metric, machine-readable), and
 - **input / output / cache tok** — summed per arm from the persisted veyyon
   session usage. Output tokens are the expensive ones; a compression feature
   should move output tokens down at equal reward.
-- **cost USD** — from veyyon's own pricing accounting.
+- **cost USD** — from veyyon's own pricing accounting, or `unpriced` when the
+  provider reported no price (see [Cost is often unpriced](#cost-is-often-unpriced)).
+  A subscription-tier model's cost reads `unpriced`, never `$0.000`.
 - **agent wall** — seconds inside the agent phase (env setup and verifier time
   excluded).
 - **Arm comparison (paired by task)** — the actual arm-vs-arm verdict, and the
