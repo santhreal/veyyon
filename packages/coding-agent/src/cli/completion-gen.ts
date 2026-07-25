@@ -252,12 +252,24 @@ function generateBash(spec: CompletionSpec): string {
 	parts.push("");
 
 	// Comma-aware static/dynamic list completion helper.
+	// Completes the LAST element of a comma-separated value, carrying the ones
+	// already chosen through the candidate (a candidate replaces the whole word)
+	// and never offering one of them a second time. zsh gets that exclusion from
+	// `_values -s ,` for free; bash, fish and PowerShell each do it by hand.
 	parts.push(`_veyyon_comma() {
 	local words="$1" realcur prefix
 	realcur="\${cur##*,}"
 	prefix="\${cur%"$realcur"}"
+	local -a chosen remaining=()
+	IFS=',' read -r -a chosen <<< "\${prefix%,}"
+	local w c seen
+	for w in $words; do
+		seen=0
+		for c in "\${chosen[@]}"; do [[ "$c" == "$w" ]] && seen=1; done
+		(( seen )) || remaining+=( "$w" )
+	done
 	local -a matches
-	matches=( $(compgen -W "$words" -- "$realcur") )
+	matches=( $(compgen -W "\${remaining[*]}" -- "$realcur") )
 	local i
 	for (( i=0; i < \${#matches[@]}; i++ )); do matches[i]="$prefix\${matches[i]}"; done
 	COMPREPLY=( "\${matches[@]}" )
