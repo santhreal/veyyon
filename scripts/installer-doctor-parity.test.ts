@@ -80,7 +80,7 @@ describe("doctor verifies the installed binary is the version the release claims
 		// version forever. The self-updater already gated on this; the installers
 		// did not, and that asymmetry is what these lock shut.
 		expect(installSh).toContain("version_from_output() {");
-		expect(installSh).toContain('doctor "$INSTALL_DIR/$BIN_NAME" "$LATEST"');
+		expect(installSh).toContain('doctor "$(install_dir)/$BIN_NAME" "$LATEST"');
 		expect(installPs1).toContain("function ConvertFrom-VersionOutput {");
 		expect(installPs1).toContain("Invoke-Doctor -Command $OutPath -ExpectedTag $Latest");
 	});

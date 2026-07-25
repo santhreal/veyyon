@@ -243,7 +243,7 @@ describe("uninstall takes back the PATH entry install added", () => {
 
 	it("install.sh reclaims staging files a killed install left behind", () => {
 		// The Windows side already sweeps its equivalents.
-		expect(installSh).toContain('for stale in "$INSTALL_DIR/.$BIN_NAME".*; do');
+		expect(installSh).toContain('for stale in "$(install_dir)/.$BIN_NAME".*; do');
 	});
 });
 
