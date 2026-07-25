@@ -1397,7 +1397,15 @@ function createAnthropicSseStreamError(data: string): Error {
 	return new AIError.ProviderResponseError(data, { provider: "anthropic", kind: "output" });
 }
 
-async function* iterateAnthropicEvents(
+/**
+ * Decode an Anthropic SSE response body into stream events.
+ *
+ * Exported because it owns the malformed-frame policy: which frames are skipped,
+ * and when a stream that parsed nothing fails closed instead of returning an
+ * empty turn. That policy needs asserting directly rather than through the SDK
+ * client the provider normally streams from.
+ */
+export async function* iterateAnthropicEvents(
 	response: Response,
 	signal?: AbortSignal,
 	onSseEvent?: AnthropicOptions["onSseEvent"],
@@ -1408,6 +1416,11 @@ async function* iterateAnthropicEvents(
 
 	let sawMessageStart = false;
 	let sawMessageEnd = false;
+	// Counted so a stream that produced NOTHING but malformed frames can fail
+	// closed. Skipping a bad frame is a deliberate best-effort degrade, but it is
+	// only "best effort" while some effort survives; see the check after the loop.
+	let droppedFrames = 0;
+	let yieldedEvents = 0;
 
 	for await (const sse of readSseEvents(response.body, signal)) {
 		notifyRawSseEvent(onSseEvent, sse);
@@ -1435,13 +1448,29 @@ async function* iterateAnthropicEvents(
 			} else if (event.type === "message_stop") {
 				sawMessageEnd = true;
 			}
+			yieldedEvents++;
 			yield event;
 		} catch (error) {
+			droppedFrames++;
 			const message = errorMessage(error);
 			reportAnthropicEnvelopeAnomaly(
 				`could not parse SSE event ${sse.event}: ${message}; skipping frame; data=${sse.data}`,
 			);
 		}
+	}
+
+	// Every frame was malformed and nothing at all got through. Returning here
+	// would hand the caller an empty assistant message with `stopReason: "stop"`,
+	// which is indistinguishable from a model that legitimately chose to say
+	// nothing: the turn "succeeds", the user sees a blank reply, and the only
+	// trace is a warning they had no reason to go looking for. Skipping a bad
+	// frame is a deliberate degrade so a non-conforming endpoint still delivers
+	// what it can, but a degrade that delivers nothing is not best-effort, it is
+	// silence, and it fails closed instead (Law 10).
+	if (droppedFrames > 0 && yieldedEvents === 0 && !signal?.aborted) {
+		throw new AIError.AnthropicStreamEnvelopeError(
+			`Anthropic stream carried ${droppedFrames} event(s) and none of them could be parsed, so the turn produced no content`,
+		);
 	}
 
 	if (sawMessageStart && !sawMessageEnd && !signal?.aborted) {
