@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Skill } from "./extensibility/skills";
-import { APPENDED_BLOCKS } from "./system-prompt-builder/prompt-blocks";
+import { RUNTIME_SECTIONS } from "./system-prompt-builder/prompt-blocks";
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import { buildSystemPrompt } from "./system-prompt";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
@@ -495,7 +495,7 @@ function assertedBlock(id: string): string {
 	return id;
 }
 
-describe("system prompt parity: appended tier", () => {
+describe("system prompt parity: runtime sections", () => {
 	/**
 	 * WHY THIS SECTION EXISTS. Everything above gates on `{{#if <setting>}}`
 	 * conditionals inside the template, and reads only `systemPrompt[0]`. Four
@@ -507,7 +507,7 @@ describe("system prompt parity: appended tier", () => {
 	 * tier-1 harness exists to stop, relocated to where it could not look.
 	 */
 
-	it(`${assertedBlock("project-footer")} is always emitted, and lands after the template`, async () => {
+	it(`${assertedBlock("project")} is always emitted, and lands after the template`, async () => {
 		// Unconditional: no setting gates it, so the contract is that it is ALWAYS
 		// present. Deleting its entry from the registry or its push turns this red.
 		const all = await renderAll();
@@ -518,16 +518,27 @@ describe("system prompt parity: appended tier", () => {
 		expect(await renderBlock0()).not.toContain("<workstation>");
 	});
 
-	it(`${assertedBlock("repo-context")} appears only when a single child repo was resolved`, async () => {
+	it("the merged active-repo clause appears in the project section only when a single child repo was resolved", async () => {
+		// This used to be its own `repo-context` block. It is the SAME concern as the
+		// project framing by every measure that matters — same input (the cwd), same
+		// lifetime, same invalidation — and splitting it meant two things to remember
+		// on a working-directory change. Exactly one of them got remembered, which is
+		// how the prompt kept describing the previous project after a `/cd`.
 		const on = await renderAll({ activeRepoContext: demoRepoContext() });
 		expect(on).toContain("<active-repo-context>");
 		// Assert the interpolated repo path, not just the wrapper: a dropped
-		// template body would leave an empty block that a wrapper-only check passes.
+		// template body would leave an empty block a wrapper-only check passes.
 		expect(on).toContain("Paths under `sub/` are the active project");
 		expect(await renderAll({ activeRepoContext: null })).not.toContain("<active-repo-context>");
+
+		// It must ride inside the project section, not as a section of its own.
+		const projectStart = on.indexOf("PROJECT\n==");
+		const clauseAt = on.indexOf("<active-repo-context>");
+		expect(projectStart).toBeGreaterThanOrEqual(0);
+		expect(clauseAt).toBeGreaterThan(projectStart);
 	});
 
-	it(`${assertedBlock("shorthand-preamble")} is taught only when the caller opens the encode gate`, async () => {
+	it(`${assertedBlock("shorthand")} is taught only when the caller opens the encode gate`, async () => {
 		// The caller resolves the gate (model allowlist + context cutoff) and passes
 		// the rendered block, so parity here is presence/absence of that input.
 		const marker = "<<SHORTHAND-NOTATION-PREAMBLE-MARKER>>";
@@ -567,8 +578,8 @@ describe("system prompt parity: appended tier", () => {
 	 * appended block without a presence/absence assertion here fails, so the
 	 * harness cannot fall behind the assembler the way it did for four blocks.
 	 */
-	it("asserts parity for every registered appended block", () => {
-		const missing = APPENDED_BLOCKS.map(b => b.id).filter(id => !APPENDED_ASSERTED.has(id));
+	it("asserts parity for every registered runtime section", () => {
+		const missing = RUNTIME_SECTIONS.map(s => s.id).filter(id => !APPENDED_ASSERTED.has(id));
 		expect(missing).toEqual([]);
 	});
 });

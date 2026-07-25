@@ -1,6 +1,3 @@
-PROJECT
-===================================
-
 <workstation>
 {{#list environment prefix="- " join="\n"}}{{label}}: {{value}}{{/list}}
 {{#if model}}- Model: {{model}}{{/if}}
@@ -42,6 +39,13 @@ Working directory layout (sorted by mtime, recent first; depth ≤ 3):
 {{/if}}
 
 Today is {{date}}, and the current working directory is '{{cwd}}'.
+{{#if activeRepoRoot}}
+
+<active-repo-context>
+The session cwd is outside git. Exactly one direct child git repository was detected at `{{activeRepoRoot}}`.
+Paths under `{{activeRepoRoot}}/` are the active project for this session. Parent-cwd misses are inconclusive until checking under `{{activeRepoRoot}}/`.
+</active-repo-context>
+{{/if}}
 
 <critical>
 - Each response MUST advance the task. There is no stopping condition other than completion.

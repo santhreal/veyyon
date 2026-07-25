@@ -1,9 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import {
 	applyPromptSectionOrder,
-	PROMPT_SECTION_NAMES,
+	applyPromptSectionOrderToParts,
 	splitPromptSections,
+	TEMPLATE_SECTION_NAMES,
 } from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
+
+// These cases drive `applyPromptSectionOrder`, which reorders ONE rendered
+// document, so they name the sections that live in the template file. The wider
+// `TEMPLATE_SECTION_NAMES` also covers runtime sections (shorthand, project), which
+// are separate parts of the assembled prompt and are ordered by
+// `applyPromptSectionOrderToParts` instead; naming one here would correctly be
+// reported as missing from this document.
 import systemPromptTemplate from "../../src/prompts/system/system-prompt.md" with { type: "text" };
 
 // A miniature render with the same banner grammar as the real template.
@@ -47,7 +55,7 @@ describe("splitPromptSections", () => {
 
 	it("finds every canonical section in the real shipped template", () => {
 		const names = splitPromptSections(systemPromptTemplate).map(s => s.name);
-		for (const name of PROMPT_SECTION_NAMES) {
+		for (const name of TEMPLATE_SECTION_NAMES) {
 			expect(names).toContain(name);
 		}
 	});
@@ -74,7 +82,7 @@ describe("applyPromptSectionOrder", () => {
 	});
 
 	it("a full-identity order reproduces the input", () => {
-		expect(applyPromptSectionOrder(RENDERED, [...PROMPT_SECTION_NAMES])).toBe(RENDERED);
+		expect(applyPromptSectionOrder(RENDERED, [...TEMPLATE_SECTION_NAMES])).toBe(RENDERED);
 	});
 
 	it("skips names missing from the render instead of corrupting the prompt", () => {
@@ -180,21 +188,21 @@ describe("applyPromptSectionOrder: reorder is a content-preserving permutation",
 	const baseline = sectionMultiset(RENDERED);
 
 	it("preserves the exact section multiset under every permutation of the order", () => {
-		for (const order of permutations([...PROMPT_SECTION_NAMES])) {
+		for (const order of permutations([...TEMPLATE_SECTION_NAMES])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
 			expect(sectionMultiset(result)).toEqual(baseline);
 		}
 	});
 
 	it("keeps the preamble first under every permutation of the order", () => {
-		for (const order of permutations([...PROMPT_SECTION_NAMES])) {
+		for (const order of permutations([...TEMPLATE_SECTION_NAMES])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
 			expect(result.startsWith("<system-conventions>preamble</system-conventions>")).toBe(true);
 		}
 	});
 
 	it("emits each listed section exactly at its ordered rank", () => {
-		for (const order of permutations([...PROMPT_SECTION_NAMES])) {
+		for (const order of permutations([...TEMPLATE_SECTION_NAMES])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
 			const banners = {
 				role: "ROLE",
@@ -284,5 +292,66 @@ describe("applyPromptSectionOrder: duplicate, partial, and unknown names", () =>
 		expect(result).toContain("role-alpha");
 		expect(result).toContain("role-beta");
 		expect(result).toContain("run-gamma");
+	});
+});
+
+
+/**
+ * Whole-prompt ordering: the capability the appended tier never had.
+ *
+ * `buildSystemPrompt` returns the prompt as parts — `parts[0]` is the rendered
+ * template, and each later part is one runtime section carrying its own banner.
+ * Before the sections were unified, runtime blocks had no banner at all, so they
+ * were invisible to the splitter and could be neither reordered nor overridden:
+ * the shorthand notation, the section an eval most wants to ablate, was the one
+ * the mechanism could not reach.
+ */
+describe("applyPromptSectionOrderToParts", () => {
+	const TEMPLATE = ["<system-conventions>c</system-conventions>", "", "ROLE", "====", "role body"].join("\n");
+	const PROJECT = ["PROJECT", "=".repeat(35), "", "project body"].join("\n");
+	const SHORTHAND = ["SHORTHAND", "=".repeat(35), "", "notation body"].join("\n");
+	const HANDLES = ["SHORTHAND HANDLES", "=".repeat(35), "", "handle table"].join("\n");
+
+	it("permutes runtime sections by their rank in the order list", () => {
+		const out = applyPromptSectionOrderToParts([TEMPLATE, PROJECT, SHORTHAND, HANDLES], [
+			"shorthand-handles",
+			"shorthand",
+			"project",
+		]);
+		expect(out.slice(1)).toEqual([HANDLES, SHORTHAND, PROJECT]);
+	});
+
+	it("keeps the template part first so the cached prefix is never displaced", () => {
+		// Moving a runtime section ahead of the template would drop volatile text
+		// (the handle table changes on every dictionary load) into the byte-stable
+		// prefix a provider caches, invalidating it every session.
+		const out = applyPromptSectionOrderToParts([TEMPLATE, PROJECT, SHORTHAND], ["shorthand", "role", "project"]);
+		expect(out[0]!.startsWith("<system-conventions>")).toBe(true);
+	});
+
+	it("leaves unlisted runtime sections in registry order, after the listed ones", () => {
+		const out = applyPromptSectionOrderToParts([TEMPLATE, PROJECT, SHORTHAND, HANDLES], ["shorthand-handles"]);
+		expect(out.slice(1)).toEqual([HANDLES, PROJECT, SHORTHAND]);
+	});
+
+	it("preserves every part exactly — reordering is a permutation, never a rewrite", () => {
+		const parts = [TEMPLATE, PROJECT, SHORTHAND, HANDLES];
+		const out = applyPromptSectionOrderToParts(parts, ["shorthand", "project", "shorthand-handles"]);
+		expect(out.length).toBe(parts.length);
+		expect([...out].sort()).toEqual([...parts].sort());
+	});
+
+	it("returns the parts untouched when no order is configured", () => {
+		const parts = [TEMPLATE, PROJECT, SHORTHAND];
+		expect(applyPromptSectionOrderToParts(parts, undefined)).toEqual(parts);
+		expect(applyPromptSectionOrderToParts(parts, [])).toEqual(parts);
+	});
+
+	it("orders template and runtime sections from the SAME list in one pass", () => {
+		// The unification in one assertion: one order list moves a template section
+		// (role, inside part 0) and a runtime section (shorthand, its own part).
+		const out = applyPromptSectionOrderToParts([TEMPLATE, PROJECT, SHORTHAND], ["shorthand", "role"]);
+		expect(out[1]).toBe(SHORTHAND);
+		expect(out[0]).toContain("role body");
 	});
 });

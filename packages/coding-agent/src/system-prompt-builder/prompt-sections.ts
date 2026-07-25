@@ -8,7 +8,7 @@
  * (`harness/model-profile.ts`) share one definition without an import cycle.
  */
 import { logger } from "@veyyon/utils";
-import { BANNERED_SECTION_BLOCKS } from "./prompt-blocks";
+import { BANNERED_SECTIONS, BANNERED_TEMPLATE_SECTIONS } from "./prompt-blocks";
 
 /**
  * The reorderable section names, DERIVED from the one registry in
@@ -22,7 +22,17 @@ import { BANNERED_SECTION_BLOCKS } from "./prompt-blocks";
  * one simply does not recognise the line and folds the section into its
  * predecessor. Deriving both from one source removes the possibility.
  */
-export const PROMPT_SECTION_NAMES = BANNERED_SECTION_BLOCKS.map(b => b.id) as readonly string[];
+export const PROMPT_SECTION_NAMES = BANNERED_SECTIONS.map(b => b.id) as readonly string[];
+
+/**
+ * The subset that lives in the template FILE.
+ *
+ * {@link applyPromptSectionOrder} works on one rendered document, so a caller
+ * reordering just the template can only name these. The whole-prompt entry point
+ * is {@link applyPromptSectionOrderToParts}, which accepts every name in
+ * {@link PROMPT_SECTION_NAMES} because it can see the runtime sections too.
+ */
+export const TEMPLATE_SECTION_NAMES = BANNERED_TEMPLATE_SECTIONS.map(b => b.id) as readonly string[];
 
 export type PromptSectionName = string;
 
@@ -32,7 +42,7 @@ export type PromptSectionName = string;
  * recognised by one splitter and missed by the other.
  */
 const SECTION_BANNER_TO_NAME: Record<string, PromptSectionName> = Object.fromEntries(
-	BANNERED_SECTION_BLOCKS.map(b => [b.banner.split("\n")[0] as string, b.id]),
+	BANNERED_SECTIONS.map(b => [b.banner.split("\n")[0] as string, b.id]),
 );
 
 export interface PromptSection {
@@ -118,4 +128,55 @@ export function applyPromptSectionOrder(rendered: string, order: readonly string
 	const preamble = sections.find(s => s.name === "preamble");
 	const parts = [...(preamble && preamble.text !== "" ? [preamble] : []), ...ordered, ...rest];
 	return parts.map(s => s.text).join("\n");
+}
+
+/**
+ * Reorder the sections of a fully assembled prompt — template AND runtime.
+ *
+ * `buildSystemPrompt` returns the prompt as parts: `parts[0]` is the rendered
+ * template (many banner sections in one string) and each later part is a single
+ * runtime section carrying its own banner. That split is a CACHING contract —
+ * the template prefix stays byte-stable so a provider can cache it, and a
+ * volatile section like the handle table must not sit inside it.
+ *
+ * So ordering is applied in both places from ONE list: template sections are
+ * permuted within `parts[0]`, and the runtime parts are permuted among
+ * themselves, each by its rank in `order`. `parts[0]` stays first regardless,
+ * because moving a runtime section ahead of it would drop volatile text into the
+ * cached prefix and invalidate it on every dictionary load. A name that matches
+ * neither is reported loudly and skipped, exactly as the single-document path
+ * does — never silently ignored.
+ */
+export function applyPromptSectionOrderToParts(parts: readonly string[], order: readonly string[] | undefined): string[] {
+	if (!order || order.length === 0 || parts.length === 0) return [...parts];
+	const [template, ...runtimeParts] = parts;
+
+	const rank = new Map<string, number>();
+	order.forEach((name, index) => {
+		if (!rank.has(name)) rank.set(name, index);
+	});
+
+	// A runtime part is identified by the banner it leads with, which is the same
+	// key `splitPromptSections` uses, so the two can never disagree about identity.
+	const identify = (part: string): string | undefined => SECTION_BANNER_TO_NAME[part.split("\n", 1)[0].trim()];
+	const known = new Set<string>([
+		...TEMPLATE_SECTION_NAMES,
+		...runtimeParts.map(identify).filter((name): name is string => name !== undefined),
+	]);
+	for (const name of order) {
+		if (!known.has(name)) {
+			logger.warn("harness promptSectionOrder names a section missing from the assembled system prompt", {
+				section: name,
+				known: [...known],
+			});
+		}
+	}
+
+	const orderedRuntime = runtimeParts
+		.map((part, index) => ({ part, index, rank: rank.get(identify(part) ?? "") ?? Number.POSITIVE_INFINITY }))
+		// Stable within equal rank: an unlisted runtime section keeps registry order.
+		.sort((a, b) => a.rank - b.rank || a.index - b.index)
+		.map(entry => entry.part);
+
+	return [applyPromptSectionOrder(template, order.filter(name => TEMPLATE_SECTION_NAMES.includes(name))), ...orderedRuntime];
 }

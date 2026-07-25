@@ -22,9 +22,8 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
-import { APPENDED_BLOCKS, type AppendedBlockId } from "./system-prompt-builder/prompt-blocks";
-import { applyPromptSectionOrder } from "./system-prompt-builder/prompt-sections";
-import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
+import { RUNTIME_SECTIONS, type RuntimeSectionId, withSectionBanner } from "./system-prompt-builder/prompt-blocks";
+import { applyPromptSectionOrderToParts } from "./system-prompt-builder/prompt-sections";
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
 import { assembleDefaultTemplate, parseSectionOverridesJson } from "./system-prompt-builder/default-template";
@@ -105,15 +104,6 @@ function firstNonEmpty(...values: (string | undefined | null)[]): string | null 
 		if (trimmed) return trimmed;
 	}
 	return null;
-}
-
-function renderActiveRepoContextPrompt(activeRepoContext: ActiveRepoContext | null): string {
-	if (!activeRepoContext) return "";
-	return prompt
-		.render(activeRepoContextTemplate, {
-			relativeRepoRoot: normalizePromptPath(activeRepoContext.relativeRepoRoot),
-		})
-		.trim();
 }
 
 function parseWmicTable(output: string, header: string): string | null {
@@ -838,7 +828,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const date = formatLocalCalendarDate();
 	const dateTime = date;
 	const promptCwd = shortenPath(normalizePromptPath(resolvedCwd));
-	const activeRepoContextPrompt = renderActiveRepoContextPrompt(activeRepoContext);
 
 	// Build tool metadata for system prompt rendering.
 	// Priority: explicit list > tools map > conservative SDK fallback.
@@ -902,6 +891,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		toolListMode,
 		toolRefs,
 		environment,
+		// Merged into the project section: same input (cwd), same lifetime, same
+		// invalidation as the rest of the project framing.
+		activeRepoRoot: activeRepoContext ? normalizePromptPath(activeRepoContext.relativeRepoRoot) : "",
 		contextFiles,
 		agentsMdSearch: { files: agentsMdFiles },
 		workspaceTree,
@@ -943,12 +935,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	}
 	const baseTemplate = resolvedCustomPrompt ? customSystemPromptTemplate : assembleDefaultTemplate(sectionOverrides);
 	let rendered = prompt.render(baseTemplate, data);
-	if (sectionOrder && sectionOrder.length > 0) {
-		if (resolvedCustomPrompt) {
-			logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
-		} else {
-			rendered = applyPromptSectionOrder(rendered, sectionOrder);
-		}
+	const reorderSections = Boolean(sectionOrder && sectionOrder.length > 0);
+	if (reorderSections && resolvedCustomPrompt) {
+		logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
 	}
 	// Custom prompt templates already render context files and append text; the
 	// project footer still carries environment, cwd, workspace, and dir-context.
@@ -956,34 +945,47 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		.render(projectPromptTemplate, resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data)
 		.trim();
 
-	// The appended tier is assembled from the ONE registry (prompt-blocks.ts), by
-	// block id, rather than from a sequence of ad-hoc pushes. Order is the
-	// registry's order, so it is declared data instead of an artifact of the order
-	// statements happen to appear in this function, and a block cannot reach the
-	// model without being registered. That is what makes the tier addressable: a
-	// controlled eval can name a block, and the settings-parity coverage contract
-	// can see one that is gated.
+	// Runtime sections are assembled from the ONE registry, by section id. Order is
+	// the registry's order, so it is declared data rather than an artifact of the
+	// order statements happen to appear in this function, and a section cannot
+	// reach the model without being registered.
 	//
-	// The shorthand blocks teach the notation (and the load-yourself instruction)
+	// Keyed by the RuntimeSectionId union, so this map must cover EVERY registered
+	// runtime section: adding one to the registry without supplying its text is a
+	// compile error here, not a section that silently renders nothing.
+	//
+	// The shorthand sections teach the notation (and the load-yourself instruction)
 	// whenever the encode gate is open, plus the concrete handle table once a
 	// project is loaded. Dictionaries live in a local cache outside the repository,
-	// so the model learns handles from these blocks, not by reading a file. The
+	// so the model learns handles from these sections, not by reading a file. The
 	// caller decides per turn whether to teach (model allowlist + context cutoff);
 	// decoding is unconditional and runs at the seams.
-	// Keyed by the AppendedBlockId union, so this map must cover EVERY registered
-	// block: adding one to the registry without supplying its text is a compile
-	// error here, not a block that silently renders nothing.
-	const appendedText: Record<AppendedBlockId, string | undefined> = {
-		"project-footer": projectPrompt,
-		"repo-context": activeRepoContextPrompt,
-		"shorthand-preamble": argotPreamble,
+	const runtimeText: Record<RuntimeSectionId, string | undefined> = {
+		project: projectPrompt,
+		shorthand: argotPreamble,
 		"shorthand-handles": argotHandles,
 	};
+
+	// Each runtime section is emitted as its own array entry, carrying the banner
+	// the registry owns. Separate entries are a CACHING contract, not a structural
+	// tier: `rendered` is the byte-stable prefix a provider can cache, and a
+	// volatile section (the handle table changes whenever a dictionary loads) must
+	// not sit inside it. Every entry is a banner section, so `splitPromptSections`
+	// addresses runtime and template sections identically.
 	const systemPrompt = [rendered];
-	for (const block of APPENDED_BLOCKS) {
-		const text = appendedText[block.id];
+	for (const section of RUNTIME_SECTIONS) {
+		const text = withSectionBanner(section, runtimeText[section.id]);
 		if (text) systemPrompt.push(text);
 	}
 
-	return { systemPrompt };
+	// One ordering pass over the WHOLE prompt. Template and runtime sections are
+	// permuted from the same list, so a harness profile can move the shorthand
+	// section the same way it moves tool-policy — the capability the appended tier
+	// never had.
+	return {
+		systemPrompt:
+			reorderSections && !resolvedCustomPrompt
+				? applyPromptSectionOrderToParts(systemPrompt, sectionOrder)
+				: systemPrompt,
+	};
 }
