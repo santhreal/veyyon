@@ -99,7 +99,31 @@ link_alias() {
     target="$1/$BIN_NAME"
     link="$1/$ALIAS_NAME"
     [ -e "$target" ] || return 0
-    ln -sf "$target" "$link" 2>/dev/null && ok "linked '$ALIAS_NAME' -> $BIN_NAME" || warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
+    # `ln -sf` unlinks whatever is at $link first, so it happily destroyed a
+    # user's OWN `vey` script sitting in the install dir, with no warning and no
+    # way to get it back. Only ever replace something this installer could have
+    # put there: a symlink already pointing at our binary (idempotent reinstall),
+    # or a dangling symlink (nothing to lose). Anything else is the user's file
+    # and is left alone.
+    if [ -L "$link" ]; then
+        if [ "$(readlink "$link" 2>/dev/null)" = "$target" ]; then
+            ok "'$ALIAS_NAME' already points at $BIN_NAME"
+            return 0
+        fi
+        if [ ! -e "$link" ]; then
+            ln -sf "$target" "$link" 2>/dev/null \
+                && ok "replaced a broken '$ALIAS_NAME' link -> $BIN_NAME" \
+                || warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
+            return 0
+        fi
+        warn "left '$ALIAS_NAME' alone: $link is a symlink to something else ($(readlink "$link" 2>/dev/null)). Remove it yourself if you want '$ALIAS_NAME' to launch $BIN_NAME; meanwhile launch with '$BIN_NAME'."
+        return 0
+    fi
+    if [ -e "$link" ]; then
+        warn "left '$ALIAS_NAME' alone: $link already exists and was not created by this installer. Remove it yourself if you want '$ALIAS_NAME' to launch $BIN_NAME; meanwhile launch with '$BIN_NAME'."
+        return 0
+    fi
+    ln -s "$target" "$link" 2>/dev/null && ok "linked '$ALIAS_NAME' -> $BIN_NAME" || warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
 }
 
 # ---- ensure the install dir is actually on PATH (binary mode) ----

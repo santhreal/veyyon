@@ -76,6 +76,39 @@ link_alias "$VEYYON_INSTALL_DIR" >/dev/null 2>&1
 check "link_alias created the vey symlink" "$( [ -L "$VEYYON_INSTALL_DIR/vey" ] && echo yes || echo no )" "yes"
 check "vey resolves to veyyon" "$(readlink "$VEYYON_INSTALL_DIR/vey")" "$VEYYON_INSTALL_DIR/veyyon"
 
+# --- link_alias: never destroy a file the installer did not create ---
+# `ln -sf` unlinks whatever sits at the alias path first, so a user's OWN `vey`
+# script in the install dir was silently deleted and replaced, unrecoverably.
+# Only a link this installer could have made may be replaced.
+( _d="$SANDBOX/alias-guard"
+  mkdir -p "$_d"
+  printf '#!/bin/sh\necho real veyyon\n' > "$_d/veyyon"; chmod +x "$_d/veyyon"
+
+  # A user's own script at the alias path must survive, byte for byte.
+  printf '#!/bin/sh\necho MY OWN SCRIPT\n' > "$_d/vey"; chmod +x "$_d/vey"
+  out=$(link_alias "$_d" 2>&1)
+  check "a user's own vey file is not deleted" "$(cat "$_d/vey")" "$(printf '#!/bin/sh\necho MY OWN SCRIPT\n')"
+  check "the collision is reported, not silent" "$(printf '%s' "$out" | grep -c "left 'vey' alone")" "1"
+  check "the message tells the user how to proceed" "$(printf '%s' "$out" | grep -c "launch with 'veyyon'")" "1"
+
+  # A symlink pointing somewhere else is equally not ours to remove.
+  rm -f "$_d/vey"; printf 'other\n' > "$_d/other-tool"; ln -s "$_d/other-tool" "$_d/vey"
+  out=$(link_alias "$_d" 2>&1)
+  check "a symlink to another tool is left in place" "$(readlink "$_d/vey")" "$_d/other-tool"
+  check "the foreign symlink is reported" "$(printf '%s' "$out" | grep -c "symlink to something else")" "1"
+
+  # Our own link is idempotent: a reinstall keeps it and says so.
+  rm -f "$_d/vey"; ln -s "$_d/veyyon" "$_d/vey"
+  out=$(link_alias "$_d" 2>&1)
+  check "an existing correct link is kept" "$(readlink "$_d/vey")" "$_d/veyyon"
+  check "a reinstall reports the alias already points at the binary" "$(printf '%s' "$out" | grep -c "already points at veyyon")" "1"
+
+  # A dangling link has nothing to lose, so it is repaired rather than warned about.
+  rm -f "$_d/vey"; ln -s "$_d/gone-away" "$_d/vey"
+  out=$(link_alias "$_d" 2>&1)
+  check "a broken link is repaired" "$(readlink "$_d/vey")" "$_d/veyyon"
+  check "repairing a broken link is reported" "$(printf '%s' "$out" | grep -c "replaced a broken 'vey' link")" "1" )
+
 # --- completions_dir_for: per-shell XDG paths ---
 # The runner may export XDG_DATA_HOME/XDG_CONFIG_HOME (GitHub's does), so the
 # fallback assertions must unset them explicitly — otherwise "fish completions
