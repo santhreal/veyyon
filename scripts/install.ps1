@@ -13,10 +13,19 @@
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref v1.0.11
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
+#
+# -Local installs the binary this checkout has already built
+# (packages\coding-agent\dist\vey.exe) instead of downloading a release. It is
+# the Windows counterpart of install.sh's --local, and it is what lets the real
+# installer be driven end to end without a published release: everything after
+# the binary is placed (the alias shim, the PATH entry, completions, the doctor
+# self-test, and uninstall reclaiming all of it) is the same code the download
+# path runs.
 
 param(
     [switch]$Source,
     [switch]$Binary,
+    [switch]$Local,
     [string]$Ref,
     [switch]$NoVerify,
     [switch]$Uninstall
@@ -1064,6 +1073,70 @@ function Install-Binary {
     }
 }
 
+function Install-LocalBinary {
+    # The binary this checkout has already built. Three candidate locations are
+    # searched because the installer can be invoked from the repo root or from
+    # inside the package, and bun appends .exe on Windows targets while a
+    # cross-built artifact may not carry it.
+    $candidates = @(
+        (Join-Path $PWD "packages\coding-agent\dist\vey.exe"),
+        (Join-Path $PWD "packages\coding-agent\dist\vey"),
+        (Join-Path $PWD "dist\vey.exe"),
+        (Join-Path $PWD "dist\vey")
+    )
+    $localBin = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $localBin) {
+        throw "local compiled binary not found - run 'bun scripts/build-binary.ts' in packages/coding-agent first"
+    }
+    # Name the one that won: a stale dist\ in the current directory otherwise
+    # shadows a fresh package build with nothing on screen to explain which
+    # binary was actually installed.
+    Write-Host "installing the local build at $localBin"
+
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    $OutPath = Join-Path $InstallDir "$BinName.exe"
+
+    # Same staging contract as Install-Binary: nothing touches the existing
+    # install until the new file has been proved to run, so a failed local
+    # install cannot leave the user with no veyyon at all.
+    Clear-StaleInstallArtifacts -Dir $InstallDir -BaseName "$BinName.exe" -BinName $BinName
+    $StagingPath = Join-Path $InstallDir ".$BinName.$PID.local"
+    try {
+        Copy-Item -LiteralPath $localBin -Destination $StagingPath -Force
+    } catch {
+        Remove-Item $StagingPath -ErrorAction SilentlyContinue
+        throw "could not stage $localBin into $InstallDir ($_)"
+    }
+
+    try {
+        Test-NativeAddon -Command $StagingPath -Phase "local build"
+    } catch {
+        Remove-Item $StagingPath -ErrorAction SilentlyContinue
+        throw
+    }
+
+    Move-StagedBinaryIntoPlace -StagingPath $StagingPath -TargetPath $OutPath
+
+    Install-Alias -Target $OutPath
+
+    Write-Host ""
+    Write-Host "OK  Installed veyyon to $OutPath" -ForegroundColor Green
+
+    $needsRestart = Add-ToPath
+    Configure-BashShell
+    Install-Completions -BinPath $OutPath
+    # No -ExpectedTag: a local build answers to whatever version the checkout
+    # carries, and there is no release to compare it against.
+    Invoke-Doctor -Command $OutPath
+
+    Write-Host ""
+    if ($needsRestart) {
+        Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
+    } else {
+        Write-Host "Run '$BinName' (or '$AliasName') to get started!"
+    }
+}
+
 function Uninstall-Veyyon {
     $removed = $false
     if (Remove-FromPath) {
@@ -1154,6 +1227,12 @@ function Uninstall-Veyyon {
 if (-not $env:VEYYON_INSTALL_SOURCED) {
     if ($Uninstall) {
         Uninstall-Veyyon
+        return
+    }
+
+    # A local install ignores $Ref entirely: there is no release to resolve.
+    if ($Local) {
+        Install-LocalBinary
         return
     }
 

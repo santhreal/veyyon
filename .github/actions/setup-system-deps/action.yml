@@ -1,8 +1,9 @@
 name: Setup system deps
 description: >-
    Install the canvas/native runtime deps CI needs (cairo/pango stack, fd,
-   ripgrep, imagemagick). Skips the apt round-trip when a runner already ships
-   them; self-heals on a stock runner by installing via apt.
+   ripgrep, imagemagick). Skips the install when a runner already ships them;
+   self-heals on a stock runner using the platform's own package manager, apt on
+   Linux and Homebrew on macOS.
 
 runs:
    using: composite
@@ -10,16 +11,38 @@ runs:
       - name: Install system deps (skip when already present)
         shell: bash
         run: |
-           # Skip the apt round-trip when the runner already provides these;
-           # otherwise install the exact same set so any runner still works.
+           # Skip the package-manager round-trip when the runner already provides
+           # these; otherwise install the same set so any runner still works.
            if command -v fd >/dev/null 2>&1 \
               && command -v rg >/dev/null 2>&1 \
               && command -v magick >/dev/null 2>&1 \
               && pkg-config --exists cairo pango 2>/dev/null; then
-             echo "System deps already present; skipping apt."
+             echo "System deps already present; skipping install."
              exit 0
            fi
-           sudo apt-get update
-           sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep imagemagick
-           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
-           sudo ln -sf /usr/bin/convert /usr/local/bin/magick
+
+           # The action used to run apt unconditionally, which meant it could only
+           # ever be used from a Linux runner: on macOS the first line failed with
+           # "apt-get: command not found" and the job died before doing any work.
+           # That is why no macOS job could use it, and why install.sh had never
+           # been gated on the platform it also ships to.
+           case "$(uname -s)" in
+             Darwin)
+               # Homebrew ships on every GitHub macOS runner. `brew install` is
+               # idempotent, so a partially provisioned runner self-heals.
+               brew install cairo pango jpeg giflib librsvg fd ripgrep imagemagick
+               # pkg-config finds the keg-only headers only when the prefix is on
+               # PKG_CONFIG_PATH, and the prefix differs between the arm64 and
+               # x64 runners.
+               brew_prefix="$(brew --prefix)"
+               echo "PKG_CONFIG_PATH=$brew_prefix/lib/pkgconfig:$brew_prefix/share/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+               ;;
+             *)
+               sudo apt-get update
+               sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep imagemagick
+               # Debian ships these under different names than every other distro
+               # and than macOS; link them so callers can spell them one way.
+               sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+               sudo ln -sf /usr/bin/convert /usr/local/bin/magick
+               ;;
+           esac

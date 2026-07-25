@@ -534,8 +534,21 @@ jobs:
            run: bun run ci:test:smoke
 
    install_methods:
-      name: Install method smoke tests
-      runs-on: ubuntu-22.04
+      # install.sh is a shipped install channel on BOTH Linux and macOS, and the
+      # gate ran on Linux only. macOS is where an installer breaks: BSD userland
+      # rather than GNU, zsh as the default login shell rather than bash, and a
+      # different completions layout. Running the same script on macos-14 is what
+      # makes "the installer works" a claim about the platforms it ships to.
+      name: "Install method smoke tests (${{ matrix.os }})"
+      strategy:
+         fail-fast: false
+         matrix:
+            # macos-14 is arm64 and macos-15-intel is x64. Each runner builds and
+            # installs its own architecture, so both shipped macOS binaries get
+            # their install path exercised rather than only the one the release
+            # happens to be cut on.
+            os: [ubuntu-22.04, macos-14, macos-15-intel]
+      runs-on: ${{ matrix.os }}
       steps:
          - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/ensure-rust-toolchain
@@ -558,6 +571,34 @@ jobs:
          - uses: ./.github/actions/bun-install
          - name: Install method smoke tests
            run: bun run ci:test:install-methods
+
+   install_ps1_e2e:
+      # The Windows counterpart of install_methods. The function tests below
+      # cover the pure helpers and the release verify job downloads the published
+      # .exe and runs --version on it, but neither runs install.ps1 itself, so
+      # everything the installer does AROUND the binary (the vey.cmd shim, the
+      # user PATH entry, completions wired into the PowerShell profile, the
+      # doctor self-test, and uninstall reclaiming all of it) had never executed
+      # on Windows even once. -Local installs the binary built here, so this
+      # needs no published release.
+      name: Windows installer end-to-end
+      runs-on: windows-latest
+      timeout-minutes: 30
+      steps:
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: ./.github/actions/bun-install
+         - name: Build the native addon and the binary
+           shell: pwsh
+           run: |
+              bun --cwd=packages/natives run build
+              bun --cwd=packages/coding-agent run build
+         - name: install.ps1 end-to-end (install, reinstall, uninstall)
+           shell: pwsh
+           env:
+              # The script refuses to run without this, because it edits the user
+              # PATH and the PowerShell profile for real (both restored after).
+              VEYYON_INSTALL_E2E: "1"
+           run: pwsh -File scripts/install-tests/e2e.test.ps1
 
    install_ps1_functions:
       name: Windows installer function tests
@@ -583,8 +624,9 @@ jobs:
          needs.test_coding_agent_runtime.result == 'success' &&
          needs.test_coding_agent_native.result == 'success' &&
          needs.test_smoke.result == 'success' && needs.check.result == 'success' &&
-         needs.install_methods.result == 'success' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, native_artifact_lookup]
+         needs.install_methods.result == 'success' &&
+         needs.install_ps1_e2e.result == 'success' }}
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, native_artifact_lookup]
       strategy:
          fail-fast: false
          matrix:
@@ -983,7 +1025,7 @@ jobs:
       # because it must run precisely when something upstream failed.
       name: Release train alert
       if: ${{ always() && needs.release_metadata.result == 'success' && needs.release_metadata.outputs.is-release == 'true' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows]
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows]
       runs-on: ubuntu-22.04
       permissions:
          contents: read
