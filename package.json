@@ -101,7 +101,8 @@
   "overrides": {
     "@ark/schema": "0.56.2",
     "tar": "^7.5.20",
-    "adm-zip": "^0.6.0"
+    "adm-zip": "^0.6.0",
+    "brace-expansion": "5.0.8"
   },
   "scripts": {
     "setup": "bun install && bun run build:native && bun --cwd=packages/coding-agent link && sh scripts/link-veyyon.sh",
