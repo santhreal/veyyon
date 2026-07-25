@@ -13,15 +13,27 @@
  * output so the contract cannot silently regress into advice again.
  */
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import {
 	type CheckoutVersionReader,
 	SOURCE_VERSION_FILE,
+	probeSearchWorks,
+	type SearchProbe,
 	type SourceUpdateExec,
 	updateViaSourceAt,
 } from "@veyyon/coding-agent/cli/update-cli";
 
 const LAUNCHER = path.join("/opt/checkout", "packages", "coding-agent", "scripts", "veyyon");
+
+/**
+ * A checkout that runs. These are unit tests of the step sequence against a
+ * launcher path that does not exist on disk, so the real probe (which refuses a
+ * launcher it cannot execute) is injected out. Its own behavior is covered in
+ * the suite below.
+ */
+const checkoutRuns: SearchProbe = async () => undefined;
 
 /** A checkout that ends up at exactly the version the update asked for. */
 const readsVersion =
@@ -46,7 +58,7 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 	it("runs fetch, ff-only merge, then bun install — all in the checkout root", async () => {
 		const { calls, exec } = recordingExec();
 		const reported: string[] = [];
-		await updateViaSourceAt(LAUNCHER, "2.0.0", line => reported.push(line), exec, readsVersion("2.0.0"));
+		await updateViaSourceAt(LAUNCHER, "2.0.0", line => reported.push(line), exec, readsVersion("2.0.0"), checkoutRuns);
 
 		expect(calls.map(c => c.command.join(" "))).toEqual([
 			"git fetch --tags origin",
@@ -110,6 +122,7 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 				seen.push(root);
 				return "2.0.0";
 			},
+			checkoutRuns,
 		);
 		// It must read the checkout it just updated, not the running process's own
 		// installation directory.
@@ -164,6 +177,7 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 				order.push("version-read");
 				return "2.0.0";
 			},
+			checkoutRuns,
 		);
 		expect(order[order.length - 1]).toBe("version-read");
 	});
@@ -217,5 +231,133 @@ describe("source launcher self-heal (scripts/veyyon)", () => {
 		expect(launcher).toContain("bun install");
 		// The guard sits before the exec lines, not after (an exec never returns).
 		expect(launcher.indexOf('if [ ! -f "$tool_views" ]')).toBeLessThan(launcher.indexOf("exec bun"));
+	});
+});
+
+/**
+ * A version file says what the checkout claims, not that it runs.
+ *
+ * Every step of the update can exit 0 and still leave a checkout that does not
+ * work: `bun install` can land a partial tree, the regen step writes an
+ * artifact nobody has loaded yet, and `natives ensure` stages an addon it never
+ * dlopens. The binary path proves the install functions by running a real
+ * search; a source install is a first-class consumer path and gets the same
+ * proof, from the same {@link probeSearchWorks} owner.
+ */
+describe("updateViaSourceAt proves the checkout actually runs", () => {
+	it("fails the update when the checkout cannot run a search", async () => {
+		const { exec } = recordingExec();
+		await expect(
+			updateViaSourceAt(
+				LAUNCHER,
+				"2.0.0",
+				() => {},
+				exec,
+				readsVersion("2.0.0"),
+				async () => "its native addon did not load",
+			),
+		).rejects.toThrow(/its native addon did not load/);
+	});
+
+	it("gives the manual recovery with that failure, as every other source failure does", async () => {
+		// A user told only that the checkout is broken has no next move.
+		const { exec } = recordingExec();
+		await expect(
+			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), async () => "broken"),
+		).rejects.toThrow(/git pull && bun install/);
+	});
+
+	it("never claims success when the probe failed", async () => {
+		const reported: string[] = [];
+		const { exec } = recordingExec();
+		await expect(
+			updateViaSourceAt(LAUNCHER, "2.0.0", l => reported.push(l), exec, readsVersion("2.0.0"), async () => "broken"),
+		).rejects.toThrow();
+		expect(reported.some(l => l.includes("Updated source checkout to"))).toBe(false);
+	});
+
+	it("probes the launcher the installer put on PATH, and names the checkout in the label", async () => {
+		// Probing anything else would verify a different install than the one the
+		// user launches, and a label without the path leaves the error ambiguous
+		// for someone with more than one checkout.
+		const { exec } = recordingExec();
+		const seen: { bin: string; label: string }[] = [];
+		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), async (bin, label) => {
+			seen.push({ bin, label });
+			return undefined;
+		});
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.bin).toBe(LAUNCHER);
+		expect(seen[0]?.label).toContain("/opt/checkout");
+		expect(seen[0]?.label).toContain("2.0.0");
+	});
+
+	it("does not probe when the version check already failed", async () => {
+		// The version mismatch is the actionable error; a probe failure stacked on
+		// top would point at the addon when the branch is the problem.
+		const { exec } = recordingExec();
+		let probes = 0;
+		await expect(
+			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("1.9.3"), async () => {
+				probes += 1;
+				return undefined;
+			}),
+		).rejects.toThrow(/is at 1\.9\.3/);
+		expect(probes).toBe(0);
+	});
+
+	it("probes after every step, never against a half-updated checkout", async () => {
+		const order: string[] = [];
+		const exec: SourceUpdateExec = async step => {
+			order.push(step.label);
+			return { exitCode: 0, stderr: "" };
+		};
+		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), async () => {
+			order.push("probe");
+			return undefined;
+		});
+		expect(order[order.length - 1]).toBe("probe");
+		expect(order).toContain("Ensuring native addon");
+	});
+});
+
+/**
+ * The probe itself. It is the one owner shared with the binary swap, so a hole
+ * here is a hole in both consumer update paths at once.
+ */
+describe("probeSearchWorks", () => {
+	it("refuses a launcher that is missing, rather than excusing it", async () => {
+		// The hole this closes: Bun's shell reports a missing command as exit 1,
+		// the same code an unknown subcommand produces, and the "this build has no
+		// grep" excuse would have passed a checkout with no launcher at all.
+		const reason = await probeSearchWorks("/opt/checkout/definitely/not/here", "The checkout");
+		expect(reason).toContain("missing or not executable");
+		expect(reason).toContain("/opt/checkout/definitely/not/here");
+	});
+
+	it("refuses a launcher that exists and is not executable", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-probe-"));
+		const bin = path.join(dir, "veyyon");
+		fs.writeFileSync(bin, "#!/bin/sh\nexit 0\n", { mode: 0o644 });
+		try {
+			expect(await probeSearchWorks(bin, "The checkout")).toContain("missing or not executable");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("passes an install whose search finds the file it was pointed at", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-probe-"));
+		const bin = path.join(dir, "veyyon");
+		fs.writeFileSync(
+			bin,
+			'#!/bin/sh\n[ "$2" = "--help" ] && exit 0\nshift\nprintf "%s/probe.txt:1: %s\\n" "$2" "$1"\n',
+			{ mode: 0o755 },
+		);
+		try {
+			expect(await probeSearchWorks(bin, "The checkout")).toBeUndefined();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
