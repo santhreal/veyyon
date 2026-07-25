@@ -483,7 +483,7 @@ export class HindsightSessionState {
 
 	async #refreshBaseSystemPromptAfter(reason: "recall" | "MM load" | "MM reload" | "MM TTL reload"): Promise<void> {
 		try {
-			await this.session.refreshBaseSystemPrompt();
+			await this.session.refreshBaseSystemPrompt(`hindsight:${reason}`);
 		} catch (err) {
 			logger.debug(`Hindsight: refreshBaseSystemPrompt after ${reason} failed`, { error: String(err) });
 		}

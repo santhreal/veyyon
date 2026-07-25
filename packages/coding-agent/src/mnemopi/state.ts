@@ -531,7 +531,7 @@ export class MnemopiSessionState {
 		if (!context) return;
 		this.lastRecallSnippet = context;
 		try {
-			await this.session.refreshBaseSystemPrompt();
+			await this.session.refreshBaseSystemPrompt("mnemopi");
 		} catch (error) {
 			if (this.config.debug) logger.debug("Mnemopi: prompt refresh after recall failed", { error: String(error) });
 		}
