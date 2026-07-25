@@ -3,6 +3,7 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
+import { isAbortError } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
 import {
@@ -253,6 +254,15 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		try {
 			result = await this.tool.execute(toolCallId, params, signal, onUpdate, context);
 		} catch (err) {
+			// A CANCELLATION IS NOT A FAILED CALL, so it never becomes one here. The
+			// `tool_result` path below deliberately turns a thrown error into a
+			// resolved `isError: true` result when a handler returns replacement
+			// content, which is right for a tool that failed and wrong for a tool the
+			// operator stopped: it swallows the abort, so the agent loop reads a
+			// retryable failure and re-issues the very work the user cancelled. There
+			// is also nothing for a handler to usefully rewrite, since the "content"
+			// of a cancelled call is the fact that it did not happen.
+			if (isAbortError(err)) throw err;
 			executionError = err instanceof Error ? err : new Error(String(err));
 			result = {
 				content: [{ type: "text", text: executionError.message }],
