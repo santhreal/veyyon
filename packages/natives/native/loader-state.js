@@ -133,6 +133,21 @@ export function shouldStageNodeModulesAddon({ platform, isCompiledBinary, native
 }
 
 /**
+ * Every path the loader will try to `require` as the native addon, in priority
+ * order and de-duplicated. Reconciles the three install methods, which stage the
+ * `.node` in DIFFERENT places, into one probe list so the loader (the single
+ * reader) finds a valid binary no matter which writer produced it:
+ *   - compiled / standalone binary → extracts into the per-version cache
+ *     (`versionedDir`), so that wins first.
+ *   - Windows node_modules update → stages into the same cache to dodge the
+ *     locked-file overwrite, so the cache wins there too.
+ *   - source / node_modules install → loads the in-tree (or node_modules) build
+ *     first, then falls back to the per-version cache. That trailing fallback is
+ *     what keeps a source-tree sync that dropped the gitignored `native/*.node`
+ *     from bricking when a prior standalone install already cached a good addon.
+ * The version-sentinel check downstream still refuses any stale/mismatched copy,
+ * so a wider candidate list never loads the wrong release.
+ *
  * @param {{
  *   addonFilenames: string[];
  *   isCompiledBinary: boolean;
@@ -160,18 +175,27 @@ export function resolveLoaderCandidates({
 		path.join(execDir, filename),
 	]);
 	const leafCandidates = leafPackageDir ? addonFilenames.map(filename => path.join(leafPackageDir, filename)) : [];
-	const compiledCandidates = addonFilenames.flatMap(filename => [
-		path.join(versionedDir, filename),
-		path.join(userDataDir, filename),
-	]);
-	const stagedCandidates = stageFromNodeModules ? addonFilenames.map(filename => path.join(versionedDir, filename)) : [];
+	// The per-version native cache (`~/.veyyon/natives/<version>/`). The compiled /
+	// standalone installer extracts the addon here, and the Windows update-safety
+	// path stages into it too, so it is the ONE location every non-source install
+	// method shares. Deriving both cache lists from this single owner keeps the
+	// compiled, staged, and source branches from re-hand-rolling the same join.
+	const versionedCandidates = addonFilenames.map(filename => path.join(versionedDir, filename));
+	const userDataCandidates = addonFilenames.map(filename => path.join(userDataDir, filename));
 	let releaseCandidates;
 	if (isCompiledBinary) {
-		releaseCandidates = [...compiledCandidates, ...baseReleaseCandidates];
+		releaseCandidates = [...versionedCandidates, ...userDataCandidates, ...baseReleaseCandidates];
 	} else if (stageFromNodeModules) {
-		releaseCandidates = [...stagedCandidates, ...leafCandidates, ...baseReleaseCandidates];
+		releaseCandidates = [...versionedCandidates, ...leafCandidates, ...baseReleaseCandidates];
 	} else {
-		releaseCandidates = [...leafCandidates, ...baseReleaseCandidates];
+		// Source / node_modules install: prefer the in-tree (or node_modules) build,
+		// then fall back to any version-pinned binary the standalone installer staged
+		// into the per-version cache. Without this trailing fallback a source-tree
+		// sync that omits the gitignored `native/*.node` bricks at boot even though
+		// the cache holds a loadable, sentinel-matched addon (user-hit 2026-07-24).
+		// The sentinel check in `evaluateLoadedBindings` still rejects a stale copy,
+		// and the in-tree path is tried first so a fresh local build always wins.
+		releaseCandidates = [...leafCandidates, ...baseReleaseCandidates, ...versionedCandidates];
 	}
 	return [...new Set(releaseCandidates)];
 }
@@ -881,7 +905,7 @@ function releasesDownloadBase() {
 	return `https://github.com/${repoSlugFromRepositoryUrl(raw)}/releases/latest/download`;
 }
 
-function buildHelpMessage(ctx) {
+export function buildHelpMessage(ctx) {
 	if (ctx.isCompiledBinary) {
 		const expectedPaths = ctx.addonFilenames.map(filename => `  ${path.join(ctx.versionedDir, filename)}`).join("\n");
 		const downloadBase = releasesDownloadBase();
@@ -897,10 +921,17 @@ function buildHelpMessage(ctx) {
 			`If missing, delete ${ctx.versionedDir} and re-run, or download manually:\n${downloadHints}`
 		);
 	}
+	// veyyon's native addon is a gitignored BUILT artifact, never a registry
+	// package: there is no `@veyyon/natives` to `bun install`, so pointing users
+	// at one is a dead end. The real remediations, cheapest first, mirror
+	// `scripts/ensure-native.ts` (the one owner of source-install provisioning):
+	// re-provision from this checkout's own release, build locally with Rust, or
+	// reinstall the standalone binary. Keep these in lock-step with that script.
 	return (
-		"If installed via npm/bun, try reinstalling: bun install @veyyon/natives\n" +
+		"Provision it from the matching release: bun --cwd=packages/natives run ensure\n" +
 		"If developing locally, build with: bun --cwd=packages/natives run build\n" +
-		"Optional x64 variants: TARGET_VARIANT=baseline|modern bun --cwd=packages/natives run build"
+		"  (optional x64 variants: TARGET_VARIANT=baseline|modern)\n" +
+		"Or reinstall the standalone binary: curl -fsSL https://get.veyyon.dev | sh"
 	);
 }
 

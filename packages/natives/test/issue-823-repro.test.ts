@@ -123,7 +123,12 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 		expect(candidates.indexOf(versionedModern)).toBeLessThan(candidates.indexOf(buildHostModern));
 	});
 
-	it("does not probe user-data candidates when running outside a standalone binary", () => {
+	it("does not probe the user-data dir outside a standalone binary, but does probe the per-version cache", () => {
+		// The user-data dir (`~/.local/bin`, where `omp update` drops the STANDALONE
+		// binary) is compiled-only and must never be probed on a source/node_modules
+		// load. The per-version cache, by contrast, is now a trailing fallback on
+		// that path so a source tree missing its gitignored `native/*.node` can still
+		// recover a cached binary (2026-07-24 fix) — so it MUST be contained here.
 		const versionedDir = "/home/u/.omp/natives/14.5.2";
 		const userDataDir = "/home/u/.local/bin";
 		const candidates = resolveLoaderCandidates({
@@ -134,7 +139,7 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 			versionedDir,
 			userDataDir,
 		});
-		expect(candidates).not.toContain(path.join(versionedDir, "veyyon_natives.linux-x64-baseline.node"));
+		expect(candidates).toContain(path.join(versionedDir, "veyyon_natives.linux-x64-baseline.node"));
 		expect(candidates).not.toContain(path.join(userDataDir, "veyyon_natives.linux-x64-baseline.node"));
 	});
 
@@ -179,22 +184,28 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 		expect(candidates.indexOf(leafBaseline)).toBeLessThan(candidates.indexOf(coreBaseline));
 	});
 
-	it("keeps the development candidate list unchanged when no leaf package is installed", () => {
+	it("lists the in-tree build first, then the per-version cache, when no leaf package is installed", () => {
 		const nativeDir = "/repo/packages/natives/native";
 		const execDir = "/usr/bin";
+		const versionedDir = "/home/u/.omp/natives/15.5.15";
 		const addonFilenames = getAddonFilenames({ tag: "linux-x64", arch: "x64", variant: "baseline" });
 		const candidates = resolveLoaderCandidates({
 			addonFilenames,
 			isCompiledBinary: false,
 			nativeDir,
 			execDir,
-			versionedDir: "/home/u/.omp/natives/15.5.15",
+			versionedDir,
 			userDataDir: "/home/u/.local/bin",
 		});
 
-		expect(candidates).toEqual(
-			addonFilenames.flatMap(filename => [path.join(nativeDir, filename), path.join(execDir, filename)]),
-		);
+		// No leaf package -> no leaf candidates. The in-tree `native/` and exec-dir
+		// paths lead (a fresh local build wins), and the per-version cache is
+		// appended as the trailing fallback so a source tree that lost its
+		// gitignored `native/*.node` still loads a cached binary (2026-07-24 fix).
+		expect(candidates).toEqual([
+			...addonFilenames.flatMap(filename => [path.join(nativeDir, filename), path.join(execDir, filename)]),
+			...addonFilenames.map(filename => path.join(versionedDir, filename)),
+		]);
 	});
 
 	it("extracts all bundled native variants from one gzip archive and skips current files", async () => {

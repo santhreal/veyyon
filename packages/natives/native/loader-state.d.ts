@@ -55,6 +55,16 @@ export interface ResolveLoaderCandidatesInput {
 
 export function resolveLoaderCandidates(input: ResolveLoaderCandidatesInput): string[];
 
+/** Loader context fields {@link buildHelpMessage} reads to compose the load-failure remediation. */
+export interface BuildHelpMessageInput {
+	isCompiledBinary: boolean;
+	addonFilenames: string[];
+	versionedDir: string;
+}
+
+/** The operator-facing "how to fix a failed native load" paragraph, branched on compiled vs source install. */
+export function buildHelpMessage(input: BuildHelpMessageInput): string;
+
 export interface CleanupStaleNativeVersionsInput {
 	nativesDir: string;
 	currentVersion: string;
