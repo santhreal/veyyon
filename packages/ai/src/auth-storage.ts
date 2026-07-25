@@ -26,7 +26,7 @@ import {
 } from "@veyyon/utils";
 import { tableExists } from "@veyyon/utils/sqlite";
 import type { ApiKeyResolver } from "./auth-retry";
-import { CREDENTIAL_CLOCK_TOLERANCE_MS, epochSecondsToMs, isRecordFromFutureClock } from "./credential-clock";
+import { CREDENTIAL_CLOCK_TOLERANCE_MS, epochSecondsToMs, isRecordFromFutureClock, msToEpochSeconds } from "./credential-clock";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
 import { getProviderDefinition, PASTE_CODE_LOGIN_PROVIDERS } from "./registry";
@@ -6564,9 +6564,26 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#deleteExpiredCredentialBlocksStmt = this.#db.prepare(
 			"DELETE FROM auth_credential_blocks WHERE blocked_until_ms <= ?",
 		);
+		// `updated_at` is BOUND from the application clock here, not stamped with
+		// ${SQLITE_NOW_EPOCH} like every other table above, and the difference is
+		// load-bearing rather than stylistic.
+		//
+		// This column is not just a record of when the row was touched: the lease
+		// logic reads it back and compares it against `Date.now()` to decide whether
+		// the row was written by a clock ahead of ours, which makes the lease
+		// stealable. Stamping it with SQLite's own C clock while comparing it to
+		// JavaScript's means one value is governed by two clocks, and any divergence
+		// between them reads as a peer with a skewed clock. `expires_at_ms` on this
+		// same row already comes from `Date.now()`, so the row was internally
+		// inconsistent.
+		//
+		// Binding it makes the check mean what it says. A peer with a genuinely
+		// skewed clock still writes its own skewed time, so the detection this
+		// guards is unchanged, while two readings of the SAME clock can no longer
+		// disagree with each other.
 		this.#acquireCredentialRefreshLeaseStmt = this.#db.prepare(
 			`INSERT INTO auth_credential_refresh_leases (credential_id, owner, expires_at_ms, updated_at)
-			VALUES (?, ?, ?, ${SQLITE_NOW_EPOCH})
+			VALUES (?, ?, ?, ?)
 			ON CONFLICT(credential_id) DO UPDATE SET
 				owner = excluded.owner,
 				expires_at_ms = excluded.expires_at_ms,
@@ -6578,7 +6595,10 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			"SELECT expires_at_ms, updated_at FROM auth_credential_refresh_leases WHERE credential_id = ?",
 		);
 		this.#renewCredentialRefreshLeaseStmt = this.#db.prepare(
-			`UPDATE auth_credential_refresh_leases SET expires_at_ms = ?, updated_at = ${SQLITE_NOW_EPOCH} WHERE credential_id = ? AND owner = ?`,
+			// Same clock as the acquire above, for the same reason: a renewal that
+			// re-stamped this column from SQLite's clock would undo the fix on the
+			// first renewal of any long refresh.
+			`UPDATE auth_credential_refresh_leases SET expires_at_ms = ?, updated_at = ? WHERE credential_id = ? AND owner = ?`,
 		);
 		this.#releaseCredentialRefreshLeaseStmt = this.#db.prepare(
 			"DELETE FROM auth_credential_refresh_leases WHERE credential_id = ? AND owner = ?",
@@ -7421,6 +7441,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			credentialId,
 			owner,
 			expiresAtMs,
+			msToEpochSeconds(nowMs),
 			nowMs,
 			staleWriteCutoffSeconds,
 		) as {
@@ -7443,7 +7464,12 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	renewCredentialRefreshLease(credentialId: number, owner: string, expiresAtMs: number): boolean {
-		const result = this.#renewCredentialRefreshLeaseStmt.run(expiresAtMs, credentialId, owner) as {
+		const result = this.#renewCredentialRefreshLeaseStmt.run(
+			expiresAtMs,
+			msToEpochSeconds(Date.now()),
+			credentialId,
+			owner,
+		) as {
 			changes: number;
 		};
 		return result.changes === 1;
