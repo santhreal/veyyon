@@ -58,7 +58,7 @@ macOS · Linux · Windows · bun ≥ 1.3.14
 
 ### Shell completions
 
-`veyyon` generates completion scripts for **bash**, **zsh**, and **fish** from live command and flag metadata. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against on-disk sessions.
+`veyyon` generates completion scripts for **bash**, **zsh**, **fish**, and **PowerShell** from live command and flag metadata. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against on-disk sessions.
 
 ```sh
 # zsh: add to ~/.zshrc (or write the output into a file on your $fpath)
@@ -69,7 +69,14 @@ eval "$(veyyon completions bash)"
 
 # fish
 veyyon completions fish > ~/.config/fish/completions/veyyon.fish
+
+# PowerShell: write the script beside your profile, then dot-source it from $PROFILE
+veyyon completions powershell > $HOME\veyyon-completions.ps1
 ```
+
+PowerShell has no directory it autoloads completions from, so the script
+registers itself when you run it. Add `. $HOME\veyyon-completions.ps1` to your
+`$PROFILE` to load it in every session.
 
 ## The harness is the product
 
