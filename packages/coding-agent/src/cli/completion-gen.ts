@@ -731,15 +731,40 @@ const PS_COMPLETER_BODY =
 	String.raw`")[0] } | Where-Object { $_ })
 }
 
+# Everything the completer offers REPLACES the whole word the user has typed, and
+# the caller filters candidates with a -like match against that word. Both facts
+# mean a candidate must carry whatever prefix the user already typed. Returning
+# bare leaf names made file, directory, and comma-list completion return nothing
+# at all the moment the word contained a separator: --tools read,ba<Tab> and
+# -e src/ma<Tab> both matched no candidate, which looks like completion is
+# simply broken for those flags.
+function global:__Veyyon-PrefixedPaths {
+	param([string]$WordToComplete, [switch]$DirectoriesOnly)
+	$parent = Split-Path -Parent $WordToComplete
+	$items = Get-ChildItem -Path "$WordToComplete*" -Directory:$DirectoriesOnly -ErrorAction SilentlyContinue
+	return @($items | ForEach-Object { if ($parent) { Join-Path $parent $_.Name } else { $_.Name } })
+}
+
+# A comma-separated value completes only its LAST element, with the elements
+# already chosen carried through. Mirrors _veyyon_comma in the bash script.
+function global:__Veyyon-CommaCandidates {
+	param([string[]]$Values, [string]$WordToComplete)
+	$cut = $WordToComplete.LastIndexOf(',')
+	if ($cut -lt 0) { return $Values }
+	$prefix = $WordToComplete.Substring(0, $cut + 1)
+	$chosen = $prefix.TrimEnd(',') -split ','
+	return @($Values | Where-Object { $chosen -notcontains $_ } | ForEach-Object { "$prefix$_" })
+}
+
 function global:__Veyyon-ValueCandidates {
 	param($Value, [string]$WordToComplete)
 	switch ($Value.Kind) {
 		'enum' { return $Value.Values }
-		'list' { return $Value.Values }
+		'list' { return __Veyyon-CommaCandidates $Value.Values $WordToComplete }
 		'models' { return __Veyyon-DynamicCandidates 'models' $WordToComplete }
 		'sessions' { return __Veyyon-DynamicCandidates 'sessions' $WordToComplete }
-		'file' { return @(Get-ChildItem -Path "$WordToComplete*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) }
-		'dir' { return @(Get-ChildItem -Path "$WordToComplete*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) }
+		'file' { return __Veyyon-PrefixedPaths $WordToComplete }
+		'dir' { return __Veyyon-PrefixedPaths $WordToComplete -DirectoriesOnly }
 	}
 	# 'flag' takes no value and 'value' has no completable candidates.
 	return @()
