@@ -22,7 +22,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isNotFound } from "./fs-util.js";
 import { type GenerateOptions, generateDictFromRepo, type RepoFile } from "./generate.js";
@@ -94,21 +94,60 @@ export async function readDictFile(path: string): Promise<Vocabulary | undefined
 let tempCounter = 0;
 
 /**
- * Write dictionary text so a concurrent reader never sees a half-written file.
- * The content goes to a unique temp file in the same directory, then a single
- * `rename` swaps it into place: on a POSIX filesystem the rename is atomic, so a
- * reader sees either no file or the whole new one. The parent directory is
- * created if missing.
+ * Write dictionary text so no reader ever sees a half-written file, and so a
+ * failed write leaves nothing behind.
+ *
+ * The content goes to a unique temp file in the same directory, is flushed to
+ * the device, and is then swapped into place with a single `rename`: on a POSIX
+ * filesystem that rename is atomic, so a reader sees either no file or the whole
+ * new one. The parent directory is created if missing.
  *
  * The temp name carries the process id and a per-process counter, so two agents
  * writing the same entry at once use different temp files and only the renames
  * race, which the atomic swap makes safe.
+ *
+ * TWO THINGS THIS DOES THAT A BARE write-then-rename DOES NOT, both of which
+ * matter most on exactly the day you can least afford them, when the disk is
+ * full.
+ *
+ * It FSYNCS BEFORE RENAMING. Without that, the ordering guarantee is only
+ * against a concurrent reader, not against a crash: a filesystem is free to make
+ * the rename durable before the data, and the entry then comes back after a
+ * power loss as a zero-length file. A dictionary that parses as empty is worse
+ * than one that is missing, because a missing entry regenerates and an empty one
+ * silently encodes nothing.
+ *
+ * It REMOVES THE TEMP ON FAILURE and rethrows. Every caller here is writing an
+ * immutable, content-keyed entry, so a failure must leave the cache exactly as
+ * it was. A leaked temp would otherwise accumulate one file per failed attempt
+ * in the same directory that just ran out of room, and the temp names are unique
+ * by construction, so nothing would ever reclaim them.
+ *
+ * The error is never swallowed. A cache write that quietly does nothing turns
+ * into a silent cache miss on every later run, which reads as "argot is slow"
+ * rather than "the disk is full".
  */
 export async function writeDictFileAtomic(path: string, content: string): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
 	const temp = `${path}.${process.pid}.${tempCounter++}.tmp`;
-	await writeFile(temp, content, "utf8");
-	await rename(temp, path);
+	try {
+		const handle = await open(temp, "w", 0o600);
+		try {
+			await handle.writeFile(content, "utf8");
+			await handle.sync();
+		} finally {
+			await handle.close();
+		}
+	} catch (err) {
+		await rm(temp, { force: true }).catch(() => {});
+		throw err;
+	}
+	try {
+		await rename(temp, path);
+	} catch (err) {
+		await rm(temp, { force: true }).catch(() => {});
+		throw err;
+	}
 }
 
 /** Options for {@link resolveProjectCache}. */
