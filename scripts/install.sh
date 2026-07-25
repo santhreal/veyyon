@@ -492,7 +492,29 @@ require_bun_version() {
 
 install_bun() {
     say "installing bun..."
-    if has bash; then curl -fsSL https://bun.sh/install | bash; else curl -fsSL https://bun.sh/install | sh; fi
+    # Download the installer to a file, THEN run it.
+    #
+    # This used to be `curl ... | bash`, which hands the shell whatever bytes
+    # happened to arrive: a connection that drops mid-transfer executes a
+    # TRUNCATED installer, and because a pipeline's exit status is the LAST
+    # command's, a curl that failed outright reported success — bash read an
+    # empty stdin, exited 0, and the install carried on to fail later somewhere
+    # unrelated. Neither failure said anything about the download.
+    tmp_installer="${TMPDIR:-/tmp}/veyyon-bun-install.$$"
+    if ! curl -fsSL $CURL_RETRY --connect-timeout 10 --max-time 120 https://bun.sh/install -o "$tmp_installer"; then
+        rm -f "$tmp_installer"
+        die "could not download the bun installer from https://bun.sh/install — check your network, or install bun yourself (https://bun.sh) and re-run this installer"
+    fi
+    if [ ! -s "$tmp_installer" ]; then
+        rm -f "$tmp_installer"
+        die "the bun installer downloaded empty — retry, or install bun yourself (https://bun.sh) and re-run this installer"
+    fi
+    if has bash; then bun_runner=bash; else bun_runner=sh; fi
+    if ! "$bun_runner" "$tmp_installer"; then
+        rm -f "$tmp_installer"
+        die "the bun installer failed — install bun yourself (https://bun.sh) and re-run this installer"
+    fi
+    rm -f "$tmp_installer"
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
     require_bun_version
