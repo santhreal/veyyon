@@ -43,7 +43,6 @@ import { getSessionSlashCommands } from "../extensibility/extensions/get-command
 import { buildSkillPromptMessage, type Skill } from "../extensibility/skills";
 import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
-import { callTool } from "../mcp/client";
 import type { MCPManager } from "../mcp/manager";
 import type { MnemopiSessionState } from "../mnemopi/state";
 import subagentSystemPromptTemplate from "../prompts/system/subagent-system-prompt.md" with { type: "text" };
@@ -738,46 +737,54 @@ function getUsageTokens(usage: unknown): number {
 
 /**
  * Create proxy tools that reuse the parent's MCP connections.
+ *
+ * Each proxy delegates to the current source `MCPTool`/`DeferredMCPTool` rather
+ * than rebuilding a raw `tools/call` request, so the Task/subagent path shares
+ * the source tool's authoritative outbound boundary: harness-intent (`i`)
+ * stripping, optional-placeholder pruning, local-URL resolution, reconnect
+ * retry, abort handling, and result/provider metadata. The source tool is
+ * re-resolved on every call by raw MCP server/tool metadata (not the normalized
+ * display name), so a reconnect that swaps the instance in `getTools()` is
+ * always honored. The proxy adds only the Task-specific 60s call timeout,
+ * combining its abort signal with the caller's around source execution.
  */
 export function createMCPProxyTools(mcpManager: MCPManager): CustomTool[] {
 	return mcpManager.getTools().map(tool => {
-		const mcpTool = tool as { mcpToolName?: string; mcpServerName?: string };
+		const serverName = tool.mcpServerName ?? "";
+		const mcpToolName = tool.mcpToolName ?? "";
 		return {
 			name: tool.name,
 			label: tool.label ?? tool.name,
 			description: tool.description ?? "",
 			parameters: tool.parameters,
-			execute: async (_toolCallId, params, _onUpdate, _ctx, signal) => {
+			strict: tool.strict,
+			mcpServerName: serverName,
+			mcpToolName,
+			execute: async (toolCallId, params, onUpdate, ctx, signal) => {
 				if (signal?.aborted) {
 					throw new ToolAbortError();
 				}
-				const serverName = mcpTool.mcpServerName ?? "";
-				const mcpToolName = mcpTool.mcpToolName ?? "";
+				// Re-resolve by raw MCP metadata so a reconnect that replaced the
+				// source instance is picked up; the display name alone is not enough.
+				const source = mcpManager
+					.getTools()
+					.find(t => t.mcpServerName === serverName && t.mcpToolName === mcpToolName);
+				if (!source?.execute) {
+					return {
+						content: [{ type: "text" as const, text: `MCP error: tool ${mcpToolName} no longer available` }],
+						details: { serverName, mcpToolName, isError: true },
+					};
+				}
 				try {
 					const timeoutController = new AbortController();
 					const timeoutSignal = timeoutController.signal;
 					const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-					const result = await withAbortTimeout(
-						(async () => {
-							const connection = await untilAborted(combinedSignal, () =>
-								mcpManager.waitForConnection(serverName),
-							);
-							return callTool(connection, mcpToolName, params as Record<string, unknown>, {
-								signal: combinedSignal,
-							});
-						})(),
+					return await withAbortTimeout(
+						Promise.resolve(source.execute(toolCallId, params, onUpdate, ctx, combinedSignal)),
 						MCP_CALL_TIMEOUT_MS,
 						signal,
 						timeoutController,
 					);
-					return {
-						content: (result.content ?? []).map(item =>
-							item.type === "text"
-								? { type: "text" as const, text: item.text ?? "" }
-								: { type: "text" as const, text: JSON.stringify(item) },
-						),
-						details: { serverName, mcpToolName, isError: result.isError },
-					};
 				} catch (error) {
 					if (error instanceof ToolAbortError) {
 						throw error;
