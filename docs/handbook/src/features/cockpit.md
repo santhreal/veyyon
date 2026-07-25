@@ -16,6 +16,23 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 
 Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
+The `git` segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:
+
+```
+main                 on a branch, nothing in progress
+detached             detached HEAD
+topic|REBASE         rebasing topic
+main|MERGE           a merge that stopped on a conflict
+main|CHERRY-PICK     a cherry-pick that stopped on a conflict
+main|REVERT          a revert that stopped on a conflict
+main|AM              applying a patch series with git am
+detached|BISECT      bisecting
+```
+
+A rebase detaches HEAD, so without the suffix the segment could only say `detached`, which tells you neither which branch you are rebasing nor that a rebase is running. Veyyon reads the branch back from the rebase's own record, so you see `topic|REBASE`. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.
+
+The `pr` segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.
+
 The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides itself on the built-in `default` profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.
 
 In the composer's quiet footline the `context_pct` segment renders as a growing 8-cell bar instead of the `pct/window` text: `▰▰▰▓▱▱▱▱ 38% ∞`. Filled cells take the usage hue (silver, then gold, ember, and red as the window fills), and cells at the 25/50/75/90 percent marks lock in gold once reached. The cell at the fill frontier breathes while the model is running (faster once usage passes 90 percent); at rest it is a static quarter-step glyph showing how full the next cell is, so an idle screen never moves. The percent number stays; the window denominator moves to the `context_total` segment. A session-accent `∞` after the bar means auto-compaction is on, so the session continues past the window. Classic status-line presets keep the text form.

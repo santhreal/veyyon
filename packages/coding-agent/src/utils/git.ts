@@ -149,6 +149,30 @@ export interface GitDetachedHead extends GitHeadBase {
 
 export type GitHeadState = GitRefHead | GitDetachedHead;
 
+/**
+ * A multi-step git operation that is part-way through.
+ *
+ * These matter because HEAD alone does not describe them. A conflicted merge
+ * leaves HEAD on its branch, so the repository looks ordinary while every
+ * command behaves differently. A rebase is worse: it detaches HEAD, so the
+ * branch you are rebasing disappears from view and the only honest thing HEAD
+ * can say is "detached".
+ */
+export type GitOperationKind = "am" | "bisect" | "cherry-pick" | "merge" | "rebase" | "revert";
+
+export interface GitInProgressOperation {
+	kind: GitOperationKind;
+	/**
+	 * The branch the operation will return to, when git records one.
+	 *
+	 * A rebase writes the original branch to `head-name`, which is the only way
+	 * to recover it while HEAD is detached. `null` when git records nothing,
+	 * which includes rebasing a detached HEAD, and callers must handle it rather
+	 * than assume a name is always available.
+	 */
+	branch: string | null;
+}
+
 export interface GitWorktreeEntry {
 	branch?: string;
 	detached: boolean;
@@ -1018,6 +1042,58 @@ async function readRef(repository: GitRepository, targetRef: string, signal?: Ab
 // ════════════════════════════════════════════════════════════════════════════
 // Internal: Head state parsing
 // ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Read the branch a rebase or am recorded, as a bare branch name.
+ *
+ * git writes the full ref (`refs/heads/topic`) and occasionally the literal
+ * `detached HEAD` when there was no branch to begin with, which must come back
+ * as `null` rather than being shown to a user as if it were a branch called
+ * "detached HEAD".
+ */
+function readOperationHeadName(directory: string): string | null {
+	const raw = readOptionalTextSync(path.join(directory, "head-name"))?.trim();
+	if (!raw || !raw.startsWith(LOCAL_BRANCH_PREFIX)) return null;
+	return raw.slice(LOCAL_BRANCH_PREFIX.length) || null;
+}
+
+/**
+ * Which multi-step operation, if any, is part-way through in this repository.
+ *
+ * Detection is by the marker files git itself uses, and the ORDER is load
+ * bearing rather than arbitrary. A conflicted rebase leaves both its own state
+ * directory and, while a conflict is being resolved, marker files that a bare
+ * merge or cherry-pick would also write, so the enclosing operation has to be
+ * reported or the status line would announce a merge in the middle of a rebase.
+ * `git`'s own status output resolves the same ambiguity the same way.
+ *
+ * `rebase-apply` is shared between `git rebase` and `git am`, which are told
+ * apart by the `applying` marker that only am writes. Reporting an am as a
+ * rebase would send a user to `git rebase --abort`, which does not apply.
+ *
+ * Cost is bounded and small, a handful of stats against the git directory, with
+ * no subprocess: this runs on the status line's synchronous path, where
+ * spawning `git` per render is exactly what must not happen.
+ */
+function resolveInProgressOperation(repository: GitRepository): GitInProgressOperation | null {
+	const gitDir = repository.gitDir;
+	const rebaseMerge = path.join(gitDir, "rebase-merge");
+	if (fs.existsSync(rebaseMerge)) {
+		return { branch: readOperationHeadName(rebaseMerge), kind: "rebase" };
+	}
+	const rebaseApply = path.join(gitDir, "rebase-apply");
+	if (fs.existsSync(rebaseApply)) {
+		const isAm = fs.existsSync(path.join(rebaseApply, "applying"));
+		return { branch: readOperationHeadName(rebaseApply), kind: isAm ? "am" : "rebase" };
+	}
+	// These leave HEAD alone, so the branch is whatever HEAD already says and
+	// there is nothing to recover.
+	if (fs.existsSync(path.join(gitDir, "MERGE_HEAD"))) return { branch: null, kind: "merge" };
+	if (fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD"))) return { branch: null, kind: "cherry-pick" };
+	if (fs.existsSync(path.join(gitDir, "REVERT_HEAD"))) return { branch: null, kind: "revert" };
+	if (fs.existsSync(path.join(gitDir, "BISECT_LOG"))) return { branch: null, kind: "bisect" };
+	return null;
+}
 
 function parseHeadStateSync(repository: GitRepository, headContent: string): GitHeadState {
 	const trimmed = headContent.trim();
@@ -1979,6 +2055,60 @@ export const ls = {
 // ════════════════════════════════════════════════════════════════════════════
 
 export const head = {
+	/**
+	 * The multi-step operation in progress, if any.
+	 *
+	 * Takes an already-resolved repository rather than a cwd so a caller that has
+	 * a head state (which extends {@link GitRepository}) pays no second
+	 * repository lookup. The status line calls it on every render.
+	 */
+	operation(repository: GitRepository): GitInProgressOperation | null {
+		return resolveInProgressOperation(repository);
+	},
+
+	/**
+	 * How to name this checkout in one short label.
+	 *
+	 * The ONE owner of that phrasing. It was previously written inline at the
+	 * status line as `branchName ?? ref`, falling back to the bare string
+	 * "detached", which is wrong in the case that matters most: a rebase detaches
+	 * HEAD, so a user mid-rebase saw "detached" with neither the branch they were
+	 * rebasing nor any hint that a rebase was running. Recovering the branch from
+	 * the operation's own record and appending the operation is what git's status
+	 * output does, and what a reader already expects from a prompt.
+	 *
+	 * Shape is `branch|OPERATION`, e.g. `topic|REBASE`, and just `branch` when
+	 * nothing is in progress. A detached HEAD with no operation stays `detached`.
+	 */
+	label(state: GitHeadState, operation: GitInProgressOperation | null): string {
+		const fromHead = state.kind === "ref" ? (state.branchName ?? state.ref) : null;
+		// The operation's recorded branch wins ONLY when HEAD cannot supply one,
+		// which is the detached-during-rebase case. When HEAD is on a branch it is
+		// the truth and the recorded name is at best a duplicate.
+		const branch = fromHead ?? operation?.branch ?? "detached";
+		return operation ? `${branch}|${operation.kind.toUpperCase()}` : branch;
+	},
+
+	/**
+	 * The branch name to look things up BY, or `null` when there is not one.
+	 *
+	 * Deliberately separate from {@link label}. A label is for a human to read
+	 * and is decorated (`topic|REBASE`); handing that same string to a pull
+	 * request lookup would query a branch that does not exist. The two were one
+	 * value before, which worked only because the sole decoration was the literal
+	 * "detached" and the lookup special-cased that exact word.
+	 *
+	 * Returns `null` while an operation is in progress even though a branch name
+	 * may be recoverable: mid-rebase the branch does not yet point where it will,
+	 * so a pull request looked up against it describes a state that is about to
+	 * change.
+	 */
+	branchForLookup(state: GitHeadState, operation: GitInProgressOperation | null): string | null {
+		if (operation) return null;
+		if (state.kind !== "ref") return null;
+		return state.branchName;
+	},
+
 	/** Full HEAD state (branch, commit, repo info). */
 	async resolve(cwd: string, signal?: AbortSignal): Promise<GitHeadState | null> {
 		const repository = await resolveRepository(cwd);

@@ -292,6 +292,12 @@ export class StatusLineComponent implements Component {
 	#settings: StatusLineSettings = {};
 	#effectiveSettings: EffectiveStatusLineSettings | undefined;
 	#cachedBranch: string | null | undefined = undefined;
+	/**
+	 * The plain branch name for lookups, kept apart from the displayed label.
+	 * `#cachedBranch` may carry an operation suffix (`topic|REBASE`), which is
+	 * for reading, not for querying a forge by.
+	 */
+	#cachedPrBranch: string | null = null;
 	#cachedBranchRepoId: string | null | undefined = undefined;
 	#cachedBranchCwd: string | undefined = undefined;
 	#gitWatcher: fs.FSWatcher | null = null;
@@ -663,10 +669,13 @@ export class StatusLineComponent implements Component {
 		this.#cachedBranchRepoId = gitHeadPath;
 		if (!head) {
 			this.#cachedBranch = null;
+			this.#cachedPrBranch = null;
 			return null;
 		}
 
-		this.#cachedBranch = head.kind === "ref" ? (head.branchName ?? head.ref) : "detached";
+		const operation = git.head.operation(head);
+		this.#cachedBranch = git.head.label(head, operation);
+		this.#cachedPrBranch = git.head.branchForLookup(head, operation);
 
 		return this.#cachedBranch ?? null;
 	}
@@ -745,8 +754,10 @@ export class StatusLineComponent implements Component {
 			return null;
 		}
 
-		// Don't look up if detached, default branch, or already in flight.
-		if (branch === "detached" || this.#isDefaultBranch(branch, gitCwd) || this.#prLookupInFlight) {
+		// Don't look up without a plain branch to look up BY (detached, or an
+		// operation in progress), on the default branch, or with one in flight.
+		const lookupBranch = this.#cachedPrBranch;
+		if (!lookupBranch || this.#isDefaultBranch(lookupBranch, gitCwd) || this.#prLookupInFlight) {
 			return stalePr ?? null;
 		}
 
