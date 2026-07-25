@@ -27,12 +27,13 @@ import { InternalUrlRouter } from "../internal-urls";
 import { paintHotTail, shimmerPhase } from "../modes/components/follow";
 import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { highlightCode, type Theme } from "../modes/theme/theme";
-import bashDescription from "../prompts/tools/bash.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
 import {
 	artifactFooter,
 	DEFAULT_MAX_BYTES,
 	enforceInlineByteCap,
+	type OutputSummary,
 	streamTailUpdates,
 	TailBuffer,
 } from "../session/streaming-output";
@@ -49,6 +50,7 @@ import { expandInternalUrls, type InternalUrlExpansionOptions } from "./bash-ski
 import { resolveEvalBackends } from "./eval-backends";
 import { invalidateGithubCacheForBashCommand } from "./gh-cache-invalidation";
 import { saveOutputArtifact } from "./output-artifact";
+import { foldToolOutputBookkeeping } from "./output-fold";
 import {
 	formatStyledTruncationWarning,
 	type OutputMeta,
@@ -63,7 +65,6 @@ import {
 	previewWindowRows,
 	replaceTabs,
 } from "./render-utils";
-import { foldPassingTestOutput } from "./test-output-fold";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
@@ -239,12 +240,59 @@ interface ManagedBashJobHandle {
 	stopUpdates: () => void;
 }
 
+/**
+ * The output text for a bash result, with runner and build bookkeeping folded out.
+ *
+ * The fold lives HERE, in the one function every model-facing bash path reads its text
+ * through, rather than at each return. It used to sit on the completed-command path only, so
+ * a run that was cancelled, timed out, or came back with no exit status carried its
+ * bookkeeping into context in full — and a `go test ./...` that had to be killed at the
+ * timeout is exactly the kind of result worth folding. A no-op unless the output holds a real
+ * run's worth of bookkeeping, and failures are never folded.
+ */
 function normalizeResultOutput(result: BashResult | BashInteractiveResult): string {
-	return result.output || "";
+	return foldToolOutputBookkeeping(result.output || "").text;
 }
 
 function isInteractiveResult(result: BashResult | BashInteractiveResult): result is BashInteractiveResult {
 	return "timedOut" in result;
+}
+
+/**
+ * Turn an ACP `terminal/output` reply into the size summary the rest of the bash
+ * tool reads.
+ *
+ * TWO THINGS THIS OWNS, both of which were previously written out by hand at
+ * each of the bridge's two exits and were wrong in the same way at both.
+ *
+ * First, byte counts. `text.length` is UTF-16 code units, not bytes, so any
+ * non-ASCII output under-reported its own size (a screen of box-drawing
+ * characters reported a third of what it actually cost).
+ *
+ * Second, and this is the one that misleads the agent: the ACP response carries
+ * `{output, truncated}` and NO pre-truncation size, so when the client has
+ * truncated there is no total to report. Copying the kept length into
+ * `totalBytes` made every consumer compute an elision of zero and print
+ * "Showing lines 1-N of N" over output that was demonstrably incomplete. The
+ * totals are therefore left equal to the kept size deliberately, and
+ * `truncationFromSummary` recognises that shape and says the elided amount is
+ * unknown rather than deriving a range from it.
+ */
+function summarizeBridgeOutput<T extends { exitCode: number | undefined; cancelled: boolean; timedOut?: boolean }>(
+	output: ClientBridgeTerminalOutput,
+	rest: T,
+): T & OutputSummary {
+	const text = output.output;
+	const lines = text.length > 0 ? text.split("\n").length : 0;
+	return {
+		...rest,
+		output: text,
+		truncated: output.truncated,
+		totalLines: lines,
+		totalBytes: Buffer.byteLength(text, "utf-8"),
+		outputLines: lines,
+		outputBytes: Buffer.byteLength(text, "utf-8"),
+	};
 }
 
 function normalizeBashEnv(env: Record<string, string> | undefined): Record<string, string> | undefined {
@@ -431,7 +479,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	get description(): string {
 		const evalBackends = resolveEvalBackends(this.session);
 		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
-		return prompt.render(bashDescription, {
+		return prompt.render(PROMPTS["tools/bash"].text, {
 			asyncEnabled: this.#asyncEnabled,
 			autoBackgroundEnabled: this.#autoBackgroundEnabled,
 			autoBackgroundThresholdSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),
@@ -480,13 +528,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	}
 
 	#formatResultOutput(result: BashResult | BashInteractiveResult): string {
-		const outputText = normalizeResultOutput(result);
-		// A test suite run through bash produces the same per-test bookkeeping as
-		// one run through eval, and it lands in context the same way, so it is
-		// folded the same way. See test-output-fold: a no-op unless the output
-		// carries a real run's worth of pass/skip lines, and failures are never
-		// folded.
-		return foldPassingTestOutput(outputText).text || "(no output)";
+		return normalizeResultOutput(result) || "(no output)";
 	}
 
 	/**
@@ -505,6 +547,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	 */
 	async #boundBashOutput(text: string, existingArtifactId?: string): Promise<string> {
 		const capped = await enforceInlineByteCap(text, {
+			turnIndex: this.session.getTurnIndex?.(),
 			saveArtifact: existingArtifactId
 				? async () => existingArtifactId
 				: full => saveBashOriginalArtifact(this.session, full),
@@ -609,6 +652,10 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		// head-retention spill, minimizer miss) may emit more than
 		// ~DEFAULT_MAX_BYTES inline. No-op for already-bounded output.
 		const cappedOutputText = await enforceInlineByteCap(outputText, {
+			// Scale the inline budget by how long this result will sit in context:
+			// an early result is re-read for the rest of the session, a late one
+			// barely at all.
+			turnIndex: this.session.getTurnIndex?.(),
 			saveArtifact: full => saveBashOriginalArtifact(this.session, full),
 		});
 
@@ -1162,17 +1209,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 									error,
 								});
 							}
-							const timedOutResult: BashInteractiveResult = {
-								output: current.output,
+							const timedOutResult: BashInteractiveResult = summarizeBridgeOutput(current, {
 								exitCode: undefined,
 								cancelled: false,
 								timedOut: true,
-								truncated: current.truncated,
-								totalLines: current.output.length > 0 ? current.output.split("\n").length : 0,
-								totalBytes: current.output.length,
-								outputLines: current.output.length > 0 ? current.output.split("\n").length : 0,
-								outputBytes: current.output.length,
-							};
+							});
 							return this.#buildCompletedResult(timedOutResult, timeoutSec, {
 								requestedTimeoutSec,
 								notices: pendingNotices,
@@ -1231,20 +1272,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 							? SIGNAL_EXIT_BASE + bridgeSignal
 							: undefined;
 
-				const outputText = finalOutput.output;
-				const outputByteLen = outputText.length;
-				const outputLineCount = outputText.length > 0 ? outputText.split("\n").length : 0;
-
 				const bridgeResult: BashResult = {
-					output: outputText,
-					exitCode,
+					...summarizeBridgeOutput(finalOutput, { exitCode, cancelled: false }),
 					signal: bridgeSignal,
-					cancelled: false,
-					truncated: finalOutput.truncated,
-					totalLines: outputLineCount,
-					totalBytes: outputByteLen,
-					outputLines: outputLineCount,
-					outputBytes: outputByteLen,
 				};
 
 				const bridgeNotices: string[] = [];
@@ -1454,7 +1484,16 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 			const success = !isPartial && !isError;
 			const header =
 				config.showHeader === false
-					? undefined
+					? // `showHeader: false` suppresses a title that would only repeat what the
+						// `$ command` line already says. It used to suppress the FAILURE too: the
+						// block's border tint was then the one and only signal that a command
+						// failed, so with colour stripped — a monochrome terminal, a colour-blind
+						// reader, a copied transcript — a failing run was byte-identical to a
+						// clean one. A failed run gets a header of its own, glyph included, and
+						// still no redundant title.
+						success || isPartial
+						? undefined
+						: renderStatusLine({ icon: "error", title: "failed", titleColor: "error" }, uiTheme)
 					: renderStatusLine(
 							success
 								? {

@@ -44,6 +44,17 @@ export interface TruncationMeta {
 	artifactId?: string;
 	/** Next offset for pagination (head truncation only) */
 	nextOffset?: number;
+	/**
+	 * The output was truncated by something upstream that did not report how much
+	 * it dropped, so `totalLines` and `totalBytes` describe only what survived.
+	 *
+	 * The ACP `terminal/output` response is the case that forced this: it carries
+	 * `{output, truncated}` and no pre-truncation size at all. Without this flag
+	 * the kept size doubles as the total, and every consumer then computes an
+	 * elision of zero and prints "Showing lines 1-N of N", which tells the agent
+	 * it is looking at the whole output at the exact moment it is not.
+	 */
+	elidedAmountUnknown?: boolean;
 }
 
 /**
@@ -213,6 +224,26 @@ export class OutputMetaBuilder {
 				tailRange: tailLines > 0 ? { start: totalLines - tailLines + 1, end: totalLines } : undefined,
 				elidedBytes: summary.elidedBytes,
 				elidedLines,
+				artifactId: summary.artifactId,
+			};
+			return this;
+		}
+
+		// The summary says it was truncated but its own numbers account for every
+		// byte and line, which means whatever truncated it never reported the
+		// original size. Say so instead of deriving a range from the kept size: a
+		// derived range comes out as "Showing lines 1-N of N", which is a claim
+		// that nothing was dropped (Law 10 - an unknown must not be presented as a
+		// known).
+		if (summary.outputBytes >= summary.totalBytes && summary.outputLines >= totalLines) {
+			this.#meta.truncation = {
+				direction,
+				truncatedBy: "bytes",
+				totalLines,
+				totalBytes: summary.totalBytes,
+				outputLines: summary.outputLines,
+				outputBytes: summary.outputBytes,
+				elidedAmountUnknown: true,
 				artifactId: summary.artifactId,
 			};
 			return this;
@@ -451,6 +482,17 @@ export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
 		} else {
 			notice = `Showing ${truncation.outputLines} of ${totalLines} lines; middle elided`;
 		}
+		if (truncation.artifactId != null) {
+			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
+		}
+		return notice;
+	}
+
+	if (truncation.elidedAmountUnknown) {
+		// No range and no total: both would be invented. What the agent needs to
+		// know is that the tail it is reading is not the whole output, and that
+		// asking for a byte count would be answering a question nobody measured.
+		notice = `Output was truncated before veyyon received it; ${formatBytes(truncation.outputBytes)} kept, elided amount not reported`;
 		if (truncation.artifactId != null) {
 			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
 		}
