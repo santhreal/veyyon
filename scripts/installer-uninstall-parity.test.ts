@@ -23,6 +23,15 @@ import * as path from "node:path";
  * Windows half honest between CI runs.
  */
 
+/** A named shell function's body, from its opening line to the closing brace. */
+function fnBody(body: string, start: string, end: string): string {
+	const from = body.indexOf(start);
+	expect(from, `missing ${start}`).toBeGreaterThan(-1);
+	const to = body.indexOf(end, from);
+	expect(to, `missing terminator after ${start}`).toBeGreaterThan(from);
+	return body.slice(from, to);
+}
+
 const repoRoot = path.resolve(import.meta.dir, "..");
 const installSh = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8");
 const installPs1 = fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8");
@@ -175,5 +184,65 @@ describe("the Windows binary install stages its download", () => {
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
 		expect(body).toContain('-Filter "*.old"');
 		expect(body).toContain('-Filter ".$BinName.*.download"');
+	});
+});
+
+/**
+ * Neither uninstaller removed the PATH entry its install added. A user who
+ * installed and then removed veyyon kept a PATH entry pointing at a directory
+ * veyyon no longer occupies — on POSIX under a comment still claiming an
+ * installer put it there.
+ *
+ * The removal is surgical on both sides: an rc is a file the user also edits by
+ * hand, and a Windows user PATH holds entries from every tool on the machine.
+ */
+describe("uninstall takes back the PATH entry install added", () => {
+	it("install.sh and its uninstall agree on the exact line, through one owner", () => {
+		// Without a single owner the uninstall has to guess at install's text, and
+		// a guess either leaves the line forever or deletes one the user wrote.
+		expect(installSh).toContain("path_line_for() {");
+		expect(installSh).toContain('line=$(path_line_for "$rc" "$dir")');
+		expect(installSh).toContain("remove_path_line_from_rc() {");
+	});
+
+	it("install.sh checks every rc a past install could have chosen", () => {
+		// A user who changed shells since installing still carries the old
+		// shell's line.
+		expect(installSh).toContain("rc_candidates() {");
+		for (const rc of [".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc", "config.fish"]) {
+			expect(installSh, `rc_candidates must cover ${rc}`).toContain(rc);
+		}
+	});
+
+	it("install.sh rewrites the rc in place, so a dotfiles symlink stays a symlink", () => {
+		// `mv` would replace a symlink into a dotfiles repo with a regular file
+		// and silently detach the user's config from their repo.
+		const fn = fnBody(installSh, "remove_path_line_from_rc() {", "\n}\n");
+		expect(fn).toContain('cat "$tmp" > "$rc"');
+		expect(fn).not.toMatch(/\bmv\b[^\n]*"\$rc"/);
+	});
+
+	it("install.sh drops the marker comment only when it sits above our line", () => {
+		const fn = fnBody(installSh, "remove_path_line_from_rc() {", "\n}\n");
+		expect(fn).toContain('[ "$_pending" = "$PATH_MARKER" ]');
+	});
+
+	it("install.ps1 removes the entry from the user PATH", () => {
+		expect(installPs1).toContain("function Remove-FromPath {");
+		expect(installPs1).toContain("function Get-PathWithoutDir {");
+		expect(installPs1).toContain("removed $InstallDir from your PATH");
+	});
+
+	it("install.ps1 compares entries the same way the add does", () => {
+		// Matching loosely would take an unrelated directory with it; matching
+		// strictly by raw string would miss a trailing-backslash variant.
+		const fn = installPs1.slice(installPs1.indexOf("function Get-PathWithoutDir {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain("$_.TrimEnd('\\') -ine $want");
+	});
+
+	it("install.sh reclaims staging files a killed install left behind", () => {
+		// The Windows side already sweeps its equivalents.
+		expect(installSh).toContain('for stale in "$INSTALL_DIR/.$BIN_NAME".*; do');
 	});
 });

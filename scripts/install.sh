@@ -144,12 +144,41 @@ link_alias() {
     fi
 }
 
+# The comment written directly above the PATH line, so an uninstall can
+# recognize its own work in a file the user also edits by hand.
+PATH_MARKER="# added by the veyyon installer"
+
+# The exact PATH line this installer writes into $1 for install dir $2.
+#
+# ONE owner, read by both ensure_on_path (which writes it) and
+# remove_path_line_from_rc (which takes it back out). Without a single owner an
+# uninstall has to guess at the text install produced, and a guess either leaves
+# the line behind forever or deletes a line the user wrote themselves.
+path_line_for() {
+    case "$1" in
+        */config.fish) printf 'fish_add_path %s' "$2" ;;
+        *) printf 'export PATH="%s:$PATH"' "$2" ;;
+    esac
+}
+
+# Every rc ensure_on_path might have chosen, across shells. A user who switched
+# shells since installing still has the old shell's line, and leaving it is
+# leaving a PATH entry pointing at a directory that no longer holds veyyon.
+rc_candidates() {
+    printf '%s\n' \
+        "$HOME/.bashrc" \
+        "$HOME/.bash_profile" \
+        "$HOME/.bash_login" \
+        "$HOME/.profile" \
+        "$HOME/.zshrc" \
+        "$HOME/.config/fish/config.fish"
+}
+
 # ---- ensure the install dir is actually on PATH (binary mode) ----
 ensure_on_path() {
     dir="$1"
     case ":$PATH:" in *":$dir:"*) return 0 ;; esac
     # Add to the user's shell rc, idempotently, and announce it.
-    line="export PATH=\"$dir:\$PATH\""
     rc=""
     case "${SHELL##*/}" in
         zsh) rc="$HOME/.zshrc" ;;
@@ -168,9 +197,10 @@ ensure_on_path() {
                 rc="$HOME/.bashrc"
             fi
             ;;
-        fish) rc="$HOME/.config/fish/config.fish"; line="fish_add_path $dir" ;;
+        fish) rc="$HOME/.config/fish/config.fish" ;;
         *) rc="$HOME/.profile" ;;
     esac
+    line=$(path_line_for "$rc" "$dir")
     # Three distinct outcomes, three distinct messages. Collapsing them (as this
     # did) meant a REINSTALL — where the rc already carries the line — told the
     # user to "add $dir to your PATH" even though it was already configured and
@@ -189,7 +219,7 @@ ensure_on_path() {
         ok "$dir is already on PATH in $rc (restart your shell or: source $rc)"
     else
         mkdir -p "$(dir_of "$rc")" 2>/dev/null || true
-        printf '\n# added by the veyyon installer\n%s\n' "$line" >> "$rc" \
+        printf '\n%s\n%s\n' "$PATH_MARKER" "$line" >> "$rc" \
             && ok "added $dir to PATH in $rc (restart your shell or: source $rc)" \
             || warn "could not write $rc — add $dir to your PATH, then run '$ALIAS_NAME'"
     fi
@@ -416,6 +446,55 @@ verify_release_binary() {
 }
 
 # ---- uninstall ----
+# Take the PATH line back out of an rc, and nothing else.
+#
+# Uninstall used to leave it behind forever: every install appended
+# `export PATH="<dir>:$PATH"` to a shell rc and no uninstall ever removed it, so
+# a user who installed and removed veyyon kept a PATH entry pointing at a
+# directory veyyon no longer occupies, plus a comment claiming an installer put
+# it there.
+#
+# It is surgical on purpose. This is a file the user also edits by hand, so only
+# the EXACT line path_line_for produces is dropped, along with the marker
+# comment when it sits directly above it. A line the user wrote themselves, even
+# one naming the same directory, is left alone.
+#
+# Rewrites through `cat > "$rc"` rather than `mv`: an rc is very often a symlink
+# into a dotfiles repo, and `mv` would replace that symlink with a regular file.
+# Returns 0 only when something was actually removed.
+remove_path_line_from_rc() {
+    rc="$1"; dir="$2"
+    [ -f "$rc" ] || return 1
+    line=$(path_line_for "$rc" "$dir")
+    grep -Fqx "$line" "$rc" || return 1
+    tmp="$rc.veyyon-uninstall.$$"
+    : > "$tmp" || return 1
+    # One line of lookbehind, so the marker comment is dropped only when it is
+    # ours (directly above our line) and never when the user has moved it.
+    _pending=""; _have_pending=0
+    while IFS= read -r _cur || [ -n "$_cur" ]; do
+        if [ "$_cur" = "$line" ]; then
+            if [ "$_have_pending" -eq 1 ] && [ "$_pending" = "$PATH_MARKER" ]; then
+                _have_pending=0
+            elif [ "$_have_pending" -eq 1 ]; then
+                printf '%s\n' "$_pending" >> "$tmp"
+                _have_pending=0
+            fi
+            continue
+        fi
+        [ "$_have_pending" -eq 1 ] && printf '%s\n' "$_pending" >> "$tmp"
+        _pending="$_cur"; _have_pending=1
+    done < "$rc"
+    [ "$_have_pending" -eq 1 ] && printf '%s\n' "$_pending" >> "$tmp"
+    if cat "$tmp" > "$rc"; then
+        rm -f "$tmp"
+        return 0
+    fi
+    rm -f "$tmp"
+    warn "could not rewrite $rc — remove the '$dir' PATH line yourself"
+    return 1
+}
+
 do_uninstall() {
     removed=0
     for d in "$INSTALL_DIR" "$HOME/.bun/bin"; do
@@ -478,6 +557,19 @@ do_uninstall() {
     if [ -d "$natives_cache" ]; then
         rm -rf "$natives_cache" && { ok "removed native addon cache $natives_cache"; removed=1; }
     fi
+    # Take back the PATH line, in every rc a past install might have written it
+    # to: a user who has changed shells since installing still carries the old
+    # shell's line, pointing at a directory veyyon no longer occupies.
+    rc_candidates | while IFS= read -r rc; do
+        if remove_path_line_from_rc "$rc" "$INSTALL_DIR"; then
+            ok "removed the veyyon PATH line from $rc"
+        fi
+    done
+    # Staging files a killed install left behind are ours too (Windows sweeps
+    # its equivalents in Uninstall-Veyyon).
+    for stale in "$INSTALL_DIR/.$BIN_NAME".*; do
+        [ -e "$stale" ] && rm -f "$stale" && { ok "removed leftover $stale"; removed=1; }
+    done
     [ "$removed" -eq 1 ] && say "veyyon uninstalled." || say "nothing to uninstall."
 }
 

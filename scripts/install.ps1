@@ -213,6 +213,30 @@ function Clear-StaleBinaryBackups {
     }
 }
 
+# PATH with $Dir removed, comparing entries the same way Test-PathContainsDir
+# does (case-insensitive, trailing backslash ignored). Returns the original
+# string when the entry is not present, so the caller can tell nothing changed.
+function Get-PathWithoutDir {
+    param([string]$Raw, [string]$Dir)
+    $want = $Dir.TrimEnd('\')
+    $kept = @(Split-PathEntries $Raw | Where-Object { $_.TrimEnd('\') -ine $want })
+    return ($kept -join ';')
+}
+
+# Take the install dir back out of the user PATH.
+#
+# Uninstall never did this: every install added the directory and nothing ever
+# removed it, so a user who installed and removed veyyon kept a PATH entry
+# pointing at a directory veyyon no longer occupies. Only an EXACT entry match
+# is removed, so a different directory that merely shares a prefix stays.
+function Remove-FromPath {
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not (Test-PathContainsDir $userPath $InstallDir)) { return $false }
+    [Environment]::SetEnvironmentVariable("Path", (Get-PathWithoutDir $userPath $InstallDir), "User")
+    $env:Path = Get-PathWithoutDir $env:Path $InstallDir
+    return $true
+}
+
 function Find-BashShell {
     # Check Git Bash first (most common on Windows)
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
@@ -799,6 +823,10 @@ function Install-Binary {
 
 function Uninstall-Veyyon {
     $removed = $false
+    if (Remove-FromPath) {
+        Write-Host "OK  removed $InstallDir from your PATH" -ForegroundColor Green
+        $removed = $true
+    }
     foreach ($f in @("$BinName.exe", "$BinName.cmd", "$AliasName.cmd")) {
         $p = Join-Path $InstallDir $f
         if (Test-Path $p) {
