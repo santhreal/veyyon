@@ -63,6 +63,7 @@ import {
 	previewWindowRows,
 	replaceTabs,
 } from "./render-utils";
+import { foldPassingTestOutput } from "./test-output-fold";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
@@ -480,7 +481,12 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 
 	#formatResultOutput(result: BashResult | BashInteractiveResult): string {
 		const outputText = normalizeResultOutput(result);
-		return outputText || "(no output)";
+		// A test suite run through bash produces the same per-test bookkeeping as
+		// one run through eval, and it lands in context the same way, so it is
+		// folded the same way. See test-output-fold: a no-op unless the output
+		// carries a real run's worth of pass/skip lines, and failures are never
+		// folded.
+		return foldPassingTestOutput(outputText).text || "(no output)";
 	}
 
 	/**
