@@ -28,6 +28,11 @@ export type ValueSource =
 	| { kind: "list"; values: readonly string[] } // static comma-separated list
 	| { kind: "models"; multiple: boolean } // dynamic: live model catalog
 	| { kind: "sessions" } // dynamic: on-disk sessions
+	| { kind: "settings" } // dynamic: setting keys from SETTINGS_SCHEMA
+	// dynamic: the values the setting named by the PRECEDING word accepts. Every
+	// shell here can name that word cheaply, which is why this needs no per-shell
+	// bookkeeping.
+	| { kind: "setting-values" }
 	| { kind: "file" }
 	| { kind: "dir" };
 
@@ -154,9 +159,16 @@ const MODEL_ARGS: Record<string, true> = {
 	"tiny-models.model": true,
 };
 
+/** Positionals resolved against the settings schema, keyed `<command>.<arg>`. */
+const SETTING_ARGS: Record<string, ValueSource> = {
+	"config.key": { kind: "settings" },
+	"config.value": { kind: "setting-values" },
+};
+
 function argValue(command: string, name: string, desc: ArgDescriptor): ValueSource {
 	if (desc.options && desc.options.length > 0) return { kind: "enum", values: desc.options };
 	const key = `${command}.${name}`;
+	if (SETTING_ARGS[key]) return SETTING_ARGS[key];
 	if (MODEL_ARGS[key]) return { kind: "models", multiple: false };
 	if (FILE_ARGS[key]) return { kind: "file" };
 	return { kind: "value" };
@@ -273,12 +285,21 @@ function bashValueBranch(bin: string, v: ValueSource): string {
 			return `COMPREPLY=( $(compgen -W "${bashWords(v.values)}" -- "$cur") ); return 0`;
 		case "list":
 			return `_veyyon_comma "${bashWords(v.values)}"; return 0`;
+		// Dynamic candidates are filtered by the binary, which already knows what
+		// the word means: a model id matches on any fragment, a setting key on its
+		// leading path. Passing `$cur` to compgen as well re-filtered them by
+		// PREFIX and threw the difference away — `--model opus<TAB>` dropped every
+		// `anthropic/claude-opus-…` the helper had just returned.
 		case "models":
 			return v.multiple
 				? `_veyyon_comma "$(command ${bin} __complete models 2>/dev/null | cut -f1)"; return 0`
-				: `COMPREPLY=( $(compgen -W "$(command ${bin} __complete models -- "$cur" 2>/dev/null | cut -f1)" -- "$cur") ); return 0`;
+				: `COMPREPLY=( $(compgen -W "$(command ${bin} __complete models -- "$cur" 2>/dev/null | cut -f1)") ); return 0`;
 		case "sessions":
-			return `COMPREPLY=( $(compgen -W "$(command ${bin} __complete sessions -- "$cur" 2>/dev/null | cut -f1)" -- "$cur") ); return 0`;
+			return `COMPREPLY=( $(compgen -W "$(command ${bin} __complete sessions -- "$cur" 2>/dev/null | cut -f1)") ); return 0`;
+		case "settings":
+			return `COMPREPLY=( $(compgen -W "$(command ${bin} __complete settings -- "$cur" 2>/dev/null | cut -f1)") ); return 0`;
+		case "setting-values":
+			return `COMPREPLY=( $(compgen -W "$(command ${bin} __complete setting-values "$prev" -- "$cur" 2>/dev/null | cut -f1)") ); return 0`;
 		case "file":
 			return `COMPREPLY=( $(compgen -f -- "$cur") ); compopt -o filenames; return 0`;
 		case "dir":
@@ -466,25 +487,61 @@ function zshDesc(s: string): string {
 		.trim();
 }
 
-function zshAction(v: ValueSource): string {
+/**
+ * The zsh completer for a value: the part after the last colon of an
+ * `_arguments` spec. One owner, because flags and positionals want the same
+ * answer and had two mappings that disagreed — the positional one classified
+ * everything it did not recognize as `_files`, so `config set <TAB>` listed the
+ * current directory where a setting key belongs.
+ */
+function zshCompleter(v: ValueSource): string {
 	switch (v.kind) {
 		case "flag":
-			return "";
 		case "value":
-			return ":value:";
+			return "";
 		case "enum":
-			return `:value:(${v.values.join(" ")})`;
+			return `(${v.values.join(" ")})`;
 		case "list":
-			return ":value:_veyyon_tools";
+			return "_veyyon_tools";
 		case "models":
-			return v.multiple ? ":models:_veyyon_models_list" : ":model:_veyyon_call models";
+			return v.multiple ? "_veyyon_models_list" : "_veyyon_call models";
 		case "sessions":
-			return ":session:_veyyon_call sessions";
+			return "_veyyon_call sessions";
+		case "settings":
+			return "_veyyon_call settings";
+		case "setting-values":
+			return "_veyyon_setting_values";
 		case "file":
-			return ":file:_files";
+			return "_files";
 		case "dir":
-			return ":dir:_files -/";
+			return "_files -/";
 	}
+}
+
+/**
+ * The word zsh shows above a group of candidates. Purely cosmetic, but it is
+ * what tells a user whether the list they are looking at is models or files.
+ */
+function zshTag(v: ValueSource): string {
+	switch (v.kind) {
+		case "models":
+			return v.multiple ? "models" : "model";
+		case "sessions":
+			return "session";
+		case "settings":
+			return "setting";
+		case "file":
+			return "file";
+		case "dir":
+			return "dir";
+		default:
+			return "value";
+	}
+}
+
+function zshAction(v: ValueSource): string {
+	if (v.kind === "flag") return "";
+	return `:${zshTag(v)}:${zshCompleter(v)}`;
 }
 
 function zshFlagSpec(f: CompletionFlag): string {
@@ -496,12 +553,7 @@ function zshFlagSpec(f: CompletionFlag): string {
 }
 
 function zshArgSpec(f: CompletionArg): string {
-	switch (f.value.kind) {
-		case "enum":
-			return `':${f.name}:(${f.value.values.join(" ")})'`;
-		default:
-			return `':${f.name}:_files'`;
-	}
+	return `':${f.name}:${zshCompleter(f.value)}'`;
 }
 
 function generateZsh(spec: CompletionSpec): string {
@@ -538,7 +590,18 @@ _veyyon_models_list() {
 	done
 	_values -s , 'models' $items
 }
-_veyyon_tools() { _values -s , 'tools' ${toolNames} }`);
+_veyyon_tools() { _values -s , 'tools' ${toolNames} }
+# The setting whose values to offer is the word before the cursor, which is the
+# key the user just typed (\`config set startup.autoUpdate <TAB>\`).
+_veyyon_setting_values() {
+	local -a items
+	local line
+	for line in "\${(@f)$(command ${bin} __complete setting-values "\${words[CURRENT-1]}" -- "$PREFIX" 2>/dev/null)}"; do
+		[[ -z $line ]] && continue
+		items+=( "\${line//$'\\t'/:}" )
+	done
+	_describe -t values 'value' items
+}`);
 	parts.push("");
 
 	// Subcommand description table.
@@ -626,6 +689,10 @@ function fishValue(bin: string, v: ValueSource): string {
 			return `-x -a '(command ${bin} __complete models -- (commandline -ct))'`;
 		case "sessions":
 			return `-x -a '(command ${bin} __complete sessions -- (commandline -ct))'`;
+		case "settings":
+			return `-x -a '(command ${bin} __complete settings -- (commandline -ct))'`;
+		case "setting-values":
+			return `-x -a '(command ${bin} __complete setting-values (__veyyon_prev_word) -- (commandline -ct))'`;
 		case "file":
 			return "-r -F";
 		case "dir":
@@ -707,6 +774,15 @@ function generateFish(spec: CompletionSpec): string {
 	lines.push(`end`);
 	lines.push("");
 
+	// The word before the cursor. `commandline -opc` is every completed word, so
+	// its last element is what the user finished typing — the setting key in
+	// `config set startup.autoUpdate <TAB>`.
+	lines.push(`function __veyyon_prev_word`);
+	lines.push(`\tset -l done (commandline -opc)`);
+	lines.push(`\ttest (count $done) -gt 0; and echo $done[-1]`);
+	lines.push(`end`);
+	lines.push("");
+
 	lines.push(`function __fish_veyyon_no_subcommand`);
 	lines.push(`\ttest -z (__veyyon_subcommand)`);
 	lines.push(`end`);
@@ -739,19 +815,17 @@ function generateFish(spec: CompletionSpec): string {
 		for (const f of c.flags) {
 			lines.push(fishFlagLine(bin, cond, f));
 		}
-		// Positionals: fish conditions can't gate on position, so emit enum
-		// candidates (if any) and otherwise a single file completion — never both,
-		// and never duplicated across multiple file-typed positionals.
-		const enumArgs = c.args.filter(a => a.value.kind === "enum");
-		if (enumArgs.length > 0) {
-			for (const a of enumArgs) {
-				if (a.value.kind !== "enum") continue;
-				lines.push(
-					`complete -c ${bin} -f -n '${cond}' -a '${a.value.values.join(" ")}' -d '${fishDesc(a.description)}'`,
-				);
-			}
-		} else if (c.args.some(a => a.value.kind === "file")) {
-			lines.push(`complete -c ${bin} -F -n '${cond}'`);
+		// Positionals: fish conditions can't gate on position, so every positional
+		// that has candidates contributes them under the same condition, and a
+		// path-typed one contributes file completion once. Only enums used to be
+		// emitted at all, which left `config set <TAB>` and `bench <models> <TAB>`
+		// with nothing in fish while bash and zsh answered both.
+		const seenValueArgs = new Set<string>();
+		for (const a of c.args) {
+			const arg = fishValue(bin, a.value);
+			if (!arg || seenValueArgs.has(arg)) continue;
+			seenValueArgs.add(arg);
+			lines.push(`complete -c ${bin} -n '${cond}' ${arg} -d '${fishDesc(a.description)}'`);
 		}
 	}
 	lines.push("");
@@ -904,11 +978,16 @@ function generatePowerShell(spec: CompletionSpec): string {
  */
 const PS_COMPLETER_BODY =
 	String.raw`function global:__Veyyon-DynamicCandidates {
-	param([string]$Kind, [string]$WordToComplete)
-	# The live model catalog and on-disk sessions are only known to the running
-	# binary, so ask it. A failure here yields no candidates rather than an error
-	# in the middle of the user's prompt line.
-	$out = & $__veyyonBin __complete $Kind -- $WordToComplete 2>$null
+	param([string]$Kind, [string]$WordToComplete, [string]$Arg)
+	# The live model catalog, on-disk sessions and the settings schema are only
+	# known to the running binary, so ask it. A failure here yields no candidates
+	# rather than an error in the middle of the user's prompt line. $Arg carries
+	# the one kind that needs a subject: setting-values names its setting.
+	$out = if ($Arg) {
+		& $__veyyonBin __complete $Kind $Arg -- $WordToComplete 2>$null
+	} else {
+		& $__veyyonBin __complete $Kind -- $WordToComplete 2>$null
+	}
 	if ($LASTEXITCODE -ne 0 -or -not $out) { return @() }
 	return @($out | ForEach-Object { ($_ -split "` +
 	"`t" +
@@ -941,12 +1020,17 @@ function global:__Veyyon-CommaCandidates {
 }
 
 function global:__Veyyon-ValueCandidates {
-	param($Value, [string]$WordToComplete)
+	param($Value, [string]$WordToComplete, [string]$Previous)
 	switch ($Value.Kind) {
 		'enum' { return $Value.Values }
 		'list' { return __Veyyon-CommaCandidates $Value.Values $WordToComplete }
 		'models' { return __Veyyon-DynamicCandidates 'models' $WordToComplete }
 		'sessions' { return __Veyyon-DynamicCandidates 'sessions' $WordToComplete }
+		'settings' { return __Veyyon-DynamicCandidates 'settings' $WordToComplete }
+		'setting-values' {
+			if (-not $Previous) { return @() }
+			return __Veyyon-DynamicCandidates 'setting-values' $WordToComplete $Previous
+		}
 		'file' { return __Veyyon-PrefixedPaths $WordToComplete }
 		'dir' { return __Veyyon-PrefixedPaths $WordToComplete -DirectoriesOnly }
 	}
@@ -997,7 +1081,7 @@ $global:__veyyonCompleter = {
 	$tooltips = @{}
 
 	if ($prev -and $flags.ContainsKey($prev) -and $flags[$prev].Value.Kind -ne 'flag') {
-		$candidates = __Veyyon-ValueCandidates $flags[$prev].Value $wordToComplete
+		$candidates = __Veyyon-ValueCandidates $flags[$prev].Value $wordToComplete $prev
 	} elseif ($wordToComplete.StartsWith('-')) {
 		$candidates = @($flags.Keys)
 		foreach ($k in $flags.Keys) { $tooltips[$k] = $flags[$k].Desc }
@@ -1005,7 +1089,7 @@ $global:__veyyonCompleter = {
 		$candidates = @($__veyyonCommands.Keys)
 		foreach ($k in $__veyyonCommands.Keys) { $tooltips[$k] = $__veyyonCommands[$k] }
 	} elseif ($__veyyonCommandArgs.ContainsKey($sub)) {
-		$candidates = __Veyyon-ValueCandidates $__veyyonCommandArgs[$sub] $wordToComplete
+		$candidates = __Veyyon-ValueCandidates $__veyyonCommandArgs[$sub] $wordToComplete $prev
 	}
 
 	$candidates |

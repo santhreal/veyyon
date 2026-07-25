@@ -207,7 +207,7 @@ describe("generateCompletion — fish", () => {
 	});
 
 	it("gates a positional enum on its subcommand", () => {
-		expect(out).toContain("-n '__veyyon_using worktree' -a 'list clear'");
+		expect(out).toContain("-n '__veyyon_using worktree' -x -a 'list clear'");
 	});
 });
 
@@ -1023,5 +1023,188 @@ describe("buildSpec value classification", () => {
 		// COMPREPLY, so bash falls back to its own default instead of pretending.
 		const spec = specFor("say", { flags: {}, args: { text: { description: "Text to speak" } } });
 		expect(generateCompletion("bash", spec)).not.toContain("compgen -f");
+	});
+});
+
+/**
+ * Setting keys and setting values, in every shell.
+ *
+ * `veyyon config set <Tab>` offered nothing: the key is free text as far as the
+ * static spec is concerned, and the schema that knows every setting was never
+ * asked. Both new sources resolve through the binary, and the value source
+ * needs the key the user just typed, which each shell names differently.
+ */
+describe("settings completion reaches every shell", () => {
+	const settingsSpec: CompletionSpec = {
+		bin: "veyyon",
+		binAliases: [],
+		root: { flags: [], args: [] },
+		commands: [
+			{
+				name: "config",
+				aliases: [],
+				description: "Config",
+				flags: [],
+				args: [
+					{ name: "action", description: "Action", value: { kind: "enum", values: ["get", "set"] } },
+					{ name: "key", description: "Key", value: { kind: "settings" } },
+					{ name: "value", description: "Value", value: { kind: "setting-values" } },
+				],
+			},
+		],
+	};
+
+	it("buildSpec routes config's key and value to the schema, not to the filesystem", () => {
+		const commands = new Map<string, CommandCtor>([
+			["launch", { flags: {}, args: {} } as unknown as CommandCtor],
+			[
+				"config",
+				{
+					flags: {},
+					args: { action: { description: "A" }, key: { description: "K" }, value: { description: "V" } },
+				} as unknown as CommandCtor,
+			],
+		]);
+		const built = buildSpec({ bin: "veyyon", version: "0", commands } as CliConfig, "launch", new Map(), {});
+		expect(built.commands[0].args.map(a => a.value.kind)).toEqual(["value", "settings", "setting-values"]);
+	});
+
+	it("bash asks the binary for keys, and for values names the preceding word", () => {
+		const out = generateCompletion("bash", settingsSpec);
+		expect(out).toContain('command veyyon __complete settings -- "$cur"');
+		expect(out).toContain('command veyyon __complete setting-values "$prev" -- "$cur"');
+	});
+
+	it("bash does not re-filter dynamic candidates the binary already filtered", () => {
+		// compgen's own `-- "$cur"` match is a PREFIX match. Applying it on top of
+		// the binary's own matching threw the difference away: `--model opus<Tab>`
+		// dropped every `anthropic/claude-opus-…` the helper had just returned.
+		const out = generateCompletion("bash", settingsSpec);
+		expect(out).not.toContain('__complete settings -- "$cur" 2>/dev/null | cut -f1)" -- "$cur"');
+	});
+
+	it("zsh routes both through its describe helpers", () => {
+		const out = generateCompletion("zsh", settingsSpec);
+		// The positional spec and the flag spec share one completer mapping, so a
+		// positional gets the same answer a flag of that kind would.
+		expect(out).toContain("':key:_veyyon_call settings'");
+		expect(out).toContain("':value:_veyyon_setting_values'");
+		expect(out).not.toContain("_files");
+		expect(out).toContain('_veyyon_setting_values() {');
+		expect(out).toContain('"${words[CURRENT-1]}"');
+	});
+
+	it("fish reads the preceding word from the completed words", () => {
+		const out = generateCompletion("fish", settingsSpec);
+		expect(out).toContain("function __veyyon_prev_word");
+		expect(out).toContain("__complete setting-values (__veyyon_prev_word)");
+	});
+
+	it("powershell passes the preceding token as the subject", () => {
+		const out = generateCompletion("powershell", settingsSpec);
+		expect(out).toContain("'settings' { return __Veyyon-DynamicCandidates 'settings' $WordToComplete }");
+		expect(out).toContain("__Veyyon-DynamicCandidates 'setting-values' $WordToComplete $Previous");
+	});
+
+	it("powershell has ONE helper that talks to the binary, not two", () => {
+		// A second copy of the spawn-and-split-on-tab logic is a second place for
+		// the wire format to drift.
+		const out = generateCompletion("powershell", settingsSpec);
+		expect(out.split("\n").filter(l => l.includes("$__veyyonBin __complete"))).toHaveLength(2);
+		expect(out).toContain("function global:__Veyyon-DynamicCandidates {");
+		expect(out).not.toContain("function global:__Veyyon-SettingValues");
+	});
+
+	it("powershell declines to ask for values with no key", () => {
+		// $Previous is whatever word precedes the cursor, which is often nothing.
+		expect(generateCompletion("powershell", settingsSpec)).toContain("if (-not $Previous) { return @() }");
+	});
+
+	it("the fish script stays balanced with the new helper", () => {
+		const code = generateCompletion("fish", settingsSpec)
+			.split("\n")
+			.map(l => l.trim())
+			.filter(l => l.length > 0 && !l.startsWith("#"));
+		expect(code.filter(l => l === "end").length).toBe(
+			code.filter(l => /^(function |if |for |while |switch )/.test(l)).length,
+		);
+	});
+});
+
+/**
+ * The bash side of setting completion, RUN, with the binary stubbed.
+ *
+ * The generated script shells out to `veyyon __complete`; the wire format is
+ * covered against the real CLI in complete-command.test.ts. What is only
+ * provable here is that the script passes the right words and puts the answer
+ * where bash reads it.
+ */
+describe("the generated bash settings completion, executed", () => {
+	const settingsSpec: CompletionSpec = {
+		bin: "veyyon",
+		binAliases: [],
+		root: { flags: [], args: [] },
+		commands: [
+			{
+				name: "config",
+				aliases: [],
+				description: "Config",
+				flags: [],
+				args: [
+					{ name: "action", description: "Action", value: { kind: "enum", values: ["get", "set"] } },
+					{ name: "key", description: "Key", value: { kind: "settings" } },
+					{ name: "value", description: "Value", value: { kind: "setting-values" } },
+				],
+			},
+		],
+	};
+	const script = generateCompletion("bash", settingsSpec);
+
+	// Stands in for the binary: echoes back what it was asked, in the wire format.
+	const stub = [
+		"veyyon() {",
+		'  if [ "$2" = "settings" ]; then printf "startup.autoUpdate\\tUpdates\\nstartup.quiet\\tQuiet\\n";',
+		'  elif [ "$2" = "setting-values" ]; then printf "%s.true\\tv\\n%s.false\\tv\\n" "$3" "$3";',
+		"  fi",
+		"}",
+		"command() { shift; veyyon \"$@\"; }",
+	].join("\n");
+
+	function complete(...words: string[]): string[] {
+		const driver = [
+			script,
+			stub,
+			"compopt() { :; }",
+			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
+			"COMPREPLY=()",
+			"_veyyon",
+			'printf "%s\\n" "${COMPREPLY[@]}"',
+		].join("\n");
+		const out = Bun.spawnSync(["bash", "-c", driver]);
+		expect(out.exitCode, new TextDecoder().decode(out.stderr)).toBe(0);
+		return new TextDecoder()
+			.decode(out.stdout)
+			.split("\n")
+			.filter(line => line.length > 0);
+	}
+
+	it("offers setting keys in the key slot", () => {
+		expect(complete("veyyon", "config", "set", "")).toEqual(["startup.autoUpdate", "startup.quiet"]);
+	});
+
+	it("passes the key the user typed when asking for values", () => {
+		// The whole point of the setting-values source: the answer depends on which
+		// setting is being set.
+		expect(complete("veyyon", "config", "set", "startup.quiet", "")).toEqual([
+			"startup.quiet.true",
+			"startup.quiet.false",
+		]);
+	});
+
+	it("keeps candidates the binary returned that do not start with the typed word", () => {
+		// The double-filter regression, executed: the stub returns dotted keys, and
+		// a prefix match against `up` would drop both.
+		expect(complete("veyyon", "config", "set", "up")).toEqual(["startup.autoUpdate", "startup.quiet"]);
 	});
 });

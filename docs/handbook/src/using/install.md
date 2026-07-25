@@ -170,6 +170,22 @@ shell will not load that directory (zsh's `$fpath` often does not include it,
 and bash needs the `bash-completion` package), the installer says so and prints
 the exact line to add, rather than leaving you a file nothing reads.
 
+Completion knows more than the command names. It offers the models in the
+catalog for `--model`, your saved sessions for `--resume`, and for `veyyon
+config` it offers the settings that exist and the values each one accepts:
+
+```console
+$ veyyon config set startup.<Tab>
+startup.autoUpdate  startup.checkUpdate  startup.quiet  startup.setupWizard
+$ veyyon config set startup.autoUpdate <Tab>
+true  false
+```
+
+Those candidates come from the installed binary itself, so they describe the
+version you are running rather than the version the script was written for. A
+value only you know, an API key or a search term, is left alone: completion
+offers nothing rather than a list of your files.
+
 Windows works differently, because PowerShell has no directory it autoloads
 completions from. The installer writes `veyyon-completions.ps1` next to your
 profile and adds one line to the profile that loads it:
