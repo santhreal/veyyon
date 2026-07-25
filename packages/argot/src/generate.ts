@@ -280,8 +280,27 @@ function lineStructureCandidates(rawLine: string, trimmed: string, previousLine:
  * half times, and scored every bare indentation run as worthless (2 tokens raw
  * against a 2-token handle is no saving at all) when in practice each use saves up
  * to three.
+ *
+ * THE EXPOSURE THIS CREATES, stated because the whole dictionary rests on it and
+ * nothing else says so. The escaped form is only what goes over the wire when the
+ * model writes code INSIDE A TOOL-CALL ARGUMENT. Code in a plain assistant message
+ * (a markdown block, an explanation, a proposed diff shown rather than applied)
+ * carries a real newline and a real tab, and there the raw pricing is the correct
+ * one. Measured on a 39-file TypeScript tree, the generated dictionary is 43
+ * handles and 232 dictionary tokens: under the escaped model every one of the 43
+ * is net-positive, saving 2 to 10 tokens per use, and under the raw model every
+ * one of the 43 is net-NEGATIVE. Not some of them; all of them, because a handle
+ * costs at least two tokens and a raw indentation run is one.
+ *
+ * So the sign of the entire dictionary's value flips with the channel the model
+ * happens to be writing into, and the split between those channels has never been
+ * measured. That is the single largest open assumption in argot, and it is pinned
+ * by a test rather than left in a comment: see the escaped-vs-raw describe in
+ * `test/generate.test.ts`. If a run ever shows a material share of structure
+ * emitted outside tool-call arguments, this function is where the fix goes, and
+ * the dictionary should be priced on the observed mix rather than on one channel.
  */
-function emittedTokenCost(expansion: string, countTokens: (text: string) => number): number {
+export function emittedTokenCost(expansion: string, countTokens: (text: string) => number): number {
 	if (!isLineStructure(expansion)) {
 		return countTokens(expansion);
 	}
