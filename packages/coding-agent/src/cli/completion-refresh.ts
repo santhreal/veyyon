@@ -20,7 +20,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, escapeRegExp } from "@veyyon/utils";
 
 /**
  * The shells whose completion file lives in a directory the shell autoloads.
@@ -154,10 +154,6 @@ export type CompletionGenerator = (shell: CompletionShell, noAlias: boolean) => 
  */
 export function scriptBindsAlias(script: string, aliasName: string): boolean {
 	return new RegExp(`(^|[^A-Za-z0-9_.-])${escapeRegExp(aliasName)}([^A-Za-z0-9_.-]|$)`, "m").test(script);
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export interface CompletionRefreshResult {

@@ -504,20 +504,58 @@ export function extractCandidates(text: string): string[] {
 	return out;
 }
 
-/** A short readable stem from an expansion's last path segment, for handle names. */
+/**
+ * The longest handle name the generator will mint.
+ *
+ * Chosen from the real 551-handle ytt dictionary rather than by taste. A handle
+ * only pays for itself by being shorter than what it replaces, and the mean
+ * expansion there is 56.8 characters, so the cap trades per-use saving against
+ * how often a name survives intact enough to be guessable. Measured across the
+ * whole dictionary: cap 10 names 74% of handles by the pure path rule below at a
+ * mean length of 9.5; cap 12 reaches 77% at 11.0; cap 16 reaches 80% at 13.7.
+ * Twelve buys nearly all of the derivability for about 7% of the saving, and the
+ * curve is flat past it, so paying more length buys almost nothing.
+ */
+const MAX_NAME_LENGTH = 12;
+
+/** Strip an expansion segment down to the `[a-z0-9_]` shape a handle name allows. */
+function cleanSegment(segment: string): string {
+	return segment.toLowerCase().replace(/[^a-z0-9_]+/g, "");
+}
+
+/** Split an expansion into path segments, ignoring separators and trailing slashes. */
+function pathSegments(expansion: string): string[] {
+	const parts = expansion
+		.replace(/[/\\]+$/, "")
+		.split(/[/\\]/)
+		.filter(Boolean);
+	return parts.length > 0 ? parts : [expansion];
+}
+
+/**
+ * A readable handle name built from the LAST `depth` path segments of an
+ * expansion, joined with `_` and capped at {@link MAX_NAME_LENGTH}.
+ *
+ * `depth` is what disambiguation grows: `core`, then `template_core`, then
+ * `pkg_template_core`. Every one of those is something a reader can derive from
+ * the expansion by eye, which is the entire point (see {@link buildMnemonicNames}).
+ */
+function nameAtDepth(expansion: string, depth: number): string {
+	const segments = pathSegments(expansion);
+	const name = segments
+		.slice(-depth)
+		.map(cleanSegment)
+		.filter(part => part.length > 0)
+		.join("_")
+		.slice(0, MAX_NAME_LENGTH);
+	if (name.length > 0) return name;
+	const flattened = cleanSegment(expansion).slice(0, MAX_NAME_LENGTH);
+	return flattened.length > 0 ? flattened : "h";
+}
+
+/** A readable stem from an expansion's last path segment, for handle names. */
 function nameStem(expansion: string): string {
-	const segment = expansion.split(/[/\\]/).filter(Boolean).pop() ?? expansion;
-	let base = segment
-		.toLowerCase()
-		.replace(/[^a-z0-9_]+/g, "")
-		.slice(0, 6);
-	if (base.length === 0) {
-		base = expansion
-			.toLowerCase()
-			.replace(/[^a-z0-9_]+/g, "")
-			.slice(0, 6);
-	}
-	return base.length === 0 ? "h" : base;
+	return nameAtDepth(expansion, 1);
 }
 
 /** A 32-bit FNV-1a hash of a string, seedable so two rounds give an independent value. */
@@ -547,18 +585,38 @@ function contentName(expansion: string): string {
  *
  * Two goals the runtime cache needs at once:
  *
+ *  - DERIVABILITY. A model only writes a handle it can PRODUCE while typing. If
+ *    the name cannot be derived from the expansion by eye, using shorthand means
+ *    scanning a table of hundreds of rows for the one matching what you were
+ *    about to write, and no model pays that cost mid-task. So a name is built
+ *    from the expansion's own path segments and nothing else: the last segment
+ *    (`core`), and where that collides, one more segment of context
+ *    (`template_core`), never a hash. The rule is simple enough to state in the
+ *    notation block, which is what lets a model write a handle without a lookup.
+ *
+ *    This is the property the previous scheme destroyed, and it is why organic
+ *    adoption was zero. Stems were truncated to six characters and collisions
+ *    resolved with a hash, so on the real 551-handle ytt dictionary 86% of names
+ *    were opaque: `github.com/k14s/starlark-go/starlark` became `§starla17` and
+ *    `.../starlarkstruct` became `§starla18`. Beyond being unguessable, those two
+ *    are a correctness hazard, because misremembering one digit silently expands
+ *    to a DIFFERENT real path rather than failing. Under this scheme they are
+ *    `§starlark` and `§starlarkstruct`.
+ *
  *  - BREVITY. The token win only exists when a handle is shorter than the string
- *    it replaces. An expansion whose stem is unique among the set gets the bare
- *    stem (`conn` for `.../connection-pool`) — the shortest possible name. Only
- *    expansions that COLLIDE on a stem pay a disambiguator, and only the shortest
- *    hash prefix that separates them, grown one character at a time. This is why
- *    the cache no longer uses the content scheme's fixed 8-char hash on every
- *    handle, which made handles nearly as long as short expansions.
+ *    it replaces, so names stay capped at {@link MAX_NAME_LENGTH} and an
+ *    expansion whose stem is unique gets the bare stem, the shortest name
+ *    available. Derivability is not free and is not meant to be: on that same
+ *    dictionary it costs about 7% of the per-handle saving (45.7 characters
+ *    against 49.3). That is the right trade at any adoption rate above a few
+ *    percent, and adoption was zero. It remains far cheaper than the ORIGINAL
+ *    content scheme's fixed 8-character hash on every handle, which made handles
+ *    nearly as long as short expansions.
  *
  *  - DETERMINISM. A name is a pure function of the expansion plus the set of
- *    other expansions that share its stem, never of iteration order: expansions
- *    are grouped by stem, groups and their members are processed in sorted order,
- *    and disambiguators come from a hash of the expansion. So two independent
+ *    other expansions it collides with, never of iteration order: expansions are
+ *    grouped by stem, groups and their members are processed in sorted order, and
+ *    disambiguation walks up the path in a fixed direction. So two independent
  *    generators over the same expansion set mint byte-identical names, which is
  *    exactly what lets the immutable content-signature cache adopt short names
  *    with no cross-generator coordination (the property the content scheme had).

@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Api, Effort, Model } from "@veyyon/ai";
+import { type Api, type Effort, type Model, THINKING_EFFORTS } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import {
 	type Component,
@@ -50,6 +50,8 @@ import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } 
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { getTabBarTheme } from "../shared";
+import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
+import { extractExplicitThinkingSelector } from "../../config/model-resolver";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
 	applyModalReveal,
@@ -468,6 +470,181 @@ class ModelRolesSubmenu extends Container {
 	}
 
 	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/** Synthetic list id for the "add a model" row: not a settings key, and never a
+ *  model selector, so it cannot collide with a real row. */
+const ADD_EFFORT_ROW = "\u0000add-effort-row";
+
+/**
+ * The profile's Default Effort list: rows of model to effort, plus one "any
+ * model" row that covers every model without its own.
+ *
+ * This is the ONE persisted effort surface. Effort used to be split across a
+ * profile-wide `defaultThinkingLevel` enum and a `:level` suffix on each role's
+ * selector, so two settings wrote one axis and neither said which won (operator
+ * report 2026-07-24, "effort level is very muddled"). `config/effort-resolver.ts`
+ * owns the ordering; this owns the editing. Adding a row reuses the same
+ * searchable model picker and the same effort list the role slots use, so a
+ * third effort vocabulary cannot appear here.
+ */
+class DefaultEffortSubmenu extends Container {
+	#selectList: SelectList | undefined;
+
+	constructor(
+		private readonly models: ReadonlyArray<Model>,
+		private readonly registry: ModelRegistry,
+		private readonly onChange: () => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#showRows();
+	}
+
+	/** The stored rows, with a legacy global default folded in as the `*` row. */
+	#rows(): Record<string, string> {
+		return withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel"));
+	}
+
+	#showRows(): void {
+		this.clear();
+		this.#selectList = undefined;
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Default Effort")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg(
+					"muted",
+					"Effort applied when a run does not ask for one. A model's own row wins over the any-model row. Per active profile.",
+				),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+
+		const rows = this.#rows();
+		// The any-model row sorts first: it is the one every model falls back to,
+		// so reading the list top-down reads as "generally this, except these".
+		const keys = Object.keys(rows).sort((a, b) =>
+			a === ANY_MODEL_EFFORT_KEY ? -1 : b === ANY_MODEL_EFFORT_KEY ? 1 : a.localeCompare(b),
+		);
+		const items: SelectItem[] = keys.map(key => ({
+			value: key,
+			label: key === ANY_MODEL_EFFORT_KEY ? "any model" : key,
+			description: rows[key] ?? "",
+		}));
+		items.push({ value: ADD_EFFORT_ROW, label: "Add a model…", description: "pick a model, then its effort" });
+		items.push({
+			value: ANY_MODEL_EFFORT_KEY,
+			label: rows[ANY_MODEL_EFFORT_KEY] === undefined ? "Set the any-model effort…" : "Change the any-model effort…",
+			description: "applies to every model without its own row",
+		});
+
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			if (item.value === ADD_EFFORT_ROW) {
+				this.#showModelPicker();
+			} else {
+				this.#showEffortPicker(item.value);
+			}
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = this.onCancel;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to edit · Del removes a row · Esc to go back"), 0, 0));
+	}
+
+	#showModelPicker(): void {
+		this.clear();
+		this.#selectList = undefined;
+		const panel = new ModelSelectorPanel(
+			settings,
+			this.registry,
+			this.models,
+			{
+				title: "Default effort for which model",
+				description: "Pick the model, then its effort. Already-listed models are edited from the list itself.",
+				allowClear: false,
+			},
+			{
+				onPick: (model, selector) => {
+					// The bare `provider/id` is the row key: an effort belongs in the
+					// row's VALUE, so a selector that arrived carrying `:level` must not
+					// become a second key meaning the same model.
+					this.#showEffortPicker(`${model.provider}/${model.id}`, model);
+					this.requestRender?.();
+				},
+				onCancel: () => {
+					this.#showRows();
+					this.requestRender?.();
+				},
+			},
+		);
+		this.addChild(panel);
+	}
+
+	#showEffortPicker(key: string, picked?: Model): void {
+		const model = picked ?? this.models.find(m => `${m.provider}/${m.id}` === key);
+		// The any-model row is not a model, so its choices are every effort veyyon
+		// knows; a model row offers what that model supports.
+		const efforts =
+			key === ANY_MODEL_EFFORT_KEY || !model ? [...THINKING_EFFORTS] : [...getSupportedEfforts(model)];
+		this.#selectList = renderEffortStep(
+			this,
+			key === ANY_MODEL_EFFORT_KEY ? "any model" : key,
+			efforts,
+			value => this.#persist(key, value),
+			() => {
+				this.#showRows();
+				this.requestRender?.();
+			},
+		);
+	}
+
+	/**
+	 * Write a row. `renderEffortStep` hands back a model selector carrying the
+	 * chosen effort as a `:level` suffix (its other callers store exactly that
+	 * string), so the level is split back out here: this list stores the effort in
+	 * the row's value, and an empty choice means "no row", which removes it.
+	 */
+	#persist(key: string, selectorWithEffort: string): void {
+		const level = extractExplicitThinkingSelector(selectorWithEffort, settings);
+		const rows = { ...this.#rows() };
+		if (level === undefined) delete rows[key];
+		else rows[key] = level;
+		settings.set("defaultEffort", rows);
+		this.onChange();
+		this.#showRows();
+		this.requestRender?.();
+	}
+
+	#removeSelectedRow(): void {
+		const selected = this.#selectList?.getSelectedItem?.();
+		const key = selected?.value;
+		if (!key || key === ADD_EFFORT_ROW) return;
+		const rows = { ...this.#rows() };
+		if (rows[key] === undefined) return;
+		delete rows[key];
+		settings.set("defaultEffort", rows);
+		this.onChange();
+		this.#showRows();
+		this.requestRender?.();
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
+			this.#removeSelectedRow();
+			return;
+		}
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
 			return;
@@ -1382,6 +1559,16 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
+			case "defaultEffort":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatDefaultEffortValue(),
+					submenu: (_cv, done) => this.#createDefaultEffortInput(done),
+					changed,
+				};
+
 			case "modelRoles":
 				return {
 					id: def.path,
@@ -1648,6 +1835,40 @@ export class SettingsSelectorComponent implements Component {
 			currentSelector || undefined,
 			done,
 			value => this.callbacks.onChange(path, value),
+			this.context.requestRender,
+		);
+	}
+
+	/** Row-count summary for the settings row, e.g. `any model · high, 2 models`. */
+	#formatDefaultEffortValue(): string {
+		const rows = withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel"));
+		const any = rows[ANY_MODEL_EFFORT_KEY];
+		const perModel = Object.keys(rows).filter(key => key !== ANY_MODEL_EFFORT_KEY).length;
+		const parts: string[] = [];
+		parts.push(any ? `any model · ${any}` : "model defaults");
+		if (perModel > 0) parts.push(`${perModel} model${perModel === 1 ? "" : "s"}`);
+		return parts.join(", ");
+	}
+
+	#createDefaultEffortInput(done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			fallback.addChild(new Spacer(1));
+			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "escape") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		return new DefaultEffortSubmenu(
+			ctx.models,
+			ctx.registry,
+			() => {
+				this.callbacks.onChange("defaultEffort", settings.get("defaultEffort"));
+			},
+			() => done(this.#formatDefaultEffortValue()),
 			this.context.requestRender,
 		);
 	}

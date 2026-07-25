@@ -9,8 +9,8 @@ import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../../utils/google-validation";
 import { OAuthCallbackFlow } from "./callback-server";
-import type { OAuthController, OAuthCredentials } from "./types";
 import { credentialExpiryFromExpiresIn } from "./expiry";
+import type { OAuthController, OAuthCredentials } from "./types";
 
 export interface GoogleOAuthFlowConfig {
 	clientId: string;

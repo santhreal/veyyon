@@ -1,8 +1,8 @@
 import { decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
+import { credentialExpiryFromJwtExp } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials } from "./types";
-import { credentialExpiryFromJwtExp } from "./expiry";
 
 const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";

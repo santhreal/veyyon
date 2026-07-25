@@ -7,9 +7,9 @@ import * as AIError from "../../error";
 import { claudeCodeVersion } from "../../providers/anthropic";
 import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow } from "./callback-server";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
-import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const decode = (s: string) => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");

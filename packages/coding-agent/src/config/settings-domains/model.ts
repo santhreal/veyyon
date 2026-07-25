@@ -1,5 +1,5 @@
 import { THINKING_EFFORTS } from "@veyyon/ai";
-import { AUTO_THINKING, getConfiguredThinkingLevelMetadata, getThinkingLevelMetadata } from "../../thinking";
+import { AUTO_THINKING } from "../../thinking";
 import {
 	SERVICE_TIER_ANTHROPIC_OPTIONS,
 	SERVICE_TIER_ANTHROPIC_VALUES,
@@ -19,20 +19,38 @@ export const MODEL_SETTINGS = {
 	// ────────────────────────────────────────────────────────────────────────
 
 	// Reasoning and prompts
+	/**
+	 * Default effort per model, the ONE persisted store the user edits.
+	 *
+	 * Rows map a model selector (`provider/id`) or `*` (any model) to an effort,
+	 * including `auto`. Effort used to be spread across this list's predecessor
+	 * (`defaultThinkingLevel`, a single profile-wide enum) and a `:level` suffix
+	 * on each role's selector, with the precedence written inline at the call
+	 * site, which is why nobody could tell which one applied. `config/effort-resolver.ts`
+	 * owns the ordering; `defaultThinkingLevel` below is now read only to migrate
+	 * into the `*` row.
+	 */
+	defaultEffort: {
+		type: "record",
+		default: {} as Record<string, string>,
+		ui: {
+			tab: "model",
+			group: "Thinking",
+			label: "Default Effort",
+			description:
+				'Effort per model, applied when a run does not ask for one. Add a model and pick its effort; the "any model" row covers every model without its own. Per profile.',
+		},
+	},
+
+	/**
+	 * Retired in favour of {@link defaultEffort}'s `*` row, and still read so an
+	 * existing settings file keeps its behaviour (see `withLegacyDefaultEffort`).
+	 * No UI row: two surfaces writing one axis is the muddle this replaced.
+	 */
 	defaultThinkingLevel: {
 		type: "enum",
 		values: [...THINKING_EFFORTS, AUTO_THINKING],
 		default: "high",
-		ui: {
-			tab: "model",
-			group: "Thinking",
-			label: "Thinking Level",
-			description: "Reasoning depth for thinking-capable models",
-			options: [
-				getConfiguredThinkingLevelMetadata(AUTO_THINKING),
-				...THINKING_EFFORTS.map(getThinkingLevelMetadata),
-			],
-		},
 	},
 
 	hideThinkingBlock: {

@@ -11,6 +11,6 @@
 	"scripts": {
 		"check:types": "tsgo -p tsconfig.json --noEmit",
 		"bench": "bun run.ts",
-		"test": "bun test"
+		"test": "bun test ./*.test.ts"
 	}
 }

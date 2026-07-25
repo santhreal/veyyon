@@ -4,11 +4,11 @@
 #
 # The allowlist must name the RESOLVED logical model id, not a display alias. The
 # encode gate matches against the model AFTER the catalog resolves it (provider
-# aliases, effort-tier collapsing). This must name the SANDBOX-servable model the
-# bench actually runs (see run.ts): `gemini-3.5-flash`, the flash model that
-# resolves in the offline container. The 3.6 family is live-discovery-gated and
-# resolves to nothing there, so naming it here would pair an all-errored run with a
-# meaningless allowlist. Because the 3.6→3.5 alias was removed, 3.5 is requested ==
+# aliases, effort-tier collapsing). This must name the model the bench actually
+# runs (see run.ts): `gemini-3.5-flash`, chosen because it has a known-good recent
+# run, NOT because any other id is unservable. Do not read the choice as a
+# servability claim: an all-errored run on some other id is far more often an auth
+# failure wearing that id's name. Because the 3.6→3.5 alias was removed, 3.5 is requested ==
 # resolved, so this allowlist matches the id the gate sees and encode fires. A bare
 # name here is a provider wildcard matching the id's last segment. If this list does
 # not match the model the gate actually sees, encoding silently never fires and the

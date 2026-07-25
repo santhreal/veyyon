@@ -4,19 +4,37 @@
 #
 # WHY THIS ARM EXISTS. At the default 1000-token budget, argot's output-token
 # claim is not measurable on DeepSWE tasks, and that is a property of the
-# workload rather than a null result. Measured on the ytt task repository:
+# workload rather than a null result. PROJECTED on the ytt task repository:
 #
-#   budget    handles   agent-typeable mass   ceiling at the measured emission rate
-#     1000        44            652 ch                  1.01%
-#     4000       139          1,654 ch                  2.56%
-#    16000       529         12,322 ch                 19.07%
+#   budget    handles   agent-typeable mass   projected ceiling
+#     1000        44            652 ch              1.01%
+#     4000       139          1,654 ch              2.56%
+#    16000       529         12,322 ch             19.07%
 #
 # Run-to-run output-token noise on the same task is about 8.15%, so at the
 # default budget the best possible outcome is nearly an order of magnitude below
-# the noise floor: no number of repeats can separate the arms. At 16000 the
-# ceiling clears the noise, so the comparison can produce a real answer for the
-# first time. See the bench report's "Encode headroom" section, which computes
-# the exact ceiling for whatever run you actually perform.
+# the noise floor: no number of repeats can separate the arms. The 16000 row is
+# what this arm was built on, because 19.07% clears that noise.
+#
+# THAT PROJECTION IS WRONG, BY ABOUT FIFTY TIMES. Read this before sizing a run
+# on the table above. The first interpretable run of this arm
+# (`runs/argot-smoke-0724`, 2026-07-24, the SAME ytt task) loaded 551 handles and
+# measured a ceiling of 0.24%, against 0.38% for its decode control. The report's
+# verdict for both arms was `CANNOT MEASURE - ceiling below noise`.
+#
+# The gap is the phrase "agent-typeable mass": it counts every handle whose
+# expansion an agent COULD type, while that run emitted 8 of 551 handles (6 for
+# this arm). The real ceiling is set by which handles a task actually causes the
+# agent to RETYPE, which is a small subset, so raising the budget inflates the
+# projection far faster than it moves the truth.
+#
+# CONSEQUENCE: `full <-> full-budget16k` does NOT currently measure argot's
+# output-token claim on this workload, which is what this arm was created to do.
+# Do not read a token delta from it. Until the projection is re-derived from
+# observed emission rates, measure argot by `runs that encoded`, not by tokens.
+# See ARGOT-HEADROOM-PROJECTION-OFF-BY-50X in BACKLOG.md. The bench report's
+# "Encode headroom" section computes the honest, measured ceiling for whatever
+# run you actually perform; trust that over the table above.
 #
 # READ BOTH TOKEN ROWS. A bigger dictionary is not free: it rides in the system
 # prompt every turn, so it buys shorter output by spending input. The efficiency
@@ -30,7 +48,7 @@
 argot:
   enabled: true
   models:
-    # The sandbox-servable flash model (see run.ts and full.yml): the 3.6 family is
-    # live-discovery-gated and does not resolve in the offline bench container.
+    # The model the bench runs (see run.ts and full.yml), chosen for having a
+    # known-good recent run. Not a claim that any other id is unservable.
     - gemini-3.5-flash
   tokenBudget: 16000

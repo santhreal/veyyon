@@ -270,14 +270,38 @@ async function reconnectWithAbort(reconnect: MCPReconnect, signal?: AbortSignal)
  * "puppeteer_screenshot"), strips the redundant prefix to produce
  * "mcp__puppeteer_screenshot" instead of "mcp__puppeteer_puppeteer_screenshot".
  */
+/**
+ * Reduce a server or tool name to the characters a tool name may contain.
+ *
+ * DIGITS ARE KEPT. They used to be replaced along with everything else, which
+ * made `github1` and `github2` sanitize to the same `github` — two different
+ * servers producing byte-identical tool names, so one silently shadowed the
+ * other in the registry and calls went wherever the lookup happened to land.
+ * Numbered server names are ordinary (`mcp-server-1`, `jira2`), and every
+ * provider accepts digits in a tool name, so dropping them bought nothing and
+ * cost correctness.
+ */
 function sanitizeMCPToolNamePart(value: string, fallback: string): string {
 	const sanitized = value
 		.toLowerCase()
-		.replace(/[^a-z_]+/g, "_")
+		.replace(/[^a-z0-9_]+/g, "_")
 		.replace(/_+/g, "_")
 		.replace(/^_+|_+$/g, "");
 
 	return sanitized.length > 0 ? sanitized : fallback;
+}
+
+/**
+ * The `mcp__<server>_` prefix every tool from `serverName` carries.
+ *
+ * One owner, because two callers need the exact same string and derived it
+ * separately: `createMCPToolName` built it from the SANITIZED server name while
+ * the manager's reconnect path filtered on the RAW one. For any server whose
+ * name needed sanitizing the two never matched, so a reconnect failed to drop
+ * the previous tools and pushed a second copy of every one of them.
+ */
+export function mcpToolNamePrefix(serverName: string): string {
+	return `mcp__${sanitizeMCPToolNamePart(serverName, "server")}_`;
 }
 
 export function createMCPToolName(serverName: string, toolName: string): string {
@@ -292,7 +316,7 @@ export function createMCPToolName(serverName: string, toolName: string): string 
 		normalizedToolName = sanitizedToolName.slice(prefixWithUnderscore.length);
 	}
 
-	return `mcp__${sanitizedServerName}_${normalizedToolName}`;
+	return `${mcpToolNamePrefix(serverName)}${normalizedToolName}`;
 }
 
 /**

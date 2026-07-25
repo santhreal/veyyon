@@ -58,6 +58,7 @@ import {
 } from "./config/model-resolver";
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "./config/prompt-templates";
 import { buildServiceTierByFamily } from "./config/service-tier";
+import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import { armArgotAfterStartup } from "./lexpack-cache";
@@ -154,6 +155,7 @@ import {
 	buildSystemPromptToolMetadata,
 	loadProjectContextFiles as loadContextFilesInternal,
 } from "./system-prompt";
+import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/prompt-blocks";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
 import {
@@ -1461,7 +1463,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			level = selectedModel.thinking.defaultLevel;
 		}
 		if (level === undefined) {
-			level = parseConfiguredThinkingLevel(settings.get("defaultThinkingLevel"));
+			// The profile's Default Effort list, through the ONE resolver: this model's
+			// row first, then the any-model row (which is where a legacy
+			// `defaultThinkingLevel` migrates to). Reading the retired enum directly
+			// here is what let a per-model default be ignored.
+			level = resolveEffort({
+				modelSelector: selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : undefined,
+				defaultEffort: withLegacyDefaultEffort(settings.get("defaultEffort"), settings.get("defaultThinkingLevel")),
+			}).level;
 		}
 		return level;
 	};
@@ -3220,7 +3229,38 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				argot,
 				cwd,
 				tokenBudget: settings.get("argot.tokenBudget"),
-				onArmed: () => session.refreshBaseSystemPrompt(),
+				// Refresh the prompt to teach the handles, then RECORD what the refresh
+				// actually produced. Without this record nothing downstream can tell a
+				// session that taught 551 handles from one that taught none: the only
+				// prompt in the transcript is `session_init`, written before this
+				// background arm completes, so it always shows an unarmed prompt. An
+				// eval reading it therefore charged "the model ignored the handles" to
+				// the model, when the same evidence is equally consistent with the
+				// table never reaching the model at all. This entry is the difference.
+				onArmed: async () => {
+					const prompt = await session.refreshBaseSystemPrompt();
+					const joined = prompt.join("\n\n");
+					const taughtHandles = argot.loaded ? argot.vocabulary().handles.size : 0;
+					const inPrompt = joined.includes(ARGOT_HANDLES_BANNER);
+					sessionManager.appendCustomMessageEntry(
+						"argot_taught",
+						inPrompt
+							? `argot: system prompt refreshed, teaching ${taughtHandles} handle${taughtHandles === 1 ? "" : "s"}`
+							: "argot: system prompt refreshed but the handle table is ABSENT; the model was taught no handles",
+						false,
+						{ handles: taughtHandles, inPrompt, promptChars: joined.length },
+						"agent",
+					);
+					if (!inPrompt) {
+						// Fail loud rather than degrade quietly: an armed session whose
+						// prompt carries no table is inert, and silence here is what made
+						// that state indistinguishable from the feature being off.
+						logger.error("argot: refreshed system prompt carries no handle table; session is effectively UNARMED", {
+							cwd,
+							handles: taughtHandles,
+						});
+					}
+				},
 				// Record the actually-loaded vocabulary (including an empty one) as
 				// durable session telemetry. An eval reading the transcript otherwise
 				// cannot tell an empty-dictionary corpus (nothing to encode) from a

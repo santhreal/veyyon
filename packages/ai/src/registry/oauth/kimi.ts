@@ -10,9 +10,9 @@ import { scheduler } from "node:timers/promises";
 import { $env, getAgentDir, isEnoent } from "@veyyon/utils";
 import packageJson from "../../../package.json" with { type: "json" };
 import * as AIError from "../../error";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
-import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
 const DEFAULT_OAUTH_HOST = "https://auth.kimi.com";

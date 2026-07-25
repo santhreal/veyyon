@@ -26,6 +26,7 @@ import {
 } from "@veyyon/utils";
 import { tableExists } from "@veyyon/utils/sqlite";
 import type { ApiKeyResolver } from "./auth-retry";
+import { CREDENTIAL_CLOCK_TOLERANCE_MS, epochSecondsToMs, isRecordFromFutureClock } from "./credential-clock";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
 import { getProviderDefinition, PASTE_CODE_LOGIN_PROVIDERS } from "./registry";
@@ -150,6 +151,14 @@ export interface StoredAuthCredential {
 	provider: string;
 	credential: AuthCredential;
 	disabledCause: string | null;
+}
+
+/** One in-memory rate-limit block: its deadline plus the clock reading that set it. */
+interface InMemoryCredentialBlock {
+	/** Epoch milliseconds the credential becomes usable again. */
+	blockedUntilMs: number;
+	/** Epoch milliseconds the block was set, used to detect a backward clock jump. */
+	blockedAtMs: number;
 }
 
 /** One persisted rate-limit block: credential row id + provider-type key + optional scope. */
@@ -1182,8 +1191,13 @@ export class AuthStorage {
 	#sessionLastCredential: Map<string, Map<string, { type: AuthCredential["type"]; index: number }>> = new Map();
 	/** Recent bearer fingerprints resolved for each durable OAuth row; used only for delayed usage-limit attribution. */
 	#oauthBearerFingerprints: Map<string, Map<number, string[]>> = new Map();
-	/** Maps provider:type -> credentialIndex -> blockedUntilMs for temporary backoff. */
-	#credentialBackoff: Map<string, Map<number, number>> = new Map();
+	/**
+	 * Maps provider:type -> credentialIndex -> the temporary backoff entry.
+	 *
+	 * The write time rides along with the deadline so a backward clock jump can
+	 * be detected on read; see {@link isRecordFromFutureClock}.
+	 */
+	#credentialBackoff: Map<string, Map<number, InMemoryCredentialBlock>> = new Map();
 	/** Earliest time a freshly-set in-memory block may be cleared by live usage reconciliation. */
 	#credentialBackoffProbeAfter: Map<string, Map<number, number>> = new Map();
 	#usageProviderResolver?: (provider: Provider) => UsageProvider | undefined;
@@ -1589,9 +1603,14 @@ export class AuthStorage {
 	#getCredentialBlockedUntilForKey(backoffKey: string, credentialIndex: number, nowMs: number): number | undefined {
 		const backoffMap = this.#credentialBackoff.get(backoffKey);
 		if (!backoffMap) return undefined;
-		const blockedUntil = backoffMap.get(credentialIndex);
-		if (!blockedUntil) return undefined;
-		if (blockedUntil <= nowMs) {
+		const entry = backoffMap.get(credentialIndex);
+		if (!entry?.blockedUntilMs) return undefined;
+		const { blockedUntilMs: blockedUntil, blockedAtMs } = entry;
+		// A block written by a clock ahead of this one has a deadline measured in
+		// units this clock no longer shares, so honouring it would block the
+		// credential for the length of the jump. Drop it exactly like an expired
+		// one; the provider re-blocks on the next real rate-limit response.
+		if (blockedUntil <= nowMs || isRecordFromFutureClock(blockedAtMs, nowMs)) {
 			backoffMap.delete(credentialIndex);
 			if (backoffMap.size === 0) {
 				this.#credentialBackoff.delete(backoffKey);
@@ -1686,13 +1705,18 @@ export class AuthStorage {
 		blockScope: string | undefined = undefined,
 	): void {
 		const backoffKey = this.#toScopedBackoffKey(providerKey, blockScope);
-		const backoffMap = this.#credentialBackoff.get(backoffKey) ?? new Map<number, number>();
-		const existing = backoffMap.get(credentialIndex) ?? 0;
-		const nextBlockedUntil = Math.max(existing, blockedUntilMs);
-		backoffMap.set(credentialIndex, nextBlockedUntil);
+		const nowMs = Date.now();
+		const backoffMap = this.#credentialBackoff.get(backoffKey) ?? new Map<number, InMemoryCredentialBlock>();
+		const existing = backoffMap.get(credentialIndex);
+		// A block already invalidated by a backward jump must not raise the new
+		// deadline through MAX, or the jump would survive being re-blocked.
+		const carryForward =
+			existing && !isRecordFromFutureClock(existing.blockedAtMs, nowMs) ? existing.blockedUntilMs : 0;
+		const nextBlockedUntil = Math.max(carryForward, blockedUntilMs);
+		backoffMap.set(credentialIndex, { blockedUntilMs: nextBlockedUntil, blockedAtMs: nowMs });
 		this.#credentialBackoff.set(backoffKey, backoffMap);
 		const probeAfterMap = this.#credentialBackoffProbeAfter.get(backoffKey) ?? new Map<number, number>();
-		probeAfterMap.set(credentialIndex, Math.min(nextBlockedUntil, Date.now() + USAGE_REPORT_TTL_MS));
+		probeAfterMap.set(credentialIndex, Math.min(nextBlockedUntil, nowMs + USAGE_REPORT_TTL_MS));
 		this.#credentialBackoffProbeAfter.set(backoffKey, probeAfterMap);
 		this.#invalidateUsageReportCache(provider);
 
@@ -4375,6 +4399,12 @@ export class AuthStorage {
 		const forceRefreshIndex = options?.forceRefresh
 			? (sessionPreferredIndex ?? candidates[0]?.selection.index)
 			: undefined;
+		// A definitive dead-grant verdict from the preflight below, carried to the
+		// attempt loop so the same dead token is not sent a second time. Keyed by
+		// the candidate object because the two candidate shapes (ranked and plain)
+		// have no common field to hang it on, and positional indices shift under a
+		// concurrent disable.
+		const preflightDefinitiveErrors = new WeakMap<object, unknown>();
 		await Promise.all(
 			candidates.map(async candidate => {
 				const force = forceRefreshIndex !== undefined && candidate.selection.index === forceRefreshIndex;
@@ -4433,6 +4463,13 @@ export class AuthStorage {
 						index: candidate.selection.index,
 						error: String(error),
 					});
+					// A definitive rejection means the grant is dead, so the attempt
+					// loop must not spend a round trip re-asking. Hand it the verdict;
+					// a transient failure is deliberately NOT carried, because there
+					// the retry IS the recovery.
+					if (AIError.isDefinitiveOAuthFailure(String(error))) {
+						preflightDefinitiveErrors.set(candidate, error);
+					}
 				}
 			}),
 		);
@@ -4468,6 +4505,7 @@ export class AuthStorage {
 						strategy,
 						rankingContext,
 						blockScope,
+						preflightDefinitiveError: preflightDefinitiveErrors.get(candidate),
 					},
 				);
 				if (resolved) return resolved;
@@ -4850,6 +4888,14 @@ export class AuthStorage {
 			blockScope?: string;
 			/** When false, a definitive failure of THIS credential returns undefined instead of falling back to the ranked/round-robin selector (target-only resolution). */
 			allowFallback?: boolean;
+			/**
+			 * A DEFINITIVE dead-grant rejection this same call already got from the
+			 * preflight refresh of this credential. Reused instead of replaying the
+			 * token, which could only earn a second identical rejection; the disable
+			 * decision is owned here, so the verdict has to travel rather than the
+			 * request being repeated.
+			 */
+			preflightDefinitiveError?: unknown;
 		},
 	): Promise<OAuthResolutionResult | undefined> {
 		const {
@@ -4863,6 +4909,7 @@ export class AuthStorage {
 			rankingContext,
 			blockScope,
 			allowFallback = true,
+			preflightDefinitiveError,
 		} = usageOptions;
 		if (!allowBlocked && this.#isCredentialBlocked(provider, providerKey, selection.index, blockScope)) {
 			return undefined;
@@ -4914,6 +4961,12 @@ export class AuthStorage {
 		}
 
 		try {
+			// The preflight already refreshed this credential in this same call and
+			// the provider rejected the grant definitively. The token is single-use
+			// and now dead, so asking again is a guaranteed second 400: reuse the
+			// verdict and drop into the handling below, which is where disabling
+			// (and the peer-rotation re-read that can still rescue the row) lives.
+			if (preflightDefinitiveError !== undefined) throw preflightDefinitiveError;
 			let result: { newCredentials: OAuthCredentials; apiKey: string } | null;
 			const customProvider = getOAuthProvider(provider);
 			if (customProvider) {
@@ -6518,10 +6571,11 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				owner = excluded.owner,
 				expires_at_ms = excluded.expires_at_ms,
 				updated_at = excluded.updated_at
-			WHERE auth_credential_refresh_leases.expires_at_ms <= ?`,
+			WHERE auth_credential_refresh_leases.expires_at_ms <= ?
+				OR auth_credential_refresh_leases.updated_at > ?`,
 		);
 		this.#getCredentialRefreshLeaseStmt = this.#db.prepare(
-			"SELECT expires_at_ms FROM auth_credential_refresh_leases WHERE credential_id = ?",
+			"SELECT expires_at_ms, updated_at FROM auth_credential_refresh_leases WHERE credential_id = ?",
 		);
 		this.#renewCredentialRefreshLeaseStmt = this.#db.prepare(
 			`UPDATE auth_credential_refresh_leases SET expires_at_ms = ?, updated_at = ${SQLITE_NOW_EPOCH} WHERE credential_id = ? AND owner = ?`,
@@ -7279,7 +7333,14 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		const row = this.#getCredentialBlockStmt.get(credentialId, providerKey, blockScope, nowMs) as
 			| { blocked_until_ms?: number; updated_at?: number }
 			| undefined;
-		return typeof row?.blocked_until_ms === "number" ? row.blocked_until_ms : undefined;
+		if (typeof row?.blocked_until_ms !== "number") return undefined;
+		// `updated_at` is whole seconds. A row written after the clock we are
+		// reading with cannot be measured against it; drop the block rather than
+		// hold the credential for the length of the jump. This matters more here
+		// than in memory: a persisted block survives restarts, so without the
+		// check the credential stays unusable across every later process too.
+		if (isRecordFromFutureClock(epochSecondsToMs(row.updated_at), nowMs)) return undefined;
+		return row.blocked_until_ms;
 	}
 
 	getCredentialBlockReconcileAfter(credentialId: number, providerKey: string, blockScope: string): number | undefined {
@@ -7291,8 +7352,9 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		if (typeof row?.blocked_until_ms !== "number") return undefined;
 		const memoryReconcileAfter =
 			this.#credentialBlockReconcileAfter.get(`${credentialId}\0${providerKey}\0${blockScope}`) ?? 0;
-		const persistedReconcileAfter =
-			typeof row.updated_at === "number" ? row.updated_at * 1000 + USAGE_REPORT_TTL_MS : 0;
+		const writtenAtMs = epochSecondsToMs(row.updated_at);
+		if (isRecordFromFutureClock(writtenAtMs, nowMs)) return undefined;
+		const persistedReconcileAfter = writtenAtMs === undefined ? 0 : writtenAtMs + USAGE_REPORT_TTL_MS;
 		const reconcileAfter = Math.max(memoryReconcileAfter, persistedReconcileAfter);
 		return reconcileAfter > nowMs ? Math.min(row.blocked_until_ms, reconcileAfter) : undefined;
 	}
@@ -7340,7 +7402,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 					providerKey: row.provider_key,
 					blockScope: row.block_scope,
 					blockedUntilMs: row.blocked_until_ms,
-					updatedAtMs: row.updated_at * 1000,
+					updatedAtMs: epochSecondsToMs(row.updated_at),
 				});
 			}
 		}
@@ -7348,16 +7410,35 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	tryAcquireCredentialRefreshLease(credentialId: number, owner: string, expiresAtMs: number): boolean {
-		const result = this.#acquireCredentialRefreshLeaseStmt.run(credentialId, owner, expiresAtMs, Date.now()) as {
+		const nowMs = Date.now();
+		// The second bound steals a lease stamped by a clock ahead of this one.
+		// Without it, a backward clock jump makes the row unstealable for the
+		// length of the jump and every refresh waiter polls until the clock
+		// catches up: a hung OAuth refresh, not a slow one. `updated_at` is whole
+		// seconds, so the tolerance is applied before the conversion.
+		const staleWriteCutoffSeconds = Math.ceil((nowMs + CREDENTIAL_CLOCK_TOLERANCE_MS) / 1000);
+		const result = this.#acquireCredentialRefreshLeaseStmt.run(
+			credentialId,
+			owner,
+			expiresAtMs,
+			nowMs,
+			staleWriteCutoffSeconds,
+		) as {
 			changes: number;
 		};
 		return result.changes === 1;
 	}
 
 	getCredentialRefreshLeaseExpiresAt(credentialId: number): number | undefined {
-		const row = this.#getCredentialRefreshLeaseStmt.get(credentialId) as { expires_at_ms?: number } | undefined;
+		const row = this.#getCredentialRefreshLeaseStmt.get(credentialId) as
+			| { expires_at_ms?: number; updated_at?: number }
+			| undefined;
 		if (typeof row?.expires_at_ms !== "number") return undefined;
-		if (row.expires_at_ms <= Date.now()) return undefined;
+		const nowMs = Date.now();
+		if (row.expires_at_ms <= nowMs) return undefined;
+		// Report a lease from a future clock as absent so the waiter retries the
+		// acquire (which now steals it) instead of sleeping out the jump.
+		if (isRecordFromFutureClock(epochSecondsToMs(row.updated_at), nowMs)) return undefined;
 		return row.expires_at_ms;
 	}
 

@@ -254,6 +254,7 @@ function parseSessionsUsage(trialDir: string): {
 	usage: SessionUsage;
 	preambleTaught: boolean | null;
 	argotHandlesLoaded: number | null;
+	handlesTaughtInPrompt: boolean | null;
 	headroom: EncodeHeadroom | null;
 } | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
@@ -267,6 +268,7 @@ function parseSessionsUsage(trialDir: string): {
 	const messages: Array<Record<string, unknown>> = [];
 	let preambleTaught: boolean | null = null;
 	let argotHandlesLoaded: number | null = null;
+	let handlesTaughtInPrompt: boolean | null = null;
 	let vocabEntries: Record<string, string> | null = null;
 	for (const file of files) {
 		for (const line of fs.readFileSync(path.join(sessionsDir, file), "utf8").split("\n")) {
@@ -276,7 +278,7 @@ function parseSessionsUsage(trialDir: string): {
 					message?: Record<string, unknown>;
 					type?: string;
 					customType?: string;
-					details?: { handles?: unknown; entries?: unknown };
+					details?: { handles?: unknown; entries?: unknown; inPrompt?: unknown };
 					systemPrompt?: unknown;
 				};
 				if (entry.message) messages.push(entry.message);
@@ -284,6 +286,13 @@ function parseSessionsUsage(trialDir: string): {
 					// Any session_init that taught the preamble means encode fired; only
 					// downgrade to false when a system prompt was seen and none taught it.
 					preambleTaught = preambleTaught === true || systemPromptTeachesArgot(entry.systemPrompt);
+				}
+				if (entry.type === "custom_message" && entry.customType === "argot_taught") {
+					// The post-refresh record: whether the handle table actually reached
+					// the prompt. This is the ONLY evidence of that, because the arm runs
+					// after the `session_init` snapshot. Any single armed refresh that
+					// taught the table makes the run taught.
+					handlesTaughtInPrompt = handlesTaughtInPrompt === true || entry.details?.inPrompt === true;
 				}
 				if (entry.type === "custom_message" && entry.customType === "argot_armed") {
 					const handles = entry.details?.handles;
@@ -313,7 +322,7 @@ function parseSessionsUsage(trialDir: string): {
 	// The ceiling is only computable when the run recorded the vocabulary the model
 	// actually had; without it there is nothing to measure the emitted text against.
 	const headroom = vocabEntries === null ? null : encodeHeadroom(collectEmittedText(messages), vocabEntries);
-	return { usage: tallyUsage(messages), preambleTaught, argotHandlesLoaded, headroom };
+	return { usage: tallyUsage(messages), preambleTaught, argotHandlesLoaded, handlesTaughtInPrompt, headroom };
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
@@ -343,6 +352,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.assistantMsgsWithSigil = usage.assistantMsgsWithSigil ?? null;
 		result.argotPreamblePresent = parsed.preambleTaught;
 		result.argotHandlesLoaded = parsed.argotHandlesLoaded;
+		result.argotHandlesTaught = parsed.handlesTaughtInPrompt;
 		result.encodeHeadroom = parsed.headroom;
 		result.toolCalls = usage.toolCalls ?? null;
 	} else {
@@ -486,16 +496,28 @@ async function main(): Promise<void> {
 		console.error("error: --arms must specify at least one valid arm name");
 		process.exit(1);
 	}
-	// Name the model you actually want to bench. It must be one the SANDBOX can
-	// serve: every task runs in a container with a copied static auth DB and NO
-	// live provider discovery, so a model whose wire ids come from live antigravity
-	// discovery (the `gemini-3.6-flash` family) resolves to NOTHING there and every
-	// run errors `Model "..." not found` at out=0tok. `gemini-3.5-flash` is the
-	// flash model statically servable in that environment, and it is requested ==
-	// resolved (the 3.6→3.5 alias was removed), so the encode gate — which matches
-	// the RESOLVED id against an arm's allowlist — still fires for the encode arms.
-	// The preflight below fails fast if the chosen model does not resolve, so a
-	// typo or a discovery-gated id can never burn a whole multi-hour run again.
+	// Name the model you actually want to bench. The default is a model with a
+	// KNOWN-GOOD RECENT RUN, which is all it is: it is not a claim that any other
+	// id is unservable.
+	//
+	// This comment used to assert that the `gemini-3.6-flash` family is
+	// live-discovery-gated and resolves to nothing in the offline container. That
+	// was FALSE, and it is recorded here rather than deleted because it read as
+	// settled knowledge and so kept being propagated into the README and the evals
+	// SKILL instead of being questioned. Two runs on the SAME id refute it:
+	// `argot-refusal-probe` was 15/15 OK while `argot-budget16k-3.6` was 40/40
+	// failures. A model id cannot be both, so the variable was never the id.
+	//
+	// What a `Model "<id>" not found` at out=0tok almost always means is an AUTH
+	// failure wearing the model id's name. Look for a registry-error line, check
+	// whether the same id has a passing run, and re-seed the auth DB BEFORE you
+	// touch the id or an arm's allowlist. `requireStagedAuthCanServeToken` below
+	// exists precisely so that failure is caught at preflight rather than
+	// rediscovered forty containers into a multi-hour run.
+	//
+	// Requested == resolved matters independently: the 3.6→3.5 alias was removed,
+	// so the encode gate, which matches the RESOLVED id against an arm's
+	// allowlist, fires for the encode arms rather than silently degrading.
 	const model = args.model ?? "google-antigravity/gemini-3.5-flash";
 	const rawRepeats = Number(args.repeats ?? "1");
 	if (!Number.isFinite(rawRepeats) || rawRepeats < 1 || !Number.isInteger(rawRepeats)) {
@@ -722,6 +744,64 @@ async function main(): Promise<void> {
 				? `; arm(s) with an explicit override: ${overrides.map(a => `${a}=${armTemperature.get(a)}`).join(", ")}`
 				: ""),
 	);
+
+	// `--dry-run`: validate everything, run nothing.
+	//
+	// WHY THIS EXISTS. Every guard in this file is a PRE-run guard, but reaching
+	// them still costs an auth preflight and asset staging, and any mistake past
+	// them costs a container. A single DeepSWE task can run for 90 minutes, so the
+	// feedback loop for "is my arm wired correctly" was measured in hours, and the
+	// answer was usually a one-line typo in a YAML file.
+	//
+	// Everything above has already happened by this point: arm YAML parsed and
+	// validated, sections parsed and staged, temperature pinned, fingerprints
+	// computed and checked for a zero-IV collision, encode-arm allowlists matched
+	// against the model, task files and the agent binary confirmed present, and the
+	// auth preflight actually served a token. So a dry run answers every question
+	// that does not require the model itself, in seconds.
+	//
+	// It prints the queue and the resolved per-arm inputs so the plan can be read
+	// before it is paid for, then exits 0. It writes no report, because a run that
+	// executed nothing has nothing to report and an empty report is worse than
+	// none: it would sit in `runs/` looking like a result.
+	if (args["dry-run"] !== undefined) {
+		console.log("\nDRY RUN — every pre-run guard passed. No container was started and no report written.\n");
+		console.log(`  model      ${model}`);
+		// Surface the provenance here too: it decides whether the number this run
+		// would produce is reportable as a headline, and that is worth knowing
+		// BEFORE paying for the run rather than from the report banner after.
+		const provenance = taskSetProvenance.marked
+			? taskSetProvenance.biased
+				? `@biased (never a headline)${taskSetProvenance.note ? ` — ${taskSetProvenance.note}` : ""}`
+				: "@headline"
+			: "UNMARKED (no @headline/@biased directive)";
+		console.log(`  tasks      ${tasks.length} from ${args.tasks ?? "(full corpus)"}  ${provenance}`);
+		console.log(`  arms       ${arms.length}`);
+		for (const arm of arms) {
+			const sectionsFile = path.join(BENCH_DIR, "arms", `${arm}.sections.yml`);
+			const ruleFile = path.join(BENCH_DIR, "arms", `${arm}.rule.md`);
+			const parts = [
+				`temp=${armTemperature.get(arm)}`,
+				encodeArms.has(arm) ? "ENCODE" : "no-encode",
+				fs.existsSync(sectionsFile) ? "sections" : null,
+				fs.existsSync(ruleFile) ? "rule" : null,
+			].filter(Boolean);
+			console.log(`    ${arm.padEnd(28)} ${parts.join(" ")}  fp=${(armFingerprints.get(arm) ?? "").slice(0, 12)}`);
+		}
+		console.log(
+			`  queue      ${queue.length} run(s) = ${arms.length} arm(s) x ${tasks.length} task(s) x ${repeats} repeat(s)`,
+		);
+		// The staged assets are left in place deliberately rather than cleaned up:
+		// they are the exact bytes each container would mount, so a dry run is also
+		// the way to READ what an arm resolves to (config after temperature
+		// injection, the sections JSON, the rule) before paying to run it. Said out
+		// loud so the leftover directory is understood as output, not residue.
+		console.log(`  staged     ${assetsDir}`);
+		console.log("             (the exact bytes a container would mount; inspect them, then delete the dir)");
+		console.log(`  would cost ${queue.length} trial(s) of real model quota\n`);
+		console.log("Re-run without --dry-run to execute.");
+		process.exit(0);
+	}
 
 	function writeJobConfig(arm: string, task: string, repeat: number): string {
 		const jobName = jobNameOf(arm, task, repeat, repeats);

@@ -1,0 +1,65 @@
+# WORKED EXAMPLE of a prompt-section arm. Copy this file, not the prose.
+#
+# This is the reference for the "Prompt Benchmark" lane in README.md. That lane
+# was documented but had no example on disk, so an operator had to reconstruct
+# the file format, the legal section names, and the banner rule from prose, and
+# get all three right before the runner would accept the arm. This file is the
+# shortest thing that actually runs.
+#
+# HOW IT WORKS. `arms/<arm>.sections.yml` is a mapping of section name to the
+# FULL replacement text for that section. The runner stages it as
+# `sections/<arm>.json` and the agent reads those exact bytes through the
+# eval-only `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` environment variable. It is not
+# a config key, so it cannot leak into a normal run, and `vey` prints a loud
+# warning whenever it is active.
+#
+# The engine still renders every OTHER section, including the settings-gated
+# blocks, so this stays a single-variable change. That is the whole reason to
+# override one section rather than supply a whole custom prompt: a whole-prompt
+# snapshot freezes a copy that stops responding to settings and silently drops
+# any gated block it forgot, which is two hidden variables wearing the costume of
+# one.
+#
+# ITS CONTROL is `arms/candidate-delivery-terse.yml` paired with an arm carrying
+# the SAME config and NO sections file. `baseline` is that arm, so the sound
+# comparison is:
+#
+#   bun run.ts --arms baseline,candidate-delivery-terse \
+#     --tasks tasks/pilot-10.txt --model google-antigravity/gemini-3.5-flash \
+#     --jobs 2 --repeats 3 --out runs/prompt-delivery-terse
+#
+# THE TWO RULES THE RUNNER ENFORCES, both fail closed before any container runs:
+#
+#   1. The section name must be one the builder knows. The legal names are
+#      `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, and
+#      `deliveryContract` (camelCase, even though the section ids are kebab-case).
+#      An unknown name is rejected loudly rather than ignored, because ignoring it
+#      would run the eval against the UNMODIFIED prompt while you believe your
+#      change is live: a false result with no signal that anything went wrong.
+#
+#   2. The replacement must LEAD WITH ITS SECTION BANNER, byte for byte. The
+#      banners are `ROLE\n==`, `RUNTIME\n==`, `TOOL POLICY\n==`,
+#      `EXECUTION WORKFLOW\n==`, and `DELIVERY CONTRACT\n==`. `conventions` is the
+#      one section with no banner, since it is whatever precedes ROLE. Dropping a
+#      banner would collapse two sections into one and let a later override target
+#      the wrong region, so it is refused.
+#
+# WHAT THIS PARTICULAR ARM TESTS. Whether a terser delivery contract shortens
+# the agent's prose without costing reward. It is a genuine question rather than
+# a placeholder: the delivery contract is the section that governs how much the
+# agent writes back, so it is the one with a plausible output-token effect, and
+# the efficiency comparison in the report scores exactly that (output tokens with
+# a reward guardrail). Treat the result as a real measurement, and read the
+# reward column before celebrating a token drop.
+deliveryContract: |
+  DELIVERY CONTRACT
+  ==
+
+  Report the outcome and nothing else. State what changed, in which files, and
+  whether it is verified. If something is incomplete or unverified, say so
+  plainly in one sentence.
+
+  Do not summarize work the user can read in the diff. Do not restate the task.
+  Do not list the steps you took. Do not celebrate. No preamble, no postscript.
+
+  When a command failed, quote the failing output rather than describing it.

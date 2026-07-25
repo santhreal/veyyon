@@ -6,6 +6,7 @@ import { type AutocompleteItem, Spacer } from "@veyyon/tui";
 import { APP_NAME, CHANGELOG_URL, collapseWhitespace, getProjectDir, setProjectDir, truncate } from "@veyyon/utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
+import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
@@ -455,7 +456,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	{
 		name: "thinking",
 		aliases: ["effort"],
-		description: "Set the thinking effort for this session's model",
+		description: "Set the effort for this session (saved defaults live in /settings)",
 		acpDescription: "Set thinking effort",
 		acpInputHint: "[minimal|low|medium|high|xhigh|auto|off]",
 		allowArgs: true,
@@ -469,7 +470,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			if (!arg) {
 				const current = runtime.session.configuredThinkingLevel();
 				await runtime.output(
-					`Thinking effort: ${current ?? "auto"}. Choose one of: ${available}. Usage: /thinking <level>`,
+					`Effort: ${current ?? "auto"} (this session). Choose one of: ${available}. Usage: /thinking <level>. ${DEFAULT_EFFORT_POINTER}`,
 				);
 				return commandConsumed();
 			}
@@ -477,8 +478,12 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			if (level === undefined) {
 				return usage(`Unknown thinking level: ${arg}. Choose one of: ${available}.`, runtime);
 			}
-			runtime.session.setThinkingLevel(level, true);
-			await runtime.output(`Thinking effort set to ${level}.`);
+			// Session only. A command typed mid-run changes this run; the saved
+			// default is a settings edit, so trying an effort never rewrites it (the
+			// cycle keybinding already worked this way, and the two disagreeing is
+			// what made effort feel "muddled", operator report 2026-07-24).
+			runtime.session.setThinkingLevel(level, false);
+			await runtime.output(`Effort set to ${level} for this session. ${DEFAULT_EFFORT_POINTER}`);
 			await runtime.notifyConfigChanged?.();
 			return commandConsumed();
 		},
@@ -496,10 +501,10 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				);
 				return;
 			}
-			runtime.ctx.session.setThinkingLevel(level, true);
+			runtime.ctx.session.setThinkingLevel(level, false);
 			refreshStatusLine(runtime.ctx);
 			runtime.ctx.updateEditorBorderColor();
-			runtime.ctx.showStatus(`Thinking effort set to ${level}.`);
+			runtime.ctx.showStatus(`Effort set to ${level} for this session. ${DEFAULT_EFFORT_POINTER}`);
 		},
 	},
 	{

@@ -192,6 +192,14 @@ describe("reading history with the real transcript mounted", () => {
 				term.sendInput(WHEEL_UP);
 				await settle();
 			}
+			// Freeze only once the scroll has actually engaged. This suite has flaked
+			// under a loaded full-package run (once in ~20000 tests, green 3/3 alone),
+			// and the two candidate causes are very different: either the wheel input
+			// had not taken effect when the snapshot was captured, or a later repaint
+			// genuinely moved the view. Asserting the state here separates them, so
+			// the next occurrence reports which one it was instead of an opaque
+			// row-array mismatch.
+			expect(tui.virtualScrollActive).toBe(true);
 			const frozen = content(term).slice(0, HEIGHT - 2);
 
 			for (let i = 0; i < 3; i++) {
