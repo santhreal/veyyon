@@ -22,6 +22,27 @@
 # corpus by 22.7% (31,365 -> 38,483 characters). See argot's generate.ts
 # looksLikeProse and its regression tests.
 #
+# THIS SET STILL CANNOT MEASURE A TOKEN DELTA, and the reason is not the ranking.
+# Every task here was ranked on `typeable saving`, which is an UPPER bound: it
+# counts every handle an agent could type as one it does. The run that measured
+# both emitted 8 of 551 handles, so the real expectation is that column times
+# 1.45% (`OBSERVED_TYPEABLE_EMISSION_RATE` in aggregate.ts). The best task below,
+# at 2434 characters of reachable mass, expects about 35 characters per emission.
+#
+# Re-derived under the corrected model, as ARGOT-HEADROOM-PROJECTION-OFF-BY-50X
+# asked: NO task in this set clears the ~8.15% within-task output-token noise
+# floor, and none is close. Raising `tokenBudget` does not help either, because
+# the expected ceiling scales with the budget while the floor does not: a 16x
+# budget moved it from 0.015% to 0.28%, three orders of magnitude short. The
+# ranking is still correct and still worth having, since it is the right ORDER; it
+# is the absolute scale that was misread.
+#
+# So use this set to answer "does the mechanism fire at all" (adoption: `runs that
+# encoded`, `handles ever emitted`), which it can answer. Do not use it to produce
+# a headline token number, and do not read a token delta off it as a result. A
+# workload that could produce one needs a higher EMISSION rate, which is a
+# property of the model, the prompt, and the task rather than of dictionary size.
+#
 # Regenerate with: bun gen-dicts.ts --all --jobs 8
 opa-rego-rule-profiling
 gql-incremental-graphql-delivery
