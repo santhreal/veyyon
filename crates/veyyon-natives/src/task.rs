@@ -89,10 +89,41 @@ impl From<()> for CancelToken {
 
 impl CancelToken {
 	/// Create a new cancel token from optional timeout and abort signal.
+	///
+	/// # Signals that are already aborted
+	/// `AbortSignal::on_abort` registers a listener for the `abort` EVENT, and a
+	/// signal that has already fired never emits it again. Registering the
+	/// listener alone therefore did nothing for a caller who passed an
+	/// already-cancelled signal: the token was never marked aborted, every
+	/// `heartbeat()` said keep going, and the work ran to completion and RESOLVED
+	/// with a full result set. Cancelled work that returns results indistinguishable
+	/// from real ones is the worst shape this can take, because nothing downstream
+	/// has any way to notice.
+	///
+	/// The JS-side entry guards hide it for a single call, but not for a loop:
+	/// `nativeChunkedLineIndexes` in the grep tool calls back in per chunk with the
+	/// same signal, so a cancellation between chunks handed every later chunk an
+	/// already-aborted signal and got a full scan for each.
+	///
+	/// So the state is read up front, and the token is aborted immediately when the
+	/// signal is already spent. The listener is still registered for the ordinary
+	/// case: aborting during the work.
 	pub fn new(timeout_ms: Option<u32>, signal: Option<Unknown>) -> Self {
 		let mut result = Self { core: core_cancel::CancelToken::new(timeout_ms) };
-		if let Some(signal) = signal.and_then(|value| AbortSignal::from_unknown(value).ok()) {
-			let abort_token = result.emplace_abort_token();
+		let Some(signal) = signal else {
+			return result;
+		};
+		// `Unknown` is `Copy`, so reading the property here does not consume the
+		// value the `AbortSignal` conversion below still needs.
+		let already_aborted = unsafe { signal.cast::<Object>() }
+			.and_then(|object| object.get_named_property::<bool>("aborted"))
+			.unwrap_or(false);
+		let abort_token = result.emplace_abort_token();
+		if already_aborted {
+			abort_token.abort(AbortReason::Signal);
+			return result;
+		}
+		if let Ok(signal) = AbortSignal::from_unknown(signal) {
 			signal.on_abort(move || abort_token.abort(AbortReason::Signal));
 		}
 		result
