@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Skill } from "./extensibility/skills";
-import { APPENDED_BLOCKS } from "./prompt-blocks";
+import { APPENDED_BLOCKS } from "./system-prompt-builder/prompt-blocks";
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import { buildSystemPrompt } from "./system-prompt";
 import type { ActiveRepoContext } from "./utils/active-repo-context";

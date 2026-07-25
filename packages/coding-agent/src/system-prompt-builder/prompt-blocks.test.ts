@@ -31,18 +31,18 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
+import { kebabToCamel } from "@veyyon/utils";
 import {
+	APPENDED_BLOCK_IDS,
 	APPENDED_BLOCKS,
 	BANNERED_SECTION_BLOCKS,
-	camelSectionKey,
 	PROMPT_BLOCKS,
-	promptBlockById,
 	TEMPLATE_SECTION_BLOCKS,
 	TEMPLATE_SECTION_IDS,
 } from "./prompt-blocks";
 import { PROMPT_SECTION_NAMES, splitPromptSections } from "./prompt-sections";
-import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./system-prompt-builder/default-template";
+import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
 
 describe("prompt-block registry: structural invariants", () => {
 	/** Ids are the join key for every derived table, so a duplicate would make one
@@ -62,16 +62,16 @@ describe("prompt-block registry: structural invariants", () => {
 	 * template section must declare the banner that opens it, or the splitters
 	 * cannot find its boundary. */
 	it("declares a banner for every template section except the leading conventions block", () => {
-		const withoutBanner = TEMPLATE_SECTION_BLOCKS.filter(b => b.banner === undefined).map(b => b.id);
+		const withoutBanner = TEMPLATE_SECTION_BLOCKS.filter(b => b.banner === null).map(b => b.id);
 		expect(withoutBanner).toEqual(["conventions"]);
 	});
 
-	/** Lookup is used by callers addressing a block by name; an unknown id must be
-	 * undefined rather than a wrong block. */
-	it("resolves blocks by id and returns undefined for an unknown one", () => {
-		expect(promptBlockById("role")?.kind).toBe("template-section");
-		expect(promptBlockById("shorthand-preamble")?.kind).toBe("appended");
-		expect(promptBlockById("no-such-block")).toBeUndefined();
+	/** The declared id lists are what the literal-union types are built from, so a
+	 * block table that drifts from its id list would make the compile-time
+	 * exhaustiveness checks describe a different set than the runtime registry. */
+	it("keeps each block table in step with the id list its union is built from", () => {
+		expect(TEMPLATE_SECTION_BLOCKS.map(b => b.id)).toEqual([...TEMPLATE_SECTION_IDS]);
+		expect(APPENDED_BLOCKS.map(b => b.id)).toEqual([...APPENDED_BLOCK_IDS]);
 	});
 });
 
@@ -111,15 +111,15 @@ describe("prompt-block registry: derived tables cannot drift apart", () => {
 	 * `tool-policy`). That is fine only while one spelling is a pure function of
 	 * the other; it was a defect while both were hand-written lists. */
 	it("derives the camelCase override keys from the canonical kebab ids", () => {
-		expect(camelSectionKey("tool-policy")).toBe("toolPolicy");
-		expect(camelSectionKey("execution-workflow")).toBe("executionWorkflow");
-		expect(camelSectionKey("role")).toBe("role");
+		expect(kebabToCamel("tool-policy")).toBe("toolPolicy");
+		expect(kebabToCamel("execution-workflow")).toBe("executionWorkflow");
+		expect(kebabToCamel("role")).toBe("role");
 	});
 
 	/** The override API's section order must be exactly the registry's template
 	 * sections, in document order, or an override targets the wrong region. */
 	it("keeps the override key order identical to the registry section order", () => {
-		expect(DEFAULT_TEMPLATE_SECTION_ORDER.map(String)).toEqual(TEMPLATE_SECTION_IDS.map(camelSectionKey));
+		expect(DEFAULT_TEMPLATE_SECTION_ORDER.map(String)).toEqual(TEMPLATE_SECTION_IDS.map(kebabToCamel));
 	});
 
 	/** The reorderer's name list must be exactly the registry's bannered sections.
@@ -133,7 +133,7 @@ describe("prompt-block registry: derived tables cannot drift apart", () => {
 	 * same sections as each other, so neither can gain or lose one alone. */
 	it("keeps the override table and the reorder table describing the same sections", () => {
 		const fromOverrides = DEFAULT_TEMPLATE_SECTION_ORDER.filter(k => k !== "conventions");
-		expect(fromOverrides.map(String)).toEqual(PROMPT_SECTION_NAMES.map(camelSectionKey));
+		expect(fromOverrides.map(String)).toEqual(PROMPT_SECTION_NAMES.map(kebabToCamel));
 	});
 });
 

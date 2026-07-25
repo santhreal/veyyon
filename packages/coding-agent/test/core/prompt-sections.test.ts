@@ -3,7 +3,7 @@ import {
 	applyPromptSectionOrder,
 	PROMPT_SECTION_NAMES,
 	splitPromptSections,
-} from "@veyyon/coding-agent/prompt-sections";
+} from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
 import systemPromptTemplate from "../../src/prompts/system/system-prompt.md" with { type: "text" };
 
 // A miniature render with the same banner grammar as the real template.

@@ -10,7 +10,7 @@ import type { Model } from "@veyyon/ai/types";
 import { getAgentDir, isRecord, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
-import { PROMPT_SECTION_NAMES, type PromptSectionName } from "../prompt-sections";
+import { PROMPT_SECTION_NAMES, type PromptSectionName } from "../system-prompt-builder/prompt-sections";
 
 export interface HarnessModelProfile {
 	/** When false, schema repair is skipped for this model. Default: true. */

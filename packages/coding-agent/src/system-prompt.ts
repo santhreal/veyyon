@@ -22,8 +22,8 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
-import { APPENDED_BLOCKS } from "./prompt-blocks";
-import { applyPromptSectionOrder } from "./prompt-sections";
+import { APPENDED_BLOCKS, type AppendedBlockId } from "./system-prompt-builder/prompt-blocks";
+import { applyPromptSectionOrder } from "./system-prompt-builder/prompt-sections";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
@@ -970,7 +970,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// so the model learns handles from these blocks, not by reading a file. The
 	// caller decides per turn whether to teach (model allowlist + context cutoff);
 	// decoding is unconditional and runs at the seams.
-	const appendedText: Record<string, string | undefined> = {
+	// Keyed by the AppendedBlockId union, so this map must cover EVERY registered
+	// block: adding one to the registry without supplying its text is a compile
+	// error here, not a block that silently renders nothing.
+	const appendedText: Record<AppendedBlockId, string | undefined> = {
 		"project-footer": projectPrompt,
 		"repo-context": activeRepoContextPrompt,
 		"shorthand-preamble": argotPreamble,
