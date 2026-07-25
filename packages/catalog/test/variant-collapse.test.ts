@@ -21,7 +21,6 @@ import {
 	isVariantCollapsedSpec,
 	resolveBareVariantAlias,
 	resolveVariantAlias,
-	resolveVariantAlias,
 	stripEffortTierSuffix,
 } from "@veyyon/catalog/variant-collapse";
 

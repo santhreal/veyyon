@@ -30,7 +30,7 @@ describe("auth-gateway model list", () => {
 				headers: { Authorization: "Bearer t" },
 			});
 			expect(res.status).toBe(200);
-			const body = await res.json();
+			const body = (await res.json()) as { object: string; data: Record<string, unknown>[] };
 			expect(body.object).toBe("list");
 			expect(body.data).toEqual([
 				{
