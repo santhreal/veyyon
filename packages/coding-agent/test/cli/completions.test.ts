@@ -458,6 +458,30 @@ describe("generateCompletion('powershell')", () => {
 		}
 	});
 
+	it("carries the already-typed prefix into path and list candidates", () => {
+		// A candidate REPLACES the whole word, and the caller filters candidates
+		// against that word. Bare leaf names therefore matched nothing the moment
+		// the word held a separator: `-e src/ma<Tab>` and `--tools read,ba<Tab>`
+		// both returned no candidates at all, which reads as "completion does not
+		// work for this flag".
+		expect(out).toContain("function global:__Veyyon-PrefixedPaths {");
+		expect(out).toContain("if ($parent) { Join-Path $parent $_.Name } else { $_.Name }");
+		expect(out).toContain("function global:__Veyyon-CommaCandidates {");
+		expect(out).toContain("$prefix = $WordToComplete.Substring(0, $cut + 1)");
+	});
+
+	it("does not re-offer a list value the user already chose", () => {
+		// `--tools read,<Tab>` offering `read` again is noise, and accepting it
+		// produces a value the CLI would reject.
+		expect(out).toContain("Where-Object { $chosen -notcontains $_ }");
+	});
+
+	it("routes file and dir through the same path helper", () => {
+		// Two hand-rolled Get-ChildItem calls is how one of them keeps the bug.
+		expect(out).toContain("'file' { return __Veyyon-PrefixedPaths $WordToComplete }");
+		expect(out).toContain("'dir' { return __Veyyon-PrefixedPaths $WordToComplete -DirectoriesOnly }");
+	});
+
 	it("filters candidates by what the user has already typed", () => {
 		expect(out).toContain('Where-Object { $_ -like "$wordToComplete*" }');
 	});
