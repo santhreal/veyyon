@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
 import {
 	$which,
+	APP_ALIAS,
 	APP_NAME,
 	compareSemver,
 	errorMessage,
@@ -24,6 +25,12 @@ import { $ } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
+import {
+	type CompletionGenerator,
+	completionEnvFrom,
+	type CompletionRefreshResult,
+	refreshInstalledCompletions,
+} from "./completion-refresh";
 import {
 	AUTO_UPDATE_FAILURE_COOLDOWN_MS,
 	AUTO_UPDATE_LOCK_STALE_MS,
@@ -682,8 +689,59 @@ export async function updateViaBinaryAt(
 	});
 	// Reclaim backups from earlier updates whose owning process has since exited.
 	await sweepStaleBackups(targetPath);
+	// The completion scripts on disk describe the version we just replaced, so
+	// every subcommand and flag this release adds would be missing from tab
+	// completion until the user re-ran the installer. Regenerate from the binary
+	// that was just installed.
+	await refreshCompletionsForInstalledBinary(targetPath, report);
 	printVerifiedVersion(expectedVersion, report);
 	report(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+}
+
+/**
+ * Regenerate the already-installed completion scripts from a freshly installed
+ * binary.
+ *
+ * Best effort by design: the update itself has already succeeded and been
+ * verified, so a shell whose completion cannot be rewritten is reported rather
+ * than allowed to fail the update. Reported to stderr rather than through the
+ * reporter, because the auto-update reporter is deliberately silent about
+ * progress and a failure that nobody sees is exactly the silent degrade this
+ * codebase does not allow.
+ */
+export async function refreshCompletionsForInstalledBinary(
+	binaryPath: string,
+	report: UpdateReporter,
+	generate?: CompletionGenerator,
+): Promise<CompletionRefreshResult> {
+	const result = await refreshInstalledCompletions({
+		env: completionEnvFrom(process.env),
+		binName: APP_NAME,
+		aliasName: APP_ALIAS,
+		generate:
+			generate ??
+			(async shell => {
+				const proc = await $`${binaryPath} completions ${shell}`.quiet().nothrow();
+				if (proc.exitCode !== 0) {
+					throw new Error(
+						`\`${binaryPath} completions ${shell}\` exited ${proc.exitCode}: ${proc.stderr.toString().trim()}`,
+					);
+				}
+				return proc.stdout.toString();
+			}),
+	});
+	if (result.refreshed.length > 0) {
+		report(chalk.dim(`Refreshed ${result.refreshed.length} shell completion file(s)`));
+	}
+	for (const failure of result.failed) {
+		process.stderr.write(
+			chalk.yellow(
+				`Warning: could not refresh the shell completion at ${failure.filePath}: ${failure.reason}\n` +
+					`It still describes the previous version. Re-run the installer to rewrite it.\n`,
+			),
+		);
+	}
+	return result;
 }
 
 /**
