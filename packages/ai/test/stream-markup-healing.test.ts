@@ -247,7 +247,22 @@ describe("official OpenAI leaked thinking healing exemption", () => {
 	// wrapLeakedThinkingStream wrap runs — a ` ```thinking ` block the model chose
 	// to write must stay verbatim visible text. Routed through stream() (not the
 	// provider directly) so both gates are exercised.
-	const officialOpenAI = getBundledModel("openai", "gpt-5.5");
+	// `compat` and `compatConfig` are dropped rather than spread. `buildModel`
+	// materializes `compat` from the spec's api, so carrying the record that
+	// belongs to gpt-5.5's own api (`openai-responses`) into a completions model
+	// would hand the completions handler a compat shaped for a different
+	// protocol. Dropping both lets `buildModel` resolve the right one, which is
+	// what it exists to do.
+	//
+	// It is also what makes this typecheck. `getBundledModel` with no explicit
+	// api returns `Model<Api>`, so its `compat` is the resolved union over EVERY
+	// api, while `buildModel` infers `TApi` from the `api` property and asks for
+	// that api's sparse compat alone (TS2345, `bun run check:ts` red on
+	// `@veyyon/ai`). A spec that carries no compat has nothing to conflict.
+	const { compat: _resolvedForResponses, compatConfig: _sparseForResponses, ...officialOpenAI } = getBundledModel(
+		"openai",
+		"gpt-5.5",
+	);
 	const completionsModel = buildModel({
 		...officialOpenAI,
 		api: "openai-completions",
