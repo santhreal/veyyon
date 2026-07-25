@@ -653,6 +653,26 @@ check "an rc whose only content is our line still empties cleanly" \
   command cat "$rc" | wc -c | tr -d ' ' ) )" "0
 0"
 
+# POSIX sh has no `local`, so every variable a function sets belongs to its
+# caller too. `_before` was one of them, and it silently overwrote a caller
+# holding a variable under that name — the kind of collision that shows up as a
+# wrong value somewhere else entirely, long after the call. Every name this
+# function introduces must therefore be either an argument name it documents or
+# prefixed distinctively enough that no caller would pick it by accident.
+check "remove_path_line_from_rc introduces no ordinary global names" \
+    "$( ( _h="$SANDBOX/rc-globals"; mkdir -p "$_h"
+  export HOME="$_h"
+  _target="$_h/.bashrc"
+  printf '%s\n' "alias ll=ls" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' > "$_target"
+  _seen_before=$(set | sed -n 's/^\([A-Za-z_][A-Za-z_0-9]*\)=.*/\1/p' | sort)
+  remove_path_line_from_rc "$_target" "/opt/veyyon" >/dev/null 2>&1
+  set | sed -n 's/^\([A-Za-z_][A-Za-z_0-9]*\)=.*/\1/p' | sort > "$_h/after"
+  printf '%s\n' "$_seen_before" > "$_h/before"
+  comm -13 "$_h/before" "$_h/after" |
+    grep -vx -e rc -e dir -e line -e tmp -e _pending -e _have_pending -e _cur \
+             -e _rc_lines_before -e _rc_lines_after -e _seen_before -e _target |
+    tr '\n' ' ' ) )" ""
+
 # --- do_uninstall: the closing verdict must match what it actually removed ---
 # `rc_candidates | while ...` ran the PATH-line loop in a SUBSHELL, so the
 # `removed` flag set inside it was discarded: an uninstall whose only remaining
