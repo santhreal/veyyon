@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { Skill } from "./extensibility/skills";
+import { APPENDED_BLOCKS } from "./prompt-blocks";
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import { buildSystemPrompt } from "./system-prompt";
+import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**
  * Settings-parity harness for the default system prompt.
@@ -52,6 +54,33 @@ async function renderBlock0(overrides: Parameters<typeof buildSystemPrompt>[0] =
 		...overrides,
 	});
 	return result.systemPrompt[0];
+}
+
+/**
+ * Render the WHOLE prompt: every block the model receives, joined.
+ *
+ * {@link renderBlock0} deliberately reads only `systemPrompt[0]`, and that is
+ * precisely why the appended tier had no coverage — the harness could not see
+ * past the rendered template no matter what it asserted. The appended-tier
+ * contract below uses this instead, so a block that stops being emitted fails a
+ * test rather than disappearing silently.
+ */
+async function renderAll(overrides: Parameters<typeof buildSystemPrompt>[0] = {}): Promise<string> {
+	const result = await buildSystemPrompt({
+		toolNames: DELEGATION_TOOLS,
+		contextFiles: [],
+		skills: [],
+		rules: [],
+		workspaceTree: EMPTY_TREE,
+		activeRepoContext: null,
+		...overrides,
+	});
+	return result.systemPrompt.join("\n");
+}
+
+/** A resolved single-child-repo context, the one input that opens `repo-context`. */
+function demoRepoContext(): ActiveRepoContext {
+	return { cwd: "/tmp/outside", repoRoot: "/tmp/outside/sub", relativeRepoRoot: "sub" } as ActiveRepoContext;
 }
 
 /** Minimal skill shaped for the `<skills>` block; template reads name/description/hide. */
@@ -453,5 +482,93 @@ describe("system prompt settings parity: coverage contract", () => {
 		const mappedProps = new Set(Object.values(IDENTIFIER_TO_PROP));
 		const unasserted = [...mappedProps].filter(prop => !ASSERTED.has(prop));
 		expect(unasserted).toEqual([]);
+	});
+});
+
+/**
+ * Blocks with an appended-tier parity assertion below, keyed by registry id.
+ * The coverage test at the end requires this to cover every registered block.
+ */
+const APPENDED_ASSERTED = new Set<string>();
+function assertedBlock(id: string): string {
+	APPENDED_ASSERTED.add(id);
+	return id;
+}
+
+describe("system prompt parity: appended tier", () => {
+	/**
+	 * WHY THIS SECTION EXISTS. Everything above gates on `{{#if <setting>}}`
+	 * conditionals inside the template, and reads only `systemPrompt[0]`. Four
+	 * blocks are concatenated AFTER that template, gated by plain TypeScript
+	 * `if`s in the assembler. They were invisible to this harness in both
+	 * respects: not conditionals it scans, and not in the block it renders. A
+	 * deleted push or a flipped guard would have removed real instruction text
+	 * from every prompt with ZERO test failure — the same silent-drop class the
+	 * tier-1 harness exists to stop, relocated to where it could not look.
+	 */
+
+	it(`${assertedBlock("project-footer")} is always emitted, and lands after the template`, async () => {
+		// Unconditional: no setting gates it, so the contract is that it is ALWAYS
+		// present. Deleting its entry from the registry or its push turns this red.
+		const all = await renderAll();
+		expect(all).toContain("<workstation>");
+		// It must come from the appended tier, not the template. If this text ever
+		// migrated into block 0, the assertion above would still pass while the
+		// tier lost a member, so pin where it actually lives.
+		expect(await renderBlock0()).not.toContain("<workstation>");
+	});
+
+	it(`${assertedBlock("repo-context")} appears only when a single child repo was resolved`, async () => {
+		const on = await renderAll({ activeRepoContext: demoRepoContext() });
+		expect(on).toContain("<active-repo-context>");
+		// Assert the interpolated repo path, not just the wrapper: a dropped
+		// template body would leave an empty block that a wrapper-only check passes.
+		expect(on).toContain("Paths under `sub/` are the active project");
+		expect(await renderAll({ activeRepoContext: null })).not.toContain("<active-repo-context>");
+	});
+
+	it(`${assertedBlock("shorthand-preamble")} is taught only when the caller opens the encode gate`, async () => {
+		// The caller resolves the gate (model allowlist + context cutoff) and passes
+		// the rendered block, so parity here is presence/absence of that input.
+		const marker = "<<SHORTHAND-NOTATION-PREAMBLE-MARKER>>";
+		expect(await renderAll({ argotPreamble: marker })).toContain(marker);
+		expect(await renderAll({ argotPreamble: undefined })).not.toContain(marker);
+	});
+
+	it(`${assertedBlock("shorthand-handles")} carries the handle table when a project is loaded`, async () => {
+		// Without this block the model is taught the notation but never learns a
+		// single handle, which is the difference between an encode arm that can
+		// possibly adopt shorthand and one that provably cannot.
+		const marker = "<<SHORTHAND-HANDLE-TABLE-MARKER>>";
+		expect(await renderAll({ argotHandles: marker })).toContain(marker);
+		expect(await renderAll({ argotHandles: undefined })).not.toContain(marker);
+	});
+
+	it("emits appended blocks in registry order", async () => {
+		// Order is declared data in the registry; assert the model actually receives
+		// it that way, so a reordered assembly cannot pass unnoticed.
+		const all = await renderAll({
+			activeRepoContext: demoRepoContext(),
+			argotPreamble: "<<PREAMBLE>>",
+			argotHandles: "<<HANDLES>>",
+		});
+		const positions = [
+			all.indexOf("<workstation>"),
+			all.indexOf("<active-repo-context>"),
+			all.indexOf("<<PREAMBLE>>"),
+			all.indexOf("<<HANDLES>>"),
+		];
+		expect(positions.every(p => p >= 0)).toBe(true);
+		expect(positions).toEqual([...positions].sort((a, b) => a - b));
+	});
+
+	/**
+	 * The coverage contract for tier 2, mirroring the tier-1 one. Registering a new
+	 * appended block without a presence/absence assertion here fails, so the
+	 * harness cannot fall behind the assembler the way it did for four blocks.
+	 */
+	it("asserts parity for every registered appended block", () => {
+		const missing = APPENDED_BLOCKS.map(b => b.id).filter(id => !APPENDED_ASSERTED.has(id));
+		expect(missing).toEqual([]);
 	});
 });
