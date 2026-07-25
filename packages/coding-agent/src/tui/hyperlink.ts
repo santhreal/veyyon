@@ -6,7 +6,7 @@
  * permits it. Falls back to plain text when disabled.
  */
 import * as url from "node:url";
-import { TERMINAL } from "@veyyon/tui";
+import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui";
 import { isSettingsInitialized, settings } from "../config/settings";
 import {
 	LocalProtocolHandler,
@@ -43,7 +43,7 @@ function buildFileUri(filePath: string, opts?: { line?: number; col?: number }):
  *
  * Respects `tui.hyperlinks` setting:
  * - `"off"`: never
- * - `"auto"`: when `process.stdout.isTTY`, `NO_COLOR` is unset, and the detected terminal reports hyperlink support
+ * - `"auto"`: when `process.stdout.isTTY`, the shared styling policy is `full` (so `NO_COLOR` and `TERM=dumb` both turn them off), and the detected terminal reports hyperlink support
  * - `"always"`: unconditionally (useful for viewers that support OSC 8 without advertising it)
  * Before settings initialization, returns false so early render paths stay plain text.
  */
@@ -52,9 +52,13 @@ export function isHyperlinkEnabled(): boolean {
 	const mode = settings.get("tui.hyperlinks");
 	if (mode === "off") return false;
 	if (mode === "always") return true;
-	// auto: respect terminal capabilities and NO_COLOR
-	if (Bun.env.NO_COLOR) return false;
-	if (!process.stdout.isTTY) return false;
+	// auto: respect terminal capabilities and the shared styling policy. Reading
+	// `NO_COLOR` here directly was a second home for that decision and could
+	// disagree with the theme's. The TTY check used to be a THIRD home: it was
+	// spelled out here and nowhere else, so the theme happily emitted colour into
+	// a pipe while hyperlinks correctly stayed off. `detectStreamAnsiPolicy` folds
+	// both questions into the one owner.
+	if (detectStreamAnsiPolicy() !== "full") return false;
 	return TERMINAL.hyperlinks;
 }
 

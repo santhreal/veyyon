@@ -434,6 +434,98 @@ const KNOWN_TERMINALS = Object.freeze({
 	warp: new TerminalInfo("warp", ImageProtocol.Kitty, true, false, NotifyProtocol.Osc9),
 });
 
+/**
+ * How much ANSI styling the environment is willing to receive.
+ *
+ * - `full` — colour and text attributes, the normal case.
+ * - `noColor` — no foreground or background colour. This is the `NO_COLOR`
+ *   convention (no-color.org), which asks specifically for colour to be
+ *   dropped, so bold and italic still carry emphasis to a reader who turned
+ *   colour off because it is unreadable on their terminal, not because they
+ *   want a plain stream.
+ * - `plain` — no escape sequences at all. `TERM=dumb` is a terminal that cannot
+ *   interpret them, so anything emitted shows up as literal garbage in the
+ *   output.
+ */
+export type AnsiPolicy = "full" | "noColor" | "plain";
+
+/**
+ * Read the styling policy out of the environment.
+ *
+ * `FORCE_COLOR` wins, matching every other tool that implements both: it is the
+ * escape hatch for a CI runner that pipes output but still renders colour.
+ * `NO_COLOR` counts only when set to a non-empty value, which is what the
+ * convention specifies — an empty `NO_COLOR=` must not disable anything.
+ *
+ * This reads the ENVIRONMENT only. Whether the destination is a terminal is a
+ * separate question, answered by {@link detectStreamAnsiPolicy}, because a
+ * renderer that owns its own PTY is writing to a terminal regardless of what
+ * this process's stdout happens to be.
+ */
+export function detectAnsiPolicy(env: NodeJS.ProcessEnv = Bun.env): AnsiPolicy {
+	const { FORCE_COLOR, NO_COLOR, TERM } = env;
+	if (FORCE_COLOR !== undefined && FORCE_COLOR !== "" && FORCE_COLOR !== "0") return "full";
+	if (TERM?.toLowerCase() === "dumb") return "plain";
+	if (NO_COLOR !== undefined && NO_COLOR !== "") return "noColor";
+	return "full";
+}
+
+/**
+ * The styling policy for output going to a specific stream.
+ *
+ * A pipe is not a terminal. Escape sequences written to one are bytes the
+ * consumer did not ask for and cannot interpret, so a non-TTY destination is
+ * `plain` no matter how capable the environment claims to be. `FORCE_COLOR`
+ * still overrides, which is the whole point of that variable: a CI runner pipes
+ * its output and still wants colour in the captured log.
+ *
+ * Use this wherever output is written to a process stream. Use
+ * {@link detectAnsiPolicy} when the destination is a terminal the renderer owns
+ * and the only question is what the environment permits.
+ *
+ * This exists because the decision had TWO homes. `isHyperlinkEnabled` consulted
+ * `getAnsiPolicy()` AND `process.stdout.isTTY` separately, while the theme's
+ * `fg`/`bg` consulted only the policy, which is env-only and answers "full" for
+ * an ordinary piped run. Two detectors that can disagree about the same question
+ * is the shape a silent fallback takes (Law 10).
+ */
+export function detectStreamAnsiPolicy(
+	env: NodeJS.ProcessEnv = Bun.env,
+	isTty: boolean = process.stdout.isTTY === true,
+): AnsiPolicy {
+	const policy = detectAnsiPolicy(env);
+	// FORCE_COLOR is checked HERE and not left to the downgrade below, because
+	// it is an explicit request that outranks the destination. Downgrading it
+	// would break the one case it exists for: a CI runner that pipes its output
+	// and still wants colour in the captured log.
+	const { FORCE_COLOR } = env;
+	if (FORCE_COLOR !== undefined && FORCE_COLOR !== "" && FORCE_COLOR !== "0") return policy;
+	if (policy === "full" && !isTty) return "plain";
+	return policy;
+}
+
+var ansiPolicy: AnsiPolicy = detectAnsiPolicy();
+
+/** The active policy. One owner, so no surface decides this for itself. */
+export function getAnsiPolicy(): AnsiPolicy {
+	return ansiPolicy;
+}
+
+/** Override the policy (tests, and any runtime that learns better than the env). */
+export function setAnsiPolicy(policy: AnsiPolicy): void {
+	ansiPolicy = policy;
+}
+
+/** Whether foreground/background colour may be emitted. */
+export function colorEnabled(): boolean {
+	return ansiPolicy === "full";
+}
+
+/** Whether bold/italic/underline may be emitted. */
+export function attributesEnabled(): boolean {
+	return ansiPolicy !== "plain";
+}
+
 /** Resolve terminal identity from environment markers used by common emulators. */
 export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
 	function caseEq(a: string, b: string): boolean {
