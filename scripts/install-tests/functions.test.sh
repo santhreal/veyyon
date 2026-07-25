@@ -851,6 +851,85 @@ check "an installer that exits non-zero stops the install" "$(printf '%s' "$_run
 # And it must not leave the downloaded script lying in the temp dir.
 check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-bun-install.$$" ] && echo present || echo absent )" "absent"
 
+# --- uninstall takes the PATH line back out of the rc ---
+# Every install appended `export PATH="<dir>:$PATH"` to a shell rc and NO
+# uninstall ever removed it, so a user who installed and removed veyyon kept a
+# PATH entry pointing at a directory veyyon no longer occupies, under a comment
+# claiming an installer put it there. It has to come back out, and — because
+# this is a file the user also edits by hand — ONLY the exact line install
+# wrote, never a line that merely names the same directory.
+( _h="$SANDBOX/uninstall-path"
+  export HOME="$_h"
+  mkdir -p "$_h" "$_h/bin"
+  printf '# user config\nalias ll="ls -l"\n' > "$_h/.bashrc"
+  ( uname() { printf 'Linux\n'; }; SHELL=/bin/bash; ensure_on_path "$_h/bin" >/dev/null 2>&1 )
+  check "install wrote the PATH line" "$(grep -c "^export PATH=\"$_h/bin:\\\$PATH\"$" "$_h/.bashrc")" "1"
+  check "install wrote its marker comment" "$(grep -c '^# added by the veyyon installer$' "$_h/.bashrc")" "1"
+
+  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  check "uninstall removed the PATH line" "$(grep -c "$_h/bin" "$_h/.bashrc")" "0"
+  check "uninstall removed the marker comment with it" "$(grep -c 'added by the veyyon installer' "$_h/.bashrc")" "0"
+  check "the user's own rc content survives" "$(grep -c '^alias ll=\"ls -l\"$' "$_h/.bashrc")" "1"
+  check "the user's own comment survives" "$(grep -c '^# user config$' "$_h/.bashrc")" "1" )
+
+# A line the USER wrote naming the same directory is not ours to delete, even
+# though it is textually what we would have written: the marker comment is
+# absent and, more importantly, deleting a user's PATH line is the same class of
+# harm as deleting their `vey`. Only an exact match plus our own marker goes.
+( _h="$SANDBOX/uninstall-path-user"
+  export HOME="$_h"
+  mkdir -p "$_h" "$_h/bin"
+  printf '# my own PATH setup\nexport PATH="%s/bin:$PATH"\nexport EDITOR=vi\n' "$_h" > "$_h/.bashrc"
+  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  # The line is byte-identical to ours, so it does go — but the user's OWN
+  # comment above it must not, and nothing else in the file may move.
+  check "the user's unrelated comment is untouched" "$(grep -c '^# my own PATH setup$' "$_h/.bashrc")" "1"
+  check "the user's other settings are untouched" "$(grep -c '^export EDITOR=vi$' "$_h/.bashrc")" "1" )
+
+# A directory that merely SHARES A PREFIX must not be matched: the same
+# substring bug that made install skip a needed add would make uninstall delete
+# an unrelated line.
+( _h="$SANDBOX/uninstall-path-prefix"
+  export HOME="$_h"
+  mkdir -p "$_h" "$_h/bin"
+  printf 'export PATH="%s/bin2:$PATH"\n' "$_h" > "$_h/.bashrc"
+  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  check "a prefix-sharing PATH line is left alone" "$(grep -c "bin2" "$_h/.bashrc")" "1" )
+
+# fish writes a different line shape, and uninstall must know that too.
+( _h="$SANDBOX/uninstall-path-fish"
+  export HOME="$_h"
+  mkdir -p "$_h/.config/fish" "$_h/bin"
+  ( uname() { printf 'Linux\n'; }; SHELL=/usr/bin/fish; ensure_on_path "$_h/bin" >/dev/null 2>&1 )
+  check "fish: install wrote fish_add_path" "$(grep -c "^fish_add_path $_h/bin$" "$_h/.config/fish/config.fish")" "1"
+  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  check "fish: uninstall removed it" "$(grep -c 'fish_add_path' "$_h/.config/fish/config.fish")" "0" )
+
+# An rc that is a SYMLINK into a dotfiles repo must stay a symlink: rewriting
+# with `mv` would replace it with a regular file and silently detach the user's
+# dotfiles from their repo.
+( _h="$SANDBOX/uninstall-path-symlink"
+  export HOME="$_h"
+  mkdir -p "$_h/dotfiles" "$_h/bin"
+  printf 'export PATH="%s/bin:$PATH"\n' "$_h" > "$_h/dotfiles/bashrc"
+  ln -s "$_h/dotfiles/bashrc" "$_h/.bashrc"
+  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  check "the rc is still a symlink after the rewrite" "$( [ -L "$_h/.bashrc" ] && echo yes || echo no )" "yes"
+  check "the rewrite went through to the real file" "$(grep -c 'bin:' "$_h/dotfiles/bashrc")" "0" )
+
+# Staging files a killed install left in the install dir are ours to reclaim.
+( _h="$SANDBOX/uninstall-staging"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  : > "$_h/bin/.veyyon.download.12345"
+  : > "$_h/bin/.veyyon.local.999"
+  : > "$_h/bin/.someone-elses-file"
+  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  check "a leftover download staging file is reclaimed" "$( [ -e "$_h/bin/.veyyon.download.12345" ] && echo present || echo absent )" "absent"
+  check "a leftover local staging file is reclaimed" "$( [ -e "$_h/bin/.veyyon.local.999" ] && echo present || echo absent )" "absent"
+  check "an unrelated dotfile in the install dir is left alone" "$( [ -e "$_h/bin/.someone-elses-file" ] && echo present || echo absent )" "present" )
+export HOME="$SANDBOX/home"
+
 # `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
 # fallback would append a SECOND zero and make the arithmetic below choke.
 PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}

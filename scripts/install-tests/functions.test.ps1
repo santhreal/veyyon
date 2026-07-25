@@ -30,6 +30,22 @@ Check "Split drops interior empty entries" ((Split-PathEntries "C:\a;;C:\b") -jo
 Check "Split of null yields no entries" (@(Split-PathEntries $null).Count) "0"
 Check "Split of empty yields no entries" (@(Split-PathEntries "").Count) "0"
 
+# --- Get-PathWithoutDir: uninstall takes the entry back out, exactly ---
+# Uninstall never removed the PATH entry it added, so a user who installed and
+# removed veyyon kept an entry pointing at a directory veyyon no longer
+# occupies. Removal has to match entries the same way the add does, or it either
+# misses (leaving the litter) or takes an unrelated directory with it.
+Check "the install dir is removed" (Get-PathWithoutDir "C:\x;C:\a\bin;C:\y" "C:\a\bin") "C:\x;C:\y"
+Check "removal is case-insensitive (Windows paths)" (Get-PathWithoutDir "C:\x;C:\A\BIN" "c:\a\bin") "C:\x"
+Check "a trailing backslash on either side still matches" (Get-PathWithoutDir "C:\a\bin\;C:\y" "C:\a\bin") "C:\y"
+Check "a prefix-sharing entry is NOT removed" (Get-PathWithoutDir "C:\a\bin2;C:\y" "C:\a\bin") "C:\a\bin2;C:\y"
+Check "an absent dir leaves PATH unchanged" (Get-PathWithoutDir "C:\x;C:\y" "C:\a\bin") "C:\x;C:\y"
+Check "removing the only entry yields an empty PATH" (Get-PathWithoutDir "C:\a\bin" "C:\a\bin") ""
+Check "empty entries are cleaned out on removal" (Get-PathWithoutDir "C:\x;;C:\a\bin" "C:\a\bin") "C:\x"
+# Round trip: what the add puts in, the removal takes back out, exactly.
+Check "add then remove restores the original PATH" `
+    (Get-PathWithoutDir (Get-PathWithDir "C:\x;C:\y" "C:\a\bin") "C:\a\bin") "C:\x;C:\y"
+
 # --- Test-PathContainsDir: exact-entry match, NOT substring (the core bug) ---
 # The old `-notlike "*$InstallDir*"` falsely reported the dir present when PATH
 # held a longer entry sharing the prefix, so a needed PATH add was skipped and
