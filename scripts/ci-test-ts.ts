@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -27,6 +28,35 @@ interface TestCommand {
 type CodingAgentTestPartition = Record<CodingAgentBucket, string[]>;
 
 const repoRoot = path.join(import.meta.dir, "..");
+
+// The real veyyon data directory, captured BEFORE any child is spawned with a
+// sandboxed HOME. Once HOME is redirected there is no way back to this value from
+// inside a child: Bun's os.homedir() and os.userInfo().homedir both follow HOME.
+// The parent resolves it once, hands it down, and the tripwire uses it to know
+// exactly what to forbid.
+const REAL_CONFIG_ROOT = path.join(os.homedir(), ".veyyon");
+
+// Absolute path to the real-data tripwire preload, passed to every spawned
+// `bun test`. Chunks run with their package directory as cwd, and Bun reads
+// bunfig.toml from the cwd only, so the repository-root preload is invisible from
+// packages/<name>. Relying on the root bunfig alone left every chunk of a real run
+// unprotected, which surfaced when the tripwire's own suite wrote its probe files
+// into the real config root.
+const TRIPWIRE_PRELOAD = path.join(repoRoot, "packages", "utils", "test", "helpers", "real-data-tripwire.ts");
+const preloadArgs = ["--preload", TRIPWIRE_PRELOAD];
+
+// A disposable HOME handed to every test child. This is PREVENTION, and it is
+// structural rather than advisory: config, credential and session paths are all
+// built from os.homedir(), so a child that starts life with a temp home cannot
+// name real data whatever its own isolation code forgets to do. It must be set at
+// spawn time because Bun resolves os.homedir() once at process start, which is
+// exactly why a suite assigning process.env.HOME in beforeEach once wrote rows
+// into the real credential store while believing it was sandboxed.
+const SANDBOX_HOME = (() => {
+	const sandbox = path.join(os.tmpdir(), `veyyon-test-home-${process.pid}`);
+	nodeFs.mkdirSync(sandbox, { recursive: true });
+	return sandbox;
+})();
 const args = process.argv.slice(2);
 const isDryRun = args.includes("--dry-run");
 const requestedMode = args.find(arg => !arg.startsWith("--")) ?? "all";
@@ -130,6 +160,7 @@ const repoScriptTests = [
 	"scripts/release-sentinel.test.ts",
 	"scripts/release-changelog.test.ts",
 	"website/tools/gen-changelog.test.ts",
+	"website/tools/gen-blog.test.ts",
 ];
 
 const codingAgentNativePathPatterns = [
@@ -256,7 +287,15 @@ function workspaceTestCommand(
 	return {
 		label: pkg,
 		cwd: pkg,
-		command: ["bun", "test", ...(smol ? ["--smol"] : []), `--parallel=${parallel}`, ...perPackageArgs, ...extraArgs],
+		command: [
+			"bun",
+			"test",
+			...preloadArgs,
+			...(smol ? ["--smol"] : []),
+			`--parallel=${parallel}`,
+			...perPackageArgs,
+			...extraArgs,
+		],
 	};
 }
 
@@ -368,7 +407,7 @@ async function codingAgentTestCommands(bucket: CodingAgentBucket): Promise<TestC
 		commands.push({
 			label: `packages/coding-agent (${plan.label}; ${testFiles.length} files; parallel=${plan.parallel}${chunkLabel}; ${chunk.length} files)`,
 			cwd: "packages/coding-agent",
-			command: ["bun", "test", `--parallel=${plan.parallel}`, ...onlyFailuresArgs, ...chunk],
+			command: ["bun", "test", ...preloadArgs, `--parallel=${plan.parallel}`, ...onlyFailuresArgs, ...chunk],
 		});
 	}
 	return commands;
@@ -437,7 +476,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 				{
 					label: "scripts",
 					cwd: ".",
-					command: ["bun", "test", "--parallel=4", ...onlyFailuresArgs, ...repoScriptTests],
+					command: ["bun", "test", ...preloadArgs, "--parallel=4", ...onlyFailuresArgs, ...repoScriptTests],
 				},
 			];
 		// `local` is what root `bun run test` drives: the full TS suite plus the
@@ -523,6 +562,8 @@ function buildChildEnv(): Record<string, string | undefined> {
 		GITHUB_ACTIONS: "",
 		BUN_JSC_useConcurrentGC: "0",
 		BUN_JSC_numberOfGCMarkers: "1",
+		HOME: SANDBOX_HOME,
+		VEYYON_TEST_REAL_CONFIG_ROOT: REAL_CONFIG_ROOT,
 	};
 	for (const key of Object.keys(env)) {
 		if (isScrubbedEnvVar(key)) {
@@ -559,7 +600,7 @@ function isCI(): boolean {
 // Defaults to the machine's available parallelism; `VEYYON_TEST_CONCURRENCY`
 // overrides it — a positive integer to pick an exact width (dial down on a
 // memory-constrained laptop), or `all`/`max` to launch every chunk at once.
-function testConcurrency(total: number): number {
+export function testConcurrency(total: number): number {
 	const raw = Bun.env.VEYYON_TEST_CONCURRENCY?.trim().toLowerCase();
 	if (raw === "all" || raw === "max") {
 		return total;
@@ -568,7 +609,14 @@ function testConcurrency(total: number): number {
 	if (Number.isFinite(override) && override >= 1) {
 		return Math.min(Math.floor(override), total);
 	}
-	return Math.min(Math.max(1, os.availableParallelism()), total);
+	// Sequential by DEFAULT, including on a developer machine. This used to fan out
+	// to os.availableParallelism() chunks, and each chunk is itself a `bun test`
+	// process that spawns further children, so on a many-core workstation a full run
+	// drove the load average past 80 and made the machine unusable while it ran.
+	// Saturating every core is the wrong default for a command someone runs while
+	// still working on that same machine. Opt into fanout with
+	// VEYYON_TEST_CONCURRENCY=<n> (or `all`), which is what CI should set.
+	return 1;
 }
 
 // ANSI styling for interactive runs only; disabled when stdout is not a TTY or
@@ -856,6 +904,111 @@ export async function runTestCommandsInParallel(commands: TestCommand[], concurr
 	}
 }
 
+/**
+ * Paths under the real config root that a LIVE veyyon session writes to as a
+ * matter of course: rotating logs, session transcripts, caches. Excluded on
+ * purpose, because the developer often has veyyon running while the suite runs
+ * and its ordinary logging would report a violation on every run. A guard that
+ * cries wolf is a guard that gets ignored. What stays watched is the surface
+ * whose loss is unrecoverable: credential stores, the global config, the install
+ * id, and the per-profile databases.
+ */
+const LIVE_APP_CHURN = ["logs", path.join("agent", "sessions"), "cache", path.join("agent", "cache")];
+
+export function isLiveAppChurn(target: string, root: string = REAL_CONFIG_ROOT): boolean {
+	const rel = path.relative(root, target);
+	const posix = rel.split(path.sep).join("/");
+	return LIVE_APP_CHURN.some(segment => {
+		const seg = segment.split(path.sep).join("/");
+		return posix === seg || posix.startsWith(`${seg}/`) || posix.includes(`/${seg}/`) || posix.endsWith(`/${seg}`);
+	});
+}
+
+/**
+ * A fingerprint of every FILE under the real veyyon data directory: path, size and
+ * modification time. Contents are deliberately not read; the point is to detect
+ * change, and reading real credential files into memory to prove they were not
+ * touched would be its own small violation. Directories are not recorded, since
+ * creating an empty one is not damage and recording them would flag the parent
+ * chain of an ignored churn directory on every run.
+ */
+export function snapshotRealConfigRoot(root: string = REAL_CONFIG_ROOT): Map<string, string> {
+	const snapshot = new Map<string, string>();
+	const walk = (dir: string): void => {
+		let entries: nodeFs.Dirent[];
+		try {
+			entries = nodeFs.readdirSync(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const full = path.join(dir, entry.name);
+			if (isLiveAppChurn(full, root)) continue;
+			if (entry.isDirectory()) {
+				walk(full);
+				continue;
+			}
+			try {
+				const stat = nodeFs.statSync(full);
+				snapshot.set(full, `${stat.size}:${stat.mtimeMs}`);
+			} catch {
+				snapshot.set(full, "unstattable");
+			}
+		}
+	};
+	walk(root);
+	return snapshot;
+}
+
+/** Every path added, removed or modified between two snapshots. */
+export function diffRealConfigRoot(before: Map<string, string>, after: Map<string, string>): string[] {
+	const changes: string[] = [];
+	for (const [target, fingerprint] of after) {
+		const previous = before.get(target);
+		if (previous === undefined) changes.push(`CREATED  ${target}`);
+		else if (previous !== fingerprint) changes.push(`MODIFIED ${target}`);
+	}
+	for (const target of before.keys()) {
+		if (!after.has(target)) changes.push(`DELETED  ${target}`);
+	}
+	return changes.sort();
+}
+
+/**
+ * Ensure the generated tool-views bundle exists before any TS suite runs.
+ *
+ * `packages/coding-agent/src/export/html/index.ts` imports
+ * `./tool-views.generated.js` with `{ type: "text" }`, which resolves at module
+ * PARSE time, and the file is gitignored build output. A clone or archive of
+ * HEAD therefore fails three suites with "Cannot find module" before a single
+ * assertion runs, and the failure names a missing file rather than a missing
+ * build step. bun runs no root lifecycle script on `bun install` (neither
+ * `prepare` nor `postinstall`), so there is nowhere in install to hang this;
+ * the test entry point is the one place every TS run goes through.
+ *
+ * Regenerating is unconditional only when the file is absent, so a normal run
+ * pays a single `existsSync`.
+ */
+async function ensureToolViewsGenerated(): Promise<void> {
+	const generated = path.join(repoRoot, "packages/coding-agent/src/export/html/tool-views.generated.js");
+	if (nodeFs.existsSync(generated)) return;
+	process.stdout.write("ci-test-ts: generating tool-views.generated.js (missing build artifact)\n");
+	const proc = Bun.spawn(["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"], {
+		cwd: repoRoot,
+		stdout: "inherit",
+		stderr: "inherit",
+	});
+	const code = await proc.exited;
+	// Fail closed and name the fix: continuing here means every suite that
+	// imports the bundle dies with a module-resolution error instead.
+	if (code !== 0) {
+		throw new Error(
+			`ci-test-ts: could not generate ${generated} (exit ${code}). ` +
+				`Run \`bun --cwd=packages/collab-web run gen:tool-views\` and check that install completed.`,
+		);
+	}
+}
+
 // Skipped when imported (e.g. by the runner's own unit tests), where
 // `process.argv` carries test-file paths rather than a mode/flags.
 if (import.meta.main) {
@@ -865,14 +1018,40 @@ if (import.meta.main) {
 		);
 	}
 
+	await ensureToolViewsGenerated();
 	const testCommands = await commandsForMode(requestedMode as Mode);
 	// Outside CI, fan the independent chunk processes out across cores; CI keeps the
 	// sequential, fail-fast path so each memory-capped runner job stays bounded.
-	if (!isDryRun && !isCI() && testCommands.length > 1) {
-		await runTestCommandsInParallel(testCommands, testConcurrency(testCommands.length));
-	} else {
-		for (const testCommand of testCommands) {
-			await runTestCommand(testCommand);
+	// Third protection layer: PROOF. Layers one and two (a sandboxed HOME for every
+	// child, and the tripwire preload) are meant to make real-data writes
+	// impossible, but a safety mechanism believed to work and never checked is how
+	// the original incident happened. So record exactly what the real veyyon
+	// directory contains before the suite runs and verify afterwards that nothing
+	// moved. Any change FAILS the run even when every test passed: a green suite
+	// that modified real credentials is the worst possible thing to report as
+	// success.
+	const before = snapshotRealConfigRoot();
+
+	try {
+		if (!isDryRun && !isCI() && testCommands.length > 1) {
+			await runTestCommandsInParallel(testCommands, testConcurrency(testCommands.length));
+		} else {
+			for (const testCommand of testCommands) {
+				await runTestCommand(testCommand);
+			}
+		}
+	} finally {
+		// In `finally` on purpose: a failing or interrupted run is exactly when a
+		// half-finished suite is most likely to have left damage behind.
+		const changes = diffRealConfigRoot(before, snapshotRealConfigRoot());
+		if (changes.length > 0) {
+			process.exitCode = 1;
+			process.stderr.write(
+				`\nREAL-DATA VIOLATION: the test run modified ${changes.length} path(s) inside ${REAL_CONFIG_ROOT}\n` +
+					`${changes.map(change => `  ${change}\n`).join("")}` +
+					`Tests may only write to temp directories. Find the suite that resolved a real path ` +
+					`(see packages/utils/test/helpers/real-data-tripwire.ts) and fix it before trusting these results.\n`,
+			);
 		}
 	}
 }
