@@ -48,8 +48,8 @@ export async function runSSHCommand(cmd: SSHCommandArgs): Promise<void> {
 			await handleList(cmd);
 			break;
 		default:
-			process.stdout.write(chalk.red(`Unknown action: ${cmd.action}\n`));
-			process.stdout.write(`Valid actions: add, remove, list\n`);
+			process.stderr.write(chalk.red(`Unknown action: ${cmd.action}\n`));
+			process.stderr.write(`Valid actions: add, remove, list\n`);
 			process.exitCode = 1;
 	}
 }
@@ -61,8 +61,8 @@ export async function runSSHCommand(cmd: SSHCommandArgs): Promise<void> {
 async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 	const name = cmd.args[0];
 	if (!name) {
-		process.stdout.write(chalk.red("Error: Host name required\n"));
-		process.stdout.write(
+		process.stderr.write(chalk.red("Error: Host name required\n"));
+		process.stderr.write(
 			chalk.dim("Usage: veyyon ssh add <name> --host <address> [--user <user>] [--port <port>] [--key <path>]\n"),
 		);
 		process.exitCode = 1;
@@ -71,8 +71,8 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 
 	const host = cmd.flags.host;
 	if (!host) {
-		process.stdout.write(chalk.red("Error: --host is required\n"));
-		process.stdout.write(chalk.dim("Usage: veyyon ssh add <name> --host <address>\n"));
+		process.stderr.write(chalk.red("Error: --host is required\n"));
+		process.stderr.write(chalk.dim("Usage: veyyon ssh add <name> --host <address>\n"));
 		process.exitCode = 1;
 		return;
 	}
@@ -81,7 +81,7 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 	if (cmd.flags.port !== undefined) {
 		const port = Number.parseInt(cmd.flags.port, 10);
 		if (Number.isNaN(port) || port < 1 || port > 65535) {
-			process.stdout.write(chalk.red("Error: Port must be an integer between 1 and 65535\n"));
+			process.stderr.write(chalk.red("Error: Port must be an integer between 1 and 65535\n"));
 			process.exitCode = 1;
 			return;
 		}
@@ -101,7 +101,7 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 		await addSSHHost(filePath, name, hostConfig);
 		process.stdout.write(chalk.green(`Added SSH host "${name}" to ${scope} config\n`));
 	} catch (err) {
-		process.stdout.write(chalk.red(`Error: ${errorMessage(err)}\n`));
+		process.stderr.write(chalk.red(`Error: ${errorMessage(err)}\n`));
 		process.exitCode = 1;
 	}
 }
@@ -109,8 +109,8 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 async function handleRemove(cmd: SSHCommandArgs): Promise<void> {
 	const name = cmd.args[0];
 	if (!name) {
-		process.stdout.write(chalk.red("Error: Host name required\n"));
-		process.stdout.write(chalk.dim("Usage: veyyon ssh remove <name> [--scope project|user]\n"));
+		process.stderr.write(chalk.red("Error: Host name required\n"));
+		process.stderr.write(chalk.dim("Usage: veyyon ssh remove <name> [--scope project|user]\n"));
 		process.exitCode = 1;
 		return;
 	}
@@ -122,7 +122,7 @@ async function handleRemove(cmd: SSHCommandArgs): Promise<void> {
 		await removeSSHHost(filePath, name);
 		process.stdout.write(chalk.green(`Removed SSH host "${name}" from ${scope} config\n`));
 	} catch (err) {
-		process.stdout.write(chalk.red(`Error: ${errorMessage(err)}\n`));
+		process.stderr.write(chalk.red(`Error: ${errorMessage(err)}\n`));
 		process.exitCode = 1;
 	}
 }
