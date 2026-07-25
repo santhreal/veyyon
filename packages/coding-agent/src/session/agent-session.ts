@@ -8596,15 +8596,28 @@ export class AgentSession {
 				// cause instead so a provider-side account problem is not mistaken for
 				// veyyon losing the login.
 				const signedIn = this.#modelRegistry.authStorage.hasAuth(provider);
+				// A credential a failed refresh disabled is invisible to `hasAuth`,
+				// because disabled rows are filtered out of the credential list. So
+				// the user whose login was torn down looks identical to the one who
+				// never signed in, and gets told to sign in with nothing saying what
+				// happened to the login they had. Name the cause instead.
+				const disabledCause = signedIn
+					? undefined
+					: this.#modelRegistry.authStorage.disabledCredentialCause(provider);
 				throw new Error(
 					signedIn
 						? `Signed in to ${provider}, but could not get a usable token right now.\n\n` +
 								`The stored token may have expired and its refresh failed, or ${provider} rejected it ` +
 								`(for example a lapsed subscription or unpaid balance). Run /login to refresh it, or check your ${provider} account. ` +
 								`Your credentials are still stored in ${getActiveAuthDbPath()}.`
-						: `No API key found for ${provider}.\n\n` +
-								`Use /login (or \`veyyon setup\`) to sign in to ${provider}, or set its API key environment variable. ` +
-								`Stored credentials live in ${getActiveAuthDbPath()}.`,
+						: disabledCause
+							? `Your ${provider} login was disabled after a token refresh failed, so there is no usable credential right now.\n\n` +
+									`The provider rejected the refresh with: ${disabledCause}\n\n` +
+									`This usually means the refresh token was already spent or revoked, which a crash mid-refresh can cause. ` +
+									`Run /login to sign in again. The disabled credential is still recorded in ${getActiveAuthDbPath()}.`
+							: `No API key found for ${provider}.\n\n` +
+									`Use /login (or \`veyyon setup\`) to sign in to ${provider}, or set its API key environment variable. ` +
+									`Stored credentials live in ${getActiveAuthDbPath()}.`,
 				);
 			}
 
