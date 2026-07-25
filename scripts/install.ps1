@@ -594,6 +594,48 @@ function ConvertFrom-VersionOutput {
     return $null
 }
 
+# Prove the native addon loads, not just that the binary starts. Mirrors
+# doctor_natives in install.sh.
+#
+# --version is served entirely by the JS entry point, so it succeeds on an
+# install whose native addon is missing or was staged for the wrong
+# architecture. The user then gets a clean "veyyon runs" and a failure on their
+# first real command. `grep` is the cheapest command that goes through the
+# native walker and returns a result worth checking, against a file this
+# function writes and knows the contents of.
+function Test-NativeAddon {
+    param([string]$Command)
+    # An older build with no `grep` subcommand is not a broken install.
+    & $Command grep --help *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "!!  this build has no 'grep' command - skipping the native addon self-test" -ForegroundColor Yellow
+        return
+    }
+    $dir = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-doctor.$PID"
+    try {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir "probe.txt") -Value "veyyon-native-self-test"
+    } catch {
+        Write-Host "!!  could not stage $dir - skipping the native addon self-test" -ForegroundColor Yellow
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        return
+    }
+    try {
+        $out = (& $Command grep veyyon-native-self-test $dir 2>&1 | Out-String)
+        $status = $LASTEXITCODE
+    } finally {
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    }
+    if ($status -ne 0) {
+        throw "$BinName starts but cannot run a search: '$BinName grep' exited $status. The native addon did not load, which usually means the release has no build for this architecture. Install from source instead: & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source. Output was: $out"
+    }
+    # Exit 0 is not enough on its own: a walker that returns nothing exits 0 too.
+    if ($out -notmatch 'probe\.txt') {
+        throw "$BinName ran a search but did not find a file it was pointed at. The install is not usable. Output was: $out"
+    }
+    Write-Host "OK  native addon loads - search returned the expected match" -ForegroundColor Green
+}
+
 function Invoke-Doctor {
     param([string]$Command, [string]$ExpectedTag)
     Write-Host ""
@@ -625,6 +667,7 @@ function Invoke-Doctor {
             throw "installed $BinName reports $got but the $ExpectedTag release was requested - the release may have published a mismatched binary. The file at $Command is NOT the version you asked for; re-run the installer or pin with -Ref."
         }
     }
+    Test-NativeAddon -Command $Command
     # Both names the user might type must reach the copy just installed (mirrors
     # check_not_shadowed in install.sh).
     $binDir = Split-Path -Parent $Command
