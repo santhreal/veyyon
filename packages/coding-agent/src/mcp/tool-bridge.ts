@@ -329,6 +329,13 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	readonly approval = "write" as const;
 	/** Render completed MCP calls with the result header replacing the pending call header. */
 	readonly mergeCallAndResult = true;
+	/**
+	 * MCP-backed tools opt out of strict structured-output grammar. The server
+	 * owns validation, and strict mode makes OpenAI-family models over-fill
+	 * mutually exclusive optional fields (#4336/#4340). Serializers preserve an
+	 * explicit `false`; an omitted flag would leave nothing to preserve.
+	 */
+	readonly strict = false as const;
 
 	/** Create MCPTool instances for all tools from an MCP server connection */
 	static fromTools(connection: MCPServerConnection, tools: MCPToolDefinition[], reconnect?: MCPReconnect): MCPTool[] {
@@ -415,6 +422,8 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	readonly approval = "write" as const;
 	/** Render completed MCP calls with the result header replacing the pending call header. */
 	readonly mergeCallAndResult = true;
+	/** See {@link MCPTool.strict}: MCP servers own validation, so stay non-strict. */
+	readonly strict = false as const;
 
 	readonly #fallbackProvider: string | undefined;
 	readonly #fallbackProviderName: string | undefined;

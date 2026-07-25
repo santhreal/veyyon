@@ -45,22 +45,57 @@ function createFakeConnection() {
 	};
 }
 
+/**
+ * A source MCP tool that hangs until its signal aborts, standing in for the real
+ * `MCPTool` whose `execute` performs the transport request.
+ *
+ * The proxy used to rebuild a raw `tools/call` against the connection, so these
+ * tests captured the signal at a fake transport. It now delegates to the source
+ * tool instead (upstream #6242), which is the boundary that owns harness-intent
+ * stripping, local-URL resolution and reconnect retry, so the signal has to be
+ * observed there. Every assertion is unchanged: the proxy must hand the source
+ * a live signal, leave it unaborted while the call is in flight, and abort it on
+ * caller abort or on the 60s Task timeout.
+ */
+function createHangingSourceTool(): {
+	tool: CustomTool;
+	getCapturedSignal: () => AbortSignal | undefined;
+	executeCalled: () => boolean;
+} {
+	let capturedSignal: AbortSignal | undefined;
+	let called = false;
+	const tool = {
+		name: "test_tool",
+		label: "Test Tool",
+		description: "A test tool",
+		strict: false,
+		mcpToolName: "test_tool",
+		mcpServerName: "test-server",
+		parameters: { type: "object", properties: {} },
+		execute: (
+			_id: string,
+			_params: unknown,
+			_onUpdate: unknown,
+			_ctx: unknown,
+			signal?: AbortSignal,
+		): Promise<never> => {
+			called = true;
+			capturedSignal = signal;
+			const { promise, reject } = Promise.withResolvers<never>();
+			if (signal?.aborted) reject(new ToolAbortError());
+			else signal?.addEventListener("abort", () => reject(new ToolAbortError()));
+			return promise;
+		},
+	} as unknown as CustomTool;
+	return { tool, getCapturedSignal: () => capturedSignal, executeCalled: () => called };
+}
+
 test("MCP proxy tool aborts underlying operation on caller abort", async () => {
 	const fake = createFakeConnection();
 	const manager = new MCPManager(process.cwd());
 
-	const toolsData: CustomTool[] = [
-		{
-			name: "test_tool",
-			label: "Test Tool",
-			description: "A test tool",
-			strict: false,
-			mcpToolName: "test_tool",
-			mcpServerName: "test-server",
-			parameters: { type: "object", properties: {} },
-			execute: async () => ({ content: [] }),
-		} as CustomTool,
-	];
+	const source = createHangingSourceTool();
+	const toolsData: CustomTool[] = [source.tool];
 
 	vi.spyOn(manager, "getTools").mockReturnValue(toolsData);
 	vi.spyOn(manager, "waitForConnection").mockResolvedValue(fake.connection);
@@ -75,13 +110,13 @@ test("MCP proxy tool aborts underlying operation on caller abort", async () => {
 	const ac = new AbortController();
 	const executePromise = proxyTool.execute("call_1", {}, () => {}, {} as CustomToolContext, ac.signal);
 
-	// Let the promise reach transport.request
+	// Let the promise reach the source tool's execute
 	await Promise.resolve();
 	await Promise.resolve();
 	await Promise.resolve();
 
-	expect(fake.requestCalled()).toBe(true);
-	const capturedSignal = fake.getCapturedSignal();
+	expect(source.executeCalled()).toBe(true);
+	const capturedSignal = source.getCapturedSignal();
 	expect(capturedSignal).toBeDefined();
 	if (!capturedSignal) return;
 	expect(capturedSignal.aborted).toBe(false);
@@ -104,18 +139,8 @@ test("MCP proxy tool aborts underlying operation on timeout", async () => {
 		const fake = createFakeConnection();
 		const manager = new MCPManager(process.cwd());
 
-		const toolsData: CustomTool[] = [
-			{
-				name: "test_tool",
-				label: "Test Tool",
-				description: "A test tool",
-				strict: false,
-				mcpToolName: "test_tool",
-				mcpServerName: "test-server",
-				parameters: { type: "object", properties: {} },
-				execute: async () => ({ content: [] }),
-			} as CustomTool,
-		];
+		const source = createHangingSourceTool();
+		const toolsData: CustomTool[] = [source.tool];
 
 		vi.spyOn(manager, "getTools").mockReturnValue(toolsData);
 		vi.spyOn(manager, "waitForConnection").mockResolvedValue(fake.connection);
@@ -129,13 +154,13 @@ test("MCP proxy tool aborts underlying operation on timeout", async () => {
 
 		const executePromise = proxyTool.execute("call_1", {}, () => {}, {} as CustomToolContext, undefined);
 
-		// Let the promise reach transport.request
+		// Let the promise reach the source tool's execute
 		await Promise.resolve();
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(fake.requestCalled()).toBe(true);
-		const capturedSignal = fake.getCapturedSignal();
+		expect(source.executeCalled()).toBe(true);
+		const capturedSignal = source.getCapturedSignal();
 		expect(capturedSignal).toBeDefined();
 		if (!capturedSignal) return;
 		expect(capturedSignal.aborted).toBe(false);

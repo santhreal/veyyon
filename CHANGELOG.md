@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed Task subagents calling MCP tools through a rebuilt raw request, which bypassed the source tool's harness-intent stripping, local-URL resolution and reconnect retry, and marked MCP-backed tools non-strict so the server owns validation ([#6242](https://github.com/can1357/oh-my-pi/issues/6242)).
 - Fixed Enter submitting the collab-web composer while an IME composition was still open, so the keystroke sent a half-composed message instead of confirming the candidate ([#6229](https://github.com/can1357/oh-my-pi/issues/6229)).
 - Fixed a configured `modelRoles.default` on a discovery provider being replaced at startup by an unrelated authenticated provider's default, when a cold catalog cache meant the role could not yet resolve ([#6233](https://github.com/can1357/oh-my-pi/issues/6233)).
 - Fixed `session_stop` extension hooks running when a prompt was aborted or the session was disposed, so an abort could still trigger stop-hook work and its continuation state ([#6226](https://github.com/can1357/oh-my-pi/issues/6226)).
