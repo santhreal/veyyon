@@ -1,15 +1,10 @@
 import { YAML } from "bun";
 import { truncate } from "./format";
 import * as logger from "./logger";
+import { kebabToCamel } from "./string-case";
 
 function stripHtmlComments(content: string): string {
 	return content.replace(/<!--[\s\S]*?-->/g, "");
-}
-
-/** Convert kebab-case to camelCase (e.g. "thinking-level" -> "thinkingLevel") */
-function kebabToCamel(key: string): string {
-	if (!key.includes("-")) return key;
-	return key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 }
 
 /** Recursively normalize object keys from kebab-case to camelCase */
