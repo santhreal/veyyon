@@ -32,7 +32,12 @@ ALIAS_NAME="vey"
 # broken PATH the fork fails and the alias silently reads as "not ours". 0 until
 # link_alias has actually run, so nothing assumes ownership it has not checked.
 ALIAS_IS_OURS=0
-INSTALL_DIR="${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"
+# Where the binary and the alias go, resolved on every use rather than when this
+# file is sourced — same reason as src_dir below: a $HOME set after sourcing
+# must be followed, and this path guards removals. It also collapses two names
+# for one thing: callers were setting INSTALL_DIR and VEYYON_INSTALL_DIR
+# together because it was not obvious which one was read.
+install_dir() { printf '%s' "${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"; }
 MIN_BUN_VERSION="1.3.14"
 
 # Retry transient network failures on every download (a dropped connection or a
@@ -538,10 +543,10 @@ doctor() {
 # staging file out from under it. $$ makes the path per-process; the binary
 # updater keeps its temp unique for exactly the same reason.
 #
-# It stays inside $INSTALL_DIR on purpose: finalize_binary renames it into place,
+# It stays inside the install dir on purpose: finalize_binary renames it into place,
 # and a rename is only atomic within one filesystem.
 staging_path() {
-    printf '%s/.%s.%s.%s' "$INSTALL_DIR" "$BIN_NAME" "$1" "$$"
+    printf '%s/.%s.%s.%s' "$(install_dir)" "$BIN_NAME" "$1" "$$"
 }
 
 # ---- place a downloaded binary at its final path, atomically ----
@@ -680,7 +685,7 @@ alias_in_dir_is_ours() {
 
 do_uninstall() {
     removed=0
-    for d in "$INSTALL_DIR" "$HOME/.bun/bin"; do
+    for d in "$(install_dir)" "$HOME/.bun/bin"; do
         # The alias is checked BEFORE the binary is removed, and it is checked at
         # all because install refuses to overwrite a `vey` the user already has.
         # Uninstall deleted it anyway, so removing veyyon destroyed the user's own
@@ -765,7 +770,7 @@ do_uninstall() {
 '
     for rc in $_rc_list; do
         IFS=$_old_ifs
-        if remove_path_line_from_rc "$rc" "$INSTALL_DIR"; then
+        if remove_path_line_from_rc "$rc" "$(install_dir)"; then
             ok "removed the veyyon PATH line from $rc"
             removed=1
         fi
@@ -775,7 +780,7 @@ do_uninstall() {
     IFS=$_old_ifs
     # Staging files a killed install left behind are ours too (Windows sweeps
     # its equivalents in Uninstall-Veyyon).
-    for stale in "$INSTALL_DIR/.$BIN_NAME".*; do
+    for stale in "$(install_dir)/.$BIN_NAME".*; do
         [ -e "$stale" ] && rm -f "$stale" && { ok "removed leftover $stale"; removed=1; }
     done
     [ "$removed" -eq 1 ] && say "veyyon uninstalled." || say "nothing to uninstall."
@@ -1026,13 +1031,13 @@ install_via_bun() {
     say "ensuring native addon (packages/natives)..."
     ( cd "$(src_dir)" && bun --cwd=packages/natives run ensure ) \
         || die "failed to provision the native addon (bun --cwd=packages/natives run ensure)"
-    mkdir -p "$INSTALL_DIR"
-    ln -sfn "$launcher" "$INSTALL_DIR/$BIN_NAME" || die "failed to link $BIN_NAME into $INSTALL_DIR"
+    mkdir -p "$(install_dir)"
+    ln -sfn "$launcher" "$(install_dir)/$BIN_NAME" || die "failed to link $BIN_NAME into $(install_dir)"
     ok "installed $BIN_NAME (source) -> $launcher"
-    link_alias "$INSTALL_DIR"
-    install_completions "$INSTALL_DIR/$BIN_NAME"
-    ensure_on_path "$INSTALL_DIR"
-    doctor "$INSTALL_DIR/$BIN_NAME"
+    link_alias "$(install_dir)"
+    install_completions "$(install_dir)/$BIN_NAME"
+    ensure_on_path "$(install_dir)"
+    doctor "$(install_dir)/$BIN_NAME"
     print_next_steps
 }
 
@@ -1047,19 +1052,19 @@ install_local() {
     # dist/ in the current directory otherwise shadows a fresh package build with
     # nothing on screen to explain which binary was actually installed.
     say "installing the local build at $local_bin"
-    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$(install_dir)"
     tmpbin=$(staging_path local)
     # Same cleanup contract as install_binary: a Ctrl-C or a failed copy must not
     # leave a staging file behind in the user's install directory.
     trap 'rm -f "$tmpbin"' EXIT INT TERM
-    cp -f "$local_bin" "$tmpbin" || die "could not stage $local_bin into $INSTALL_DIR"
-    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME" "rebuild it with 'bun scripts/build-binary.ts' in packages/coding-agent"
+    cp -f "$local_bin" "$tmpbin" || die "could not stage $local_bin into $(install_dir)"
+    finalize_binary "$tmpbin" "$(install_dir)/$BIN_NAME" "rebuild it with 'bun scripts/build-binary.ts' in packages/coding-agent"
     trap - EXIT INT TERM
-    ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
-    link_alias "$INSTALL_DIR"
-    install_completions "$INSTALL_DIR/$BIN_NAME"
-    ensure_on_path "$INSTALL_DIR"
-    doctor "$INSTALL_DIR/$BIN_NAME"
+    ok "installed $BIN_NAME to $(install_dir)/$BIN_NAME"
+    link_alias "$(install_dir)"
+    install_completions "$(install_dir)/$BIN_NAME"
+    ensure_on_path "$(install_dir)"
+    doctor "$(install_dir)/$BIN_NAME"
     print_next_steps
 }
 
@@ -1131,7 +1136,7 @@ install_binary() {
     [ -z "$LATEST" ] && die "failed to parse release tag"
     say "version: $LATEST"
 
-    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$(install_dir)"
     BINARY_URL="https://github.com/${REPO}/releases/download/${LATEST}/${BINARY}"
     tmpbin=$(staging_path download)
     # Never leave a partial or tampered download behind: a failed curl, a
@@ -1144,13 +1149,13 @@ install_binary() {
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
 
-    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME" "the download did not complete — retry, or use --source"
+    finalize_binary "$tmpbin" "$(install_dir)/$BIN_NAME" "the download did not complete — retry, or use --source"
     trap - EXIT INT TERM
-    ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
-    link_alias "$INSTALL_DIR"
-    install_completions "$INSTALL_DIR/$BIN_NAME"
-    ensure_on_path "$INSTALL_DIR"
-    doctor "$INSTALL_DIR/$BIN_NAME" "$LATEST"
+    ok "installed $BIN_NAME to $(install_dir)/$BIN_NAME"
+    link_alias "$(install_dir)"
+    install_completions "$(install_dir)/$BIN_NAME"
+    ensure_on_path "$(install_dir)"
+    doctor "$(install_dir)/$BIN_NAME" "$LATEST"
     print_next_steps
 }
 

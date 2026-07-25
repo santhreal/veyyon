@@ -288,7 +288,7 @@ complete -c vey -w veyyon"
 
   # Uninstall reclaims every file install wrote, alias included.
   install_completions "$fakebin" >/dev/null 2>&1
-  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
   check "uninstall removed the bash completion" "$( [ -e "$bashdir/veyyon" ] && echo present || echo absent )" "absent"
   check "uninstall removed the bash alias completion" "$( [ -e "$bashdir/vey" ] && echo present || echo absent )" "absent"
   check "uninstall removed the zsh completion" "$( [ -e "$zshdir/_veyyon" ] && echo present || echo absent )" "absent"
@@ -505,7 +505,7 @@ check "an unloaded completions dir never fails the install" "$?" "0"
       "$(grep -c 'complete -c vey ' "$fishdir/veyyon.fish" 2>/dev/null)" "0"
 
   # And uninstall must not reclaim what install declined to write, either.
-  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
   check "uninstall leaves a foreign vey bash completion" "$(cat "$bashdir/vey" 2>/dev/null)" "complete -F _their_tool vey"
   check "uninstall leaves a foreign vey fish completion" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c vey -a their-subcommand" )
 unset XDG_DATA_HOME XDG_CONFIG_HOME
@@ -681,17 +681,17 @@ check "remove_path_line_from_rc introduces no ordinary global names" \
 # the same defect for a different reason: they never set the flag at all.
 check "removing only the PATH line still counts as an uninstall" \
     "$( ( _h="$SANDBOX/uninst-verdict-path"
-  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
   unset XDG_DATA_HOME XDG_CONFIG_HOME
-  mkdir -p "$INSTALL_DIR"
-  printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$INSTALL_DIR:\$PATH\"" > "$_h/.bashrc"
+  mkdir -p "$(install_dir)"
+  printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$(install_dir):\$PATH\"" > "$_h/.bashrc"
   do_uninstall 2>&1 | tail -1 ) )" "veyyon uninstalled."
 
 check "removing only completions still counts as an uninstall" \
     "$( ( _h="$SANDBOX/uninst-verdict-comp"
   export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
-  export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR" "$(completions_dir_for bash)"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)" "$(completions_dir_for bash)"
   printf 'complete -F _veyyon veyyon\n' > "$(completions_dir_for bash)/veyyon"
   do_uninstall 2>&1 | tail -1 ) )" "veyyon uninstalled."
 
@@ -700,16 +700,16 @@ check "removing only completions still counts as an uninstall" \
 check "an empty home still reports nothing to uninstall" \
     "$( ( _h="$SANDBOX/uninst-verdict-empty"
   export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
-  export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
   do_uninstall 2>&1 | tail -1 ) )" "nothing to uninstall."
 
 # A rc the user owns but that never held our line must not flip the verdict.
 check "an unrelated rc does not count as something removed" \
     "$( ( _h="$SANDBOX/uninst-verdict-foreign-rc"
   export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
-  export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
   printf 'alias ll=ls\n' > "$_h/.bashrc"
   do_uninstall 2>&1 | tail -1 ) )" "nothing to uninstall."
 
@@ -737,46 +737,46 @@ check "launch_command is the single owner of that choice" \
 # applied where it was missing.
 check "uninstall removes our binary but keeps a foreign vey" \
     "$( ( _h="$SANDBOX/uninst-foreign-alias2"
-  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR"
-  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
-  printf '#!/bin/sh\necho their tool\n' > "$INSTALL_DIR/vey"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
+  printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
+  printf '#!/bin/sh\necho their tool\n' > "$(install_dir)/vey"
   do_uninstall >/dev/null 2>&1
-  echo "$( [ -e "$INSTALL_DIR/veyyon" ] && echo bin-present || echo bin-gone ) $(tail -1 "$INSTALL_DIR/vey" 2>/dev/null)" ) )" \
+  echo "$( [ -e "$(install_dir)/veyyon" ] && echo bin-present || echo bin-gone ) $(tail -1 "$(install_dir)/vey" 2>/dev/null)" ) )" \
     "bin-gone echo their tool"
 
 # It says so rather than removing it silently: the user needs to know a `vey`
 # still on their PATH is theirs, not a leftover of ours.
 check "uninstall says it left a foreign vey alone" \
     "$( ( _h="$SANDBOX/uninst-foreign-alias3"
-  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR"
-  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
-  printf '#!/bin/sh\necho their tool\n' > "$INSTALL_DIR/vey"
-  do_uninstall 2>&1 | grep -c "left $INSTALL_DIR/vey alone" ) )" "1"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
+  printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
+  printf '#!/bin/sh\necho their tool\n' > "$(install_dir)/vey"
+  do_uninstall 2>&1 | grep -c "left $(install_dir)/vey alone" ) )" "1"
 
 # A symlink pointing somewhere ELSE is not ours either: link_alias only ever
 # writes one pointing at the binary beside it.
 check "uninstall keeps a vey symlinked to another tool" \
     "$( ( _h="$SANDBOX/uninst-foreign-link"
-  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR"
-  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
+  printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
   printf '#!/bin/sh\necho other\n' > "$_h/their-tool"
-  ln -s "$_h/their-tool" "$INSTALL_DIR/vey"
+  ln -s "$_h/their-tool" "$(install_dir)/vey"
   do_uninstall >/dev/null 2>&1
-  [ -L "$INSTALL_DIR/vey" ] && echo kept || echo removed ) )" "kept"
+  [ -L "$(install_dir)/vey" ] && echo kept || echo removed ) )" "kept"
 
 # The positive twin: an alias we DID create is still reclaimed, or uninstall
 # leaves a dangling `vey` on the user's PATH forever.
 check "uninstall removes an alias it created" \
     "$( ( _h="$SANDBOX/uninst-own-alias"
-  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
-  mkdir -p "$INSTALL_DIR"
-  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
-  ln -s "$INSTALL_DIR/veyyon" "$INSTALL_DIR/vey"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
+  printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
+  ln -s "$(install_dir)/veyyon" "$(install_dir)/vey"
   do_uninstall >/dev/null 2>&1
-  [ -e "$INSTALL_DIR/vey" ] || [ -L "$INSTALL_DIR/vey" ] && echo present || echo gone ) )" "gone"
+  [ -e "$(install_dir)/vey" ] || [ -L "$(install_dir)/vey" ] && echo present || echo gone ) )" "gone"
 
 # --- do_uninstall: removes veyyon + vey from the sandboxed install dir only ---
 do_uninstall >/dev/null 2>&1
@@ -795,7 +795,7 @@ check "uninstall removed vey" "$( [ -e "$VEYYON_INSTALL_DIR/vey" ] && echo prese
   printf 'STAGED-ADDON' > "$_h/.veyyon/natives/1.0.37/veyyon_natives.linux-x64-modern.node"
   printf '{"token":"keep-me"}' > "$_h/.veyyon/auth.json"
   printf 'session-data' > "$_h/.veyyon/sessions/a.json"
-  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
   check "uninstall removed the native addon cache (~/.veyyon/natives)" "$( [ -e "$_h/.veyyon/natives" ] && echo present || echo gone )" "gone"
   check "uninstall preserved ~/.veyyon/auth.json (user credentials)" "$(cat "$_h/.veyyon/auth.json" 2>/dev/null)" '{"token":"keep-me"}'
   check "uninstall preserved ~/.veyyon/sessions (user data)" "$( [ -d "$_h/.veyyon/sessions" ] && echo present || echo gone )" "present" )
@@ -809,7 +809,7 @@ check "uninstall removed vey" "$( [ -e "$VEYYON_INSTALL_DIR/vey" ] && echo prese
   mkdir -p "$_x/veyyon/natives/1.0.37" "$_h/.veyyon/natives/1.0.37"
   printf 'XDG-ADDON' > "$_x/veyyon/natives/1.0.37/veyyon_natives.linux-x64-modern.node"
   printf 'HOME-ADDON' > "$_h/.veyyon/natives/1.0.37/veyyon_natives.linux-x64-modern.node"
-  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
   check "uninstall removed the XDG native cache when \$XDG_DATA_HOME/veyyon exists" "$( [ -e "$_x/veyyon/natives" ] && echo present || echo gone )" "gone"
   # The loader would resolve to the XDG path here, so ~/.veyyon/natives is NOT the
   # active cache and uninstall leaves it (only the active getNativesDir cache is
@@ -823,7 +823,7 @@ check "uninstall removed vey" "$( [ -e "$VEYYON_INSTALL_DIR/vey" ] && echo prese
   mkdir -p "$_d"
   printf 'ADDON' > "$_d/veyyon_natives.linux-x64-modern.node"
   printf 'BIN' > "$_d/veyyon"
-  ( INSTALL_DIR="$_d" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_d" do_uninstall >/dev/null 2>&1 )
   check "uninstall swept the addon staged beside the binary" "$( [ -e "$_d/veyyon_natives.linux-x64-modern.node" ] && echo present || echo gone )" "gone" )
 unset XDG_DATA_HOME
 export HOME="$SANDBOX/home"
@@ -895,6 +895,28 @@ write_stub_binary() {
     chmod +x "$_sb_path"
 }
 
+# --- install_dir: one owner, resolved on use ---
+# INSTALL_DIR was a top-level assignment reading $HOME at load, and it guards
+# removals: an uninstall run under a sandbox HOME resolved the bin directory
+# under the REAL one. It was also a second name for VEYYON_INSTALL_DIR, which is
+# why the cases in this file used to set BOTH — nobody could tell which was read.
+check "install_dir follows a HOME set after this script was sourced" \
+    "$( ( unset VEYYON_INSTALL_DIR; HOME="$SANDBOX/bindir-home"; install_dir ) )" "$SANDBOX/bindir-home/.local/bin"
+
+check "an exported VEYYON_INSTALL_DIR still wins over HOME" \
+    "$( ( HOME="$SANDBOX/bindir-home"; VEYYON_INSTALL_DIR="$SANDBOX/elsewhere-bin"; install_dir ) )" "$SANDBOX/elsewhere-bin"
+
+# The behavioural half: a VEYYON_INSTALL_DIR set at CALL time has to be the
+# directory the uninstall acts on. Under the load-time binding it was ignored
+# entirely — the removal went to whatever the value had been when install.sh was
+# sourced, which is how a run aimed at a sandbox reached somewhere else.
+check "an uninstall acts on the VEYYON_INSTALL_DIR set at call time" \
+    "$( ( _sand="$SANDBOX/bindir-sandbox"
+  mkdir -p "$_sand/bin"
+  printf '#!/bin/sh\necho veyyon\n' > "$_sand/bin/veyyon"
+  ( HOME="$_sand" VEYYON_INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1 )
+  [ -e "$_sand/bin/veyyon" ] && echo left || echo removed ) )" "removed"
+
 # --- src_dir: the checkout path must follow $HOME, not the $HOME at load ---
 # `VEYYON_SRC_DIR="${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"` was a TOP-LEVEL
 # assignment, so it bound $HOME once when this file sourced install.sh. Every
@@ -922,13 +944,13 @@ check "an uninstall under one HOME leaves the load-time HOME's checkout alone" \
     "$( ( _loadtime="$SANDBOX/home"; _sand="$SANDBOX/sandbox-home"
   mkdir -p "$_loadtime/.veyyon/src/.git" "$_sand/.veyyon/src/.git" "$_sand/bin"
   printf 'planted\n' > "$_loadtime/.veyyon/src/marker"
-  HOME="$_sand" INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1
+  HOME="$_sand" VEYYON_INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1
   [ -f "$_loadtime/.veyyon/src/marker" ] && echo untouched || echo clobbered ) )" "untouched"
 
 check "and it does remove the checkout under the HOME it was given" \
     "$( ( _sand="$SANDBOX/sandbox-home2"
   mkdir -p "$_sand/.veyyon/src/.git" "$_sand/bin"
-  HOME="$_sand" INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1
+  HOME="$_sand" VEYYON_INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1
   [ -e "$_sand/.veyyon/src" ] && echo left || echo removed ) )" "removed"
 
 # --- doctor_natives: prove the addon loads, not just that the binary starts ---
@@ -1322,7 +1344,7 @@ if command -v git >/dev/null 2>&1; then
     ( cd "$us" && git checkout -q -b veyyon-local-keep \
         && printf 'RECOVER ME\n' > AGENTS.md && git add -A && git commit -qm wip \
         && git checkout -q main )
-    ( VEYYON_SRC_DIR="$us" INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    ( VEYYON_SRC_DIR="$us" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
     check "uninstall did NOT delete a checkout holding unpushed work" "$( [ -e "$us" ] && echo present || echo gone )" "gone"
     usbak=$(ls -d "$us".bak-* 2>/dev/null | head -1)
     check "uninstall moved the checkout aside instead of deleting" "$( [ -d "$usbak/.git" ] && echo yes || echo no )" "yes"
@@ -1332,7 +1354,7 @@ if command -v git >/dev/null 2>&1; then
     # A pristine, fully-pushed checkout is removed outright (normal uninstall).
     up="$SANDBOX/uninstall-pristine"
     make_cloned_repo "$up"
-    ( VEYYON_SRC_DIR="$up" INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    ( VEYYON_SRC_DIR="$up" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
     check "uninstall removes a pristine pushed checkout outright" "$( [ -e "$up" ] && echo present || echo gone )" "gone"
     check "pristine uninstall left no move-aside backup" "$( ls -d "$up".bak-* 2>/dev/null | wc -l | tr -d ' ' )" "0"
 else
@@ -1476,7 +1498,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   check "install wrote the PATH line" "$(grep -c "^export PATH=\"$_h/bin:\\\$PATH\"$" "$_h/.bashrc")" "1"
   check "install wrote its marker comment" "$(grep -c '^# added by the veyyon installer$' "$_h/.bashrc")" "1"
 
-  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   check "uninstall removed the PATH line" "$(grep -c "$_h/bin" "$_h/.bashrc")" "0"
   check "uninstall removed the marker comment with it" "$(grep -c 'added by the veyyon installer' "$_h/.bashrc")" "0"
   check "the user's own rc content survives" "$(grep -c '^alias ll=\"ls -l\"$' "$_h/.bashrc")" "1"
@@ -1490,7 +1512,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   export HOME="$_h"
   mkdir -p "$_h" "$_h/bin"
   printf '# my own PATH setup\nexport PATH="%s/bin:$PATH"\nexport EDITOR=vi\n' "$_h" > "$_h/.bashrc"
-  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   # The line is byte-identical to ours, so it does go — but the user's OWN
   # comment above it must not, and nothing else in the file may move.
   check "the user's unrelated comment is untouched" "$(grep -c '^# my own PATH setup$' "$_h/.bashrc")" "1"
@@ -1503,7 +1525,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   export HOME="$_h"
   mkdir -p "$_h" "$_h/bin"
   printf 'export PATH="%s/bin2:$PATH"\n' "$_h" > "$_h/.bashrc"
-  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   check "a prefix-sharing PATH line is left alone" "$(grep -c "bin2" "$_h/.bashrc")" "1" )
 
 # fish writes a different line shape, and uninstall must know that too.
@@ -1512,7 +1534,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   mkdir -p "$_h/.config/fish" "$_h/bin"
   ( uname() { printf 'Linux\n'; }; SHELL=/usr/bin/fish; ensure_on_path "$_h/bin" >/dev/null 2>&1 )
   check "fish: install wrote fish_add_path" "$(grep -c "^fish_add_path $_h/bin$" "$_h/.config/fish/config.fish")" "1"
-  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   check "fish: uninstall removed it" "$(grep -c 'fish_add_path' "$_h/.config/fish/config.fish")" "0" )
 
 # An rc that is a SYMLINK into a dotfiles repo must stay a symlink: rewriting
@@ -1523,7 +1545,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   mkdir -p "$_h/dotfiles" "$_h/bin"
   printf 'export PATH="%s/bin:$PATH"\n' "$_h" > "$_h/dotfiles/bashrc"
   ln -s "$_h/dotfiles/bashrc" "$_h/.bashrc"
-  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   check "the rc is still a symlink after the rewrite" "$( [ -L "$_h/.bashrc" ] && echo yes || echo no )" "yes"
   check "the rewrite went through to the real file" "$(grep -c 'bin:' "$_h/dotfiles/bashrc")" "0" )
 
@@ -1534,7 +1556,7 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   : > "$_h/bin/.veyyon.download.12345"
   : > "$_h/bin/.veyyon.local.999"
   : > "$_h/bin/.someone-elses-file"
-  ( INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
+  ( VEYYON_INSTALL_DIR="$_h/bin" do_uninstall >/dev/null 2>&1 )
   check "a leftover download staging file is reclaimed" "$( [ -e "$_h/bin/.veyyon.download.12345" ] && echo present || echo absent )" "absent"
   check "a leftover local staging file is reclaimed" "$( [ -e "$_h/bin/.veyyon.local.999" ] && echo present || echo absent )" "absent"
   check "an unrelated dotfile in the install dir is left alone" "$( [ -e "$_h/bin/.someone-elses-file" ] && echo present || echo absent )" "present" )
