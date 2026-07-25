@@ -186,6 +186,15 @@ version you are running rather than the version the script was written for. A
 value only you know, an API key or a search term, is left alone: completion
 offers nothing rather than a list of your files.
 
+Attachments complete as paths. A word starting with `@` names a file to send
+along with your message, so the shell completes it the way it completes any
+path:
+
+```console
+$ vey @src/ma<Tab>
+@src/main.ts
+```
+
 Windows works differently, because PowerShell has no directory it autoloads
 completions from. The installer writes `veyyon-completions.ps1` next to your
 profile and adds one line to the profile that loads it:
