@@ -495,10 +495,78 @@ export function artifactFooter(id: string): string {
 	return `[raw output: artifact://${id}]`;
 }
 
+/**
+ * How many more turns a result entering at `turnIndex` is expected to be
+ * re-read for, given a typical session length.
+ *
+ * WHY THIS EXISTS. A tool result is not paid for once. It stays in context and
+ * is re-read as a cache token on every later turn, so what a result actually
+ * costs is its size multiplied by how much session is left. On a measured
+ * 66-turn trace a 40k-char `go test` result arrived at turn 13 and was re-read
+ * 52 times, costing about 4.7% of the entire session bill; the same bytes
+ * arriving at turn 60 would have cost almost nothing.
+ *
+ * A fixed byte cap is blind to this. It spills a huge late result that was
+ * nearly free and keeps a moderate early one that will be billed sixty more
+ * times. This is the multiplier that lets the cap price the difference.
+ *
+ * `horizon` is the assumed session length. It is an estimate and does not need
+ * to be right: the ordering it produces (earlier costs more) holds for any
+ * horizon, and only the strength of the effect changes. Turns past the horizon
+ * clamp to one remaining read rather than to zero, because a result is always
+ * read at least by the turn it arrives on.
+ */
+export function expectedRereads(turnIndex: number, horizon = DEFAULT_SESSION_HORIZON_TURNS): number {
+	return Math.max(1, horizon - Math.max(0, turnIndex));
+}
+
+/**
+ * Typical agent session length, in turns, used to price how long a result will
+ * sit in context.
+ *
+ * Measured rather than guessed: the DeepSWE traces run 66 and 79 turns for the
+ * two arms of `runs/argot-smoke-0724`. Sixty is a deliberately conservative
+ * round number just under those, so the mechanism understates how expensive
+ * early output is rather than overstating it.
+ */
+export const DEFAULT_SESSION_HORIZON_TURNS = 60;
+
+/**
+ * The inline budget a result deserves given when it arrives.
+ *
+ * Early results are held to a TIGHTER cap and spill to an artifact sooner,
+ * because they will be re-read for the rest of the session. Late results get
+ * the full budget, because almost nothing re-reads them. The total context cost
+ * a result is allowed to incur is therefore roughly constant, instead of its
+ * inline size being constant.
+ *
+ * The floor matters: it stops the earliest turns from being squeezed to
+ * nothing, which would spill the very output an agent most needs to see while
+ * it is still orienting, and would trade cost for the extra turns that a
+ * needless retrieval costs.
+ */
+export function inlineCapForTurn(
+	maxBytes: number,
+	turnIndex: number,
+	horizon = DEFAULT_SESSION_HORIZON_TURNS,
+	floorFraction = 0.25,
+): number {
+	const rereads = expectedRereads(turnIndex, horizon);
+	const scaled = Math.round((maxBytes * expectedRereads(horizon, horizon)) / rereads);
+	return Math.max(Math.round(maxBytes * floorFraction), Math.min(maxBytes, scaled));
+}
+
 /** Options for {@link enforceInlineByteCap}. */
 export interface InlineByteCapOptions {
 	/** Inline byte budget. Defaults to {@link DEFAULT_MAX_BYTES}. */
 	maxBytes?: number;
+	/**
+	 * Turn this result arrives on. When given, the effective cap is scaled by
+	 * {@link inlineCapForTurn} so an early result, which will be re-read for the
+	 * rest of the session, spills sooner than a late one. Omit to keep the flat
+	 * cap.
+	 */
+	turnIndex?: number;
 	/**
 	 * Persist the full text as a session artifact. When an artifact id is
 	 * returned, a `[raw output: artifact://<id>]` footer is appended so the
@@ -520,7 +588,11 @@ export interface InlineByteCapOptions {
  * result reaches the provider.
  */
 export async function enforceInlineByteCap(text: string, options: InlineByteCapOptions): Promise<string> {
-	const capped = capTextBytes(text, options.maxBytes ?? DEFAULT_MAX_BYTES);
+	const budget = options.maxBytes ?? DEFAULT_MAX_BYTES;
+	const capped = capTextBytes(
+		text,
+		options.turnIndex === undefined ? budget : inlineCapForTurn(budget, options.turnIndex),
+	);
 	if (capped.elidedBytes === 0) return capped.text;
 
 	const artifactId = await options.saveArtifact?.(text);
