@@ -235,15 +235,44 @@ check_not_shadowed() {
     fi
 }
 
+# Pull the semver out of a `--version` line ("veyyon/1.0.37" -> "1.0.37").
+# Prints nothing and returns 1 when the line carries no x.y.z token, so a
+# format change is visible as a failed check rather than a silent pass.
+version_from_output() {
+    for tok in $1; do
+        cand="${tok##*/}"
+        case "$cand" in
+            [0-9]*.[0-9]*.[0-9]*) printf '%s' "$cand"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
 # ---- post-install self-check: prove the thing actually runs ----
+# $2 (optional) is the release tag that was installed. When given, the binary
+# must report exactly that version.
 doctor() {
-    bin="$1"
+    bin="$1"; want_tag="${2:-}"
     say ""
     say "doctor:"
     if ver=$("$bin" --version 2>/dev/null); then
         ok "$BIN_NAME runs — $ver"
     else
         die "$BIN_NAME did not run after install (\`$bin --version\` failed)"
+    fi
+    # The checksum proved the bytes match the published asset; this proves the
+    # published asset is the version the release claims. A release that uploaded
+    # the wrong binary for its tag, or a stale cached download, otherwise
+    # installs "successfully" and silently runs the wrong version forever. The
+    # self-updater enforces the same gate before keeping a swapped-in binary.
+    if [ -n "$want_tag" ]; then
+        want="${want_tag#v}"
+        got=$(version_from_output "$ver") || die "could not read a version from \`$bin --version\` output: $ver"
+        if [ "$got" = "$want" ]; then
+            ok "reported version matches the $want_tag release"
+        else
+            die "installed $BIN_NAME reports $got but the $want_tag release was requested — the release may have published a mismatched binary. The file at $bin is NOT the version you asked for; re-run the installer or pin with --ref."
+        fi
     fi
     # Both names are checked: a user who types `veyyon` and a user who types the
     # documented `vey` must each reach the binary that was just installed.
@@ -612,7 +641,7 @@ install_binary() {
     link_alias "$INSTALL_DIR"
     install_completions "$INSTALL_DIR/$BIN_NAME"
     ensure_on_path "$INSTALL_DIR"
-    doctor "$INSTALL_DIR/$BIN_NAME"
+    doctor "$INSTALL_DIR/$BIN_NAME" "$LATEST"
     say ""
     say "✓ Installation complete."
     say ""
