@@ -39,8 +39,37 @@ describe("parseEnvKeys", () => {
 			"OTHER_AQ=AQ.Ab8yyyy",
 		].join("\n");
 		expect(parseEnvKeys(env)).toEqual([
-			"AQ.Ab8xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1",
-			"AQ.Ab8xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx2",
+			{ name: "JULES_MUKUND_LINUX_MAIN", key: "AQ.Ab8xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1" },
+			{ name: "JULES_ACCOUNT_6", key: "AQ.Ab8xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx2" },
+		]);
+	});
+
+	/**
+	 * The variable name is the only human-readable identity a key has, and it is
+	 * what a blocked-lane message must print: an operator told "lane 40600b58
+	 * cannot see the repo" has no way to find the account, while
+	 * `JULES_TT_MACBOOK_PRO` names it outright. If this ever drops back to bare
+	 * key strings, that message becomes unactionable again.
+	 */
+	it("carries the declaring variable name alongside each key", () => {
+		const parsed = parseEnvKeys("JULES_TT_MACBOOK_PRO=AQ.Ab8zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz9\n");
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0]?.name).toBe("JULES_TT_MACBOOK_PRO");
+		expect(parsed[0]?.key).toBe("AQ.Ab8zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz9");
+	});
+
+	/**
+	 * The same credential exported under two names is one Jules account and so
+	 * one lane, not two. Deduping by name instead would probe it twice, double
+	 * count its 24h budget, and dispatch past the real quota.
+	 */
+	it("dedupes by key, keeping the first name that declared it", () => {
+		const env = [
+			"JULES_FIRST=AQ.Ab8dddddddddddddddddddddddddddddddddddddd1",
+			"JULES_SECOND=AQ.Ab8dddddddddddddddddddddddddddddddddddddd1",
+		].join("\n");
+		expect(parseEnvKeys(env)).toEqual([
+			{ name: "JULES_FIRST", key: "AQ.Ab8dddddddddddddddddddddddddddddddddddddd1" },
 		]);
 	});
 
