@@ -12,7 +12,7 @@
  * these tests pin the step sequence, the failure surfaces, and the reporter
  * output so the contract cannot silently regress into advice again.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -24,6 +24,18 @@ import {
 	type SourceUpdateExec,
 	updateViaSourceAt,
 } from "@veyyon/coding-agent/cli/update-cli";
+import { enterTempHome, type TempHome } from "./helpers/temp-home";
+
+// A completed update refreshes the shell completions it finds under HOME. With
+// the real HOME that is the developer's own dotfiles, which these tests have no
+// business reading, let alone rewriting.
+let tempHome: TempHome;
+beforeAll(() => {
+	tempHome = enterTempHome();
+});
+afterAll(() => {
+	tempHome.restore();
+});
 
 const LAUNCHER = path.join("/opt/checkout", "packages", "coding-agent", "scripts", "veyyon");
 

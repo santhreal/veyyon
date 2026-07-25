@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { initTheme } from "../../src/modes/theme/theme";
+import { enterTempHome, type TempHome } from "../helpers/temp-home";
 
 let refreshCompletionsForInstalledBinary: typeof import("../../src/cli/update-cli").refreshCompletionsForInstalledBinary;
 let updateViaSourceAt: typeof import("../../src/cli/update-cli").updateViaSourceAt;
@@ -28,20 +29,13 @@ beforeAll(async () => {
 
 describe("refreshCompletionsForInstalledBinary", () => {
 	let home: string;
-	let originalHome: string | undefined;
-	let originalDataHome: string | undefined;
-	let originalConfigHome: string | undefined;
+	let tempHome: TempHome;
 	let stderr: string;
 	let restoreWrite: (() => void) | undefined;
 
 	beforeEach(() => {
-		home = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-update-completions-"));
-		originalHome = process.env.HOME;
-		originalDataHome = process.env.XDG_DATA_HOME;
-		originalConfigHome = process.env.XDG_CONFIG_HOME;
-		process.env.HOME = home;
-		delete process.env.XDG_DATA_HOME;
-		delete process.env.XDG_CONFIG_HOME;
+		tempHome = enterTempHome();
+		home = tempHome.home;
 
 		stderr = "";
 		const original = process.stderr.write.bind(process.stderr);
@@ -56,16 +50,8 @@ describe("refreshCompletionsForInstalledBinary", () => {
 
 	afterEach(() => {
 		restoreWrite?.();
-		fs.rmSync(home, { recursive: true, force: true });
-		restoreEnv("HOME", originalHome);
-		restoreEnv("XDG_DATA_HOME", originalDataHome);
-		restoreEnv("XDG_CONFIG_HOME", originalConfigHome);
+		tempHome.restore();
 	});
-
-	function restoreEnv(name: string, value: string | undefined): void {
-		if (value === undefined) delete process.env[name];
-		else process.env[name] = value;
-	}
 
 	/** Seed a fish completion where install.sh would have written one. */
 	function seedFishCompletion(body: string): string {
@@ -139,8 +125,8 @@ describe("refreshCompletionsForInstalledBinary", () => {
  */
 describe("a source update refreshes completions too", () => {
 	it("regenerates the installed completions after the checkout advances", async () => {
-		const home = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-source-update-"));
-		const originalHome = process.env.HOME;
+		const tempHome = enterTempHome();
+		const home = tempHome.home;
 		let stderr = "";
 		const originalWrite = process.stderr.write.bind(process.stderr);
 		process.stderr.write = ((chunk: string | Uint8Array) => {
@@ -148,7 +134,6 @@ describe("a source update refreshes completions too", () => {
 			return true;
 		}) as typeof process.stderr.write;
 		try {
-			process.env.HOME = home;
 			const completions = path.join(home, ".config", "fish", "completions");
 			fs.mkdirSync(completions, { recursive: true });
 			const stale = path.join(completions, "veyyon.fish");
@@ -161,6 +146,9 @@ describe("a source update refreshes completions too", () => {
 				() => {},
 				async () => ({ exitCode: 0, stderr: "" }),
 				async () => "1.2.3",
+				// The launcher does not exist here, which the real probe now refuses
+				// outright; this test is about the refresh that runs after it.
+				async () => undefined,
 			);
 
 			// The launcher does not exist in this sandbox, so generation fails — and
@@ -170,9 +158,7 @@ describe("a source update refreshes completions too", () => {
 			expect(stderr).toContain("still describes the previous version");
 		} finally {
 			process.stderr.write = originalWrite;
-			if (originalHome === undefined) delete process.env.HOME;
-			else process.env.HOME = originalHome;
-			fs.rmSync(home, { recursive: true, force: true });
+			tempHome.restore();
 		}
 	});
 });
