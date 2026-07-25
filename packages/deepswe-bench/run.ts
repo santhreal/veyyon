@@ -255,6 +255,13 @@ function parseSessionsUsage(trialDir: string): {
 	preambleTaught: boolean | null;
 	argotHandlesLoaded: number | null;
 	handlesTaughtInPrompt: boolean | null;
+	/**
+	 * Reasons for every mid-session system-prompt change, in order. Each one is a
+	 * full provider prefix-cache invalidation, so the next request re-read the
+	 * whole conversation as fresh input at 4x the cached rate. This is what
+	 * attributes a `cacheRead: 0` turn to the subsystem that caused it.
+	 */
+	promptCacheInvalidations: string[];
 	headroom: EncodeHeadroom | null;
 } | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
@@ -269,6 +276,7 @@ function parseSessionsUsage(trialDir: string): {
 	let preambleTaught: boolean | null = null;
 	let argotHandlesLoaded: number | null = null;
 	let handlesTaughtInPrompt: boolean | null = null;
+	const promptCacheInvalidations: string[] = [];
 	let vocabEntries: Record<string, string> | null = null;
 	for (const file of files) {
 		for (const line of fs.readFileSync(path.join(sessionsDir, file), "utf8").split("\n")) {
@@ -278,7 +286,7 @@ function parseSessionsUsage(trialDir: string): {
 					message?: Record<string, unknown>;
 					type?: string;
 					customType?: string;
-					details?: { handles?: unknown; entries?: unknown; inPrompt?: unknown };
+					details?: { handles?: unknown; entries?: unknown; inPrompt?: unknown; reason?: unknown };
 					systemPrompt?: unknown;
 				};
 				if (entry.message) messages.push(entry.message);
@@ -293,6 +301,10 @@ function parseSessionsUsage(trialDir: string): {
 					// after the `session_init` snapshot. Any single armed refresh that
 					// taught the table makes the run taught.
 					handlesTaughtInPrompt = handlesTaughtInPrompt === true || entry.details?.inPrompt === true;
+				}
+				if (entry.type === "custom_message" && entry.customType === "prompt_cache_invalidated") {
+					const reason = entry.details?.reason;
+					if (typeof reason === "string") promptCacheInvalidations.push(reason);
 				}
 				if (entry.type === "custom_message" && entry.customType === "argot_armed") {
 					const handles = entry.details?.handles;
@@ -322,7 +334,14 @@ function parseSessionsUsage(trialDir: string): {
 	// The ceiling is only computable when the run recorded the vocabulary the model
 	// actually had; without it there is nothing to measure the emitted text against.
 	const headroom = vocabEntries === null ? null : encodeHeadroom(collectEmittedText(messages), vocabEntries);
-	return { usage: tallyUsage(messages), preambleTaught, argotHandlesLoaded, handlesTaughtInPrompt, headroom };
+	return {
+		usage: tallyUsage(messages),
+		preambleTaught,
+		argotHandlesLoaded,
+		handlesTaughtInPrompt,
+		headroom,
+		promptCacheInvalidations,
+	};
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
@@ -355,6 +374,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.argotPreamblePresent = parsed.preambleTaught;
 		result.argotHandlesLoaded = parsed.argotHandlesLoaded;
 		result.argotHandlesTaught = parsed.handlesTaughtInPrompt;
+		result.promptCacheInvalidations = parsed.promptCacheInvalidations;
 		result.encodeHeadroom = parsed.headroom;
 		result.toolCalls = usage.toolCalls ?? null;
 	} else {

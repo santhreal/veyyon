@@ -480,6 +480,13 @@ export interface ArmResult {
 	 */
 	cacheReadTokens: number | null;
 	cacheWriteTokens: number | null;
+	/**
+	 * Reasons for every mid-session system-prompt change, in order, one per full
+	 * provider prefix-cache invalidation. `null` for runs recorded before this was
+	 * instrumented, which is not the same as an empty array: empty means the
+	 * prompt never changed and the whole session was served from cache.
+	 */
+	promptCacheInvalidations: string[] | null;
 	costUsd: number | null;
 	agentSeconds: number | null;
 	argotLoadCalls: number | null;
@@ -569,6 +576,7 @@ export function emptyArmResult(arm: string, task: string, repeat: number): ArmRe
 		cacheTokens: null,
 		cacheReadTokens: null,
 		cacheWriteTokens: null,
+		promptCacheInvalidations: null,
 		costUsd: null,
 		agentSeconds: null,
 		argotLoadCalls: null,
@@ -1042,6 +1050,52 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		// this section exists to report.
 		refCostMeasurable: n > 0 && ok.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
 	};
+}
+
+/**
+ * Render which subsystems invalidated the provider's prefix cache, and how often.
+ *
+ * WHY IT IS REPORTED AT ALL. Changing the system prompt mid-session invalidates
+ * the provider's prefix cache, so the next request re-reads the whole
+ * conversation as fresh input at 4x the cached rate. On a measured 66-turn trace
+ * five turns came back with `cacheRead: 0` while resending 46-72k tokens each,
+ * about 8% of that session's bill, and nothing recorded why. Two explanations
+ * were proposed and both were wrong (cache TTL expiry, duplicated tool docs)
+ * because there was no evidence to check them against.
+ *
+ * An empty count is the good outcome and is reported as such: it means the
+ * prompt never changed after startup and the provider served the prefix from
+ * cache all session.
+ */
+export function renderPromptCacheInvalidationSection(results: readonly ArmResult[], arms: readonly string[]): string {
+	const lines: string[] = ["## Prompt cache invalidations", ""];
+	const measured = results.filter(
+		r => r.promptCacheInvalidations !== null && r.promptCacheInvalidations !== undefined,
+	);
+	if (measured.length === 0) {
+		lines.push("> Not recorded for this run: it predates the instrumentation. Re-run to attribute cache misses.");
+		return lines.join("\n");
+	}
+	lines.push("Each one costs the next request a full re-read of the conversation as fresh input.");
+	lines.push("");
+	lines.push("| arm | invalidations | per run | by cause |");
+	lines.push("|---|---|---|---|");
+	for (const arm of arms) {
+		const rows = measured.filter(r => r.arm === arm && !r.error);
+		if (rows.length === 0) continue;
+		const all = rows.flatMap(r => r.promptCacheInvalidations ?? []);
+		const byCause = new Map<string, number>();
+		for (const reason of all) byCause.set(reason, (byCause.get(reason) ?? 0) + 1);
+		const causes =
+			byCause.size === 0
+				? "none"
+				: [...byCause.entries()]
+						.sort((a, b) => b[1] - a[1])
+						.map(([reason, n]) => `${reason} x${n}`)
+						.join(", ");
+		lines.push(`| ${arm} | ${all.length} | ${(all.length / rows.length).toFixed(1)} | ${causes} |`);
+	}
+	return lines.join("\n");
 }
 
 /**
@@ -1531,6 +1585,8 @@ export function renderReport(
 	}
 	lines.push("");
 	lines.push(renderReferenceCostSection(results, arms));
+	lines.push("");
+	lines.push(renderPromptCacheInvalidationSection(results, arms));
 	lines.push("## Per task");
 	lines.push("");
 	lines.push(`| task | ${arms.map(a => `${a}: pass | ${a}: mean out tok | ${a}: mean cost`).join(" | ")} |`);

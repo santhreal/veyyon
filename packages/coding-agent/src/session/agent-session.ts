@@ -7387,12 +7387,27 @@ export class AgentSession {
 			// the prompt on a hot path is a cost bug, and the reason is the only
 			// thing that identifies which caller it was.
 			this.#baseSystemPromptInvalidations.push(reason);
+			const previousChars = previousBaseSystemPrompt.join("\n\n").length;
+			const nextChars = this.#baseSystemPrompt.join("\n\n").length;
 			logger.warn("system prompt changed mid-session; provider prompt cache invalidated", {
 				reason,
 				invalidationsThisSession: this.#baseSystemPromptInvalidations.length,
-				previousChars: previousBaseSystemPrompt.join("\n\n").length,
-				nextChars: this.#baseSystemPrompt.join("\n\n").length,
+				previousChars,
+				nextChars,
 			});
+			// Also written to the transcript, not just the log. An in-memory counter
+			// and a log line are invisible to anything reading a finished run, and a
+			// finished run is exactly where the cost question gets asked. Without
+			// this entry the bench sees `cacheRead: 0` turns and still cannot say
+			// which subsystem caused them, which is the state that made these misses
+			// unexplainable in the first place.
+			this.sessionManager.appendCustomMessageEntry(
+				"prompt_cache_invalidated",
+				`system prompt changed (${reason}); provider prefix cache invalidated`,
+				false,
+				{ reason, index: this.#baseSystemPromptInvalidations.length, previousChars, nextChars },
+				"agent",
+			);
 		}
 		this.agent.setSystemPrompt(this.#baseSystemPrompt);
 		this.#promptModelKey = this.#currentPromptModelKey();
@@ -13017,17 +13032,6 @@ export class AgentSession {
 		return this.#resolveCompactionModelCandidates(this.model, availableModels, filter);
 	}
 
-	/**
-	 * Compaction candidates that can actually run — those with a resolvable API
-	 * key, matching the per-candidate getApiKey gate the execution loop applies.
-	 * Re-expansion reusability (prepareCompaction) must judge remote-preserve
-	 * reuse against these, not against candidates the loop would skip at runtime.
-	 */
-	async #runnableCompactionCandidates(candidates: readonly Model[], sessionId: string | undefined): Promise<Model[]> {
-		const keys = await Promise.all(candidates.map(model => this.#modelRegistry.getApiKey(model, sessionId)));
-		return candidates.filter((_, index) => keys[index] !== undefined);
-	}
-
 	#resolveCompactionModelCandidates(
 		preferredModel: Model | null | undefined,
 		availableModels: Model[],
@@ -13131,7 +13135,7 @@ export class AgentSession {
 		// Effective window of the model RUNNING the compaction. The payload was
 		// sized against the MAIN model's threshold, so a compaction model with a
 		// smaller window would overflow mid-compact; skip those candidates loudly
-		// instead. compaction.modelContextWindow (-1 = candidate's own metadata)
+		// instead. compaction.modelContextWindow (unset = candidate's own metadata)
 		// overrides for proxies that serve a different window than advertised.
 		const configuredCompactionWindow = this.settings.get("compaction.modelContextWindow");
 		const summarizePayloadTokens = preparation.messagesToSummarize
@@ -13617,10 +13621,6 @@ export class AgentSession {
 
 			const pathEntries = this.sessionManager.getBranch();
 
-			const autoCompactionCandidates = await this.#runnableCompactionCandidates(
-				this.#getCompactionModelCandidates(availableModels),
-				this.sessionId,
-			);
 			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
 			if (!preparation) {
 				await this.#emitSessionEvent({
