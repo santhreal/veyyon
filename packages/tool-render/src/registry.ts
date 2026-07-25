@@ -21,6 +21,7 @@ import { grepRenderer } from "./tools/grep";
 import { inspectImageRenderer } from "./tools/inspect-image";
 import { ircRenderer } from "./tools/irc";
 import { jobRenderer } from "./tools/job";
+import { launchRenderer } from "./tools/launch";
 import { learnRenderer } from "./tools/learn";
 import { lspRenderer } from "./tools/lsp";
 import { manageSkillRenderer } from "./tools/manage-skill";
@@ -70,6 +71,7 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	await: jobRenderer,
 	poll: jobRenderer,
 	cancel_job: jobRenderer,
+	launch: launchRenderer,
 	learn: learnRenderer,
 	lsp: lspRenderer,
 	manage_skill: manageSkillRenderer,

@@ -35,6 +35,7 @@ const REGISTERED_NAMES = [
 	"await",
 	"poll",
 	"cancel_job",
+	"launch",
 	"learn",
 	"lsp",
 	"manage_skill",
