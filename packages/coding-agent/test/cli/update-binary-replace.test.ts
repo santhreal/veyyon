@@ -13,7 +13,7 @@
  * binary exec.
  */
 import { describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdtempSync, promises as fsp, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, promises as fsp, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { replaceBinaryForUpdate } from "../../src/cli/update-cli";
@@ -112,6 +112,119 @@ describe("replaceBinaryForUpdate swap and rollback", () => {
 		expect(readFileSync(target, "utf8")).toBe("OLD-BINARY");
 		expect(existsSync(temp)).toBe(false);
 		expect(existsSync(backup)).toBe(false);
+	});
+});
+
+describe("replaceBinaryForUpdate recovers from a bad artifact that passes the size guard", () => {
+	/**
+	 * A download can be truncated and still be non-empty, so the `[ -s ]`-style
+	 * size guard lets it through by design. Nothing before the swap can tell a
+	 * short binary from a good one, which means the post-install version check is
+	 * the ONLY thing standing between the user and an unrunnable binary. This
+	 * asserts the recovery is byte-exact rather than merely "something is there":
+	 * a rollback that restored a different or partial file would satisfy an
+	 * existence check and still leave the user broken.
+	 */
+	it("rolls a truncated download back to the byte-exact previous binary", async () => {
+		const { target, temp, backup } = sandbox();
+		const original = "OLD-BINARY-WITH-REAL-CONTENT-\u0000\u0001\u0002";
+		writeFileSync(target, original);
+		// Non-empty, so the size guard passes; too short to run, so the version
+		// check is what catches it.
+		writeFileSync(temp, "EL");
+
+		await expect(
+			replaceBinaryForUpdate({
+				targetPath: target,
+				tempPath: temp,
+				backupPath: backup,
+				expectedVersion: "9.9.9",
+				// What a truncated binary actually does: it cannot report a version.
+				verifyInstalledVersion: () => Promise.resolve({ ok: false as const, actual: undefined, path: target }),
+			}),
+		).rejects.toThrow(/restored previous/i);
+
+		expect(readFileSync(target, "utf8")).toBe(original);
+		expect(existsSync(temp)).toBe(false);
+		expect(existsSync(backup)).toBe(false);
+	});
+
+	/**
+	 * The failure has to say what it could not do. "Could not verify" with no
+	 * path leaves an operator with a working binary and no idea which artifact
+	 * was rejected or where to look.
+	 */
+	it("names what it could not verify when the binary reports no version at all", async () => {
+		const { target, temp, backup } = sandbox();
+		writeFileSync(target, "OLD-BINARY");
+		writeFileSync(temp, "TRUNCATED");
+
+		const failure = await replaceBinaryForUpdate({
+			targetPath: target,
+			tempPath: temp,
+			backupPath: backup,
+			expectedVersion: "9.9.9",
+			verifyInstalledVersion: () => Promise.resolve({ ok: false as const, actual: undefined, path: target }),
+		}).then(
+			() => undefined,
+			(error: unknown) => String(error),
+		);
+
+		expect(failure).toContain("could not verify");
+		expect(failure).toContain(target);
+	});
+
+	/**
+	 * A mislabelled artifact is the quiet version of this failure: the binary
+	 * runs fine, it is simply not the version that was asked for. The error must
+	 * name BOTH versions, because "the update failed" without them cannot tell an
+	 * operator whether the registry served the wrong file or their request was
+	 * wrong.
+	 */
+	it("names both the requested and the installed version on a mislabelled artifact", async () => {
+		const { target, temp, backup } = sandbox();
+		writeFileSync(target, "OLD-BINARY");
+		writeFileSync(temp, "A-PERFECTLY-GOOD-BUT-WRONG-VERSION");
+
+		const failure = await replaceBinaryForUpdate({
+			targetPath: target,
+			tempPath: temp,
+			backupPath: backup,
+			expectedVersion: "9.9.9",
+			verifyInstalledVersion: () => Promise.resolve({ ok: false as const, actual: "8.1.0", path: target }),
+		}).then(
+			() => undefined,
+			(error: unknown) => String(error),
+		);
+
+		expect(failure).toContain("8.1.0");
+		expect(failure).toContain("9.9.9");
+		// And the user is left on the version they already had, not the wrong one.
+		expect(readFileSync(target, "utf8")).toBe("OLD-BINARY");
+	});
+
+	/**
+	 * The version check must not be able to pass by accident. An artifact that
+	 * reports exactly the requested version is installed and kept, which is the
+	 * twin that keeps the assertions above from passing against an
+	 * implementation that rejected everything.
+	 */
+	it("keeps an artifact that reports exactly the requested version", async () => {
+		const { target, temp, backup } = sandbox();
+		writeFileSync(target, "OLD-BINARY");
+		writeFileSync(temp, "NEW-BINARY");
+
+		const verification = await replaceBinaryForUpdate({
+			targetPath: target,
+			tempPath: temp,
+			backupPath: backup,
+			expectedVersion: "9.9.9",
+			verifyInstalledVersion: expected =>
+				Promise.resolve({ ok: expected === "9.9.9", actual: "9.9.9", path: target }),
+		});
+
+		expect(verification.ok).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe("NEW-BINARY");
 	});
 });
 
