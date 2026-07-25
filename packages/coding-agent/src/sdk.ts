@@ -2230,10 +2230,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// path-scoped `enabledModels` allow-list when configured. Skip when the
 		// user explicitly requested a model via --model that wasn't found.
 		if (!model && deferredModelPatterns.length === 0) {
-			// Re-resolve the allowed set: extension factories above may have
-			// registered providers/models that weren't visible at startup.
-			const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
-
 			// Retry the default-role lookup against the post-extension allowed
 			// set. Extension factories register providers AFTER the early
 			// `defaultRoleSpec` resolution, so a role pointing at an extension
@@ -2243,35 +2239,83 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// default with a bundled provider's default whenever a stray
 			// `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` is in the environment.
 			// (issue #3569)
-			if (!hasExplicitModel && !defaultRoleSpec.model) {
+			// setting `model` (+ thinking level) when it resolves. Extension
+			// factories register providers AFTER the early `defaultRoleSpec`
+			// resolution, and configured discovery providers may still be
+			// mid-discovery, so a role pointing at such a model (an openai-compat
+			// plugin's `posthog/claude-opus-4-8`, a models.yml `openai-models-list`
+			// endpoint) returned `undefined` there. Without this retry the
+			// `pickDefaultAvailableModel` fallback below happily replaces the
+			// user's configured default with a bundled provider's default whenever
+			// a stray `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` is in the environment.
+			// (issues #3569, #6162)
+			const tryResolveDefaultRole = async (): Promise<boolean> => {
+				if (hasExplicitModel) return false;
+				// Re-resolve the allowed set: extension factories and discovery
+				// refreshes above may have registered models not visible earlier.
+				const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
 				const reResolvedRoleSpec = resolveModelRoleValue(settings.getModelRole("default"), fallbackCandidates, {
 					settings,
 					matchPreferences: modelMatchPreferences,
 				});
-				if (reResolvedRoleSpec.model) {
-					defaultRoleSpec = reResolvedRoleSpec;
-					const resolvedDefaultModel = reResolvedRoleSpec.model;
-					model = resolvedDefaultModel;
-					modelFallbackMessage = undefined;
-					// Recompute the thinking level against the now-real model.
-					// `pickInitialThinkingLevel` closes over `defaultRoleSpec`,
-					// so the role's explicit selector (e.g. `:max`) now applies.
-					thinkingLevel = pickInitialThinkingLevel(resolvedDefaultModel);
-					autoThinking = thinkingLevel === AUTO_THINKING;
-					effectiveThinkingLevel = concreteThinkingLevel(thinkingLevel);
-					effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
-						autoThinking
-							? resolveProvisionalAutoLevel(resolvedDefaultModel)
-							: resolveThinkingLevelForModel(resolvedDefaultModel, effectiveThinkingLevel),
-					);
-					preconnectModelHost(resolvedDefaultModel.baseUrl);
-				}
-			}
+				if (!reResolvedRoleSpec.model) return false;
+				defaultRoleSpec = reResolvedRoleSpec;
+				const resolvedDefaultModel = reResolvedRoleSpec.model;
+				model = resolvedDefaultModel;
+				modelFallbackMessage = undefined;
+				// Recompute the thinking level against the now-real model.
+				// `pickInitialThinkingLevel` closes over `defaultRoleSpec`,
+				// so the role's explicit selector (e.g. `:max`) now applies.
+				thinkingLevel = pickInitialThinkingLevel(resolvedDefaultModel);
+				autoThinking = thinkingLevel === AUTO_THINKING;
+				effectiveThinkingLevel = concreteThinkingLevel(thinkingLevel);
+				effectiveThinkingLevel = logger.time("resolveThinkingLevelForModel", () =>
+					autoThinking
+						? resolveProvisionalAutoLevel(resolvedDefaultModel)
+						: resolveThinkingLevelForModel(resolvedDefaultModel, effectiveThinkingLevel),
+				);
+				preconnectModelHost(resolvedDefaultModel.baseUrl);
+				return true;
+			};
+
+			await tryResolveDefaultRole();
 
 			if (!model) {
-				const defaultModel = pickDefaultAvailableModel(fallbackCandidates.filter(hasModelAuth));
-				if (defaultModel) {
-					model = defaultModel;
+				const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
+				let pick = pickDefaultAvailableModel(fallbackCandidates.filter(hasModelAuth));
+
+				// Cold-cache discovery race (issues #6114, #6162): a discovery
+				// provider (models.yml `openai-models-list`, LM Studio/Ollama/
+				// llama.cpp, or an openai-compat proxy) ships no static models, so
+				// the static+cached catalog resolved nothing above. Background
+				// discovery in main.ts fires only AFTER createAgentSession returns,
+				// so on a cache-cold boot the configured default stays unresolved
+				// and `pick` silently degrades to an unrelated authed provider's
+				// default (#6162) or "No models available" (#6114) — even though
+				// `veyyon models` (which awaits discovery) lists the model. Await one
+				// cache-aware discovery pass and retry when a default role is
+				// configured (must win over `pick`) or nothing resolved at all.
+				// The common path — role already resolved, or a `pick` with no
+				// configured default — never pays for it.
+				const defaultRoleConfigured = Boolean(settings.getModelRole("default"));
+				if (
+					!hasExplicitModel &&
+					(defaultRoleConfigured || !pick) &&
+					modelRegistry.getDiscoverableProviders().length > 0
+				) {
+					await logger.time("resolveModelDiscoveryFallback", () => modelRegistry.refresh("online-if-uncached"));
+					if (!(await tryResolveDefaultRole()) && !model) {
+						const refreshedCandidates = await resolveAllowedModels(
+							modelRegistry,
+							settings,
+							modelMatchPreferences,
+						);
+						pick = pickDefaultAvailableModel(refreshedCandidates.filter(hasModelAuth));
+					}
+				}
+
+				if (!model && pick) {
+					model = pick;
 				}
 			}
 			if (model) {
