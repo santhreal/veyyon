@@ -26,6 +26,7 @@ import * as path from "node:path";
 import {
 	getAddonFilenames,
 	nativeSentinelsInBuffer,
+	pruneOldNativeCaches,
 	selectCpuVariant,
 	versionedNativeCacheDir,
 	versionSentinelExportFor,
@@ -158,6 +159,18 @@ function mirrorCurrentAddonsToCache(filenames: string[]): void {
 			toIsCurrent: addonIsCurrent,
 		}),
 	);
+	// Now that this version's cache is warm, no older one can ever be loaded
+	// again: the loader looks only under its own version, and the addon carries a
+	// version sentinel a different release cannot expose. Each of those
+	// directories is around 150MB and nothing removed them, so a machine that had
+	// been through three updates carried three full copies until uninstall.
+	const pruned = pruneOldNativeCaches(version);
+	for (const dir of pruned.removed) {
+		console.error(`veyyon natives: reclaimed the stale addon cache at ${dir}.`);
+	}
+	for (const failure of pruned.failed) {
+		console.error(`veyyon natives: could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
+	}
 }
 
 /**

@@ -70,6 +70,60 @@ export function versionedNativeCacheDir(version) {
 	return path.join(getNativesDir(), version);
 }
 
+/**
+ * A per-version cache directory name, e.g. `1.0.37` or `1.1.0-rc.2`.
+ *
+ * Deliberately strict: anything under the natives root that does not look like
+ * a version is left alone. This function deletes directories, so it removes
+ * only names it can positively identify as its own.
+ */
+const VERSION_CACHE_DIR_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
+/**
+ * Delete every per-version native cache except `keepVersion`.
+ *
+ * Each version's cache holds the platform's addon variants, on the order of
+ * 150MB. Nothing ever removed the previous version's directory, so a machine
+ * that had been through three updates carried three full copies and only a full
+ * uninstall reclaimed them. The cache exists to make the CURRENT version boot
+ * without a download; an older version's copy can never be loaded again, because
+ * the loader looks only under its own version and the addon carries a version
+ * sentinel that a different release physically cannot expose.
+ *
+ * Never throws. Reclaiming disk is not worth failing a boot or an install over,
+ * so a directory that cannot be removed (in use, permissions) is reported back
+ * to the caller and retried on the next upgrade.
+ *
+ * @param {string} keepVersion The version whose cache must survive.
+ * @param {string} [rootDir] The natives root; defaults to the real one.
+ * @returns {{ removed: string[], failed: { dir: string, reason: string }[] }}
+ */
+export function pruneOldNativeCaches(keepVersion, rootDir = getNativesDir()) {
+	/** @type {{ removed: string[], failed: { dir: string, reason: string }[] }} */
+	const result = { removed: [], failed: [] };
+	let entries;
+	try {
+		entries = fs.readdirSync(rootDir, { withFileTypes: true });
+	} catch {
+		// No cache root yet (a first install, or XDG pointed elsewhere). That is
+		// "nothing to prune", not a failure worth reporting.
+		return result;
+	}
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		if (entry.name === keepVersion) continue;
+		if (!VERSION_CACHE_DIR_RE.test(entry.name)) continue;
+		const dir = path.join(rootDir, entry.name);
+		try {
+			fs.rmSync(dir, { recursive: true, force: true });
+			result.removed.push(dir);
+		} catch (err) {
+			result.failed.push({ dir, reason: err instanceof Error ? err.message : String(err) });
+		}
+	}
+	return result;
+}
+
 function resolveLeafPackageDir(platformTag) {
 	try {
 		const require_ = createRequire(import.meta.url);
@@ -627,6 +681,19 @@ function maybeExtractEmbeddedAddon(ctx, errors) {
 		const message = err instanceof Error ? err.message : String(err);
 		errors.push(`embedded addon dir: ${message}`);
 		return null;
+	}
+
+	// Reaching here means this version's addon is not staged yet, which on an
+	// existing install means an update just landed. That is the moment the
+	// previous version's cache became unreachable, so reclaim it now rather than
+	// leaving ~150MB per past version until the user uninstalls. Costs one
+	// readdir, and only on the first boot after an update.
+	const pruned = pruneOldNativeCaches(ctx.packageVersion);
+	if (pruned.removed.length > 0) {
+		startupMarker(`native:pruneOldCaches:removed:${pruned.removed.length}`);
+	}
+	for (const failure of pruned.failed) {
+		errors.push(`stale native cache ${failure.dir} could not be removed: ${failure.reason}`);
 	}
 
 	if (embeddedAddon.archive) {
