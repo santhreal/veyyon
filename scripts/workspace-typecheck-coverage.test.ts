@@ -100,3 +100,89 @@ describe("the workspace typecheck covers every package", () => {
 		expect(checkTs).toContain("check:types");
 	});
 });
+
+/**
+ * Repo-level test suites are only coverage if some runner runs them.
+ *
+ * `repoScriptTests` in `ci-test-ts.ts` is a hand-maintained list, and drift
+ * showed up in both directions. Outward: 13 suites existed on disk that NO
+ * runner referenced, including all seven installer-parity checks, so 155
+ * passing assertions about the install flow, the product surface the dogfooding
+ * doctrine says to judge, never ran in CI. Inward: the file's own comment
+ * records a listed `ci-test-ts.test.ts` that never existed, which bun ignores in
+ * silence whenever at least one other filter matches.
+ *
+ * Both directions fail loudly now.
+ */
+const REPO_SCRIPT_TESTS = (() => {
+	const source = readFileSync(join(REPO_ROOT, "scripts/ci-test-ts.ts"), "utf8");
+	const block = /const repoScriptTests = \[(.*?)\];/s.exec(source);
+	return block ? [...block[1].matchAll(/"([^"]+)"/g)].map(match => match[1] as string) : [];
+})();
+
+/** Every place a repo-level suite can legitimately be run from. */
+function otherRunnerSources(): string {
+	const parts = [readFileSync(join(REPO_ROOT, "package.json"), "utf8")];
+	const workflows = join(REPO_ROOT, ".github", "workflows");
+	try {
+		for (const entry of readdirSync(workflows)) parts.push(readFileSync(join(workflows, entry), "utf8"));
+	} catch {
+		// No workflows directory in a source checkout without CI config.
+	}
+	return parts.join("\n");
+}
+
+describe("every repo-level test suite is actually run by something", () => {
+	/** Guards the parse above: an empty list would make the checks vacuous. */
+	it("parses the repoScriptTests list", () => {
+		expect(REPO_SCRIPT_TESTS.length).toBeGreaterThan(10);
+	});
+
+	/** Inward drift. bun silently ignores an unmatched filter when another filter
+	 * matches, so a listed-but-deleted file looks exactly like a passing suite. */
+	it("lists no suite that has been deleted", () => {
+		const missing = REPO_SCRIPT_TESTS.filter(rel => {
+			try {
+				return !statSync(join(REPO_ROOT, rel)).isFile();
+			} catch {
+				return true;
+			}
+		});
+		expect(missing, "these are listed in repoScriptTests but do not exist; bun ignores them silently").toEqual([]);
+	});
+
+	/**
+	 * Suites deliberately not wired yet, each with the reason it is not.
+	 *
+	 * An exception belongs here, in the open, rather than as an absence nobody can
+	 * see. That is the whole point of the check: silence was the defect.
+	 */
+	const KNOWN_UNRUN = new Map<string, string>([
+		[
+			// The committed root CHANGELOG.md does not match a fresh render, and the
+			// mismatch is a real generator scope bug, not stale output: the root sync
+			// reads ONLY packages/coding-agent/CHANGELOG.md, so every fix recorded in
+			// another package's changelog vanishes on regeneration. A collab-web IME
+			// fix was hand-added to the root in 07975344 for exactly that reason.
+			// Wiring this suite before the scope is settled would make CI red on an
+			// unresolved content question. Tracked as CHANGELOG-ROOT-SYNC-SCOPE.
+			"scripts/sync-root-changelog.test.ts",
+			"CHANGELOG-ROOT-SYNC-SCOPE: root sync reads only coding-agent, dropping other packages' entries",
+		],
+	]);
+
+	/** Outward drift. A suite referenced by nothing runs nowhere, and its green
+	 * assertions are decoration. */
+	it("leaves no scripts/*.test.ts unreferenced by any runner", () => {
+		const others = otherRunnerSources();
+		const unreferenced = readdirSync(join(REPO_ROOT, "scripts"))
+			.filter(name => name.endsWith(".test.ts"))
+			.map(name => `scripts/${name}`)
+			.filter(rel => !REPO_SCRIPT_TESTS.includes(rel) && !others.includes(rel) && !KNOWN_UNRUN.has(rel));
+		expect(
+			unreferenced,
+			"these suites are run by nothing: not repoScriptTests, not a workflow, not a root script. " +
+				"Add each to repoScriptTests or a workflow, or delete it; a suite nobody runs is not coverage",
+		).toEqual([]);
+	});
+});
