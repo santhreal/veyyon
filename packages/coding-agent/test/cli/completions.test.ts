@@ -901,7 +901,8 @@ describe("the generated bash @file completion, executed", () => {
 	});
 
 	it("does not offer paths for a flag word", () => {
-		expect(completeIn(dir, "veyyon", "--")).toEqual(["--print", "-p"].sort());
+		// `--` filters the flag list to the long forms; `-p` is correctly excluded.
+		expect(completeIn(dir, "veyyon", "--")).toEqual(["--print"]);
 	});
 });
 
