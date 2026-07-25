@@ -1552,7 +1552,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		_onUpdate?: AgentToolUpdateCallback<LspToolDetails>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LspToolDetails>> {
-		const timeoutSec = clampTimeout("lsp", params.timeout);
+		const timeoutSec = clampTimeout("lsp", params.timeout, this.session.settings.get("tools.maxTimeout"));
 		// A clamp changes the budget the agent asked for; surface it on the result
 		// rather than applying it silently (Law 10). LSP actions each build their
 		// own result, so we prepend the notice here in the one shared wrapper.

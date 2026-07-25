@@ -1808,7 +1808,7 @@ async function buildReadUrlCacheEntry(
 	// configured default is the single source of truth (TOOL_TIMEOUTS.fetch).
 	// Passing no override keeps the value in ONE place instead of a literal here
 	// that silently diverged from the config's `default`.
-	const effectiveTimeout = clampTimeout("fetch");
+	const effectiveTimeout = clampTimeout("fetch", undefined, session.settings.get("tools.maxTimeout"));
 
 	if (signal?.aborted) {
 		throw new ToolAbortError();

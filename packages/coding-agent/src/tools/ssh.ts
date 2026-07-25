@@ -191,7 +191,7 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 		// Clamp to the tool's configured range (see TOOL_TIMEOUTS.ssh). A clamp
 		// silently changes the budget the agent asked for, so we surface it in the
 		// result text below (Law 10) instead of applying it quietly.
-		const timeoutSec = clampTimeout("ssh", rawTimeout);
+		const timeoutSec = clampTimeout("ssh", rawTimeout, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec * 1000;
 		const clampNotice = formatTimeoutClampNotice("ssh", rawTimeout, timeoutSec);
 
