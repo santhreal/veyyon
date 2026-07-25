@@ -58,23 +58,42 @@ export function isNewerVersion(candidate: string, current: string): boolean {
 }
 
 /**
- * Whether `value` is a version {@link compareSemver} can order.
+ * The semver 2.0.0 grammar, anchored: three numeric components without leading
+ * zeroes, then an optional prerelease and an optional build metadata section.
+ *
+ * This is the published specification's own recommended expression rather than a
+ * hand-loosened variant, because the whole value of this check is that it agrees
+ * with what every other tool in the chain (npm, the release tagger, the
+ * installer) considers a version.
+ */
+const SEMVER_PATTERN =
+	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
+/**
+ * Whether `value` is a complete, well-formed semantic version.
  *
  * Use this when the string came from somewhere you do not control, such as a
- * directory name on disk or a field in a registry response.
+ * directory name on disk or a tag in a registry response.
  *
  * ```ts
  * isValidSemver("1.2.3"); // true
+ * isValidSemver("1.2.3-rc.1"); // true
  * isValidSemver("latest"); // false
+ * isValidSemver("1.2"); // false: a partial version is a RANGE, not a version
  * ```
+ *
+ * It deliberately does NOT delegate to `Bun.semver`, which is lenient in the
+ * direction that hurts here: it accepts `"1"`, `"1.2"`, `"v1.2.3"`, `"01.2.3"`
+ * and `" 1.2.3 "`. The one production caller validates a release tag before
+ * handing it to an installer, and every one of those inputs is a real hazard
+ * there. `"1.2"` is an npm RANGE, so pinning to it installs whatever 1.2.x
+ * happens to be newest rather than the release that was verified; a leading `v`
+ * or surrounding whitespace builds a download URL that does not exist. A
+ * predicate that answers "yes, that is a version" has to mean it, because the
+ * caller's next move is to trust it.
  */
 export function isValidSemver(value: string): boolean {
-	try {
-		Bun.semver.order(value, "0.0.0");
-		return true;
-	} catch {
-		return false;
-	}
+	return SEMVER_PATTERN.test(value);
 }
 
 /**

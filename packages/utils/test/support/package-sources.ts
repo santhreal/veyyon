@@ -25,13 +25,63 @@ import * as path from "node:path";
 export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dist", "vendor"]);
 
 /**
- * Package roots (and same-named nested dirs, e.g. a vendored `src/argot/`)
- * exempt from every `@veyyon/utils` single-owner lock. `argot` is a standalone
- * published package (its only dependency is smol-toml); it cannot import
- * `@veyyon/utils` and carries its own copies of these utilities by design, so
- * scanning it would false-positive the ownership locks.
+ * Packages exempt from every `@veyyon/utils` single-owner lock, named by their
+ * PUBLISHED name (`package.json` `name`), not their directory. `argot` is a
+ * standalone published package (its only dependency is smol-toml); it cannot
+ * import `@veyyon/utils` and carries its own copies of these utilities by
+ * design, so scanning it would false-positive the ownership locks.
+ *
+ * Matching on the published name rather than the directory name is the point:
+ * the exemption was originally keyed on the directory, the package's directory
+ * was later renamed to `packages/lexpack`, and the exemption silently stopped
+ * matching. Six ownership locks then failed against a package that is exempt by
+ * design. A published name is the package's stable identity; a directory name
+ * is not. `packageNameFor` resolves it, and `resolveExemptPackageDirs` fails
+ * loudly when an entry names no package at all, so an exemption can never again
+ * go quietly dead.
  */
 export const EXEMPT_PACKAGE_NAMES: ReadonlySet<string> = new Set(["argot"]);
+
+/** The `name` declared by `packages/<dir>/package.json`, or undefined. */
+async function packageNameFor(dirName: string): Promise<string | undefined> {
+	const manifest = path.join(PACKAGES_DIR, dirName, "package.json");
+	const text = await readFile(manifest, "utf8").catch(() => undefined);
+	if (text === undefined) return undefined;
+	const parsed: unknown = JSON.parse(text);
+	const name = (parsed as { name?: unknown }).name;
+	return typeof name === "string" ? name : undefined;
+}
+
+/**
+ * Directory names under `packages/` whose package is exempt.
+ *
+ * Throws when an {@link EXEMPT_PACKAGE_NAMES} entry matches no package, because
+ * the only two ways that happens are both defects: the package was deleted (the
+ * entry is stale and must go) or it was renamed (the exemption is dead and the
+ * locks are now scanning a package they must not judge). Either way the fix is a
+ * source edit, never a silent skip.
+ */
+export async function resolveExemptPackageDirs(): Promise<ReadonlySet<string>> {
+	const dirs = new Set<string>();
+	const matched = new Set<string>();
+	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
+		if (!pkg.isDirectory()) continue;
+		const name = (await packageNameFor(pkg.name)) ?? pkg.name;
+		if (!EXEMPT_PACKAGE_NAMES.has(name)) continue;
+		dirs.add(pkg.name);
+		matched.add(name);
+	}
+	const missing = [...EXEMPT_PACKAGE_NAMES].filter(name => !matched.has(name));
+	if (missing.length > 0) {
+		throw new Error(
+			`package-sources: EXEMPT_PACKAGE_NAMES names no package under ${PACKAGES_DIR}: ${missing.join(", ")}. ` +
+				`Either the package was removed (delete the entry) or it was renamed (update the entry to its new ` +
+				`package.json "name"). Leaving it would make every @veyyon/utils ownership lock scan a package that ` +
+				`is exempt by design.`,
+		);
+	}
+	return dirs;
+}
 
 /** Absolute path to the monorepo `packages/` directory. */
 export const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "..", "..");
@@ -67,8 +117,9 @@ export async function collectPackageSourceFiles(options: CollectPackageSourcesOp
 	const dirs = options.dirs ?? ["src"];
 	const includeTests = options.includeTests ?? false;
 	const files: string[] = [];
+	const exemptDirs = await resolveExemptPackageDirs();
 	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory() || EXEMPT_PACKAGE_NAMES.has(pkg.name)) continue;
+		if (!pkg.isDirectory() || exemptDirs.has(pkg.name)) continue;
 		for (const sub of dirs) {
 			await walk(path.join(PACKAGES_DIR, pkg.name, sub), includeTests, files);
 		}
