@@ -1034,7 +1034,13 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 			cacheWriteTokens: sum(r => r.cacheWriteTokens),
 			outputTokens: sum(r => r.outputTokens),
 		}),
-		refCostMeasurable: n > 0 && ok.every(r => r.cacheReadTokens !== null),
+		// `!= null` deliberately, so it catches `undefined` too. Rows loaded from a
+		// results.json written before the split carry no such property at all, and
+		// a `!== null` check passes them as measurable; `sum()` then reads them as
+		// 0 and the cache-read line prints as zero dollars on a run that did
+		// millions of cache reads. That is a fabricated number in the one column
+		// this section exists to report.
+		refCostMeasurable: n > 0 && ok.every(r => r.cacheReadTokens != null && r.cacheWriteTokens != null),
 	};
 }
 

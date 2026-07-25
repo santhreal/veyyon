@@ -16,7 +16,43 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { type ArmResult, emptyArmResult, renderReferenceCostSection, summarizeCell } from "./aggregate";
 import { costShares, priceTokens, REFERENCE_RATE_CARD } from "./cost-model";
+
+describe("the reference cost section refuses to price what it cannot attribute", () => {
+	/**
+	 * A row written before the cache read/write split has no such property at
+	 * all. An `!== null` guard passes `undefined` as measurable, `sum()` then
+	 * reads it as 0, and the section prints `$0.0000` in the cache-read column
+	 * for a run that did millions of cache reads. That is a fabricated number in
+	 * the exact column the section exists to report, and it looks like a real,
+	 * astonishingly cheap result. The guard must therefore catch `undefined` as
+	 * well as `null`.
+	 */
+	test("withholds the table for rows that predate the cache split", () => {
+		const legacy = { ...emptyArmResult("old", "t", 0), inputTokens: 1000, outputTokens: 500, cacheTokens: 900_000 };
+		// biome-ignore lint/performance/noDelete: reproduces a legacy row, which lacks the property entirely.
+		delete (legacy as Partial<ArmResult>).cacheReadTokens;
+		// biome-ignore lint/performance/noDelete: same.
+		delete (legacy as Partial<ArmResult>).cacheWriteTokens;
+		expect(summarizeCell([legacy]).refCostMeasurable).toBe(false);
+		expect(renderReferenceCostSection([legacy], ["old"])).toContain("Not computed for old");
+	});
+
+	/** A complete row is priced, so the withholding path cannot swallow good data. */
+	test("prices a row that carries the split", () => {
+		const row: ArmResult = {
+			...emptyArmResult("new", "t", 0),
+			inputTokens: 1_000_000,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+		};
+		const s = summarizeCell([row]);
+		expect(s.refCostMeasurable).toBe(true);
+		expect(s.refCost.input).toBeCloseTo(0.3, 10);
+	});
+});
 
 describe("REFERENCE_RATE_CARD", () => {
 	/**
