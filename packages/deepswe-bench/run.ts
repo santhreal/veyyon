@@ -261,7 +261,15 @@ function parseSessionsUsage(trialDir: string): {
 	 * whole conversation as fresh input at 4x the cached rate. This is what
 	 * attributes a `cacheRead: 0` turn to the subsystem that caused it.
 	 */
-	promptCacheInvalidations: string[];
+	/**
+	 * `null` when the session carried no evidence the instrumentation was live,
+	 * which is NOT the same as an empty list. A binary built before
+	 * `prompt_cache_invalidated` existed emits nothing, and reporting that as
+	 * "zero invalidations, served from cache all session" is a fabricated claim
+	 * about the best outcome the system can produce. Only a session that recorded
+	 * at least one entry can be trusted to have recorded all of them.
+	 */
+	promptCacheInvalidations: string[] | null;
 	headroom: EncodeHeadroom | null;
 } | null {
 	const sessionsDir = path.join(trialDir, "agent", "sessions");
@@ -340,7 +348,7 @@ function parseSessionsUsage(trialDir: string): {
 		argotHandlesLoaded,
 		handlesTaughtInPrompt,
 		headroom,
-		promptCacheInvalidations,
+		promptCacheInvalidations: promptCacheInvalidations.length > 0 ? promptCacheInvalidations : null,
 	};
 }
 
