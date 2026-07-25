@@ -26,14 +26,6 @@ import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import {
-	type CompletionGenerator,
-	completionEnvFrom,
-	type CompletionRefreshResult,
-	type CompletionTarget,
-	powershellCompletionPath,
-	refreshInstalledCompletions,
-} from "./completion-refresh";
-import {
 	AUTO_UPDATE_FAILURE_COOLDOWN_MS,
 	AUTO_UPDATE_LOCK_STALE_MS,
 	clearAutoUpdateFailure,
@@ -41,6 +33,14 @@ import {
 	recordAutoUpdateFailure,
 	shouldAttemptAutoUpdate,
 } from "./auto-update-state";
+import {
+	type CompletionGenerator,
+	type CompletionRefreshResult,
+	type CompletionTarget,
+	completionEnvFrom,
+	powershellCompletionPath,
+	refreshInstalledCompletions,
+} from "./completion-refresh";
 
 const REPO = "santhreal/veyyon";
 /**
@@ -1003,6 +1003,11 @@ export async function runAutoUpdate(
 	knownRelease?: ReleaseInfo,
 	statePath: string = getAutoUpdateStatePath(),
 	resolveInstalledMethod: () => UpdateMethod | undefined = defaultInstalledMethod,
+	// Injectable for the same reason `runUpdateCommand` takes one: the lock this
+	// function holds is only meaningful if two callers can be raced against it,
+	// and a race test cannot download a release twice.
+	install: (version: string, reporter: typeof SILENT_UPDATE_REPORTER) => Promise<void> = (version, reporter) =>
+		installRelease(version, false, reporter),
 ): Promise<AutoUpdateOutcome> {
 	let release: ReleaseInfo;
 	if (knownRelease) {
@@ -1046,7 +1051,7 @@ export async function runAutoUpdate(
 		async (): Promise<AutoUpdateOutcome> => {
 			try {
 				// Silent: this runs under a live TUI, where any console write corrupts the frame.
-				await installRelease(release.version, false, SILENT_UPDATE_REPORTER);
+				await install(release.version, SILENT_UPDATE_REPORTER);
 			} catch (err) {
 				const error = errorMessage(err);
 				await recordAutoUpdateFailure(release.version, error, statePath);
