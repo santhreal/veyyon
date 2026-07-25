@@ -1,5 +1,5 @@
 /**
- * `veyyon completions <bash|zsh|fish>` — print a shell completion script.
+ * `veyyon completions <bash|zsh|fish|powershell>` — print a shell completion script.
  *
  * The script is derived entirely from the declarative command/flag metadata
  * (see `cli/completion-gen.ts`), so it never drifts from the actual CLI surface.
@@ -11,10 +11,10 @@ import { commands } from "../cli-commands";
 
 /** Entry name of the default command whose flags become top-level completions. */
 const ROOT_COMMAND = "launch";
-const SHELLS = ["bash", "zsh", "fish"] as const;
+const SHELLS = ["bash", "zsh", "fish", "powershell"] as const;
 
 export default class Completions extends Command {
-	static description = "Print a shell completion script (bash, zsh, or fish)";
+	static description = "Print a shell completion script (bash, zsh, fish, or powershell)";
 
 	static args = {
 		shell: Args.string({
@@ -28,6 +28,7 @@ export default class Completions extends Command {
 		`# zsh: eval at startup, or write to a file in $fpath\n  eval "$(${APP_NAME} completions zsh)"`,
 		`# bash\n  eval "$(${APP_NAME} completions bash)"`,
 		`# fish\n  ${APP_NAME} completions fish > ~/.config/fish/completions/${APP_NAME}.fish`,
+		`# powershell: write it beside your profile and dot-source it\n  ${APP_NAME} completions powershell > $PROFILE.d/${APP_NAME}.ps1`,
 	];
 
 	async run(): Promise<void> {
@@ -59,5 +60,5 @@ export default class Completions extends Command {
 }
 
 function isShell(value: string | undefined): value is Shell {
-	return value === "bash" || value === "zsh" || value === "fish";
+	return value === "bash" || value === "zsh" || value === "fish" || value === "powershell";
 }

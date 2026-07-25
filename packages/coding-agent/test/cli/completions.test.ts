@@ -311,7 +311,7 @@ describe("veyyon completions (integration / drift)", () => {
 		let stderr: string;
 		let exitCode: number;
 		try {
-			const proc = Bun.spawn([process.execPath, cliEntry, "completions", "powershell"], {
+			const proc = Bun.spawn([process.execPath, cliEntry, "completions", "tcsh"], {
 				env,
 				stdout: "pipe",
 				stderr: "pipe",
@@ -322,7 +322,131 @@ describe("veyyon completions (integration / drift)", () => {
 			cleanup();
 		}
 		expect(exitCode).toBe(1);
-		expect(stderr).toContain('Error: unsupported shell "powershell"');
-		expect(stderr).toContain("Usage: veyyon completions <bash|zsh|fish>");
+		expect(stderr).toContain('Error: unsupported shell "tcsh"');
+		expect(stderr).toContain("Usage: veyyon completions <bash|zsh|fish|powershell>");
 	}, 30000);
+});
+
+/**
+ * Windows consumers had no tab completion at all.
+ *
+ * The three POSIX shells each autoload a file by command name, which is what
+ * `install.sh` writes. PowerShell has no such directory: completion is
+ * registered at runtime by `Register-ArgumentCompleter`, so the script is
+ * dot-sourced from the user's profile instead. That difference is why this was
+ * missing rather than merely untested, and it is why the generated script is
+ * data plus one fixed completer: the tables are all that change as the CLI
+ * grows, and the logic can be read once.
+ *
+ * pwsh is not installed on the Linux development host, so these assert the exact
+ * emitted bytes rather than executing the script. Every assertion below names a
+ * construct PowerShell itself would reject or misread if it were wrong.
+ */
+describe("generateCompletion('powershell')", () => {
+	const out = generateCompletion("powershell", spec);
+
+	it("registers a native completer for the binary AND the alias", () => {
+		// `vey` is the name the docs tell users to type. PowerShell binds by
+		// command name, so a registration listing only `veyyon` leaves the
+		// documented entry point with nothing, the same bug the POSIX shells had.
+		expect(out).toContain(
+			"Register-ArgumentCompleter -Native -CommandName 'veyyon', 'vey' -ScriptBlock $__veyyonCompleter",
+		);
+	});
+
+	it("offers every subcommand, including an alias token, with its description", () => {
+		expect(out).toContain("'commit' = 'Commit'");
+		expect(out).toContain("'worktree' = 'Worktrees'");
+		// `wt` is invocable, so it must complete: a user who types `wt` and gets
+		// nothing concludes completion is broken, not that the alias is undocumented.
+		expect(out).toContain("'wt' = 'Worktrees'");
+	});
+
+	it("carries both the long and short form of a flag", () => {
+		// PowerShell matches the token the user typed literally; omitting `-r`
+		// means `-r <tab>` offers sessions for `--resume` but not for `-r`.
+		expect(out).toContain("'--resume' = @{ Desc = 'Resume'; Value = @{ Kind = 'sessions'; Values = @(); Multiple = $false } }");
+		expect(out).toContain("'-r' = @{ Desc = 'Resume'; Value = @{ Kind = 'sessions'; Values = @(); Multiple = $false } }");
+	});
+
+	it("bakes static enum and list candidates into the script", () => {
+		expect(out).toContain("'--thinking' = @{ Desc = 'Effort'; Value = @{ Kind = 'enum'; Values = @('low', 'high'); Multiple = $false } }");
+		expect(out).toContain("'--tools' = @{ Desc = 'Tools'; Value = @{ Kind = 'list'; Values = @('read', 'bash'); Multiple = $false } }");
+	});
+
+	it("records whether a model flag takes one value or many", () => {
+		expect(out).toContain("'--model' = @{ Desc = 'Model to use'; Value = @{ Kind = 'models'; Values = @(); Multiple = $false } }");
+		expect(out).toContain("'--models' = @{ Desc = 'Model list'; Value = @{ Kind = 'models'; Values = @(); Multiple = $true } }");
+	});
+
+	it("resolves dynamic candidates by asking the binary, exactly as the other shells do", () => {
+		// The model catalog and session list are known only to the running binary.
+		expect(out).toContain("& $__veyyonBin __complete $Kind -- $WordToComplete 2>$null");
+		expect(out).toContain("__Veyyon-DynamicCandidates 'models' $WordToComplete");
+		expect(out).toContain("__Veyyon-DynamicCandidates 'sessions' $WordToComplete");
+	});
+
+	it("splits the dynamic output on a real PowerShell tab escape", () => {
+		// `__complete` emits `value<TAB>description`. A literal backslash-t here
+		// would split on nothing and offer the whole line, description included,
+		// as the completion text.
+		expect(out).toContain('($_ -split "`t")[0]');
+		expect(out).not.toContain('-split "\\t"');
+	});
+
+	it("scopes a subcommand's flags to that subcommand", () => {
+		const table = out.slice(out.indexOf("$__veyyonCommandFlags = @{"), out.indexOf("$__veyyonCommandArgs = @{"));
+		expect(table).toContain("'commit' = @{");
+		expect(table).toContain("'--push' = @{ Desc = 'Push'; Value = @{ Kind = 'flag'; Values = @(); Multiple = $false } }");
+		// A subcommand alias must carry the same flags, or `wt --<tab>` is empty.
+		expect(table).toContain("'wt' = @{");
+	});
+
+	it("offers a subcommand's positional enum values", () => {
+		expect(out).toContain("'worktree' = @{ Kind = 'enum'; Values = @('list', 'clear'); Multiple = $false }");
+		expect(out).toContain("'wt' = @{ Kind = 'enum'; Values = @('list', 'clear'); Multiple = $false }");
+	});
+
+	it("does not treat a flag's value as a subcommand", () => {
+		// `veyyon --model commit <tab>` must not decide the user is in the `commit`
+		// subcommand: `commit` there is the value of `--model`.
+		expect(out).toContain("if ($expectValue) { $expectValue = $false; continue }");
+		expect(out).toContain("if ($f -and $f.Value.Kind -ne 'flag') { $expectValue = $true }");
+	});
+
+	it("emits CompletionResult objects, not bare strings", () => {
+		// A native completer that returns strings loses the tooltip column, which
+		// is the only place a flag's description can appear in PowerShell.
+		expect(out).toContain("[System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $tip)");
+	});
+
+	it("filters candidates by what the user has already typed", () => {
+		expect(out).toContain('Where-Object { $_ -like "$wordToComplete*" }');
+	});
+
+	it("quotes every literal in single quotes, so no description can be executed", () => {
+		// A description containing `$(...)` inside a double-quoted PowerShell
+		// string would run at completion time, on every Tab press. Single quotes
+		// interpret nothing, and the only escape needed is a doubled quote.
+		const tables = out.slice(out.indexOf("$__veyyonCommands = @{"), out.indexOf("$__veyyonBin ="));
+		expect(tables).not.toContain('"');
+	});
+
+	it("escapes an apostrophe in a description by doubling it", () => {
+		const withQuote = generateCompletion("powershell", {
+			...spec,
+			commands: [{ name: "x", aliases: [], description: "Don't stop", flags: [], args: [] }],
+		});
+		expect(withQuote).toContain("'x' = 'Don''t stop'");
+	});
+
+	it("collapses a multi-line description onto one line", () => {
+		// A raw newline inside the hashtable literal terminates the entry and the
+		// remainder becomes a syntax error, breaking every completion in the file.
+		const multiline = generateCompletion("powershell", {
+			...spec,
+			commands: [{ name: "x", aliases: [], description: "first line\n  second line", flags: [], args: [] }],
+		});
+		expect(multiline).toContain("'x' = 'first line second line'");
+	});
 });
