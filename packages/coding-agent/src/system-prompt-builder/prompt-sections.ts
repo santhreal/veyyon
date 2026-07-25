@@ -10,11 +10,35 @@
 import { logger } from "@veyyon/utils";
 import { BANNERED_SECTIONS, BANNERED_TEMPLATE_SECTIONS } from "./prompt-blocks";
 
+export type PromptSectionName = string;
+
+/*
+ * The three derivations below are computed ON FIRST USE rather than while this
+ * module is evaluating.
+ *
+ * Reading an imported binding at module top level makes the value depend on
+ * evaluation ORDER: if anything ever causes this module to be evaluated before
+ * `prompt-blocks.ts` has finished, the binding is still in its temporal dead
+ * zone and the read throws `ReferenceError: BANNERED_TEMPLATE_SECTIONS is not
+ * defined`, which aborts the whole process at import time rather than failing
+ * one call. That was seen once, under one particular `bun test` file ordering,
+ * and did not recur; the direct import graph in this directory is acyclic, so
+ * there was nothing to point at and fix.
+ *
+ * Deferring the read removes the question. By the time any of these functions is
+ * CALLED the module graph is fully evaluated, so no ordering can observe the
+ * binding early. Each memoizes, so the cost is one map on first use.
+ */
+
+let promptSectionNamesCache: readonly string[] | undefined;
+let templateSectionNamesCache: readonly string[] | undefined;
+let sectionBannerToNameCache: Record<string, PromptSectionName> | undefined;
+
 /**
  * The reorderable section names, DERIVED from the one registry in
  * `prompt-blocks.ts` rather than restated here.
  *
- * This list and the banner map below used to be a second, independent
+ * This list and the banner table below used to be a second, independent
  * definition of the same five sections that `system-prompt-builder/default-template.ts`
  * also defined, with different spellings (`tool-policy` vs `toolPolicy`) and a
  * different parser. Keeping them in step was manual, and the divergence would
@@ -22,7 +46,10 @@ import { BANNERED_SECTIONS, BANNERED_TEMPLATE_SECTIONS } from "./prompt-blocks";
  * one simply does not recognise the line and folds the section into its
  * predecessor. Deriving both from one source removes the possibility.
  */
-export const PROMPT_SECTION_NAMES = BANNERED_SECTIONS.map(b => b.id) as readonly string[];
+export function promptSectionNames(): readonly string[] {
+	promptSectionNamesCache ??= BANNERED_SECTIONS.map(b => b.id);
+	return promptSectionNamesCache;
+}
 
 /**
  * The subset that lives in the template FILE.
@@ -30,20 +57,47 @@ export const PROMPT_SECTION_NAMES = BANNERED_SECTIONS.map(b => b.id) as readonly
  * {@link applyPromptSectionOrder} works on one rendered document, so a caller
  * reordering just the template can only name these. The whole-prompt entry point
  * is {@link applyPromptSectionOrderToParts}, which accepts every name in
- * {@link PROMPT_SECTION_NAMES} because it can see the runtime sections too.
+ * {@link promptSectionNames} because it can see the runtime sections too.
  */
-export const TEMPLATE_SECTION_NAMES = BANNERED_TEMPLATE_SECTIONS.map(b => b.id) as readonly string[];
-
-export type PromptSectionName = string;
+export function templateSectionNames(): readonly string[] {
+	templateSectionNamesCache ??= BANNERED_TEMPLATE_SECTIONS.map(b => b.id);
+	return templateSectionNamesCache;
+}
 
 /**
  * Banner text (the bare `NAME` line, without the `====` underline) to canonical
  * id. Built from the registry's banner declarations, so a banner can never be
  * recognised by one splitter and missed by the other.
  */
-const SECTION_BANNER_TO_NAME: Record<string, PromptSectionName> = Object.fromEntries(
-	BANNERED_SECTIONS.map(b => [b.banner.split("\n")[0] as string, b.id]),
-);
+function sectionBannerToName(): Record<string, PromptSectionName> {
+	sectionBannerToNameCache ??= Object.fromEntries(
+		BANNERED_SECTIONS.map(b => [b.banner.split("\n")[0] as string, b.id]),
+	);
+	return sectionBannerToNameCache;
+}
+
+/**
+ * Build a banner table for a prompt OTHER than the default system prompt.
+ *
+ * The splitter used to close over the system prompt's table, which quietly made
+ * it single-prompt machinery: handed the subagent prompt — a document with the
+ * same `NAME\n====` structure — it recognised only the banners the two happen
+ * to share and folded everything else into the preceding section. It reported
+ * no error, because an unrecognised banner is indistinguishable from ordinary
+ * text to a line-wise splitter, so a second prompt appeared to have almost no
+ * sections rather than appearing to fail.
+ *
+ * Passing the table in is what lets one splitter serve every registered prompt.
+ */
+export function bannerTable(
+	sections: readonly { readonly id: string; readonly banner: string | null }[],
+): Record<string, PromptSectionName> {
+	return Object.fromEntries(
+		sections
+			.filter((section): section is { id: string; banner: string } => section.banner !== null)
+			.map(section => [section.banner.split("\n")[0] as string, section.id]),
+	);
+}
 
 /**
  * One fragment of a SPLIT prompt: a banner name and the text under it.
@@ -60,44 +114,154 @@ export interface RenderedSection {
 }
 
 /**
- * Split a rendered default-template prompt on its `NAME\n====` banner lines.
- * Text before the first banner is the "preamble" (system conventions), which
- * always stays first and is always emitted as `sections[0]`.
+ * THE splitter. One implementation cuts every bannered document in the product.
  *
- * Round-trip: joining the section texts with "\n" reproduces the input WHENEVER
- * the input has a real preamble, i.e. its first line is not itself a banner. The
- * real system-prompt template always leads with a multi-line conventions
- * preamble, so this holds for every production render. The one exception is a
- * banner on line 0: then the preamble text is "" with no separating newline in
- * the source, and a naive `join("\n")` fabricates a leading newline. The
- * reorder consumer ({@link applyPromptSectionOrder}) handles that case by
- * dropping an empty-text preamble from the join, so it never fabricates one.
+ * WHY THIS IS ONE FUNCTION. There used to be two, for the same `NAME\n====`
+ * grammar, and they disagreed about the case that matters. `splitDefaultTemplate`
+ * walked byte offsets with `indexOf` and THREW on a missing or out-of-order
+ * banner. This module's line-wise splitter did not recognise the line at all and
+ * folded the region into its predecessor, silently. They also used different key
+ * spellings and different round-trip contracts. Unifying only the banner TABLE
+ * (which the registry now owns) fixed which banners exist and left both of those
+ * differences standing: one source of truth for the vocabulary says nothing
+ * about what either parser does when a word is absent, and the silent one is the
+ * path that reorders and inspects the assembled prompt. A renamed banner
+ * therefore shipped a prompt with a region folded away, reporting nothing, while
+ * the strict path would have refused to build at all.
+ *
+ * BYTE OFFSETS, NOT LINES, because that is the only version with an exact
+ * round-trip: every byte of the input lands in exactly one region, so
+ * `regions.map(r => r.text).join("")` reproduces the input for ANY input,
+ * including the awkward one where a banner sits on line 0 and there is no
+ * preamble newline to reason about. The line-wise version had to document that
+ * case as an exception its consumer worked around.
+ *
+ * A banner still only matches at a line start with a `====` underline beneath
+ * it, which is what the banner strings themselves encode (`"ROLE\n=="`).
+ *
+ * `expect` is what makes it fail closed. Pass the ids a caller REQUIRES and the
+ * split raises when one is missing or out of order, naming the document, rather
+ * than returning a shape the caller cannot tell apart from a correct one. Omit
+ * it and the split reports what it found, which is the right behaviour for a
+ * custom template that legitimately has no banners at all.
  */
-export function splitPromptSections(rendered: string): RenderedSection[] {
-	const lines = rendered.split("\n");
-	const sections: RenderedSection[] = [];
-	let current: RenderedSection = { name: "preamble", text: "" };
-	let buf: string[] = [];
-	const flush = () => {
-		current.text = buf.join("\n");
-		sections.push(current);
-		buf = [];
-	};
+export function splitBanneredDocument(
+	document: string,
+	options: {
+		readonly banners?: Record<string, PromptSectionName>;
+		/** Sections that MUST appear, in this order. Omit for a discovery-only split. */
+		readonly expect?: readonly { readonly id: PromptSectionName; readonly banner: string }[];
+		/** Named in the error when `expect` is not satisfied. */
+		readonly label?: string;
+	} = {},
+): RenderedSection[] {
+	const banners = options.banners ?? sectionBannerToName();
+	const lines = document.split("\n");
+
+	// Offsets are collected first so every region is a slice of the original and
+	// nothing is rebuilt from parts. `cursor` tracks the byte position of the line
+	// being examined, including the "\n" that `split` consumed.
+	const found: Array<{ name: PromptSectionName; at: number }> = [];
+	let cursor = 0;
 	for (let i = 0; i < lines.length; i++) {
-		const bannerName = SECTION_BANNER_TO_NAME[lines[i].trim()];
-		if (bannerName && lines[i + 1]?.startsWith("====")) {
-			flush();
-			current = { name: bannerName, text: "" };
-		}
-		buf.push(lines[i]);
+		const line = lines[i] as string;
+		const name = banners[line.trim()];
+		if (name !== undefined && lines[i + 1]?.startsWith("====")) found.push({ name, at: cursor });
+		cursor += line.length + 1;
 	}
-	flush();
-	return sections;
+
+	if (options.expect) {
+		assertExpectedBanners(
+			found.map(entry => entry.name),
+			options.expect,
+			options.label ?? "prompt",
+		);
+	}
+
+	const bounds = [0, ...found.map(entry => entry.at), document.length];
+	const regions: RenderedSection[] = [{ name: "preamble", text: document.slice(bounds[0], bounds[1]) }];
+	for (let i = 0; i < found.length; i++) {
+		const entry = found[i] as { name: PromptSectionName };
+		regions.push({ name: entry.name, text: document.slice(bounds[i + 1], bounds[i + 2]) });
+	}
+	return regions;
+}
+
+/**
+ * Refuse a document whose banners do not match what the caller requires.
+ *
+ * Separate from the scan so the message can say WHICH way it failed. "missing"
+ * and "out of order" are different repairs: the first means the document lost a
+ * region, the second means the registry's document order no longer describes the
+ * file. Reporting only "did not match" would leave the reader to diff by eye.
+ *
+ * The message names the BANNER LINE as well as the section id, because the
+ * banner is the string to search the document for while the id is the row to
+ * look up in `prompt-blocks.ts`, and a reader needs both to make the repair.
+ */
+function assertExpectedBanners(
+	found: readonly PromptSectionName[],
+	expected: readonly { readonly id: PromptSectionName; readonly banner: string }[],
+	label: string,
+): void {
+	const name = (section: { id: PromptSectionName; banner: string }): string =>
+		`"${section.id}" (${section.banner.replace("\n", "\\n")} banner)`;
+
+	const missing = expected.filter(section => !found.includes(section.id));
+	if (missing.length > 0) {
+		throw new Error(
+			`${label} is missing the section${missing.length === 1 ? "" : "s"} ${missing.map(name).join(", ")}; ` +
+				`it contains ${found.length === 0 ? "no registered banners" : found.map(id => `"${id}"`).join(", ")}. ` +
+				"Either the document lost a section or prompt-blocks.ts no longer describes it.",
+		);
+	}
+
+	const expectedIds = expected.map(section => section.id);
+	const inExpectedOrder = found.filter(id => expectedIds.includes(id));
+	if (inExpectedOrder.some((id, index) => id !== expectedIds[index])) {
+		throw new Error(
+			`${label} has its sections out of order: found ${inExpectedOrder.map(id => `"${id}"`).join(", ")}, ` +
+				`expected ${expectedIds.map(id => `"${id}"`).join(", ")}. ` +
+				"Section order in prompt-blocks.ts is the document's order, so one of the two has to move.",
+		);
+	}
+}
+
+/**
+ * Split a rendered prompt on its banner lines, reporting what is there.
+ *
+ * The DISCOVERY view of {@link splitBanneredDocument}: a custom template with no
+ * banners is one preamble region, which is a correct answer rather than a
+ * failure, so this path does not pass `expect`. Callers that require particular
+ * sections (the template slicer) reach the underlying splitter directly.
+ *
+ * SEPARATOR CONVENTION, which is the one thing this view changes. The underlying
+ * split is byte-exact: each region runs to the start of the next banner, so it
+ * carries the newline that separates them and the regions rejoin with `""`. That
+ * is what the template slicer wants, because it reassembles a file. A reorderer
+ * wants the opposite: the separator belongs BETWEEN regions, not inside one, or
+ * moving a region carries a stray newline with it and the section that inherits
+ * last place loses one. So this view drops exactly one trailing newline per
+ * region and its consumers join with `"\n"`.
+ *
+ * One scan, two documented conventions, rather than the two scanners this
+ * replaced. Round-trip holds under `join("\n")` whenever the document has a real
+ * preamble; a banner on line 0 leaves an empty preamble with no separator to
+ * drop, which {@link applyPromptSectionOrder} handles by not emitting it.
+ */
+export function splitPromptSections(
+	rendered: string,
+	banners: Record<string, PromptSectionName> = sectionBannerToName(),
+): RenderedSection[] {
+	return splitBanneredDocument(rendered, { banners }).map((region, index, all) => ({
+		name: region.name,
+		text: index === all.length - 1 ? region.text : region.text.replace(/\n$/, ""),
+	}));
 }
 
 /**
  * Reorder the rendered prompt's banner sections. `order` lists section names
- * (see {@link PROMPT_SECTION_NAMES}); listed sections are emitted in that order
+ * (see {@link promptSectionNames}); listed sections are emitted in that order
  * after the preamble, and any unlisted sections follow in template order. A
  * name that does not exist in the render (e.g. a custom template without
  * banners, or a typo) is reported loudly and skipped, never silently applied.
@@ -135,6 +299,10 @@ export function applyPromptSectionOrder(rendered: string, order: readonly string
 	}
 	const rest = bodySections.filter(s => !emitted.has(s));
 	const preamble = sections.find(s => s.name === "preamble");
+	// `splitPromptSections` hands back separator-free regions (see its note), so
+	// the "\n" between them is restored here. An empty preamble is dropped rather
+	// than emitted: a document whose first line is a banner has no separator to
+	// restore, and joining one in would fabricate a leading newline.
 	const parts = [...(preamble && preamble.text !== "" ? [preamble] : []), ...ordered, ...rest];
 	return parts.map(s => s.text).join("\n");
 }
@@ -156,7 +324,10 @@ export function applyPromptSectionOrder(rendered: string, order: readonly string
  * neither is reported loudly and skipped, exactly as the single-document path
  * does — never silently ignored.
  */
-export function applyPromptSectionOrderToParts(parts: readonly string[], order: readonly string[] | undefined): string[] {
+export function applyPromptSectionOrderToParts(
+	parts: readonly string[],
+	order: readonly string[] | undefined,
+): string[] {
 	if (!order || order.length === 0 || parts.length === 0) return [...parts];
 	const [template, ...runtimeParts] = parts;
 
@@ -167,9 +338,9 @@ export function applyPromptSectionOrderToParts(parts: readonly string[], order: 
 
 	// A runtime part is identified by the banner it leads with, which is the same
 	// key `splitPromptSections` uses, so the two can never disagree about identity.
-	const identify = (part: string): string | undefined => SECTION_BANNER_TO_NAME[part.split("\n", 1)[0].trim()];
+	const identify = (part: string): string | undefined => sectionBannerToName()[part.split("\n", 1)[0].trim()];
 	const known = new Set<string>([
-		...TEMPLATE_SECTION_NAMES,
+		...templateSectionNames(),
 		...runtimeParts.map(identify).filter((name): name is string => name !== undefined),
 	]);
 	for (const name of order) {
@@ -187,5 +358,11 @@ export function applyPromptSectionOrderToParts(parts: readonly string[], order: 
 		.sort((a, b) => a.rank - b.rank || a.index - b.index)
 		.map(entry => entry.part);
 
-	return [applyPromptSectionOrder(template, order.filter(name => TEMPLATE_SECTION_NAMES.includes(name))), ...orderedRuntime];
+	return [
+		applyPromptSectionOrder(
+			template,
+			order.filter(name => templateSectionNames().includes(name)),
+		),
+		...orderedRuntime,
+	];
 }

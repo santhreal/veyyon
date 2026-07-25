@@ -10,7 +10,7 @@ import type { Model } from "@veyyon/ai/types";
 import { getAgentDir, isRecord, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
-import { PROMPT_SECTION_NAMES, type PromptSectionName } from "../system-prompt-builder/prompt-sections";
+import { promptSectionNames, type PromptSectionName } from "../system-prompt-builder/prompt-sections";
 
 export interface HarnessModelProfile {
 	/** When false, schema repair is skipped for this model. Default: true. */
@@ -19,7 +19,7 @@ export interface HarnessModelProfile {
 	tools?: readonly string[];
 	/**
 	 * Reorder the default system-prompt template's banner sections for this model.
-	 * Names come from PROMPT_SECTION_NAMES; listed sections lead, the rest follow
+	 * Names come from promptSectionNames(); listed sections lead, the rest follow
 	 * in template order. Unknown names are rejected at load time with a warning.
 	 */
 	promptSectionOrder?: readonly PromptSectionName[];
@@ -36,18 +36,25 @@ export function resetHarnessProfileFileCache(): void {
 	cachedFileProfiles = undefined;
 }
 
-const PROMPT_SECTION_NAME_SET: ReadonlySet<string> = new Set(PROMPT_SECTION_NAMES);
+// Built on first use, not at module load: `prompt-sections.ts` derives its names
+// from `prompt-blocks.ts`, and reading that while this module evaluates would put
+// the order dependency straight back.
+let promptSectionNameSet: ReadonlySet<string> | undefined;
+function knownPromptSectionNames(): ReadonlySet<string> {
+	promptSectionNameSet ??= new Set(promptSectionNames());
+	return promptSectionNameSet;
+}
 
 function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const order: PromptSectionName[] = [];
 	for (const entry of value) {
 		if (typeof entry !== "string") continue;
-		if (!PROMPT_SECTION_NAME_SET.has(entry)) {
+		if (!knownPromptSectionNames().has(entry)) {
 			// Reject the whole list: a typo'd section silently dropped would apply a
 			// different order than the operator wrote.
 			logger.warn(
-				`harness profile promptSectionOrder has unknown section "${entry}" (valid: ${PROMPT_SECTION_NAMES.join(", ")}); ignoring the list`,
+				`harness profile promptSectionOrder has unknown section "${entry}" (valid: ${promptSectionNames().join(", ")}); ignoring the list`,
 			);
 			return undefined;
 		}
