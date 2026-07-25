@@ -668,3 +668,72 @@ describe("the generated bash comma helper, executed", () => {
 		expect(complete("read,bash,")).toEqual([]);
 	});
 });
+
+/**
+ * The dispatcher, RUN.
+ *
+ * `veyyon --model commit <Tab>` completed NOTHING: the loop that finds the
+ * subcommand took the first token not starting with `-`, which after `--model`
+ * is that flag's VALUE. It concluded the user was inside the `commit`
+ * subcommand, offered commit's positionals (it has none), and the root
+ * completions vanished. Reading the emitted script would not have caught this;
+ * running it does.
+ */
+describe("the generated bash dispatcher, executed", () => {
+	const script = generateCompletion("bash", spec);
+
+	/** COMPREPLY for a command line, with the cursor on a trailing empty word. */
+	function complete(...words: string[]): string[] {
+		const driver = [
+			script,
+			"compopt() { :; }",
+			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
+			"COMPREPLY=()",
+			"_veyyon",
+			'printf "%s\\n" "${COMPREPLY[@]}"',
+		].join("\n");
+		const out = Bun.spawnSync(["bash", "-c", driver]);
+		expect(out.exitCode, new TextDecoder().decode(out.stderr)).toBe(0);
+		return new TextDecoder()
+			.decode(out.stdout)
+			.split("\n")
+			.filter(line => line.length > 0);
+	}
+
+	it("offers subcommands and root flags on a bare command", () => {
+		const got = complete("veyyon", "");
+		expect(got).toContain("commit");
+		expect(got).toContain("worktree");
+		expect(got).toContain("wt");
+		expect(got).toContain("--model");
+	});
+
+	it("stays at the root when the previous word was a value-taking flag's value", () => {
+		// The regression: `commit` here is the model name, not the subcommand.
+		const got = complete("veyyon", "--model", "commit", "");
+		expect(got).toContain("worktree");
+		expect(got).toContain("--thinking");
+	});
+
+	it("still enters the subcommand once the flag has its value", () => {
+		// The skip must consume exactly one token, not swallow the real subcommand.
+		expect(complete("veyyon", "--model", "gpt", "worktree", "")).toEqual(["list", "clear"]);
+	});
+
+	it("does not skip after a boolean flag, which takes no value", () => {
+		expect(complete("veyyon", "--print", "worktree", "")).toEqual(["list", "clear"]);
+	});
+
+	it("enters the subcommand under an alias token", () => {
+		expect(complete("veyyon", "wt", "")).toEqual(["list", "clear"]);
+	});
+
+	it("completes a flag's enum values", () => {
+		expect(complete("veyyon", "--thinking", "")).toEqual(["low", "high"]);
+	});
+
+	it("completes a subcommand's own flags", () => {
+		expect(complete("veyyon", "commit", "--")).toEqual(["--push"]);
+	});
+});

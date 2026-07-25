@@ -236,6 +236,17 @@ function bashFlagCase(bin: string, flags: CompletionFlag[]): string {
 	return lines.join("\n");
 }
 
+/** `case` labels for every root flag that consumes the following token. */
+function bashValueFlagLabels(flags: CompletionFlag[]): string {
+	const labels: string[] = [];
+	for (const f of flags) {
+		if (!takesValue(f.value)) continue;
+		labels.push(`--${f.name}`);
+		if (f.char) labels.push(`-${f.char}`);
+	}
+	return labels.join("|");
+}
+
 function bashFlagWords(flags: CompletionFlag[]): string {
 	const words: string[] = [];
 	for (const f of flags) {
@@ -315,17 +326,29 @@ ${bashFlagCase(bin, c.flags)}
 	}
 
 	// Dispatcher.
+	//
+	// The token AFTER a value-taking flag is that flag's value, not a
+	// subcommand. Without this the loop below read `veyyon --model commit <TAB>`
+	// as being inside the `commit` subcommand and offered its flags — while the
+	// user was naming a model — so the root completions vanished and the
+	// subcommand's produced nothing. Only root flags can appear before a
+	// subcommand, so those are the only labels needed here.
+	const valueFlagLabels = bashValueFlagLabels(spec.root.flags);
+	const valueFlagArm = valueFlagLabels ? `\t\t\t${valueFlagLabels})\n\t\t\t\tskip=1\n\t\t\t\t;;` : "";
 	const dispatch: string[] = [];
 	for (const c of spec.commands) {
 		dispatch.push(`\t\t${commandTokens(c).join("|")})\n\t\t\t_veyyon_cmd_${bashFn(c.name)}\n\t\t\t;;`);
 	}
 	parts.push(`_veyyon() {
-	local cur prev cmd i
+	local cur prev cmd i skip
 	cur="\${COMP_WORDS[COMP_CWORD]}"
 	prev="\${COMP_WORDS[COMP_CWORD-1]}"
 	cmd=""
+	skip=0
 	for (( i=1; i < COMP_CWORD; i++ )); do
+		if (( skip )); then skip=0; continue; fi
 		case "\${COMP_WORDS[i]}" in
+${valueFlagArm}
 			-*) ;;
 			*) cmd="\${COMP_WORDS[i]}"; break ;;
 		esac
