@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auth Gateway Models**: Fixed `/v1/models` endpoint returning ambiguous bare model IDs when multiple providers register the same model name. Model IDs are now correctly advertised with their `provider/` prefix (e.g., `anthropic/shared-model`) and duplicate entries from the resolver map are deduplicated.
+
 ## [16.5.2] - 2026-07-14
 
 ### Added
