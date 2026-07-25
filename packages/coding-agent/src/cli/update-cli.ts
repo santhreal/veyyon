@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { parseSha256Sidecar } from "@veyyon/natives/sha256-sidecar";
 import {
 	$which,
 	APP_ALIAS,
@@ -349,21 +350,11 @@ export function formatBinaryDownloadFailure(
 }
 
 /**
- * Parse a `sha256sum`-style checksum sidecar (`<64-hex>  <filename>`) to its
- * lowercased hex digest, or `null` when the text has no valid digest.
- *
- * The published `.sha256` files are the standard `sha256sum` output: the digest
- * is the first whitespace-delimited token. This is the ONE place that reads that
- * format for the self-updater, mirroring `install.sh`'s `awk '{print $1}'` and
- * `install.ps1`'s `ConvertFrom-Sha256Sidecar`. It is strict on purpose — a token
- * that is not exactly 64 hex characters (a truncated file, an HTML error page, an
- * empty body) returns `null` so the caller fails closed rather than comparing
- * against garbage.
+ * Re-exported so the self-updater's callers and tests have one import site.
+ * The definition lives in `@veyyon/natives`, the lowest layer shared with the
+ * native-addon provisioning that reads the same sidecar format.
  */
-export function parseSha256Sidecar(text: string): string | null {
-	const token = text.trim().split(/\s+/)[0] ?? "";
-	return /^[0-9a-fA-F]{64}$/.test(token) ? token.toLowerCase() : null;
-}
+export { parseSha256Sidecar };
 
 /**
  * Verify a downloaded release binary against its published `.sha256` sidecar,

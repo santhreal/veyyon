@@ -62,6 +62,10 @@
     ".": {
       "types": "./native/index.d.ts",
       "import": "./native/index.js"
+    },
+    "./sha256-sidecar": {
+      "types": "./src/sha256-sidecar.ts",
+      "import": "./src/sha256-sidecar.ts"
     }
   }
 }

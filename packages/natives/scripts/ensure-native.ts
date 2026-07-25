@@ -33,6 +33,7 @@ import {
 	versionSentinelExportFor,
 } from "../native/loader-state.js";
 import packageJson from "../package.json" with { type: "json" };
+import { parseSha256Sidecar } from "../src/sha256-sidecar";
 
 const nativesRoot = path.join(import.meta.dir, "..");
 const nativeDir = path.join(nativesRoot, "native");
@@ -228,9 +229,7 @@ async function downloadAsset(filename: string): Promise<AssetResult> {
 		const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
 		return assetFailed(
 			filename,
-			timedOut
-				? `timed out fetching it from ${base}`
-				: `could not reach ${base} (${errorText(err)})`,
+			timedOut ? `timed out fetching it from ${base}` : `could not reach ${base} (${errorText(err)})`,
 		);
 	}
 	// 404 on the asset is the ordinary "this platform has no prebuilt" case and
@@ -255,16 +254,18 @@ async function downloadAsset(filename: string): Promise<AssetResult> {
 	let expected: string | undefined;
 	try {
 		bytes = new Uint8Array(await assetRes.arrayBuffer());
-		expected = (await shaRes.text()).trim().split(/\s+/)[0]?.toLowerCase();
+		expected = parseSha256Sidecar(await shaRes.text()) ?? undefined;
 	} catch (err) {
 		return assetFailed(filename, `the download was interrupted (${errorText(err)})`);
+	}
+	// Before hashing ~150MB: a sidecar that is not a digest cannot be compared
+	// against anything, whatever the bytes turn out to hash to.
+	if (!expected) {
+		return assetFailed(filename, "the published .sha256 sidecar is empty or unparseable");
 	}
 	const hasher = new Bun.CryptoHasher("sha256");
 	hasher.update(bytes);
 	const actual = hasher.digest("hex");
-	if (!expected) {
-		return assetFailed(filename, "the published .sha256 sidecar is empty or unparseable");
-	}
 	if (actual !== expected) {
 		return assetFailed(filename, `checksum mismatch (expected ${expected}, got ${actual}); refusing it`);
 	}
