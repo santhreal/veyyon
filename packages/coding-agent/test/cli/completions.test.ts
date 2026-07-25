@@ -411,7 +411,7 @@ describe("generateCompletion('powershell')", () => {
 	});
 
 	it("scopes a subcommand's flags to that subcommand", () => {
-		const table = out.slice(out.indexOf("$__veyyonCommandFlags = @{"), out.indexOf("$__veyyonCommandArgs = @{"));
+		const table = out.slice(out.indexOf("$global:__veyyonCommandFlags = @{"), out.indexOf("$global:__veyyonCommandArgs = @{"));
 		expect(table).toContain("'commit' = @{");
 		expect(table).toContain(
 			"'--push' = @{ Desc = 'Push'; Value = @{ Kind = 'flag'; Values = @(); Multiple = $false } }",
@@ -438,6 +438,26 @@ describe("generateCompletion('powershell')", () => {
 		expect(out).toContain("[System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $tip)");
 	});
 
+	it("defines everything in the global scope", () => {
+		// Register-ArgumentCompleter outlives the script that called it. A user who
+		// RUNS this file instead of dot-sourcing it would otherwise get a
+		// registered completer whose tables and helpers had already gone out of
+		// scope: tab completion that silently produces nothing, with the
+		// registration still in place to hide why.
+		for (const name of [
+			"$global:__veyyonCommands",
+			"$global:__veyyonRootFlags",
+			"$global:__veyyonCommandFlags",
+			"$global:__veyyonCommandArgs",
+			"$global:__veyyonBin",
+			"$global:__veyyonCompleter",
+			"function global:__Veyyon-DynamicCandidates",
+			"function global:__Veyyon-ValueCandidates",
+		]) {
+			expect(out, `${name} must be global`).toContain(name);
+		}
+	});
+
 	it("filters candidates by what the user has already typed", () => {
 		expect(out).toContain('Where-Object { $_ -like "$wordToComplete*" }');
 	});
@@ -446,7 +466,7 @@ describe("generateCompletion('powershell')", () => {
 		// A description containing `$(...)` inside a double-quoted PowerShell
 		// string would run at completion time, on every Tab press. Single quotes
 		// interpret nothing, and the only escape needed is a doubled quote.
-		const tables = out.slice(out.indexOf("$__veyyonCommands = @{"), out.indexOf("$__veyyonBin ="));
+		const tables = out.slice(out.indexOf("$global:__veyyonCommands = @{"), out.indexOf("$global:__veyyonBin ="));
 		expect(tables).not.toContain('"');
 	});
 
