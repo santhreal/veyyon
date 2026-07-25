@@ -895,6 +895,48 @@ write_stub_binary() {
     chmod +x "$_sb_path"
 }
 
+# --- a $HOME with a space in it ---
+# Every path in this suite is space-free, so an unquoted expansion anywhere in
+# the uninstall path would pass all of it and break for a real user whose home
+# is "C:\\Users\\First Last" under WSL, or /Users/first last on a mac. The
+# uninstall is the dangerous half: a word-split path removes the wrong thing, or
+# reports success having removed nothing.
+( _sp="$SANDBOX/spaced/my home dir"
+  mkdir -p "$_sp/bin" "$_sp/.veyyon/natives/1.0.0" "$_sp/.veyyon/src/.git"
+  export HOME="$_sp"
+  export XDG_DATA_HOME="$_sp/.local/share"
+  export XDG_CONFIG_HOME="$_sp/.config"
+  export VEYYON_INSTALL_DIR="$_sp/bin"
+  mkdir -p "$(completions_dir_for bash)" "$(completions_dir_for fish)"
+  printf 'x' > "$_sp/bin/veyyon"
+  ln -sf "$_sp/bin/veyyon" "$_sp/bin/vey"
+  printf 'c' > "$(completions_dir_for bash)/veyyon"
+  printf 'c' > "$(completions_dir_for fish)/veyyon.fish"
+  printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$_sp/bin:\$PATH\"" > "$_sp/.bashrc"
+
+  out=$( do_uninstall 2>&1 )
+  check "a spaced HOME still reports a completed uninstall" \
+      "$(printf '%s' "$out" | grep -c 'veyyon uninstalled.')" "1"
+  check "the binary under a spaced HOME is removed" \
+      "$( [ -e "$_sp/bin/veyyon" ] && echo left || echo removed )" "removed"
+  check "the alias under a spaced HOME is removed" \
+      "$( [ -e "$_sp/bin/vey" ] || [ -L "$_sp/bin/vey" ] && echo left || echo removed )" "removed"
+  check "completions under a spaced HOME are removed" \
+      "$( [ -e "$(completions_dir_for bash)/veyyon" ] && echo left || echo removed )" "removed"
+  check "the native cache under a spaced HOME is removed" \
+      "$( [ -e "$_sp/.veyyon/natives" ] && echo left || echo removed )" "removed"
+  check "the source checkout under a spaced HOME is removed" \
+      "$( [ -e "$_sp/.veyyon/src" ] && echo left || echo removed )" "removed"
+  check "the PATH line is removed from a spaced HOME's rc" \
+      "$(grep -c 'veyyon' "$_sp/.bashrc" 2>/dev/null)" "0"
+  # And the rc is rewritten, not emptied: a word-split path could have produced
+  # a plausible-looking success while destroying the file.
+  check "the spaced HOME's rc survives the rewrite" \
+      "$( [ -f "$_sp/.bashrc" ] && echo present || echo gone )" "present" )
+unset XDG_DATA_HOME XDG_CONFIG_HOME
+export HOME="$SANDBOX/home"
+export VEYYON_INSTALL_DIR="$SANDBOX/bin"
+
 # --- install_dir: one owner, resolved on use ---
 # INSTALL_DIR was a top-level assignment reading $HOME at load, and it guards
 # removals: an uninstall run under a sandbox HOME resolved the bin directory
