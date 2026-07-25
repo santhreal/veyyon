@@ -128,6 +128,37 @@ h="$(eop_home zsh)"
 run_eop Darwin /bin/zsh "/opt/zsh-bin" "$h"
 check "zsh writes PATH to ~/.zshrc on any OS" "$(rc_has_dir "$h/.zshrc" /opt/zsh-bin)" "yes"
 
+# fish does not use `export PATH=`; it needs `fish_add_path`, written to
+# ~/.config/fish/config.fish (a directory the installer may have to create).
+h="$(eop_home fish)"
+run_eop Linux /usr/bin/fish "/opt/fish-bin" "$h"
+check "fish writes PATH to ~/.config/fish/config.fish" "$(rc_has_dir "$h/.config/fish/config.fish" /opt/fish-bin)" "yes"
+check "fish uses fish_add_path, not export PATH" \
+    "$(grep -c 'fish_add_path /opt/fish-bin' "$h/.config/fish/config.fish" 2>/dev/null)" "1"
+check "fish config got no bash-style export line" \
+    "$(grep -c 'export PATH' "$h/.config/fish/config.fish" 2>/dev/null)" "0"
+
+# An unknown shell falls back to ~/.profile rather than writing nothing.
+h="$(eop_home unknown-shell)"
+run_eop Linux /usr/bin/somesh "/opt/unknown-bin" "$h"
+check "an unrecognized shell falls back to ~/.profile" "$(rc_has_dir "$h/.profile" /opt/unknown-bin)" "yes"
+
+# --- ensure_on_path: a reinstall must not tell you to do it yourself ---
+# The three outcomes (no rc, already configured, freshly written) used to
+# collapse into two, so a REINSTALL — where the rc already carries the line —
+# warned "add $dir to your PATH" even though it was already configured and all
+# the user needed was a new shell. The manual-action warning is reserved for the
+# case where the installer genuinely could not do it.
+h="$(eop_home already)"
+run_eop Linux /bin/bash "/opt/already-bin" "$h"
+check "first run writes the PATH line" "$(rc_has_dir "$h/.bashrc" /opt/already-bin)" "yes"
+first_lines=$(grep -c 'already-bin' "$h/.bashrc")
+out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/bin/bash; ensure_on_path "/opt/already-bin" 2>&1 )
+check "a reinstall reports the dir is already configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "1"
+check "a reinstall does NOT tell the user to add it manually" "$(printf '%s' "$out" | grep -c 'add /opt/already-bin to your PATH')" "0"
+check "a reinstall points at the shell restart instead" "$(printf '%s' "$out" | grep -c 'restart your shell')" "1"
+check "a reinstall does not duplicate the PATH line" "$(grep -c 'already-bin' "$h/.bashrc")" "$first_lines"
+
 # --- completion_file_for: the one owner of per-shell completion filenames ---
 # install_completions writes through this and do_uninstall removes through it, so
 # a drift here used to mean an orphaned file surviving uninstall forever.
