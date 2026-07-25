@@ -447,6 +447,46 @@ version_from_output() {
 # ---- post-install self-check: prove the thing actually runs ----
 # $2 (optional) is the release tag that was installed. When given, the binary
 # must report exactly that version.
+# Prove the native addon loads, not just that the binary starts.
+#
+# `--version` is served entirely by the JS entry point: it succeeds on an
+# install whose native addon is missing, staged for the wrong architecture, or
+# built against a libc this machine does not have. The user then gets a clean
+# "doctor: veyyon runs" and a failure on their FIRST real command, which is the
+# exact shape of the musl case the preflight check exists to catch and cannot
+# catch for every cause. `grep` is the cheapest command that goes through the
+# native walker and returns a result we can check: about 130ms more than
+# --version, against a file this function writes and knows the contents of.
+doctor_natives() {
+    _dn_bin="$1"
+    # An older build with no `grep` subcommand is not a broken install, so probe
+    # for it the way install_completions probes for `completions`.
+    "$_dn_bin" grep --help >/dev/null 2>&1 || {
+        warn "this build has no 'grep' command — skipping the native addon self-test"
+        return 0
+    }
+    _dn_dir="${TMPDIR:-/tmp}/veyyon-doctor.$$"
+    mkdir -p "$_dn_dir" || {
+        warn "could not create $_dn_dir — skipping the native addon self-test"
+        return 0
+    }
+    printf 'veyyon-native-self-test\n' > "$_dn_dir/probe.txt" || {
+        rm -rf "$_dn_dir"
+        warn "could not write into $_dn_dir — skipping the native addon self-test"
+        return 0
+    }
+    _dn_out=$("$_dn_bin" grep veyyon-native-self-test "$_dn_dir" 2>&1)
+    _dn_status=$?
+    rm -rf "$_dn_dir"
+    if [ "$_dn_status" -ne 0 ]; then
+        die "$BIN_NAME starts but cannot run a search: \`$BIN_NAME grep\` exited $_dn_status. The native addon did not load. This is usually a platform mismatch (a musl system, or an architecture the release does not build). Install from source instead: curl -fsSL https://get.veyyon.dev | sh -s -- --source. Output was: $_dn_out"
+    fi
+    case "$_dn_out" in
+        *probe.txt*) ok "native addon loads — search returned the expected match" ;;
+        *) die "$BIN_NAME ran a search but did not find a file it was pointed at. The install is not usable. Output was: $_dn_out" ;;
+    esac
+}
+
 doctor() {
     bin="$1"; want_tag="${2:-}"
     say ""
@@ -470,6 +510,7 @@ doctor() {
             die "installed $BIN_NAME reports $got but the $want_tag release was requested — the release may have published a mismatched binary. The file at $bin is NOT the version you asked for; re-run the installer or pin with --ref."
         fi
     fi
+    doctor_natives "$bin"
     # Both names are checked: a user who types `veyyon` and a user who types the
     # documented `vey` must each reach the binary that was just installed.
     bin_dir=$(dir_of "$bin")
