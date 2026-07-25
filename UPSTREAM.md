@@ -105,6 +105,14 @@ since the commit that closes a merge would take the whole index and ship your
 half-staged edit inside a port. Per PR it also skips any port whose files
 overlap paths you have uncommitted changes in, naming them.
 
+That overlap check is what makes running on a dirty tree safe, so it is
+deliberately broad. It reads `git status --porcelain --untracked-files=all`
+rather than `git diff`, because a file you created and never committed exists
+in no git object and could not be recovered if something wrote over it, and
+`git diff` does not report untracked files at all. It is re-read before each
+PR rather than once per run, since every merge that lands changes the tree.
+Both matter because the quarantine step writes the working tree directly.
+
 ```
 bun scripts/jules-port-manager.ts land          # audit and merge all clean port PRs
 bun scripts/jules-port-manager.ts land 197 202  # only these
@@ -132,7 +140,11 @@ rendered handbook pages. So `land` audits the diff before merging anything.
 - **Session noise** is quarantined, not refused. Lockfiles that a session's
   older bun rewrote, and scratch helpers left at the repo root, are reset to
   main's content inside the merge commit and named in the log. The fix lands;
-  the noise never enters history.
+  the noise never enters history. A path that main already tracks is restored
+  from `HEAD`; one the session invented is removed. Which of the two applies is
+  decided by looking the path up in `HEAD`, not by attempting one and falling
+  back to the other on failure, and a failure of either aborts the merge and
+  refuses the PR rather than committing a half-reset tree.
 
 The same rules are stated in the session prompt, so most PRs never hit them.
 The audit is the backstop for when the prompt is not enough.
