@@ -3189,6 +3189,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						"agent",
 					);
 				},
+				// The failure twin of `onResolved`, on the same durable channel. Without
+				// it a failed arm left NO record at all, so a reader could not tell an
+				// inert session from one with the feature off — and an eval would score
+				// the trial as a shorthand arm that the model ignored.
+				onFailed: info => {
+					sessionManager.appendCustomMessageEntry(
+						"argot_arm_failed",
+						`argot: launch project FAILED to arm (${info.error}); no handles taught this session`,
+						false,
+						info,
+						"agent",
+					);
+				},
 			});
 		}
 

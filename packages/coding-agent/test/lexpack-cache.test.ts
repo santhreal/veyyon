@@ -668,6 +668,48 @@ describe("armArgotAfterStartup", () => {
 		expect(argot.loaded).toBe(false);
 	});
 
+	it("records a durable failure marker when the load throws, instead of degrading quietly", async () => {
+		// Law 10. A failed arm used to log a warn and continue: `onResolved` does not
+		// fire on that path, so the transcript carried NO argot entry at all. An inert
+		// session was then indistinguishable from one with the feature switched off,
+		// while an eval still counted the trial as a shorthand arm and blamed its null
+		// result on the model ignoring handles rather than on handles never existing.
+		// The session must still survive (a bad dictionary is not worth killing a
+		// coding session over), so the contract is: no throw, but a recorded marker.
+		const argot = new ArgotSession();
+		const boom = new Error("malformed dictionary cache");
+		const failures: Array<{ error: string }> = [];
+		let armedCalls = 0;
+		let resolvedCalls = 0;
+		// Force the failure at the load seam itself, so this exercises the real catch
+		// rather than a hand-built error object.
+		const originalLoad = argot.load.bind(argot);
+		(argot as unknown as { load: () => never }).load = () => {
+			throw boom;
+		};
+		try {
+			await armArgotAfterStartup({
+				argot,
+				cwd: repoDir,
+				onArmed: async () => {
+					armedCalls += 1;
+				},
+				onResolved: () => {
+					resolvedCalls += 1;
+				},
+				onFailed: info => failures.push(info),
+			});
+		} finally {
+			(argot as unknown as { load: typeof originalLoad }).load = originalLoad;
+		}
+		expect(armedCalls).toBe(0);
+		expect(resolvedCalls).toBe(0);
+		// The marker is the point: exactly one, naming the real cause.
+		expect(failures.length).toBe(1);
+		expect(failures[0]!.error).toContain("malformed dictionary cache");
+		expect(argot.loaded).toBe(false);
+	});
+
 	it("reports the resolved handle count so an eval can size the loaded vocabulary", async () => {
 		// The telemetry contract behind the bench's "vocab handles" column. The
 		// handle table is injected into the prompt asynchronously, AFTER the
