@@ -23,6 +23,15 @@ set -e
 REPO="santhreal/veyyon"
 BIN_NAME="veyyon"
 ALIAS_NAME="vey"
+# Whether `$ALIAS_NAME` next to the binary is an alias THIS installer owns.
+#
+# One owner: link_alias makes the call (it is the only code that inspects and
+# writes the alias) and records it here; install_completions and doctor read it
+# rather than each re-deriving the answer. Re-deriving needed `readlink`, which
+# doctor cannot depend on: doctor exists to diagnose a broken PATH, and on a
+# broken PATH the fork fails and the alias silently reads as "not ours". 0 until
+# link_alias has actually run, so nothing assumes ownership it has not checked.
+ALIAS_IS_OURS=0
 INSTALL_DIR="${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"
 MIN_BUN_VERSION="1.3.14"
 
@@ -104,15 +113,20 @@ link_alias() {
     # put there: a symlink already pointing at our binary (idempotent reinstall),
     # or a dangling symlink (nothing to lose). Anything else is the user's file
     # and is left alone.
+    ALIAS_IS_OURS=0
     if [ -L "$link" ]; then
         if [ "$(readlink "$link" 2>/dev/null)" = "$target" ]; then
+            ALIAS_IS_OURS=1
             ok "'$ALIAS_NAME' already points at $BIN_NAME"
             return 0
         fi
         if [ ! -e "$link" ]; then
-            ln -sf "$target" "$link" 2>/dev/null \
-                && ok "replaced a broken '$ALIAS_NAME' link -> $BIN_NAME" \
-                || warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
+            if ln -sf "$target" "$link" 2>/dev/null; then
+                ALIAS_IS_OURS=1
+                ok "replaced a broken '$ALIAS_NAME' link -> $BIN_NAME"
+            else
+                warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
+            fi
             return 0
         fi
         warn "left '$ALIAS_NAME' alone: $link is a symlink to something else ($(readlink "$link" 2>/dev/null)). Remove it yourself if you want '$ALIAS_NAME' to launch $BIN_NAME; meanwhile launch with '$BIN_NAME'."
@@ -122,7 +136,12 @@ link_alias() {
         warn "left '$ALIAS_NAME' alone: $link already exists and was not created by this installer. Remove it yourself if you want '$ALIAS_NAME' to launch $BIN_NAME; meanwhile launch with '$BIN_NAME'."
         return 0
     fi
-    ln -s "$target" "$link" 2>/dev/null && ok "linked '$ALIAS_NAME' -> $BIN_NAME" || warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
+    if ln -s "$target" "$link" 2>/dev/null; then
+        ALIAS_IS_OURS=1
+        ok "linked '$ALIAS_NAME' -> $BIN_NAME"
+    else
+        warn "could not link '$ALIAS_NAME' (launch with '$BIN_NAME')"
+    fi
 }
 
 # ---- ensure the install dir is actually on PATH (binary mode) ----
@@ -190,19 +209,6 @@ completion_file_for() {
     esac
 }
 
-# True when the alias next to $1 is one we created (a symlink to our binary).
-#
-# Completions for `vey` are only ours to write when `vey` actually launches
-# veyyon. If link_alias declined because the user has their own `vey`, writing
-# `completions/vey` would both describe the wrong command and overwrite that
-# tool's completion file — the same destruction link_alias just refused to do.
-alias_points_at_us() {
-    d=$(dir_of "$1")
-    l="$d/$ALIAS_NAME"
-    [ -L "$l" ] || return 1
-    [ "$(readlink "$l" 2>/dev/null)" = "$d/$BIN_NAME" ]
-}
-
 install_completions() {
     bin="$1"
     "$bin" completions --help >/dev/null 2>&1 || {
@@ -225,7 +231,7 @@ install_completions() {
             # completed, so the `vey` alias needs its own file or it gets nothing
             # (zsh needs none: the generated script's `#compdef` line names both).
             alias_name=$(completion_file_for "$sh" "$ALIAS_NAME")
-            if [ -n "$alias_name" ] && [ "$sh" != "zsh" ] && alias_points_at_us "$bin"; then
+            if [ -n "$alias_name" ] && [ "$sh" != "zsh" ] && [ "$ALIAS_IS_OURS" = 1 ]; then
                 if cp -f "$out/$name" "$out/$alias_name" 2>/dev/null; then
                     ok "installed $sh completions for '$ALIAS_NAME'"
                 else
@@ -321,7 +327,17 @@ doctor() {
     # documented `vey` must each reach the binary that was just installed.
     bin_dir=$(dir_of "$bin")
     check_not_shadowed "$BIN_NAME" "$bin_dir"
-    check_not_shadowed "$ALIAS_NAME" "$bin_dir"
+    # ...but only when the alias is ours. If link_alias declined because the user
+    # already has their own `vey`, the shadow check would report that THEIR
+    # command "shadows the copy just installed" and tell them to delete it — for
+    # an alias this installer deliberately never created. link_alias already said
+    # the true thing; saying a contradictory one right after is worse than
+    # silence, so restate it instead.
+    if [ "$ALIAS_IS_OURS" = 1 ]; then
+        check_not_shadowed "$ALIAS_NAME" "$bin_dir"
+    else
+        ok "'$ALIAS_NAME' is not ours — launch with '$BIN_NAME'"
+    fi
 }
 
 # A staging path in the install dir that no concurrent installer can collide on.
