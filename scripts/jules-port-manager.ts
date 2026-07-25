@@ -833,11 +833,17 @@ function gitTry(...args: string[]): { ok: boolean; out: string } {
  * wholesale, because the commit that closes a merge takes whatever the index
  * holds, so someone else's half-staged edit would ship inside a port.
  *
- * An unstaged dirty tree is NOT unsafe by itself, and refusing it would make
- * `land` unrunnable here: this repo's main tree is the canonical copy and
- * carries in-progress work essentially all the time. Git already refuses a
- * merge that would overwrite a modified path, so the only real hazard is
- * overlap, which landPreflight checks per PR against the exact merge surface.
+ * An unstaged dirty tree is NOT refused, because doing so would make `land`
+ * unrunnable here: this repo's main tree is the canonical copy and carries
+ * in-progress work essentially all the time. That permission is only safe
+ * because every path holding uncommitted work is protected per PR, against a
+ * freshly read workingTreePaths() that includes untracked files, before
+ * anything writes the tree. Do not relax one of those without the other. Git
+ * refuses a merge that would overwrite an untracked file, so it is a backstop
+ * for the case this misses, but it is a backstop and not the design: land runs
+ * `git checkout HEAD --` and `git rm -f` after the merge, where git no longer
+ * distinguishes your content from the session's, and the protected set is the
+ * only thing that does.
  */
 function requireLandableMain(): void {
 	const branch = git("rev-parse", "--abbrev-ref", "HEAD");
@@ -850,9 +856,67 @@ function requireLandableMain(): void {
 		);
 }
 
-/** Working-tree paths with unstaged modifications, which a merge must not touch. */
-function dirtyPaths(): Set<string> {
-	return new Set(git("diff", "--name-only").split("\n").filter(Boolean));
+/**
+ * Every path holding work that exists only in the working tree, which land must
+ * not write to under any circumstance.
+ *
+ * This is `git status --porcelain`, not `git diff --name-only`, and the
+ * difference is the whole point: `git diff` reports modifications to tracked
+ * files and says nothing about untracked ones. A file you created and have not
+ * committed is invisible to it, so a check built on it will happily authorise
+ * `git checkout HEAD --` or `git rm -f` over content that exists nowhere else
+ * and cannot be recovered from any object in the repository. Untracked work is
+ * the *most* fragile thing in the tree, not the least, and it is what this set
+ * exists to protect.
+ *
+ * Renames are reported as `R  old -> new`, and both sides are returned: the
+ * source path is as unsafe to write over as the destination.
+ */
+export function parseWorkingTreePaths(porcelain: string): Set<string> {
+	const paths = new Set<string>();
+	for (const line of porcelain.split("\n")) {
+		if (line.length < 4) continue;
+		// Porcelain v1 is `XY <path>`, with `XY <old> -> <new>` for renames/copies.
+		for (const part of line.slice(3).split(" -> ")) {
+			const path = part.trim().replace(/^"(.*)"$/, "$1");
+			if (path) paths.add(path);
+		}
+	}
+	return paths;
+}
+
+/** Live snapshot of uncommitted work, tracked and untracked alike. */
+function workingTreePaths(): Set<string> {
+	return parseWorkingTreePaths(git("status", "--porcelain", "--untracked-files=all"));
+}
+
+/**
+ * Drop every quarantined path back to what main holds, inside the in-progress
+ * merge and before it is committed.
+ *
+ * Which command is right is a determinate question, so it is answered by asking
+ * rather than by trying one and catching the failure. A path either exists in
+ * HEAD, in which case main's content is restored over the session's edit, or it
+ * does not, in which case the session invented the file and it is removed. The
+ * previous shape here ran `checkout` and fell through to `rm -f
+ * --ignore-unmatch` on any non-zero exit, which could not tell "not in main"
+ * from "checkout failed" and discarded the outcome of both: a path could end up
+ * restored, deleted, or silently untouched, and the caller could not tell which.
+ * That is the fallback Law 10 bans, and here it deletes files.
+ *
+ * Every caller must have already proven each path is absent from
+ * workingTreePaths(), because both branches write the tree. Returns the paths it
+ * could not reset so the caller can abort rather than commit a merge still
+ * carrying the noise the quarantine exists to strip.
+ */
+function resetQuarantined(paths: string[]): string[] {
+	const failed: string[] = [];
+	for (const path of paths) {
+		const inMain = gitTry("cat-file", "-e", `HEAD:${path}`).ok;
+		const reset = inMain ? gitTry("checkout", "HEAD", "--", path) : gitTry("rm", "-f", "--", path);
+		if (!reset.ok) failed.push(`${path}: ${reset.out.split("\n")[0]}`);
+	}
+	return failed;
 }
 
 /**
@@ -873,7 +937,6 @@ function dirtyPaths(): Set<string> {
  */
 async function land(only: number[], push: boolean): Promise<void> {
 	requireLandableMain();
-	const dirty = dirtyPaths();
 	const policy = parseNeverPorted(readFileSync(POLICY_PATH, "utf8"));
 	git("fetch", "origin", "main");
 
@@ -926,8 +989,14 @@ async function land(only: number[], push: boolean): Promise<void> {
 			}
 			continue;
 		}
-		// Git would refuse this merge anyway; catching it here names the exact
-		// paths instead of leaving a half-attempted merge and a git error.
+		// Re-read per PR rather than once before the loop: each landed merge
+		// changes the tree, and a stale snapshot is exactly how a path stops being
+		// listed as yours right before something writes over it.
+		const dirty = workingTreePaths();
+		// This is a safety check, not a convenience one. Both the merge and the
+		// quarantine reset write these paths, and the reset writes them with
+		// `checkout HEAD --` and `rm -f`, so a path carrying uncommitted work must
+		// take the PR out of this run entirely rather than be resolved in place.
 		const collisions = files.filter(f => dirty.has(f));
 		if (collisions.length > 0) {
 			refused.push(
@@ -949,6 +1018,17 @@ async function land(only: number[], push: boolean): Promise<void> {
 			}
 			continue;
 		}
+		// resetQuarantined writes the tree, so it is only allowed to run on paths
+		// proven free of uncommitted work. That holds today because quarantine is a
+		// subset of `files`, which `collisions` already cleared, but the guarantee
+		// belongs next to the code that depends on it: if the quarantine set ever
+		// grows a source other than the PR diff, this fails closed instead of
+		// silently regaining the ability to delete your work.
+		const unsafe = audit.quarantine.filter(f => dirty.has(f));
+		if (unsafe.length > 0) {
+			refused.push(`#${n} would quarantine ${unsafe.length} path(s) holding uncommitted work: ${unsafe.join(", ")}`);
+			continue;
+		}
 		// --no-commit so quarantined paths are reset before the merge commit
 		// exists: the noise never enters history, and the PR head stays a parent
 		// so pushing still marks the PR merged on GitHub.
@@ -958,10 +1038,13 @@ async function land(only: number[], push: boolean): Promise<void> {
 			refused.push(`#${n} does not merge cleanly into main:\n      ${merge.out.split("\n")[0]}`);
 			continue;
 		}
-		for (const path of audit.quarantine) {
-			// Restore main's version, or delete outright when the PR invented the
-			// file (scratch helpers have no main-side content to restore).
-			if (!gitTry("checkout", "HEAD", "--", path).ok) gitTry("rm", "-f", "--ignore-unmatch", "--", path);
+		const unreset = resetQuarantined(audit.quarantine);
+		if (unreset.length > 0) {
+			gitTry("merge", "--abort");
+			refused.push(
+				`#${n} could not have its quarantined paths reset, so the merge would have carried session noise into history:\n      ${unreset.join("\n      ")}`,
+			);
+			continue;
 		}
 		const quarantineNote =
 			audit.quarantine.length > 0
