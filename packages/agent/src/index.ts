@@ -20,6 +20,8 @@ export * from "./telemetry";
 export * from "./thinking";
 // Tokenizer choice
 export * from "./tokenizer";
+
+export * from "./tool-result-cap";
 // Types
 export * from "./types";
 // Yield utilities for Bun event-loop busy-wait prevention

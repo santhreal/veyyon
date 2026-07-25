@@ -74,6 +74,7 @@ import {
 	startExecuteToolSpan,
 	startInvokeAgentSpan,
 } from "./telemetry";
+import { capToolResultContent } from "./tool-result-cap";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -2056,11 +2057,16 @@ async function executeToolCalls(
 						args: record.args,
 						countTokens: estimateTokensFromText,
 					});
+		// Last line of defence on request size. Built-in tools apply their own,
+		// much tighter budgets; a tool registered from outside the codebase (an
+		// MCP server, say) applies none, and an oversized result would fail the
+		// request rather than the tool, on every retry, with no way back.
+		const cappedContent = capToolResultContent(result.content, toolCall.name).content;
 		const toolResultMessage: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
-			content: result.content,
+			content: cappedContent,
 			details: result.details,
 			isError,
 			...(result.useless && !isError ? { useless: true } : {}),

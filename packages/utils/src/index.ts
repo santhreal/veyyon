@@ -4,6 +4,7 @@ export * from "./async";
 export * from "./atomic-write";
 export * from "./backoff";
 export * from "./binary";
+export * from "./byte-truncate";
 export * from "./collapse-whitespace";
 export * from "./color";
 export * from "./conformance";

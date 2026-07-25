@@ -1,5 +1,8 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { clampLow, sanitizeText } from "@veyyon/utils";
+import { capTextBytes, clampLow, sanitizeText, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils";
+
+export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils";
+
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
@@ -127,12 +130,6 @@ export interface TruncationOptions {
 	maxHeadLines?: number;
 }
 
-/** Result from byte-level truncation helpers. */
-export interface ByteTruncationResult {
-	text: string;
-	bytes: number;
-}
-
 export interface TailTruncationNoticeOptions {
 	fullOutputPath?: string;
 	originalContent?: string;
@@ -157,105 +154,6 @@ function countNewlines(text: string): number {
 		pos = text.indexOf(NL, pos + 1);
 	}
 	return count;
-}
-
-/** Zero-copy view of a Uint8Array as a Buffer (copies only if already a Buffer). */
-function asBuffer(data: Uint8Array): Buffer {
-	return Buffer.isBuffer(data) ? (data as Buffer) : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-}
-
-/** Advance past UTF-8 continuation bytes (10xxxxxx) to a leading byte. */
-function findUtf8BoundaryForward(buf: Buffer, pos: number): number {
-	let i = Math.max(0, pos);
-	while (i < buf.length && (buf[i] & 0xc0) === 0x80) i++;
-	return i;
-}
-
-/** Retreat past UTF-8 continuation bytes to land on a leading byte. */
-function findUtf8BoundaryBackward(buf: Buffer, cut: number): number {
-	let i = Math.min(buf.length, Math.max(0, cut));
-	// If the cut is at end-of-buffer, it's already a valid boundary.
-	if (i >= buf.length) return buf.length;
-	while (i > 0 && (buf[i] & 0xc0) === 0x80) i--;
-	return i;
-}
-
-// =============================================================================
-// Byte-level truncation (windowed encoding)
-// =============================================================================
-
-function truncateBytesWindowed(
-	data: string | Uint8Array,
-	maxBytesRaw: number,
-	mode: "head" | "tail",
-): ByteTruncationResult {
-	const maxBytes = maxBytesRaw;
-	if (maxBytes === 0) return { text: "", bytes: 0 };
-
-	// --------------------------
-	// String path (windowed)
-	// --------------------------
-	if (typeof data === "string") {
-		// Fast non-truncation check only when it *might* fit.
-		if (data.length <= maxBytes) {
-			const len = Buffer.byteLength(data, "utf-8");
-			if (len <= maxBytes) return { text: data, bytes: len };
-			// else: multibyte-heavy string; fall through to truncation using full string as window.
-		}
-
-		const window =
-			mode === "head"
-				? data.substring(0, Math.min(data.length, maxBytes))
-				: data.substring(Math.max(0, data.length - maxBytes));
-
-		const buf = Buffer.from(window, "utf-8");
-
-		if (mode === "head") {
-			const end = findUtf8BoundaryBackward(buf, maxBytes);
-			if (end <= 0) return { text: "", bytes: 0 };
-			const slice = buf.subarray(0, end);
-			return { text: slice.toString("utf-8"), bytes: slice.length };
-		} else {
-			const startAt = Math.max(0, buf.length - maxBytes);
-			const start = findUtf8BoundaryForward(buf, startAt);
-			const slice = buf.subarray(start);
-			return { text: slice.toString("utf-8"), bytes: slice.length };
-		}
-	}
-
-	// --------------------------
-	// Uint8Array / Buffer path
-	// --------------------------
-	const buf = asBuffer(data);
-	if (buf.length <= maxBytes) return { text: buf.toString("utf-8"), bytes: buf.length };
-
-	if (mode === "head") {
-		const end = findUtf8BoundaryBackward(buf, maxBytes);
-		if (end <= 0) return { text: "", bytes: 0 };
-		const slice = buf.subarray(0, end);
-		return { text: slice.toString("utf-8"), bytes: slice.length };
-	} else {
-		const startAt = buf.length - maxBytes;
-		const start = findUtf8BoundaryForward(buf, startAt);
-		const slice = buf.subarray(start);
-		return { text: slice.toString("utf-8"), bytes: slice.length };
-	}
-}
-
-/**
- * Truncate a string/buffer to fit within a byte limit, keeping the tail.
- * Handles multi-byte UTF-8 boundaries correctly.
- */
-export function truncateTailBytes(data: string | Uint8Array, maxBytes: number): ByteTruncationResult {
-	return truncateBytesWindowed(data, maxBytes, "tail");
-}
-
-/**
- * Truncate a string/buffer to fit within a byte limit, keeping the head.
- * Handles multi-byte UTF-8 boundaries correctly.
- */
-export function truncateHeadBytes(data: string | Uint8Array, maxBytes: number): ByteTruncationResult {
-	return truncateBytesWindowed(data, maxBytes, "head");
 }
 
 // =============================================================================
@@ -609,46 +507,26 @@ export interface InlineByteCapOptions {
 	saveArtifact?: (full: string) => string | undefined | Promise<string | undefined>;
 }
 
-/** Drop the partial last line of a head window (keep it if there is no newline at all). */
-function trimHeadToLineBoundary(text: string): string {
-	const idx = text.lastIndexOf(NL);
-	return idx > 0 ? text.substring(0, idx) : text;
-}
-
-/** Drop the partial first line of a tail window (keep it if there is no newline at all). */
-function trimTailToLineBoundary(text: string): string {
-	const idx = text.indexOf(NL);
-	if (idx < 0 || idx === text.length - 1) return text;
-	return text.substring(idx + 1);
-}
-
 /**
- * Final-defense inline size guard for tool results.
+ * Per-tool inline size guard, with the elided bytes kept as a session artifact.
  *
- * No-op when `text` fits within `maxBytes` (the common path). Otherwise keeps
- * ~60% of the budget from the head and ~25% from the tail — cut on line
- * boundaries, never splitting a multi-byte UTF-8 sequence — with an elision
- * marker between. The remaining ~15% is slack for the marker and the optional
- * `[raw output: artifact://<id>]` footer, so the result stays under `maxBytes`.
+ * The head/tail windowing itself lives in {@link capTextBytes}; this wrapper
+ * adds the one thing that is specific to a tool result, which is persisting the
+ * full text and appending a `[raw output: artifact://<id>]` footer so the
+ * elided bytes stay recoverable.
+ *
+ * This is not the last line of defence. A tool that never calls it, including
+ * any MCP or third-party tool, is still capped by the agent loop before its
+ * result reaches the provider.
  */
 export async function enforceInlineByteCap(text: string, options: InlineByteCapOptions): Promise<string> {
-	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
-	if (maxBytes <= 0) return text;
-	const totalBytes = Buffer.byteLength(text, "utf-8");
-	if (totalBytes <= maxBytes) return text;
-
-	const head = trimHeadToLineBoundary(truncateHeadBytes(text, Math.floor(maxBytes * 0.6)).text);
-	const tail = trimTailToLineBoundary(truncateTailBytes(text, Math.floor(maxBytes * 0.25)).text);
-	const elidedBytes = Math.max(0, totalBytes - Buffer.byteLength(head, "utf-8") - Buffer.byteLength(tail, "utf-8"));
-	const marker = `[…${elidedBytes}B elided…]`;
-	let composed = `${head}\n${marker}\n${tail}`;
+	const capped = capTextBytes(text, options.maxBytes ?? DEFAULT_MAX_BYTES);
+	if (capped.elidedBytes === 0) return capped.text;
 
 	const artifactId = await options.saveArtifact?.(text);
-	if (artifactId) {
-		const sep = composed.endsWith(NL) ? "" : NL;
-		composed += `${sep}${artifactFooter(artifactId)}`;
-	}
-	return composed;
+	if (!artifactId) return capped.text;
+	const sep = capped.text.endsWith(NL) ? "" : NL;
+	return `${capped.text}${sep}${artifactFooter(artifactId)}`;
 }
 
 // =============================================================================
