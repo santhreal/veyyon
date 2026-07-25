@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Fixed Enter submitting the collab-web composer while an IME composition was still open, so the keystroke sent a half-composed message instead of confirming the candidate ([#6229](https://github.com/can1357/oh-my-pi/issues/6229)).
 - Fixed an issue in the live collaboration transcript where duplicate tool cards and a stale "thinking..." shimmer were rendered while a committed tool call was running.
 
 ## [16.3.7] - 2026-07-05
