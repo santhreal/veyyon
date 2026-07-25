@@ -973,9 +973,20 @@ export async function runAutoUpdate(
 }
 
 /**
+ * Performs the install once `runUpdateCommand` has decided one should happen.
+ * Injectable so the dispatch can be tested without downloading a release or
+ * running git against a real checkout; production always uses
+ * {@link installRelease}, which owns the binary-vs-source decision.
+ */
+export type ReleaseInstaller = (version: string, force: boolean) => Promise<void>;
+
+/**
  * Run the update command.
  */
-export async function runUpdateCommand(opts: { force: boolean; check: boolean }): Promise<void> {
+export async function runUpdateCommand(
+	opts: { force: boolean; check: boolean },
+	install: ReleaseInstaller = installRelease,
+): Promise<void> {
 	console.log(chalk.dim(`Current version: ${VERSION}`));
 
 	// Check for updates
@@ -1013,18 +1024,18 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 		return;
 	}
 
-	// A source install updates via `git pull`, not a binary swap. Say so as
-	// guidance and exit cleanly (0) rather than attempting the install and
-	// reporting a failure for a thing that was never going to work.
-	const veyyonPath = resolveVeyyonPath();
-	if (veyyonPath && resolveUpdateMethod(veyyonPath) === "source") {
-		console.log(chalk.yellow(sourceInstallUpdateGuidance(veyyonPath)));
-		return;
-	}
-
-	// Binary install: download the release binary and swap it in place.
+	// installRelease is the single owner of the install-method dispatch: a binary
+	// install gets a binary swap, a source checkout gets updateViaSourceAt.
+	//
+	// This used to return early with the manual "cd in and run git pull" advice
+	// whenever the install was a source one. That advice is what stranded a user
+	// on a stale checkout in the first place (following it skips the dependency
+	// reinstall and the build-artifact regen, so the checkout does not even
+	// boot), and updateViaSourceAt exists precisely to do all of it. Returning
+	// here made that code unreachable from the only command a user runs, so the
+	// fix shipped and nobody could get at it.
 	try {
-		await installRelease(release.version, opts.force);
+		await install(release.version, opts.force);
 	} catch (err) {
 		// errorMessage(err), not `${err}`: the latter stringifies as "Error: …"
 		// and doubles the prefix into "Update failed: Error: …".
