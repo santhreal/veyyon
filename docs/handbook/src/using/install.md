@@ -26,6 +26,8 @@ The first interactive `vey` opens the first-run setup, which moves through a spl
 
 Your configuration home is `~/.veyyon`, and the default profile keeps its agent directory at `~/.veyyon/profiles/default/agent/`.
 
+On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a "not found" error from the dynamic loader about a file that is plainly there.
+
 ## Install a specific version, or from source
 
 The installer takes a few options. Pass them after `-- ` when you pipe the script:
