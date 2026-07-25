@@ -503,8 +503,16 @@ function Fetch-SourceTree {
             }
             git checkout --force $ref
             if ($LASTEXITCODE -ne 0) { throw "failed to check out '$ref' in $SrcDir" }
+            # `origin/$ref` is the normal case; a ref with no remote-tracking
+            # branch (a tag, a commit passed to -Ref) falls back to the ref
+            # itself. The fallback's exit code used to go unchecked, so a
+            # checkout that reset to NEITHER carried on to `bun install` and
+            # installed the old tree under the new version's name.
             git reset --hard "origin/$ref" 2>$null
-            if ($LASTEXITCODE -ne 0) { git reset --hard $ref | Out-Null }
+            if ($LASTEXITCODE -ne 0) {
+                git reset --hard $ref | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "failed to reset $SrcDir to '$ref'" }
+            }
         } finally {
             Pop-Location
         }
