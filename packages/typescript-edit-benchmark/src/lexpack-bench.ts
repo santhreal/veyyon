@@ -17,14 +17,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager, Settings } from "@veyyon/coding-agent";
-import { loadArgotFolder } from "@veyyon/coding-agent/argot-cache";
+import { loadArgotFolder } from "@veyyon/coding-agent/lexpack-cache";
 import { ArgotSession, DEFAULT_SIGIL, makePromptFragment, measureDecode, renderPreamble, type Vocabulary } from "argot";
 import {
 	type ArgotCertification,
 	type ArgotRunMeasurement,
 	assembleRunMeasurement,
 	certifyArgot,
-} from "./argot-certify";
+} from "./lexpack-certify";
 import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";

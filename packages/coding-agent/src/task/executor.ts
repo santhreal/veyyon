@@ -23,7 +23,7 @@ import {
 	untilAborted,
 } from "@veyyon/utils";
 import type { ArgotSession, StreamDecoder } from "argot";
-import { createSubagentStreamDecoder, expandSubagentReturn } from "../argot-wire";
+import { createSubagentStreamDecoder, expandSubagentReturn } from "../lexpack-wire";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -978,7 +978,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 
 	// Expand the child's own shorthand at the RETURN boundary before its raw
 	// assistant text becomes the parent's tool result. See `expandSubagentReturn`
-	// (argot-wire.ts) for why this seam exists; the only wrinkle here is that the
+	// (lexpack-wire.ts) for why this seam exists; the only wrinkle here is that the
 	// child codec lives on the currently-attached session.
 	const expandChildOutput = (text: string): string => {
 		try {

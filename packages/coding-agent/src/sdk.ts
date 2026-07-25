@@ -35,7 +35,7 @@ import {
 	formatActiveRepoWatchdogPrompt,
 	formatAdvisorContextPrompt,
 } from "./advisor";
-import { armArgotAfterStartup } from "./argot-cache";
+import { armArgotAfterStartup } from "./lexpack-cache";
 import { type AsyncJob, AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
@@ -62,8 +62,8 @@ import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import "./discovery";
 import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
-import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./argot-cache";
-import { buildArgotGate, expandToolArguments } from "./argot-wire";
+import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./lexpack-cache";
+import { buildArgotGate, expandToolArguments } from "./lexpack-wire";
 import { initializeWithSettings } from "./discovery";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
 import { disposeAllVmContexts, disposeVmContextsByOwner } from "./eval/js/context-manager";

@@ -177,7 +177,7 @@ import {
 	resolveAdvisorDeliveryChannel,
 	slugifyAdvisorName,
 } from "../advisor";
-import { ArgotStreamDisplayDecoder, expandAssistantContent, expandSessionContext } from "../argot-wire";
+import { ArgotStreamDisplayDecoder, expandAssistantContent, expandSessionContext } from "../lexpack-wire";
 import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";

@@ -27,7 +27,7 @@ import {
 	loadArgotFolder,
 	rearmArgotForDecode,
 	unloadArgotFolder,
-} from "@veyyon/coding-agent/argot-cache";
+} from "@veyyon/coding-agent/lexpack-cache";
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,

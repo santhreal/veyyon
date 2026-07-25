@@ -12,11 +12,11 @@
  *     result. If the child does not expand it, the parent — whose codec may bind
  *     the same handle name to a DIFFERENT expansion, or not know it — receives an
  *     undecodable or silently-mis-decoded token. `expandSubagentReturn`
- *     (argot-wire.ts), called from the executor's output-capture points, is the
+ *     (lexpack-wire.ts), called from the executor's output-capture points, is the
  *     fix; these tests prove it, and prove WHY the un-expanded path is a real bug
  *     (the same-name/divergent-expansion case corrupts the parent's history).
  *
- *  2. THE SUBAGENT POLICY. `createArgotSession` (argot-cache.ts) maps
+ *  2. THE SUBAGENT POLICY. `createArgotSession` (lexpack-cache.ts) maps
  *     `argot.subagents` (`off`/`fresh`/`inherit`) to a codec: `off` → none,
  *     `fresh` → an empty session the child loads itself (agent-driven), `inherit` →
  *     a DETACHED fork of the parent's codec. The policy only trades tokens; it must
@@ -30,8 +30,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { type ArgotSubagentMode, createArgotSession } from "@veyyon/coding-agent/argot-cache";
-import { expandSubagentReturn, expandToolArguments } from "@veyyon/coding-agent/argot-wire";
+import { type ArgotSubagentMode, createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
+import { expandSubagentReturn, expandToolArguments } from "@veyyon/coding-agent/lexpack-wire";
 import { ArgotSession, type Vocabulary } from "argot";
 
 // ---------------------------------------------------------------------------

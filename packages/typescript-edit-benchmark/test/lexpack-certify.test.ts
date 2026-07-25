@@ -18,7 +18,7 @@ import {
 	EDIT_TASK_TRUTHS,
 	evaluateCertification,
 	measureTranscript,
-} from "../src/argot-certify";
+} from "../src/lexpack-certify";
 
 const VOCAB = parseDict(
 	`version = 1

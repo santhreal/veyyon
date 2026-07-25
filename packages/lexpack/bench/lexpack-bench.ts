@@ -23,7 +23,7 @@
  *   - ENCODE+EXPAND argot.enabled = true, models=[m] teach every turn, expansion armed
  *
  * Run:
- *   bun bench/argot-bench.ts [corpus-root]
+ *   bun bench/lexpack-bench.ts [corpus-root]
  *
  * `corpus-root` defaults to this repository. Pass another repo (e.g. veyyon) to
  * bench against a larger, more representative codebase. Budget matches the

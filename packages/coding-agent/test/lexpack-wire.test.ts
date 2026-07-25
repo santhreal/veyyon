@@ -1,5 +1,5 @@
 /**
- * Unit-locks argot-wire.ts, the ONE module through which veyyon touches the argot
+ * Unit-locks lexpack-wire.ts, the ONE module through which veyyon touches the argot
  * codec. Its whole safety story rests on a set of guards that let the executor
  * route everything through these functions unconditionally: "identity until a
  * dict loads", "an `off` child (no codec) is inert", and "return `undefined` when
@@ -23,7 +23,7 @@ import {
 	expandSessionContext,
 	expandSubagentReturn,
 	expandToolArguments,
-} from "@veyyon/coding-agent/argot-wire";
+} from "@veyyon/coding-agent/lexpack-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { ArgotSession, EMPTY_GATE, StreamDecoder, type Vocabulary } from "argot";
 

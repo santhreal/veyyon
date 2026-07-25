@@ -439,7 +439,7 @@ reproducible byte for byte.
 Run it against any repository:
 
 ```sh
-bun bench/argot-bench.ts /path/to/repo
+bun bench/lexpack-bench.ts /path/to/repo
 ```
 
 Here is a real run over the veyyon coding agent (about 4,000 tracked files, 14.5
