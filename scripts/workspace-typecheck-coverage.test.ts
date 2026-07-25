@@ -157,19 +157,14 @@ describe("every repo-level test suite is actually run by something", () => {
 	 * An exception belongs here, in the open, rather than as an absence nobody can
 	 * see. That is the whole point of the check: silence was the defect.
 	 */
-	const KNOWN_UNRUN = new Map<string, string>([
-		[
-			// The committed root CHANGELOG.md does not match a fresh render, and the
-			// mismatch is a real generator scope bug, not stale output: the root sync
-			// reads ONLY packages/coding-agent/CHANGELOG.md, so every fix recorded in
-			// another package's changelog vanishes on regeneration. A collab-web IME
-			// fix was hand-added to the root in 07975344 for exactly that reason.
-			// Wiring this suite before the scope is settled would make CI red on an
-			// unresolved content question. Tracked as CHANGELOG-ROOT-SYNC-SCOPE.
-			"scripts/sync-root-changelog.test.ts",
-			"CHANGELOG-ROOT-SYNC-SCOPE: root sync reads only coding-agent, dropping other packages' entries",
-		],
-	]);
+	// Empty, and that is the intended resting state. The one entry that lived here
+	// was `scripts/sync-root-changelog.test.ts`, held back while the root sync's
+	// scope was an open question: the generator read only
+	// `packages/coding-agent/CHANGELOG.md`, so entries recorded in any other
+	// package vanished on regeneration. The generator now aggregates every package
+	// and cuts inherited history at the fork point, so the suite is wired into
+	// `repoScriptTests` like any other.
+	const KNOWN_UNRUN = new Map<string, string>([]);
 
 	/** Outward drift. A suite referenced by nothing runs nowhere, and its green
 	 * assertions are decoration. */

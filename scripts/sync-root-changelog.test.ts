@@ -1,22 +1,28 @@
-// The repo-root CHANGELOG sync shell. Two contracts matter here and are worth a
-// dedicated suite: (1) the shell renders through the ONE shared core, so the root
-// file can never diverge from the website's changelog logic, and (2) the file
-// actually committed at the repo root is in sync with the canonical source — the
-// same thing `changelog:root:check` enforces in CI, encoded as a test so a local
-// `bun test` catches drift before a push instead of only on the PR.
+// The repo-root CHANGELOG sync shell.
+//
+// Three contracts matter here and are worth a dedicated suite:
+//
+//  1. the shell renders through the ONE shared core, so the root file can never
+//     diverge from the website's changelog logic,
+//  2. the root aggregates EVERY package's changelog, because the file a visitor
+//     reads on the GitHub repo page is the product's changelog and a generator
+//     that reads one package silently deletes the rest on every regeneration,
+//  3. the file actually committed at the repo root is in sync with those
+//     sources — the same thing `changelog:root:check` enforces in CI, encoded as
+//     a test so a local `bun test` catches drift before a push.
 
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
-import { buildRootChangelog, ROOT_PATH, SOURCE_PATH } from "./sync-root-changelog";
+import { buildRootChangelog, changelogSources, PACKAGES_DIR, REPO_ROOT, ROOT_PATH } from "./sync-root-changelog";
 
 describe("buildRootChangelog", () => {
 	it("renders through the shared renderRootChangelog core, not a private copy", () => {
-		// If the shell ever grew its own rebrand/split logic, this would diverge and
+		// If the shell ever grew its own rebrand/merge logic, this would diverge and
 		// the website and repo-root changelogs could drift apart.
-		const expected = renderRootChangelog(readFileSync(SOURCE_PATH, "utf8"));
-		expect(buildRootChangelog()).toBe(expected);
+		expect(buildRootChangelog()).toBe(renderRootChangelog(changelogSources()));
 	});
 
 	it("produces a non-trivial changelog: title, at least one release, and the upstream credit", () => {
@@ -32,14 +38,193 @@ describe("buildRootChangelog", () => {
 		expect(md).not.toContain("omp://");
 		expect(md).not.toMatch(/\bomp /);
 	});
+
+	/**
+	 * The link rule, stated as a test because it was previously only implicit and
+	 * the committed file disagreed with the generator about it. An issue link into
+	 * `can1357/oh-my-pi` from veyyon's own changelog sends the reader to a
+	 * different project's tracker, which cannot answer their question, so the root
+	 * strips them exactly as the website does. The per-package changelogs keep
+	 * them as the engineering record.
+	 */
+	it("strips upstream issue links while keeping the upstream credit", () => {
+		const md = buildRootChangelog();
+		expect(md).not.toContain("can1357/oh-my-pi/issues");
+		// The credit note still links the project itself, which is the attribution
+		// and must survive.
+		expect(md).toContain("https://github.com/can1357/oh-my-pi");
+	});
+});
+
+describe("the root changelog covers every package", () => {
+	/**
+	 * The defect this work fixed. The old generator read `coding-agent` alone, so
+	 * a fix recorded in any other package vanished from the root the moment anyone
+	 * regenerated it. `hashline` is the exemplar because it is a non-lead package
+	 * that has its own cut veyyon release, so its entries have to travel through
+	 * both the multi-source read and the fork-point cut to arrive.
+	 */
+	it("carries an entry that lives only in a non-lead package", () => {
+		const hashline = readFileSync(join(PACKAGES_DIR, "hashline", "CHANGELOG.md"), "utf8");
+		expect(hashline).toContain("`MV DEST` no longer silently overwrites");
+
+		expect(buildRootChangelog()).toContain("`MV DEST` no longer silently overwrites");
+	});
+
+	/**
+	 * Every package with a changelog must be read. A source list built by hand
+	 * would go stale the first time a package is added, and the failure would be
+	 * silent: the new package's entries simply never appear.
+	 */
+	it("reads every packages/*/CHANGELOG.md", () => {
+		const names = changelogSources().map(source => source.name);
+		expect(names).toContain("coding-agent");
+		expect(names).toContain("collab-web");
+		expect(names).toContain("ai");
+		expect(names).toContain("utils");
+		// The product's own entries lead, so they are what a reader sees first.
+		expect(names[0]).toBe("coding-agent");
+	});
+
+	/**
+	 * Merging must not replay the same fix twice. Packages that share a change
+	 * sometimes record identical wording, and a root that listed it once per
+	 * package would read as noise and make the reader distrust the rest.
+	 */
+	it("lists each distinct entry once", () => {
+		const md = buildRootChangelog();
+		const bullets = md.split("\n").filter(line => line.startsWith("- "));
+		expect(bullets.length).toBeGreaterThan(0);
+		expect(new Set(bullets).size).toBe(bullets.length);
+	});
+
+	/**
+	 * Only veyyon's own releases appear. Every package carries inherited oh-my-pi
+	 * history at or below the fork point, and replaying thirteen packages' worth
+	 * of it would bury veyyon's actual releases under someone else's.
+	 */
+	it("collapses pre-fork upstream releases into the credit note", () => {
+		const md = buildRootChangelog();
+		expect(md).not.toMatch(/^## \[16\./m);
+		expect(md).toContain("## Upstream history");
+	});
+
+	/**
+	 * The cut is positional, and this is the case that proves a per-entry version
+	 * test cannot work. Upstream's history descends below the fork major: this
+	 * package records a `15.9.0` underneath its 16.x entries. A rule of "keep
+	 * anything whose major is below 16" reads that as a veyyon release, and it
+	 * along with every other pre-16 upstream entry came back into the root and
+	 * inflated it to over fifteen thousand lines of another project's releases.
+	 * Cutting at the FIRST entry at or above the fork major discards everything
+	 * below it, which is correct because each file is newest-first.
+	 */
+	it("drops upstream history that dips below the fork major", () => {
+		const swarm = readFileSync(join(PACKAGES_DIR, "swarm-extension", "CHANGELOG.md"), "utf8");
+		// The precondition: a pre-16 upstream entry sitting below a 16.x one.
+		expect(swarm.indexOf("## [16.3.7]")).toBeLessThan(swarm.indexOf("## [15.9.0]"));
+
+		expect(buildRootChangelog()).not.toMatch(/^## \[15\./m);
+	});
+
+	/**
+	 * The same rule stated directly on the renderer, so a regression is diagnosed
+	 * here rather than through the whole repo's changelogs. Only the leading run
+	 * survives: `0.9.0` is upstream history that happens to sort below the fork
+	 * major, and it must not be mistaken for a veyyon release.
+	 */
+	it("keeps only the contiguous leading run of post-fork releases", () => {
+		const md = renderRootChangelog(
+			[
+				{
+					name: "a",
+					md:
+						"# Changelog\n\n## [1.0.1] - 2026-03-01\n\n### Fixed\n\n- ours\n\n" +
+						"## [16.5.2] - 2026-01-01\n\n### Fixed\n\n- fork point\n\n" +
+						"## [0.9.0] - 2025-01-01\n\n### Fixed\n\n- ancient upstream\n",
+				},
+			],
+			{ forkPointVersion: "16.5.2" },
+		) as string;
+
+		expect(md).toContain("- ours");
+		expect(md).not.toContain("- fork point");
+		expect(md).not.toContain("- ancient upstream");
+	});
+
+	/**
+	 * A package that has never been cut since the fork contributes its pending
+	 * work and nothing else. Without the `Unreleased` exemption the cut would fire
+	 * on the very first versioned entry and silently drop pending entries from
+	 * every package but the two that have released.
+	 */
+	it("keeps Unreleased from a package with no release of its own", () => {
+		const md = renderRootChangelog(
+			[{ name: "a", md: "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- pending\n\n## [16.5.1] - 2026-01-01\n\n### Fixed\n\n- upstream\n" }],
+			{ forkPointVersion: "16.5.2" },
+		) as string;
+
+		expect(md).toContain("- pending");
+		expect(md).not.toContain("- upstream");
+	});
+
+	/**
+	 * Sections keep Keep a Changelog order within a release, so the merged result
+	 * reads like a changelog rather than like whatever order the packages happened
+	 * to be read in.
+	 */
+	it("orders sections Added before Fixed within a release", () => {
+		const md = renderRootChangelog([
+			{ name: "a", md: "# Changelog\n\n## [1.0.1] - 2026-01-01\n\n### Fixed\n\n- fixed thing\n" },
+			{ name: "b", md: "# Changelog\n\n## [1.0.1] - 2026-01-01\n\n### Added\n\n- added thing\n" },
+		]) as string;
+
+		expect(md.indexOf("### Added")).toBeLessThan(md.indexOf("### Fixed"));
+		expect(md).toContain("- added thing");
+		expect(md).toContain("- fixed thing");
+	});
+
+	/**
+	 * Releases are newest-first, with `Unreleased` at the top, whatever order the
+	 * packages list them in. Version comparison has to be numeric: sorted as
+	 * strings, 1.0.37 would fall below 1.0.4.
+	 */
+	it("orders releases newest first, Unreleased on top", () => {
+		const md = renderRootChangelog([
+			{ name: "a", md: "# Changelog\n\n## [1.0.4] - 2026-01-01\n\n### Fixed\n\n- older\n" },
+			{
+				name: "b",
+				md: "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- pending\n\n## [1.0.37] - 2026-02-01\n\n### Fixed\n\n- newer\n",
+			},
+		]) as string;
+
+		expect(md.indexOf("## [Unreleased]")).toBeLessThan(md.indexOf("## [1.0.37]"));
+		expect(md.indexOf("## [1.0.37]")).toBeLessThan(md.indexOf("## [1.0.4]"));
+	});
+
+	/**
+	 * A release date belongs to the release, not to whichever package happened to
+	 * be read first, and a package that omitted it must not blank it.
+	 */
+	it("keeps a release date even when one package omits it", () => {
+		const md = renderRootChangelog([
+			{ name: "a", md: "# Changelog\n\n## [1.0.1]\n\n### Fixed\n\n- undated\n" },
+			{ name: "b", md: "# Changelog\n\n## [1.0.1] - 2026-01-01\n\n### Fixed\n\n- dated\n" },
+		]) as string;
+
+		expect(md).toContain("## [1.0.1] - 2026-01-01");
+	});
 });
 
 describe("committed root CHANGELOG.md", () => {
-	it("is byte-identical to a fresh render of the source (the CI drift guard, locally)", () => {
-		// This is exactly what `bun run changelog:root:check` asserts. Having it as a
-		// unit test means editing packages/coding-agent/CHANGELOG.md without running
+	it("is byte-identical to a fresh render of the sources (the CI drift guard, locally)", () => {
+		// This is exactly what `bun run changelog:root:check` asserts. Having it as
+		// a unit test means editing any package changelog without running
 		// `bun run changelog:root` turns the local suite red, not just CI.
-		const onDisk = readFileSync(ROOT_PATH, "utf8");
-		expect(onDisk).toBe(buildRootChangelog());
+		expect(readFileSync(ROOT_PATH, "utf8")).toBe(buildRootChangelog());
+	});
+
+	it("lives at the repo root where a GitHub visitor looks first", () => {
+		expect(ROOT_PATH).toBe(join(REPO_ROOT, "CHANGELOG.md"));
 	});
 });

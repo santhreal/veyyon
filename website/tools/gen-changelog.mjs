@@ -355,32 +355,142 @@ export function upstreamNoteMarkdown(forkPointVersion = FORK_POINT_VERSION) {
 	].join("\n");
 }
 
+/** Keep a Changelog section order. Anything unrecognised sorts after these, alphabetically. */
+const SECTION_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
+
+function sectionRank(name) {
+	const index = SECTION_ORDER.indexOf(name);
+	return index === -1 ? SECTION_ORDER.length : index;
+}
+
+/** Compare two version strings newest-first; `Unreleased` always sorts first. */
+function compareVersionsDesc(a, b) {
+	if (a === b) return 0;
+	if (a.toLowerCase() === "unreleased") return -1;
+	if (b.toLowerCase() === "unreleased") return 1;
+	const pa = a.split(".").map(Number);
+	const pb = b.split(".").map(Number);
+	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+		const da = pa[i] ?? 0;
+		const db = pb[i] ?? 0;
+		if (da !== db) return db - da;
+	}
+	return a < b ? 1 : -1;
+}
+
 /**
- * Render the repo-root `CHANGELOG.md` from the canonical source
- * (`packages/coding-agent/CHANGELOG.md`), so GitHub's repo page shows the same
- * changelog the website does, in Veyyon's voice.
+ * Take the veyyon releases from one package's entries, dropping inherited
+ * upstream history.
  *
- * The rule matches the website exactly: keep only veyyon's own entries (the file
- * head above the first `## [<forkPointVersion>]` heading — `Unreleased` plus
- * every cut veyyon release), rebrand them, and collapse all pre-fork upstream
- * history into one {@link upstreamNoteMarkdown} credit rather than replaying it.
- * Everything flows through {@link rebrand}, so there is exactly one definition of
- * the omp→veyyon transform for both the HTML page and this file.
+ * The cut is POSITIONAL, not a per-entry test, and that distinction is the whole
+ * subtlety here. Veyyon restarted its version line at 1.0.0 after forking at
+ * 16.5.2, so the two lines cannot be separated by comparing numbers: 1.0.37 is
+ * numerically below every 16.x upstream version while being much newer. A
+ * per-entry "major below the fork major" rule looks like it handles that and
+ * does not, because upstream's own history descends through 15.x, 14.x and
+ * further down. Those all satisfy "major below 16" and came flooding back in,
+ * inflating the root changelog to fifteen thousand lines of another project's
+ * releases.
  *
- * Pure: a function of the source text only. The writer
+ * What is actually true is an ordering fact: each changelog is newest-first, so
+ * veyyon's releases are the contiguous run at the top and everything from the
+ * first upstream entry onward is inherited. So scan from the top and stop dead
+ * at the first entry at or above the fork major. `buildChangelogHtml` cuts the
+ * website's list the same way, by index, for the same reason.
+ *
+ * A package with no veyyon release of its own yields only its `Unreleased`
+ * section, which is correct: most packages have not been cut since the fork.
+ */
+function veyyonEntries(entries, forkPointVersion) {
+	const forkMajor = Number(forkPointVersion.split(".")[0]);
+	const kept = [];
+	for (const entry of entries) {
+		if (entry.version.toLowerCase() === "unreleased") {
+			kept.push(entry);
+			continue;
+		}
+		if (Number(entry.version.split(".")[0]) >= forkMajor) break;
+		kept.push(entry);
+	}
+	return kept;
+}
+
+/**
+ * Render the repo-root `CHANGELOG.md` by aggregating EVERY package changelog.
+ *
+ * The root file is what a visitor reads on the GitHub repo page, so it is the
+ * product's changelog, not one package's. It used to be generated from
+ * `packages/coding-agent/CHANGELOG.md` alone, which meant a fix recorded in any
+ * other package was dropped the moment anyone regenerated it: the collab-web IME
+ * fix had to be hand-added to the root and was deleted again by the next run.
+ * A changelog that silently loses entries is worse than none, because the reader
+ * has no way to tell that what they are looking at is incomplete.
+ *
+ * Entries are merged by version and then by section, in Keep a Changelog order.
+ * Bullets keep their text verbatim and are not tagged with a package name: a
+ * reader of the product changelog wants to know what changed, not which internal
+ * package it landed in. `coding-agent` is listed first within each section
+ * because it is the product; the rest follow in the order given.
+ *
+ * Upstream issue links are stripped by {@link rebrand}, the same as on the
+ * website. A link from veyyon's own changelog into another project's issue
+ * tracker sends the reader somewhere that cannot answer their question. The
+ * per-package changelogs keep those links as the engineering record.
+ *
+ * Pre-fork history is collapsed into one {@link upstreamNoteMarkdown} credit
+ * rather than replayed, so the root shows veyyon's releases only.
+ *
+ * Pure: a function of the supplied sources. The writer
  * (`scripts/sync-root-changelog.ts`) and the drift guard both call it, so the
  * on-disk file can be checked against a regenerated copy with a byte comparison.
+ *
+ * @param sources Either a single changelog's markdown (the historical shape,
+ *   kept so existing callers and tests do not have to change) or an ordered list
+ *   of `{ name, md }` package changelogs.
  */
-export function renderRootChangelog(sourceMd, { forkPointVersion = FORK_POINT_VERSION } = {}) {
-	const escaped = forkPointVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const forkHeading = new RegExp(`^## \\[${escaped}\\]`, "m");
-	const match = forkHeading.exec(sourceMd);
-	// The head is every veyyon entry (title + Unreleased + cut releases). With no
-	// fork heading present, the whole file predates any upstream merge and is all
-	// veyyon's — keep it entire rather than silently dropping content.
-	const head = (match ? sourceMd.slice(0, match.index) : sourceMd).trimEnd();
-	const note = upstreamNoteMarkdown(forkPointVersion);
-	return `${rebrand(head)}\n\n${note}\n`;
+export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VERSION } = {}) {
+	const list = typeof sources === "string" ? [{ name: "coding-agent", md: sources }] : sources;
+
+	// version -> section name -> bullets, insertion-ordered by the source list so
+	// the first package listed contributes its bullets first.
+	const byVersion = new Map();
+	const dates = new Map();
+	for (const { md } of list) {
+		for (const entry of veyyonEntries(parseAllEntries(md), forkPointVersion)) {
+			const sections = byVersion.get(entry.version) ?? new Map();
+			byVersion.set(entry.version, sections);
+			// The date is the release's, not a package's, so the first one wins and
+			// a package that omitted it cannot blank it.
+			if (entry.date && !dates.has(entry.version)) dates.set(entry.version, entry.date);
+			for (const section of entry.sections) {
+				const items = sections.get(section.name) ?? [];
+				sections.set(section.name, items);
+				for (const item of section.items) {
+					const rebranded = rebrand(item).trim();
+					// The same fix written into two packages' changelogs is one entry to
+					// a reader; deduping is what keeps the merge from reading as noise.
+					if (rebranded && !items.includes(rebranded)) items.push(rebranded);
+				}
+			}
+		}
+	}
+
+	const parts = ["# Changelog", ""];
+	for (const version of [...byVersion.keys()].sort(compareVersionsDesc)) {
+		const sections = byVersion.get(version);
+		const date = dates.get(version);
+		parts.push(date ? `## [${version}] - ${date}` : `## [${version}]`, "");
+		const names = [...sections.keys()].sort((a, b) => sectionRank(a) - sectionRank(b) || a.localeCompare(b));
+		for (const name of names) {
+			const items = sections.get(name);
+			if (!items.length) continue;
+			parts.push(`### ${name}`, "");
+			for (const item of items) parts.push(`- ${item}`);
+			parts.push("");
+		}
+	}
+
+	return `${parts.join("\n").trimEnd()}\n\n${upstreamNoteMarkdown(forkPointVersion)}\n`;
 }
 
 /**
