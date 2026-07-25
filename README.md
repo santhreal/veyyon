@@ -74,6 +74,10 @@ veyyon completions fish > ~/.config/fish/completions/veyyon.fish
 veyyon completions powershell > $HOME\veyyon-completions.ps1
 ```
 
+Add `--no-alias` to any of these if `vey` is already your own command: the
+generated scripts complete both `veyyon` and `vey`, and that flag drops the
+second binding.
+
 PowerShell has no directory it autoloads completions from, so the script
 registers itself when you run it. Add `. $HOME\veyyon-completions.ps1` to your
 `$PROFILE` to load it in every session.

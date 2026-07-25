@@ -32,6 +32,13 @@ $BinName = "veyyon"
 $AliasName = "vey"
 $BinaryAsset = "veyyon-windows-x64.exe"
 $MinimumBunVersion = "1.3.14"
+# Whether the `vey` shim next to the binary is one THIS installer owns.
+#
+# One owner: Install-Alias makes the call (it is the only code that inspects and
+# writes the shim) and records it here; Install-Completions reads it rather than
+# re-deriving. Mirrors ALIAS_IS_OURS in install.sh. Starts false, so nothing
+# assumes an ownership it has not checked.
+$Script:AliasIsOurs = $false
 
 function Test-BunInstalled {
     try {
@@ -316,7 +323,14 @@ function Remove-CompletionSourceLine {
 function Install-Completions {
     param([string]$BinPath)
     $scriptPath = Get-CompletionScriptPath
-    $generated = & $BinPath completions powershell 2>$null
+    # The generated script registers the completer for the alias as well as the
+    # binary, so an alias this installer declined to create would still get OUR
+    # subcommands completing THEIR tool. Ask the binary not to bind it.
+    if ($Script:AliasIsOurs) {
+        $generated = & $BinPath completions powershell 2>$null
+    } else {
+        $generated = & $BinPath completions powershell --no-alias 2>$null
+    }
     if ($LASTEXITCODE -ne 0 -or -not $generated) {
         Write-Host "!!  could not generate PowerShell completions (tab completion unavailable)" -ForegroundColor Yellow
         return
@@ -446,6 +460,7 @@ function Configure-BashShell {
 # the `vey` symlink the Unix installer creates.
 function Install-Alias {
     param([string]$Target)
+    $Script:AliasIsOurs = $false
     try {
         $shim = Join-Path $InstallDir "$AliasName.cmd"
         $wanted = "@echo off`r`n`"$Target`" %*"
@@ -456,6 +471,7 @@ function Install-Alias {
         if (Test-Path $shim) {
             $existing = (Get-Content -Raw -Path $shim -ErrorAction SilentlyContinue)
             if ($existing -and $existing.Trim() -eq $wanted.Trim()) {
+                $Script:AliasIsOurs = $true
                 Write-Host "OK  '$AliasName' already points at $BinName" -ForegroundColor Green
                 return
             }
@@ -465,6 +481,7 @@ function Install-Alias {
             }
         }
         Set-Content -Path $shim -Value $wanted -Encoding ASCII
+        $Script:AliasIsOurs = $true
         Write-Host "OK  linked '$AliasName' -> $BinName" -ForegroundColor Green
     } catch {
         Write-Host "!  could not create '$AliasName' shim (launch with '$BinName')" -ForegroundColor Yellow

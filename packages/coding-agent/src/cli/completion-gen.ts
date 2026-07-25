@@ -134,11 +134,14 @@ function buildArgs(Cmd: CommandCtor): CompletionArg[] {
  *                  flags; it is excluded from the subcommand list).
  * @param aliasMap  Canonical-name → aliases (merged from the registration table
  *                  and the command class's static `aliases`).
+ * @param options   `includeLaunchAlias: false` omits the `vey` launch alias, for
+ *                  an install where that name belongs to something else.
  */
 export function buildSpec(
 	config: CliConfig,
 	rootName: string,
 	aliasMap: Map<string, readonly string[]>,
+	options: { includeLaunchAlias?: boolean } = {},
 ): CompletionSpec {
 	const commands: CompletionCommand[] = [];
 	let root: CompletionSpec["root"] = { flags: [], args: [] };
@@ -159,7 +162,12 @@ export function buildSpec(
 		});
 	}
 	commands.sort((a, b) => a.name.localeCompare(b.name));
-	return { bin: config.bin, binAliases: [APP_ALIAS], root, commands };
+	// The launch alias is bound by every generated script, so a user who already
+	// owns a `vey` command would have OUR subcommands completing THEIR tool. The
+	// installers decline to create an alias they do not own; this is how they
+	// decline to complete it too.
+	const binAliases = options.includeLaunchAlias === false ? [] : [APP_ALIAS];
+	return { bin: config.bin, binAliases, root, commands };
 }
 
 // --- Shared helpers -----------------------------------------------------------
