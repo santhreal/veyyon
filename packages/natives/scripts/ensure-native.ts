@@ -36,6 +36,17 @@ const nativesRoot = path.join(import.meta.dir, "..");
 const nativeDir = path.join(nativesRoot, "native");
 const version: string = packageJson.version;
 const repoSlug = "santhreal/veyyon";
+/**
+ * The addon is tens of megabytes, so this is generous; the point is that it is
+ * BOUNDED. Both fetches ran with no signal at all, so a captive portal or a
+ * black-holed connection hung the source launcher forever at boot, with the
+ * last thing on screen being "fetching the prebuilt..." and no way to tell
+ * whether it was working. install.sh and the self-updater both bound their
+ * equivalents; this was the one that did not.
+ */
+const ASSET_TIMEOUT_MS = 10 * 60_000;
+/** The .sha256 sidecar is a few dozen bytes: slow here means broken, not busy. */
+const SIDECAR_TIMEOUT_MS = 30_000;
 
 export function hostAddonFilenames(): string[] {
 	const tag = `${process.platform}-${process.arch}`;
@@ -193,9 +204,20 @@ async function downloadAsset(filename: string): Promise<AssetResult> {
 	let assetRes: Response;
 	let shaRes: Response;
 	try {
-		[assetRes, shaRes] = await Promise.all([fetch(`${base}/${filename}`), fetch(`${base}/${filename}.sha256`)]);
+		[assetRes, shaRes] = await Promise.all([
+			fetch(`${base}/${filename}`, { signal: AbortSignal.timeout(ASSET_TIMEOUT_MS) }),
+			fetch(`${base}/${filename}.sha256`, { signal: AbortSignal.timeout(SIDECAR_TIMEOUT_MS) }),
+		]);
 	} catch (err) {
-		return assetFailed(filename, `could not reach ${base} (${errorText(err)})`);
+		// A timeout is an AbortError; naming it keeps "the network hung" from
+		// reading as "the release has no asset for you".
+		const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+		return assetFailed(
+			filename,
+			timedOut
+				? `timed out fetching it from ${base}`
+				: `could not reach ${base} (${errorText(err)})`,
+		);
 	}
 	// 404 on the asset is the ordinary "this platform has no prebuilt" case and
 	// reads differently from a server error, which is worth retrying later.
