@@ -269,4 +269,41 @@ describe("a release that cannot run is refused before it touches the system", ()
 		expect(installSh).toContain('doctor_natives "$bin"');
 		expect(installSh).toContain('ok "native addon loads ($_dn_phase)');
 	});
+
+	it("install.ps1 gates the same way, on the staged download", () => {
+		// Windows had the identical ordering gap: verified, moved into place,
+		// aliased, PATH-edited, and only then asked whether it runs.
+		expect(installPs1).toContain('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
+		expect(installPs1).toContain('param([string]$Command, [string]$Phase = "installed")');
+		expect(installPs1).toContain('native addon loads ($Phase)');
+	});
+
+	it("install.ps1 probes before the move, the alias and the PATH edit", () => {
+		// Scoped to Install-Binary: the source-install branch calls the same
+		// helpers, and matching those instead would prove nothing about ordering.
+		const from = installPs1.indexOf("function Install-Binary {");
+		expect(from).toBeGreaterThan(-1);
+		const body = installPs1.slice(from);
+		const preflight = body.indexOf('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
+		expect(preflight).toBeGreaterThan(-1);
+		for (const mutation of [
+			"Move-StagedBinaryIntoPlace -StagingPath $StagingPath -TargetPath $OutPath",
+			"Install-Alias -Target $OutPath",
+			"$needsRestart = Add-ToPath",
+			"Install-Completions -BinPath $OutPath",
+		]) {
+			expect(body.indexOf(mutation), mutation).toBeGreaterThan(preflight);
+		}
+	});
+
+	it("install.ps1 removes the staged file when the probe rejects it", () => {
+		// A rejected download must not sit in the install directory waiting to be
+		// mistaken for a partial install.
+		const body = installPs1.slice(installPs1.indexOf("function Install-Binary {"));
+		const preflight = body.indexOf('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
+		const cleanup = body.indexOf("Remove-Item $StagingPath -ErrorAction SilentlyContinue", preflight);
+		const move = body.indexOf("Move-StagedBinaryIntoPlace -StagingPath $StagingPath");
+		expect(cleanup).toBeGreaterThan(preflight);
+		expect(cleanup).toBeLessThan(move);
+	});
 });

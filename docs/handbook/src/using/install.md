@@ -8,7 +8,9 @@ Veyyon installs as a single self-contained binary. The installer downloads it, l
 $ curl -fsSL https://get.veyyon.dev | sh
 ```
 
-That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and runs a `doctor:` self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because `veyyon --version` answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command. If the search fails, the installer stops and tells you to install from source. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile and tells you to restart your shell.
+That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and runs a `doctor:` self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because `veyyon --version` answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.
+
+That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no `vey` alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile and tells you to restart your shell.
 
 ## Install on Windows
 

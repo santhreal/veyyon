@@ -603,8 +603,15 @@ function ConvertFrom-VersionOutput {
 # first real command. `grep` is the cheapest command that goes through the
 # native walker and returns a result worth checking, against a file this
 # function writes and knows the contents of.
+# $Phase names the run, because this happens twice on a binary install and the
+# two runs answer different questions. The first is a PREFLIGHT on the staged
+# download: it throws before the binary is moved into place, before the alias,
+# the PATH edit and the completion script, so a release with no build for this
+# architecture leaves the machine exactly as it was. The second proves the
+# finished install works from where it now lives. Mirrors install.sh's
+# doctor_natives $2.
 function Test-NativeAddon {
-    param([string]$Command)
+    param([string]$Command, [string]$Phase = "installed")
     # An older build with no `grep` subcommand is not a broken install.
     & $Command grep --help *> $null
     if ($LASTEXITCODE -ne 0) {
@@ -627,13 +634,13 @@ function Test-NativeAddon {
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
     if ($status -ne 0) {
-        throw "$BinName starts but cannot run a search: '$BinName grep' exited $status. The native addon did not load, which usually means the release has no build for this architecture. Install from source instead: & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source. Output was: $out"
+        throw "the $Phase $BinName starts but cannot run a search: '$BinName grep' exited $status. The native addon did not load, which usually means the release has no build for this architecture. Install from source instead: & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source. Output was: $out"
     }
     # Exit 0 is not enough on its own: a walker that returns nothing exits 0 too.
     if ($out -notmatch 'probe\.txt') {
         throw "$BinName ran a search but did not find a file it was pointed at. The install is not usable. Output was: $out"
     }
-    Write-Host "OK  native addon loads - search returned the expected match" -ForegroundColor Green
+    Write-Host "OK  native addon loads ($Phase) - search returned the expected match" -ForegroundColor Green
 }
 
 function Invoke-Doctor {
@@ -1024,6 +1031,17 @@ function Install-Binary {
             throw "checksum mismatch for $BinaryAsset (expected $expected, got $actual)"
         }
         Write-Host "OK  checksum verified" -ForegroundColor Green
+    }
+
+    # Prove the download RUNS before it is allowed to touch anything. The
+    # checksum proves the bytes match what was published; it cannot tell you the
+    # release has no build for this architecture. Failing here costs a staged
+    # file that is removed on the way out.
+    try {
+        Test-NativeAddon -Command $StagingPath -Phase "downloaded"
+    } catch {
+        Remove-Item $StagingPath -ErrorAction SilentlyContinue
+        throw
     }
 
     Move-StagedBinaryIntoPlace -StagingPath $StagingPath -TargetPath $OutPath
