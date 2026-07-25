@@ -259,6 +259,7 @@ export async function armArgotAfterStartup(opts: {
 	tokenBudget?: number;
 	onArmed: () => Promise<void>;
 	onResolved?: (vocab: { handles: number; entries: Record<string, string> }) => void;
+	onFailed?: (info: { error: string }) => void;
 }): Promise<void> {
 	try {
 		const loaded = await loadArgotFolder(opts.argot, opts.cwd, undefined, opts.tokenBudget);
@@ -273,6 +274,19 @@ export async function armArgotAfterStartup(opts: {
 			}
 		}
 	} catch (error) {
-		logger.warn("Argot startup load failed; session stays unarmed", { cwd: opts.cwd, error: errorMessage(error) });
+		// A failed arm must be LOUD and RECORDED, never a quiet degrade. The session
+		// deliberately survives — a bad dictionary should not kill a coding session —
+		// but continuing unarmed silently is what made this dangerous: `onResolved`
+		// does not fire on this path, so the transcript carried neither an
+		// `argot_armed` entry nor any failure marker. An inert session was then
+		// indistinguishable from one where the feature was simply off, while an eval
+		// still counted the trial as a shorthand arm and attributed its null result to
+		// the model ignoring handles rather than to handles never existing.
+		const message = errorMessage(error);
+		logger.error("Argot startup load failed; session stays UNARMED (no handles will be taught)", {
+			cwd: opts.cwd,
+			error: message,
+		});
+		opts.onFailed?.({ error: message });
 	}
 }
