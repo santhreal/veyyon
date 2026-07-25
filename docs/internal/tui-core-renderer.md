@@ -426,6 +426,15 @@ bottom.
 - **Tradeoff**: with the mouse captured, plain drag-select becomes
   Shift+drag (the standard convention in mouse-capturing TUIs). The setting
   documents this and can be switched off to return to native scrollback.
+  Documenting it is not enough on its own: after the capture gate above started
+  arming on history rather than frame height, capture became the normal state and
+  the operator hit a drag that silently selected nothing ("i cant copy and paste
+  from the terminal", 2026-07-24). Tracking mode is 1000h — press and release,
+  no motion reports — so the engine pairs a left press with its release and calls
+  `onSelectionAttempt` when they land in different cells outside the footer. The
+  engine keeps no "already told them" state; the coding agent owns the wording
+  and the once-per-run policy in `modes/utils/selection-notice.ts`, and a tip
+  gated on `tui.scrollIsolation` says the same thing before you hit it.
 
 Regression coverage lives in two suites, and the split matters:
 `test/scroll-isolation.test.ts` drives a transcript that returns its whole

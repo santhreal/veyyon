@@ -901,6 +901,21 @@ export class TUI extends Container {
 
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
 	onDebug?: () => void;
+
+	/**
+	 * Called when the operator tries to select text with the mouse while the
+	 * engine holds it: a left press and a release in a DIFFERENT cell, outside
+	 * the pinned footer. Holding the mouse is what lets the wheel scroll the
+	 * transcript, and it also takes plain drag-select away from the terminal —
+	 * so the gesture arrives here instead of highlighting anything, and the
+	 * operator gets no feedback at all unless the host says something (reported
+	 * 2026-07-24 as "I can't copy and paste from the terminal"). Hosts use this
+	 * to name the alternatives once; the engine only reports the attempt and
+	 * keeps no "already told them" state of its own.
+	 */
+	onSelectionAttempt?: () => void;
+	/** Cell of the left press being tracked for {@link onSelectionAttempt}. */
+	#pressCell: { row: number; col: number } | null = null;
 	#renderRequested = false;
 	#renderTimer: RenderTimer | undefined;
 	#renderScheduler: RenderScheduler;
@@ -1571,6 +1586,9 @@ export class TUI extends Container {
 			this.#scrollIsolation && !this.#stopped && this.#hasEverRendered && !this.#altActive && this.#frameScrollable;
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
+		// A press whose release lands after tracking flips would pair a stale cell
+		// with an unrelated report, so the gesture never spans a mode change.
+		this.#pressCell = null;
 		this.terminal.write(want ? MOUSE_WHEEL_TRACKING_ON : MOUSE_WHEEL_TRACKING_OFF);
 	}
 
@@ -2631,10 +2649,25 @@ export class TUI extends Container {
 			const event = parseSgrMouse(data);
 			if (event) {
 				if (event.wheel) {
+					this.#pressCell = null;
 					this.#handleIsolationWheel(event.wheel);
 					return;
 				}
 				const footerTop = this.terminal.rows - this.#pinnedFooterRows;
+				// A press-then-release in a different cell is a drag, and with the
+				// mouse held by the engine that drag selected nothing. Report it so
+				// the host can name Shift+drag and the copy picker. Tracking mode is
+				// 1000h (press/release only, no motion reports), so the release is
+				// the first and only chance to see the gesture.
+				if (event.leftClick) {
+					this.#pressCell = event.row < footerTop ? { row: event.row, col: event.col } : null;
+				} else if (event.release) {
+					const press = this.#pressCell;
+					this.#pressCell = null;
+					if (press && (press.row !== event.row || press.col !== event.col)) {
+						this.onSelectionAttempt?.();
+					}
+				}
 				if (event.leftClick && this.#pinnedFooterRows > 0 && event.row >= footerTop) {
 					// A click in the pinned footer is routed to the child under it
 					// (MouseRoutable components get frame-local coordinates), so

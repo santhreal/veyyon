@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed a mouse drag over the transcript doing nothing without a word of explanation. Scroll isolation holds the mouse so the wheel scrolls the transcript with the prompt pinned, which means selecting is shift+drag, and that tradeoff was stated only in a settings description. The first swallowed drag now names shift+drag, `/copy`, and `tui.scrollIsolation=false`, and a gated tip says the same before you hit it.
 - Fixed the composer being replaced by a scroll readout while reading history: the contextual chip row under the prompt was overwritten with "N rows up / click to go to the bottom" whenever the transcript was frozen, so scrolling up during a run silently removed the `esc interrupt` chip. Scroll position is now drawn on the right edge of the transcript by the renderer, and the composer zone renders the same bytes whether the view is frozen or following.
 
 - Fixed Task subagents calling MCP tools through a rebuilt raw request, which bypassed the source tool's harness-intent stripping, local-URL resolution and reconnect retry, and marked MCP-backed tools non-strict so the server owns validation ([#6242](https://github.com/can1357/oh-my-pi/issues/6242)).

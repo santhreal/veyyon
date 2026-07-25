@@ -9,6 +9,7 @@
 
 ### Added
 
+- Added `TUI#onSelectionAttempt`, called when a left press and a release land in different cells outside the pinned footer while the engine holds the mouse. Capturing the mouse is what lets the wheel scroll the transcript, and it also takes plain drag-select away from the terminal, so hosts can now explain a drag that selected nothing instead of leaving it silent.
 - Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
 
 ## [16.5.2] - 2026-07-14
