@@ -10,6 +10,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ARGOT_PREAMBLE, renderPreamble } from "argot";
 import {
 	ARGOT_PREAMBLE_HEADING,
@@ -20,6 +23,7 @@ import {
 	collectEmittedText,
 	costIsUnpriced,
 	effectiveTemperature,
+	emptyArmResult,
 	encodeHeadroom,
 	fmtCost,
 	holmBonferroni,
@@ -50,30 +54,16 @@ import {
 	withinTaskSpreadPct,
 } from "./aggregate";
 
-/** Build an ArmResult with sane defaults, overriding only what a test cares about. */
+/**
+ * Build an ArmResult with sane defaults, overriding only what a test cares about.
+ *
+ * Built from the same `emptyArmResult` the runner uses, deliberately. A private
+ * copy of the blank shape would let the fixture keep a field the production
+ * factory had dropped, so the suite would still exercise data the real pipeline
+ * no longer produces.
+ */
 function res(over: Partial<ArmResult>): ArmResult {
-	return {
-		arm: "a",
-		task: "t",
-		repeat: 0,
-		reward: null,
-		partial: null,
-		f2p: null,
-		p2p: null,
-		inputTokens: null,
-		outputTokens: null,
-		cacheTokens: null,
-		costUsd: null,
-		agentSeconds: null,
-		argotLoadCalls: null,
-		assistantMsgsWithSigil: null,
-		argotPreamblePresent: null,
-		argotHandlesLoaded: null,
-		encodeHeadroom: null,
-		toolCalls: null,
-		error: null,
-		...over,
-	};
+	return { ...emptyArmResult("a", "t", 0), ...over };
 }
 
 describe("jobNameOf / parseJobName — the reaggregate round-trip", () => {
@@ -571,7 +561,9 @@ describe("renderReport — efficiency comparison and treatment-applied sections"
 		const report = renderReport(results, "m", STAMP, 1);
 		// cost carried no signal → named as unmeasured with the precise "unpriced"
 		// wording (coherent with the per-arm totals table), not a false "equal" verdict.
-		expect(report).toContain("| cost | — | — | — | — | — | — | — | not measured (cost unpriced — provider reported no price) |");
+		expect(report).toContain(
+			"| cost | — | — | — | — | — | — | — | not measured (cost unpriced — provider reported no price) |",
+		);
 		// output tokens DID carry signal → still a real efficiency verdict.
 		expect(report).toContain("full cheaper, reward held");
 	});
@@ -2186,7 +2178,9 @@ describe("costIsUnpriced / fmtCost — a provider that reports no price is never
 		// wording, so both sections tell one story.
 		const results: ArmResult[] = [];
 		for (let i = 1; i <= 3; i++) {
-			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000, inputTokens: 500, costUsd: 0 }));
+			results.push(
+				res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000, inputTokens: 500, costUsd: 0 }),
+			);
 			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800, inputTokens: 700, costUsd: 0 }));
 		}
 		const report = renderReport(results, "google-antigravity/gemini-3.5-flash", STAMP, 1);
@@ -2206,5 +2200,102 @@ describe("costIsUnpriced / fmtCost — a provider that reports no price is never
 		const report = renderReport(results, "m", STAMP, 1);
 		expect(report).toContain("$0.600"); // decode sum: 3 × 0.2
 		expect(report).not.toContain("Cost is `unpriced`");
+	});
+});
+
+describe("emptyArmResult — one owner for the blank trial result", () => {
+	/**
+	 * WHY THESE EXIST. The blank ArmResult was hand-written in three places in
+	 * `run.ts` (the parse path, the per-trial error path, and the reaggregate error
+	 * path) and a fourth time as this suite's own fixture. The copies had already
+	 * drifted in different directions: the parse path omitted `error`, and the
+	 * reaggregate error path omitted `argotHandlesLoaded` and `encodeHeadroom`.
+	 *
+	 * That last drift is the damaging one. Those two fields are what make a
+	 * `0 encoded` run interpretable at all: how many handles the dictionary
+	 * actually loaded, and the headroom the trial could have used. Re-aggregating a
+	 * finished run therefore rewrote its results.json into the older format where
+	 * "the model ignored the handles" and "there were no handles" are
+	 * indistinguishable, which is the exact confusion EVAL-ARGOT-NEVER-ENCODED is
+	 * blocked on. Nothing caught it because the package declared no `check:types`
+	 * and the workspace typecheck skipped it with `--if-present`.
+	 */
+
+	/** The three identity fields are the only inputs, and they must arrive intact. */
+	test("carries the trial's identity through unchanged", () => {
+		const blank = emptyArmResult("full-budget16k", "django__django-11099", 3);
+		expect(blank.arm).toBe("full-budget16k");
+		expect(blank.task).toBe("django__django-11099");
+		expect(blank.repeat).toBe(3);
+	});
+
+	/**
+	 * Every measurement starts unknown. `null` is not interchangeable with 0 here:
+	 * a defaulted 0 would claim the dictionary loaded no handles and that the trial
+	 * made no tool calls, turning missing data into a measured result.
+	 */
+	test("leaves every measurement null, never zero", () => {
+		const blank = emptyArmResult("a", "t", 0);
+		const { arm: _a, task: _t, repeat: _r, ...measurements } = blank;
+		const nonNull = Object.entries(measurements).filter(([, value]) => value !== null);
+		expect(nonNull).toEqual([]);
+	});
+
+	/**
+	 * The three fields the drifted copies dropped, named explicitly. A generic
+	 * "all null" assertion passes just as happily on an object that is missing
+	 * them, since `undefined !== null` never gets compared when the key is absent.
+	 */
+	test("declares the three fields the hand-written copies had dropped", () => {
+		const blank = emptyArmResult("a", "t", 0);
+		for (const key of ["error", "argotHandlesLoaded", "encodeHeadroom"] as const) {
+			expect(Object.hasOwn(blank, key), `${key} must be present, not merely undefined`).toBe(true);
+			expect(blank[key]).toBeNull();
+		}
+	});
+
+	/**
+	 * A fresh object per call. Returning a shared constant would let one trial's
+	 * parsed reward leak into every later blank result.
+	 */
+	test("returns an independent object each call", () => {
+		const first = emptyArmResult("a", "t", 0);
+		const second = emptyArmResult("a", "t", 0);
+		expect(first).not.toBe(second);
+		first.reward = 1;
+		expect(second.reward).toBeNull();
+	});
+});
+
+describe("no second blank-ArmResult literal may reappear", () => {
+	/**
+	 * The durable half of the ONE PLACE fix. Collapsing three hand-written copies
+	 * into `emptyArmResult` only helps while a fourth does not get pasted back in,
+	 * and the previous copies were invisible for exactly as long as nothing looked
+	 * for them. A type error would not have caught the drift either, since each
+	 * copy was individually well-typed at the site that used it.
+	 *
+	 * Matches the SHAPE (three consecutive blank measurement fields), not a
+	 * variable name, so a copy under any name is still caught.
+	 */
+	const BLANK_SHAPE = /reward:\s*null,\s*\n\s*partial:\s*null,\s*\n\s*f2p:\s*null,/;
+
+	test("only aggregate.ts spells out the blank trial result", () => {
+		const dir = fileURLToPath(new URL(".", import.meta.url));
+		const offenders = readdirSync(dir)
+			.filter(name => name.endsWith(".ts") && name !== "aggregate.ts")
+			.filter(name => BLANK_SHAPE.test(readFileSync(join(dir, name), "utf8")));
+		expect(
+			offenders,
+			"these spell out a blank ArmResult by hand; call emptyArmResult(arm, task, repeat) instead, " +
+				"so a field added to ArmResult cannot be forgotten by one copy",
+		).toEqual([]);
+	});
+
+	/** The positive twin: an empty offender list is also what deleting the factory
+	 * produces, so pin that the one owner still spells the shape out. */
+	test("aggregate.ts still owns the spelled-out shape", () => {
+		const dir = fileURLToPath(new URL(".", import.meta.url));
+		expect(BLANK_SHAPE.test(readFileSync(join(dir, "aggregate.ts"), "utf8"))).toBe(true);
 	});
 });
