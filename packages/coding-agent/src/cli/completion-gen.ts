@@ -78,12 +78,54 @@ export function binNames(spec: CompletionSpec): string[] {
 // --- Flag/arg value classification (the single manual mapping) ----------------
 
 /** Single-value flags resolved against the live model catalog. */
-const MODEL_FLAGS: Record<string, true> = { model: true, smol: true, slow: true, plan: true };
+const MODEL_FLAGS: Record<string, true> = {
+	model: true,
+	smol: true,
+	slow: true,
+	plan: true,
+	// Both name the model a phase hands off to; their descriptions say so.
+	"prewalk-into": true,
+	"plan-yolo-into": true,
+};
 /** Single-value flags resolved against on-disk sessions. */
 const SESSION_FLAGS: Record<string, true> = { resume: true, fork: true, session: true };
 /** Flags whose value is a directory path. */
-const DIR_FLAGS: Record<string, true> = { "session-dir": true, "plugin-dir": true };
+const DIR_FLAGS: Record<string, true> = {
+	"session-dir": true,
+	"plugin-dir": true,
+	"agent-dir": true,
+	cwd: true,
+	dir: true,
+};
+/** Flags whose value is a file path. */
+const FILE_FLAGS: Record<string, true> = {
+	"append-system-prompt": true,
+	config: true,
+	export: true,
+	extension: true,
+	file: true,
+	hook: true,
+	key: true,
+	out: true,
+	path: true,
+	rule: true,
+};
 
+/**
+ * The fallback is "no candidates", not "a file".
+ *
+ * Falling back to file completion made every unclassified value offer the
+ * current directory: `--api-key <TAB>`, `--provider <TAB>`, `ssh --host <TAB>`
+ * and `search <query> <TAB>` all listed the user's files, and accepting one
+ * wrote a filename where a secret, a provider id, a hostname or a search term
+ * belonged. Offering nothing is the honest answer for a value only the user
+ * knows; a path-valued flag earns its completion by being named above.
+ *
+ * Flags are keyed by bare name because a flag spelled the same way means the
+ * same thing wherever it appears (`--out` is a path under both `gallery` and
+ * `say`). Positional names are not that stable, so those are qualified by
+ * command below.
+ */
 function flagValue(name: string, desc: FlagDescriptor): ValueSource {
 	if (desc.kind === "boolean") return { kind: "flag" };
 	if (desc.options && desc.options.length > 0) return { kind: "enum", values: desc.options };
@@ -92,13 +134,32 @@ function flagValue(name: string, desc: FlagDescriptor): ValueSource {
 	if (SESSION_FLAGS[name]) return { kind: "sessions" };
 	if (name === "tools") return { kind: "list", values: BUILTIN_TOOL_NAMES };
 	if (DIR_FLAGS[name]) return { kind: "dir" };
-	if (desc.kind === "integer") return { kind: "value" };
-	return { kind: "file" };
+	if (FILE_FLAGS[name]) return { kind: "file" };
+	return { kind: "value" };
 }
 
-function argValue(desc: ArgDescriptor): ValueSource {
+/** Positionals whose value is a path, keyed `<command>.<arg>`. */
+const FILE_ARGS: Record<string, true> = {
+	"auth-broker.source": true,
+	"grep.path": true,
+	"install.targets": true,
+	"plugin.targets": true,
+	"read.path": true,
+	"ttsr.snippet": true,
+};
+/** Positionals resolved against the live model catalog, keyed `<command>.<arg>`. */
+const MODEL_ARGS: Record<string, true> = {
+	"bench.models": true,
+	"dry-balance.model": true,
+	"tiny-models.model": true,
+};
+
+function argValue(command: string, name: string, desc: ArgDescriptor): ValueSource {
 	if (desc.options && desc.options.length > 0) return { kind: "enum", values: desc.options };
-	return { kind: "file" };
+	const key = `${command}.${name}`;
+	if (MODEL_ARGS[key]) return { kind: "models", multiple: false };
+	if (FILE_ARGS[key]) return { kind: "file" };
+	return { kind: "value" };
 }
 
 function buildFlags(Cmd: CommandCtor): CompletionFlag[] {
@@ -117,12 +178,12 @@ function buildFlags(Cmd: CommandCtor): CompletionFlag[] {
 	return out;
 }
 
-function buildArgs(Cmd: CommandCtor): CompletionArg[] {
+function buildArgs(command: string, Cmd: CommandCtor): CompletionArg[] {
 	const out: CompletionArg[] = [];
 	const args = Cmd.args ?? {};
 	for (const name in args) {
 		const desc = args[name];
-		out.push({ name, description: desc.description ?? "", value: argValue(desc) });
+		out.push({ name, description: desc.description ?? "", value: argValue(command, name, desc) });
 	}
 	return out;
 }
@@ -147,7 +208,7 @@ export function buildSpec(
 	let root: CompletionSpec["root"] = { flags: [], args: [] };
 	for (const [name, Cmd] of config.commands) {
 		const flags = buildFlags(Cmd);
-		const args = buildArgs(Cmd);
+		const args = buildArgs(name, Cmd);
 		if (name === rootName) {
 			root = { flags, args };
 			continue;
@@ -311,24 +372,40 @@ ${bashFlagCase(bin, spec.root.flags)}
 	parts.push("");
 
 	// Per-subcommand handlers.
+	//
+	// Positionals are answered BY POSITION. Offering every positional's
+	// candidates at every slot meant `veyyon config set <TAB>` proposed the
+	// action words again — `list get set reset` where a setting key belongs — and
+	// kept proposing them however many arguments the user had already typed. bash
+	// is the one supported shell that can count the words before the cursor, so
+	// it is the one shell that gets this right; zsh delegates the same job to
+	// _arguments.
 	for (const c of spec.commands) {
-		const argEnum = c.args.find(a => a.value.kind === "enum");
-		const argWords = argEnum && argEnum.value.kind === "enum" ? bashWords(argEnum.value.values) : "";
-		const fileArg = c.args.some(a => a.value.kind === "file");
-		const elseBranch = argWords
-			? `COMPREPLY=( $(compgen -W "${argWords}" -- "$cur") )`
-			: fileArg
-				? `COMPREPLY=( $(compgen -f -- "$cur") ); compopt -o filenames`
-				: ":";
+		const cmdValueFlags = valueFlagLabels(c.flags).join("|");
+		const skipArm = cmdValueFlags ? `\t\t\t${cmdValueFlags})\n\t\t\t\tskipv=1\n\t\t\t\t;;` : "";
+		const argArms = c.args
+			.map((a, idx) => `\t\t\t${idx})\n\t\t\t\t${bashValueBranch(bin, a.value)}\n\t\t\t\t;;`)
+			.join("\n");
 		parts.push(`_veyyon_cmd_${bashFn(c.name)}() {
 	case "$prev" in
 ${bashFlagCase(bin, c.flags)}
 	esac
 	if [[ "$cur" == -* ]]; then
 		COMPREPLY=( $(compgen -W "${bashFlagWords(c.flags)}" -- "$cur") )
-	else
-		${elseBranch}
+		return 0
 	fi
+	local argi=0 j skipv=0
+	for (( j=cmdidx+1; j < COMP_CWORD; j++ )); do
+		if (( skipv )); then skipv=0; continue; fi
+		case "\${COMP_WORDS[j]}" in
+${skipArm}
+			-*) ;;
+			*) argi=$(( argi + 1 )) ;;
+		esac
+	done
+	case $argi in
+${argArms}
+	esac
 }`);
 		parts.push("");
 	}
@@ -348,17 +425,18 @@ ${bashFlagCase(bin, c.flags)}
 		dispatch.push(`\t\t${commandTokens(c).join("|")})\n\t\t\t_veyyon_cmd_${bashFn(c.name)}\n\t\t\t;;`);
 	}
 	parts.push(`_veyyon() {
-	local cur prev cmd i skip
+	local cur prev cmd i skip cmdidx
 	cur="\${COMP_WORDS[COMP_CWORD]}"
 	prev="\${COMP_WORDS[COMP_CWORD-1]}"
 	cmd=""
+	cmdidx=0
 	skip=0
 	for (( i=1; i < COMP_CWORD; i++ )); do
 		if (( skip )); then skip=0; continue; fi
 		case "\${COMP_WORDS[i]}" in
 ${valueFlagArm}
 			-*) ;;
-			*) cmd="\${COMP_WORDS[i]}"; break ;;
+			*) cmd="\${COMP_WORDS[i]}"; cmdidx=$i; break ;;
 		esac
 	done
 	case "$cmd" in

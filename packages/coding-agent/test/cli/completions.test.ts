@@ -817,3 +817,211 @@ describe("generateCompletion — fish subcommand detection", () => {
 		expect(ends).toBe(opens);
 	});
 });
+
+/**
+ * Positionals are answered by POSITION.
+ *
+ * Every subcommand handler used to offer the first enum positional's words at
+ * every slot, so `veyyon config set <Tab>` proposed `list get set reset` again
+ * where a setting key belongs, and kept proposing them no matter how many
+ * arguments were already typed. bash is the one shell here that can count the
+ * words before the cursor, so it is the one shell that can get this right.
+ *
+ * A dedicated spec rather than the shared one above: this needs a command with
+ * three positionals of different kinds and a value-taking flag of its own, and
+ * pinning that shape here keeps it from drifting with unrelated edits.
+ */
+describe("the generated bash positional dispatch, executed", () => {
+	const positionalSpec: CompletionSpec = {
+		bin: "veyyon",
+		binAliases: [],
+		root: {
+			flags: [
+				{
+					name: "thinking",
+					description: "Effort",
+					value: { kind: "enum", values: ["low", "high"] },
+					repeatable: false,
+				},
+			],
+			args: [],
+		},
+		commands: [
+			{
+				name: "config",
+				aliases: ["cfg"],
+				description: "Config",
+				flags: [
+					{ name: "json", description: "JSON", value: { kind: "flag" }, repeatable: false },
+					{
+						name: "as",
+						description: "Format",
+						value: { kind: "enum", values: ["yaml", "toml"] },
+						repeatable: false,
+					},
+				],
+				args: [
+					{ name: "action", description: "Action", value: { kind: "enum", values: ["get", "set"] } },
+					{ name: "key", description: "Key", value: { kind: "value" } },
+					{ name: "value", description: "Value", value: { kind: "enum", values: ["on", "off"] } },
+				],
+			},
+		],
+	};
+	const script = generateCompletion("bash", positionalSpec);
+
+	function complete(...words: string[]): string[] {
+		const driver = [
+			script,
+			"compopt() { :; }",
+			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
+			"COMPREPLY=()",
+			"_veyyon",
+			'printf "%s\\n" "${COMPREPLY[@]}"',
+		].join("\n");
+		const out = Bun.spawnSync(["bash", "-c", driver]);
+		expect(out.exitCode, new TextDecoder().decode(out.stderr)).toBe(0);
+		return new TextDecoder()
+			.decode(out.stdout)
+			.split("\n")
+			.filter(line => line.length > 0);
+	}
+
+	it("offers the first positional's words in the first slot", () => {
+		expect(complete("veyyon", "config", "")).toEqual(["get", "set"]);
+	});
+
+	it("does NOT repeat them in the second slot", () => {
+		// The regression, exactly: `config set <Tab>` proposed the actions again.
+		expect(complete("veyyon", "config", "set", "")).toEqual([]);
+	});
+
+	it("offers the third positional's words in the third slot", () => {
+		// Only reachable by counting; the old handler could not see past the first
+		// enum it found.
+		expect(complete("veyyon", "config", "set", "startup.autoUpdate", "")).toEqual(["on", "off"]);
+	});
+
+	it("does not count a boolean flag as a positional", () => {
+		// `--json` consumes no token, so the slot after it is still the first.
+		expect(complete("veyyon", "config", "--json", "")).toEqual(["get", "set"]);
+	});
+
+	it("does not count a subcommand flag's VALUE as a positional", () => {
+		// `yaml` is the value of --as. Counting it would shift every later slot and
+		// silently complete the wrong argument.
+		expect(complete("veyyon", "config", "--as", "yaml", "")).toEqual(["get", "set"]);
+		expect(complete("veyyon", "config", "--as", "yaml", "set", "k", "")).toEqual(["on", "off"]);
+	});
+
+	it("counts from the subcommand, not from the start of the line", () => {
+		// A root flag and its value precede the subcommand; including them would
+		// make the first argument look like the third.
+		expect(complete("veyyon", "--thinking", "low", "config", "")).toEqual(["get", "set"]);
+	});
+
+	it("counts the same way under an alias token", () => {
+		expect(complete("veyyon", "cfg", "set", "k", "")).toEqual(["on", "off"]);
+	});
+
+	it("offers nothing past the last declared positional", () => {
+		// Better than repeating the last one, which would look like the argument is
+		// accepted again.
+		expect(complete("veyyon", "config", "set", "k", "on", "")).toEqual([]);
+	});
+
+	it("still completes flags at any position", () => {
+		expect(complete("veyyon", "config", "set", "k", "--")).toEqual(["--json", "--as"]);
+	});
+});
+
+/**
+ * What a value is, when nothing says.
+ *
+ * The classifier used to end `return { kind: "file" }` for any flag or
+ * positional it did not recognize, which is most of them. The result was
+ * completion that was confidently wrong: `--api-key <Tab>`, `--provider <Tab>`,
+ * `ssh --host <Tab>` and `search <query> <Tab>` all listed the current
+ * directory, and accepting a candidate wrote a filename where a secret, a
+ * provider id, a hostname or a search term belonged. Offering nothing is the
+ * honest answer for a value only the user knows; a path earns its completion by
+ * being named in the classifier.
+ */
+describe("buildSpec value classification", () => {
+	function specFor(name: string, Cmd: Record<string, unknown>): CompletionSpec {
+		const commands = new Map<string, CommandCtor>([["launch", { flags: {}, args: {} } as unknown as CommandCtor]]);
+		commands.set(name, Cmd as unknown as CommandCtor);
+		return buildSpec({ bin: "veyyon", version: "0.0.0", commands } as CliConfig, "launch", new Map(), {});
+	}
+
+	function flagKind(name: string, descriptor: Record<string, unknown>): string {
+		const spec = specFor("x", { flags: { [name]: descriptor }, args: {} });
+		return spec.commands[0].flags[0].value.kind;
+	}
+
+	function argKind(command: string, name: string, descriptor: Record<string, unknown>): string {
+		const spec = specFor(command, { flags: {}, args: { [name]: descriptor } });
+		return spec.commands[0].args[0].value.kind;
+	}
+
+	it("gives an unrecognized flag no candidates rather than the filesystem", () => {
+		expect(flagKind("api-key", { description: "API key" })).toBe("value");
+		expect(flagKind("provider", { description: "Provider to use" })).toBe("value");
+		expect(flagKind("host", { description: "Host address" })).toBe("value");
+	});
+
+	it("gives an unrecognized positional no candidates either", () => {
+		expect(argKind("search", "query", { description: "Search query text" })).toBe("value");
+		expect(argKind("say", "text", { description: "Text to speak" })).toBe("value");
+		expect(argKind("token", "provider", { description: "Provider ID" })).toBe("value");
+	});
+
+	it("still completes paths for the flags that really take one", () => {
+		expect(flagKind("config", { description: "Overlay" })).toBe("file");
+		expect(flagKind("extension", { description: "Extension file" })).toBe("file");
+		expect(flagKind("out", { description: "Output path" })).toBe("file");
+		expect(flagKind("cwd", { description: "Directory to start in" })).toBe("dir");
+		expect(flagKind("dir", { description: "Output directory" })).toBe("dir");
+	});
+
+	it("completes paths for the positionals that really take one", () => {
+		expect(argKind("read", "path", { description: "Path to read" })).toBe("file");
+		expect(argKind("grep", "path", { description: "Directory or file" })).toBe("file");
+		expect(argKind("install", "targets", { description: "Local path or spec" })).toBe("file");
+	});
+
+	it("keys positionals by command, because a positional name means different things", () => {
+		// `read <path>` is a file; `ttsr --path` is a file; a hypothetical
+		// `search <path>` would not be. Bare-name keying could not express that.
+		expect(argKind("read", "path", { description: "Path" })).toBe("file");
+		expect(argKind("search", "path", { description: "Not a path" })).toBe("value");
+	});
+
+	it("resolves the hand-off model flags against the model catalog", () => {
+		// Both name the model a phase hands off to. They were classified as files,
+		// so `--prewalk-into <Tab>` listed the current directory instead of models.
+		expect(flagKind("prewalk-into", { description: "Target model for prewalk" })).toBe("models");
+		expect(flagKind("plan-yolo-into", { description: "Target model for plan-yolo" })).toBe("models");
+	});
+
+	it("resolves model positionals against the catalog too", () => {
+		expect(argKind("bench", "models", { description: "Model selectors" })).toBe("models");
+		expect(argKind("dry-balance", "model", { description: "Model selector" })).toBe("models");
+		expect(argKind("tiny-models", "model", { description: "Model key" })).toBe("models");
+	});
+
+	it("lets a declared option list win over every name rule", () => {
+		// An explicit `options` list is the command author speaking directly; no
+		// heuristic should override it.
+		expect(flagKind("config", { description: "Overlay", options: ["a", "b"] })).toBe("enum");
+		expect(argKind("read", "path", { description: "Path", options: ["a", "b"] })).toBe("enum");
+	});
+
+	it("a value with no candidates emits no completion action in bash", () => {
+		// The end-to-end consequence: the handler returns without touching
+		// COMPREPLY, so bash falls back to its own default instead of pretending.
+		const spec = specFor("say", { flags: {}, args: { text: { description: "Text to speak" } } });
+		expect(generateCompletion("bash", spec)).not.toContain("compgen -f");
+	});
+});
