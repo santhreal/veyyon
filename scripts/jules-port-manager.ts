@@ -38,6 +38,17 @@
  *   dispatch  create sessions for queued issues, oldest first
  *   harvest   poll in-flight sessions, advance labels, record failures
  *   status    pipeline counts + per-key budget table
+ *   land      audit open port PRs, merge the clean ones into local main
+ *
+ * Landing is local-first, because this working tree is the canonical copy of
+ * veyyon and GitHub is a mirror of it. `land` never presses the merge button:
+ * it fetches each port PR, audits the files it touches against the
+ * `neverPorted` policy, merges the clean ones into the local main with
+ * `--no-ff`, and leaves pushing to you. Because the merge keeps each PR's head
+ * commit, pushing that main is what marks the PR merged on GitHub, so the
+ * mirror ends up correct without anyone merging there. A PR that fails the
+ * audit is refused with the offending paths named and its issue routed to
+ * port-review; nothing is ever partially applied.
  *
  * Keys: JULES_API_KEYS (comma-separated) wins; otherwise every `JULES_*=AQ.*`
  * line in JULES_ENV_FILE (default /credentials/.env) is a candidate key. Each
@@ -61,6 +72,11 @@ const MAX_NUDGES = Number(process.env.JULES_MAX_NUDGES ?? "3");
 const ENV_FILE = process.env.JULES_ENV_FILE ?? "/credentials/.env";
 const WINDOW_HOURS = 24;
 const HTTP_TIMEOUT_MS = 30_000;
+
+// Resolved from this file, not the caller's cwd: `land` runs git in the repo
+// it belongs to whether cron invokes it from / or you invoke it from a package.
+const REPO_ROOT = new URL("..", import.meta.url).pathname;
+const POLICY_PATH = new URL("./upstream-port-policy.json", import.meta.url).pathname;
 
 const QUEUE_LABEL = "upstream-port";
 const DISPATCHED_LABEL = "jules-dispatched";
@@ -142,8 +158,12 @@ ${retry}
 ## PR requirements (mandatory)
 
 - The PR body MUST contain the exact line \`Closes #${issueNumber}\` so the merge closes the tracking issue.
-- Commit ONLY the ported source, tests, docs, and changelog. Never commit scratch artifacts: downloaded \`*.diff\`/\`*.patch\` files, notes, or tool output.
-- A user-facing change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too (CI's "Changelog entry" check enforces the pair). If you touch anything under \`docs/handbook/src/\`, run \`mdbook build docs/handbook\` (mdbook v0.5.2) and commit the rebuilt \`docs/handbook/book\` (CI's freshness check enforces it).
+- Branch from current \`origin/main\` and NEVER merge \`main\` into your branch. If your clone has gone stale, fetch and rebase; a merge you resolve in your own favour silently reverts commits that landed while you worked, and such a PR is rejected on sight however good the fix is.
+- Your diff must contain the fix and nothing else. Before committing, run \`git status\` and \`git diff --stat\`, and confirm every path is one you deliberately changed for this fix. A one-file fix has a one-file diff. If \`git diff --stat\` shows dozens of files you did not intend, your branch is stale: start over from a fresh \`origin/main\` rather than committing it.
+- Never commit: lockfiles (\`bun.lock\`, \`Cargo.lock\`), \`.gitignore\`, workflow files under \`.github/\`, anything under \`docs/handbook/book/\` or \`docs/internal/\`, or the port pipeline's own \`scripts/upstream-*\` and \`scripts/jules-port-manager*\`. Those belong to veyyon, not to any port. If a build step rewrites one of them, \`git checkout -- <path>\` it before you commit.
+- Delete every scratch file you created before committing: \`patch_*.ts\`, \`test_*.ts\`, debug scripts, downloaded \`*.diff\`/\`*.patch\` files, notes, tool output. They must not appear in \`git status\`.
+- A user-facing change gets one bullet under \`## [Unreleased]\` in the touched package's CHANGELOG.md. If you touch \`packages/coding-agent/CHANGELOG.md\`, run \`bun scripts/sync-root-changelog.ts\` and commit the regenerated root \`CHANGELOG.md\` too (CI's "Changelog entry" check enforces the pair). Do NOT edit \`docs/handbook/src/\`: porting a bug fix never needs a handbook change, and rebuilding the book drags hundreds of generated files into your diff.
+- Keep existing tests. Add your cases to the test file that already covers the code you changed; never rewrite or shrink that file around your new behaviour. A port that removes more test lines than it adds is rejected even when its fix is correct.
 - veyyon's product direction wins over upstream's. Where veyyon diverged (its own model catalog with its own model IDs, types, and roles; its own branding, install flow, and docs), port the underlying bug onto veyyon's design; never import upstream's scheme. The issue's "Diverged surface warning" section, when present, is binding.
 - If the change does NOT apply to veyyon (superseded, subsystem rewritten or removed), commit nothing. End the session with a summary starting with \`NOT-APPLICABLE:\` naming the veyyon change that supersedes it; if your mode forces a PR anyway, keep its diff EMPTY and title it \`NOT-APPLICABLE: <original title>\` with the reasoning and the \`Closes #${issueNumber}\` line in the body.
 `;
@@ -156,6 +176,101 @@ export interface PortPrRef {
 	html_url: string;
 	state?: string;
 	merged_at?: string | null;
+}
+
+export type PathRules = { prefixes: string[]; exact: string[]; regexes: string[] };
+export type NeverPortedPolicy = { refuseThreshold: number; owned: PathRules; quarantine: PathRules };
+
+/**
+ * The `neverPorted` block of scripts/upstream-port-policy.json, which names
+ * the paths no port PR may carry. Parsed rather than hardcoded so the lists
+ * have one owner shared with the radar's policy, and fails closed: a policy
+ * file that has lost a tier would otherwise make every audit pass.
+ */
+export function parseNeverPorted(policyText: string): NeverPortedPolicy {
+	const block = JSON.parse(policyText)?.neverPorted;
+	if (!block || typeof block !== "object")
+		throw new Error("upstream-port-policy.json: missing the neverPorted block that `land` audits against");
+	const rules = (tier: unknown, name: string): PathRules => {
+		if (!tier || typeof tier !== "object")
+			throw new Error(`upstream-port-policy.json: neverPorted.${name} must be an object of path rules`);
+		const t = tier as Record<string, unknown>;
+		const list = (v: unknown, field: string): string[] => {
+			if (!Array.isArray(v) || v.some(x => typeof x !== "string"))
+				throw new Error(`upstream-port-policy.json: neverPorted.${name}.${field} must be an array of strings`);
+			return v as string[];
+		};
+		return {
+			prefixes: list(t.prefixes, "prefixes"),
+			exact: list(t.exact, "exact"),
+			regexes: list(t.regexes, "regexes"),
+		};
+	};
+	const threshold = block.refuseThreshold;
+	if (typeof threshold !== "number" || !Number.isInteger(threshold) || threshold < 1)
+		throw new Error("upstream-port-policy.json: neverPorted.refuseThreshold must be an integer >= 1");
+	return {
+		refuseThreshold: threshold,
+		owned: rules(block.owned, "owned"),
+		quarantine: rules(block.quarantine, "quarantine"),
+	};
+}
+
+const matchesRules = (file: string, rules: PathRules): boolean =>
+	rules.prefixes.some(p => file.startsWith(p)) ||
+	rules.exact.includes(file) ||
+	rules.regexes.some(r => new RegExp(r).test(file));
+
+export type TestDelta = { path: string; added: number; removed: number };
+
+/**
+ * Test files a port PR shrinks, worst first. Empty means no coverage was lost.
+ *
+ * A port is only real when it arrives with a test, so a port that removes more
+ * test lines than it adds has done the opposite of its job. The pipeline
+ * produces this on its own: PR #203 carried a genuinely good six-line fix
+ * capping tool timeouts with the global ceiling, and rewrote the suite guarding
+ * it from 296 lines down to 24, dropping every exact-value assertion plus all
+ * coverage of formatTimeoutClampNotice and describeTimeoutParam while both
+ * functions stayed in the source. Nothing failed and no path rule fired: the
+ * suite still passed, smaller. Line counts are a blunt instrument, so this only
+ * reports net shrinkage of a file already recognised as a test, which a
+ * legitimate port never does.
+ */
+export function testFilesShrunk(deltas: TestDelta[]): TestDelta[] {
+	return deltas
+		.filter(d => /(?:^|\/)(?:test|tests|__tests__)\//.test(d.path) || /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(d.path))
+		.filter(d => d.removed > d.added)
+		.sort((a, b) => b.removed - b.added - (a.removed - a.added));
+}
+
+export type PortAudit = { refuse: string[]; quarantine: string[] };
+
+/**
+ * Decide what to do with a port PR's changed files: refuse the whole diff, or
+ * land it with some paths quarantined. Both lists keep the order given.
+ *
+ * This is the whole defence against the pipeline's worst failure mode. A Jules
+ * session works from a clone that goes stale while it runs; when it reconciles
+ * by merging main and resolving in its own favour, or simply branches from an
+ * old base, the resulting PR quietly REVERSES commits already on main. That is
+ * invisible in the title and nearly invisible in review: #184 was titled a
+ * one-file IME composition fix and its diff reverted the port manager, the
+ * radar, four workflows and 180 rendered handbook pages.
+ *
+ * Bulk is what separates a revert from drift, so the owned-path count is the
+ * detector. Under the threshold the hits are drift around a real fix (#196
+ * refreshed one docs/internal freshness stamp) and get quarantined with the
+ * rest of the noise. At or above it the branch is reverting main wholesale, and
+ * the whole PR is refused rather than filtered: a diff that stale also reverts
+ * ordinary source files that no path list can recognise, so its remaining
+ * changes cannot be trusted either.
+ */
+export function auditPortFiles(files: string[], policy: NeverPortedPolicy): PortAudit {
+	const owned = files.filter(f => matchesRules(f, policy.owned));
+	if (owned.length >= policy.refuseThreshold) return { refuse: owned, quarantine: [] };
+	const noise = files.filter(f => matchesRules(f, policy.quarantine));
+	return { refuse: [], quarantine: files.filter(f => owned.includes(f) || noise.includes(f)) };
 }
 
 /**
@@ -690,6 +805,215 @@ async function harvest(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// land: audited local merges. This tree is canonical; GitHub mirrors it.
+
+/** Run git in the repo root; throws with git's own stderr on failure. */
+function git(...args: string[]): string {
+	const proc = Bun.spawnSync(["git", ...args], { cwd: REPO_ROOT });
+	if (proc.exitCode !== 0)
+		throw new Error(`git ${args.join(" ")} failed (${proc.exitCode}): ${proc.stderr?.toString().trim()}`);
+	return proc.stdout?.toString().trim() ?? "";
+}
+
+/** git that reports failure instead of throwing, for probes and merge attempts. */
+function gitTry(...args: string[]): { ok: boolean; out: string } {
+	const proc = Bun.spawnSync(["git", ...args], { cwd: REPO_ROOT });
+	return {
+		ok: proc.exitCode === 0,
+		out: `${proc.stdout?.toString() ?? ""}${proc.stderr?.toString() ?? ""}`.trim(),
+	};
+}
+
+/**
+ * Refuse to land unless main can absorb a merge without touching work in
+ * progress. Two things are genuinely unsafe and both fail closed here.
+ *
+ * A merge onto a detached head or a feature branch puts ports somewhere nobody
+ * will push. And a staged-but-uncommitted index is swept into the merge commit
+ * wholesale, because the commit that closes a merge takes whatever the index
+ * holds, so someone else's half-staged edit would ship inside a port.
+ *
+ * An unstaged dirty tree is NOT unsafe by itself, and refusing it would make
+ * `land` unrunnable here: this repo's main tree is the canonical copy and
+ * carries in-progress work essentially all the time. Git already refuses a
+ * merge that would overwrite a modified path, so the only real hazard is
+ * overlap, which landPreflight checks per PR against the exact merge surface.
+ */
+function requireLandableMain(): void {
+	const branch = git("rev-parse", "--abbrev-ref", "HEAD");
+	if (branch !== "main")
+		throw new Error(`land: HEAD is on ${branch}, not main. Ports land on main; switch first, nothing was merged.`);
+	const staged = git("diff", "--cached", "--name-only").split("\n").filter(Boolean);
+	if (staged.length > 0)
+		throw new Error(
+			`land: ${staged.length} path(s) are staged (${staged.slice(0, 3).join(", ")}${staged.length > 3 ? ", ..." : ""}). A merge commit takes the whole index, so these would ship inside a port. Commit or unstage them first; nothing was merged.`,
+		);
+}
+
+/** Working-tree paths with unstaged modifications, which a merge must not touch. */
+function dirtyPaths(): Set<string> {
+	return new Set(git("diff", "--name-only").split("\n").filter(Boolean));
+}
+
+/**
+ * Merge every clean open port PR into local main, oldest first.
+ *
+ * Nothing here presses GitHub's merge button. Each PR head is fetched, audited
+ * with auditPortFiles, and merged locally with --no-ff so its head commit stays
+ * in the history: when you push this main, GitHub sees the head SHA reachable
+ * from the base and marks the PR merged on its own. That keeps the canonical
+ * copy here and the mirror honest with no second source of truth.
+ *
+ * Refusals are loud and one-way: the PR is left open, its issue is labeled
+ * port-review with the offending paths named, and the merge is never partially
+ * applied (a conflicting merge is aborted, not resolved by guesswork).
+ * Quarantined paths are dropped back to main's content inside the merge commit
+ * and printed one per line, so the noise a session sheds never reaches history
+ * and never silently disappears either.
+ */
+async function land(only: number[], push: boolean): Promise<void> {
+	requireLandableMain();
+	const dirty = dirtyPaths();
+	const policy = parseNeverPorted(readFileSync(POLICY_PATH, "utf8"));
+	git("fetch", "origin", "main");
+
+	const prs = (await ghAll(`/repos/${ORIGIN}/pulls?state=open&sort=created&direction=asc`, 300)).filter(
+		(pr: any) => /^\s*port\(upstream#\d+\)/.test(pr.title) && (only.length === 0 || only.includes(pr.number)),
+	);
+	if (prs.length === 0) {
+		console.log("land: no open port PRs match.");
+		return;
+	}
+
+	const landed: number[] = [];
+	const refused: string[] = [];
+	for (const pr of prs) {
+		const n = pr.number;
+		const issueNumber = Number(/(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+#(\d+)/i.exec(pr.body ?? "")?.[1]);
+		if (/^\s*NOT-APPLICABLE\b/i.test(pr.title)) {
+			refused.push(`#${n} NOT-APPLICABLE verdict, not a port; close it by hand after reading its reasoning`);
+			continue;
+		}
+		git("fetch", "origin", `pull/${n}/head:refs/jules-port/${n}`, "--force");
+		const ref = `refs/jules-port/${n}`;
+		// Diffed against local HEAD, not origin/main: this tree is the canonical
+		// copy and is routinely ahead of the mirror, so auditing against origin
+		// would judge the PR by a base it is not landing on.
+		const files = git("diff", "--name-only", `HEAD...${ref}`).split("\n").filter(Boolean);
+		if (files.length === 0) {
+			refused.push(`#${n} changes nothing against main; close it`);
+			continue;
+		}
+		// numstat is `<added>\t<removed>\t<path>`, with `-` for binary files.
+		const shrunk = testFilesShrunk(
+			git("diff", "--numstat", `HEAD...${ref}`)
+				.split("\n")
+				.filter(Boolean)
+				.map(line => {
+					const [added, removed, path] = line.split("\t");
+					return { path, added: Number(added) || 0, removed: Number(removed) || 0 };
+				}),
+		);
+		if (shrunk.length > 0) {
+			const worst = shrunk.map(d => `${d.path} (-${d.removed}/+${d.added})`).join(", ");
+			refused.push(`#${n} deletes test coverage: ${worst}`);
+			if (Number.isFinite(issueNumber)) {
+				await addLabels(issueNumber, [REVIEW_LABEL]);
+				await comment(
+					issueNumber,
+					`Port PR #${n} was refused by \`jules-port-manager land\`: it shrinks ${shrunk.length} test file(s), so it removes more coverage than it adds.\n\n${shrunk.map(d => `- \`${d.path}\` -${d.removed}/+${d.added}`).join("\n")}\n\nThe fix itself may well be right. Re-do the port keeping main's existing test file intact and appending the new cases to it, rather than rewriting the suite around the new behaviour.`,
+				);
+			}
+			continue;
+		}
+		// Git would refuse this merge anyway; catching it here names the exact
+		// paths instead of leaving a half-attempted merge and a git error.
+		const collisions = files.filter(f => dirty.has(f));
+		if (collisions.length > 0) {
+			refused.push(
+				`#${n} touches ${collisions.length} path(s) you have uncommitted work in: ${collisions.join(", ")}`,
+			);
+			continue;
+		}
+		const audit = auditPortFiles(files, policy);
+		if (audit.refuse.length > 0) {
+			const shown = audit.refuse.slice(0, 8).join(", ");
+			const more = audit.refuse.length > 8 ? ` (+${audit.refuse.length - 8} more)` : "";
+			refused.push(`#${n} reverts main in ${audit.refuse.length}/${files.length} paths: ${shown}${more}`);
+			if (Number.isFinite(issueNumber)) {
+				await addLabels(issueNumber, [REVIEW_LABEL]);
+				await comment(
+					issueNumber,
+					`Port PR #${n} was refused by \`jules-port-manager land\`: its diff modifies ${audit.refuse.length} path(s) that no port may touch, which means it is reversing work already on main rather than porting one fix.\n\n${audit.refuse.map(f => `- \`${f}\``).join("\n")}\n\nRe-do the port on a branch cut from current main, touching only the source that carries the bug plus its changelog entry.`,
+				);
+			}
+			continue;
+		}
+		// --no-commit so quarantined paths are reset before the merge commit
+		// exists: the noise never enters history, and the PR head stays a parent
+		// so pushing still marks the PR merged on GitHub.
+		const merge = gitTry("merge", "--no-ff", "--no-commit", ref);
+		if (!merge.ok && !/Automatic merge went well/.test(merge.out)) {
+			gitTry("merge", "--abort");
+			refused.push(`#${n} does not merge cleanly into main:\n      ${merge.out.split("\n")[0]}`);
+			continue;
+		}
+		for (const path of audit.quarantine) {
+			// Restore main's version, or delete outright when the PR invented the
+			// file (scratch helpers have no main-side content to restore).
+			if (!gitTry("checkout", "HEAD", "--", path).ok) gitTry("rm", "-f", "--ignore-unmatch", "--", path);
+		}
+		const quarantineNote =
+			audit.quarantine.length > 0
+				? `\n\nQuarantined by land (session noise, not part of the fix):\n${audit.quarantine.map(f => `  ${f}`).join("\n")}`
+				: "";
+		const msg = `${pr.title}\n\nLands port PR #${n} into the canonical tree.${Number.isFinite(issueNumber) ? `\nCloses #${issueNumber}` : ""}${quarantineNote}`;
+		const commit = gitTry("commit", "--no-verify", "-m", msg);
+		if (!commit.ok) {
+			gitTry("merge", "--abort");
+			refused.push(`#${n} merge could not be committed:\n      ${commit.out.split("\n")[0]}`);
+			continue;
+		}
+		landed.push(n);
+		const dropped = audit.quarantine.length > 0 ? `, ${audit.quarantine.length} quarantined` : "";
+		console.log(`land: merged #${n} (${files.length} files${dropped}) — ${pr.title.slice(0, 70)}`);
+		for (const path of audit.quarantine) console.log(`land:   quarantined ${path}`);
+	}
+
+	for (const r of refused) console.log(`land: refused ${r}`);
+	if (landed.length === 0) {
+		console.log("land: nothing merged.");
+		return;
+	}
+	console.log(`land: ${landed.length} port PR(s) merged into local main: ${landed.map(n => `#${n}`).join(" ")}`);
+	if (!push) {
+		console.log("land: not pushed. Run the gate, then `git push origin main` to mark them merged on GitHub.");
+		return;
+	}
+	// The typecheck gates the push because a port can be individually reviewable
+	// and still not compile against veyyon's types: PR #202 added four timeout
+	// settings and the client code reading them, but never declared the two
+	// interface fields it consumed, so `check:ts` failed on nine errors that no
+	// per-PR audit could see. Pushing a red main would mark eight PRs merged and
+	// break every branch cut afterwards, so this refuses instead.
+	console.log("land: running check:ts before pushing...");
+	const gate = Bun.spawnSync(["bun", "run", "check:ts"], { cwd: REPO_ROOT });
+	if (gate.exitCode !== 0) {
+		const errors = (gate.stdout?.toString() ?? "")
+			.split("\n")
+			.filter(l => /error TS\d+/.test(l))
+			.slice(0, 10);
+		console.error(`land: NOT pushed — check:ts failed on the merged tree.\n${errors.join("\n")}`);
+		console.error(
+			`land: the ${landed.length} merge(s) are in your local main. Fix the tree and push, or unwind the merges; nothing reached GitHub.`,
+		);
+		process.exit(1);
+	}
+	git("push", "origin", "main");
+	console.log("land: pushed origin/main; GitHub will mark the landed PRs merged.");
+}
+
+// ---------------------------------------------------------------------------
 // status: one table of pipeline truth — the operator's review dashboard.
 
 /** Failing check names for a head SHA, deduped by check name (latest run wins). */
@@ -752,11 +1076,16 @@ if (import.meta.main) {
 	if (cmd === "dispatch") await dispatch();
 	else if (cmd === "harvest") await harvest();
 	else if (cmd === "status") await status();
-	else if (cmd === "tick") {
+	else if (cmd === "land") {
+		const rest = process.argv.slice(3);
+		// Bare numbers select PRs; --push is opt-in so the default run stops at
+		// a local merge you can still inspect, gate, and undo.
+		await land(rest.filter(a => /^\d+$/.test(a)).map(Number), rest.includes("--push"));
+	} else if (cmd === "tick") {
 		await harvest();
 		await dispatch();
 	} else {
-		console.error(`jules-port-manager: unknown command ${cmd} (want tick|dispatch|harvest|status)`);
+		console.error(`jules-port-manager: unknown command ${cmd} (want tick|dispatch|harvest|land|status)`);
 		process.exit(2);
 	}
 }

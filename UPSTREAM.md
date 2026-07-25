@@ -78,6 +78,9 @@ automated port pipeline. It has two halves:
    evaluates applicability post-divergence and opens an adapted port PR.
    Autoreview and a human gate the merge; the PR's `Closes #N` line closes
    the issue.
+3. Landing happens locally, not on GitHub. `bun scripts/jules-port-manager.ts
+   land` audits each open port PR, merges the ones that pass into your local
+   `main`, and stops there so you can run the gate before pushing.
 
 An issue's labels are its pipeline position: none beyond `upstream-port`
 means queued, `jules-dispatched` means a session is in flight,
@@ -85,6 +88,54 @@ means queued, `jules-dispatched` means a session is in flight,
 `port-blocked` mean a human is needed. `bun scripts/jules-port-manager.ts
 status` prints the live picture; the script's header comment documents the
 commands, knobs, and markers.
+
+### Why landing is local
+
+Your working tree is the canonical copy of veyyon and GitHub mirrors it, so
+nobody presses the merge button on github.com. `land` fetches each port PR,
+merges it into the local `main` with `--no-ff`, and leaves the push to you.
+Keeping the PR's head commit in the merge is what makes this work in both
+directions: once you push that `main`, GitHub sees the head commit reachable
+from the base and marks the PR merged on its own, so the mirror ends up
+correct without ever becoming a second source of truth.
+
+Run it on `main`. Uncommitted work in the tree is fine, which matters because
+the canonical tree nearly always has some: `land` refuses only a staged index,
+since the commit that closes a merge would take the whole index and ship your
+half-staged edit inside a port. Per PR it also skips any port whose files
+overlap paths you have uncommitted changes in, naming them.
+
+```
+bun scripts/jules-port-manager.ts land          # audit and merge all clean port PRs
+bun scripts/jules-port-manager.ts land 197 202  # only these
+bun scripts/jules-port-manager.ts land --push   # merge, then push
+```
+
+### What land refuses, and why
+
+A Jules session works from a clone that goes stale while it runs. When it
+reconciles by merging `main` and resolving in its own favour, the PR quietly
+reverses commits that landed while it worked, which is invisible in the title
+and nearly invisible in review: PR #184 was titled a one-file IME composition
+fix and its diff reverted the port manager, the radar, four workflows and 180
+rendered handbook pages. So `land` audits the diff before merging anything.
+
+- **Whole-tree reverts** are refused outright. `neverPorted.owned` in
+  `scripts/upstream-port-policy.json` lists the paths that belong to main and
+  no port authors; hitting `refuseThreshold` of them at once means the branch
+  is reverting main wholesale. Filtering such a diff is not enough, because
+  the same staleness also reverts ordinary source files that no path list can
+  recognise. The PR stays open and its issue goes to `port-review`.
+- **Coverage deletion** is refused. A port that removes more test lines than
+  it adds has done the opposite of its job, and CI cannot catch it because a
+  smaller suite still passes.
+- **Session noise** is quarantined, not refused. Lockfiles that a session's
+  older bun rewrote, and scratch helpers left at the repo root, are reset to
+  main's content inside the merge commit and named in the log. The fix lands;
+  the noise never enters history.
+
+The same rules are stated in the session prompt, so most PRs never hit them.
+The audit is the backstop for when the prompt is not enough.
 
 ## Non-goals
 
