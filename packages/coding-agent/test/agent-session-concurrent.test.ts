@@ -453,6 +453,51 @@ describe("AgentSession concurrent prompt guard", () => {
 		).toBe(true);
 	});
 
+	it("does not emit session_stop when abort starts before the settle pass", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
+		const mock = createMockModel({
+			handler: () => ({ content: ["Done"] }),
+		});
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [] },
+			streamFn: mock.stream,
+			convertToLlm,
+		});
+		const settleGate = Promise.withResolvers<void>();
+		const settleReached = Promise.withResolvers<void>();
+		const emitSessionStop = vi.fn().mockResolvedValue(undefined);
+		const extensionRunner = {
+			emit: vi.fn().mockResolvedValue(undefined),
+			emitBeforeAgentStart: vi.fn().mockResolvedValue(undefined),
+			hasHandlers: vi.fn((eventType: string) => eventType === "session_stop"),
+			emitSessionStop,
+		} as unknown as ExtensionRunner;
+		const sessionManager = SessionManager.inMemory();
+		const settings = Settings.isolated();
+		const authStorage = await AuthStorage.create(path.join(tempDir, "testauth.db"));
+		authStorages.push(authStorage);
+		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir, "models.yml"));
+		authStorage.setRuntimeApiKey("anthropic", "test-key");
+
+		session = new AgentSession({ agent, sessionManager, settings, modelRegistry, extensionRunner });
+		vi.spyOn(session.goalRuntime, "onAgentEnd").mockImplementation(() => {
+			settleReached.resolve();
+			return settleGate.promise;
+		});
+
+		const promptPromise = session.prompt("First message");
+		await settleReached.promise;
+		const abortPromise = session.abort();
+		settleGate.resolve();
+
+		await abortPromise;
+		await promptPromise;
+		await session.waitForIdle();
+
+		expect(emitSessionStop).not.toHaveBeenCalled();
+	});
+
 	it("does not continue session_stop feedback after aborting a slow hook", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 		const mock = createMockModel({

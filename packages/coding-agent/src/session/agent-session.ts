@@ -6076,6 +6076,10 @@ export class AgentSession {
 		messages: AgentMessage[],
 		lastAssistantMessage = this.getLastAssistantMessage(),
 	): Promise<void> {
+		if (this.#abortInProgress || this.#isDisposed) {
+			this.#resetSessionStopContinuationState();
+			return;
+		}
 		if (this.#agentKind === "sub" || !this.#extensionRunner?.hasHandlers("session_stop")) return;
 		const generation = this.#promptGeneration;
 		const result = await this.#extensionRunner.emitSessionStop({
