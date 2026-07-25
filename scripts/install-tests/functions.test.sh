@@ -251,6 +251,29 @@ check "dir_of returns . for a bare name with no slash" "$(dir_of veyyon)" "."
 check "dir_of handles a relative path" "$(dir_of ./dist/vey)" "./dist"
 check "dir_of handles a path containing spaces" "$(dir_of "/opt/my apps/bin/veyyon")" "/opt/my apps/bin"
 
+# --- staging_path: concurrent installers must not share a staging file ---
+# Both staging paths were fixed names, so two installers running at once wrote
+# the SAME file: one truncated the other's partial download mid-transfer, and
+# each process's EXIT trap deleted that path out from under the other. The path
+# must be per-process, and must stay inside the install dir so finalize_binary's
+# rename remains within one filesystem (a cross-device rename is not atomic).
+check "staging_path lives in the install dir" "$(staging_path download | sed "s|/[^/]*$||")" "$VEYYON_INSTALL_DIR"
+check "staging_path is hidden and carries the kind" "$(staging_path download | sed 's|.*/||' | cut -d. -f1-3)" ".veyyon.download"
+check "staging_path ends with this process id" "$(staging_path download | sed 's|.*\.||')" "$$"
+check "the two staging kinds never collide" "$( [ "$(staging_path download)" = "$(staging_path local)" ] && echo same || echo distinct )" "distinct"
+# A different process must yield a different path — the whole point of the
+# change. Resolved in a real child shell (so $$ genuinely differs) and asserted
+# non-empty first, otherwise a failed child would make "distinct" pass for the
+# wrong reason.
+# The root goes through the environment, not a positional: install.sh parses
+# "$@" even when sourced, so an extra argument is read as an unknown option and
+# aborts the child.
+other_staging=$(VEYYON_INSTALL_SOURCED=1 VEYYON_INSTALL_DIR="$VEYYON_INSTALL_DIR" VEYYON_TEST_ROOT="$ROOT" \
+    sh -c '. "$VEYYON_TEST_ROOT/scripts/install.sh" >/dev/null 2>&1; staging_path download')
+check "a child shell resolves a staging path at all" "$( [ -n "$other_staging" ] && echo yes || echo no )" "yes"
+check "another process gets a different staging path" \
+    "$( [ "$(staging_path download)" = "$other_staging" ] && echo same || echo distinct )" "distinct"
+
 # --- version_from_output: pull the semver out of a --version line ---
 # doctor compares the installed binary's reported version against the release
 # tag, so this parser is what stands between a mismatched release and a silent

@@ -281,6 +281,22 @@ doctor() {
     check_not_shadowed "$ALIAS_NAME" "$bin_dir"
 }
 
+# A staging path in the install dir that no concurrent installer can collide on.
+#
+# Both staging paths used to be fixed names (`.veyyon.download`, `.veyyon.local`),
+# so two installers running at once wrote the SAME file: one truncated the
+# other's partial download mid-transfer, and whichever finished first had its
+# bytes replaced under it before the checksum ran. Worse, each process installs
+# an EXIT trap removing that path, so the first to finish deleted the second's
+# staging file out from under it. $$ makes the path per-process; the binary
+# updater keeps its temp unique for exactly the same reason.
+#
+# It stays inside $INSTALL_DIR on purpose: finalize_binary renames it into place,
+# and a rename is only atomic within one filesystem.
+staging_path() {
+    printf '%s/.%s.%s.%s' "$INSTALL_DIR" "$BIN_NAME" "$1" "$$"
+}
+
 # ---- place a downloaded binary at its final path, atomically ----
 # Refuses an empty download, makes the file executable BEFORE the move (so it is
 # never visible non-executable at the final path), then moves it into place.
@@ -577,7 +593,7 @@ install_local() {
     done
     [ -n "$local_bin" ] || die "local compiled binary not found — run 'bun scripts/build-binary.ts' in packages/coding-agent first"
     mkdir -p "$INSTALL_DIR"
-    tmpbin="$INSTALL_DIR/.$BIN_NAME.local"
+    tmpbin=$(staging_path local)
     cp -f "$local_bin" "$tmpbin"
     finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
     ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
@@ -624,7 +640,7 @@ install_binary() {
 
     mkdir -p "$INSTALL_DIR"
     BINARY_URL="https://github.com/${REPO}/releases/download/${LATEST}/${BINARY}"
-    tmpbin="$INSTALL_DIR/.$BIN_NAME.download"
+    tmpbin=$(staging_path download)
     # Never leave a partial or tampered download behind: a failed curl, a
     # checksum mismatch (die inside verify_release_binary), or a Ctrl-C must all
     # clean up the temp file. Cleared after the atomic move succeeds.
