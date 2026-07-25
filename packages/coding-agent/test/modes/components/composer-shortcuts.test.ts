@@ -34,20 +34,25 @@ describe("composer contextual shortcuts", () => {
 		expect(idle.length).toBe(0);
 	});
 
-	// Scroll isolation indicator: while the operator is scrolled up, the band
-	// swaps chips for the new-rows readout, still exactly one row so the
-	// footer height never changes. The state is read at render time (no
-	// rebuild trigger from the engine's wheel handling).
-	it("shows the new-rows indicator while scrolled, still exactly one row", () => {
+	// Scroll position is NOT the composer's business (operator report
+	// 2026-07-24). This row used to be overwritten with "↓ N rows up · click to
+	// go to the bottom" whenever the transcript was frozen, so scrolling up
+	// during a run took away the `esc interrupt` chip. The engine draws the
+	// position on the right edge of the region that actually scrolled, and the
+	// composer zone renders the same bytes in both states.
+	it("keeps its own chips while the transcript is scrolled — no scroll readout in the composer", () => {
+		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
-		bar.setScrollState(() => ({ active: true, newRows: 8 }));
-		const rows = bar.render(80);
-		expect(rows.length).toBe(1);
-		const plain = stripVTControlCharacters(rows[0]!);
-		expect(plain).toContain("8 rows up");
-		expect(plain).toContain("click to go to the bottom");
-		bar.setScrollState(() => ({ active: false, newRows: 0 }));
-		expect(stripVTControlCharacters(bar.render(80)[0]!).trim()).toBe("");
+		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false }));
+		const following = bar.render(80);
+		// Nothing about scroll state can reach this component: there is no
+		// setter to feed it, so a frozen view cannot change what it renders.
+		expect("setScrollState" in bar).toBe(false);
+		expect(bar.render(80)).toEqual(following);
+		const plain = stripVTControlCharacters(following[0]!);
+		expect(plain).toContain("interrupt");
+		expect(plain).not.toContain("rows up");
+		expect(plain).not.toContain("bottom");
 	});
 
 	// The band left-aligns at the composer rail (COMPOSER_INSET_COLS), under
@@ -62,9 +67,6 @@ describe("composer contextual shortcuts", () => {
 		expect(rows.length).toBe(1);
 		const plain = stripVTControlCharacters(rows[0]!);
 		expect(plain.startsWith("  escape")).toBe(true);
-		bar.setScrollState(() => ({ active: true, newRows: 34 }));
-		const scrollRow = stripVTControlCharacters(bar.render(80)[0]!);
-		expect(scrollRow.startsWith("  ↓")).toBe(true);
 	});
 
 	// Regression lock for the footer jump (user report 2026-07-22): a band
