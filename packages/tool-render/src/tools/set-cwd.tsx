@@ -1,5 +1,5 @@
 /**
- * `set_cwd` — re-root the session's working directory for the rest of the session.
+ * `set_cwd`: re-root the session's working directory for the rest of the session.
  *
  * The move itself is one line, and the part worth reading is the RULE DELTA. A
  * re-root changes which `AGENTS.md` / `CLAUDE.md` files govern the session,

@@ -8,6 +8,7 @@ import { astEditRenderer } from "./tools/ast-edit";
 import { astGrepRenderer } from "./tools/ast-grep";
 import { bashRenderer } from "./tools/bash";
 import { browserRenderer } from "./tools/browser";
+import { checkpointRenderer, rewindRenderer } from "./tools/checkpoint";
 import { debugRenderer } from "./tools/debug";
 import { editRenderer } from "./tools/edit";
 import { evalRenderer } from "./tools/eval";
@@ -20,7 +21,10 @@ import { grepRenderer } from "./tools/grep";
 import { inspectImageRenderer } from "./tools/inspect-image";
 import { ircRenderer } from "./tools/irc";
 import { jobRenderer } from "./tools/job";
+import { learnRenderer } from "./tools/learn";
 import { lspRenderer } from "./tools/lsp";
+import { manageSkillRenderer } from "./tools/manage-skill";
+import { memoryEditRenderer } from "./tools/memory-edit";
 import { recallRenderer } from "./tools/memory-recall";
 import { reflectRenderer } from "./tools/memory-reflect";
 import { retainRenderer } from "./tools/memory-retain";
@@ -45,6 +49,8 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	bash: bashRenderer,
 	browser: browserRenderer,
 	puppeteer: browserRenderer,
+	checkpoint: checkpointRenderer,
+	rewind: rewindRenderer,
 	debug: debugRenderer,
 	edit: editRenderer,
 	apply_patch: editRenderer,
@@ -64,7 +70,10 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	await: jobRenderer,
 	poll: jobRenderer,
 	cancel_job: jobRenderer,
+	learn: learnRenderer,
 	lsp: lspRenderer,
+	manage_skill: manageSkillRenderer,
+	memory_edit: memoryEditRenderer,
 	recall: recallRenderer,
 	reflect: reflectRenderer,
 	retain: retainRenderer,
