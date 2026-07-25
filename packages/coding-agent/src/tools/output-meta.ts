@@ -832,8 +832,26 @@ async function wrappedExecute(
 		}
 		return result;
 	} catch (e) {
-		// Re-throw with formatted message so agent-loop sets isError flag
-		throw new Error(renderError(e));
+		// RETHROW UNCHANGED. This used to be `throw new Error(renderError(e))`,
+		// which destroyed the identity of every error every registered tool throws.
+		//
+		// It cost nothing visible, which is why it survived: `renderError` returns
+		// `e.message` for any Error (`ToolError.render()` is the base implementation
+		// returning `this.message`, and nothing in the codebase overrides it), so the
+		// text was always identical and every message still read correctly. What was
+		// lost was the type and the NAME. Every builtin tool is wrapped here, so a
+		// `ToolAbortError` thrown by edit, eval, bash or the LSP arrived downstream as
+		// a plain `Error` named "Error": the roughly twenty `instanceof ToolAbortError`
+		// branches stopped matching, and so did `isAbortError`, which is name-based
+		// precisely because `@veyyon/utils` cannot import the class ("the name is the
+		// contract"). A cancellation therefore read as an ordinary tool failure at
+		// every consumer, while the message it carried still said it was cancelled.
+		// `cause` went with it, taking the `TimeoutError` identity that
+		// `throwIfAborted` goes out of its way to preserve.
+		//
+		// A non-Error throw still needs a message the agent loop can render, and there
+		// is no identity to keep in that case.
+		throw e instanceof Error ? e : new Error(renderError(e));
 	}
 }
 

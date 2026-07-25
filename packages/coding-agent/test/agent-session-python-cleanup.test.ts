@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:
 import * as fs from "node:fs";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { SessionKernel } from "@veyyon/coding-agent/eval/kernel-base";
 import * as pythonExecutor from "@veyyon/coding-agent/eval/py/executor";
 import type { PythonKernel as PythonKernelInstance } from "@veyyon/coding-agent/eval/py/kernel";
 import * as pythonKernel from "@veyyon/coding-agent/eval/py/kernel";
@@ -15,7 +16,7 @@ import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } f
 
 const OK_EXECUTION = { status: "ok", cancelled: false, timedOut: false, stdinRequested: false } as const;
 
-class FakeKernel {
+class FakeKernel implements SessionKernel {
 	executeCalls: string[] = [];
 	shutdownCalls = 0;
 	alive = true;
@@ -49,10 +50,6 @@ class FakeKernel {
 			]);
 		}
 		return OK_EXECUTION;
-	}
-
-	async ping(): Promise<boolean> {
-		return this.alive;
 	}
 
 	shutdown = vi.fn(async () => {
@@ -455,17 +452,30 @@ describe("AgentSession python cleanup", () => {
 			disposed = true;
 		});
 
-		const [toolResult] = await Promise.all([toolExecution, disposeSession]);
+		const [toolOutcome] = await Promise.all([toolExecution.catch((err: unknown) => err), disposeSession]);
 
 		expectSleepNear(sleepSpy, 3000);
 
 		expect(disposed).toBe(true);
 		expect(toolExecutionSettled).toBe(true);
 		expect(executeSpy).toHaveBeenCalledTimes(1);
-		expect((toolResult.details as { isError?: boolean } | undefined)?.isError).toBe(true);
-		expect(toolResult.content).toContainEqual(
-			expect.objectContaining({ type: "text", text: expect.stringContaining("Command aborted") }),
-		);
+
+		// The tool REJECTS here; it used to resolve with an `isError: true` result
+		// whose text was the cell output, and that shape is what this assertion was
+		// updated away from. Resolving made a cancellation indistinguishable from a
+		// cell that threw, and the agent loop's correct response to those is
+		// opposite: read and retry a failure, stop on a cancellation. Keeping the
+		// `ToolAbortError` type is what lets it tell.
+		const error = toolOutcome as Error;
+		expect(error).toBeInstanceOf(Error);
+		expect(error.name).toBe("ToolAbortError");
+		// Three things the old result-shape assertion could not check, each of them
+		// something the operator needs at the moment a session is torn down under a
+		// running cell: WHICH cell stopped, that its effects are still live in the
+		// kernel it was mutating, and what it had managed to emit first.
+		expect(error.message).toContain("cell 1 (python) started and did NOT finish");
+		expect(error.message).toContain("still in the kernel");
+		expect(error.message).toContain("Command aborted");
 	});
 
 	it("detaches retained kernel ownership even when dispose times out waiting for Python work", async () => {
