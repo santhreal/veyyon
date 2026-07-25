@@ -17,7 +17,7 @@
  * like a small validator at runtime.
  */
 
-import { areJsonValuesEqual, isMultipleOf } from "@veyyon/ai/utils/schema";
+import { areJsonValuesEqual, isMultipleOf, validateJsonSchemaValue } from "@veyyon/ai/utils/schema";
 import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +42,8 @@ export type TOptional<_E extends ArkSchema> = ArkSchema;
 export type TUnion<_T extends readonly ArkSchema[] = readonly ArkSchema[]> = ArkSchema;
 export type TEnum<_T extends readonly (string | number)[] = readonly (string | number)[]> = ArkSchema;
 export type TRecord<_K extends ArkSchema, _V extends ArkSchema> = ArkSchema;
+/** TypeBox-compatible wrapper for raw JSON Schema documents. */
+export type TUnsafe<_T = unknown> = ArkSchema;
 
 // ---------------------------------------------------------------------------
 // ArkSchema wrapper — JSON Schema object with hidden validator metadata
@@ -983,6 +985,17 @@ export const Type = {
 	Null: tNull,
 	Any: tAny,
 	Unknown: tUnknown,
+	Unsafe<T = unknown>(jsonSchema: Record<string, unknown> = {}): TUnsafe<T> {
+		const validator = (data: unknown): unknown => {
+			const result = validateJsonSchemaValue(jsonSchema, data);
+			if (result.success) return data;
+			const messages = result.issues.map(issue =>
+				issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message,
+			);
+			return validationFailure(messages.join("; ") || "Invalid value");
+		};
+		return createArkSchema(validator, jsonSchema);
+	},
 	Never: tNever,
 	Literal: tLiteral,
 	Union: tUnion,
