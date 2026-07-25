@@ -87,12 +87,30 @@ const BLOCKED_LABEL = "port-blocked";
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested in jules-port-manager.test.ts).
 
-/** Every `JULES_*=AQ.*` value in an env file body, in file order, deduped. */
-export function parseEnvKeys(envText: string): string[] {
-	const keys: string[] = [];
+/**
+ * Every `JULES_*=AQ.*` credential in an env file body, in file order, deduped by
+ * key, carrying the variable name that declared it.
+ *
+ * The name is the only human-readable identity a key has. A lane that cannot
+ * see the repo needs the Jules GitHub app granted on one specific account, and
+ * "lane 40600b58" (a sha256 prefix) does not tell anyone which account that is,
+ * whereas `JULES_TT_MACBOOK_PRO` does. The name is safe to print; the key
+ * never is, which is why the fingerprint exists at all.
+ *
+ * Deduping is by key, not by name: the same credential under two names is one
+ * lane, and the first name wins.
+ */
+export interface JulesKey {
+	/** The env variable that declared it, e.g. `JULES_TT_MACBOOK_PRO`. */
+	name: string;
+	key: string;
+}
+
+export function parseEnvKeys(envText: string): JulesKey[] {
+	const keys: JulesKey[] = [];
 	for (const line of envText.split("\n")) {
 		const m = /^(JULES_[A-Z0-9_]+)=(AQ\.\S+)\s*$/.exec(line.trim());
-		if (m && !keys.includes(m[2])) keys.push(m[2]);
+		if (m && !keys.some(k => k.key === m[2])) keys.push({ name: m[1], key: m[2] });
 	}
 	return keys;
 }
@@ -471,18 +489,24 @@ async function lastAgentMessage(key: string, sessionName: string): Promise<strin
 // Key discovery and per-key budget.
 
 interface Lane {
+	/** The env variable that declared the key, for operator-facing messages. */
+	name: string;
 	key: string;
 	fp: string;
 	remaining: number;
 }
 
-function resolveKeys(): string[] {
+function resolveKeys(): JulesKey[] {
 	const inline = process.env.JULES_API_KEYS;
+	// An inline list carries no names, so each entry is identified by position.
+	// That is still better than a hash: "JULES_API_KEYS[2]" tells you which entry
+	// of your own variable to fix.
 	if (inline)
 		return inline
 			.split(",")
 			.map(k => k.trim())
-			.filter(Boolean);
+			.filter(Boolean)
+			.map((key, index) => ({ name: `JULES_API_KEYS[${index}]`, key }));
 	let text: string;
 	try {
 		text = readFileSync(ENV_FILE, "utf8");
@@ -493,14 +517,19 @@ function resolveKeys(): string[] {
 }
 
 /** Keys that can see the origin repo, with their remaining 24h session budget. */
-async function usableLanes(keys: string[]): Promise<Lane[]> {
+async function usableLanes(keys: JulesKey[]): Promise<Lane[]> {
 	const lanes: Lane[] = [];
-	for (const key of keys) {
+	for (const { name, key } of keys) {
 		const fp = keyFingerprint(key);
 		try {
 			await jules(key, `/${SOURCE}`);
 		} catch {
-			console.log(`lane ${fp}: cannot see ${ORIGIN} (Jules app not granted on this account); skipping.`);
+			// Name the account and the fix. This is the pipeline's most common
+			// stall and the operator can do nothing about "lane 40600b58".
+			console.log(
+				`lane ${name} (${fp}): cannot see ${ORIGIN}. Grant the Jules GitHub app on that account at ` +
+					`https://jules.google.com/settings, give it access to ${ORIGIN}, then re-run. Skipping.`,
+			);
 			continue;
 		}
 		// Session list is newest-first; stop paginating once a page's oldest
@@ -517,9 +546,10 @@ async function usableLanes(keys: string[]): Promise<Lane[]> {
 			if (!pageToken || (oldest && Date.parse(oldest) < cutoff)) break;
 		}
 		const used = countRecentSessions(times, Date.now(), WINDOW_HOURS);
-		lanes.push({ key, fp, remaining: Math.max(0, KEY_DAILY_BUDGET - used) });
+		const remaining = Math.max(0, KEY_DAILY_BUDGET - used);
+		lanes.push({ name, key, fp, remaining });
 		console.log(
-			`lane ${fp}: ${used} sessions in the last ${WINDOW_HOURS}h, ${Math.max(0, KEY_DAILY_BUDGET - used)}/${KEY_DAILY_BUDGET} budget left.`,
+			`lane ${name} (${fp}): ${used} sessions in the last ${WINDOW_HOURS}h, ${remaining}/${KEY_DAILY_BUDGET} budget left.`,
 		);
 	}
 	return lanes;
