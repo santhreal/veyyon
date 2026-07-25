@@ -571,6 +571,88 @@ check "a successful rewrite leaves no temp file behind" \
   remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
   ls -A "$_h" | tr '\n' ' ' ) )" ".bashrc "
 
+# --- remove_path_line_from_rc: a short temp must never replace the rc ---
+# Only the final `cat` was checked, so a write that failed while BUILDING the
+# temp (a full disk part-way through a long rc) produced a truncated file that
+# was then copied over the user's rc and reported as a clean uninstall. Shadow
+# printf so the append fails after the first few lines, which is exactly the
+# shape of a disk filling up mid-write.
+check "a truncated rewrite does not replace the rc" \
+    "$( ( _h="$SANDBOX/rc-short-temp"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
+  _n=0
+  printf() { _n=$((_n + 1)); [ "$_n" -gt 2 ] && return 1; command printf "$@"; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  command cat "$rc" | tr '\n' ' ' ) )" "one two three # added by the veyyon installer export PATH=\"/opt/veyyon:\$PATH\" five "
+
+check "a truncated rewrite reports failure to the caller" \
+    "$( ( _h="$SANDBOX/rc-short-temp2"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
+  _n=0
+  printf() { _n=$((_n + 1)); [ "$_n" -gt 2 ] && return 1; command printf "$@"; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1; echo $? ) )" "1"
+
+# `warn` is itself a printf, so the shadow above would silence the very message
+# under test. Drive the guard through the line count instead: its contract is
+# about the length it sees, whatever produced it. The second awk call is the one
+# that measures the temp.
+check "a truncated rewrite says the file is untouched and names the partial" \
+    "$( ( _h="$SANDBOX/rc-short-temp3"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
+  count_lines() { case "$1" in *veyyon-uninstall*) echo 1 ;; *) command awk 'END { print NR }' "$1" ;; esac; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" 2>&1 | grep -c "your file is untouched" ) )" "1"
+
+check "the refusal names the expected length and the partial file" \
+    "$( ( _h="$SANDBOX/rc-short-temp4"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
+  count_lines() { case "$1" in *veyyon-uninstall*) echo 1 ;; *) command awk 'END { print NR }' "$1" ;; esac; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" 2>&1 | grep -c "has 1 lines, expected 5" ) )" "1"
+
+check "a refused rewrite leaves the rc byte-for-byte intact" \
+    "$( ( _h="$SANDBOX/rc-short-temp5"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "one" "two" "three" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' "five" > "$rc"
+  _snapshot=$(command cat "$rc")
+  count_lines() { case "$1" in *veyyon-uninstall*) echo 1 ;; *) command awk 'END { print NR }' "$1" ;; esac; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  [ "$_snapshot" = "$(command cat "$rc")" ] && echo intact || echo changed ) )" "intact"
+
+# The guard must not reject the two shapes a real removal produces: our line
+# alone (one line fewer) and our line under its marker (two fewer).
+check "removing the line alone passes the length guard" \
+    "$( ( _h="$SANDBOX/rc-len-one"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "alias ll=ls" 'export PATH="/opt/veyyon:$PATH"' "alias gs=git" > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  command cat "$rc" | tr '\n' ' ' ) )" "alias ll=ls alias gs=git "
+
+check "removing the line and its marker passes the length guard" \
+    "$( ( _h="$SANDBOX/rc-len-two"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' "alias ll=ls" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  command cat "$rc" | tr '\n' ' ' ) )" "alias ll=ls "
+
+check "an rc whose only content is our line still empties cleanly" \
+    "$( ( _h="$SANDBOX/rc-len-only"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1; echo $?
+  command cat "$rc" | wc -c | tr -d ' ' ) )" "0
+0"
+
 # --- do_uninstall: the closing verdict must match what it actually removed ---
 # `rc_candidates | while ...` ran the PATH-line loop in a SUBSHELL, so the
 # `removed` flag set inside it was discarded: an uninstall whose only remaining

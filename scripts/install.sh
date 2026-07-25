@@ -81,6 +81,8 @@ if [ -n "$REF" ] && [ -z "$MODE" ]; then MODE="source"; fi
 say()  { printf '%s\n' "$*"; }
 ok()   { printf '  ok  %s\n' "$*"; }
 warn() { printf '  !!  %s\n' "$*" >&2; }
+# Lines in a file, counting a final line with no newline. `wc -l` does not.
+count_lines() { awk 'END { print NR }' "$1"; }
 die()  { printf '  xx  %s\n' "$*" >&2; exit 1; }
 
 has() { command -v "$1" >/dev/null 2>&1; }
@@ -598,6 +600,21 @@ remove_path_line_from_rc() {
         _pending="$_cur"; _have_pending=1
     done < "$rc"
     [ "$_have_pending" -eq 1 ] && printf '%s\n' "$_pending" >> "$tmp"
+    # Only the `cat` below was checked, so a write that failed while BUILDING the
+    # temp (a full disk part-way through a long rc) produced a short file that
+    # was then copied over the user's rc and reported as a success. Every removal
+    # drops our line, and at most the marker above it, so any other line count
+    # means the temp is not a rewrite of this file and must not replace it.
+    # Prefixed names: POSIX sh has no `local`, so every variable here is the
+    # CALLER's too. A name as ordinary as `_before` silently overwrites whatever
+    # the caller was holding under it.
+    _rc_lines_before=$(count_lines "$rc")
+    _rc_lines_after=$(count_lines "$tmp")
+    if [ "$_rc_lines_after" -ne $((_rc_lines_before - 1)) ] && [ "$_rc_lines_after" -ne $((_rc_lines_before - 2)) ]; then
+        warn "refusing to rewrite $rc: the rewrite has $_rc_lines_after lines, expected $((_rc_lines_before - 1))"
+        warn "    your file is untouched; the partial rewrite is in $tmp"
+        return 1
+    fi
     if cat "$tmp" > "$rc"; then
         rm -f "$tmp"
         return 0
