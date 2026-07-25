@@ -1488,12 +1488,49 @@ export interface TypeableMass {
 	/**
 	 * Characters saved per emission if every typeable handle were written once:
 	 * the sum over typeable handles of expansion length minus handle length.
-	 * This is the compressible mass that is actually reachable by an agent.
+	 *
+	 * AN UPPER BOUND, AND A LOOSE ONE. It assumes every handle an agent COULD
+	 * type is one it DOES type, which is off by about seventy times on the only
+	 * run that has measured it. Use it to rank repositories against each other,
+	 * never to size a run: {@link expectedSavingPerEmission} is the number that
+	 * is comparable to a measured ceiling.
 	 */
 	savingPerEmission: number;
+	/**
+	 * {@link savingPerEmission} scaled by {@link OBSERVED_TYPEABLE_EMISSION_RATE}:
+	 * what a run should actually expect, rather than what it could not exceed.
+	 */
+	expectedSavingPerEmission: number;
 	/** Longest typeable expansion, the best single substitution available. */
 	longestTypeable: number;
 }
+
+/**
+ * Fraction of typeable handles a run actually emits.
+ *
+ * WHY THIS CONSTANT EXISTS. The 16000-token arm was built on a projection that
+ * treated agent-typeable mass as if all of it were spent: 529 handles, 12,322
+ * reachable characters, a 19.07% ceiling, comfortably clear of the ~8.15%
+ * run-to-run noise floor. The first run that could test it, on the same ytt
+ * repository the projection was measured from, loaded 551 handles and MEASURED a
+ * ceiling of 0.24%. Fifty times smaller, and the report's verdict for both arms
+ * was "CANNOT MEASURE - ceiling below noise".
+ *
+ * The whole gap is this rate. That run emitted 8 of its 551 handles, so the
+ * projection was counting 551 emissions where 8 happened. 8/551 is 1.45%.
+ *
+ * The correction reproduces the measurement almost exactly, which is the reason
+ * to trust it rather than merely prefer it: 19.07% x 0.0145 = 0.28%, against a
+ * measured 0.24%. A projection that lands within 15% of the number it failed to
+ * predict by 50x is describing the right mechanism.
+ *
+ * ONE OBSERVATION, and it is the only one available: no other run has both
+ * loaded a dictionary and emitted from it. The favourable end of the range is
+ * used deliberately (8/551 rather than the full arm's 6/551) so the corrected
+ * projection stays an optimistic bound. Revise it when a second run exists; the
+ * report's "handles ever emitted" column is the input.
+ */
+export const OBSERVED_TYPEABLE_EMISSION_RATE = 8 / 551;
 
 /**
  * Score a vocabulary by how much of it a coding agent could ever actually write.
@@ -1516,6 +1553,14 @@ export interface TypeableMass {
  * effect, whatever the run does. A high score is only a candidate, not a promise,
  * since the agent still has to touch those particular strings. Screen with this,
  * then confirm with {@link encodeHeadroom} on the run itself.
+ *
+ * HOW LOOSE THE BOUND IS, stated because it was not, and a whole arm was built on
+ * forgetting it. "Could type" is not "does type": the one run that measured both
+ * emitted 8 of 551 handles. So `savingPerEmission` overstates a real run by about
+ * seventy times, and {@link expectedSavingPerEmission} scales it by
+ * {@link OBSERVED_TYPEABLE_EMISSION_RATE} to give a number on the same scale as a
+ * measured ceiling. Rank on either (a constant factor cannot reorder them); size
+ * a run on the expected one only.
  */
 export function typeableHandleMass(
 	handles: Readonly<Record<string, string>>,
@@ -1532,7 +1577,16 @@ export function typeableHandleMass(
 		savingPerEmission += saving;
 		longestTypeable = Math.max(longestTypeable, expansion.length);
 	}
-	return { handles: Object.keys(handles).length, typeable, savingPerEmission, longestTypeable };
+	return {
+		handles: Object.keys(handles).length,
+		typeable,
+		savingPerEmission,
+		// Rounded, because a fractional character saved is not a thing and a table
+		// of two-decimal character counts invites reading precision that is not
+		// there: the rate behind it is a single observation.
+		expectedSavingPerEmission: Math.round(savingPerEmission * OBSERVED_TYPEABLE_EMISSION_RATE),
+		longestTypeable,
+	};
 }
 
 /**

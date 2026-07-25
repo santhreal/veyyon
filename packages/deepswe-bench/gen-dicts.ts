@@ -44,7 +44,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { generateDictFromRepo } from "argot";
-import { typeableHandleMass } from "./aggregate";
+import { OBSERVED_TYPEABLE_EMISSION_RATE, typeableHandleMass } from "./aggregate";
 
 interface DictRow {
 	task: string;
@@ -53,8 +53,17 @@ interface DictRow {
 	estimatedSavings: number;
 	/** Handles whose expansion an agent could plausibly type (no whitespace). */
 	typeableHandles: number;
-	/** Characters saved per emission across those handles: the reachable mass. */
+	/**
+	 * Characters saved per emission across those handles: the reachable mass, and
+	 * an UPPER BOUND. It assumes every handle an agent could type is one it does.
+	 */
 	typeableSavings: number;
+	/**
+	 * `typeableSavings` scaled by the observed emission rate: what a run should
+	 * actually expect. This is the column that is comparable to a measured
+	 * ceiling; the one above is about seventy times larger.
+	 */
+	expectedSavings: number;
 	error: string | null;
 }
 
@@ -145,6 +154,7 @@ async function genOne(task: string): Promise<DictRow> {
 			estimatedSavings,
 			typeableHandles: mass.typeable,
 			typeableSavings: mass.savingPerEmission,
+			expectedSavings: mass.expectedSavingPerEmission,
 			error: toml ? null : "no dictionary generated",
 		};
 	} catch (err) {
@@ -155,6 +165,7 @@ async function genOne(task: string): Promise<DictRow> {
 			estimatedSavings: 0,
 			typeableHandles: 0,
 			typeableSavings: 0,
+			expectedSavings: 0,
 			error: String(err).slice(0, 200),
 		};
 	}
@@ -217,12 +228,21 @@ async function main(): Promise<void> {
 		"spending a run on it, and confirm the exact ceiling post-run from the bench",
 		"report's Encode headroom section.",
 		"",
-		"| task | handles | typeable handles | typeable saving (ch/emission) | dict tokens | raw SDK estimate (output tok) |",
-		"|---|---|---|---|---|---|",
+		"READ THE `expected saving` COLUMN, NOT `typeable saving`, TO SIZE A RUN. Typeable",
+		"saving assumes every handle an agent COULD type is one it DOES type, and the one",
+		`run that measured both emitted 8 of 551 handles (${(100 * OBSERVED_TYPEABLE_EMISSION_RATE).toFixed(2)}%). Sizing the 16000-token`,
+		"arm on the unscaled column projected a 19.07% ceiling where the run measured",
+		"0.24%, and the arm could not do what it was built for. Scaled by that rate the",
+		"same projection gives 0.28%, which is the right answer, so the correction is the",
+		"rate and nothing else. Ranking is unaffected: a constant factor cannot reorder",
+		"the table.",
+		"",
+		"| task | handles | typeable handles | typeable saving (ch/emission) | expected saving (ch/emission) | dict tokens | raw SDK estimate (output tok) |",
+		"|---|---|---|---|---|---|---|",
 		...rows.map(r =>
 			r.error
-				? `| ${r.task} | — | — | — | — | ERROR: ${r.error} |`
-				: `| ${r.task} | ${r.handles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
+				? `| ${r.task} | — | — | — | — | — | ERROR: ${r.error} |`
+				: `| ${r.task} | ${r.handles} | ${r.typeableHandles} | ${r.typeableSavings} | ${r.expectedSavings} | ${r.dictTokens} | ${r.estimatedSavings} |`,
 		),
 		"",
 	];

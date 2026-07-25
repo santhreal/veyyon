@@ -6,35 +6,43 @@
 # claim is not measurable on DeepSWE tasks, and that is a property of the
 # workload rather than a null result. PROJECTED on the ytt task repository:
 #
-#   budget    handles   agent-typeable mass   projected ceiling
-#     1000        44            652 ch              1.01%
-#     4000       139          1,654 ch              2.56%
-#    16000       529         12,322 ch             19.07%
+#   budget    handles   agent-typeable mass   projected ceiling   EXPECTED ceiling
+#     1000        44            652 ch              1.01%               0.015%
+#     4000       139          1,654 ch              2.56%               0.037%
+#    16000       529         12,322 ch             19.07%               0.277%
 #
-# Run-to-run output-token noise on the same task is about 8.15%, so at the
-# default budget the best possible outcome is nearly an order of magnitude below
-# the noise floor: no number of repeats can separate the arms. The 16000 row is
-# what this arm was built on, because 19.07% clears that noise.
+# Run-to-run output-token noise on the same task is about 8.15%. THIS ARM WAS
+# BUILT ON THE `projected ceiling` COLUMN, because 19.07% clears that noise. That
+# column is wrong by about seventy times, and the last column is the corrected
+# one. Read it before sizing anything.
 #
-# THAT PROJECTION IS WRONG, BY ABOUT FIFTY TIMES. Read this before sizing a run
-# on the table above. The first interpretable run of this arm
+# WHAT WENT WRONG. The first interpretable run of this arm
 # (`runs/argot-smoke-0724`, 2026-07-24, the SAME ytt task) loaded 551 handles and
-# measured a ceiling of 0.24%, against 0.38% for its decode control. The report's
+# MEASURED a ceiling of 0.24%, against 0.38% for its decode control. The report's
 # verdict for both arms was `CANNOT MEASURE - ceiling below noise`.
 #
-# The gap is the phrase "agent-typeable mass": it counts every handle whose
-# expansion an agent COULD type, while that run emitted 8 of 551 handles (6 for
-# this arm). The real ceiling is set by which handles a task actually causes the
-# agent to RETYPE, which is a small subset, so raising the budget inflates the
-# projection far faster than it moves the truth.
+# The whole gap is the phrase "agent-typeable mass": it counts every handle whose
+# expansion an agent COULD type, while that run emitted 8 of 551 (6 for this arm).
+# The `EXPECTED ceiling` column is the projection scaled by that observed rate,
+# 8/551 = 1.45%, which lands at 0.277% against the measured 0.24%. A projection
+# that comes within 15% of the number it had missed by fifty times is describing
+# the right mechanism, so the correction is the emission rate and nothing else.
+# The constant lives in `aggregate.ts` as `OBSERVED_TYPEABLE_EMISSION_RATE`;
+# revise it when a second run has both loaded a dictionary and emitted from it.
 #
-# CONSEQUENCE: `full <-> full-budget16k` does NOT currently measure argot's
-# output-token claim on this workload, which is what this arm was created to do.
-# Do not read a token delta from it. Until the projection is re-derived from
-# observed emission rates, measure argot by `runs that encoded`, not by tokens.
-# See ARGOT-HEADROOM-PROJECTION-OFF-BY-50X in BACKLOG.md. The bench report's
-# "Encode headroom" section computes the honest, measured ceiling for whatever
-# run you actually perform; trust that over the table above.
+# CONSEQUENCE, AND IT IS NOT SPECIFIC TO THIS ARM. Every row of the corrected
+# column is three orders of magnitude below the 8.15% noise floor, and the column
+# scales with the budget while the floor does not, so NO dictionary size reaches
+# it: a 16x budget bought 0.26 percentage points. Raising `tokenBudget` is not the
+# lever. The lever is emission rate, which is a property of the model, the prompt,
+# and the task, not of how many handles are taught.
+#
+# So `full <-> full-budget16k` does NOT measure argot's output-token claim on this
+# workload, which is what this arm was created to do. Do not read a token delta
+# from it; measure argot by `runs that encoded`. See
+# ARGOT-HEADROOM-PROJECTION-OFF-BY-50X in BACKLOG.md. The bench report's "Encode
+# headroom" section computes the honest, measured ceiling for whatever run you
+# actually perform; trust that over any projection here.
 #
 # READ BOTH TOKEN ROWS. A bigger dictionary is not free: it rides in the system
 # prompt every turn, so it buys shorter output by spending input. The efficiency

@@ -35,6 +35,7 @@ import {
 	mostCommonAgentReason,
 	NO_REWARD_ERROR,
 	noRewardError,
+	OBSERVED_TYPEABLE_EMISSION_RATE,
 	PINNED_TEMPERATURE,
 	pairwiseArmDeltas,
 	pairwiseMetricDeltas,
@@ -2127,7 +2128,74 @@ describe("typeableHandleMass — the pre-run screen for whether a repo can measu
 
 	test("an empty vocabulary is scored without dividing or throwing", () => {
 		const m = typeableHandleMass({});
-		expect(m).toEqual({ handles: 0, typeable: 0, savingPerEmission: 0, longestTypeable: 0 });
+		expect(m).toEqual({
+			handles: 0,
+			typeable: 0,
+			savingPerEmission: 0,
+			expectedSavingPerEmission: 0,
+			longestTypeable: 0,
+		});
+	});
+
+	/**
+	 * `savingPerEmission` is an UPPER bound and was read as a forecast, which is
+	 * how the 16000-token arm came to be built on a 19.07% projected ceiling
+	 * against a measured 0.24%. The expected column scales it by the rate a run
+	 * actually emits at, so the two numbers are on the same scale.
+	 */
+	test("expected saving is the typeable bound scaled by the observed emission rate", () => {
+		const m = typeableHandleMass({
+			files: "carvel.dev/ytt/pkg/files",
+			src: "packages/coding-agent/src/database/connection.ts",
+		});
+
+		expect(m.expectedSavingPerEmission).toBe(Math.round(m.savingPerEmission * OBSERVED_TYPEABLE_EMISSION_RATE));
+		expect(m.expectedSavingPerEmission).toBeLessThan(m.savingPerEmission);
+	});
+
+	/**
+	 * The rate is the whole correction, so its value is pinned rather than left to
+	 * drift: it is 8 of 551 handles emitted on `runs/argot-smoke-0724`, the only
+	 * run that has both loaded a dictionary and emitted from it. A later run may
+	 * revise it, and this test is what makes that a deliberate act.
+	 */
+	test("the emission rate is the one measured 8/551, not a rounded guess", () => {
+		expect(OBSERVED_TYPEABLE_EMISSION_RATE).toBe(8 / 551);
+		expect(OBSERVED_TYPEABLE_EMISSION_RATE).toBeCloseTo(0.0145, 4);
+	});
+
+	/**
+	 * The reason to trust the correction rather than merely prefer it: applied to
+	 * the projection that failed by fifty times, it reproduces the measurement. A
+	 * 19.07% projected ceiling scaled by the rate is 0.277%, against a measured
+	 * 0.24%. Locked here because that agreement is the entire argument, and a
+	 * silent change to the rate would dissolve it without failing anything else.
+	 */
+	test("the corrected projection reproduces the ceiling the original missed by 50x", () => {
+		const correctedCeilingPct = 19.07 * OBSERVED_TYPEABLE_EMISSION_RATE;
+
+		expect(correctedCeilingPct).toBeCloseTo(0.277, 2);
+		// Within 20% of the 0.24% the run measured, against 79x for the original.
+		expect(Math.abs(correctedCeilingPct - 0.24) / 0.24).toBeLessThan(0.2);
+		expect(19.07 / 0.24).toBeGreaterThan(50);
+	});
+
+	/**
+	 * The consequence that changes what anyone should do next: the corrected
+	 * ceiling scales with the dictionary budget while the noise floor does not, so
+	 * no budget reaches it. A 16x budget buys a quarter of a percentage point
+	 * against a floor of 8.15%. Raising `tokenBudget` is not the lever, and this
+	 * is the assertion that says so in a form that cannot be forgotten.
+	 */
+	test("no dictionary budget brings the expected ceiling near the noise floor", () => {
+		const NOISE_FLOOR_PCT = 8.15;
+		const projectedByBudget = { 1000: 1.01, 4000: 2.56, 16000: 19.07 };
+
+		for (const projected of Object.values(projectedByBudget)) {
+			expect(projected * OBSERVED_TYPEABLE_EMISSION_RATE).toBeLessThan(NOISE_FLOOR_PCT / 10);
+		}
+		// Even a further 16x on the largest budget, extrapolated linearly, misses.
+		expect(19.07 * 16 * OBSERVED_TYPEABLE_EMISSION_RATE).toBeLessThan(NOISE_FLOOR_PCT);
 	});
 });
 
