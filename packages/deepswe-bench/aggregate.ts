@@ -16,6 +16,7 @@
  */
 
 import { ARGOT_PREAMBLE, DEFAULT_SIGIL } from "argot";
+import { type CostBreakdown, costShares, priceTokens, REFERENCE_RATE_CARD } from "./cost-model";
 
 /**
  * Heading line of argot's teaching preamble, taken from argot's OWN rendered
@@ -84,7 +85,17 @@ export function blockContainsSigil(block: unknown, sigil: string = DEFAULT_SIGIL
 export interface SessionUsage {
 	inputTokens: number;
 	outputTokens: number;
+	/**
+	 * Cache reads and cache writes summed.
+	 *
+	 * Kept because callers and older `results.json` files use it, but never used
+	 * for pricing: a read costs a quarter of a fresh input token and a write
+	 * costs more than one, so the sum has no price and a change that turns reads
+	 * into writes is invisible in it. Price from the two fields below.
+	 */
 	cacheTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
 	costUsd: number;
 	argotLoadCalls: number;
 	assistantMsgsWithSigil: number;
@@ -111,7 +122,8 @@ export interface SessionUsage {
 export function tallyUsage(messages: Array<Record<string, unknown>>): SessionUsage {
 	let inputTokens = 0;
 	let outputTokens = 0;
-	let cacheTokens = 0;
+	let cacheReadTokens = 0;
+	let cacheWriteTokens = 0;
 	let costUsd = 0;
 	let argotLoadCalls = 0;
 	let assistantMsgsWithSigil = 0;
@@ -121,7 +133,8 @@ export function tallyUsage(messages: Array<Record<string, unknown>>): SessionUsa
 		const usage = (message.usage ?? {}) as Record<string, number | Record<string, number>>;
 		inputTokens += (usage.input as number) || 0;
 		outputTokens += (usage.output as number) || 0;
-		cacheTokens += ((usage.cacheRead as number) || 0) + ((usage.cacheWrite as number) || 0);
+		cacheReadTokens += (usage.cacheRead as number) || 0;
+		cacheWriteTokens += (usage.cacheWrite as number) || 0;
 		costUsd += (usage.cost as Record<string, number>)?.total || 0;
 		const content = (message.content ?? []) as Array<Record<string, unknown>>;
 		// Encode is detected wherever a handle can land — a text block OR a tool
@@ -140,7 +153,17 @@ export function tallyUsage(messages: Array<Record<string, unknown>>): SessionUsa
 			}
 		}
 	}
-	return { inputTokens, outputTokens, cacheTokens, costUsd, argotLoadCalls, assistantMsgsWithSigil, toolCalls };
+	return {
+		inputTokens,
+		outputTokens,
+		cacheTokens: cacheReadTokens + cacheWriteTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+		costUsd,
+		argotLoadCalls,
+		assistantMsgsWithSigil,
+		toolCalls,
+	};
 }
 
 /**
@@ -448,6 +471,15 @@ export interface ArmResult {
 	inputTokens: number | null;
 	outputTokens: number | null;
 	cacheTokens: number | null;
+	/**
+	 * Cache reads and cache writes, separately, because they are priced 4x apart
+	 * and every cost claim this bench makes depends on telling them apart. Older
+	 * `results.json` files predate the split and carry `null` here; the report
+	 * prints the priced columns only when they are present, rather than pricing
+	 * an absent write line as zero and quietly understating cost.
+	 */
+	cacheReadTokens: number | null;
+	cacheWriteTokens: number | null;
 	costUsd: number | null;
 	agentSeconds: number | null;
 	argotLoadCalls: number | null;
@@ -535,6 +567,8 @@ export function emptyArmResult(arm: string, task: string, repeat: number): ArmRe
 		inputTokens: null,
 		outputTokens: null,
 		cacheTokens: null,
+		cacheReadTokens: null,
+		cacheWriteTokens: null,
 		costUsd: null,
 		agentSeconds: null,
 		argotLoadCalls: null,
@@ -615,6 +649,31 @@ export interface CellSummary {
 	 * provider never produced. See {@link costIsUnpriced} and {@link fmtCost}.
 	 */
 	costPriced: boolean;
+	/**
+	 * The cell's token mix priced at {@link REFERENCE_RATE_CARD}, broken out by
+	 * line, summed over the OK runs.
+	 *
+	 * This is the answer to "is this arm cheaper" when the provider is unpriced,
+	 * which is every run the bench has made. It is a counterfactual and is
+	 * labelled as one everywhere it is printed: it says what this token mix would
+	 * cost at published rates, not what it did cost. `sumCostUsd` above remains
+	 * the provider's own figure and is never mixed with this.
+	 *
+	 * It is a breakdown rather than a scalar because the scalar cannot be acted
+	 * on. An arm that shortens output and adds a cache miss moves two lines in
+	 * opposite directions, and only the breakdown shows which one won.
+	 */
+	refCost: CostBreakdown;
+	/**
+	 * Whether every OK run in the cell reported the cache read/write split.
+	 *
+	 * False for runs recorded before the split existed. Their cache tokens are
+	 * unattributable between a 0.075/M line and a 0.3833/M line, so {@link refCost}
+	 * would understate or overstate them with no way to tell which, and the report
+	 * withholds the priced columns instead of printing a number it cannot stand
+	 * behind.
+	 */
+	refCostMeasurable: boolean;
 }
 
 function mean(values: Array<number | null>): number | null {
@@ -969,7 +1028,71 @@ export function summarizeCell(rows: readonly ArmResult[]): CellSummary {
 		sumCacheTokens: sum(r => r.cacheTokens),
 		sumAgentSeconds: sum(r => r.agentSeconds),
 		costPriced: ok.some(r => (r.costUsd ?? 0) > 0),
+		refCost: priceTokens({
+			inputTokens: sum(r => r.inputTokens),
+			cacheReadTokens: sum(r => r.cacheReadTokens),
+			cacheWriteTokens: sum(r => r.cacheWriteTokens),
+			outputTokens: sum(r => r.outputTokens),
+		}),
+		refCostMeasurable: n > 0 && ok.every(r => r.cacheReadTokens !== null),
 	};
+}
+
+/**
+ * Render the reference-cost section: what each arm's tokens would cost at
+ * published rates, split by line, with each line's share of the bill.
+ *
+ * WHY IT IS A SECTION OF ITS OWN, and why the shares are printed. The bench's
+ * token columns are physically complete and still led an optimization effort to
+ * the wrong target for weeks. Output tokens are the column an eye lands on, and
+ * on real traces they are a small minority of the bill: a trial that spent 725k
+ * fresh input tokens and 6.5M cache-read tokens spent 67k on output. Halving
+ * that output line is worth single-digit percent of cost, and no amount of work
+ * on it can be worth more. The share column states that ceiling directly, so the
+ * next effort picks its target from the bill rather than from the column that
+ * happens to be easiest to move.
+ *
+ * The first arm is the baseline; later arms print their delta against it. A
+ * negative delta is cheaper. Deltas are per line, because an arm that trades one
+ * line for another is the case this table exists to catch.
+ */
+export function renderReferenceCostSection(results: readonly ArmResult[], arms: readonly string[]): string {
+	const lines: string[] = [];
+	lines.push("## Cost at reference rates");
+	lines.push("");
+	const cells = arms.map(arm => ({ arm, s: summarizeCell(results.filter(r => r.arm === arm)) }));
+	const unmeasurable = cells.filter(c => c.s.n > 0 && !c.s.refCostMeasurable).map(c => c.arm);
+	if (unmeasurable.length > 0) {
+		lines.push(
+			`> Not computed for ${unmeasurable.join(", ")}: these runs predate the cache read/write split, so ` +
+				"their cache tokens cannot be priced (a read costs 0.075/M, a write 0.3833/M, and the older " +
+				"records carry only the sum). Re-run to get a priced comparison.",
+		);
+		lines.push("");
+	}
+	lines.push(`Counterfactual, not billed. Rates: ${REFERENCE_RATE_CARD.source}.`);
+	lines.push("");
+	lines.push("| arm | input | cache read | cache write | output | total | output share |");
+	lines.push("|---|---|---|---|---|---|---|");
+	const baseline = cells.find(c => c.s.refCostMeasurable);
+	for (const { arm, s } of cells) {
+		if (!s.refCostMeasurable) continue;
+		const c = s.refCost;
+		const shares = costShares(c);
+		const money = (v: number) => `$${v.toFixed(4)}`;
+		const withDelta = (v: number, base: number) => {
+			if (!baseline || baseline.arm === arm || base <= 0) return money(v);
+			const pct = ((v - base) / base) * 100;
+			return `${money(v)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`;
+		};
+		const b = baseline?.s.refCost;
+		lines.push(
+			`| ${arm} | ${withDelta(c.input, b?.input ?? 0)} | ${withDelta(c.cacheRead, b?.cacheRead ?? 0)} | ` +
+				`${withDelta(c.cacheWrite, b?.cacheWrite ?? 0)} | ${withDelta(c.output, b?.output ?? 0)} | ` +
+				`**${withDelta(c.total, b?.total ?? 0)}** | ${(shares.output * 100).toFixed(1)}% |`,
+		);
+	}
+	return lines.join("\n");
 }
 
 /**
@@ -1395,13 +1518,13 @@ export function renderReport(
 		lines.push(
 			"> **Cost is `unpriced` for at least one arm.** The provider reported no per-request price " +
 				"(`usage.cost.total` is 0 on every message while tokens flowed), so this is a subscription/quota " +
-				"model, not a free one. A zero-dollar figure would be fabricated, so cost reads `unpriced` and the " +
-				"efficiency comparison marks cost `not measured`. Compare the **input tok** and **output tok** " +
-				"columns directly to read the tradeoff; to adjudicate it in dollars, supply reference per-token " +
-				"prices (see the README's cost section).",
+				"model, not a free one. A zero-dollar figure would be fabricated, so cost reads `unpriced`. " +
+				"Adjudicate the tradeoff in the reference-cost table below, which prices the same tokens at " +
+				"published rates.",
 		);
 	}
 	lines.push("");
+	lines.push(renderReferenceCostSection(results, arms));
 	lines.push("## Per task");
 	lines.push("");
 	lines.push(`| task | ${arms.map(a => `${a}: pass | ${a}: mean out tok | ${a}: mean cost`).join(" | ")} |`);
