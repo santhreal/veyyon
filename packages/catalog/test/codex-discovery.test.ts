@@ -100,6 +100,49 @@ describe("Codex model discovery", () => {
 		expect(legacy?.useResponsesLite).toBeUndefined();
 	});
 
+	it("floors GPT-5.6 SKUs to 372K when upstream actively reports 272000 (#6259)", async () => {
+		const fetchFn: typeof fetch = Object.assign(
+			async () =>
+				new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.6-sol",
+								display_name: "GPT-5.6-Sol",
+								context_window: 272_000,
+								default_reasoning_level: "medium",
+								supported_reasoning_levels: ["low", "medium", "high"],
+								input_modalities: ["text", "image"],
+								supported_in_api: true,
+							},
+							{
+								slug: "gpt-5.5",
+								display_name: "GPT-5.5",
+								context_window: 272_000,
+								default_reasoning_level: "high",
+								supported_reasoning_levels: ["low", "high"],
+								input_modalities: ["text"],
+								supported_in_api: true,
+							},
+						],
+					}),
+				),
+			{ preconnect() {} },
+		);
+		const result = await fetchCodexModels({
+			accessToken: "test-token",
+			baseUrl: "https://codex.example/backend-api",
+			clientVersion: "0.144.1",
+			fetchFn,
+		});
+
+		const sol = result?.models.find(model => model.id === "gpt-5.6-sol");
+		expect(sol?.contextWindow).toBe(372_000);
+		// Non-5.6 SKUs still honor the reported value verbatim.
+		const legacy = result?.models.find(model => model.id === "gpt-5.5");
+		expect(legacy?.contextWindow).toBe(272_000);
+	});
+
 	it("ignores pre-V2 Codex discovery cache rows", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-catalog-codex-v7-cache-"));
 		const dbPath = path.join(tempDir, "models.db");

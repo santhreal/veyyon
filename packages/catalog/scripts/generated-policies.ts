@@ -362,4 +362,12 @@ function applyOpenAICatalogPolicy(model: ModelSpec<Api>, parsedModel: OpenAIMode
 			model.contextWindow = 272000;
 		}
 	}
+	// GPT-5.6 luna/sol/terra on the Codex transport: OpenAI's Codex model
+	// registry declares context_window = max_context_window = 372000, but Codex
+	// discovery under-reports it — omitting the field for some accounts and
+	// actively returning 272000 for others (#5705, #6259). Pin the true 372K
+	// input window on the bundled catalog; discovery enforces the same floor.
+	if (model.api === "openai-codex-responses" && semverEqual(parsedModel.version, "5.6")) {
+		model.contextWindow = 372000;
+	}
 }
