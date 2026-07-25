@@ -134,3 +134,44 @@ describe("uninstall reclaims the completions it wrote", () => {
 		expect(installSh).toContain('completion_file_for "$sh" "$BIN_NAME"');
 	});
 });
+
+/**
+ * Both installers rewrite a file the user owns by truncating it first, so a
+ * failure partway leaves that file empty. install.sh's rc rewrite used to
+ * delete its temp copy in exactly that case, destroying a file it had just
+ * emptied; the PowerShell profile rewrite had no copy at all.
+ */
+describe("a failed profile or rc rewrite leaves the user a way back", () => {
+	it("install.ps1 copies the profile before it truncates it", () => {
+		const fn = psFn(installPs1, "Remove-CompletionSourceLine");
+		expect(fn).toContain('$backup = "$ProfilePath.veyyon-uninstall.$PID"');
+		expect(fn.indexOf("Copy-Item -LiteralPath $ProfilePath -Destination $backup")).toBeLessThan(
+			fn.indexOf("Set-Content -LiteralPath $ProfilePath -Value $kept"),
+		);
+	});
+
+	it("install.ps1 keeps that copy when the rewrite fails, and names it", () => {
+		const fn = psFn(installPs1, "Remove-CompletionSourceLine");
+		expect(fn).toContain("its previous contents are in $backup");
+		expect(fn).toContain("restore it with: Copy-Item '$backup' '$ProfilePath'");
+	});
+
+	it("install.ps1 leaves the profile alone when it cannot even take a copy", () => {
+		// Truncating a file you could not copy is the one outcome with no way back.
+		const fn = psFn(installPs1, "Remove-CompletionSourceLine");
+		expect(fn).toContain("could not back up $ProfilePath");
+		expect(fn.indexOf("could not back up")).toBeLessThan(fn.indexOf("Set-Content -LiteralPath $ProfilePath"));
+	});
+
+	it("install.ps1 removes the copy once the rewrite succeeds", () => {
+		const fn = psFn(installPs1, "Remove-CompletionSourceLine");
+		expect(fn).toContain("Remove-Item -Force $backup -ErrorAction SilentlyContinue");
+	});
+
+	it("install.sh keeps its temp on the same failure, under the same name", () => {
+		// One recognizable suffix across both platforms: a user grepping for
+		// leftovers finds them with one pattern.
+		expect(installSh).toContain('tmp="$rc.veyyon-uninstall.$$"');
+		expect(installPs1).toContain('"$ProfilePath.veyyon-uninstall.$PID"');
+	});
+});

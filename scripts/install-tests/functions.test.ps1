@@ -554,6 +554,15 @@ try {
     # did not do.
     Check "a second removal reports no change" (Remove-CompletionSourceLine -ProfilePath $profilePath -Line $line) "False"
 
+    # Set-Content truncates before it writes, so a successful rewrite must clean
+    # up its backup and a failed one must keep it. The success half is checked
+    # here; the failure half cannot be forced without a filesystem fault, so the
+    # contract is asserted statically in scripts/installer-completions-parity.test.ts.
+    Add-Content -LiteralPath $profilePath -Value @($CompletionMarker, $line)
+    Check "a successful removal reports the change" (Remove-CompletionSourceLine -ProfilePath $profilePath -Line $line) "True"
+    Check "a successful removal leaves no backup behind" `
+        (@(Get-ChildItem -Path (Split-Path -Parent $profilePath) -Filter "*.veyyon-uninstall.*" -File -ErrorAction SilentlyContinue).Count) "0"
+
     # A marker comment the user happens to have, with no veyyon line under it,
     # is not ours to delete.
     $foreignProfile = Join-Path $completionSandbox "foreign.ps1"
