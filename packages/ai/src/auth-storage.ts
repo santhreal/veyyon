@@ -1167,6 +1167,8 @@ export class AuthStorage {
 	/** Tracks next credential index per provider:type key for round-robin distribution (non-session use). */
 	#providerRoundRobinIndex: Map<string, number> = new Map();
 	/** Tracks the last used credential per provider for a session (used for rate-limit switching). */
+	/** `operation:provider` keys already warned about, so the warning fires once. */
+	#reportedStickyCacheFailures = new Set<string>();
 	#sessionLastCredential: Map<string, Map<string, { type: AuthCredential["type"]; index: number }>> = new Map();
 	/** Recent bearer fingerprints resolved for each durable OAuth row; used only for delayed usage-limit attribution. */
 	#oauthBearerFingerprints: Map<string, Map<number, string[]>> = new Map();
@@ -1729,8 +1731,48 @@ export class AuthStorage {
 				this.#store.setCache(cacheKey, cacheValue, expiresAtSec);
 			}
 		} catch (err) {
-			logger.debug("Failed to write session sticky credential to persistent store cache", { err });
+			this.#reportStickyCacheFailure("write", provider, err);
 		}
+	}
+
+	/**
+	 * Report a session-stickiness cache failure LOUDLY, once per provider and
+	 * operation, then let the request continue.
+	 *
+	 * All four of these paths used to be `logger.debug` and carry on, which is a
+	 * silent fallback: the request still succeeds, so nothing looks wrong, but
+	 * session stickiness has stopped working. Stickiness is what keeps one session
+	 * pinned to one credential, so losing it means a conversation can hop between
+	 * accounts mid-flight — the same wrong-account routing the index-only cache
+	 * rows are explicitly dropped to prevent, arrived at by a different route. An
+	 * operator debugging "why did this session switch accounts" would find nothing
+	 * above debug level.
+	 *
+	 * Not fail-closed: a cache that cannot be written must not take down a request
+	 * that is otherwise fine. Loud, bounded and recorded instead, which is the form
+	 * of degrade this codebase does allow. Bounded matters here, because the usual
+	 * cause is a store that is broken for the whole process (read-only file, disk
+	 * full), and warning on every request would bury the line it is trying to make
+	 * visible. The first failure per provider and operation warns; the rest are
+	 * debug, so the signal survives without the flood.
+	 */
+	#reportStickyCacheFailure(operation: string, provider: string, error: unknown): void {
+		const key = `${operation}:${provider}`;
+		const alreadyReported = this.#reportedStickyCacheFailures.has(key);
+		this.#reportedStickyCacheFailures.add(key);
+		const detail = {
+			provider,
+			operation,
+			error: String(error),
+		};
+		if (alreadyReported) {
+			logger.debug("Session sticky credential cache still failing", detail);
+			return;
+		}
+		logger.warn(
+			"Session sticky credential cache failed; this session is no longer pinned to one credential and may route to a different account",
+			detail,
+		);
 	}
 
 	/** Retrieves the last credential used by a session. */
@@ -1772,7 +1814,7 @@ export class AuthStorage {
 				return sessionVal;
 			}
 		} catch (err) {
-			logger.debug("Failed to read session sticky credential from persistent store cache", { err });
+			this.#reportStickyCacheFailure("read", provider, err);
 		}
 		return undefined;
 	}
@@ -1791,7 +1833,7 @@ export class AuthStorage {
 			const cacheKey = `${SESSION_STICKY_CACHE_PREFIX}${provider}:${sessionId}`;
 			this.#store.setCache(cacheKey, "", 0);
 		} catch (err) {
-			logger.debug("Failed to clear session sticky credential from persistent store cache", { err });
+			this.#reportStickyCacheFailure("clear", provider, err);
 		}
 	}
 
@@ -1977,7 +2019,7 @@ export class AuthStorage {
 		try {
 			this.#store.deleteCachePrefix?.(`${SESSION_STICKY_CACHE_PREFIX}${provider}:`);
 		} catch (err) {
-			logger.debug("Failed to clear provider session sticky credentials from persistent store cache", { err });
+			this.#reportStickyCacheFailure("clear-provider", provider, err);
 		}
 	}
 
