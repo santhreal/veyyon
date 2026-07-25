@@ -49,9 +49,6 @@
  */
 import { kebabToCamel } from "@veyyon/utils";
 
-/** Where a section's text comes from. Provenance only: it confers no capability. */
-export type PromptSectionSource = "template" | "runtime";
-
 /**
  * Sections rendered from `prompts/system/system-prompt.md`, in document order.
  * `conventions` is the leading region and has no banner of its own: it is DEFINED
@@ -86,7 +83,6 @@ export const RUNTIME_SECTION_IDS = ["project", "shorthand", "shorthand-handles"]
 
 export type TemplateSectionId = (typeof TEMPLATE_SECTION_IDS)[number];
 export type RuntimeSectionId = (typeof RUNTIME_SECTION_IDS)[number];
-export type PromptSectionId = TemplateSectionId | RuntimeSectionId;
 
 interface PromptSectionBase {
 	readonly banner: string | null;
