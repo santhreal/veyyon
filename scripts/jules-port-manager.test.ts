@@ -16,6 +16,7 @@ import {
 	nudgeMarker,
 	parseEnvKeys,
 	parseNeverPorted,
+	parseWorkingTreePaths,
 	sessionMarker,
 	testFilesShrunk,
 	upstreamNumberFromIssue,
@@ -635,5 +636,65 @@ describe("testFilesShrunk", () => {
 	it("passes an untouched diff and a pure test addition alike", () => {
 		expect(testFilesShrunk([])).toEqual([]);
 		expect(testFilesShrunk([{ path: "x.test.ts", added: 40, removed: 0 }])).toEqual([]);
+	});
+});
+
+describe("parseWorkingTreePaths", () => {
+	/**
+	 * The defect this suite exists for. `land` runs on a dirty tree and protects
+	 * uncommitted work by refusing any PR whose paths overlap it, but that
+	 * protection was built on `git diff --name-only`, which reports tracked
+	 * modifications and omits untracked files entirely. A file you created and
+	 * never committed was therefore absent from the protected set, so nothing in
+	 * land knew it was yours. Git's own refusal to merge over an untracked file
+	 * happened to cover the case, which is luck, not design: the reset step runs
+	 * after the merge with `checkout HEAD --` and `rm -f`, where git can no longer
+	 * tell your content from the session's. Untracked content exists in no git
+	 * object and is unrecoverable, so it is the most important thing here to see.
+	 */
+	it("sees untracked files, which git diff --name-only never reports", () => {
+		const paths = parseWorkingTreePaths("?? scratch/notes.ts\n?? patch_utils.ts\n M src/a.ts");
+		expect(paths.has("scratch/notes.ts")).toBe(true);
+		expect(paths.has("patch_utils.ts")).toBe(true);
+		expect(paths.has("src/a.ts")).toBe(true);
+		expect(paths.size).toBe(3);
+	});
+
+	/** Staged, unstaged, and mixed states are all uncommitted work land must not write over. */
+	it("collects every uncommitted status code, not just unstaged modifications", () => {
+		const paths = parseWorkingTreePaths("M  staged.ts\n M unstaged.ts\nMM both.ts\nA  added.ts\n D deleted.ts\nAM addedThenEdited.ts");
+		expect([...paths].sort()).toEqual([
+			"added.ts",
+			"addedThenEdited.ts",
+			"both.ts",
+			"deleted.ts",
+			"staged.ts",
+			"unstaged.ts",
+		]);
+	});
+
+	/**
+	 * Porcelain writes renames as `R  old -> new`. Taking the line verbatim would
+	 * protect a path named `old -> new` that does not exist while leaving both
+	 * real paths unprotected, and the source side still holds your history.
+	 */
+	it("protects both sides of a rename", () => {
+		const paths = parseWorkingTreePaths("R  packages/argot/x.ts -> packages/lexpack/x.ts");
+		expect(paths.has("packages/argot/x.ts")).toBe(true);
+		expect(paths.has("packages/lexpack/x.ts")).toBe(true);
+		expect(paths.size).toBe(2);
+	});
+
+	/** Paths with spaces or quoting must survive intact, or the overlap check silently misses them. */
+	it("keeps spaced paths whole and strips porcelain's quoting", () => {
+		const paths = parseWorkingTreePaths('?? "docs/my notes.md"\n M docs/plain file.md');
+		expect(paths.has("docs/my notes.md")).toBe(true);
+		expect(paths.has("docs/plain file.md")).toBe(true);
+	});
+
+	/** A clean tree protects nothing, and must not invent a phantom empty path that matches by accident. */
+	it("returns an empty set for a clean tree", () => {
+		expect(parseWorkingTreePaths("").size).toBe(0);
+		expect(parseWorkingTreePaths("\n\n").size).toBe(0);
 	});
 });
