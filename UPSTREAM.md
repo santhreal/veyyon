@@ -149,6 +149,38 @@ rendered handbook pages. So `land` audits the diff before merging anything.
 The same rules are stated in the session prompt, so most PRs never hit them.
 The audit is the backstop for when the prompt is not enough.
 
+### Landing a refused port by hand
+
+A refused PR is not a rejected fix. The refusal is about the branch, and the
+fix inside it is usually fine, so the way to land one is to take the source
+and leave the branch behind:
+
+```
+git fetch origin pull/<N>/head:refs/jules-port/<N> --force
+git diff HEAD...refs/jules-port/<N> -- <the source and test paths only>  > /tmp/<N>.patch
+git apply --check /tmp/<N>.patch && git apply /tmp/<N>.patch
+```
+
+List the paths explicitly rather than excluding the bad ones. A stale branch
+reverts files no exclusion list anticipates, and naming what you want is the
+only filter that cannot miss.
+
+Then prove the fix before committing it. Run the ported test, revert the source
+change, and confirm the test fails; restore it and confirm the test passes. A
+ported test that passes both ways is testing nothing, which is easy to ship
+when the fix is someone else's and the mechanism is unfamiliar. Ports #6217,
+#6226, #6233 and #6296 were each landed this way after their branches were
+refused, and each one's test was checked in both directions.
+
+Add the cases the port left out while you are there. An upstream fix arrives
+with the one test that reproduces its bug and rarely with the negative twin:
+#6296 gained coverage for the per-tool floor still winning over the global cap
+and for `0` meaning no cap, and #6233 gained proof that the discovery pass it
+adds to startup stays off the path an ordinary launch takes.
+
+Finally, close the PR referencing the commit that landed its fix, so the
+upstream issue does not get ported a second time.
+
 ## Non-goals
 
 This file does not track ordinary runtime dependency licenses declared in
