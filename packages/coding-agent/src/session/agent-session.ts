@@ -138,7 +138,7 @@ import {
 	extractRetryHint,
 	formatCount,
 	formatDuration,
-	getAgentDbPath,
+	getActiveAuthDbPath,
 	getInstallId,
 	isBunTestRuntime,
 	isEnoent,
@@ -4274,12 +4274,27 @@ export class AgentSession {
 			this.#argotStreamDisplay !== undefined
 		) {
 			const streamEvent = event.assistantMessageEvent;
+			// Decode the delta itself, not only the accumulated content: a machine
+			// consumer that reconstructs text from the delta stream alone (print
+			// `--mode json`) must never see a raw §handle. The decoded increment sums
+			// to the same decoded content decodeContent exposes, so both views agree
+			// and reconcile with the wholesale-expanded message_end message.
+			let assistantMessageEvent = streamEvent;
 			if (streamEvent.type === "text_delta" || streamEvent.type === "thinking_delta") {
-				this.#argotStreamDisplay.push(streamEvent.contentIndex, streamEvent.delta);
+				const decodedDelta = this.#argotStreamDisplay.push(streamEvent.contentIndex, streamEvent.delta);
+				if (decodedDelta !== streamEvent.delta) {
+					assistantMessageEvent = { ...streamEvent, delta: decodedDelta };
+				}
 			}
 			const streamedContent = this.#argotStreamDisplay.decodeContent(event.message.content);
-			if (streamedContent !== event.message.content) {
-				displayEvent = { ...event, message: { ...event.message, content: streamedContent } };
+			const contentChanged = streamedContent !== event.message.content;
+			const deltaChanged = assistantMessageEvent !== streamEvent;
+			if (contentChanged || deltaChanged) {
+				displayEvent = {
+					...event,
+					message: contentChanged ? { ...event.message, content: streamedContent } : event.message,
+					assistantMessageEvent,
+				};
 			}
 		}
 		if (event.type === "message_end") {
@@ -8565,10 +8580,27 @@ export class AgentSession {
 			// Validate API key
 			const apiKey = await this.#modelRegistry.getApiKey(this.model, this.sessionId);
 			if (!apiKey) {
+				const provider = this.model.provider;
+				// Distinguish "never signed in" from "signed in, but no usable token
+				// right now". `hasAuth` reports whether a credential is configured
+				// WITHOUT refreshing; `getApiKey` refreshes and just returned nothing.
+				// So when `hasAuth` is true the credential IS stored and the token
+				// could not be produced — an expired OAuth token whose refresh failed,
+				// or the provider rejecting the refresh (e.g. a 403/402 for a lapsed
+				// subscription). Reporting "No API key found" there reads as lost
+				// credentials and pushes the user into a re-login loop; name the real
+				// cause instead so a provider-side account problem is not mistaken for
+				// veyyon losing the login.
+				const signedIn = this.#modelRegistry.authStorage.hasAuth(provider);
 				throw new Error(
-					`No API key found for ${this.model.provider}.\n\n` +
-						`Use /login (or \`veyyon setup\`) to sign in to ${this.model.provider}, or set its API key environment variable. ` +
-						`Stored credentials live in ${getAgentDbPath()}.`,
+					signedIn
+						? `Signed in to ${provider}, but could not get a usable token right now.\n\n` +
+								`The stored token may have expired and its refresh failed, or ${provider} rejected it ` +
+								`(for example a lapsed subscription or unpaid balance). Run /login to refresh it, or check your ${provider} account. ` +
+								`Your credentials are still stored in ${getActiveAuthDbPath()}.`
+						: `No API key found for ${provider}.\n\n` +
+								`Use /login (or \`veyyon setup\`) to sign in to ${provider}, or set its API key environment variable. ` +
+								`Stored credentials live in ${getActiveAuthDbPath()}.`,
 				);
 			}
 

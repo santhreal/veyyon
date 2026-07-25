@@ -88,11 +88,16 @@ export function createSubagentStreamDecoder(codec: ArgotSession | undefined): St
  * the display copy of the partial message shows exactly what the decoder has
  * proved safe — a handle appears whole only once its name and boundary are in.
  *
- * Inert (no codec, or none loaded) the helper is a no-op: `push` drops nothing
- * because it stores nothing, and `decodeContent` returns the input reference.
- * Tool-call argument blocks pass through untouched: args are expanded before
- * execution (seam 1) and the finished message at `message_end` (seam 2), so the
- * only raw view is the in-flight args preview, which self-corrects.
+ * `push` also RETURNS the decoded increment for its delta, so a caller can emit a
+ * decoded delta stream (print `--mode json`) whose deltas never carry a raw
+ * handle; {@link decodeContent} exposes the same decoded text as accumulated
+ * content, and the two agree by construction.
+ *
+ * Inert (no codec, or none loaded) the helper is a no-op: `push` returns its
+ * delta unchanged and holds nothing, and `decodeContent` returns the input
+ * reference. Tool-call argument blocks pass through untouched: args are expanded
+ * before execution (seam 1) and the finished message at `message_end` (seam 2),
+ * so the only raw view is the in-flight args preview, which self-corrects.
  */
 export class ArgotStreamDisplayDecoder {
 	readonly #codec: ArgotSession | undefined;
@@ -102,15 +107,27 @@ export class ArgotStreamDisplayDecoder {
 		this.#codec = codec?.loaded ? codec : undefined;
 	}
 
-	/** Feed one streamed text/thinking delta for a content block. No-op when inert. */
-	push(contentIndex: number, delta: string): void {
-		if (this.#codec === undefined || delta === "") return;
+	/**
+	 * Feed one streamed text/thinking delta for a content block and return the
+	 * newly display-safe decoded text for it (the increment). Inert (no codec, or
+	 * none loaded) this is identity: the delta is returned unchanged. The returned
+	 * increment never contains a raw handle — a handle split across deltas
+	 * (`§db` then `conn`) is held until its boundary arrives — so the concatenation
+	 * of increments equals the decoded accumulation {@link decodeContent} exposes,
+	 * and a consumer that reconstructs text from deltas alone (e.g. `--mode json`)
+	 * never sees a `§handle`.
+	 */
+	push(contentIndex: number, delta: string): string {
+		if (this.#codec === undefined) return delta;
+		if (delta === "") return "";
 		let slot = this.#slots.get(contentIndex);
 		if (slot === undefined) {
 			slot = { decoder: this.#codec.streamDecoder(), decoded: "" };
 			this.#slots.set(contentIndex, slot);
 		}
-		slot.decoded += slot.decoder.push(delta);
+		const increment = slot.decoder.push(delta);
+		slot.decoded += increment;
+		return increment;
 	}
 
 	/**

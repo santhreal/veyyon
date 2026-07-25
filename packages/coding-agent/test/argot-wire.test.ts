@@ -256,4 +256,49 @@ describe("ArgotStreamDisplayDecoder", () => {
 		const rendered = decoder.decodeContent([{ type: "text", text: "x" }]);
 		expect(rendered[0]).toMatchObject({ text: codec.expand("a §db b §dbconn c") });
 	});
+
+	// push() RETURNS the display-safe decoded increment for its delta. This is the
+	// mechanism behind the decoded delta stream (print --mode json, ARG-STREAM-RESIDUAL
+	// c): a machine consumer that reconstructs text from deltas alone must never see a
+	// raw §handle, and the increments must sum to exactly the decoded accumulation.
+	describe("push returns the decoded increment (decoded delta stream)", () => {
+		it("returns a fully-expanded increment for a handle contained in one delta", () => {
+			const decoder = new ArgotStreamDisplayDecoder(loadedCodec());
+			// The whole handle plus a trailing boundary space arrives at once, so the
+			// increment is decodable immediately with nothing held back.
+			expect(decoder.push(0, "open §db ")).toBe("open src/db.ts ");
+		});
+
+		it("holds an increment across a split handle so no raw §handle ever leaks, then releases it whole", () => {
+			const decoder = new ArgotStreamDisplayDecoder(loadedCodec());
+			// §dbconn streamed as §d|b|conn: §db is itself a shorter handle, so a naive
+			// per-delta decode would emit src/db.ts prematurely. The increment stays
+			// empty until the longer name's boundary is proven, then expands wholesale.
+			const parts = ["open §d", "b", "conn "].map(d => decoder.push(0, d));
+			expect(parts[0]).toBe("open ");
+			expect(parts[1]).toBe("");
+			expect(parts[2]).toBe("packages/server/src/database/connection.ts ");
+			// The concatenation of increments equals expand() of the whole raw text —
+			// the delta stream and the accumulated content decode to the same bytes.
+			expect(parts.join("")).toBe(loadedCodec().expand("open §dbconn "));
+			expect(parts.join("")).not.toContain("§");
+		});
+
+		it("is identity on the delta when inert (no codec or unarmed): decoded stream == raw stream", () => {
+			// Argot off must not perturb the delta stream at all — the returned value is
+			// the exact input delta (a §handle here is literal text, not a known handle).
+			expect(new ArgotStreamDisplayDecoder(undefined).push(0, "§db x")).toBe("§db x");
+			expect(new ArgotStreamDisplayDecoder(unloadedCodec()).push(0, "§db x")).toBe("§db x");
+		});
+
+		it("returns empty string for an empty delta without allocating a slot", () => {
+			expect(new ArgotStreamDisplayDecoder(loadedCodec()).push(0, "")).toBe("");
+		});
+
+		it("tracks a separate increment per content index", () => {
+			const decoder = new ArgotStreamDisplayDecoder(loadedCodec());
+			expect(decoder.push(0, "a §db ")).toBe("a src/db.ts ");
+			expect(decoder.push(1, "b §dbconn ")).toBe("b packages/server/src/database/connection.ts ");
+		});
+	});
 });
