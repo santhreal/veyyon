@@ -52,4 +52,4 @@ Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
 2. `veyyon --version` reports the new version.
 3. `veyyon plugin doctor` is green.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `4e2c78d1` on 2026-07-24.*

@@ -162,4 +162,4 @@ new Mnemopi({
 - `/memory stats` and `/memory diagnose` render backend-specific bank statistics/diagnostics when the Mnemopi backend is active.
 - Subagents do not own separate Mnemopi retain loops; they alias the parent state when a parent Mnemopi state exists, and otherwise remain inert.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `4e2c78d1` on 2026-07-24.*
