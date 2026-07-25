@@ -27,6 +27,7 @@ import {
 import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
+import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult, LoadExtensionsResult } from "../sdk";
 import {
 	discoverContextFiles,
@@ -355,7 +356,7 @@ async function executeLegacyBashOperations(
 		const snapshot = legacyBashSnapshot(output);
 		const text = snapshot.text || "(no output)";
 		if (result.exitCode !== 0 && result.exitCode !== null) {
-			throw new Error(appendStatus(text, `Command exited with code ${result.exitCode}`));
+			throw new Error(appendStatus(text, formatExitCodeNotice(result.exitCode)));
 		}
 		return { content: [{ type: "text", text }], details: snapshot.details };
 	} catch (err) {

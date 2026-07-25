@@ -43,6 +43,7 @@ export * from "./runtime-install";
 export * from "./sanitize-text";
 export * from "./scoped-timeout";
 export * from "./semver";
+export * from "./signal-exit";
 export * from "./sleep";
 export * from "./snowflake";
 export * from "./stderr-guard";

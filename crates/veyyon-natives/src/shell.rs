@@ -161,6 +161,13 @@ impl From<CoreMinimizerResult> for MinimizerResult {
 pub struct ShellRunResult {
 	/// Exit code when the command completes normally.
 	pub exit_code: Option<i32>,
+	/// The signal number that killed the command, when it died from a signal.
+	///
+	/// `exitCode` reports bash's `128 + signal`, which a command that calls
+	/// `exit(137)` itself produces just as readily. This field is set only for a
+	/// real signalled death, so callers can tell an out-of-memory kill (SIGKILL,
+	/// 9) from a program choosing that exit code.
+	pub signal: Option<i32>,
 	/// Whether the command was cancelled via abort.
 	pub cancelled: bool,
 	/// Whether the command timed out before completion.
@@ -179,6 +186,7 @@ impl From<CoreShellRunResult> for ShellRunResult {
 	fn from(value: CoreShellRunResult) -> Self {
 		Self {
 			exit_code:   value.exit_code,
+			signal:      value.signal,
 			cancelled:   value.cancelled,
 			timed_out:   value.timed_out,
 			minimized:   value.minimized.map(Into::into),

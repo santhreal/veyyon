@@ -1431,6 +1431,15 @@ export interface ShellRunOptions {
 export interface ShellRunResult {
   /** Exit code when the command completes normally. */
   exitCode?: number
+  /**
+   * The signal number that killed the command, when it died from a signal.
+   *
+   * `exitCode` reports bash's `128 + signal`, which a command that calls
+   * `exit(137)` itself produces just as readily. This field is set only for a
+   * real signalled death, so callers can tell an out-of-memory kill (SIGKILL,
+   * 9) from a program choosing that exit code.
+   */
+  signal?: number
   /** Whether the command was cancelled via abort. */
   cancelled: boolean
   /** Whether the command timed out before completion. */

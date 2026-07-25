@@ -118,6 +118,12 @@ pub struct MinimizerResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ShellRunResult {
 	pub exit_code:   Option<i32>,
+	/// The signal that killed the command, when it died from one.
+	///
+	/// `exit_code` keeps bash's `128 + signal` form, which cannot be told apart
+	/// from a command that called `exit(137)` itself. This reports the raw signal
+	/// so callers can distinguish an out-of-memory kill from an ordinary failure.
+	pub signal:      Option<i32>,
 	pub cancelled:   bool,
 	pub timed_out:   bool,
 	pub minimized:   Option<MinimizerResult>,
@@ -342,6 +348,7 @@ async fn run_shell_session(
 			let _ = process_cancel_bridge.await;
 			return Ok(ShellRunResult {
 				exit_code:   None,
+				signal:      None,
 				cancelled:   matches!(reason, AbortReason::Signal),
 				timed_out:   matches!(reason, AbortReason::Timeout),
 				minimized:   None,
@@ -362,6 +369,7 @@ async fn run_shell_session(
 	let (exec, minimized, working_dir) = res?;
 	Ok(ShellRunResult {
 		exit_code: Some(exit_code(&exec)),
+		signal: exec.signal,
 		cancelled: false,
 		timed_out: false,
 		working_dir,
@@ -412,6 +420,7 @@ async fn run_shell_oneshot(
 			let _ = process_cancel_bridge.await;
 			return Ok(ShellExecuteResult {
 				exit_code:   None,
+				signal:      None,
 				cancelled:   matches!(reason, AbortReason::Signal),
 				timed_out:   matches!(reason, AbortReason::Timeout),
 				minimized:   None,
@@ -427,6 +436,7 @@ async fn run_shell_oneshot(
 	let (exec, minimized, working_dir) = res?;
 	Ok(ShellExecuteResult {
 		exit_code: Some(exit_code(&exec)),
+		signal: exec.signal,
 		cancelled: false,
 		timed_out: false,
 		working_dir,
@@ -478,6 +488,7 @@ async fn run_shell_oneshot_streams(
 			let _ = process_cancel_bridge.await;
 			return Ok(ShellExecuteResult {
 				exit_code: None,
+				signal: None,
 				cancelled: matches!(reason, AbortReason::Signal),
 				timed_out: matches!(reason, AbortReason::Timeout),
 				minimized: None,
@@ -493,6 +504,7 @@ async fn run_shell_oneshot_streams(
 	let (exec, working_dir) = res?;
 	Ok(ShellExecuteResult {
 		exit_code: Some(exit_code(&exec)),
+		signal: exec.signal,
 		cancelled: false,
 		timed_out: false,
 		working_dir,

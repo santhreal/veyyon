@@ -15032,6 +15032,7 @@ export class AgentSession {
 			command,
 			output: result.output,
 			exitCode: result.exitCode,
+			signal: result.signal,
 			cancelled: result.cancelled,
 			truncated: result.truncated,
 			meta,
