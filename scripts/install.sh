@@ -604,7 +604,52 @@ fetch_source_tree() {
                 || die "failed to clone $REPO_URL"
         fi
     fi
-    has git-lfs && ( cd "$VEYYON_SRC_DIR" && git lfs pull ) || true
+    fetch_lfs_assets "$VEYYON_SRC_DIR"
+}
+
+# Does this checkout actually track any file through Git LFS?
+#
+# Prints the first such path, or nothing. `:(attr:filter=lfs)` is git's own
+# pathspec magic (git >= 2.18) and needs no git-lfs installed, so it answers the
+# question even on the machine that is missing the tool. Exit 2 means git could
+# not answer (older git): the caller must treat that as UNKNOWN, never as "no".
+lfs_tracked_file() {
+    out=$( cd "$1" 2>/dev/null && git ls-files ':(attr:filter=lfs)' 2>/dev/null ) || return 2
+    printf '%s' "$out" | head -n 1
+}
+
+# Materialize Git LFS content in a fresh or updated source checkout.
+#
+# This used to be `has git-lfs && (... git lfs pull) || true`, which is the
+# textbook silent fallback: with git-lfs missing, or with `git lfs pull` failing,
+# every LFS-tracked file stays a ~130-byte pointer TEXT file, the install
+# reports success, and veyyon fails later at runtime on a file that looks
+# present. `.gitattributes` puts `*.wasm` under LFS, so this is a live path the
+# moment a wasm asset lands.
+#
+# Fails closed when the checkout needs LFS and cannot have it, and stays silent
+# only in the one case where silence is correct: the checkout tracks nothing
+# through LFS, so there is nothing to fetch.
+fetch_lfs_assets() {
+    src="${1:-$VEYYON_SRC_DIR}"
+    tracked=$(lfs_tracked_file "$src")
+    case "$?" in
+        0)
+            [ -n "$tracked" ] || return 0
+            ;;
+        *)
+            # git is too old to answer. Fall back to the declaration in
+            # .gitattributes: conservative (it can over-report when a pattern
+            # matches no file), and loud about why, per the no-silent-fallback
+            # rule. Never assume "no LFS" from a check that did not run.
+            grep -q 'filter=lfs' "$src/.gitattributes" 2>/dev/null || return 0
+            warn "this git cannot list LFS-tracked paths; assuming .gitattributes' LFS declaration applies"
+            ;;
+    esac
+    has git-lfs || die "this checkout tracks files with Git LFS but git-lfs is not installed — those files would be left as pointer text and veyyon would fail at runtime. Install git-lfs (https://git-lfs.com), then re-run this installer"
+    say "fetching Git LFS assets..."
+    ( cd "$src" && git lfs pull ) || die "git lfs pull failed in $src — LFS-tracked files are still pointer text. Fix the network/credential problem and re-run this installer"
+    ok "fetched Git LFS assets"
 }
 
 install_via_bun() {

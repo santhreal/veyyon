@@ -644,6 +644,49 @@ else
     printf 'SKIP: git not available; src_has_local_work/uninstall tests skipped\n' >&2
 fi
 
+# --- fetch_lfs_assets: LFS content is fetched or the install stops ---
+# The old line was `has git-lfs && ( cd ... && git lfs pull ) || true`. With
+# git-lfs absent, or with the pull failing, every LFS-tracked file stays a
+# ~130-byte pointer TEXT file while the installer prints success — the file
+# looks present and veyyon dies on it later. .gitattributes puts `*.wasm` under
+# LFS, so this becomes live the moment a wasm asset lands. These lock the
+# decision: no LFS content means no-op, LFS content with no git-lfs means stop.
+if command -v git >/dev/null 2>&1; then
+  ( _r="$SANDBOX/lfs-none"
+    mkdir -p "$_r" && cd "$_r" || exit 0
+    git init -q . 2>/dev/null && git config user.email t@t && git config user.name t
+    printf 'hi\n' > a.txt && git add a.txt && git commit -qm init 2>/dev/null
+
+    # A checkout with no LFS-tracked file at all.
+    check "no LFS-tracked file is reported for a plain checkout" "$(lfs_tracked_file "$_r")" ""
+    ( has() { case "$1" in git-lfs) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+      fetch_lfs_assets "$_r" >/dev/null 2>&1 )
+    check "a plain checkout installs fine without git-lfs" "$?" "0"
+
+    # Today's real repo state: .gitattributes DECLARES an LFS filter, but no
+    # tracked file matches it. That must not block an install, or every source
+    # install without git-lfs breaks on a rule that governs zero files.
+    printf '*.wasm filter=lfs diff=lfs merge=lfs -text\n' > .gitattributes
+    git add .gitattributes && git commit -qm attrs 2>/dev/null
+    check "a declaration matching no file is not LFS-tracked content" "$(lfs_tracked_file "$_r")" ""
+    ( has() { case "$1" in git-lfs) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+      fetch_lfs_assets "$_r" >/dev/null 2>&1 )
+    check "an unmatched LFS declaration does not block the install" "$?" "0"
+
+    # Now a file the filter actually matches: this checkout genuinely needs LFS.
+    printf 'pointer\n' > shipped.wasm
+    git add shipped.wasm && git commit -qm wasm 2>/dev/null
+    check "a matching file is reported as LFS-tracked" "$(lfs_tracked_file "$_r")" "shipped.wasm"
+
+    _out=$( ( has() { case "$1" in git-lfs) return 1 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+            fetch_lfs_assets "$_r" ) 2>&1 )
+    check "a checkout needing LFS without git-lfs stops the install" "$?" "1"
+    # The message has to name the consequence and the fix, not just say no.
+    check "the stop names git-lfs as the fix" "$(printf '%s' "$_out" | grep -c 'git-lfs is not installed')" "1"
+    check "the stop explains pointer text, not a bare failure" "$(printf '%s' "$_out" | grep -c 'pointer text')" "1"
+    check "the stop links where to get git-lfs" "$(printf '%s' "$_out" | grep -c 'https://git-lfs.com')" "1" )
+fi
+
 # `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
 # fallback would append a SECOND zero and make the arithmetic below choke.
 PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}
