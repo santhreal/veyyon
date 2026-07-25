@@ -479,8 +479,12 @@ staging_path() {
 # file lives in the same dir as the destination so the move never crosses a
 # filesystem boundary. args: <tmpfile> <dest>
 finalize_binary() {
-    tmp="$1"; dest="$2"
-    [ -s "$tmp" ] || die "downloaded binary is empty — refusing to install (try again or use --source)"
+    # $3 is what the user should DO about an empty staged file. It differs by
+    # caller: a truncated download is retried, an empty local build is rebuilt.
+    # The message used to say "downloaded binary" and suggest --source for both,
+    # which sent a --local user chasing a network problem they never had.
+    tmp="$1"; dest="$2"; empty_hint="$3"
+    [ -s "$tmp" ] || die "the binary staged at $tmp is empty — refusing to install; $empty_hint"
     chmod +x "$tmp" || die "could not make $tmp executable"
     mv -f "$tmp" "$dest" || die "could not move binary into place at $dest"
 }
@@ -906,10 +910,18 @@ install_local() {
         if [ -f "$candidate" ]; then local_bin="$candidate"; break; fi
     done
     [ -n "$local_bin" ] || die "local compiled binary not found — run 'bun scripts/build-binary.ts' in packages/coding-agent first"
+    # Three candidate locations are searched, so name the one that won: a stale
+    # dist/ in the current directory otherwise shadows a fresh package build with
+    # nothing on screen to explain which binary was actually installed.
+    say "installing the local build at $local_bin"
     mkdir -p "$INSTALL_DIR"
     tmpbin=$(staging_path local)
-    cp -f "$local_bin" "$tmpbin"
-    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
+    # Same cleanup contract as install_binary: a Ctrl-C or a failed copy must not
+    # leave a staging file behind in the user's install directory.
+    trap 'rm -f "$tmpbin"' EXIT INT TERM
+    cp -f "$local_bin" "$tmpbin" || die "could not stage $local_bin into $INSTALL_DIR"
+    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME" "rebuild it with 'bun scripts/build-binary.ts' in packages/coding-agent"
+    trap - EXIT INT TERM
     ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
     link_alias "$INSTALL_DIR"
     install_completions "$INSTALL_DIR/$BIN_NAME"
@@ -1005,7 +1017,7 @@ install_binary() {
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
 
-    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
+    finalize_binary "$tmpbin" "$INSTALL_DIR/$BIN_NAME" "the download did not complete — retry, or use --source"
     trap - EXIT INT TERM
     ok "installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME"
     link_alias "$INSTALL_DIR"

@@ -697,16 +697,85 @@ check "version_from_output reads a bare semver" "$(version_from_output '2.0.1')"
 # (chmod happens before the move, so the final path is never non-executable).
 empty="$VEYYON_INSTALL_DIR/.veyyon.empty"
 : > "$empty"
-( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" >/dev/null 2>&1 )
+( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" "retry hint" >/dev/null 2>&1 )
 check "finalize_binary rejects an empty download" "$?" "1"
 check "finalize_binary left no dest for the empty case" "$( [ -e "$VEYYON_INSTALL_DIR/veyyon-empty-dest" ] && echo present || echo gone )" "gone"
+
+# The empty-file message must tell the CALLER'S user what to do. It used to say
+# "downloaded binary ... try again or use --source" for every caller, which sent
+# a `--local` user (who downloaded nothing) chasing a network problem instead of
+# rebuilding their binary.
+check "the empty-file message carries the caller's fix" \
+    "$( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" "rebuild it with X" 2>&1 | grep -c 'rebuild it with X' )" "1"
+check "the empty-file message names the staged path" \
+    "$( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" "rebuild it with X" 2>&1 | grep -c "$empty" )" "1"
+check "the empty-file message no longer hardcodes a download" \
+    "$( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" "rebuild it with X" 2>&1 | grep -c 'downloaded binary is empty' )" "0"
 
 good="$VEYYON_INSTALL_DIR/.veyyon.good"
 dest="$VEYYON_INSTALL_DIR/veyyon-good-dest"
 printf '#!/bin/sh\necho ok\n' > "$good"
-( finalize_binary "$good" "$dest" >/dev/null 2>&1 ); check "finalize_binary installs a good download" "$?" "0"
+( finalize_binary "$good" "$dest" "unused hint" >/dev/null 2>&1 ); check "finalize_binary installs a good download" "$?" "0"
 check "finalize_binary moved the temp file away" "$( [ -e "$good" ] && echo present || echo gone )" "gone"
 check "finalize_binary made the dest executable" "$( [ -x "$dest" ] && echo yes || echo no )" "yes"
+
+# --- install_local: the --local path gets the same cleanup and honesty as --binary ---
+# install_binary traps EXIT/INT/TERM to remove its staging file; install_local
+# had no trap at all, so an interrupted or failed local install left a
+# `.veyyon.local.<pid>` file in the user's install directory forever. It also
+# searched three candidate paths and named none of them, so a stale ./dist/vey
+# silently shadowed a fresh package build.
+# The post-install steps need a real binary and a real PATH; these tests are
+# about staging and cleanup, so each subshell stubs them out.
+check "install_local prints the exact path it installed from" "$( ( _h="$SANDBOX/local-named2"
+  export VEYYON_INSTALL_DIR="$_h/bin"; mkdir -p "$VEYYON_INSTALL_DIR"
+  INSTALL_DIR="$VEYYON_INSTALL_DIR"
+  link_alias() { :; }; install_completions() { :; }; ensure_on_path() { :; }; doctor() { :; }
+  mkdir -p "$_h/work/dist"
+  printf '#!/bin/sh\necho local-build\n' > "$_h/work/dist/vey"
+  cd "$_h/work"
+  install_local 2>&1 | grep -c "installing the local build at $_h/work/dist/vey" ) )" "1"
+
+# A successful install leaves the binary and NOTHING else.
+check "install_local leaves no staging file behind on success" "$( ( _h="$SANDBOX/local-clean"
+  export VEYYON_INSTALL_DIR="$_h/bin"; mkdir -p "$VEYYON_INSTALL_DIR"
+  INSTALL_DIR="$VEYYON_INSTALL_DIR"
+  link_alias() { :; }; install_completions() { :; }; ensure_on_path() { :; }; doctor() { :; }
+  mkdir -p "$_h/work/dist"
+  printf '#!/bin/sh\necho local-build\n' > "$_h/work/dist/vey"
+  cd "$_h/work"
+  install_local >/dev/null 2>&1
+  ls -A "$VEYYON_INSTALL_DIR" | tr '\n' ' ' ) )" "veyyon "
+
+# An empty build must abort AND clean up. Without the trap the staging file
+# survived, and a later uninstall had to sweep somebody else's mess.
+( _h="$SANDBOX/local-empty"
+  export VEYYON_INSTALL_DIR="$_h/bin"; mkdir -p "$VEYYON_INSTALL_DIR"
+  INSTALL_DIR="$VEYYON_INSTALL_DIR"
+  link_alias() { :; }; install_completions() { :; }; ensure_on_path() { :; }; doctor() { :; }
+  mkdir -p "$_h/work/dist"; : > "$_h/work/dist/vey"
+  cd "$_h/work"
+  install_local >/dev/null 2>&1 )
+check "an empty local build aborts the install" "$?" "1"
+check "an aborted local install leaves no staging file" "$(ls -A "$SANDBOX/local-empty/bin" | wc -l | tr -d ' ')" "0"
+
+# The advice has to match what the user actually did. A --local user downloaded
+# nothing, so "try again or use --source" is the wrong instruction entirely.
+check "an empty local build tells the user to rebuild, not to retry a download" "$( ( _h="$SANDBOX/local-empty3"
+  export VEYYON_INSTALL_DIR="$_h/bin"; mkdir -p "$VEYYON_INSTALL_DIR"
+  INSTALL_DIR="$VEYYON_INSTALL_DIR"
+  link_alias() { :; }; install_completions() { :; }; ensure_on_path() { :; }; doctor() { :; }
+  mkdir -p "$_h/work/dist"; : > "$_h/work/dist/vey"
+  cd "$_h/work"
+  install_local 2>&1 | grep -c "bun scripts/build-binary.ts" ) )" "1"
+
+# A missing build is a different failure from an empty one, and keeps its own
+# message: nothing to install versus something unusable.
+check "a missing local build reports that it was not found" "$( ( _h="$SANDBOX/local-missing"
+  export VEYYON_INSTALL_DIR="$_h/bin"; mkdir -p "$VEYYON_INSTALL_DIR"
+  INSTALL_DIR="$VEYYON_INSTALL_DIR"
+  mkdir -p "$_h/work"; cd "$_h/work"
+  install_local 2>&1 | grep -c "local compiled binary not found" ) )" "1"
 
 # --- parse_release_tag: anchored extraction of the release tag ---
 # Locks the hardened parse: the tag must come from the "tag_name" key
