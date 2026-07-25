@@ -167,30 +167,92 @@ function restoreNativeFromCache(filenames: string[]): void {
 	);
 }
 
-async function downloadAsset(filename: string): Promise<boolean> {
+/**
+ * Why a prebuilt download did not produce an addon.
+ *
+ * Every one of these used to collapse into `return false`, and the closing
+ * failure paragraph then GUESSED at the cause ("no prebuilt asset for this
+ * platform, or the network is unreachable"). A 404 for an unbuilt platform, a
+ * 500 from GitHub, a missing checksum sidecar, a corrupted body, and a full
+ * disk are five different problems with five different fixes, and the operator
+ * was shown a sentence that covered two of them and named neither (Law 10).
+ */
+export interface AssetFailure {
+	filename: string;
+	reason: string;
+}
+
+export type AssetResult = { ok: true } | { ok: false; failure: AssetFailure };
+
+function assetFailed(filename: string, reason: string): AssetResult {
+	return { ok: false, failure: { filename, reason } };
+}
+
+async function downloadAsset(filename: string): Promise<AssetResult> {
 	const base = `https://github.com/${repoSlug}/releases/download/v${version}`;
+	let assetRes: Response;
+	let shaRes: Response;
 	try {
-		const [assetRes, shaRes] = await Promise.all([fetch(`${base}/${filename}`), fetch(`${base}/${filename}.sha256`)]);
-		if (!assetRes.ok || !shaRes.ok) return false;
-		const bytes = new Uint8Array(await assetRes.arrayBuffer());
-		const expected = (await shaRes.text()).trim().split(/\s+/)[0]?.toLowerCase();
-		const hasher = new Bun.CryptoHasher("sha256");
-		hasher.update(bytes);
-		const actual = hasher.digest("hex");
-		if (!expected || actual !== expected) {
-			console.error(
-				`veyyon natives: checksum mismatch for ${filename} (expected ${expected}, got ${actual}); refusing it.`,
-			);
-			return false;
-		}
-		const target = path.join(nativeDir, filename);
-		const tmp = `${target}.download`;
+		[assetRes, shaRes] = await Promise.all([fetch(`${base}/${filename}`), fetch(`${base}/${filename}.sha256`)]);
+	} catch (err) {
+		return assetFailed(filename, `could not reach ${base} (${errorText(err)})`);
+	}
+	// 404 on the asset is the ordinary "this platform has no prebuilt" case and
+	// reads differently from a server error, which is worth retrying later.
+	if (!assetRes.ok) {
+		return assetFailed(
+			filename,
+			assetRes.status === 404
+				? `the v${version} release publishes no such asset (HTTP 404)`
+				: `HTTP ${assetRes.status} ${assetRes.statusText} fetching the asset`,
+		);
+	}
+	// A missing sidecar is NOT the same as a missing asset: the addon is there
+	// and the integrity gate cannot run, which is exactly when refusing matters.
+	if (!shaRes.ok) {
+		return assetFailed(
+			filename,
+			`the asset exists but its .sha256 sidecar returned HTTP ${shaRes.status}, so it cannot be verified`,
+		);
+	}
+	let bytes: Uint8Array;
+	let expected: string | undefined;
+	try {
+		bytes = new Uint8Array(await assetRes.arrayBuffer());
+		expected = (await shaRes.text()).trim().split(/\s+/)[0]?.toLowerCase();
+	} catch (err) {
+		return assetFailed(filename, `the download was interrupted (${errorText(err)})`);
+	}
+	const hasher = new Bun.CryptoHasher("sha256");
+	hasher.update(bytes);
+	const actual = hasher.digest("hex");
+	if (!expected) {
+		return assetFailed(filename, "the published .sha256 sidecar is empty or unparseable");
+	}
+	if (actual !== expected) {
+		return assetFailed(filename, `checksum mismatch (expected ${expected}, got ${actual}); refusing it`);
+	}
+	const target = path.join(nativeDir, filename);
+	const tmp = `${target}.download`;
+	try {
+		fs.mkdirSync(nativeDir, { recursive: true });
 		fs.writeFileSync(tmp, bytes);
 		fs.renameSync(tmp, target);
-		return true;
-	} catch {
-		return false;
+	} catch (err) {
+		// Never leave a partial file where the loader might find it.
+		try {
+			fs.rmSync(tmp, { force: true });
+		} catch {
+			// The cleanup failing does not change the diagnosis below.
+		}
+		return assetFailed(filename, `verified download could not be written to ${nativeDir} (${errorText(err)})`);
 	}
+	return { ok: true };
+}
+
+/** The message from an unknown thrown value, without an `[object Object]`. */
+function errorText(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
 
 async function cargoBuild(): Promise<boolean> {
@@ -202,6 +264,32 @@ async function cargoBuild(): Promise<boolean> {
 		stderr: "inherit",
 	});
 	return (await proc.exited) === 0;
+}
+
+/**
+ * The one paragraph shown when provisioning fails, built from the real reasons
+ * rather than a guess at them.
+ *
+ * Exported for direct testing: the failure path is the hardest one to reach
+ * naturally and the easiest to let rot into a sentence that no longer matches
+ * the code that prints it.
+ */
+export function formatProvisioningFailure(failures: AssetFailure[], cargoMissing: boolean): string {
+	const host = `${process.platform}-${process.arch}`;
+	const attempted =
+		failures.length > 0
+			? failures.map(f => `  - ${f.filename}: ${f.reason}`).join("\n")
+			: "  - (no candidate asset names for this host)";
+	const buildLine = cargoMissing
+		? "No Rust toolchain is available for a local build."
+		: "A local Rust build was attempted and did not produce a loadable addon; its output is above.";
+	return (
+		`veyyon: the native addon for this host (${host}) is missing and could not be provisioned.\n` +
+		`Tried the v${version} release:\n${attempted}\n` +
+		`${buildLine}\n` +
+		"Fix: install Rust (https://rustup.rs) and run `bun --cwd=packages/natives run build` in the checkout, " +
+		"or reinstall the standalone binary: curl -fsSL https://get.veyyon.dev | sh"
+	);
 }
 
 async function main(): Promise<void> {
@@ -222,26 +310,24 @@ async function main(): Promise<void> {
 	console.error(
 		`veyyon natives: no ${version} addon for this host; fetching the prebuilt from the v${version} release...`,
 	);
+	const failures: AssetFailure[] = [];
 	for (const name of filenames) {
-		if (await downloadAsset(name)) {
+		const result = await downloadAsset(name);
+		if (result.ok) {
 			console.error(`veyyon natives: installed prebuilt ${name}.`);
 			mirrorCurrentAddonsToCache(filenames);
 			return;
 		}
+		failures.push(result.failure);
 	}
 
+	const cargoMissing = !Bun.which("cargo");
 	if ((await cargoBuild()) && nativeIsCurrent()) {
 		mirrorCurrentAddonsToCache(filenames);
 		return;
 	}
 
-	console.error(
-		`veyyon: the native addon for this host is missing and could not be provisioned. ` +
-			`The v${version} release has no prebuilt asset for ${process.platform}-${process.arch} ` +
-			`(or the network is unreachable), and no Rust toolchain is available for a local build. ` +
-			`Fix: install Rust (https://rustup.rs) and run \`bun --cwd=packages/natives run build\` in the checkout, ` +
-			`or reinstall the standalone binary: curl -fsSL https://get.veyyon.dev | sh`,
-	);
+	console.error(formatProvisioningFailure(failures, cargoMissing));
 	process.exit(1);
 }
 
