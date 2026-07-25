@@ -153,16 +153,19 @@ describe("resolveProjectCache", () => {
 			files: [{ path: PATH }],
 		});
 		const handle = [...result.vocab.handles.entries()].find(([, expansion]) => expansion === PATH);
-		// PATH ends in `.../connection.ts`; nameStem truncates the last segment to 6
-		// chars → `connec`. Unique here, so the name is exactly the bare stem.
-		expect(handle?.[0]).toBe("connec");
+		// PATH ends in `.../connection.ts`; nameStem truncates the last segment to
+		// the 4-character name budget → `conn`. Unique here, so the name is exactly
+		// the bare stem. The budget keeps a handle at 2 tokens with the sigil, which
+		// is what makes it cheaper than the text it replaces (see MAX_NAME_LENGTH).
+		expect(handle?.[0]).toBe("conn");
 	});
 
 	test("collliding stems get distinct, minimal, deterministic disambiguators", async () => {
-		// Two DIFFERENT expansions whose 6-char stems collide (both truncate to
-		// `featur`) must still get distinct names, and the disambiguator must be a
-		// short hash suffix (not the whole 8-char content hash), assigned as a pure
-		// function of the expansion set so it is identical on every regeneration.
+		// Two DIFFERENT expansions whose stems collide (both truncate to `feat`)
+		// must still get distinct names, and the disambiguator must be a short hash
+		// suffix (not the whole 8-char content hash), assigned as a pure function of
+		// the expansion set so it is identical on every regeneration. The stem gives
+		// up characters to pay for the suffix so the total stays inside the budget.
 		const dir = await scratch();
 		const files = [{ path: "src/feature-alpha.ts" }, { path: "src/feature-omega.ts" }];
 		const result = await resolveProjectCache({ baseDir: dir, cacheId: "proj", contentSig: "sigF", files });
@@ -172,9 +175,10 @@ describe("resolveProjectCache", () => {
 		expect(names.length).toBe(2);
 		expect(new Set(names).size).toBe(2); // distinct
 		for (const name of names) {
-			expect(name.startsWith("featur")).toBe(true);
-			// stem (6) + a short hash prefix; never the fixed 8-char content hash.
-			expect(name.length).toBeLessThanOrEqual("featur".length + 4);
+			expect(name.startsWith("fea")).toBe(true);
+			// Never past the budget: a longer name would cost a third token and undo
+			// the saving the handle exists to produce.
+			expect(name.length).toBeLessThanOrEqual(4);
 		}
 	});
 
