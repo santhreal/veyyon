@@ -182,6 +182,7 @@
     "prepare": "true",
     "release": "bun scripts/release.ts",
     "site:build": "node website/build.mjs",
+    "site:check-blog": "bun website/tools/check-blog-publish.ts",
     "site:deploy": "node website/deploy.mjs",
     "site:deploy:get": "VEYYON_PAGES_PROJECT=veyyon-get node website/deploy.mjs",
     "gen:models": "bun --cwd=packages/catalog run gen:models",
