@@ -881,6 +881,22 @@ registerProvider<Settings>(settingsCapability.id, {
 	load: loadSettings,
 });
 
+/**
+ * Bare project rule files, in PRECEDENCE order within a single directory.
+ *
+ * This is an order, not a list of things that all load. The context-file
+ * capability keys project items as `project:<depth>`, deliberately keeping one
+ * project file per directory depth so that providers at the same scope shadow
+ * each other rather than stacking. So when a directory holds both names, the
+ * first one found here is the one that survives.
+ *
+ * `AGENTS.md` wins because it is the tool-neutral convention and the one other
+ * tools read too. A project carrying both is almost always stating the same rules
+ * twice for two different tools, and picking deterministically is better than
+ * letting directory-read order decide.
+ */
+const PROJECT_RULE_FILE_NAMES = ["AGENTS.md", "CLAUDE.md"] as const;
+
 // Context Files (AGENTS.md)
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
@@ -935,13 +951,67 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 			return { items, warnings };
 		}
 	}
+
+	// Layer 3: bare `AGENTS.md` / `CLAUDE.md` sitting in the project itself, walking
+	// up from cwd.
+	//
+	// This is the agents.md convention and the one most repositories actually use,
+	// including this one, and until this walk existed NOTHING loaded it. The three
+	// context-file providers each looked somewhere else: this one resolved the
+	// project file as `<nearest .veyyon dir>/AGENTS.md`, which needs a `.veyyon/`
+	// directory that most checkouts do not have; the codex provider is user-level
+	// only; the claude provider reads `<cwd>/.claude/CLAUDE.md`. Measured on the
+	// veyyon repo, which carries a 39 KB root `AGENTS.md`, the capability returned
+	// exactly one file — the global `~/.veyyon/AGENTS.md` — from the repo root, from
+	// a subpackage, and from the parent directory alike.
+	//
+	// The workspace tree did not cover the gap either. It lists AGENTS.md files it
+	// finds BELOW cwd, so the root file is missing from the root's own listing, and
+	// a session rooted in a subpackage got an empty list. Meanwhile the project
+	// prompt tells the model "the relevant ones are already in your context" and
+	// "you NEVER grep/glob for AGENTS.md", so a model following its instructions
+	// could not recover the rules by looking. Rules that are silently absent are
+	// worse than rules that are absent loudly.
+	//
+	// EVERY ancestor is collected rather than only the nearest, because the prompt
+	// already promises "deeper rules override higher ones" and that ordering only
+	// works if the higher file is present to be overridden. `loadProjectContextFiles`
+	// sorts project files by descending depth, so recording the true depth here puts
+	// the repo-root file first and the closest one last, which is the precedence the
+	// prompt describes.
+	//
+	// One walk owns both filenames on purpose. Splitting `CLAUDE.md` into the claude
+	// provider would give two independent walks that cannot order against each
+	// other, and a root `CLAUDE.md` would then be unable to override a deeper
+	// `AGENTS.md` or the reverse.
+	const seen = new Set(items.map(item => item.path));
+	// Bounded by the repo root, or by the home directory when there is no repo, so a
+	// directory outside any project never pulls in a stranger's file from `/`.
+	const stopAt = ctx.repoRoot ?? ctx.home;
+	for (const ancestor of getAncestorDirs(ctx.cwd, stopAt)) {
+		for (const fileName of PROJECT_RULE_FILE_NAMES) {
+			const candidate = path.join(ancestor.dir, fileName);
+			if (seen.has(candidate)) continue;
+			const content = await readFile(candidate);
+			if (!content) continue;
+			seen.add(candidate);
+			items.push({
+				path: candidate,
+				content,
+				level: "project",
+				depth: ancestor.depth,
+				_source: createSourceMeta(PROVIDER_ID, candidate, "project"),
+			});
+		}
+	}
+
 	return { items, warnings };
 }
 
 registerProvider<ContextFile>(contextFileCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load AGENTS.md from .veyyon/ directories",
+	description: "Load AGENTS.md and CLAUDE.md from the project tree and .veyyon/ directories",
 	priority: PRIORITY,
 	load: loadContextFiles,
 });
