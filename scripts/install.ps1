@@ -313,7 +313,25 @@ function Remove-CompletionSourceLine {
         if ($null -eq $pending) { $kept.Add($l) }
     }
     if ($null -ne $pending) { $kept.Add($pending) }
-    Set-Content -LiteralPath $ProfilePath -Value $kept.ToArray()
+    # Set-Content truncates before it writes, so a failure partway leaves the
+    # user's profile empty with no copy of what was in it. Take one first, and
+    # keep it if the rewrite fails (mirrors remove_path_line_from_rc in
+    # install.sh, which had exactly this defect).
+    $backup = "$ProfilePath.veyyon-uninstall.$PID"
+    try {
+        Copy-Item -LiteralPath $ProfilePath -Destination $backup -Force
+    } catch {
+        Write-Host "!!  could not back up $ProfilePath ($($_.Exception.Message)); left it alone" -ForegroundColor Yellow
+        return $false
+    }
+    try {
+        Set-Content -LiteralPath $ProfilePath -Value $kept.ToArray()
+    } catch {
+        Write-Host "!!  could not rewrite $ProfilePath ($($_.Exception.Message)); its previous contents are in $backup" -ForegroundColor Yellow
+        Write-Host "    restore it with: Copy-Item '$backup' '$ProfilePath'" -ForegroundColor Yellow
+        return $false
+    }
+    Remove-Item -Force $backup -ErrorAction SilentlyContinue
     return $true
 }
 
