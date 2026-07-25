@@ -1,7 +1,8 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { __resetDirsFromEnvForTests, getAgentDir } from "@veyyon/utils";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 // Piped/redirected stdout must degrade to plain text: the theme renderer
@@ -59,6 +60,37 @@ describe("`veyyon search` without a query (e2e)", () => {
 });
 
 describe("`veyyon search` output on a pipe (unit)", () => {
+	// Unlike the e2e cases above, this one runs the command IN THIS PROCESS, so
+	// the hermetic env handed to a spawned child does nothing for it.
+	// `runSearchCommand` loads Settings, which opens the agent storage database
+	// under the CONFIG root, and without moving that root the test wrote into the
+	// developer's real `~/.veyyon`. That is what the real-data tripwire caught
+	// when this case started failing on main; before the tripwire it passed while
+	// mutating real data. VEYYON_CONFIG_DIR resolves relative to os.homedir(),
+	// which Bun fixes at process start, so assigning HOME here would do nothing.
+	let configRoot = "";
+	let originalConfigDirEnv: string | undefined;
+
+	beforeAll(() => {
+		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-plain-pipe-config-"));
+		originalConfigDirEnv = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		__resetDirsFromEnvForTests();
+	});
+
+	afterAll(() => {
+		if (originalConfigDirEnv === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDirEnv;
+		__resetDirsFromEnvForTests();
+		fs.rmSync(configRoot, { recursive: true, force: true });
+	});
+
+	/** Isolation is asserted, not assumed: it only proves the path it names. */
+	it("resolves the agent directory inside the temp config root, not the real one", () => {
+		expect(getAgentDir().startsWith(configRoot)).toBe(true);
+		expect(getAgentDir()).not.toContain(path.join(os.homedir(), ".veyyon"));
+	});
+
 	it("strips theme escapes from the rendered panel when chalk detects no color support", async () => {
 		const searchIndex = await import("@veyyon/coding-agent/web/search/index");
 		const { runSearchCommand } = await import("@veyyon/coding-agent/cli/web-search-cli");
