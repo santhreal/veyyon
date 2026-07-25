@@ -55,24 +55,28 @@ import {
 	collectShakeRegions,
 	compact,
 	compactionContextTokens,
+	computeFileLists,
 	createCompactionSummaryMessage,
+	createFileOps,
 	estimateTokens,
+	extractFileOpsFromMessage,
+	formatCompactionThreshold,
 	generateBranchSummary,
 	generateHandoffFromContext,
 	hasLegacyArchive,
-	isThresholdTokensClampedForWindow,
 	prepareCompaction,
 	redactLegacyArchiveText,
 	renderHandoffPrompt,
 	resolveBudgetReserveTokens,
 	resolveThresholdTokens,
+	resolveThresholdWithOrigin,
 	type SessionMessageEntry,
 	type ShakeConfig,
 	type ShakeRegion,
 	type SummaryOptions,
 	shouldCompact,
-	shouldUseOpenAiRemoteCompaction,
 	stripLegacyArchive,
+	upsertFileOperations,
 } from "@veyyon/agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
@@ -177,7 +181,6 @@ import {
 	resolveAdvisorDeliveryChannel,
 	slugifyAdvisorName,
 } from "../advisor";
-import { ArgotStreamDisplayDecoder, expandAssistantContent, expandSessionContext } from "../lexpack-wire";
 import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
 import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";
@@ -205,9 +208,10 @@ import {
 	resolveModelRoleValue,
 } from "../config/model-resolver";
 import {
+	DEFAULT_MODEL_SLOT,
 	getKnownRoleIds,
-	LEGACY_DEFAULT_MODEL_ROLE,
 	MODEL_ROLES,
+	resolveModelSlot,
 	SELECTABLE_MODEL_ROLE_IDS,
 } from "../config/model-roles";
 import { expandPromptTemplate, type PromptTemplate } from "../config/prompt-templates";
@@ -269,6 +273,7 @@ import type { Goal, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
 import { IrcBus, type IrcMessage } from "../irc/bus";
+import { ArgotStreamDisplayDecoder, expandAssistantContent, expandSessionContext } from "../lexpack-wire";
 import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
@@ -325,6 +330,7 @@ import {
 } from "../secrets/obfuscator";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
+import { delegationRequired, enabledSubagentNames } from "../task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -1773,11 +1779,11 @@ export class AgentSession {
 	 */
 	#approvalBypassActive = false;
 
-	// Context window we last warned about clamping `compaction.thresholdTokens`
-	// for. The absolute token amount is model-independent, so when it exceeds the
-	// current model's window we honor it up to `contextWindow - 1` and warn once
-	// per distinct window (re-warns after a model switch to a smaller window),
-	// never silently reinterpreting the operator's configured amount.
+	// Context window we last reported a surprising compaction threshold for — a
+	// capped absolute amount, a value still coming from a retired key, or an
+	// unparseable value. Warned once per distinct window (re-warns after a model
+	// switch to a smaller window), so the operator's configured amount is never
+	// silently reinterpreted. See #noticeCompactionThresholdClamp.
 	#compactionClampNoticeWindow: number | undefined = undefined;
 
 	#powerAssertion: MacOSPowerAssertion | undefined;
@@ -1992,6 +1998,14 @@ export class AgentSession {
 	#disconnectOwnedMcpManager: (() => Promise<void>) | undefined;
 	#requestedToolNames: ReadonlySet<string> | undefined;
 	#baseSystemPrompt: string[];
+	/**
+	 * Every mid-session system-prompt change, in order, by the reason its caller
+	 * gave. Each entry is one full prefix-cache invalidation, so this doubles as
+	 * the running count of "turns that had to re-read the whole context as fresh
+	 * input". Exposed through {@link systemPromptInvalidations} so a bench or a
+	 * cost report can attribute cache misses to the subsystem that caused them.
+	 */
+	readonly #baseSystemPromptInvalidations: string[] = [];
 	#baseSystemPromptBeforeMemoryPromotion: string[] | undefined;
 	/**
 	 * Signature of the (toolNames, tool descriptions) tuple passed to the most
@@ -2919,7 +2933,8 @@ export class AgentSession {
 			}
 
 			// Resolve the advisor's model: an explicit `model` override wins; else the
-			// `advisor` role chain. A model that fails to resolve skips just this advisor.
+			// `advisor` role, which inherits this session's live model when unset.
+			// A model that fails to resolve skips just this advisor.
 			let model: Model | undefined;
 			let thinkingLevel: ThinkingLevel | undefined;
 			if (config.model) {
@@ -2933,14 +2948,18 @@ export class AgentSession {
 					continue;
 				}
 			} else {
-				const sel = resolveAdvisorRoleSelection(this.settings, this.#modelRegistry.getAvailable());
+				const sel = resolveAdvisorRoleSelection(
+					this.settings,
+					this.#modelRegistry.getAvailable(),
+					this.agent.state.model,
+				);
 				if (!sel) {
 					// An enabled advisor silently doing nothing is a silent fallback —
 					// surface it like the explicit-override miss above.
 					if (emitWarnings) {
 						this.emitNotice(
 							"warning",
-							`Advisor "${config.name}": no advisor-role model available (set modelRoles.advisor); advisor inactive`,
+							`Advisor "${config.name}": no advisor model available (set modelRoles.advisor, or sign in so the session model can be inherited); advisor inactive`,
 							"advisor",
 						);
 					}
@@ -3459,11 +3478,7 @@ export class AgentSession {
 			this.sessionId,
 			advisor.slug,
 		);
-		const preparation = prepareCompaction(
-			pathEntries,
-			toAgentCompactionSettings(compactionSettings),
-			await this.#runnableCompactionCandidates(candidates, advisorProviderSessionId),
-		);
+		const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
 		if (!preparation) {
 			// Cannot prepare compaction, fallback to re-prime
 			return true;
@@ -6429,7 +6444,7 @@ export class AgentSession {
 			this.#baseSystemPromptBeforeMemoryPromotion = undefined;
 		}
 		if (resetHindsight || resetMnemopi || hadPromotedMemoryPrompt) {
-			await this.refreshBaseSystemPrompt();
+			await this.refreshBaseSystemPrompt("memory-reset");
 		}
 	}
 
@@ -6904,7 +6919,7 @@ export class AgentSession {
 		// The system prompt selects model-specific policy even when it does not display the model id.
 		const modelChanged = this.#currentPromptModelKey() !== this.#promptModelKey;
 		if (editModeChanged || modelChanged) {
-			await this.refreshBaseSystemPrompt();
+			await this.refreshBaseSystemPrompt(editModeChanged ? "edit-mode-change" : "model-change");
 		}
 	}
 
@@ -7333,7 +7348,20 @@ export class AgentSession {
 	 *
 	 * Returns the unchanged current prompt when no rebuild hook is installed.
 	 */
-	async refreshBaseSystemPrompt(): Promise<string[]> {
+	/**
+	 * Reasons for every prefix-cache invalidation this session has caused, in
+	 * order. Empty means the system prompt never changed after startup, which is
+	 * the cheap case: the provider served the whole prompt from cache all session.
+	 */
+	systemPromptInvalidations(): readonly string[] {
+		// A copy, and frozen. `readonly string[]` is a compile-time claim only:
+		// returning the live array hands a caller the session's own cost evidence
+		// to mutate, and a reader that trimmed or appended to it would silently
+		// misreport how many times the cache was invalidated.
+		return Object.freeze([...this.#baseSystemPromptInvalidations]);
+	}
+
+	async refreshBaseSystemPrompt(reason = "unspecified"): Promise<string[]> {
 		if (!this.#rebuildSystemPrompt) return this.#baseSystemPrompt;
 		const activeToolNames = this.getActiveToolNames();
 		this.#setActiveToolNames?.(activeToolNames);
@@ -7346,6 +7374,25 @@ export class AgentSession {
 			previousBaseSystemPrompt.some((part, index) => part !== this.#baseSystemPrompt[index])
 		) {
 			this.#clearInheritedProviderPromptCacheKey();
+			// Changing the system prompt mid-session invalidates the provider's
+			// prefix cache, and the next request re-reads the ENTIRE context as
+			// fresh input. That is the most expensive thing a session can do
+			// silently: on a measured 66-turn trace, five turns came back with
+			// `cacheRead: 0` while resending 46-72k tokens each, about 8% of the
+			// session bill, and nothing in the transcript said why. The
+			// invalidation was already detected right here and simply never
+			// recorded, so every attempt to explain the misses was guesswork.
+			//
+			// Recorded loudly rather than at debug, because a caller that refreshes
+			// the prompt on a hot path is a cost bug, and the reason is the only
+			// thing that identifies which caller it was.
+			this.#baseSystemPromptInvalidations.push(reason);
+			logger.warn("system prompt changed mid-session; provider prompt cache invalidated", {
+				reason,
+				invalidationsThisSession: this.#baseSystemPromptInvalidations.length,
+				previousChars: previousBaseSystemPrompt.join("\n\n").length,
+				nextChars: this.#baseSystemPrompt.join("\n\n").length,
+			});
 		}
 		this.agent.setSystemPrompt(this.#baseSystemPrompt);
 		this.#promptModelKey = this.#currentPromptModelKey();
@@ -7369,7 +7416,7 @@ export class AgentSession {
 
 			const previousBaseSystemPrompt = this.#baseSystemPrompt;
 			try {
-				await this.refreshBaseSystemPrompt();
+				await this.refreshBaseSystemPrompt("memory-backend-injection");
 			} catch (refreshErr) {
 				logger.debug("Memory backend prompt refresh after beforeAgentStartPrompt failed", {
 					backend: backend.id,
@@ -8146,9 +8193,15 @@ export class AgentSession {
 				: sessionPlanUrl;
 
 		const planExists = fs.existsSync(resolvedPlanPath);
+		// Plan mode's research step names `scout` when that agent is on offer and
+		// falls back to the general worker otherwise, so the instruction always
+		// points at an agent this session can actually spawn.
+		const subagentNames = enabledSubagentNames(this.#toolRegistry.get("task"));
 		const content = prompt.render(planModeActivePrompt, {
 			planFilePath: displayPlanPath,
 			planExists,
+			canDelegate: subagentNames.length > 0,
+			researchAgent: subagentNames.includes("scout") ? "scout" : "task",
 			askToolName: "ask",
 			writeToolName: "write",
 			editToolName: "edit",
@@ -8357,7 +8410,7 @@ export class AgentSession {
 			keywordNotices.push({
 				role: "custom",
 				customType: "workflow-notice",
-				content: renderWorkflowNotice({ taskBatch: this.settings.get("task.batch") }),
+				content: renderWorkflowNotice({ taskBatch: this.settings.get("subagent.batch") }),
 				display: false,
 				attribution: "user",
 				timestamp,
@@ -8625,12 +8678,12 @@ export class AgentSession {
 								`Your credentials are still stored in ${getActiveAuthDbPath()}.`
 						: disabledCause
 							? `Your ${provider} login was disabled after a token refresh failed, so there is no usable credential right now.\n\n` +
-									`The provider rejected the refresh with: ${disabledCause}\n\n` +
-									`This usually means the refresh token was already spent or revoked, which a crash mid-refresh can cause. ` +
-									`Run /login to sign in again. The disabled credential is still recorded in ${getActiveAuthDbPath()}.`
+								`The provider rejected the refresh with: ${disabledCause}\n\n` +
+								`This usually means the refresh token was already spent or revoked, which a crash mid-refresh can cause. ` +
+								`Run /login to sign in again. The disabled credential is still recorded in ${getActiveAuthDbPath()}.`
 							: `No API key found for ${provider}.\n\n` +
-									`Use /login (or \`veyyon setup\`) to sign in to ${provider}, or set its API key environment variable. ` +
-									`Stored credentials live in ${getActiveAuthDbPath()}.`,
+								`Use /login (or \`veyyon setup\`) to sign in to ${provider}, or set its API key environment variable. ` +
+								`Stored credentials live in ${getActiveAuthDbPath()}.`,
 				);
 			}
 
@@ -9825,7 +9878,7 @@ export class AgentSession {
 	 */
 	async setModel(
 		model: Model,
-		role: string = "interactive",
+		role: string = DEFAULT_MODEL_SLOT,
 		options?: {
 			selector?: string;
 			thinkingLevel?: ThinkingLevel;
@@ -9843,18 +9896,15 @@ export class AgentSession {
 		this.#modelRegistry.clearSuppressedSelector(formatModelStringWithRouting(targetModel));
 		this.#clearActiveRetryFallback();
 		this.#setModelWithProviderSessionReset(targetModel);
-		const logRole = role === "default" ? "interactive" : role;
-		this.sessionManager.appendModelChange(`${targetModel.provider}/${targetModel.id}`, logRole);
+		// One name for the slot, resolved once: the log and the store used to disagree
+		// on the same write (stored `default`, logged `interactive`), so a reader of
+		// the session log could not match an entry to the setting it changed.
+		const slot = resolveModelSlot(role);
+		this.sessionManager.appendModelChange(`${targetModel.provider}/${targetModel.id}`, slot);
 		if (options?.persist) {
-			// Interactive model is not a selectable role; remember it under the legacy
-			// modelRoles.default key so startup / --models restore still works.
-			const persistRole =
-				role === "interactive" || role === "default" || role === LEGACY_DEFAULT_MODEL_ROLE
-					? LEGACY_DEFAULT_MODEL_ROLE
-					: role;
 			this.settings.setModelRole(
-				persistRole,
-				this.#formatRoleModelValue(persistRole, targetModel, options.selector, options.thinkingLevel),
+				slot,
+				this.#formatRoleModelValue(slot, targetModel, options.selector, options.thinkingLevel),
 			);
 		}
 		this.settings.getStorage()?.recordModelUsage(`${targetModel.provider}/${targetModel.id}`);
@@ -9939,7 +9989,7 @@ export class AgentSession {
 		for (const role of roleOrder) {
 			const roleModelStr =
 				role === "default"
-					? (this.settings.getModelRole("default") ?? `${currentModel.provider}/${currentModel.id}`)
+					? (this.settings.getModelRole(DEFAULT_MODEL_SLOT) ?? `${currentModel.provider}/${currentModel.id}`)
 					: this.settings.getModelRole(role);
 			if (!roleModelStr) continue;
 
@@ -10713,38 +10763,16 @@ export class AgentSession {
 
 			const compactionSettings = this.settings.getGroup("compaction");
 			// The `/compact <mode>` override (resolved above) replaces the configured
-			// strategy/remote flags for this one invocation. Merged before
-			// prepareCompaction so the remote gating (preparation.settings.
-			// remoteEnabled/endpoint) and the compaction decision below both see it.
+			// strategy for this one invocation. Every mode resolves to one of the two
+			// strategies — `summary` or `handoff` — so there is no per-provider
+			// candidate filtering to do here.
 			const effectiveSettings = compactMode
 				? { ...compactionSettings, ...compactMode.overrides }
 				: compactionSettings;
-			// /compact remote demands provider-native compaction. When no remote
-			// endpoint is configured (one would override per-model gating in
-			// compact()), drop fallback candidates that aren't remote-capable so the
-			// engine never silently runs a local summary on a configured-but-non-
-			// remote compactionModel. If filtering empties the chain, warn and fall
-			// back to the full chain so the operation still completes.
 			const availableModels = this.#modelRegistry.getAvailable();
-			const requireProviderRemote = Boolean(compactMode?.requiresRemote && !effectiveSettings.remoteEndpoint);
-			let compactionCandidates = this.#getCompactionModelCandidates(
-				availableModels,
-				requireProviderRemote ? shouldUseOpenAiRemoteCompaction : undefined,
-			);
-			if (requireProviderRemote && compactionCandidates.length === 0) {
-				this.emitNotice(
-					"warning",
-					`remote compaction is unavailable for ${this.model.id} (no remote endpoint configured and no provider-native remote-capable model in the fallback chain) — using a local summary instead`,
-					"compaction",
-				);
-				compactionCandidates = this.#getCompactionModelCandidates(availableModels);
-			}
+			const compactionCandidates = this.#getCompactionModelCandidates(availableModels);
 			const pathEntries = this.sessionManager.getBranch();
-			const preparation = prepareCompaction(
-				pathEntries,
-				toAgentCompactionSettings(effectiveSettings),
-				await this.#runnableCompactionCandidates(compactionCandidates, this.sessionId),
-			);
+			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings));
 			if (!preparation) {
 				// Check why we can't compact
 				const lastEntry = pathEntries[pathEntries.length - 1];
@@ -11073,7 +11101,21 @@ export class AgentSession {
 					thinkingLevel: this.thinkingLevel,
 				},
 			);
-			const handoffText = this.#deobfuscateFromProvider(rawHandoffText);
+			// Append the same deterministic `<files>` block the summary strategy gets.
+			// It is machine-generated from the live messages, costs no LLM work, and is
+			// byte-identical across models, so the handoff had been giving the next
+			// session strictly less than a summary of the same history for no reason.
+			const handoffFileOps = createFileOps();
+			for (const message of this.agent.state.messages) {
+				extractFileOpsFromMessage(message, handoffFileOps);
+			}
+			const handoffFileLists = computeFileLists(handoffFileOps);
+			const handoffText = upsertFileOperations(
+				this.#deobfuscateFromProvider(rawHandoffText),
+				handoffFileLists.readFiles,
+				handoffFileLists.modifiedFiles,
+				handoffFileOps.read,
+			);
 
 			if (handoffSignal.aborted) {
 				throw new Error("Handoff cancelled");
@@ -11521,7 +11563,7 @@ export class AgentSession {
 		// Pruning frees bytes for the NEXT prompt; it does not change the size of
 		// the prompt the LLM just billed for. Earlier revisions subtracted the
 		// per-turn supersede/prune `tokensSaved` from the threshold input, which
-		// let a long-running `/goal` session sit above `compaction.thresholdTokens`
+		// let a long-running `/goal` session sit above `compaction.threshold`
 		// indefinitely whenever per-turn pruning saved enough to drop the
 		// post-prune estimate below the user-configured trigger — the visible
 		// context (anchored to the same provider billing) still showed >threshold,
@@ -11535,7 +11577,7 @@ export class AgentSession {
 			storedContextTokens,
 		);
 		const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
-		this.#noticeCompactionThresholdClamp(contextWindow, compactionSettings, thresholdTokens);
+		this.#noticeCompactionThresholdClamp(contextWindow, compactionSettings);
 		const shouldThresholdCompact = shouldCompact(contextTokens, contextWindow, compactionSettings);
 		logger.debug("Auto-compaction threshold decision", {
 			phase: "post-agent-end",
@@ -11586,26 +11628,46 @@ export class AgentSession {
 	}
 
 	/**
-	 * Warn the operator, once per distinct context window, when their configured
-	 * absolute `compaction.thresholdTokens` exceeds the current model's window and
-	 * was capped to `contextWindow - 1`. The token amount is model-independent by
-	 * design, so rather than silently reinterpreting it (a silent fallback) we
-	 * honor it up to the window and say so loudly. Re-warns after a switch to a
-	 * different (smaller) window; stays quiet once the amount fits.
+	 * Report anything surprising about the resolved compaction threshold, once per
+	 * distinct context window (so a switch to a smaller-window model re-warns).
+	 *
+	 * Three surprises are worth an operator's attention, and all three used to be
+	 * invisible: an absolute amount capped for this model's window, a value still
+	 * coming from one of the two retired keys rather than `compaction.threshold`,
+	 * and a value that parsed as nothing and therefore fell back to auto.
 	 */
-	#noticeCompactionThresholdClamp(
-		contextWindow: number,
-		compactionSettings: CompactionSettings,
-		clampedThresholdTokens: number,
-	): void {
-		if (!isThresholdTokensClampedForWindow(contextWindow, compactionSettings)) return;
+	#noticeCompactionThresholdClamp(contextWindow: number, compactionSettings: CompactionSettings): void {
+		const resolved = resolveThresholdWithOrigin(contextWindow, compactionSettings);
+		const surprising = resolved.clamped || resolved.legacyKey !== undefined || resolved.invalidRaw !== undefined;
+		if (!surprising) return;
 		if (this.#compactionClampNoticeWindow === contextWindow) return;
 		this.#compactionClampNoticeWindow = contextWindow;
-		this.emitNotice(
-			"warning",
-			`compaction.thresholdTokens (${compactionSettings.thresholdTokens}) is larger than this model's context window (${contextWindow}); capped to ${clampedThresholdTokens} tokens for the current model. Lower the amount or switch to a larger-window model to use the full value.`,
-			"compaction",
-		);
+
+		if (resolved.invalidRaw !== undefined) {
+			this.emitNotice(
+				"warning",
+				`compaction.threshold is set to "${resolved.invalidRaw}", which is not auto, a percent (85%), or a token amount (170000); compacting at ${formatCompactionThreshold(resolved, contextWindow)} instead. Set a valid value in /settings -> Model -> Compaction Threshold.`,
+				"compaction",
+			);
+			return;
+		}
+
+		if (resolved.origin === "tokens" && resolved.clamped) {
+			this.emitNotice(
+				"warning",
+				`The configured compaction threshold (${resolved.configured} tokens) is larger than this model's context window (${contextWindow}); compacting at ${formatCompactionThreshold(resolved, contextWindow)}. Lower the amount or switch to a larger-window model to use the full value.`,
+				"compaction",
+			);
+			return;
+		}
+
+		if (resolved.legacyKey !== undefined) {
+			this.emitNotice(
+				"info",
+				`Compaction is triggering at ${formatCompactionThreshold(resolved, contextWindow)}, taken from the retired compaction.${resolved.legacyKey} setting. Re-pick it in /settings -> Model -> Compaction Threshold to move it to compaction.threshold.`,
+				"compaction",
+			);
+		}
 	}
 
 	#markTerminalYieldToolCall(toolCallId: string): void {
@@ -12229,7 +12291,7 @@ export class AgentSession {
 		};
 		return {
 			toolRefs: { task: wireName("task"), todo: wireName("todo") },
-			taskBatch: this.settings.get("task.batch"),
+			taskBatch: this.settings.get("subagent.batch"),
 		};
 	}
 
@@ -12308,7 +12370,7 @@ export class AgentSession {
 	}
 
 	#createEagerTaskPrelude(promptText: string | undefined): AgentMessage | undefined {
-		if (this.settings.get("task.eager") !== "always") return undefined;
+		if (!delegationRequired(this.settings)) return undefined;
 		// Main agent only: subagents keep `task` active (the parent only filters `todo`),
 		// so a salient delegate-reminder there would amplify nested fan-out. Gate on the
 		// resolved agent kind, not the id, so a top-level session with a custom `agentId`
@@ -12937,7 +12999,7 @@ export class AgentSession {
 	): ResolvedModelRoleValue {
 		const roleModelStr =
 			role === "default"
-				? (this.settings.getModelRole("default") ??
+				? (this.settings.getModelRole(DEFAULT_MODEL_SLOT) ??
 					(currentModel ? `${currentModel.provider}/${currentModel.id}` : undefined))
 				: this.settings.getModelRole(role);
 
@@ -13140,7 +13202,7 @@ export class AgentSession {
 		if (skippedForWindow > 0 && skippedForWindow === candidates.length) {
 			throw new Error(
 				`Compaction failed: the summarization payload (~${summarizePayloadTokens} tokens) exceeds the context window of every compaction candidate. ` +
-					`Raise compaction.modelContextWindow only if your provider really serves a larger window, pick a larger compaction.model, or lower compaction.thresholdPercent so compaction runs earlier.`,
+					`Raise compaction.modelContextWindow only if your provider really serves a larger window, pick a larger compaction.model, or lower compaction.threshold so compaction runs earlier.`,
 			);
 		}
 		throw this.#buildCompactionAuthError();
@@ -13559,11 +13621,7 @@ export class AgentSession {
 				this.#getCompactionModelCandidates(availableModels),
 				this.sessionId,
 			);
-			const preparation = prepareCompaction(
-				pathEntries,
-				toAgentCompactionSettings(compactionSettings),
-				autoCompactionCandidates,
-			);
+			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
 			if (!preparation) {
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",

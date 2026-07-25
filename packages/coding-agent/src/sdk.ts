@@ -41,6 +41,7 @@ import { loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
 import { bucketRules } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
+import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { isAuthenticated, kNoAuth, ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
@@ -58,12 +59,13 @@ import {
 } from "./config/model-resolver";
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "./config/prompt-templates";
 import { buildServiceTierByFamily } from "./config/service-tier";
-import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
 import { armArgotAfterStartup } from "./lexpack-cache";
 import "./discovery";
 import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
+import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
+import { optionalNumber } from "./config/optional-number";
 import { initializeWithSettings } from "./discovery";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
 import { disposeAllVmContexts, disposeVmContextsByOwner } from "./eval/js/context-manager";
@@ -158,6 +160,7 @@ import {
 import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/prompt-blocks";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
+import { delegationPreferred, delegationRequired, enabledSubagentNames } from "./task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -1379,7 +1382,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		resolveAllowedModels(modelRegistry, settings, modelMatchPreferences),
 	);
 	let defaultRoleSpec = logger.time("resolveDefaultModelRole", () =>
-		resolveModelRoleValue(settings.getModelRole("default"), allowedModels, {
+		resolveModelRoleValue(settings.getModelRole(DEFAULT_MODEL_SLOT), allowedModels, {
 			settings,
 			matchPreferences: modelMatchPreferences,
 		}),
@@ -2266,10 +2269,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// Re-resolve the allowed set: extension factories and discovery
 				// refreshes above may have registered models not visible earlier.
 				const fallbackCandidates = await resolveAllowedModels(modelRegistry, settings, modelMatchPreferences);
-				const reResolvedRoleSpec = resolveModelRoleValue(settings.getModelRole("default"), fallbackCandidates, {
-					settings,
-					matchPreferences: modelMatchPreferences,
-				});
+				const reResolvedRoleSpec = resolveModelRoleValue(
+					settings.getModelRole(DEFAULT_MODEL_SLOT),
+					fallbackCandidates,
+					{
+						settings,
+						matchPreferences: modelMatchPreferences,
+					},
+				);
 				if (!reResolvedRoleSpec.model) return false;
 				defaultRoleSpec = reResolvedRoleSpec;
 				const resolvedDefaultModel = reResolvedRoleSpec.model;
@@ -2309,7 +2316,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// configured (must win over `pick`) or nothing resolved at all.
 				// The common path — role already resolved, or a `pick` with no
 				// configured default — never pays for it.
-				const defaultRoleConfigured = Boolean(settings.getModelRole("default"));
+				const defaultRoleConfigured = Boolean(settings.getModelRole(DEFAULT_MODEL_SLOT));
 				if (
 					!hasExplicitModel &&
 					(defaultRoleConfigured || !pick) &&
@@ -2577,8 +2584,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// like the rest of the prune machinery this is fixed for the session, so a
 		// mid-session model switch keeps the start-time decision.
 		const inlineToolDescriptors = shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), model?.id);
-		const eagerTasks = settings.get("task.eager") !== "default";
-		const eagerTasksAlways = settings.get("task.eager") === "always";
+		const eagerTasks = delegationPreferred(settings);
+		const eagerTasksAlways = delegationRequired(settings);
 		const intentField = $flag("VEYYON_INTENT_TRACING", settings.get("tools.intentTracing"))
 			? INTENT_FIELD
 			: undefined;
@@ -2608,6 +2615,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const promptTools = buildSystemPromptToolMetadata(tools, {
 				search_tool_bm25: { description: renderSearchToolBm25Description(discoverableToolsForDesc) },
 			});
+			// Ask the live task tool which agents this session may spawn, rather than
+			// re-running discovery here: it already filtered its discovered set
+			// through `subagent.agents`, and the prompt must describe exactly the
+			// agents the tool will accept. Absent when delegation is off.
+			const subagentNames = enabledSubagentNames(tools.get("task"));
 			const memoryBackend = await resolveMemoryBackend(settings);
 			const memoryInstructions = await memoryBackend.buildDeveloperInstructions(agentDir, settings, session);
 
@@ -2685,9 +2697,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				mcpDiscoveryServerSummaries: discoverableToolSummary.servers.map(formatDiscoverableToolServerSummary),
 				eagerTasks,
 				eagerTasksAlways,
-				taskBatch: settings.get("task.batch"),
-				taskMaxConcurrency: settings.get("task.maxConcurrency"),
+				taskBatch: settings.get("subagent.batch"),
+				taskMaxConcurrency: settings.get("subagent.maxConcurrency"),
 				taskIrcEnabled: isIrcEnabled(settings, options.taskDepth ?? 0),
+				subagentNames,
 				secretsEnabled,
 				argotPreamble: argotCanEncode ? renderPreamble({ tools: true }) : undefined,
 				argotHandles: argotCanEncode && argot.loaded ? argot.promptFragment() : undefined,
@@ -2815,7 +2828,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (settings.get("todo.eager") !== "default" && settings.get("todo.enabled") && toolRegistry.has("todo")) {
 				forceActive.add("todo");
 			}
-			if (settings.get("task.eager") !== "default" && toolRegistry.has("task")) {
+			if (delegationPreferred(settings) && toolRegistry.has("task")) {
 				forceActive.add("task");
 			}
 			initialToolNames = filterInitialToolsForDiscoveryAll(initialToolNames, {
@@ -2973,12 +2986,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			followUpMode: settings.get("followUpMode") ?? "one-at-a-time",
 			interruptMode: settings.get("interruptMode") ?? "immediate",
 			thinkingBudgets: settings.getGroup("thinkingBudgets"),
-			temperature: settings.get("temperature") >= 0 ? settings.get("temperature") : undefined,
-			topP: settings.get("topP") >= 0 ? settings.get("topP") : undefined,
-			topK: settings.get("topK") >= 0 ? settings.get("topK") : undefined,
-			minP: settings.get("minP") >= 0 ? settings.get("minP") : undefined,
-			presencePenalty: settings.get("presencePenalty") >= 0 ? settings.get("presencePenalty") : undefined,
-			repetitionPenalty: settings.get("repetitionPenalty") >= 0 ? settings.get("repetitionPenalty") : undefined,
+			// Unset is exactly UNSET_NUMBER, read through its one owner. The previous
+			// `>= 0` test also discarded every legitimate negative value, so a
+			// configured negative presence/repetition penalty (both providers accept
+			// them) silently never reached the request.
+			temperature: optionalNumber(settings.get("temperature")),
+			topP: optionalNumber(settings.get("topP")),
+			topK: optionalNumber(settings.get("topK")),
+			minP: optionalNumber(settings.get("minP")),
+			presencePenalty: optionalNumber(settings.get("presencePenalty")),
+			repetitionPenalty: optionalNumber(settings.get("repetitionPenalty")),
 			hideThinkingSummary: settings.get("omitThinking"),
 			kimiApiFormat: settings.get("providers.kimiApiFormat") ?? "anthropic",
 			preferWebsockets: preferOpenAICodexWebsockets,
@@ -3238,7 +3255,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// the model, when the same evidence is equally consistent with the
 				// table never reaching the model at all. This entry is the difference.
 				onArmed: async () => {
-					const prompt = await session.refreshBaseSystemPrompt();
+					const prompt = await session.refreshBaseSystemPrompt("argot-arm");
 					const joined = prompt.join("\n\n");
 					const taughtHandles = argot.loaded ? argot.vocabulary().handles.size : 0;
 					const inPrompt = joined.includes(ARGOT_HANDLES_BANNER);
@@ -3255,10 +3272,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						// Fail loud rather than degrade quietly: an armed session whose
 						// prompt carries no table is inert, and silence here is what made
 						// that state indistinguishable from the feature being off.
-						logger.error("argot: refreshed system prompt carries no handle table; session is effectively UNARMED", {
-							cwd,
-							handles: taughtHandles,
-						});
+						logger.error(
+							"argot: refreshed system prompt carries no handle table; session is effectively UNARMED",
+							{
+								cwd,
+								handles: taughtHandles,
+							},
+						);
 					}
 				},
 				// Record the actually-loaded vocabulary (including an empty one) as

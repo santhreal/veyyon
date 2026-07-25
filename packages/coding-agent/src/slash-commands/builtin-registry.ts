@@ -10,6 +10,7 @@ import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
+import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../config/service-tier";
 import { settings } from "../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
@@ -64,7 +65,7 @@ function refreshStatusLine(ctx: Pick<InteractiveModeContext, "statusLine" | "ui"
 	ctx.ui.requestRender();
 }
 
-/** `/fast status` label for the active model: "on" when its family is priority, else "off". */
+/** `/fast status` label for the active model: "on" when its family is the priority tier, else "off". */
 function formatFastModeStatus(session: AgentSession): string {
 	return session.isFastModeEnabled() ? "on" : "off";
 }
@@ -513,31 +514,36 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		acpDescription: "Toggle fast mode",
 		acpInputHint: "[on|off|status]",
 		subcommands: [
-			{ name: "on", description: "Enable fast mode" },
-			{ name: "off", description: "Disable fast mode" },
-			{ name: "status", description: "Show fast mode status" },
+			{ name: "on", description: `Enable the ${PRIORITY_TIER_LABEL} tier` },
+			{ name: "off", description: `Disable the ${PRIORITY_TIER_LABEL} tier` },
+			{ name: "status", description: `Show whether the ${PRIORITY_TIER_LABEL} tier is on` },
 		],
 		allowArgs: true,
-		getTuiAutocompleteDescription: runtime => `Toggle fast mode · ${formatFastModeStatus(runtime.ctx.session)}`,
+		getTuiAutocompleteDescription: runtime =>
+			`Toggle the ${PRIORITY_TIER_LABEL} tier · ${formatFastModeStatus(runtime.ctx.session)}`,
 		handle: async (command, runtime) => {
 			const arg = command.args.toLowerCase();
 			if (!arg || arg === "toggle") {
 				const enabled = runtime.session.toggleFastMode();
-				await runtime.output(`Fast mode ${enabled ? "enabled" : "disabled"}.`);
+				await runtime.output(`${PRIORITY_TIER_COMMAND_LABEL} ${enabled ? "enabled" : "disabled"}.`);
 				return commandConsumed();
 			}
 			if (arg === "on") {
 				const supported = runtime.session.setFastMode(true);
-				await runtime.output(supported ? "Fast mode enabled." : "Fast mode is unavailable for the current model.");
+				await runtime.output(
+					supported
+						? `${PRIORITY_TIER_COMMAND_LABEL} enabled.`
+						: `${PRIORITY_TIER_COMMAND_LABEL} is unavailable for the current model.`,
+				);
 				return commandConsumed();
 			}
 			if (arg === "off") {
 				runtime.session.setFastMode(false);
-				await runtime.output("Fast mode disabled.");
+				await runtime.output(`${PRIORITY_TIER_COMMAND_LABEL} disabled.`);
 				return commandConsumed();
 			}
 			if (arg === "status") {
-				await runtime.output(`Fast mode is ${formatFastModeStatus(runtime.session)}.`);
+				await runtime.output(`${PRIORITY_TIER_COMMAND_LABEL} is ${formatFastModeStatus(runtime.session)}.`);
 				return commandConsumed();
 			}
 			return usage("Usage: /fast [on|off|status]", runtime);
@@ -547,7 +553,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			if (!arg || arg === "toggle") {
 				const enabled = runtime.ctx.session.toggleFastMode();
 				refreshStatusLine(runtime.ctx);
-				runtime.ctx.showStatus(`Fast mode ${enabled ? "enabled" : "disabled"}.`);
+				runtime.ctx.showStatus(`${PRIORITY_TIER_COMMAND_LABEL} ${enabled ? "enabled" : "disabled"}.`);
 				runtime.ctx.editor.setText("");
 				return;
 			}
@@ -555,7 +561,9 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				const supported = runtime.ctx.session.setFastMode(true);
 				refreshStatusLine(runtime.ctx);
 				runtime.ctx.showStatus(
-					supported ? "Fast mode enabled." : "Fast mode is unavailable for the current model.",
+					supported
+						? `${PRIORITY_TIER_COMMAND_LABEL} enabled.`
+						: `${PRIORITY_TIER_COMMAND_LABEL} is unavailable for the current model.`,
 				);
 				runtime.ctx.editor.setText("");
 				return;
@@ -563,12 +571,12 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			if (arg === "off") {
 				runtime.ctx.session.setFastMode(false);
 				refreshStatusLine(runtime.ctx);
-				runtime.ctx.showStatus("Fast mode disabled.");
+				runtime.ctx.showStatus(`${PRIORITY_TIER_COMMAND_LABEL} disabled.`);
 				runtime.ctx.editor.setText("");
 				return;
 			}
 			if (arg === "status") {
-				runtime.ctx.showStatus(`Fast mode is ${formatFastModeStatus(runtime.ctx.session)}.`);
+				runtime.ctx.showStatus(`${PRIORITY_TIER_COMMAND_LABEL} is ${formatFastModeStatus(runtime.ctx.session)}.`);
 				runtime.ctx.editor.setText("");
 				return;
 			}
@@ -1692,7 +1700,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				case "clear":
 				case "reset": {
 					await backend.clear(runtime.settings.getAgentDir(), runtime.cwd, runtime.session);
-					await runtime.session.refreshBaseSystemPrompt();
+					await runtime.session.refreshBaseSystemPrompt("slash-command");
 					await runtime.output("Memory cleared.");
 					return commandConsumed();
 				}
