@@ -114,9 +114,14 @@ describe("windows native addon staging", () => {
 		expect(candidates).not.toContain(userDataBaseline);
 	});
 
-	it("falls back to the node_modules-only candidate list when staging is off", () => {
-		// Mirrors the non-Windows / workspace-dev path: same behavior as before
-		// the staging feature was introduced.
+	it("probes node_modules first, then the per-version cache as a trailing fallback, when staging is off", () => {
+		// The non-Windows / source / node_modules path. The in-tree (node_modules)
+		// build must be tried FIRST — a rebuild there must never be shadowed by a
+		// stale cache copy — but the per-version cache is now a TRAILING fallback so
+		// a source-tree sync that dropped the gitignored `native/*.node` still loads
+		// the binary a prior standalone install left in the cache (user-hit
+		// 2026-07-24). Before this fix the cache was never probed on this path and
+		// the loader bricked with a resolve-error dump.
 		const versionedDir = "/home/u/.omp/natives/15.0.1";
 		const candidates = resolveLoaderCandidates({
 			addonFilenames: getAddonFilenames({ tag: "linux-x64", arch: "x64", variant: "baseline" }),
@@ -130,8 +135,10 @@ describe("windows native addon staging", () => {
 
 		const versionedBaseline = path.join(versionedDir, "veyyon_natives.linux-x64-baseline.node");
 		const nodeModulesBaseline = path.join(posixNodeModulesNativeDir, "veyyon_natives.linux-x64-baseline.node");
-		expect(candidates).not.toContain(versionedBaseline);
 		expect(candidates).toContain(nodeModulesBaseline);
+		expect(candidates).toContain(versionedBaseline);
+		// Order is the contract: node_modules wins, cache is the fallback.
+		expect(candidates.indexOf(nodeModulesBaseline)).toBeLessThan(candidates.indexOf(versionedBaseline));
 	});
 
 	it("removes stale version directories after the current native version loads", async () => {
