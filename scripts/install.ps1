@@ -151,6 +151,28 @@ function Get-LfsAssets {
     }
 }
 
+# The bun installer, fetched over an EXPLICIT https URL and checked before it is
+# executed.
+#
+# This was `irm bun.sh/install.ps1 | iex`. A URL with no scheme is not a URL:
+# PowerShell fills in `http://`, so the first request for a script that is about
+# to be executed went out in plaintext and depended on bun.sh's redirect to get
+# back to TLS — which is exactly the request an attacker on the path would
+# answer themselves. Nothing checked the body either, so an empty or truncated
+# response was piped into iex as a silent no-op "install".
+function Install-Bun {
+    $url = "https://bun.sh/install.ps1"
+    try {
+        $script = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 120
+    } catch {
+        throw "could not download the bun installer from $url ($($_.Exception.Message)) - check your network, or install bun yourself (https://bun.sh) and re-run this installer"
+    }
+    if ([string]::IsNullOrWhiteSpace($script)) {
+        throw "the bun installer downloaded empty from $url - retry, or install bun yourself (https://bun.sh) and re-run this installer"
+    }
+    Invoke-Expression $script
+}
+
 function Find-BashShell {
     # Check Git Bash first (most common on Windows)
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
@@ -790,7 +812,7 @@ if (-not $env:VEYYON_INSTALL_SOURCED) {
     if ($Source) {
         if (-not (Test-BunInstalled)) {
             Write-Host "Installing bun..."
-            irm bun.sh/install.ps1 | iex
+            Install-Bun
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
         }
         Assert-BunVersion $MinimumBunVersion

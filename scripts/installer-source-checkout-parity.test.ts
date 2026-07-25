@@ -22,6 +22,23 @@ const repoRoot = path.resolve(import.meta.dir, "..");
 const installSh = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8");
 const installPs1 = fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8");
 
+/** A named function's body, from its opening line to the closing brace. */
+function fnBody(body: string, start: string, end: string): string {
+	const from = body.indexOf(start);
+	expect(from, `missing ${start}`).toBeGreaterThan(-1);
+	const to = body.indexOf(end, from);
+	expect(to, `missing terminator after ${start}`).toBeGreaterThan(from);
+	return body.slice(from, to);
+}
+
+/** Executable lines only: a comment explaining an old bug is not that bug. */
+function code(body: string, commentPrefix: string): string {
+	return body
+		.split("\n")
+		.filter(line => !line.trimStart().startsWith(commentPrefix))
+		.join("\n");
+}
+
 describe("a checkout that fails to reset never gets installed anyway", () => {
 	it("install.sh aborts when neither reset target works", () => {
 		// The two resets are one `&&` chain under a single `|| die`, so a failure
@@ -87,5 +104,60 @@ describe("neither installer destroys work in a checkout it did not create", () =
 		expect(installPs1).toContain("function Test-SrcHasLocalWork {");
 		expect(installSh).toContain("git log --branches --not --remotes");
 		expect(installPs1).toContain("git log --branches --not --remotes");
+	});
+});
+
+/**
+ * Both installers bootstrap bun for a source install by running a script they
+ * just downloaded. Neither checked what it got first.
+ *
+ * POSIX was `curl -fsSL https://bun.sh/install | bash`: a pipeline's exit status
+ * is the LAST command's, so a curl that failed outright reported success (bash
+ * read empty stdin and exited 0), and a connection dropping mid-transfer handed
+ * bash a TRUNCATED installer. Windows was `irm bun.sh/install.ps1 | iex`, whose
+ * URL has no scheme at all — PowerShell fills in `http://`, so the first request
+ * for a script about to be executed went out in plaintext and depended on a
+ * redirect to reach TLS.
+ */
+describe("the bun bootstrap checks what it downloaded before running it", () => {
+	it("install.sh downloads to a file instead of piping into a shell", () => {
+		expect(code(installSh, "#")).not.toMatch(/curl[^\n]*bun\.sh\/install[^\n]*\|\s*(ba)?sh/);
+		expect(installSh).toContain('https://bun.sh/install -o "$tmp_installer"');
+	});
+
+	it("install.sh refuses an empty body and a failed download separately", () => {
+		// They have different fixes: retry versus check the network.
+		expect(installSh).toContain("could not download the bun installer");
+		expect(installSh).toContain("the bun installer downloaded empty");
+	});
+
+	it("install.sh reports an installer that ran and failed", () => {
+		expect(installSh).toContain("the bun installer failed");
+	});
+
+	it("install.sh removes the downloaded installer on every path", () => {
+		const fn = fnBody(installSh, "install_bun() {", "\n}\n");
+		// One per failure exit plus the success path.
+		expect((fn.match(/rm -f "\$tmp_installer"/g) ?? []).length).toBeGreaterThanOrEqual(4);
+	});
+
+	it("install.ps1 fetches the bun installer over an explicit https URL", () => {
+		// A scheme-less URL is the bug: PowerShell supplies http://.
+		expect(code(installPs1, "#")).not.toContain("irm bun.sh/install.ps1");
+		expect(installPs1).toContain('$url = "https://bun.sh/install.ps1"');
+	});
+
+	it("install.ps1 refuses an empty body and bounds the fetch", () => {
+		expect(installPs1).toContain("the bun installer downloaded empty from");
+		expect(installPs1).toContain("-TimeoutSec 120");
+	});
+
+	it("both point at the manual bun install when the bootstrap fails", () => {
+		for (const [name, body] of [
+			["install.sh", installSh],
+			["install.ps1", installPs1],
+		] as const) {
+			expect(body, `${name} must offer the manual route`).toContain("install bun yourself (https://bun.sh)");
+		}
 	});
 });

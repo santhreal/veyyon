@@ -789,6 +789,35 @@ check "the refusal names musl" "$(printf '%s' "$_musl_msg" | grep -c 'musl libc'
 check "the refusal explains the failure the user would have hit" "$(printf '%s' "$_musl_msg" | grep -c "not found")" "1"
 check "the refusal offers the source install" "$(printf '%s' "$_musl_msg" | grep -c -- '--source')" "1"
 
+# --- install_bun: never hand a shell a half-downloaded installer ---
+# This was `curl -fsSL https://bun.sh/install | bash`. A pipeline's exit status
+# is the LAST command's, so a curl that failed outright reported success: bash
+# read empty stdin, exited 0, and the install carried on to fail later somewhere
+# unrelated. Worse, a connection dropping mid-transfer executes a TRUNCATED
+# installer. It downloads to a file and checks it now, and each failure says
+# which one happened.
+( curl() { return 7; }
+  install_bun >/dev/null 2>&1 )
+check "a failed installer download stops the install" "$?" "1"
+_dl_msg=$( ( curl() { return 7; }; install_bun ) 2>&1 )
+check "a failed download names the bun installer URL" "$(printf '%s' "$_dl_msg" | grep -c 'https://bun.sh/install')" "1"
+check "a failed download offers the manual route" "$(printf '%s' "$_dl_msg" | grep -c 'install bun yourself')" "1"
+
+# An empty body is HTTP-level success with nothing in it: curl exits 0 and the
+# old pipeline fed bash zero bytes, which is a silent no-op install.
+_empty_msg=$( ( curl() { : > "${TMPDIR:-/tmp}/veyyon-bun-install.$$"; return 0; }
+                install_bun ) 2>&1 )
+check "an empty installer body is refused" "$(printf '%s' "$_empty_msg" | grep -c 'downloaded empty')" "1"
+
+# A downloaded installer that runs and fails must not be reported as installed.
+_run_msg=$( ( curl() { printf 'exit 1\n' > "${TMPDIR:-/tmp}/veyyon-bun-install.$$"; return 0; }
+              has() { [ "$1" = "bash" ] && return 1; command -v "$1" >/dev/null 2>&1; }
+              install_bun ) 2>&1 )
+check "an installer that exits non-zero stops the install" "$(printf '%s' "$_run_msg" | grep -c 'bun installer failed')" "1"
+
+# And it must not leave the downloaded script lying in the temp dir.
+check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-bun-install.$$" ] && echo present || echo absent )" "absent"
+
 # `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
 # fallback would append a SECOND zero and make the arithmetic below choke.
 PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}
