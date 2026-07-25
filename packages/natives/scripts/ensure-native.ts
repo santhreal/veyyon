@@ -68,55 +68,50 @@ export function addonIsCurrent(file: string): boolean {
 }
 
 /**
- * Pure plan for mirroring provisioned addons into the per-version cache. Returns
- * one `{ src, dest }` per filename whose in-tree copy IS current but whose cache
- * copy is NOT yet — the exact set that must be copied so the loader's cache
- * fallback (`resolveLoaderCandidates`) is populated for a user who only ever
- * source-installs and never runs the standalone binary. Kept pure (predicates
- * injected) so the decision is unit-testable without touching the real cache.
+ * Pure, direction-agnostic plan for copying addons between `native/` and the
+ * per-version cache. Returns one `{ src, dest }` per filename whose source copy
+ * IS current but whose destination copy is NOT yet — the exact set worth copying.
+ * The ONE owner of that decision, used in BOTH directions: mirror (native → cache)
+ * populates the loader's fallback, and restore (cache → native) seeds a fresh
+ * source tree offline. Kept pure (predicates injected) so both directions are
+ * unit-testable without touching the real filesystem.
  */
-export function cacheMirrorPlan(input: {
+export function addonCopyPlan(input: {
 	filenames: string[];
-	nativeDir: string;
-	cacheDir: string;
-	srcIsCurrent: (file: string) => boolean;
-	destIsCurrent: (file: string) => boolean;
+	fromDir: string;
+	toDir: string;
+	fromIsCurrent: (file: string) => boolean;
+	toIsCurrent: (file: string) => boolean;
 }): Array<{ src: string; dest: string }> {
 	const plan: Array<{ src: string; dest: string }> = [];
 	for (const name of input.filenames) {
-		const src = path.join(input.nativeDir, name);
-		const dest = path.join(input.cacheDir, name);
-		if (input.srcIsCurrent(src) && !input.destIsCurrent(dest)) {
+		const src = path.join(input.fromDir, name);
+		const dest = path.join(input.toDir, name);
+		if (input.fromIsCurrent(src) && !input.toIsCurrent(dest)) {
 			plan.push({ src, dest });
 		}
 	}
 	return plan;
 }
 
+function describeError(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
+}
+
 /**
- * Copy every current in-tree addon into the per-version cache so a later source
- * sync that drops the gitignored `native/*.node` still boots from the cache. A
- * failed mirror is surfaced LOUDLY (never swallowed) but does not fail the
- * install: the primary `native/` copy the loader tries first already works, so a
- * cache mirror is a resilience net, not a load-bearing step.
+ * Execute an addon copy plan with atomic per-file writes. A failed copy is
+ * surfaced LOUDLY (never swallowed) but does not throw: both callers treat a copy
+ * as a resilience step, and the loader's own candidate list plus sentinel check
+ * are the real guard, so one failed copy must not abort provisioning.
  */
-function mirrorCurrentAddonsToCache(filenames: string[]): void {
-	const cacheDir = versionedNativeCacheDir(version);
-	const plan = cacheMirrorPlan({
-		filenames,
-		nativeDir,
-		cacheDir,
-		srcIsCurrent: addonIsCurrent,
-		destIsCurrent: addonIsCurrent,
-	});
+function executeCopyPlan(plan: Array<{ src: string; dest: string }>): void {
 	if (plan.length === 0) return;
-	try {
-		fs.mkdirSync(cacheDir, { recursive: true });
-	} catch (err) {
-		console.error(
-			`veyyon natives: could not create the addon cache ${cacheDir}: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return;
+	for (const dir of new Set(plan.map(item => path.dirname(item.dest)))) {
+		try {
+			fs.mkdirSync(dir, { recursive: true });
+		} catch (err) {
+			console.error(`veyyon natives: could not create ${dir}: ${describeError(err)}`);
+		}
 	}
 	for (const { src, dest } of plan) {
 		const tmp = `${dest}.tmp.${process.pid}`;
@@ -125,7 +120,7 @@ function mirrorCurrentAddonsToCache(filenames: string[]): void {
 			fs.renameSync(tmp, dest);
 		} catch (err) {
 			console.error(
-				`veyyon natives: could not mirror ${path.basename(src)} into the cache: ${err instanceof Error ? err.message : String(err)}`,
+				`veyyon natives: could not copy ${path.basename(src)} into ${path.dirname(dest)}: ${describeError(err)}`,
 			);
 			try {
 				fs.unlinkSync(tmp);
@@ -134,6 +129,42 @@ function mirrorCurrentAddonsToCache(filenames: string[]): void {
 			}
 		}
 	}
+}
+
+/**
+ * Copy every current in-tree addon into the per-version cache so a later source
+ * sync that drops the gitignored `native/*.node` still boots from the cache. The
+ * primary `native/` copy the loader tries first already works, so this is a
+ * resilience net, not a load-bearing step.
+ */
+function mirrorCurrentAddonsToCache(filenames: string[]): void {
+	executeCopyPlan(
+		addonCopyPlan({
+			filenames,
+			fromDir: nativeDir,
+			toDir: versionedNativeCacheDir(version),
+			fromIsCurrent: addonIsCurrent,
+			toIsCurrent: addonIsCurrent,
+		}),
+	);
+}
+
+/**
+ * Seed `native/` from a warm per-version cache. This is the OFFLINE fast path: a
+ * fresh source tree whose cache was populated by a prior standalone install (or a
+ * previous ensure) boots with no network request and no Rust toolchain, and the
+ * launcher's self-heal no longer fails closed just because the machine is offline.
+ */
+function restoreNativeFromCache(filenames: string[]): void {
+	executeCopyPlan(
+		addonCopyPlan({
+			filenames,
+			fromDir: versionedNativeCacheDir(version),
+			toDir: nativeDir,
+			fromIsCurrent: addonIsCurrent,
+			toIsCurrent: addonIsCurrent,
+		}),
+	);
 }
 
 async function downloadAsset(filename: string): Promise<boolean> {
@@ -175,10 +206,18 @@ async function cargoBuild(): Promise<boolean> {
 
 async function main(): Promise<void> {
 	const filenames = hostAddonFilenames();
-	if (filenames.some(name => addonIsCurrent(path.join(nativeDir, name)))) {
+	const nativeIsCurrent = () => filenames.some(name => addonIsCurrent(path.join(nativeDir, name)));
+
+	if (nativeIsCurrent()) {
 		mirrorCurrentAddonsToCache(filenames);
 		return;
 	}
+
+	// Offline fast path: a warm per-version cache (from a prior standalone install
+	// or an earlier ensure) seeds native/ with no network and no toolchain, so a
+	// source tree that lost its gitignored native/*.node self-heals even offline.
+	restoreNativeFromCache(filenames);
+	if (nativeIsCurrent()) return;
 
 	console.error(
 		`veyyon natives: no ${version} addon for this host; fetching the prebuilt from the v${version} release...`,
@@ -191,7 +230,7 @@ async function main(): Promise<void> {
 		}
 	}
 
-	if ((await cargoBuild()) && filenames.some(name => addonIsCurrent(path.join(nativeDir, name)))) {
+	if ((await cargoBuild()) && nativeIsCurrent()) {
 		mirrorCurrentAddonsToCache(filenames);
 		return;
 	}

@@ -15,7 +15,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { versionedNativeCacheDir, versionSentinelExportFor } from "../native/loader-state.js";
 import packageJson from "../package.json" with { type: "json" };
-import { addonIsCurrent, cacheMirrorPlan, hostAddonFilenames } from "../scripts/ensure-native";
+import { addonCopyPlan, addonIsCurrent, hostAddonFilenames } from "../scripts/ensure-native";
 
 const version: string = packageJson.version;
 
@@ -83,23 +83,24 @@ describe("addonIsCurrent", () => {
 	});
 });
 
-describe("cacheMirrorPlan", () => {
+describe("addonCopyPlan", () => {
 	// Why this suite exists: after INSTALL-NATIVE-CACHE-NOT-CONSULTED the loader
-	// reads the per-version cache as a source-path fallback, but that cache is
-	// EMPTY for a user who only ever source-installs. ensure must mirror the
-	// provisioned addon into the cache so a later sync that drops native/*.node
-	// still boots. This plan is the decision of exactly WHAT to copy.
+	// reads the per-version cache as a source-path fallback. ensure keeps native/
+	// and the cache in sync with ONE direction-agnostic planner: mirror
+	// (native -> cache) populates the loader's fallback, and restore
+	// (cache -> native) seeds a fresh/offline source tree. This plan is the
+	// decision of exactly WHAT to copy in either direction.
 	const nativeDir = "/repo/packages/natives/native";
 	const cacheDir = "/home/u/.veyyon/natives/1.0.37";
 	const names = ["veyyon_natives.linux-x64-modern.node", "veyyon_natives.linux-x64-baseline.node"];
 
-	test("mirrors a current in-tree addon whose cache copy is missing", () => {
-		const plan = cacheMirrorPlan({
+	test("mirror direction: copies a current in-tree addon whose cache copy is missing", () => {
+		const plan = addonCopyPlan({
 			filenames: names,
-			nativeDir,
-			cacheDir,
-			srcIsCurrent: () => true,
-			destIsCurrent: () => false,
+			fromDir: nativeDir,
+			toDir: cacheDir,
+			fromIsCurrent: () => true,
+			toIsCurrent: () => false,
 		});
 		expect(plan).toEqual([
 			{ src: path.join(nativeDir, names[0]), dest: path.join(cacheDir, names[0]) },
@@ -107,40 +108,56 @@ describe("cacheMirrorPlan", () => {
 		]);
 	});
 
-	test("skips a filename whose cache copy is already current (no redundant copy)", () => {
-		// The steady state on every launch: the cache is already populated, so the
-		// plan must be empty — ensure must not re-copy 150MB binaries each boot.
-		const plan = cacheMirrorPlan({
+	test("restore direction: seeds native/ from a warm cache when native/ is empty (offline boot)", () => {
+		// The launcher's self-heal must succeed with no network: a warm cache copy
+		// is restored INTO native/. Same planner, from/to swapped.
+		const plan = addonCopyPlan({
 			filenames: names,
-			nativeDir,
-			cacheDir,
-			srcIsCurrent: () => true,
-			destIsCurrent: () => true,
+			fromDir: cacheDir,
+			toDir: nativeDir,
+			fromIsCurrent: () => true,
+			toIsCurrent: () => false,
+		});
+		expect(plan).toEqual([
+			{ src: path.join(cacheDir, names[0]), dest: path.join(nativeDir, names[0]) },
+			{ src: path.join(cacheDir, names[1]), dest: path.join(nativeDir, names[1]) },
+		]);
+	});
+
+	test("skips a filename whose destination copy is already current (no redundant 150MB copy)", () => {
+		// The steady state on every launch: both sides populated, so the plan is
+		// empty — ensure must not re-copy the binaries each boot.
+		const plan = addonCopyPlan({
+			filenames: names,
+			fromDir: nativeDir,
+			toDir: cacheDir,
+			fromIsCurrent: () => true,
+			toIsCurrent: () => true,
 		});
 		expect(plan).toEqual([]);
 	});
 
-	test("skips a filename whose in-tree copy is missing or stale (nothing valid to mirror)", () => {
-		// Only the modern variant is built in-tree; the baseline must not be
-		// mirrored from a source that is not current, or the cache would gain a
+	test("skips a filename whose source copy is missing or stale (nothing valid to copy)", () => {
+		// Only the modern variant is present at the source; the baseline must not be
+		// copied from a source that is not current, or the destination would gain a
 		// stale/absent file the loader's sentinel check would later reject.
-		const plan = cacheMirrorPlan({
+		const plan = addonCopyPlan({
 			filenames: names,
-			nativeDir,
-			cacheDir,
-			srcIsCurrent: file => file.endsWith(names[0]),
-			destIsCurrent: () => false,
+			fromDir: nativeDir,
+			toDir: cacheDir,
+			fromIsCurrent: file => file.endsWith(names[0]),
+			toIsCurrent: () => false,
 		});
 		expect(plan).toEqual([{ src: path.join(nativeDir, names[0]), dest: path.join(cacheDir, names[0]) }]);
 	});
 
-	test("preserves the filename as the cache basename so the loader finds it by the same name", () => {
-		const plan = cacheMirrorPlan({
+	test("preserves the filename as the destination basename so the loader finds it by the same name", () => {
+		const plan = addonCopyPlan({
 			filenames: [names[0]],
-			nativeDir,
-			cacheDir,
-			srcIsCurrent: () => true,
-			destIsCurrent: () => false,
+			fromDir: nativeDir,
+			toDir: cacheDir,
+			fromIsCurrent: () => true,
+			toIsCurrent: () => false,
 		});
 		expect(path.basename(plan[0]?.dest ?? "")).toBe(names[0]);
 		expect(path.dirname(plan[0]?.dest ?? "")).toBe(cacheDir);
