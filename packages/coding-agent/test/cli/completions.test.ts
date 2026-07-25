@@ -183,7 +183,8 @@ describe("generateCompletion — fish", () => {
 
 	it("declares the no-subcommand predicate over every command token", () => {
 		expect(out).toContain("function __fish_veyyon_no_subcommand");
-		expect(out).toContain("if contains -- $i commit worktree wt");
+		expect(out).toContain("function __fish_veyyon_no_subcommand");
+		expect(out).toContain("\ttest -z (__veyyon_subcommand)");
 	});
 
 	it("renders subcommand names, including aliases, with descriptions", () => {
@@ -206,7 +207,7 @@ describe("generateCompletion — fish", () => {
 	});
 
 	it("gates a positional enum on its subcommand", () => {
-		expect(out).toContain("-n '__fish_seen_subcommand_from worktree wt' -a 'list clear'");
+		expect(out).toContain("-n '__veyyon_using worktree' -a 'list clear'");
 	});
 });
 
@@ -735,5 +736,84 @@ describe("the generated bash dispatcher, executed", () => {
 
 	it("completes a subcommand's own flags", () => {
 		expect(complete("veyyon", "commit", "--")).toEqual(["--push"]);
+	});
+});
+
+/**
+ * fish had the same defect the bash dispatcher did, arriving by a different
+ * route: fish's own `__fish_seen_subcommand_from` matches any earlier token
+ * against a name list, so `veyyon --model commit <Tab>` read as the `commit`
+ * subcommand while the user was naming a model.
+ *
+ * fish is not installed on the Linux development host, so unlike the bash
+ * dispatcher these assertions are on the emitted script rather than on its
+ * behavior. The balance check below is here for that reason: it catches the
+ * unterminated `function`/`if`/`for` that an unexecuted generator invites, which
+ * would otherwise break every fish user's shell startup.
+ */
+describe("generateCompletion — fish subcommand detection", () => {
+	const out = generateCompletion("fish", spec);
+	const lines = out.split("\n").map(l => l.trim());
+
+	it("does not use fish's own seen-subcommand predicate anywhere", () => {
+		// The whole point of the replacement: that helper cannot tell a flag's
+		// value from a subcommand name, and every gated rule inherits the bug.
+		expect(out).not.toContain("__fish_seen_subcommand_from");
+	});
+
+	it("skips the token after a value-taking root flag", () => {
+		expect(lines).toContain("if contains -- $i --model --models --thinking --tools --resume -r --extension -e --session-dir");
+		const guard = lines.indexOf("if contains -- $i --model --models --thinking --tools --resume -r --extension -e --session-dir");
+		expect(lines[guard + 1]).toBe("set skip 1");
+	});
+
+	it("consumes exactly one token after such a flag", () => {
+		// Clearing the flag on the value itself is what lets the real subcommand
+		// still be seen in `veyyon --model gpt worktree`.
+		const at = lines.indexOf("if test $skip -eq 1");
+		expect(lines[at + 1]).toBe("set skip 0");
+		expect(lines[at + 2]).toBe("continue");
+	});
+
+	it("ignores flags that take no value", () => {
+		// Without this a boolean flag would be treated as a positional and end the
+		// scan, so `veyyon --print worktree <Tab>` would offer nothing.
+		expect(lines).toContain("if string match -qr '^-' -- $i");
+	});
+
+	it("reports an alias token under its canonical command name", () => {
+		// Rules are gated on one name; a raw token would need every alias repeated
+		// at every gate.
+		const at = lines.indexOf("if contains -- $i worktree wt");
+		expect(lines[at + 1]).toBe("echo worktree");
+	});
+
+	it("stops at the first token that is neither a flag nor a known command", () => {
+		// An unrecognized positional means the root command is handling it, so a
+		// later token that happens to share a subcommand's name is not one.
+		expect(lines[lines.indexOf("echo worktree") + 2]).toBe("end");
+		expect(lines.filter(l => l === "return").length).toBeGreaterThanOrEqual(3);
+	});
+
+	it("erases the command name instead of slicing the token list", () => {
+		// `(commandline -opc)[2..-1]` has to cope with the one-element list you get
+		// at a bare `veyyon <Tab>`.
+		expect(lines).toContain("set -e tokens[1]");
+		expect(out).not.toContain("[2..-1]");
+	});
+
+	it("gates every subcommand rule on the canonical name", () => {
+		expect(lines).toContain("function __veyyon_using");
+		expect(lines).toContain("contains -- (__veyyon_subcommand) $argv");
+		expect(out).toContain("-n '__veyyon_using commit'");
+	});
+
+	it("emits a syntactically balanced script", () => {
+		// fish sources a completion file at startup; an unterminated block breaks
+		// every new shell, and nothing here can run fish to find out.
+		const code = lines.filter(l => l.length > 0 && !l.startsWith("#"));
+		const opens = code.filter(l => /^(function |if |for |while |switch )/.test(l)).length;
+		const ends = code.filter(l => l === "end").length;
+		expect(ends).toBe(opens);
 	});
 });
