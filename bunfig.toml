@@ -13,6 +13,16 @@ saveTextLockfile = true
 ".lark" = "text"
 
 [test]
+# Loaded before ANY test module in EVERY test process started from this directory.
+# It refuses every write into the real ~/.veyyon (node:fs AND bun:sqlite), so a
+# suite cannot damage real credentials even when its own isolation is wrong or
+# missing. A preload rather than a helper because the protection must not be
+# opt-in: the incident it exists for happened in a suite that never called the
+# helper. Bun reads bunfig.toml from the cwd only, so each package carries its own
+# pointer to this same file, and scripts/ci-test-ts.ts passes it explicitly with
+# --preload. See docs/internal/testing.md.
+preload = ["./packages/utils/test/helpers/real-data-tripwire.ts"]
+
 # bun test does NOT honor .gitignore; prune veybot's repo clones and
 # scratch dirs so a root-level `bun test` doesn't walk into them.
 pathIgnorePatterns = [
