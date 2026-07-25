@@ -1896,6 +1896,43 @@ interface FinalizeRunArgs {
 }
 
 /**
+ * The text that goes in a settled run's `error` field, or `undefined` when the
+ * run did not fail.
+ *
+ * This is the one channel a parent reads to learn what went wrong, and it used
+ * to be left EMPTY for the worst case. A crashed subagent settles with a
+ * non-zero exit code, no stderr, and no output: an out-of-memory kill and a
+ * native crash both look exactly like that. The old condition
+ * (`exitCode !== 0 && stderr`) produced no error text for it, so a child that
+ * died was indistinguishable from a child that simply had nothing to report,
+ * precisely when the difference mattered most.
+ *
+ * The synthesized message is not a diagnosis. It states that no diagnosis was
+ * available and what that usually means, which is the useful fact: it tells the
+ * parent to stop waiting for a reason and to suspect resources rather than to
+ * retry the same prompt.
+ *
+ * An ABORTED run is excluded on purpose. Its explanation lives on `abortReason`
+ * (a cancellation, a budget stop, a runtime limit), and `error` is deliberately
+ * left empty there so callers read the reason rather than a second, vaguer copy
+ * of it. Guessing "it most likely crashed or ran out of memory" for a run the
+ * parent itself cancelled would be actively wrong.
+ */
+export function resolveSubagentErrorText(
+	exitCode: number,
+	stderr: string,
+	rawOutput: string,
+	aborted: boolean,
+): string | undefined {
+	if (exitCode === 0) return undefined;
+	const reported = stderr.trim();
+	if (reported) return reported;
+	if (aborted) return undefined;
+	const produced = rawOutput.trim().length > 0 ? "" : " and produced no output";
+	return `Subagent exited with code ${exitCode}${produced} and reported no error. It most likely crashed or was killed (out of memory, or terminated by the operating system).`;
+}
+
+/**
  * Turn a settled run into a {@link SingleResult}: resolve the yield payload via
  * {@link finalizeSubprocessOutput}, salvage cancelled-run output, write the
  * `<id>.md` output artifact, flush final progress, and emit the lifecycle end
@@ -2027,7 +2064,7 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 		contextWindow: progress.contextWindow,
 		modelOverride,
 		resolvedModel: progress.resolvedModel,
-		error: exitCode !== 0 && stderr ? stderr : undefined,
+		error: resolveSubagentErrorText(exitCode, stderr, rawOutput, wasAborted),
 		aborted: wasAborted,
 		abortReason: finalAbortReason,
 		usage: monitor.hasUsage() ? monitor.accumulatedUsage : undefined,
