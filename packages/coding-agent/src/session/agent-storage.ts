@@ -569,10 +569,16 @@ FROM model_usage_legacy
 	 * @throws When the stats db cannot be opened or queried
 	 */
 	async backfillModelPerfFromStats(statsDbPath: string): Promise<number> {
-		const statsDb = new Database(statsDbPath, { readonly: true });
+		// bun:sqlite opens LAZILY, so a damaged file does not fail at the
+		// constructor: it fails at the first statement. Both the open and that
+		// first access are wrapped together, or the message below would never be
+		// the one a caller sees.
+		let statsDb: Database;
+		let select: Statement;
 		try {
+			statsDb = new Database(statsDbPath, { readonly: true });
 			statsDb.run("PRAGMA busy_timeout = 5000");
-			const select = statsDb.prepare(
+			select = statsDb.prepare(
 				`SELECT rowid, timestamp, provider, model, output_tokens, duration, ttft
 FROM messages
 WHERE (timestamp < ?1 OR (timestamp = ?1 AND rowid < ?2))
@@ -581,6 +587,19 @@ WHERE (timestamp < ?1 OR (timestamp = ?1 AND rowid < ?2))
 ORDER BY timestamp DESC, rowid DESC
 LIMIT ?4`,
 			);
+		} catch (error) {
+			// bun:sqlite reports only `file is not a database`, with no path. Veyyon
+			// keeps six SQLite files, so on its own that says which KIND of failure
+			// happened and nothing about which file to do something about. Name the
+			// file and the way out: this database holds usage history, is rebuilt by
+			// `veyyon stats`, and deleting it costs nothing else.
+			throw new Error(
+				`Cannot read the stats database at ${statsDbPath}: ${error instanceof Error ? error.message : String(error)}. ` +
+					`It holds usage history only and is rebuilt by \`veyyon stats\`, so deleting the file is safe and clears this.`,
+				{ cause: error },
+			);
+		}
+		try {
 			const cutoff = Date.now() - MODEL_PERF_BACKFILL_MAX_AGE_MS;
 			const sums = new Map<string, PerfAccum>();
 			let cursorTimestamp = Number.MAX_SAFE_INTEGER;
