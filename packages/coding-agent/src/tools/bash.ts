@@ -8,9 +8,20 @@ import type {
 } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
-import { clampLow, errorMessage, getProjectDir, isEnoent, logger, prompt } from "@veyyon/utils";
+import {
+	clampLow,
+	errorMessage,
+	getProjectDir,
+	isEnoent,
+	logger,
+	prompt,
+	SIGNAL_EXIT_BASE,
+	signalName,
+	signalNumber,
+} from "@veyyon/utils";
 import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
+import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import { paintHotTail, shimmerPhase } from "../modes/components/follow";
@@ -180,6 +191,14 @@ export interface BashToolDetails {
 	wallTimeMs?: number;
 	/** Exit code of a command that ran to completion but failed (non-zero). */
 	exitCode?: number;
+	/**
+	 * The signal that killed the command, when it died from one.
+	 *
+	 * Present only for a real signalled death, never for a program that exited
+	 * with `128 + n` itself. Those two produce the same `exitCode`, and the
+	 * difference decides whether a retry can possibly help.
+	 */
+	signal?: number;
 	terminalId?: string;
 	async?: {
 		state: "running" | "completed" | "failed";
@@ -337,10 +356,6 @@ function formatWallTimeNotice(wallTimeMs: number): string {
 	return `Wall time: ${formatWallTimeSeconds(wallTimeMs)} seconds`;
 }
 
-function formatExitCodeNotice(exitCode: number): string {
-	return `Command exited with code ${exitCode}`;
-}
-
 function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {
 	if (reason === "stall") {
 		return (
@@ -378,9 +393,11 @@ function stripWallTimeNotice(text: string, wallTimeMs: number | undefined): stri
 	return stripTrailingNotice(text, formatWallTimeNotice(wallTimeMs));
 }
 
-function stripExitCodeNotice(text: string, exitCode: number | undefined): string {
+function stripExitCodeNotice(text: string, exitCode: number | undefined, signal?: number): string {
 	if (exitCode === undefined) return text;
-	return stripTrailingNotice(text, formatExitCodeNotice(exitCode));
+	// Must be given the same signal the notice was formatted with, or the strip
+	// silently misses and the notice is shown twice.
+	return stripTrailingNotice(text, formatExitCodeNotice(exitCode, signal));
 }
 
 function stripBackgroundNotice(text: string, async: BashToolDetails["async"] | undefined): string {
@@ -543,6 +560,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		} = {},
 	): Promise<AgentToolResult<BashToolDetails>> {
 		const exitCode = result.exitCode;
+		const signal = "signal" in result ? result.signal : undefined;
 		const failedExit = exitCode !== undefined && exitCode !== 0;
 
 		const outputLines = [this.#formatResultOutput(result)];
@@ -556,7 +574,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			}
 		}
 		if (notices.length > 0) outputLines.push("", ...notices);
-		if (failedExit) outputLines.push("", formatExitCodeNotice(exitCode));
+		if (failedExit) outputLines.push("", formatExitCodeNotice(exitCode, signal));
 		const outputText = outputLines.join("\n");
 
 		// Aborts / timeouts / missing-status still propagate as thrown errors.
@@ -579,6 +597,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		}
 		if (failedExit) {
 			details.exitCode = exitCode;
+			if (signal !== undefined) details.signal = signal;
 		}
 		// Final defense at the tool-result boundary: no bash path (client bridge,
 		// head-retention spill, minimizer miss) may emit more than
@@ -1185,10 +1204,26 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				// Fetch final output; the terminal is released in the outer finally.
 				const finalOutput = await handle.currentOutput();
 
-				// Map exit status: null exitCode with a signal → treat as signal kill (137).
+				// Map exit status. A null exitCode with a signal is a signalled death, so
+				// report the shell's 128+N for that specific signal and carry the raw
+				// number alongside it. This used to hardcode 137 for every signal, which
+				// reported an ordinary SIGTERM (143) as a SIGKILL.
 				const rawExitCode = exitStatus.exitCode;
+				const bridgeSignal = exitStatus.signal ? signalNumber(exitStatus.signal) : undefined;
+				if (exitStatus.signal && bridgeSignal === undefined) {
+					// Guessing a number here would put a fabricated exit code in front of the
+					// agent. Refuse instead: an unresolvable status is a missing status, and
+					// the caller already treats that as an error rather than as success.
+					throw new Error(
+						`Terminal reported termination by signal "${exitStatus.signal}", which is not a signal this platform knows. No exit status can be derived from it.`,
+					);
+				}
 				const exitCode: number | undefined =
-					rawExitCode != null ? rawExitCode : exitStatus.signal ? 137 : undefined;
+					rawExitCode != null
+						? rawExitCode
+						: bridgeSignal !== undefined
+							? SIGNAL_EXIT_BASE + bridgeSignal
+							: undefined;
 
 				const outputText = finalOutput.output;
 				const outputByteLen = outputText.length;
@@ -1197,6 +1232,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 				const bridgeResult: BashResult = {
 					output: outputText,
 					exitCode,
+					signal: bridgeSignal,
 					cancelled: false,
 					truncated: finalOutput.truncated,
 					totalLines: outputLineCount,
@@ -1473,7 +1509,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					}
 					const withoutBackground = stripBackgroundNotice(rawOutput, details?.async);
 					const strippedOutput = stripOutputNotice(withoutBackground, details?.meta);
-					const withoutExit = stripExitCodeNotice(strippedOutput, details?.exitCode);
+					const withoutExit = stripExitCodeNotice(strippedOutput, details?.exitCode, details?.signal);
 					const withoutWall = stripWallTimeNotice(withoutExit, details?.wallTimeMs);
 					const rawOutputArtifact = stripRawOutputArtifactNotice(withoutWall);
 					const output = rawOutputArtifact.text;
@@ -1506,7 +1542,13 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						statsParts.push(`Artifact: ${rawOutputArtifact.artifactId}`);
 					}
 					if (isError && typeof details?.exitCode === "number") {
-						statsParts.push(`Exit: ${details.exitCode}`);
+						// Name the signal in the stats line too, so the difference is visible
+						// at a glance and not only in the notice appended to the output.
+						const killedBy =
+							details.signal === undefined
+								? undefined
+								: (signalName(details.signal) ?? `signal ${details.signal}`);
+						statsParts.push(killedBy ? `Exit: ${details.exitCode} (${killedBy})` : `Exit: ${details.exitCode}`);
 					}
 					const timeoutLine =
 						statsParts.length > 0

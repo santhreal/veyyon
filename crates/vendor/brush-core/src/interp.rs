@@ -675,6 +675,10 @@ impl Execute for ast::Pipeline {
 		// Invert the exit code if requested.
 		if self.bang {
 			result.exit_code = ExecutionExitCode::from(if result.is_success() { 1 } else { 0 });
+			// The inverted code no longer describes how the process ended, so the
+			// signal must not be reported alongside it. `! sleep 1` that was killed
+			// reports success, and success caused by a SIGKILL is nonsense.
+			result.signal = None;
 		}
 
 		// Update exit status.
@@ -830,7 +834,11 @@ async fn wait_for_pipeline_processes_and_update_status(
 	ensure_not_cancelled(params)?;
 	let mut result = ExecutionResult::success();
 	let mut stopped_children = vec![];
-	let mut last_failure_exit_code: Option<ExecutionExitCode> = None;
+	// Under `pipefail` the pipeline reports an earlier stage's failure, so the
+	// signal that caused it has to travel with the code it is being reported for.
+	// Keeping only the last stage's signal would attribute a middle stage's kill
+	// to a process that exited cleanly.
+	let mut last_failure: Option<(ExecutionExitCode, Option<i32>)> = None;
 
 	// Clear our the pipeline status so we can start filling it out.
 	shell.last_pipeline_statuses_mut().clear();
@@ -853,7 +861,7 @@ async fn wait_for_pipeline_processes_and_update_status(
 
 				// Track the last failure for pipefail option
 				if !result.is_success() {
-					last_failure_exit_code = Some(result.exit_code);
+					last_failure = Some((result.exit_code, result.signal));
 				}
 			},
 			ExecutionWaitResult::Stopped(child) => {
@@ -870,8 +878,9 @@ async fn wait_for_pipeline_processes_and_update_status(
 
 	// Apply pipefail semantics if enabled
 	if shell.options().return_last_failure_from_pipeline {
-		if let Some(failure_exit_code) = last_failure_exit_code {
+		if let Some((failure_exit_code, failure_signal)) = last_failure {
 			result.exit_code = failure_exit_code;
+			result.signal = failure_signal;
 		}
 	}
 
@@ -995,9 +1004,11 @@ impl Execute for ast::CompoundCommand {
 					},
 				};
 
-				// Preserve the subshell's exit code, but don't honor any of its requests to
-				// exit the shell, break out of loops, etc.
-				Ok(ExecutionResult::from(subshell_result.exit_code))
+				// Preserve the subshell's exit code and how it died, but don't honor any of
+				// its requests to exit the shell, break out of loops, etc.
+				let mut result = ExecutionResult::from(subshell_result.exit_code);
+				result.signal = subshell_result.signal;
+				Ok(result)
 			},
 			Self::ForClause(f) => f.execute(shell, params).await,
 			Self::CaseClause(c) => c.execute(shell, params).await,

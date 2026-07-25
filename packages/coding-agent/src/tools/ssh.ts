@@ -6,6 +6,7 @@ import { type } from "arktype";
 import type { SSHHost } from "../capability/ssh";
 import { sshCapability } from "../capability/ssh";
 import { loadCapability } from "../discovery";
+import { formatExitCodeNotice } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import sshDescriptionBase from "../prompts/tools/ssh.md" with { type: "text" };
@@ -219,7 +220,7 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 		const resultBuilder = toolResult(details).text(outputText).truncationFromSummary(result, { direction: "tail" });
 
 		if (result.exitCode !== 0 && result.exitCode !== undefined) {
-			throw new ToolError(`${outputText}\n\nCommand exited with code ${result.exitCode}`);
+			throw new ToolError(`${outputText}\n\n${formatExitCodeNotice(result.exitCode)}`);
 		}
 
 		return resultBuilder.done();

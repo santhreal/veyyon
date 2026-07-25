@@ -14,6 +14,7 @@ import {
 import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent, UserMessage } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { isRecord, prompt } from "@veyyon/utils";
+import { formatExitCodeNotice } from "../exec/exit-notice";
 import userInterjectionTemplate from "../prompts/steering/user-interjection.md" with { type: "text" };
 import { contentText } from "./content-text";
 
@@ -548,6 +549,16 @@ export interface BashExecutionMessage {
 	command: string;
 	output: string;
 	exitCode: number | undefined;
+	/**
+	 * The signal that killed the command, when it died from one.
+	 *
+	 * A `!` command is run through the same executor as the agent's bash tool, so
+	 * it inherits the same ambiguity: `exitCode` 137 is produced both by an
+	 * out-of-memory kill and by a program calling `exit(137)`. Optional because
+	 * sessions recorded before this field existed do not have it, and its absence
+	 * means "not known", not "not a signal".
+	 */
+	signal?: number;
 	cancelled: boolean;
 	truncated: boolean;
 	meta?: OutputMeta;
@@ -646,7 +657,7 @@ export function bashExecutionToText(msg: BashExecutionMessage): string {
 	if (msg.cancelled) {
 		text += "\n\n(command cancelled)";
 	} else if (msg.exitCode !== null && msg.exitCode !== undefined && msg.exitCode !== 0) {
-		text += `\n\nCommand exited with code ${msg.exitCode}`;
+		text += `\n\n${formatExitCodeNotice(msg.exitCode, msg.signal)}`;
 	}
 	text += formatOutputNotice(msg.meta);
 	return text;

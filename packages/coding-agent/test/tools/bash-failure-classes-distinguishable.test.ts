@@ -14,13 +14,13 @@
  * were a flaky test. So each class is asserted here on the EXACT values a caller
  * can branch on, not on a substring of prose that could be reworded.
  *
- * KNOWN LIMIT, asserted rather than hidden. Commands run inside a persistent
- * shell, so the only status available is the shell's `$?`, which reports a
- * signal death as 128+N. That makes `exit 137` and death by SIGKILL BYTE
- * IDENTICAL in the result. The test at the end pins that ambiguity deliberately:
- * it is the current contract, it is a real gap against this row's intent, and a
- * test that quietly asserted only the cases that work would have hidden it.
- * Tracked as BASH-SIGNAL-DEATH-INDISTINGUISHABLE.
+ * The signal case used to be only half met. Commands run inside a persistent
+ * shell, so the status the shell exposes through `$?` is already folded to
+ * 128+N, which made `exit 137` and death by SIGKILL byte-identical. That is
+ * fixed: the shell now carries the raw signal alongside the folded code, and the
+ * two are separated here on exact values. `bash-signal-death.test.ts` covers the
+ * signal contract in depth; what this file pins is that the three FAILURE
+ * CLASSES stay distinguishable from one another.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -70,14 +70,17 @@ function bashTool(): BashTool {
 }
 
 /** Run `command` and return its exit code and joined text. */
-async function run(id: string, command: string): Promise<{ exitCode: number | undefined; text: string }> {
+async function run(
+	id: string,
+	command: string,
+): Promise<{ exitCode: number | undefined; signal: number | undefined; text: string }> {
 	const result = await bashTool().execute(id, { command, timeout: 20 });
-	const details = result.details as { exitCode?: number } | undefined;
+	const details = result.details as { exitCode?: number; signal?: number } | undefined;
 	const text = (result.content ?? [])
 		.filter(block => block.type === "text")
 		.map(block => (block as { text: string }).text)
 		.join("");
-	return { exitCode: details?.exitCode, text };
+	return { exitCode: details?.exitCode, signal: details?.signal, text };
 }
 
 describe("a non-zero exit reports that exact code", () => {
@@ -193,25 +196,39 @@ describe("death by signal arrives as 128 plus the signal number", () => {
 	});
 
 	/**
-	 * THE KNOWN LIMIT, pinned rather than omitted. Commands run in a persistent
-	 * shell, so the only status available is `$?`, and the shell has already
-	 * folded the signal into 128+N by the time it is read. A literal `exit 137`
-	 * and a real SIGKILL are therefore the same result, and nothing downstream can
-	 * tell "the OOM killer took it" from "the program chose to return 137".
+	 * The class separation this suite exists for, at its hardest case. A literal
+	 * `exit 137` and a real SIGKILL produce the SAME exit code by design, because
+	 * `$?` has to stay bash-compatible for scripts comparing against 137. The
+	 * signal field is what tells them apart, and it is asserted in both
+	 * directions: present and exact for the kill, absent for the plain exit.
 	 *
-	 * This asserts the ambiguity ON PURPOSE. If a later change adds a signal field
-	 * or otherwise separates the two, this test fails, and that failure is the
-	 * prompt to delete it and assert the new, better contract.
+	 * Asserting only the kill would pass against a build that set the field
+	 * unconditionally, which would relabel every `exit 137` an OOM kill and be
+	 * strictly worse than the ambiguity it replaced.
 	 */
-	it("cannot currently distinguish a real SIGKILL from a literal exit 137", async () => {
+	it("separates a real SIGKILL from a literal exit 137", async () => {
 		const killed = await run("real-kill", "sh -c 'kill -9 $$'");
 		const plain = await run("plain-137", "exit 137");
+
 		expect(killed.exitCode).toBe(137);
 		expect(plain.exitCode).toBe(137);
-		expect(killed.exitCode).toBe(plain.exitCode);
-		// And the prose does not separate them either, so there is no second
-		// channel a caller could fall back on.
-		expect(killed.text).toContain("Command exited with code 137");
+		expect(killed.signal).toBe(9);
+		expect(plain.signal).toBeUndefined();
+	});
+
+	/**
+	 * And the prose separates them too, because the model reads the text, not the
+	 * details object. The notice for a signalled death names the signal; the
+	 * notice for an ordinary exit must NOT, or the distinction is undone at the
+	 * only layer that reaches the model.
+	 */
+	it("says which one it was in the visible output", async () => {
+		const killed = await run("real-kill-text", "sh -c 'kill -9 $$'");
+		const plain = await run("plain-137-text", "exit 137");
+
+		expect(killed.text).toContain("SIGKILL");
+		expect(killed.text).toContain("137");
 		expect(plain.text).toContain("Command exited with code 137");
+		expect(plain.text).not.toContain("SIGKILL");
 	});
 });

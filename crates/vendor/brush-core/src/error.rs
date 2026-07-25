@@ -458,7 +458,8 @@ impl Error {
 		let next_control_flow = self.to_control_flow(shell);
 		let exit_code = results::ExecutionExitCode::from(&self);
 
-		results::ExecutionResult { next_control_flow, exit_code }
+		// A shell-level error is not a signalled process death.
+		results::ExecutionResult { next_control_flow, exit_code, signal: None }
 	}
 }
 

@@ -10,6 +10,7 @@ import type { Component } from "@veyyon/tui";
 import { Container, Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 import { settings } from "../config/settings";
+import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
 import { getMarkdownTheme, type Theme } from "../modes/theme/theme";
@@ -456,14 +457,13 @@ function renderJsonTreeLines(
 }
 
 const BASH_WALL_TIME_NOTICE_RE = /^Wall time: \d+(?:\.\d+)? seconds$/u;
-const BASH_EXIT_CODE_NOTICE_RE = /^Command exited with code -?\d+$/u;
 
 function stripRecentOutputNoticeLine(text: string): string {
 	const trimmed = text.trimEnd();
 	const lineStart = trimmed.lastIndexOf("\n");
 	const candidateStart = lineStart === -1 ? 0 : lineStart + 1;
 	const line = trimmed.slice(candidateStart);
-	if (!BASH_WALL_TIME_NOTICE_RE.test(line) && !BASH_EXIT_CODE_NOTICE_RE.test(line)) return text;
+	if (!BASH_WALL_TIME_NOTICE_RE.test(line) && !EXIT_CODE_NOTICE_RE.test(line)) return text;
 	return trimmed.slice(0, lineStart === -1 ? 0 : lineStart).trimEnd();
 }
 

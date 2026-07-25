@@ -14,6 +14,20 @@ pub struct ExecutionResult {
 	pub next_control_flow: ExecutionControlFlow,
 	/// The exit code resulting from execution.
 	pub exit_code:         ExecutionExitCode,
+	/// The signal number that terminated the process, when it died from a signal
+	/// rather than exiting on its own.
+	///
+	/// `exit_code` folds a signalled death into `128 + signal`, which is what
+	/// bash reports through `$?` and what scripts compare against. That fold is
+	/// lossy in two ways: a process that calls `exit(137)` is indistinguishable
+	/// from one killed by `SIGKILL`, and signals above 127 wrap. This field keeps
+	/// the raw signal number alongside the folded code so a caller that needs to
+	/// know why a command died (an out-of-memory kill is worth retrying, an
+	/// `exit(137)` is not) can tell, without changing the value of `$?`.
+	///
+	/// `None` means the process exited normally, was never a process at all (a
+	/// builtin, a function), or ran on a platform that does not report signals.
+	pub signal:            Option<i32>,
 }
 
 impl ExecutionResult {
@@ -40,6 +54,7 @@ impl ExecutionResult {
 		Self {
 			next_control_flow: ExecutionControlFlow::Normal,
 			exit_code:         ExecutionExitCode::Success,
+			signal:            None,
 		}
 	}
 
@@ -48,6 +63,7 @@ impl ExecutionResult {
 		Self {
 			next_control_flow: ExecutionControlFlow::Normal,
 			exit_code:         ExecutionExitCode::GeneralError,
+			signal:            None,
 		}
 	}
 
@@ -85,7 +101,9 @@ impl ExecutionResult {
 
 impl From<ExecutionExitCode> for ExecutionResult {
 	fn from(exit_code: ExecutionExitCode) -> Self {
-		Self { next_control_flow: ExecutionControlFlow::Normal, exit_code }
+		// An exit code on its own carries no signal information; a caller that has
+		// one sets the field itself.
+		Self { next_control_flow: ExecutionControlFlow::Normal, exit_code, signal: None }
 	}
 }
 
@@ -108,8 +126,13 @@ impl From<std::process::Output> for ExecutionResult {
 
 		#[cfg(unix)]
 		if let Some(signal) = output.status.signal() {
+			// `$?` keeps bash's 128+N form so scripts comparing against 137 and 143
+			// keep working; the raw number rides alongside it for callers that need
+			// to tell a signalled death from an `exit(128+N)`.
 			#[expect(clippy::cast_sign_loss)]
-			return Self::new((signal & 0xff) as u8 + 128);
+			let mut result = Self::new((signal & 0xff) as u8 + 128);
+			result.signal = Some(signal);
+			return result;
 		}
 
 		tracing::error!("unhandled process exit");

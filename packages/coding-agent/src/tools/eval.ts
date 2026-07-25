@@ -8,6 +8,7 @@ import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../eval/bridge-ti
 import { IdleTimeout } from "../eval/idle-timeout";
 import { defaultEvalSessionId } from "../eval/session-id";
 import type { EvalCellResult, EvalDisplayOutput, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
+import { formatExitCodeNotice } from "../exec/exit-notice";
 import evalDescription from "../prompts/tools/eval.md" with { type: "text" };
 import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
@@ -218,7 +219,11 @@ function uniqueEvalLanguages(cells: ResolvedEvalCell[]): EvalLanguage[] {
  */
 function timeoutClampNotice(cell: ResolvedEvalCell, maxTimeout?: number): string | undefined {
 	if (cell.timeoutMs === 0) return undefined;
-	return formatTimeoutClampNotice("eval", cell.timeoutMs / 1000, clampTimeout("eval", cell.timeoutMs / 1000, maxTimeout));
+	return formatTimeoutClampNotice(
+		"eval",
+		cell.timeoutMs / 1000,
+		clampTimeout("eval", cell.timeoutMs / 1000, maxTimeout),
+	);
 }
 
 function detailsNotice(cells: ResolvedEvalCell[], maxTimeout?: number): string | undefined {
@@ -699,8 +704,8 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 						pushUpdate();
 						const combinedOutput = cellOutputs.join("\n\n");
 						const outputText = combinedOutput
-							? `${combinedOutput}\n\nCommand exited with code ${result.exitCode}`
-							: `Command exited with code ${result.exitCode}`;
+							? `${combinedOutput}\n\n${formatExitCodeNotice(result.exitCode)}`
+							: formatExitCodeNotice(result.exitCode);
 
 						const summaryForMeta = await summarizeFinal(combinedOutput, finalizeOutput);
 						const details: EvalToolDetails = {
