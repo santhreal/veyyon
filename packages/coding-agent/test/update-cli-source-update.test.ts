@@ -14,9 +14,20 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { type SourceUpdateExec, updateViaSourceAt } from "@veyyon/coding-agent/cli/update-cli";
+import {
+	type CheckoutVersionReader,
+	SOURCE_VERSION_FILE,
+	type SourceUpdateExec,
+	updateViaSourceAt,
+} from "@veyyon/coding-agent/cli/update-cli";
 
 const LAUNCHER = path.join("/opt/checkout", "packages", "coding-agent", "scripts", "veyyon");
+
+/** A checkout that ends up at exactly the version the update asked for. */
+const readsVersion =
+	(version: string | undefined): CheckoutVersionReader =>
+	async () =>
+		version;
 
 function recordingExec(failOnLabel?: string): {
 	calls: { label: string; command: string[]; cwd: string }[];
@@ -35,7 +46,7 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 	it("runs fetch, ff-only merge, then bun install — all in the checkout root", async () => {
 		const { calls, exec } = recordingExec();
 		const reported: string[] = [];
-		await updateViaSourceAt(LAUNCHER, "2.0.0", line => reported.push(line), exec);
+		await updateViaSourceAt(LAUNCHER, "2.0.0", line => reported.push(line), exec, readsVersion("2.0.0"));
 
 		expect(calls.map(c => c.command.join(" "))).toEqual([
 			"git fetch --tags origin",
@@ -75,6 +86,102 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 		await expect(updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec)).rejects.toThrow(
 			/Installing dependencies failed.*not a git repository/s,
 		);
+	});
+});
+
+/**
+ * Every step exiting 0 proves the commands ran, not that the checkout reached
+ * the release. `git merge --ff-only @{u}` fast-forwards to whatever the branch
+ * TRACKS: a user on a feature branch, or on a fork whose upstream lags, gets a
+ * successful merge and stays behind. The updater used to print "Updated source
+ * checkout to 2.0.0" over exactly that state — the silent wrong-version success
+ * the installers' doctor gate already closes for binary installs.
+ */
+describe("updateViaSourceAt verifies the checkout actually reached the release", () => {
+	it("reads the version back from the checkout after the steps run", async () => {
+		const seen: string[] = [];
+		const { exec } = recordingExec();
+		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, async root => {
+			seen.push(root);
+			return "2.0.0";
+		});
+		// It must read the checkout it just updated, not the running process's own
+		// installation directory.
+		expect(seen).toHaveLength(1);
+		expect(path.resolve(seen[0] as string)).toBe("/opt/checkout");
+	});
+
+	it("refuses to claim the new version when the checkout is still behind", async () => {
+		const reported: string[] = [];
+		const { exec } = recordingExec();
+
+		await expect(
+			updateViaSourceAt(LAUNCHER, "2.0.0", line => reported.push(line), exec, readsVersion("1.9.3")),
+		).rejects.toThrow(/is at 1\.9\.3, not 2\.0\.0/);
+		// And the success line must not have been printed anyway.
+		expect(reported.some(line => line.includes("Updated source checkout to"))).toBe(false);
+	});
+
+	it("names the likely cause and the manual recovery in the mismatch error", async () => {
+		// "wrong version" alone leaves the user with no next move; the branch not
+		// tracking the release branch is the actual cause in nearly every case.
+		const { exec } = recordingExec();
+		await expect(updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("1.9.3"))).rejects.toThrow(
+			/does not track the branch.*git pull && bun install/s,
+		);
+	});
+
+	it("treats an unreadable version as failure, never as agreement", async () => {
+		// Law 10: a check that could not run has not passed. Swallowing the read
+		// error and reporting success would reintroduce the bug through the back
+		// door, on the checkouts most likely to be broken.
+		const { exec } = recordingExec();
+		await expect(updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion(undefined))).rejects.toThrow(
+			new RegExp(`Could not read ${SOURCE_VERSION_FILE.replace(/[.\/]/g, "\\$&")}.*unverified`, "s"),
+		);
+	});
+
+	it("verifies only after every step, so a half-updated checkout cannot pass", async () => {
+		// Reading the version before `bun install`/regen would see the right number
+		// on a checkout that is not yet runnable.
+		const order: string[] = [];
+		const exec: SourceUpdateExec = async step => {
+			order.push(step.label);
+			return { exitCode: 0, stderr: "" };
+		};
+		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, async () => {
+			order.push("version-read");
+			return "2.0.0";
+		});
+		expect(order[order.length - 1]).toBe("version-read");
+	});
+
+	it("does not read the version at all when a step already failed", async () => {
+		// The steps' own error is the actionable one; a version mismatch report on
+		// top of it would misdirect the user to a branch problem they do not have.
+		let reads = 0;
+		const { exec } = recordingExec("Fast-forwarding checkout");
+		await expect(
+			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, async () => {
+				reads += 1;
+				return "1.9.3";
+			}),
+		).rejects.toThrow(/git merge --ff-only/);
+		expect(reads).toBe(0);
+	});
+});
+
+describe("the checkout's version comes from one declared file", () => {
+	it("SOURCE_VERSION_FILE points at the manifest the CLI is built from", () => {
+		expect(SOURCE_VERSION_FILE).toBe("packages/coding-agent/package.json");
+	});
+
+	it("that file really carries a semver version field", async () => {
+		// If the manifest were ever restructured, the reader would start returning
+		// undefined and every source update would fail closed with a confusing
+		// message. This fails first, and points at why.
+		const raw = await Bun.file(new URL("../package.json", import.meta.url)).text();
+		expect((JSON.parse(raw) as { version?: unknown }).version).toMatch(/^\d+\.\d+\.\d+/);
 	});
 });
 

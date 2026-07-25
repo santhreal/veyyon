@@ -667,6 +667,35 @@ export function sourceInstallUpdateGuidance(launcherPath: string): string {
 	);
 }
 
+/**
+ * The file whose `version` field IS the version a source checkout reports.
+ *
+ * Single owner: the post-update verification reads this and nothing else, so it
+ * can never check a different manifest than the one the running CLI is built
+ * from.
+ */
+export const SOURCE_VERSION_FILE = "packages/coding-agent/package.json";
+
+/**
+ * Reads a source checkout's own version. Injectable so the verification can be
+ * tested without a real checkout on disk.
+ *
+ * Returns `undefined` when the file is missing, unreadable, unparseable, or has
+ * no string `version` — every one of those means the version is UNKNOWN, and the
+ * caller must treat unknown as a failure rather than as agreement (Law 10).
+ */
+export type CheckoutVersionReader = (checkoutRoot: string) => Promise<string | undefined>;
+
+const defaultReadCheckoutVersion: CheckoutVersionReader = async checkoutRoot => {
+	try {
+		const raw = await Bun.file(path.join(checkoutRoot, SOURCE_VERSION_FILE)).text();
+		const version = (JSON.parse(raw) as { version?: unknown }).version;
+		return typeof version === "string" && version.length > 0 ? version : undefined;
+	} catch {
+		return undefined;
+	}
+};
+
 /** A command the source updater runs, with a human label for reporting. */
 interface SourceUpdateStep {
 	label: string;
@@ -703,6 +732,7 @@ export async function updateViaSourceAt(
 	version: string,
 	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
 	exec: SourceUpdateExec = defaultSourceUpdateExec,
+	readCheckoutVersion: CheckoutVersionReader = defaultReadCheckoutVersion,
 ): Promise<void> {
 	// launcher = <checkout>/packages/coding-agent/scripts/veyyon
 	const resolvedLauncher = tryRealpath(launcherPath) ?? launcherPath;
@@ -742,6 +772,28 @@ export async function updateViaSourceAt(
 					sourceInstallUpdateGuidance(launcherPath),
 			);
 		}
+	}
+	// Every step exiting 0 proves the commands RAN, not that the checkout reached
+	// the release. `git merge --ff-only @{u}` fast-forwards to whatever the branch
+	// tracks, which is not necessarily the tag `update` went looking for: a user
+	// on a feature branch, or on a fork whose upstream lags, ends up advanced but
+	// still behind. Reporting "Updated to 1.0.38" there is exactly the silent
+	// wrong-version success the installers' doctor gate closes, so read the
+	// checkout back and refuse to claim a version it does not have.
+	const actual = await readCheckoutVersion(checkoutRoot);
+	if (actual === undefined) {
+		throw new Error(
+			`Could not read ${SOURCE_VERSION_FILE} in ${checkoutRoot} after updating, ` +
+				`so the checkout's version is unverified. ` +
+				sourceInstallUpdateGuidance(launcherPath),
+		);
+	}
+	if (actual !== version) {
+		throw new Error(
+			`The checkout at ${checkoutRoot} is at ${actual}, not ${version}, after fast-forwarding. ` +
+				`Its branch probably does not track the branch the ${version} release was cut from. ` +
+				sourceInstallUpdateGuidance(launcherPath),
+		);
 	}
 	report(`Updated source checkout to ${version}. Restart ${APP_NAME} to run it.`);
 }
