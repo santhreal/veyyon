@@ -386,6 +386,14 @@ export class InputController {
 				if (aborted) return;
 			}
 
+			if (vocalizer.isSpeaking()) {
+				// Playback from the completed response can overlap the next agent
+				// turn. Silence it before interrupting any ongoing main-turn work.
+				vocalizer.clear();
+				this.ctx.lastEscapeTime = 0;
+				return;
+			}
+
 			if (this.ctx.loopModeEnabled) {
 				this.ctx.pauseLoop();
 				if (this.ctx.session.isStreaming) {
@@ -437,13 +445,6 @@ export class InputController {
 				this.#abortStreamingTurn();
 			} else if (this.ctx.editor.getText().trim()) {
 				// Esc must not destroy an in-progress draft.
-				this.ctx.lastEscapeTime = 0;
-			} else if (vocalizer.isSpeaking()) {
-				// TTS buffers seconds of PCM past the streaming abort, so an Esc
-				// arriving after the model stopped would otherwise fall through to
-				// the double-Esc gesture while Kokoro reads on. Silence first;
-				// tree/branch stays reachable via a second Esc.
-				vocalizer.clear();
 				this.ctx.lastEscapeTime = 0;
 			} else {
 				// Double-interrupt with empty editor triggers /tree, /branch, or nothing based on setting
