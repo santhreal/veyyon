@@ -1,169 +1,155 @@
 /**
- * The prompt-block registry contract.
+ * The prompt-section registry contract.
  *
  * WHY THIS SUITE EXISTS. The system prompt was described in three places that
  * could disagree, and the disagreement could be silent:
  *
- *   - `system-prompt-builder/default-template.ts` declared the five banner
- *     sections one way (camelCase keys, `indexOf` byte-offset splitting) for
- *     eval overrides.
- *   - `prompt-sections.ts` declared the SAME five sections a second, independent
- *     way (kebab names, line-by-line splitting) for runtime reordering.
- *   - `system-prompt.ts` appended four MORE blocks with ad-hoc `push()` calls,
- *     so they appeared in neither and could be neither overridden nor reordered.
+ *   - `default-template.ts` declared the template's banner sections one way
+ *     (camelCase keys, `indexOf` byte-offset splitting) for eval overrides.
+ *   - `prompt-sections.ts` declared the SAME sections a second, independent way
+ *     (kebab names, line-by-line splitting) for runtime reordering.
+ *   - `system-prompt.ts` appended further blocks with ad-hoc `push()` calls.
+ *     Those had no banners, so they appeared in neither: they could not be
+ *     reordered and could not be overridden.
  *
  * Nothing forced the two section tables to agree, and their failure modes were
  * asymmetric: the offset splitter THROWS on a missing banner while the line
  * splitter silently folds the section into its predecessor. So one view of the
- * prompt could quietly lose a section boundary the other still saw.
+ * prompt could quietly lose a boundary the other still saw.
  *
- * Worse, the settings-parity guard could not see the appended tier at all. It
- * derives its gating identifiers from the template's `{{#if}}` conditionals, and
- * its render helper returns `systemPrompt[0]` — literally only the first block.
- * A block gated by a plain TypeScript `if` in the assembler could therefore stop
- * rendering entirely with every test still green, which is the exact class of
- * bug the parity guard was built to prevent, just relocated to where it could
- * not look.
+ * The appended group was the worse problem. That split tracked PROVENANCE (text
+ * from the .md file vs text computed at runtime) and leaked it into the prompt's
+ * structure as a capability difference — the shorthand notation, the section an
+ * eval most wants to ablate, sat in the tier the override mechanism could not
+ * reach. There is now one model: an ordered list of banner-delimited sections,
+ * with `source` recording provenance and conferring nothing.
  *
- * These tests lock the single registry that removes all three holes: both
- * section tables are DERIVED from it, the appended tier is assembled FROM it,
- * and adding a block without covering it fails here.
+ * These tests lock that: both derived tables come from the registry, and runtime
+ * sections are addressable exactly like template ones.
  */
 
 import { describe, expect, it } from "bun:test";
-import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
 import { kebabToCamel } from "@veyyon/utils";
+import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
+import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
 import {
-	APPENDED_BLOCK_IDS,
-	APPENDED_BLOCKS,
-	BANNERED_SECTION_BLOCKS,
-	PROMPT_BLOCKS,
-	TEMPLATE_SECTION_BLOCKS,
+	BANNERED_SECTIONS,
+	BANNERED_TEMPLATE_SECTIONS,
+	PROMPT_SECTIONS,
+	RUNTIME_SECTION_IDS,
+	RUNTIME_SECTIONS,
 	TEMPLATE_SECTION_IDS,
+	TEMPLATE_SECTIONS,
+	withSectionBanner,
 } from "./prompt-blocks";
 import { PROMPT_SECTION_NAMES, splitPromptSections } from "./prompt-sections";
-import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
 
-describe("prompt-block registry: structural invariants", () => {
+describe("prompt-section registry: structural invariants", () => {
 	/** Ids are the join key for every derived table, so a duplicate would make one
 	 * of them silently shadow the other. */
-	it("gives every block a unique id", () => {
-		const ids = PROMPT_BLOCKS.map(b => b.id);
+	it("gives every section a unique id", () => {
+		const ids = PROMPT_SECTIONS.map(s => s.id);
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
-	/** The registry is only authoritative if it is exhaustive: every block is one
-	 * of the two kinds, so nothing can sit outside both tiers. */
-	it("classifies every block as a template section or an appended block", () => {
-		expect(TEMPLATE_SECTION_BLOCKS.length + APPENDED_BLOCKS.length).toBe(PROMPT_BLOCKS.length);
-	});
-
-	/** `conventions` is the leading region with no banner of its own; every other
-	 * template section must declare the banner that opens it, or the splitters
-	 * cannot find its boundary. */
-	it("declares a banner for every template section except the leading conventions block", () => {
-		const withoutBanner = TEMPLATE_SECTION_BLOCKS.filter(b => b.banner === null).map(b => b.id);
-		expect(withoutBanner).toEqual(["conventions"]);
+	/** The registry is only authoritative if it is exhaustive. */
+	it("accounts for every section as either template- or runtime-sourced", () => {
+		expect(TEMPLATE_SECTIONS.length + RUNTIME_SECTIONS.length).toBe(PROMPT_SECTIONS.length);
+		expect(PROMPT_SECTIONS.every(s => s.source === "template" || s.source === "runtime")).toBe(true);
 	});
 
 	/** The declared id lists are what the literal-union types are built from, so a
-	 * block table that drifts from its id list would make the compile-time
-	 * exhaustiveness checks describe a different set than the runtime registry. */
-	it("keeps each block table in step with the id list its union is built from", () => {
-		expect(TEMPLATE_SECTION_BLOCKS.map(b => b.id)).toEqual([...TEMPLATE_SECTION_IDS]);
-		expect(APPENDED_BLOCKS.map(b => b.id)).toEqual([...APPENDED_BLOCK_IDS]);
+	 * table that drifts from its id list would make the compile-time exhaustiveness
+	 * checks describe a different set than the runtime registry. */
+	it("keeps each section table in step with the id list its union is built from", () => {
+		expect(TEMPLATE_SECTIONS.map(s => s.id)).toEqual([...TEMPLATE_SECTION_IDS]);
+		expect(RUNTIME_SECTIONS.map(s => s.id)).toEqual([...RUNTIME_SECTION_IDS]);
+	});
+
+	/** `conventions` is the leading region, DEFINED as whatever precedes the first
+	 * banner, so it is the only section that can lack one. A runtime section with
+	 * no banner would be unaddressable — the exact old defect. */
+	it("gives every section a banner except the leading conventions region", () => {
+		const withoutBanner = PROMPT_SECTIONS.filter(s => s.banner === null).map(s => s.id);
+		expect(withoutBanner).toEqual(["conventions"]);
+		expect(RUNTIME_SECTIONS.every(s => s.banner.length > 0)).toBe(true);
+	});
+
+	/** A registry nobody can read is a lookup table, not documentation. */
+	it("documents a purpose for every section", () => {
+		expect(PROMPT_SECTIONS.filter(s => !s.purpose.trim()).map(s => s.id)).toEqual([]);
 	});
 });
 
-describe("prompt-block registry: the shipped template agrees with the registry", () => {
-	/** THE anti-divergence lock for tier 1. Every banner the registry claims must
-	 * actually open a section in the shipped template. A renamed banner in the
-	 * template used to require edits in two hand-written tables; now it fails
-	 * here instead of silently changing one view of the prompt. */
-	it("finds every registered banner in the shipped template, in registry order", () => {
+describe("prompt-section registry: the shipped template agrees with the registry", () => {
+	/** THE anti-divergence lock for the template file. A renamed banner used to
+	 * require edits in two hand-written tables; now it fails here instead of
+	 * silently changing one view of the prompt. */
+	it("finds every registered template banner in the shipped template, in order", () => {
 		let from = 0;
-		for (const block of BANNERED_SECTION_BLOCKS) {
-			const at = systemPromptTemplate.indexOf(block.banner, from);
-			expect({ id: block.id, found: at >= 0 }).toEqual({ id: block.id, found: true });
-			from = at + block.banner.length;
+		for (const section of BANNERED_TEMPLATE_SECTIONS) {
+			const at = systemPromptTemplate.indexOf(section.banner, from);
+			expect({ id: section.id, found: at >= 0 }).toEqual({ id: section.id, found: true });
+			from = at + section.banner.length;
 		}
 	});
 
-	/** The registry order is not a preference, it is a fact about the template
-	 * file, and the whole override mechanism rests on reassembly being lossless. */
+	/** The whole override mechanism rests on reassembly being lossless. */
 	it("reassembles the template byte-for-byte from its registered sections", () => {
 		expect(assembleDefaultTemplate()).toBe(systemPromptTemplate);
 	});
 
-	/** The rendered prompt is split by a DIFFERENT parser (line-based) than the
-	 * one that builds the override map (offset-based). Both must recognise the
-	 * same set of sections, which is precisely what silently diverged before. */
-	it("makes both splitters recognise the same sections", () => {
-		const viaLineSplitter = splitPromptSections(systemPromptTemplate)
-			.filter(s => s.name !== "preamble")
-			.map(s => s.name);
-		expect(viaLineSplitter).toEqual(BANNERED_SECTION_BLOCKS.map(b => b.id));
+	/** The template splitter must look for exactly the banners the .md contains. A
+	 * runtime banner is not in that file, and searching for one would throw. */
+	it("excludes runtime sections from the template-file view", () => {
+		const templateIds = new Set<string>(BANNERED_TEMPLATE_SECTIONS.map(s => s.id));
+		for (const id of RUNTIME_SECTION_IDS) expect(templateIds.has(id)).toBe(false);
 	});
 });
 
-describe("prompt-block registry: derived tables cannot drift apart", () => {
-	/** The two consumers spell sections differently (`toolPolicy` vs
-	 * `tool-policy`). That is fine only while one spelling is a pure function of
-	 * the other; it was a defect while both were hand-written lists. */
-	it("derives the camelCase override keys from the canonical kebab ids", () => {
-		expect(kebabToCamel("tool-policy")).toBe("toolPolicy");
-		expect(kebabToCamel("execution-workflow")).toBe("executionWorkflow");
-		expect(kebabToCamel("role")).toBe("role");
-	});
-
-	/** The override API's section order must be exactly the registry's template
-	 * sections, in document order, or an override targets the wrong region. */
+describe("prompt-section registry: derived tables cannot drift apart", () => {
+	/** The consumers spell sections differently (`toolPolicy` vs `tool-policy`).
+	 * That is fine only while one spelling is a pure function of the other. */
 	it("keeps the override key order identical to the registry section order", () => {
 		expect(DEFAULT_TEMPLATE_SECTION_ORDER.map(String)).toEqual(TEMPLATE_SECTION_IDS.map(kebabToCamel));
 	});
 
-	/** The reorderer's name list must be exactly the registry's bannered sections.
-	 * When these were two independent literals, adding a banner to one and not the
-	 * other left a section reorderable but not overridable, or vice versa. */
-	it("keeps the reorderable section names identical to the registry banners", () => {
-		expect([...PROMPT_SECTION_NAMES]).toEqual(BANNERED_SECTION_BLOCKS.map(b => b.id));
-	});
-
-	/** The strongest form of the same claim: the two derived tables describe the
-	 * same sections as each other, so neither can gain or lose one alone. */
-	it("keeps the override table and the reorder table describing the same sections", () => {
-		const fromOverrides = DEFAULT_TEMPLATE_SECTION_ORDER.filter(k => k !== "conventions");
-		expect(fromOverrides.map(String)).toEqual(PROMPT_SECTION_NAMES.map(kebabToCamel));
+	/** The reorderer must see EVERY bannered section, runtime included. This is the
+	 * unification in one assertion: before it, the list stopped at the template. */
+	it("makes every bannered section reorderable, runtime sections included", () => {
+		expect([...PROMPT_SECTION_NAMES]).toEqual(BANNERED_SECTIONS.map(s => s.id));
+		for (const id of RUNTIME_SECTION_IDS) expect(PROMPT_SECTION_NAMES).toContain(id);
 	});
 });
 
-describe("prompt-block registry: the appended tier is addressable", () => {
-	/** The reason the tier exists in the registry at all. Each appended block is
-	 * declared with a stable id so an eval can name it as a controlled variable
-	 * and the parity contract can see it; previously they were anonymous pushes. */
-	it("registers every block appended after the template, in emission order", () => {
-		expect(APPENDED_BLOCKS.map(b => b.id)).toEqual([
-			"project-footer",
-			"repo-context",
-			"shorthand-preamble",
-			"shorthand-handles",
-		]);
+describe("prompt-section registry: runtime sections are first-class", () => {
+	const shorthand = RUNTIME_SECTIONS.find(s => s.id === "shorthand");
+	if (!shorthand) throw new Error("the shorthand runtime section is missing from the registry");
+
+	/** Runtime banners are owned by the registry (their text is computed, so no
+	 * document carries one). Prepending at assembly keeps ONE owner instead of
+	 * asking every producer to remember a banner. */
+	it("prefixes a runtime section's text with its registered banner", () => {
+		const out = withSectionBanner(shorthand, "notation body");
+		expect(out.startsWith("SHORTHAND\n==")).toBe(true);
+		expect(out).toContain("notation body");
 	});
 
-	/** Order is now declared data rather than an artifact of statement order in
-	 * the assembler, which is what makes it reviewable and changeable safely. */
-	it("keeps appended blocks last, after every template section", () => {
-		const ids = PROMPT_BLOCKS.map(b => b.id);
-		const lastSection = Math.max(...TEMPLATE_SECTION_IDS.map(id => ids.indexOf(id)));
-		const firstAppended = Math.min(...APPENDED_BLOCKS.map(b => ids.indexOf(b.id)));
-		expect(firstAppended).toBeGreaterThan(lastSection);
+	/** A heading promising content that is not there reads as a truncation bug to
+	 * the model, so an absent section must stay fully absent — banner included. */
+	it("emits nothing at all for empty or whitespace-only text", () => {
+		expect(withSectionBanner(shorthand, undefined)).toBe("");
+		expect(withSectionBanner(shorthand, "")).toBe("");
+		expect(withSectionBanner(shorthand, "   \n  ")).toBe("");
 	});
 
-	/** Every block states what it carries. A registry nobody can read is a lookup
-	 * table, not documentation, and the point is that the prompt be describable
-	 * without reading the assembler. */
-	it("documents a purpose for every block", () => {
-		const undocumented = PROMPT_BLOCKS.filter(b => !b.purpose || b.purpose.trim() === "").map(b => b.id);
-		expect(undocumented).toEqual([]);
+	/** The payoff: a banner-carrying runtime section is recognised by the SAME
+	 * line splitter that handles template sections, so it reorders and overrides
+	 * identically. This is precisely what the appended tier could never do. */
+	it("is recognised by the shared splitter, exactly like a template section", () => {
+		const names = splitPromptSections(withSectionBanner(shorthand, "notation body"))
+			.filter(s => s.name !== "preamble")
+			.map(s => s.name);
+		expect(names).toEqual(["shorthand"]);
 	});
 });

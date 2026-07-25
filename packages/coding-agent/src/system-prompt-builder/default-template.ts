@@ -1,6 +1,6 @@
 import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
 import { isRecord, kebabToCamel } from "@veyyon/utils";
-import { BANNERED_SECTION_BLOCKS, TEMPLATE_SECTION_CAMEL_KEYS } from "./prompt-blocks";
+import { BANNERED_TEMPLATE_SECTIONS, TEMPLATE_SECTION_CAMEL_KEYS } from "./prompt-blocks";
 
 /**
  * Composition seam for the default system-prompt template.
@@ -57,7 +57,7 @@ export const DEFAULT_TEMPLATE_SECTION_ORDER = TEMPLATE_SECTION_CAMEL_KEYS as rea
  * that order is the registry's document order.
  */
 const SECTION_BANNERS: readonly { key: keyof DefaultTemplateSections; banner: string }[] =
-	BANNERED_SECTION_BLOCKS.map(b => ({
+	BANNERED_TEMPLATE_SECTIONS.map(b => ({
 		key: kebabToCamel(b.id) as keyof DefaultTemplateSections,
 		banner: b.banner,
 	}));
