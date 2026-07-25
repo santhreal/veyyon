@@ -148,9 +148,12 @@ describe("windows native addon staging", () => {
 			await fs.mkdir(path.join(nativesDir, packageJson.version));
 			await Bun.write(path.join(nativesDir, "README.txt"), "not a version directory");
 
-			const removed = cleanupStaleNativeVersions({ nativesDir, currentVersion: packageJson.version });
+			const pruned = cleanupStaleNativeVersions({ nativesDir, currentVersion: packageJson.version });
 
-			expect(removed.map(filePath => path.basename(filePath))).toEqual(["15.10.11"]);
+			// The return carries failures too now: a cache that could not be
+			// removed used to be swallowed, so disk quietly never came back.
+			expect(pruned.removed.map((filePath: string) => path.basename(filePath))).toEqual(["15.10.11"]);
+			expect(pruned.failed).toEqual([]);
 			expect((await fs.readdir(nativesDir)).sort()).toEqual(["README.txt", packageJson.version].sort());
 		} finally {
 			await fs.rm(nativesDir, { recursive: true, force: true });

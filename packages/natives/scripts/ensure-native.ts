@@ -24,9 +24,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+	cleanupStaleNativeVersions,
 	getAddonFilenames,
 	nativeSentinelsInBuffer,
-	pruneOldNativeCaches,
+	nativesRootDir,
 	selectCpuVariant,
 	versionedNativeCacheDir,
 	versionSentinelExportFor,
@@ -164,7 +165,7 @@ function mirrorCurrentAddonsToCache(filenames: string[]): void {
 	// version sentinel a different release cannot expose. Each of those
 	// directories is around 150MB and nothing removed them, so a machine that had
 	// been through three updates carried three full copies until uninstall.
-	const pruned = pruneOldNativeCaches(version);
+	const pruned = cleanupStaleNativeVersions({ nativesDir: nativesRootDir(), currentVersion: version });
 	for (const dir of pruned.removed) {
 		console.error(`veyyon natives: reclaimed the stale addon cache at ${dir}.`);
 	}

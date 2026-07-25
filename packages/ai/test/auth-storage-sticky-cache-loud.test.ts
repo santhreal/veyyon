@@ -77,7 +77,7 @@ describe("A failing session-stickiness cache is surfaced, not swallowed at debug
 		return { store, authStorage };
 	}
 
-	const stickyWarnings = (entries: Array<{ message: string }>) =>
+	const stickyWarnings = <T extends { message: string }>(entries: T[]): T[] =>
 		entries.filter(entry => entry.message.startsWith("Session sticky credential cache failed"));
 
 	/**
