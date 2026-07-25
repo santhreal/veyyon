@@ -568,8 +568,9 @@ describe("renderReport — efficiency comparison and treatment-applied sections"
 			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800, costUsd: 0 }));
 		}
 		const report = renderReport(results, "m", STAMP, 1);
-		// cost carried no signal → named as unmeasured, not a false "equal" verdict.
-		expect(report).toContain("| cost | — | — | — | — | — | — | — | not measured (all 0/null for this provider) |");
+		// cost carried no signal → named as unmeasured with the precise "unpriced"
+		// wording (coherent with the per-arm totals table), not a false "equal" verdict.
+		expect(report).toContain("| cost | — | — | — | — | — | — | — | not measured (cost unpriced — provider reported no price) |");
 		// output tokens DID carry signal → still a real efficiency verdict.
 		expect(report).toContain("full cheaper, reward held");
 	});
@@ -2132,6 +2133,22 @@ describe("costIsUnpriced / fmtCost — a provider that reports no price is never
 		expect(report).not.toContain("$0.000");
 		expect(report).toContain("| unpriced |"); // the per-arm totals cost cell
 		expect(report).toContain("Cost is `unpriced` for at least one arm.");
+	});
+
+	test("the efficiency cost row says `unpriced`, coherent with the per-arm totals table", () => {
+		// The coherence contract: a reader must not see `unpriced` in the totals table
+		// and a differently-worded blank in the efficiency table for the SAME fact. The
+		// cost metric with no signal reads `cost unpriced`, not the generic token-metric
+		// wording, so both sections tell one story.
+		const results: ArmResult[] = [];
+		for (let i = 1; i <= 3; i++) {
+			results.push(res({ arm: "decode", task: `t${i}`, reward: 1, outputTokens: 1000, inputTokens: 500, costUsd: 0 }));
+			results.push(res({ arm: "full", task: `t${i}`, reward: 1, outputTokens: 800, inputTokens: 700, costUsd: 0 }));
+		}
+		const report = renderReport(results, "google-antigravity/gemini-3.5-flash", STAMP, 1);
+		expect(report).toContain("cost unpriced — provider reported no price");
+		// The token metrics DID have signal here, so they must NOT borrow the cost wording.
+		expect(report).not.toContain("output tok | — | — | — | — | — | — | — | not measured");
 	});
 
 	test("a priced run keeps its dollars and emits no unpriced note", () => {

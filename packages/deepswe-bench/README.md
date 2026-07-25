@@ -242,10 +242,11 @@ verifier reports), `results.json` (every metric, machine-readable), and
   it (each judged on its own Holm-adjusted p, so the sections cannot disagree).
   Requiring both closes the "equal reward" loophole where a cheaper arm quietly
   gave up partial credit while the binary rate stayed flat, so "cheaper because it
-  did less" cannot read as a win. A metric the provider never reports (some
-  providers return no cost, so every sample is 0) is labelled `not measured` rather
-  than a paired delta of zeros, so a missing metric is never mistaken for
-  "measured and found equal".
+  did less" cannot read as a win. A metric with no signal (every sample 0) is
+  labelled `not measured` rather than a paired delta of zeros, so a missing metric
+  is never mistaken for "measured and found equal". For cost that label reads
+  `cost unpriced — provider reported no price`, the same fact the per-arm totals
+  table shows as `unpriced` (see [Cost is often unpriced](#cost-is-often-unpriced)).
 - **Argot treatment applied? (per arm)** — proof the treatment fired before you
   trust any token delta. The `preamble taught` column is the authoritative signal:
   it reads the actual system prompt the model was given, so it reflects the model

@@ -1400,7 +1400,18 @@ export function renderReport(
 			// is never mistaken for a null result.
 			const hasSignal = results.some(r => !r.error && (m.raw(r) ?? 0) !== 0);
 			if (!hasSignal) {
-				lines.push(`| ${m.label} | — | — | — | — | — | — | — | not measured (all 0/null for this provider) |`);
+				// For cost specifically, all-zero has a precise name — the model is
+				// UNPRICED (a subscription tier the provider never billed per request),
+				// not merely "not reported". Use the same word the per-arm totals table
+				// uses (see fmtCost), so a reader cannot see `unpriced` in one section and
+				// a differently-worded blank in another and wonder if they mean the same
+				// thing. For token metrics, all-zero really is a provider that did not
+				// report the count, so keep that wording.
+				const why =
+					m.label === "cost"
+						? "not measured (cost unpriced — provider reported no price)"
+						: "not measured (all 0/null for this provider)";
+				lines.push(`| ${m.label} | — | — | — | — | — | — | — | ${why} |`);
 				continue;
 			}
 			// Each metric is its own family of arm-pair tests, corrected independently.
