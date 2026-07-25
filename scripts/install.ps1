@@ -184,6 +184,17 @@ function Install-Bun {
 # run instead of failing an otherwise-good install.
 function Move-StagedBinaryIntoPlace {
     param([string]$StagingPath, [string]$TargetPath)
+    # Refuse a zero-byte staged file, exactly as install.sh's finalize_binary
+    # does. Invoke-WebRequest writes the file before it knows the body is empty,
+    # and with -NoVerify no checksum runs, so without this an empty asset
+    # installed cleanly and the user got a veyyon that could not start. The
+    # staged file is removed rather than left for the caller to sweep, because
+    # this function owns it from here on.
+    $staged = Get-Item -LiteralPath $StagingPath -ErrorAction SilentlyContinue
+    if (-not $staged -or $staged.Length -eq 0) {
+        Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
+        throw "the binary staged at $StagingPath is empty - refusing to install; the download did not complete, retry or use -Source"
+    }
     if (-not (Test-Path $TargetPath)) {
         Move-Item -Path $StagingPath -Destination $TargetPath -Force
         return

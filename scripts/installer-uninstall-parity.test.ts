@@ -246,3 +246,40 @@ describe("uninstall takes back the PATH entry install added", () => {
 		expect(installSh).toContain('for stale in "$INSTALL_DIR/.$BIN_NAME".*; do');
 	});
 });
+
+/**
+ * A zero-byte staged file must never become the installed binary.
+ *
+ * install.sh has refused one since finalize_binary existed. install.ps1 had no
+ * such guard: Invoke-WebRequest writes the file before it knows the body is
+ * empty, and `-NoVerify` skips the checksum entirely, so an empty asset
+ * installed cleanly and the user got a veyyon that could not start — with the
+ * previous working binary already moved aside.
+ */
+describe("neither installer moves an empty staged file into place", () => {
+	it("install.sh refuses it in finalize_binary", () => {
+		expect(installSh).toContain('[ -s "$tmp" ] || die "the binary staged at $tmp is empty');
+	});
+
+	it("install.ps1 refuses it at the same boundary, not at the call site", () => {
+		// Putting the check inside the move means every caller inherits it,
+		// rather than each remembering to repeat it.
+		const fn = installPs1.slice(installPs1.indexOf("function Move-StagedBinaryIntoPlace {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain("if (-not $staged -or $staged.Length -eq 0) {");
+		expect(body).toContain("is empty - refusing to install");
+	});
+
+	it("install.ps1 checks BEFORE the target is moved aside", () => {
+		// Moving the working binary aside first and then failing is an uninstall,
+		// not a failed install.
+		const fn = installPs1.slice(installPs1.indexOf("function Move-StagedBinaryIntoPlace {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body.indexOf("$staged.Length -eq 0")).toBeLessThan(body.indexOf("Move-Item -Path $TargetPath"));
+	});
+
+	it("both name the staged path and the next step in the refusal", () => {
+		expect(installSh).toContain('refusing to install; $empty_hint');
+		expect(installPs1).toContain("retry or use -Source");
+	});
+});
