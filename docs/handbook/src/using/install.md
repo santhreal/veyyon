@@ -35,7 +35,7 @@ $ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific rele
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
 ```
 
-`--source` is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are `-Source`, `-Binary`, `-Ref`, and `-Uninstall`. Pass them with the scriptblock form, for example `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source` (see the header of `install.ps1`).
+`--source` is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. It also needs **[git-lfs](https://git-lfs.com)** when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are `-Source`, `-Binary`, `-Ref`, and `-Uninstall`. Pass them with the scriptblock form, for example `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source` (see the header of `install.ps1`).
 
 If you would rather clone and drive the workspace yourself:
 
@@ -118,7 +118,12 @@ with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
 place a binary ever comes from. A source checkout updates in its own terms:
 `veyyon update` fast-forwards the checkout, reinstalls dependencies, and
-regenerates build artifacts, and refreshes the native addon, all in one command. The background updater leaves
+regenerates build artifacts, and refreshes the native addon, all in one command.
+It then reads the checkout's own version back and refuses to report success
+unless the checkout really is at the new release. A fast-forward only advances
+the branch you are on, so a checkout on a feature branch, or on a fork whose
+upstream lags, can merge cleanly and stay behind; Veyyon tells you that instead
+of claiming a version you do not have. The background updater leaves
 source checkouts alone (it never runs git against your working tree); it tells
 you a version exists and you run `veyyon update` when you want it. There is no
 npm, Homebrew, or other package-manager channel to go through. If an update
@@ -142,7 +147,9 @@ the same binary at the same time.
 
 ## Uninstall
 
-The installer removes everything it added, including the `vey` alias, any shell completions, and a source checkout if you made one:
+The installer removes everything it added, and only what it added: the binary, the `vey` alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.
+
+Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it says so at install time and tells you to launch with `veyyon`), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost.
 
 ```console
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
