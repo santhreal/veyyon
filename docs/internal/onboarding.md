@@ -56,7 +56,13 @@ Testing rules and anti-patterns: [testing.md](testing.md).
 ### The pre-push hook
 
 The `pre-push` hook installed above runs `bun run check:ts` and refuses the
-push when it fails. It takes about 40 seconds on a warm cache.
+push when it fails. It takes about 15 seconds on a warm cache.
+
+It checks the commit you are pushing, not your working tree. That matters
+because this tree usually has in-flight work in it, and a hook that typechecked
+uncommitted files would block pushes over half-written code that is not going
+anywhere. Each pushed commit is checked out into a throwaway worktree that
+shares the repo's `node_modules`, so the answer matches what CI will say.
 
 It exists because a type error reaching `main` is not one branch's problem. CI
 checks the same thing, but only after the push, and by then every open pull
