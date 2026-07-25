@@ -28,7 +28,7 @@
  *
  * Prerequisites: pier (uv tool install datacurve-pier), docker, a compiled
  * binary at ../coding-agent/dist/vey (bun scripts/build-binary.ts there), and
- * google-antigravity OAuth in ~/.veyyon/profiles/default/shared-auth/agent.db.
+ * google-antigravity OAuth in ~/.veyyon/shared-auth/agent.db.
  *
  * The binary, auth DB, and arm overlays are staged into <out>/assets and
  * bind-mounted into every task container at /opt/veyyon-assets (the agent
@@ -64,14 +64,16 @@ import {
 	tallyUsage,
 } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+import { decideAuthSeed } from "./auth-seed";
 import { encodeArmModelMismatch, encodePreambleSilentlyDropped, isEncodeArm } from "./treatment-guard";
 
 const BENCH_DIR = path.dirname(new URL(import.meta.url).pathname);
 const CODING_AGENT_DIR = path.resolve(BENCH_DIR, "../coding-agent");
 const VEY_BINARY = path.join(CODING_AGENT_DIR, "dist", "vey");
-// The bench keeps its own copy of the shared-auth DB (seed it from the host
-// profile once: cp ~/.veyyon/profiles/default/shared-auth/agent.db assets/).
-// The host profile is not stable storage — other veyyon lanes prune it.
+// The bench keeps its own copy of the shared-auth DB, refreshed from the live
+// store by `ensureAuthDbSeeded` on every run. The copy exists because the host
+// store is not stable storage (other veyyon lanes prune it); the refresh exists
+// because OAuth tokens rotate and a frozen copy authenticates nothing.
 const AUTH_DB = path.join(BENCH_DIR, "assets", "auth-agent.db");
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -127,22 +129,55 @@ async function ensureBinaryUpToDate(): Promise<void> {
 	}
 }
 
+/**
+ * Credential stores this harness will seed from, MOST canonical first.
+ *
+ * `~/.veyyon/shared-auth/agent.db` is where a current install writes logins (see
+ * `getSharedAuthDir`). The two per-profile entries are the pre-move location,
+ * kept only so an operator who has not logged in since the move can still run.
+ * The order matters: those legacy files routinely survive on disk as stale
+ * leftovers, and picking one over a live store hands every container credentials
+ * that expired months ago.
+ */
+const AUTH_DB_SOURCES = [
+	path.join(os.homedir(), ".veyyon", "shared-auth", "agent.db"),
+	path.join(os.homedir(), ".veyyon", "profiles", "default", "shared-auth", "agent.db"),
+	path.join(os.homedir(), ".veyyon", "profiles", "work", "shared-auth", "agent.db"),
+];
+
+/**
+ * Copy the operator's credential store into `assets/auth-agent.db`, which every
+ * task container mounts and copies into `$HOME`.
+ *
+ * The choice of store and the staleness rule live in `auth-seed.ts` under test;
+ * this function is the effectful half. A missing store is fatal HERE rather than
+ * later, because the alternative is discovering it as N unauthenticated agents
+ * inside N containers.
+ */
 function ensureAuthDbSeeded(): void {
-	const assetsDir = path.join(BENCH_DIR, "assets");
-	fs.mkdirSync(assetsDir, { recursive: true });
-	if (fs.existsSync(AUTH_DB)) return;
-	const candidates = [
-		path.join(os.homedir(), ".veyyon", "profiles", "default", "shared-auth", "agent.db"),
-		path.join(os.homedir(), ".veyyon", "profiles", "work", "shared-auth", "agent.db"),
-		path.join(os.homedir(), ".veyyon", "shared-auth", "agent.db"),
-	];
-	for (const candidate of candidates) {
-		if (fs.existsSync(candidate)) {
-			console.log(`deepswe-bench: auto-seeding auth DB from ${candidate}`);
-			fs.copyFileSync(candidate, AUTH_DB);
-			return;
-		}
+	fs.mkdirSync(path.join(BENCH_DIR, "assets"), { recursive: true });
+	const mtimeOf = (p: string): number | undefined => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : undefined);
+	const decision = decideAuthSeed(AUTH_DB_SOURCES, AUTH_DB, mtimeOf);
+	if (decision.kind === "missing") {
+		console.error(
+			`missing credential store: no agent.db at any of\n  ${AUTH_DB_SOURCES.join("\n  ")}\n` +
+				"log in first: vey (then /login), which writes ~/.veyyon/shared-auth/agent.db",
+		);
+		process.exit(1);
 	}
+	if (decision.legacy) {
+		console.warn(
+			`deepswe-bench: seeding from the pre-move store ${decision.source}; ` +
+				`${AUTH_DB_SOURCES[0]} does not exist, so these credentials may predate your last login`,
+		);
+	}
+	if (decision.kind === "current") return;
+	console.log(
+		decision.kind === "seed"
+			? `deepswe-bench: seeding auth DB from ${decision.source}`
+			: `deepswe-bench: re-seeding auth DB from ${decision.source} (staged copy is older than the live store)`,
+	);
+	fs.copyFileSync(decision.source, AUTH_DB);
 }
 
 function sha256File(p: string): string {
@@ -513,7 +548,6 @@ async function main(): Promise<void> {
 	await ensureBinaryUpToDate();
 	ensureAuthDbSeeded();
 	requireFile(VEY_BINARY, "build it: cd ../coding-agent && bun scripts/build-binary.ts");
-	requireFile(AUTH_DB, "seed it: cp ~/.veyyon/profiles/default/shared-auth/agent.db assets/auth-agent.db");
 	for (const arm of arms) {
 		requireFile(path.join(BENCH_DIR, "arms", `${arm}.yml`), `create arms/${arm}.yml`);
 	}

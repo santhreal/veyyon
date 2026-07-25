@@ -126,8 +126,13 @@ class VeyyonAgent(BaseInstalledAgent):
         )
         rule_setup = f" && mkdir -p ~/.veyyon/rules && cp {CONTAINER_ASSETS_DIR}/rules/* ~/.veyyon/rules/" if has_rule else ""
         setup = (
-            "mkdir -p ~/.veyyon/profiles/default/shared-auth && "
-            f"cp {CONTAINER_ASSETS_DIR}/auth-agent.db ~/.veyyon/profiles/default/shared-auth/agent.db && "
+            # Seed the store veyyon actually opens: the machine-wide
+            # ~/.veyyon/shared-auth/agent.db (getSharedAuthDir). This used to
+            # write the pre-move per-profile path and rely on the first-run
+            # legacy promotion to find it, which only happens while profile
+            # sharing is on and is a migration path meant to be deleted.
+            "mkdir -p ~/.veyyon/shared-auth && "
+            f"cp {CONTAINER_ASSETS_DIR}/auth-agent.db ~/.veyyon/shared-auth/agent.db && "
             f"cp {CONTAINER_ASSETS_DIR}/arm.yml ~/.veyyon/arm.yml{rule_setup}"
         )
         # Read the section-override JSON into the env var IN the vey process only.
