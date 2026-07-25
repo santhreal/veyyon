@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import type { ImageContent, TextContent } from "@veyyon/ai";
 import {
 	__resetToolResultCapReportsForTests,
 	capToolResultContent,
 	DEFAULT_TOOL_RESULT_MAX_BYTES,
 } from "../src/tool-result-cap";
-import type { ImageContent, TextContent } from "../src/types";
 
 /**
  * A tool result too large for the request must be cut here, not by the API.

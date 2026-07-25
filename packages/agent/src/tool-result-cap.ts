@@ -1,5 +1,5 @@
+import type { ImageContent, TextContent } from "@veyyon/ai";
 import { capTextBytes, elisionMarker, logger } from "@veyyon/utils";
-import type { ImageContent, TextContent } from "./types";
 
 /**
  * Backstop cap on the bytes a single tool result may contribute to the request.
