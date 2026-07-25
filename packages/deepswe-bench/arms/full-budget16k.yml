@@ -21,8 +21,12 @@
 # READ BOTH TOKEN ROWS. A bigger dictionary is not free: it rides in the system
 # prompt every turn, so it buys shorter output by spending input. The efficiency
 # comparison scores `input tok` as well as `output tok` for exactly this arm
-# shape. A win here means output fell by more than the prompt grew, weighed at
-# the provider's own input and output prices, not that output fell at all.
+# shape. A win means output fell by more than the prompt grew, not that output
+# fell at all. Whether that trade is a win in DOLLARS needs input and output
+# prices, and the sandbox model does not supply them: google-antigravity flash is
+# a subscription tier and reports cost 0 on every message, so the report reads its
+# cost as `unpriced` and the efficiency comparison marks cost `not measured`. Read
+# the trade from the two token columns; see the README's "Cost is often unpriced".
 argot:
   enabled: true
   models:
