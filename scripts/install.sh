@@ -724,6 +724,45 @@ install_local() {
     say "  3. Run system diagnostics:  $ALIAS_NAME plugin doctor"
 }
 
+# Which C library this userland uses: "musl", "glibc", or "unknown".
+#
+# The published Linux binaries are built with bun's glibc targets
+# (`bun-linux-x64-baseline`, `bun-linux-arm64`; see scripts/ci-release-build-binaries.ts).
+# On a musl system (Alpine and friends) `uname -s` still says Linux, so the
+# installer downloaded a binary that cannot run: the checksum matched, the
+# install "succeeded", and the user got the dynamic loader's famously unhelpful
+# "not found" on a file that is plainly there. Detect it BEFORE downloading.
+detect_libc() {
+    [ "$(uname -s)" = "Linux" ] || { printf 'n/a'; return 0; }
+    # The loader path is the most reliable signal and needs no subprocess.
+    for loader in /lib/ld-musl-*.so.1 /lib64/ld-musl-*.so.1; do
+        if [ -e "$loader" ]; then printf 'musl'; return 0; fi
+    done
+    if has ldd; then
+        # musl's ldd exits non-zero on --version while still printing its banner,
+        # so the exit status carries no information here; only the text does.
+        # The `if` keeps `set -e` out of it and leaves ldd_out assigned either way.
+        ldd_out=""
+        if ldd_out=$(ldd --version 2>&1); then :; fi
+        case "$ldd_out" in
+            *musl*) printf 'musl'; return 0 ;;
+            *"GNU libc"*|*GLIBC*|*glibc*) printf 'glibc'; return 0 ;;
+        esac
+    fi
+    printf 'unknown'
+}
+
+# Refuse a binary install on a libc the release does not build for.
+#
+# Only a POSITIVE musl detection stops the install. An undetectable libc is not
+# treated as musl: glibc is the overwhelming default, and the doctor gate at the
+# end still catches a binary that cannot run, so guessing here would block
+# working installs to pre-empt a case that is already covered.
+require_supported_libc() {
+    [ "$(detect_libc)" = "musl" ] || return 0
+    die "this system uses musl libc (Alpine and similar), and the published Linux binaries are built against glibc — the download would install cleanly and then fail to start with a misleading 'not found' from the dynamic loader. Install from source instead: curl -fsSL https://get.veyyon.dev | sh -s -- --source"
+}
+
 # ---- prebuilt binary install ----
 install_binary() {
     OS="$(uname -s)"; ARCH="$(uname -m)"
@@ -737,6 +776,7 @@ install_binary() {
         arm64|aarch64) ARCH="arm64" ;;
         *) die "unsupported architecture: $ARCH (try --source)" ;;
     esac
+    require_supported_libc
     BINARY="${BIN_NAME}-${PLATFORM}-${ARCH}"
 
     if [ -n "$REF" ]; then

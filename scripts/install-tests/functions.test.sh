@@ -739,6 +739,56 @@ if command -v git >/dev/null 2>&1; then
     check "the stop links where to get git-lfs" "$(printf '%s' "$_out" | grep -c 'https://git-lfs.com')" "1" )
 fi
 
+# --- detect_libc / require_supported_libc: refuse a binary that cannot run ---
+# The published Linux binaries are bun's glibc targets. On musl (Alpine) `uname
+# -s` still says Linux, so the installer downloaded one, verified its checksum,
+# reported success, and left the user facing the dynamic loader's "not found" on
+# a file that is plainly there. The libc is now checked BEFORE the download.
+( _out=$( uname() { [ "$1" = "-s" ] && printf 'Linux\n' || command uname "$@"; }
+          has() { [ "$1" = "ldd" ] && return 0; command -v "$1" >/dev/null 2>&1; }
+          ldd() { printf 'musl libc (x86_64)\nVersion 1.2.5\n'; return 1; }
+          detect_libc )
+  check "musl is detected from ldd's banner despite its non-zero exit" "$_out" "musl" )
+
+( _out=$( uname() { [ "$1" = "-s" ] && printf 'Linux\n' || command uname "$@"; }
+          has() { [ "$1" = "ldd" ] && return 0; command -v "$1" >/dev/null 2>&1; }
+          ldd() { printf 'ldd (GNU libc) 2.39\n'; }
+          detect_libc )
+  check "glibc is detected from ldd's banner" "$_out" "glibc" )
+
+# An unreadable libc must stay "unknown" and NOT be guessed as musl: glibc is
+# the overwhelming default and the doctor gate already catches a binary that
+# cannot run, so guessing would block working installs to pre-empt a covered case.
+( _out=$( uname() { [ "$1" = "-s" ] && printf 'Linux\n' || command uname "$@"; }
+          has() { [ "$1" = "ldd" ] && return 1; command -v "$1" >/dev/null 2>&1; }
+          detect_libc )
+  check "a system with no ldd reports unknown, not musl" "$_out" "unknown" )
+
+( _out=$( uname() { [ "$1" = "-s" ] && printf 'Darwin\n' || command uname "$@"; }
+          detect_libc )
+  check "libc detection does not apply to macOS" "$_out" "n/a" )
+
+# The guard itself: only a positive musl detection stops the install.
+( detect_libc() { printf 'musl'; }
+  require_supported_libc >/dev/null 2>&1 )
+check "a musl system refuses the binary install" "$?" "1"
+( detect_libc() { printf 'glibc'; }
+  require_supported_libc >/dev/null 2>&1 )
+check "a glibc system proceeds with the binary install" "$?" "0"
+( detect_libc() { printf 'unknown'; }
+  require_supported_libc >/dev/null 2>&1 )
+check "an unknown libc proceeds rather than blocking" "$?" "0"
+( detect_libc() { printf 'n/a'; }
+  require_supported_libc >/dev/null 2>&1 )
+check "macOS proceeds with the binary install" "$?" "0"
+
+# The refusal has to name the cause and the way out, or the user is left with a
+# flat "no" on a machine where veyyon can in fact be installed from source.
+_musl_msg=$( ( detect_libc() { printf 'musl'; }; require_supported_libc ) 2>&1 )
+check "the refusal names musl" "$(printf '%s' "$_musl_msg" | grep -c 'musl libc')" "1"
+check "the refusal explains the failure the user would have hit" "$(printf '%s' "$_musl_msg" | grep -c "not found")" "1"
+check "the refusal offers the source install" "$(printf '%s' "$_musl_msg" | grep -c -- '--source')" "1"
+
 # `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
 # fallback would append a SECOND zero and make the arithmetic below choke.
 PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}
