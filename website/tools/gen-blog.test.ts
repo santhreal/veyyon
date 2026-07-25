@@ -163,6 +163,45 @@ describe("markdown rendering", () => {
 		expect(blog.renderInline("`<b>&</b>`")).toBe('<code class="inline">&lt;b&gt;&amp;&lt;/b&gt;</code>');
 	});
 
+	/**
+	 * The placeholder that shields code spans must not be forgeable from a post.
+	 *
+	 * The sentinel used to be a literal NUL byte, and prose containing one would be
+	 * substituted as if it were an extracted code span: `\uE0000\uE000` in the source
+	 * would come back as whatever the first real code span held, or as `undefined`
+	 * when there was none. It is stripped from the input now, so the sentinel can
+	 * only ever be one this function wrote itself.
+	 */
+	it("cannot have its code-span placeholder forged by a post", () => {
+		const sentinel = "\uE000";
+
+		expect(blog.renderInline(`${sentinel}0${sentinel} plain prose`)).toBe("0 plain prose");
+		expect(blog.renderInline(`${sentinel}0${sentinel} and \`real\``)).toBe(
+			'0 and <code class="inline">real</code>',
+		);
+		expect(blog.renderInline(`before ${sentinel} after`)).toBe("before  after");
+	});
+
+	/** The sentinel must not appear in the rendered output either, or the page
+	 *  ships an invisible private-use character into the reader's HTML. */
+	it("leaves no sentinel in the output", () => {
+		const rendered = blog.renderInline("a `code` span, **bold**, and [a link](https://example.test/)");
+
+		expect(rendered).not.toContain("\uE000");
+		expect(rendered).not.toContain("\u0000");
+		expect(rendered).toBe(
+			'a <code class="inline">code</code> span, <strong>bold</strong>, and <a href="https://example.test/">a link</a>',
+		);
+	});
+
+	/** Several code spans in one line must come back in order. The placeholder
+	 *  carries an index, and an off-by-one there would silently swap two spans. */
+	it("restores multiple code spans in order", () => {
+		expect(blog.renderInline("`first` then `second` then `third`")).toBe(
+			'<code class="inline">first</code> then <code class="inline">second</code> then <code class="inline">third</code>',
+		);
+	});
+
 	it("renders links, bold, and italics", () => {
 		expect(blog.renderInline("see [the handbook](https://veyyon.dev/docs/)")).toBe(
 			'see <a href="https://veyyon.dev/docs/">the handbook</a>',

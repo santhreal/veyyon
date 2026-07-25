@@ -4,7 +4,10 @@ import * as path from "node:path";
 const repoRoot = path.join(import.meta.dir, "..");
 
 /** The gitignored bundle, named once so every caller and every message agrees. */
-export const TOOL_VIEWS_GENERATED = path.join(repoRoot, "packages/coding-agent/src/export/html/tool-views.generated.js");
+export const TOOL_VIEWS_GENERATED = path.join(
+	repoRoot,
+	"packages/coding-agent/src/export/html/tool-views.generated.js",
+);
 
 /** The command that produces it, named once for the same reason. */
 export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=packages/collab-web run gen:tool-views";

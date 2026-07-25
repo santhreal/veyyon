@@ -1,4 +1,6 @@
+import { AUTO_COMPACTION_THRESHOLD } from "@veyyon/agent-core";
 import { DEFAULT_TOKEN_BUDGET } from "argot";
+import { unsetNumberOption } from "../optional-number";
 import { EMPTY_STRING_ARRAY, HINDSIGHT_RECALL_TYPES_DEFAULT } from "./shared";
 
 /** Context domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
@@ -51,69 +53,70 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// The visible compaction knob is an ABSOLUTE token amount, model-independent:
-	// compaction triggers when context exceeds this many tokens, whatever the
-	// current model's window is. It takes priority over the legacy percent knob
-	// below (see resolveThresholdTokens). When the amount exceeds the current
-	// model's window it is honored up to `contextWindow - 1` and the operator is
-	// notified loudly (never silently reinterpreted) — see
-	// isThresholdTokensClampedForWindow.
-	"compaction.thresholdTokens": {
-		type: "number",
-		default: -1,
+	// The ONE compaction-trigger setting. Its unit is part of its value, so there
+	// is a single row to read and a single row to change:
+	//   auto     the model's window minus the reserve (the historical default)
+	//   85%      a percent of whatever window the current model has
+	//   170000   an absolute amount, the same trigger on every model
+	// It replaced two same-named rows (thresholdTokens + thresholdPercent) whose
+	// precedence was invisible in the UI. Both are retained below as schema-only
+	// keys and folded in on read by withLegacyCompactionThreshold; nothing else
+	// reads them. An absolute amount larger than the current model's window is
+	// honored up to `contextWindow - 1` and reported loudly, never silently
+	// reinterpreted (see isThresholdTokensClampedForWindow).
+	"compaction.threshold": {
+		type: "string",
+		default: AUTO_COMPACTION_THRESHOLD,
 		ui: {
 			tab: "model",
 			group: "Compaction",
-			label: "Compaction Threshold",
+			label: "Auto-Compaction Threshold",
 			description:
-				"Auto-compact when context exceeds this many tokens (model-independent). Default = the legacy percent/reserve behavior below. Wins over the percent knob when set.",
+				"When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model.",
+			keywords: ["compact", "compaction", "threshold", "trigger", "percent", "tokens", "window"],
 			options: [
-				{ value: "default", label: "Default", description: "Use the percent/reserve threshold below" },
-				{ value: "32000", label: "32k", description: "Compact past 32,000 tokens" },
-				{ value: "64000", label: "64k", description: "Compact past 64,000 tokens" },
-				{ value: "100000", label: "100k", description: "Compact past 100,000 tokens" },
-				{ value: "128000", label: "128k", description: "Compact past 128,000 tokens" },
-				{ value: "150000", label: "150k", description: "Compact past 150,000 tokens" },
-				{ value: "200000", label: "200k", description: "Compact past 200,000 tokens" },
-				{ value: "256000", label: "256k", description: "Compact past 256,000 tokens" },
-				{ value: "300000", label: "300k", description: "Compact past 300,000 tokens" },
-				{ value: "400000", label: "400k", description: "Compact past 400,000 tokens" },
-				{ value: "500000", label: "500k", description: "Compact past 500,000 tokens" },
-				{ value: "750000", label: "750k", description: "Compact past 750,000 tokens" },
-				{ value: "1000000", label: "1M", description: "Compact past 1,000,000 tokens" },
+				{
+					value: AUTO_COMPACTION_THRESHOLD,
+					label: "Auto",
+					description: "The model's context window minus the reserve",
+				},
+				{ value: "50%", label: "50%", description: "Halfway through the model's window" },
+				{ value: "60%", label: "60%", description: "Moderate context usage" },
+				{ value: "70%", label: "70%", description: "Balanced" },
+				{ value: "75%", label: "75%", description: "Slightly aggressive" },
+				{ value: "80%", label: "80%", description: "Typical threshold" },
+				{ value: "85%", label: "85%", description: "Aggressive context usage" },
+				{ value: "90%", label: "90%", description: "Very aggressive" },
+				{ value: "95%", label: "95%", description: "Near the context limit" },
+				{ value: "32000", label: "32k tokens", description: "Compact past 32,000 tokens on every model" },
+				{ value: "64000", label: "64k tokens", description: "Compact past 64,000 tokens on every model" },
+				{ value: "100000", label: "100k tokens", description: "Compact past 100,000 tokens on every model" },
+				{ value: "128000", label: "128k tokens", description: "Compact past 128,000 tokens on every model" },
+				{ value: "150000", label: "150k tokens", description: "Compact past 150,000 tokens on every model" },
+				{ value: "200000", label: "200k tokens", description: "Compact past 200,000 tokens on every model" },
+				{ value: "256000", label: "256k tokens", description: "Compact past 256,000 tokens on every model" },
+				{ value: "400000", label: "400k tokens", description: "Compact past 400,000 tokens on every model" },
+				{ value: "500000", label: "500k tokens", description: "Compact past 500,000 tokens on every model" },
+				{ value: "1000000", label: "1M tokens", description: "Compact past 1,000,000 tokens on every model" },
 			],
 		},
 	},
 
-	// Legacy percent-of-window threshold. Kept valid and honored only when
-	// `compaction.thresholdTokens` is Default (-1). Model-relative, so the same
-	// percent means a different absolute trigger on every model — prefer the
-	// absolute token amount above.
+	// Retired: superseded by `compaction.threshold` (an absolute amount is now
+	// written there as a bare token count). Kept valid so an existing config keeps
+	// compacting at the same point, read ONLY by withLegacyCompactionThreshold.
+	"compaction.thresholdTokens": {
+		type: "number",
+		default: -1,
+		retiredBy: "compaction.threshold",
+	},
+
+	// Retired: superseded by `compaction.threshold` (a percent is now written
+	// there as `85%`). Read ONLY by withLegacyCompactionThreshold.
 	"compaction.thresholdPercent": {
 		type: "number",
 		default: -1,
-		ui: {
-			tab: "model",
-			group: "Compaction",
-			label: "Compaction Threshold (percent, legacy)",
-			description:
-				"Legacy: auto-compact when context exceeds this percent of the model's window (-1 = provider default). Ignored when the token amount above is set.",
-			options: [
-				{ value: "default", label: "Default", description: "Legacy reserve-based threshold" },
-				{ value: "10", label: "10%", description: "Extremely early maintenance" },
-				{ value: "20", label: "20%", description: "Very early maintenance" },
-				{ value: "30", label: "30%", description: "Early maintenance" },
-				{ value: "40", label: "40%", description: "Moderately early maintenance" },
-				{ value: "50", label: "50%", description: "Halfway point" },
-				{ value: "60", label: "60%", description: "Moderate context usage" },
-				{ value: "70", label: "70%", description: "Balanced" },
-				{ value: "75", label: "75%", description: "Slightly aggressive" },
-				{ value: "80", label: "80%", description: "Typical threshold" },
-				{ value: "85", label: "85%", description: "Aggressive context usage" },
-				{ value: "90", label: "90%", description: "Very aggressive" },
-				{ value: "95", label: "95%", description: "Near context limit" },
-			],
-		},
+		retiredBy: "compaction.threshold",
 	},
 
 	"compaction.model": {
@@ -130,15 +133,17 @@ export const CONTEXT_SETTINGS = {
 
 	"compaction.modelContextWindow": {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key: see `unset` in config/settings.ts. A sentinel
+		// value here would be indistinguishable from a configured window.
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Model Context",
 			description:
-				"Context window (tokens) assumed for the compaction model (-1 = the compaction model's own context size). Candidates whose window cannot fit the summarization payload are skipped loudly.",
+				"Context window in tokens to assume for the compaction model. Unset uses the compaction model's own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly.",
 			options: [
-				{ value: "default", label: "Default", description: "Use the compaction model's own context window" },
+				unsetNumberOption("Use the compaction model's own context window"),
 				{ value: "32000", label: "32k", description: "32,000 tokens" },
 				{ value: "64000", label: "64k", description: "64,000 tokens" },
 				{ value: "128000", label: "128k", description: "128,000 tokens" },
@@ -155,16 +160,6 @@ export const CONTEXT_SETTINGS = {
 		default: false,
 	},
 
-	"compaction.remoteEnabled": {
-		type: "boolean",
-		default: true,
-	},
-
-	"compaction.remoteStreamingV2Enabled": {
-		type: "boolean",
-		default: true,
-	},
-
 	// No default: an unset reserve tells the compaction layer the user never
 	// chose one, so small-window recovery may swap in the proportional reserve
 	// (see resolveBudgetReserveTokens). A materialized 16384 here would make
@@ -175,9 +170,11 @@ export const CONTEXT_SETTINGS = {
 
 	"compaction.autoContinue": { type: "boolean", default: true },
 
+	// Optional summarizer endpoint for the `summary` strategy. Whatever it points
+	// at must return summary TEXT, which is stored exactly like a locally
+	// generated summary. It is a transport, not a third strategy, and it grants
+	// no provider a private history format — see remote-summarizer.ts.
 	"compaction.remoteEndpoint": { type: "string", default: undefined },
-
-	"compaction.v2RetainedMessageBudget": { type: "number", default: 64000 },
 
 	// Idle compaction
 	"compaction.idleEnabled": {
@@ -215,11 +212,11 @@ export const CONTEXT_SETTINGS = {
 		type: "boolean",
 		default: false,
 		ui: {
-			tab: "context",
-			group: "Experimental",
+			tab: "experimental",
+			group: "Argot",
 			label: "Argot Shorthand",
 			description:
-				"Experimental: let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The model loads a project with the argot_load tool, then writes its short handles; the harness expands them to full text before any tool runs or the display shows them.",
+				"Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The model loads a project with the argot_load tool, then writes its short handles; the harness expands them to full text before any tool runs or the display shows them.",
 		},
 	},
 
@@ -231,8 +228,8 @@ export const CONTEXT_SETTINGS = {
 		type: "array",
 		default: EMPTY_STRING_ARRAY,
 		ui: {
-			tab: "context",
-			group: "Experimental",
+			tab: "experimental",
+			group: "Argot",
 			condition: "argotEnabled",
 			label: "Argot Models",
 			description:
@@ -250,8 +247,8 @@ export const CONTEXT_SETTINGS = {
 		type: "number",
 		default: DEFAULT_TOKEN_BUDGET,
 		ui: {
-			tab: "context",
-			group: "Experimental",
+			tab: "experimental",
+			group: "Argot",
 			condition: "argotEnabled",
 			label: "Argot Dictionary Budget",
 			description:
@@ -272,8 +269,8 @@ export const CONTEXT_SETTINGS = {
 		type: "number",
 		default: -1,
 		ui: {
-			tab: "context",
-			group: "Experimental",
+			tab: "experimental",
+			group: "Argot",
 			condition: "argotEnabled",
 			label: "Argot Context Cutoff",
 			description:
@@ -305,8 +302,8 @@ export const CONTEXT_SETTINGS = {
 		values: ["off", "fresh", "inherit"] as const,
 		default: "off",
 		ui: {
-			tab: "context",
-			group: "Experimental",
+			tab: "experimental",
+			group: "Argot",
 			condition: "argotEnabled",
 			label: "Argot in Subagents",
 			description:
@@ -347,8 +344,8 @@ export const CONTEXT_SETTINGS = {
 		] as const,
 		default: "auto",
 		ui: {
-			tab: "context",
-			group: "Experimental",
+			tab: "experimental",
+			group: "Tool Calling",
 			label: "Tool Calling Mode",
 			description:
 				"Controls how tools are exposed to the model. Auto uses provider-native tool calls unless the selected model is marked as not supporting them, then falls back to the GLM owned dialect. Native forces provider-native tools; the other values force the named owned dialect. Applies on session start.",
@@ -500,9 +497,9 @@ export const CONTEXT_SETTINGS = {
 		type: "boolean",
 		default: false,
 		ui: {
-			tab: "memory",
+			tab: "experimental",
 			group: "Auto-Learn",
-			label: "Auto-Learn (experimental)",
+			label: "Auto-Learn",
 			description:
 				"After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills",
 		},
@@ -511,7 +508,7 @@ export const CONTEXT_SETTINGS = {
 		type: "boolean",
 		default: false,
 		ui: {
-			tab: "memory",
+			tab: "experimental",
 			group: "Auto-Learn",
 			label: "Auto-run capture at stop",
 			description:
@@ -965,7 +962,8 @@ export const CONTEXT_SETTINGS = {
 			tab: "context",
 			group: "Rules (TTSR)",
 			label: "TTSR Repeat Mode",
-			description: "How rules can repeat: once per session or after a message gap",
+			description:
+				"How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter",
 		},
 	},
 
@@ -976,7 +974,7 @@ export const CONTEXT_SETTINGS = {
 			tab: "context",
 			group: "Rules (TTSR)",
 			label: "TTSR Repeat Gap",
-			description: "Messages before a rule can trigger again",
+			description: "Messages before a rule can trigger again. A rule may override this in its frontmatter",
 			options: [
 				{ value: "5", label: "5 messages" },
 				{ value: "10", label: "10 messages" },
@@ -1006,6 +1004,81 @@ export const CONTEXT_SETTINGS = {
 			group: "Rules (TTSR)",
 			label: "Disabled Rules",
 			description: "Rule names to ignore entirely (applies to bundled defaults and your own rules)",
+		},
+	},
+
+	// Google only. Gemini attaches an opaque `thoughtSignature` to every function
+	// call, and until this setting existed every historical one was re-uploaded on
+	// every request for the rest of the session. Measured over nine live sessions
+	// they were 40.2% of the whole conversation body, more than the tool results,
+	// the arguments, the thinking, and the model's own text put together: 1,295
+	// signatures averaging 2,239 characters, the largest 71,636 on its own.
+	// Older calls send Google's `skip_thought_signature_validator` sentinel
+	// instead, which is 33 characters. See firstRetainedAssistantIndex.
+	// Google only, and a SEPARATE variable from the signature window above. Gemini
+	// attaches its thought signature to the function call, never to the thought
+	// summary, so every one of the 1,023 thinking blocks measured across nine live
+	// sessions was unsigned: 1,292,300 characters (10.8% of the conversation body)
+	// of the model's own prior reasoning, re-uploaded as plain text on every
+	// request with nothing the provider can replay from it. A SIGNED thinking
+	// block is never dropped, whatever this is set to.
+	"context.thinkingRetention": {
+		type: "number",
+		default: -1,
+		ui: {
+			tab: "context",
+			group: "General",
+			label: "Thinking Retention",
+			description:
+				"How many of the most recent assistant turns keep their unsigned thinking when the conversation is sent back. Gemini summarises its reasoning for you to read but replays the real reasoning from the signature on the tool call, so an old summary is transcript text the model re-reads and the provider ignores. Keep All resends every summary ever produced. Thinking that does carry a signature is always kept. Other providers ignore this.",
+			advanced: true,
+			options: [
+				{ value: "-1", label: "Keep All", description: "Resend every thinking block (default)." },
+				{ value: "8", label: "Last 8 turns" },
+				{ value: "4", label: "Last 4 turns" },
+				{ value: "1", label: "Last turn only" },
+				{ value: "0", label: "None", description: "Drop every unsigned thinking block." },
+			],
+		},
+	},
+
+	"context.thoughtSignatureRetention": {
+		type: "number",
+		default: -1,
+		ui: {
+			tab: "context",
+			group: "General",
+			label: "Thought Signature Retention",
+			description:
+				"How many of the most recent assistant turns keep their Gemini thought signature when the conversation is sent back. Signatures let the model replay its own reasoning, and they are large, so the recent ones are the ones worth paying to resend. Keep All resends every signature ever produced, which on a long session is the single biggest thing in the context. Other providers ignore this.",
+			advanced: true,
+			options: [
+				{ value: "-1", label: "Keep All", description: "Resend every signature (default)." },
+				{ value: "8", label: "Last 8 turns" },
+				{ value: "4", label: "Last 4 turns" },
+				{ value: "1", label: "Last turn only" },
+				{ value: "0", label: "None", description: "Send the skip sentinel for every call." },
+			],
+		},
+	},
+
+	"context.thoughtSignatureMaxLength": {
+		type: "number",
+		default: -1,
+		ui: {
+			tab: "context",
+			group: "General",
+			label: "Thought Signature Size Limit",
+			description:
+				"Longest Gemini thought signature still worth resending, in characters. Anything longer sends the skip sentinel instead, however recent it is. Signature sizes are lopsided: the largest tenth of them carry roughly two thirds of all signature bytes, so a limit sheds most of the weight while keeping the great majority of the reasoning chain. Use this instead of Thought Signature Retention when you want a gentler trade, or alongside it, in which case a signature is resent only if it is both recent enough and small enough. Other providers ignore this.",
+			advanced: true,
+			options: [
+				{ value: "-1", label: "No Limit", description: "Resend a signature of any size (default)." },
+				{ value: "8000", label: "8,000 characters", description: "Affects about 8% of tool calls." },
+				{ value: "4000", label: "4,000 characters", description: "Affects about 15% of tool calls." },
+				{ value: "2000", label: "2,000 characters", description: "Affects about 24% of tool calls." },
+				{ value: "1000", label: "1,000 characters", description: "Affects about 38% of tool calls." },
+			],
 		},
 	},
 } as const;

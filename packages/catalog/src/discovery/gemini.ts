@@ -100,6 +100,9 @@ export async function fetchGeminiModels(
 				signal: options.signal,
 			});
 		} catch {
+			// Null is 'no catalog', never `[]`, so the caller keeps the distinction between an unreachable endpoint
+			// and one that lists no models. The reason is not carried back yet; see the README on failures travelling
+			// back, and the tracked task to extend that channel to every discovery reader.
 			return null;
 		}
 
@@ -111,6 +114,9 @@ export async function fetchGeminiModels(
 		try {
 			payload = await response.json();
 		} catch {
+			// Null is 'no catalog', never `[]`, so the caller keeps the distinction between an unreachable endpoint
+			// and one that lists no models. The reason is not carried back yet; see the README on failures travelling
+			// back, and the tracked task to extend that channel to every discovery reader.
 			return null;
 		}
 

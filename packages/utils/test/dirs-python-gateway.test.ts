@@ -1,47 +1,48 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
-import { APP_NAME, getAgentDir, getConfigDirName, getPythonGatewayDir, setAgentDir } from "@veyyon/utils/dirs";
+import { APP_NAME, getPythonGatewayDir, setAgentDir } from "@veyyon/utils/dirs";
 import { Snowflake } from "@veyyon/utils/snowflake";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "./helpers/isolated-config-root";
 
 describe("python gateway directory", () => {
 	let tempRoot = "";
-	let originalAgentDir = "";
-	let originalConfigDir: string | undefined;
+	let isolated: IsolatedConfigRoot;
 	let originalXdgStateHome: string | undefined;
 
 	beforeEach(async () => {
-		originalAgentDir = getAgentDir();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		originalXdgStateHome = process.env.XDG_STATE_HOME;
-		tempRoot = path.join(os.tmpdir(), "pi-utils-python-gateway", Snowflake.next());
+		// `enterIsolatedConfigRoot` rather than a hand-rolled VEYYON_CONFIG_DIR plus
+		// `setAgentDir(original)` restore, which is what this suite used to do.
+		// `setAgentDir` WRITES `VEYYON_CODING_AGENT_DIR`, and restoring through it
+		// cannot restore "the variable was unset": the suite exported the
+		// developer's real agent dir to every file that ran after it in the same
+		// process. `scripts/find-test-leaks.ts` reported it.
+		isolated = enterIsolatedConfigRoot("dirs-python-gateway", { defaultProfile: true });
+		tempRoot = path.join(isolated.root, "gateway-fixture", Snowflake.next());
 		await fs.mkdir(tempRoot, { recursive: true });
 	});
 
-	afterEach(async () => {
-		if (originalConfigDir === undefined) {
-			delete process.env.VEYYON_CONFIG_DIR;
-		} else {
-			process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		}
+	afterEach(() => {
 		if (originalXdgStateHome === undefined) {
 			delete process.env.XDG_STATE_HOME;
 		} else {
 			process.env.XDG_STATE_HOME = originalXdgStateHome;
 		}
-		setAgentDir(originalAgentDir);
-		await fs.rm(tempRoot, { recursive: true, force: true });
+		// Restores every managed variable to the value it had, deletes the root, and
+		// re-derives the resolver from the restored environment.
+		isolated.restore();
 	});
 
 	it("uses XDG state for the default agent profile", async () => {
 		if (process.platform === "win32") return;
 
-		process.env.VEYYON_CONFIG_DIR = `.veyyon-test-${Snowflake.next()}`;
 		process.env.XDG_STATE_HOME = path.join(tempRoot, "state");
 		await fs.mkdir(path.join(process.env.XDG_STATE_HOME, APP_NAME), { recursive: true });
 
-		const defaultAgentDir = path.join(os.homedir(), getConfigDirName(), "profiles", "default", "agent");
+		// The default profile's agent dir inside the isolated root, which is what the
+		// resolver itself would answer with no override in force.
+		const defaultAgentDir = path.join(isolated.root, "profiles", "default", "agent");
 		setAgentDir(defaultAgentDir);
 
 		expect(getPythonGatewayDir()).toBe(path.join(process.env.XDG_STATE_HOME, APP_NAME, "python-gateway"));

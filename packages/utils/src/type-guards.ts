@@ -10,8 +10,18 @@ export function toError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
 }
 
+/**
+ * The one owner of "turn an unknown thrown value into one readable line".
+ *
+ * An `Error` reports its message, falling back to its constructor name when the
+ * message is empty: `throw new TypeError()` used to yield `""`, and a caller
+ * splicing that into a sentence produced text that trailed off after the colon
+ * and told the reader nothing. Anything else reports its string form, so a thrown
+ * string, number, or object still says something.
+ */
 export function errorMessage(value: unknown): string {
-	return value instanceof Error ? value.message : String(value);
+	if (!(value instanceof Error)) return String(value);
+	return value.message || value.name;
 }
 
 /**
@@ -82,4 +92,21 @@ export function getStringProperty(record: Record<string, unknown>, key: string):
 export function getNonBlankStringProperty(record: Record<string, unknown>, key: string): string | undefined {
 	const value = getStringProperty(record, key);
 	return value !== undefined && value.trim().length > 0 ? value : undefined;
+}
+
+/**
+ * Is this a thenable?
+ *
+ * Not every promise-shaped value is a `Promise`: an IPC `send()` may answer with one, with a
+ * bare `{ then }`, or with nothing at all, and a rejection handler can only be attached to the
+ * ones that have `then`. A missed thenable becomes an unhandled rejection that takes the
+ * process down far away from the call that made it, which is why this is checked rather than
+ * assumed. Functions are included because a callable object can carry `then` too.
+ */
+export function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		value != null &&
+		(typeof value === "object" || typeof value === "function") &&
+		typeof (value as { then?: unknown }).then === "function"
+	);
 }

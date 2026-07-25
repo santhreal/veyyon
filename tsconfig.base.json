@@ -7,6 +7,17 @@
 		"moduleDetection": "force",
 		"jsx": "react-jsx",
 		"strict": true,
+		// `noUnusedLocals` / `noUnusedParameters` are deliberately NOT set here, and
+		// Biome owns that check instead (`noUnusedImports`, `noUnusedVariables`,
+		// `noUnusedFunctionParameters`, `noUnusedPrivateClassMembers`, all at error).
+		//
+		// TypeScript scopes compiler options per PROGRAM, and every package's program
+		// contains `packages/utils/src/vendor/mermaid-ascii` because they all import
+		// `@veyyon/utils` by source. That port is a faithful copy of upstream (see its
+		// NOTICE) and carries 41 unused bindings, so turning these on reports them in
+		// all twelve programs, and a per-package override cannot suppress them because
+		// the files are not in the package that declares the override. Biome scopes by
+		// path, so it excludes `**/vendor/**` and still checks everything else.
 		"skipLibCheck": true,
 		"allowArbitraryExtensions": true,
 		"verbatimModuleSyntax": true,

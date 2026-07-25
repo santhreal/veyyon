@@ -1000,6 +1000,9 @@ function toCodexHeaders(value: unknown): Headers | undefined {
 		try {
 			return new Headers(value as Array<[string, string]>);
 		} catch {
+			// Header pairs a Headers object refuses (an invalid name, a value with a newline) are not headers
+			// we may send, so undefined means "no headers from this value" and the request goes out with its
+			// defaults. Sending a partially-built set would be worse than sending none.
 			return undefined;
 		}
 	}
@@ -2439,7 +2442,7 @@ class CodexStreamProcessor {
 	finalize(completion: CodexStreamCompletion): AssistantMessage {
 		const { output } = this;
 		if (this.options?.signal?.aborted) {
-			throw new AIError.AbortError();
+			throw new AIError.RequestAbortError();
 		}
 		if (!this.runtime.sawTerminalEvent) {
 			if (this.requestContext.websocketState) {

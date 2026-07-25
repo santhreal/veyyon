@@ -16,10 +16,9 @@ import type {
 import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
 import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { formatDuration, getProjectDir } from "@veyyon/utils";
+import { formatDuration } from "@veyyon/utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
-import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
 	formatModelString,
@@ -27,21 +26,21 @@ import {
 	resolveCliModel,
 } from "../config/model-resolver";
 import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
-import { Settings } from "../config/settings";
-import benchPrompt from "../prompts/bench.md" with { type: "text" };
-import { discoverAuthStorage, loadCliExtensionProviders } from "../sdk";
+import type { Settings } from "../config/settings";
+import { PROMPTS } from "../prompts/registry";
 import {
 	concreteThinkingLevel,
 	resolveThinkingLevelForModel,
 	shouldDisableReasoning,
 	toReasoningEffort,
 } from "../thinking";
+import { createCliModelRuntime } from "./model-runtime";
 
 const DEFAULT_RUNS = 10;
 const DEFAULT_PAR = 4;
 const DEFAULT_MAX_TOKENS = 512;
 const ERROR_WIDTH = 110;
-const BENCH_PROMPT = benchPrompt.trim();
+const BENCH_PROMPT = PROMPTS["bench/throughput"].text.trim();
 
 export interface BenchCommandArgs {
 	models: string[];
@@ -362,24 +361,6 @@ export function formatBenchTable(summary: BenchSummary): string {
 	return `${lines.map((line, index) => (index === 0 ? chalk.dim(line) : line)).join("\n")}\n`;
 }
 
-async function createDefaultRuntime(): Promise<BenchRuntime> {
-	const authStorage = await discoverAuthStorage();
-	try {
-		const cwd = getProjectDir();
-		const settings = await Settings.init({ cwd });
-		const modelRegistry = new ModelRegistry(authStorage);
-		await loadCliExtensionProviders(modelRegistry, settings, cwd);
-		return {
-			modelRegistry,
-			settings,
-			close: () => authStorage.close(),
-		};
-	} catch (error) {
-		authStorage.close();
-		throw error;
-	}
-}
-
 interface BenchTarget {
 	selector: string;
 	model: Model<Api>;
@@ -493,7 +474,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 		throw new Error("Pass at least one model selector, e.g. `veyyon bench opus gpt-5.2`");
 	}
 
-	const runtime = await (deps.createRuntime ?? createDefaultRuntime)();
+	const runtime = await (deps.createRuntime ?? createCliModelRuntime)();
 	try {
 		const targets = resolveBenchModels(command.models, runtime.modelRegistry, runtime.settings, writeStderr);
 		// Explicit `--service-tier` (a single value broadcast across families) wins;

@@ -4,6 +4,49 @@
 
 ## [Unreleased]
 
+### Added
+
+- Every place that reads a subprocess pipe as text now goes through `readPipeText`. Thirty-four
+  further sites across five packages spelled `new Response(proc.stdout).text()` inline, four of them
+  casting the pipe (`proc.stderr as ReadableStream`) to satisfy the compiler. Reading text out of a
+  pipe is one operation, and the helper's null handling means a caller no longer has to decide
+  per-site whether a stream that was not piped is an error: it reads as no output, which is what
+  every one of these sites wants, since they are assembling a diagnostic about someone else's
+  failure. No behaviour change at any of the thirty-four: each either pipes the stream it reads or
+  already guarded it by hand. `ptree`'s blob, JSON, ArrayBuffer and bytes readers are different
+  operations and stay as they are.
+
+- `bench-harness`: `makeBench`, `benchStats` and `benchFail`, the loop and the two readings every
+  bench script here needs. Four scripts across two packages had written their own copy of each, and a
+  benchmark's own arithmetic is the last place a difference should be free to hide. `benchFail` exits
+  non-zero, because a bench that prints a failure and succeeds is a bench nothing can gate on.
+
+- Added `readPipeText`, which drains a spawned process's pipe to a string and reads an absent pipe (`Bun.spawn` gives `null` for a stream that was not captured) as empty output. Both runtime installers had a private copy of that guard, and each is the code that explains a failed install to an operator: dropping the null case turns the install error into a TypeError about reading a stream.
+
+- `startupMarker` moved into `@veyyon/utils/startup-marker`, a module whose only dependency is `node:fs`, and `logger.startupMarker` re-exports it. It existed twice, in the logger and in the CLI framework, with the second copy documented as deliberate: `veyyon --version` must not pull the winston-backed logger into its import graph. That constraint is real, and a module with one node builtin as its dependency satisfies it without a second definition. The marker's behaviour is unchanged, and now tested: one synchronous `fs.writeSync(2)` line per phase, silent unless `VEYYON_DEBUG_STARTUP` is set.
+
+- Added `isThenable`, the guard that decides whether a value needs a rejection handler attached. It existed twice in `@veyyon/coding-agent` (the IPC `send()` sites and the MCP stdio transport), where one copy's comment justified the other as "battle-tested there"; a missed thenable becomes an unhandled rejection that takes the process down far from the call that made it. Its tests moved here with it.
+
+- Added `createThemeStore`, the light/dark theme store a browser page reads through: it restores the preference a person chose (`system`, `light`, `dark`), resolves it against the browser's, writes it onto `<html>` for CSS and for the native form controls, and notifies its readers. The collab client and the stats dashboard each had a byte-identical copy of it, ~90 lines with no tests in either. Browser access goes through a `ThemeEnvironment`, so the resolution can be asserted without a DOM, and the package stays free of the `dom` lib. It is React-free; each page binds it with `useSyncExternalStore`. Also available as `@veyyon/utils/theme-store`.
+
+- Added `asStrictBytes`, which narrows a `Uint8Array` to one over its own whole `ArrayBuffer`, copying only when it is not one already. `crypto.subtle` reads the entire backing buffer of the array it is handed, so a view into part of a larger buffer (an IV taken with `subarray`, say) has to be copied before it is signed or decrypted, or the neighbouring bytes go in with it. Four packages needed this and each had a private copy, one of which could have been "tidied" into a bare cast without any test noticing. The no-copy path is the common one and is kept: sealing runs per collab frame and signing per request. Also available as `@veyyon/utils/bytes` for browser bundles, which must not import the barrel.
+
+- Added `parseJsonOrYamlByExtension`, which parses a config file's text as YAML when the path ends in `.yaml` or `.yml` and as JSON otherwise. The LSP and DAP config readers each had a private, byte-identical copy of that decision. It throws on malformed input rather than returning nothing, so the caller can name the file and the line.
+
+- Added `visitJsonlBytes`, `parseJsonlBytes` and `decodeJsonlLine`: a byte-level JSONL walk for a file that is still being appended to. It returns the byte offset up to which whole lines were consumed, so a reader stores that offset and reads only the new bytes next time and never holds a large file as a string. A trailing partial line is the ordinary case rather than an error, and a complete line that cannot be decoded is reported with its offset and length instead of vanishing. This is the third reader in the package and each answers a different question: this one for a growing file, `parseJsonlIncremental` for a stream arriving in chunks, `parseJsonlLenient` for a complete buffer.
+
+### Changed
+
+- `AbortError` from `@veyyon/utils` is now the signal-shaped cancellation class, and the class raised when a child process is killed is `ProcessAbortError`. Three unrelated classes answered to the name `AbortError`, two of them in this package, and the barrel exported the process one, so importing `AbortError` and constructing it from an `AbortSignal` failed with "Expected 2 arguments, but got 1" while an `instanceof AbortError` check compiled, passed, and asked about a class the author did not mean. Both classes still report `name === "AbortError"`, so `isAbortError` and every log and message shape are unchanged; only the import name moves. If you constructed the process-abort class through the barrel, import `ProcessAbortError` instead.
+
+- `VEYYON_CONFIG_DIR` set to an absolute path is now refused at startup instead of being reinterpreted. It names the config directory under your home rather than replacing it, so `VEYYON_CONFIG_DIR=/srv/veyyon` was joined onto your home and created `~/srv/veyyon`: you got a brand new tree inside your home, the old one stayed where it was, and nothing said so. The error names the directory that would have been created and points at the `XDG_*_HOME` variables, which do take absolute paths. A value written for the other platform (`C:\veyyon`, a UNC path) is caught the same way, and a whitespace-only value is refused rather than creating a directory whose name is invisible in a listing. An empty value still means "use the default".
+
+- Log output follows the config root when it moves. The rotating file transport resolved its directory once, on the first log line of the process, so anything that changed the config root afterwards kept writing to the old location: the log file where the docs say it should be had no entries, and if the old directory had been removed the lines went to an unlinked file and were gone. If the new location cannot be written to, veyyon keeps using the one that works and says so through a process warning rather than losing logging entirely.
+
+- A log write that fails no longer takes the process down. A winston transport reports failures as an `error` event, and an event with no listener is an uncaught exception, so a log destination that went wrong after startup — its directory removed, the disk full, a volume unmounted — crashed whatever veyyon was doing at the time. The failure is reported once as a process warning and the run continues; a log line is the least important thing happening at that moment.
+
+- `errorMessage` falls back to an error's constructor name when its message is empty. Callers splice the result into a sentence (`renderer threw: <msg>`), and `new TypeError()` produced text that trailed off after the colon and named nothing. A whitespace-only message is still returned as-is: it is a real message, and substituting the class name would hide that the throw site produced junk.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

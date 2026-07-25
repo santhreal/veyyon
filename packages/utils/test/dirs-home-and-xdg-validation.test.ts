@@ -114,7 +114,6 @@ describe("XDG base directories", () => {
 		for (const dir of roots.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 	});
 	const UTILS_INDEX = path.resolve(import.meta.dir, "..", "src", "index.ts");
-	const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
 	/**
 	 * Resolve the cache dir in a child with the given env, returning the resolved

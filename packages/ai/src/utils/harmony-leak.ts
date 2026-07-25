@@ -405,6 +405,9 @@ function getToolArgumentText(toolCall: ToolCall): string | undefined {
 	try {
 		return JSON.stringify(toolCall.arguments);
 	} catch {
+		// Arguments with a cycle in them have no text form, so this call is not scanned for a leak. Undefined
+		// is the "nothing to scan" answer the caller already handles for a call with no arguments; it means
+		// this one call is skipped, not that the scan reported clean for it.
 		return undefined;
 	}
 }

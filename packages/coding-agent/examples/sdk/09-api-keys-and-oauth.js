@@ -3,11 +3,11 @@
  *
  * Configure API key resolution via AuthStorage and ModelRegistry.
  */
-import { AuthStorage, createAgentSession, discoverAuthStorage, discoverModels, ModelRegistry, SessionManager, } from "@veyyon/coding-agent";
+import { AuthStorage, createAgentSession, discoverAuthStorage, ModelRegistry, SessionManager, } from "@veyyon/coding-agent";
 // Default: discoverAuthStorage() uses ~/.veyyon/agent/agent.db
-// discoverModels() loads built-in + custom models from ~/.veyyon/agent/models.json
+// ModelRegistry loads built-in + custom models from ~/.veyyon/agent/models.json
 const authStorage = await discoverAuthStorage();
-const modelRegistry = await discoverModels(authStorage);
+const modelRegistry = new ModelRegistry(authStorage);
 await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     authStorage,
@@ -16,7 +16,7 @@ await createAgentSession({
 console.log("Session with default auth storage and model registry");
 // Custom auth storage location
 const customAuthStorage = await AuthStorage.create("/tmp/my-app/agent.db");
-const customModelRegistry = await ModelRegistry.create(customAuthStorage, "/tmp/my-app/models.json");
+const customModelRegistry = new ModelRegistry(customAuthStorage, "/tmp/my-app/models.json");
 await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     authStorage: customAuthStorage,
@@ -32,7 +32,7 @@ await createAgentSession({
 });
 console.log("Session with runtime API key override");
 // No models.json - only built-in models
-const simpleRegistry = await ModelRegistry.create(authStorage); // null = no models.json
+const simpleRegistry = new ModelRegistry(authStorage); // null = no models.json
 await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     authStorage,

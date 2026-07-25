@@ -114,6 +114,30 @@ export function emptyCost(): Usage["cost"] {
 }
 
 /**
+ * Does this cost object carry a non-zero price in any bucket?
+ *
+ * Read this as "are there numbers here to use", NOT as "is the model paid". An all-zero cost is
+ * ambiguous by construction, which is what {@link ModelSpec.costKnown} exists to disambiguate: a
+ * provider that publishes no pricing produces the same object as a genuinely free model. Callers
+ * use this to decide whether to go looking for pricing somewhere else (the Codex entries take
+ * theirs from the matching OpenAI model, and the stats database falls back through the bundled
+ * catalog), so the ambiguity is harmless there: trying a fallback for a free model finds nothing
+ * and changes nothing. Do not use it to label a model free in any user-facing surface.
+ *
+ * The parameter is structural so the generator's `ModelSpec["cost"]`, a {@link Usage} cost with
+ * its extra `total`, and the stats row shape all pass. It had a copy in `catalog`'s generator and
+ * another in `stats`, spelled identically down to the bucket order.
+ */
+export function hasBillableCost(cost: {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+}): boolean {
+	return cost.input !== 0 || cost.output !== 0 || cost.cacheRead !== 0 || cost.cacheWrite !== 0;
+}
+
+/**
  * A fresh, fully-zeroed {@link Usage}: every required token bucket and every
  * cost field set to 0, optional fields (orchestration, reasoningTokens, cttl,
  * server, premiumRequests) left absent. This is the ONE owner for the zeroed

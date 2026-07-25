@@ -119,7 +119,7 @@ describe("AgentSession magic keyword settings", () => {
 		const created = await createMagicKeywordSession(root);
 		session = created.session;
 		authStorage = created.authStorage;
-		created.settings.set("task.batch", false);
+		created.settings.set("subagent.batch", false);
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
 		await session.prompt("please workflowz this");

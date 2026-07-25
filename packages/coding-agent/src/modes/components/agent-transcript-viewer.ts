@@ -34,6 +34,7 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
 // viewer's chrome rows pad to the same rail so title, body, editor, and
 // footer share one gutter.
 const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
+
 import { agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import { DynamicBorder } from "./dynamic-border";
@@ -614,11 +615,7 @@ export class AgentTranscriptViewer implements Component {
 		if (!progress) return "";
 		const stats: string[] = [];
 		if (progress.contextTokens && progress.contextTokens > 0) {
-			stats.push(
-				progress.contextWindow && progress.contextWindow > 0
-					? formatContextUsage((progress.contextTokens / progress.contextWindow) * 100, progress.contextWindow)
-					: formatNumber(progress.contextTokens),
-			);
+			stats.push(formatContextUsage(progress.contextTokens, progress.contextWindow ?? 0));
 		}
 		if (progress.durationMs > 0) stats.push(formatDuration(progress.durationMs));
 		const parts: string[] = [];

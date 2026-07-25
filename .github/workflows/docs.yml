@@ -11,6 +11,16 @@ on:
       - "**/*.md"
       - "scripts/check-doc-links.ts"
       - "scripts/check-doc-freshness.ts"
+      - "scripts/check-doc-imports.ts"
+      - "scripts/check-doc-paths.ts"
+      - "scripts/gen-example-js.ts"
+      - "packages/*/examples/**"
+      - "packages/coding-agent/tsconfig.examples.json"
+      # Adding a package is what makes the package maps stale, and a new manifest
+      # matches none of the filters above, so the run that would catch it would
+      # not have started.
+      - "packages/*/package.json"
+      - "scripts/package-map-coverage.test.ts"
       - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
@@ -19,6 +29,16 @@ on:
       - "**/*.md"
       - "scripts/check-doc-links.ts"
       - "scripts/check-doc-freshness.ts"
+      - "scripts/check-doc-imports.ts"
+      - "scripts/check-doc-paths.ts"
+      - "scripts/gen-example-js.ts"
+      - "packages/*/examples/**"
+      - "packages/coding-agent/tsconfig.examples.json"
+      # Adding a package is what makes the package maps stale, and a new manifest
+      # matches none of the filters above, so the run that would catch it would
+      # not have started.
+      - "packages/*/package.json"
+      - "scripts/package-map-coverage.test.ts"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -47,11 +67,38 @@ jobs:
         with:
           bun-version: "1.3.14"
       - name: Checker self-tests
-        run: bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts scripts/docs-book-pin.test.ts
+        run: bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts scripts/check-doc-imports.test.ts scripts/check-doc-paths.test.ts scripts/gen-example-js.test.ts scripts/docs-book-pin.test.ts scripts/gen-settings-reference.test.ts scripts/settings-doc-coherence.test.ts
+      # The two package maps (ARCHITECTURE.md, AGENTS.md) must describe every package
+      # and no package that is gone. Adding a package is what makes them stale, and
+      # nothing about adding one prompts anybody to open a markdown table.
+      - name: Check the package maps cover every package
+        run: bun test scripts/package-map-coverage.test.ts
       - name: Check internal markdown links
         run: bun scripts/check-doc-links.ts
       - name: Check internal doc verification stamps
         run: bun scripts/check-doc-freshness.ts
+      # Documented imports must resolve. A rename that lands in the code and the
+      # CHANGELOG but not in the READMEs leaves a package's quick start throwing
+      # on its first line, and no other gate reads inside a fenced code block.
+      - name: Check documented imports exist
+        run: bun scripts/check-doc-imports.ts
+      # Docs name source files far more often in a bare code span than in a
+      # markdown link, and check-doc-links strips code spans on purpose. That gap
+      # let `prompt-blocks.ts` keep its three mentions after the file was split,
+      # including the line telling a contributor which file to edit.
+      - name: Check documented source paths exist
+        run: bun scripts/check-doc-paths.ts
+      # The settings reference is rendered from the schema. A settings change that
+      # does not regenerate it leaves the documented default or description wrong,
+      # so the stale file fails here rather than shipping.
+      - name: Check the generated settings reference is current
+        run: bun scripts/gen-settings-reference.ts
+      # Every example ships twice, `hello.ts` beside `hello.js`, so a reader
+      # working in plain JavaScript can copy one. The `.js` is transpiled from the
+      # `.ts`; when both were hand-maintained, five drifted and two of them
+      # reproduced type errors already fixed in the TypeScript copy.
+      - name: Check the generated example twins are current
+        run: bun scripts/gen-example-js.ts
 
   doc-examples:
     # Asserts every documented command/flag/mcp-block/keybinding/env-var/slash-command/

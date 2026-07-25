@@ -6,13 +6,8 @@
 import { Effort } from "@veyyon/ai";
 import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { parseAgentFields } from "../discovery/helpers";
-import designerMd from "../prompts/agents/designer.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 // Embed agent markdown files at build time
-import agentFrontmatterTemplate from "../prompts/agents/frontmatter.md" with { type: "text" };
-import librarianMd from "../prompts/agents/librarian.md" with { type: "text" };
-import reviewerMd from "../prompts/agents/reviewer.md" with { type: "text" };
-import scoutMd from "../prompts/agents/scout.md" with { type: "text" };
-import taskMd from "../prompts/agents/task.md" with { type: "text" };
 import { AUTO_THINKING } from "../thinking";
 
 import type { AgentDefinition, AgentSource } from "./types";
@@ -36,34 +31,32 @@ interface EmbeddedAgentDef {
 function buildAgentContent(def: EmbeddedAgentDef): string {
 	const body = prompt.render(def.template);
 	if (!def.frontmatter) return body;
-	return prompt.render(agentFrontmatterTemplate, { ...def.frontmatter, body });
+	return prompt.render(PROMPTS["agents/frontmatter"].text, { ...def.frontmatter, body });
 }
 
 const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
-	{ fileName: "scout.md", template: scoutMd },
-	{ fileName: "designer.md", template: designerMd },
-	{ fileName: "reviewer.md", template: reviewerMd },
-	{ fileName: "librarian.md", template: librarianMd },
+	{ fileName: "scout.md", template: PROMPTS["agents/scout"].text },
+	{ fileName: "designer.md", template: PROMPTS["agents/designer"].text },
+	{ fileName: "reviewer.md", template: PROMPTS["agents/reviewer"].text },
+	{ fileName: "librarian.md", template: PROMPTS["agents/librarian"].text },
 	{
 		fileName: "task.md",
 		frontmatter: {
 			name: "task",
 			description: "General-purpose subagent with full capabilities for delegated multi-step tasks",
 			spawns: "*",
-			model: "@task",
 			thinkingLevel: AUTO_THINKING,
 		},
-		template: taskMd,
+		template: PROMPTS["agents/task"].text,
 	},
 	{
 		fileName: "sonic.md",
 		frontmatter: {
 			name: "sonic",
 			description: "Low-reasoning agent for strictly mechanical updates or data collection only",
-			model: "@smol",
 			thinkingLevel: Effort.Medium,
 		},
-		template: taskMd,
+		template: PROMPTS["agents/task"].text,
 	},
 ];
 

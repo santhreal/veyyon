@@ -9,6 +9,8 @@
 
 import { Process } from "@veyyon/natives";
 import type { Spawn, Subprocess } from "bun";
+import { readPipeText } from "./stream";
+import { errorMessage } from "./type-guards";
 
 type InMask = "pipe" | "ignore" | Buffer | Uint8Array | null;
 
@@ -45,14 +47,32 @@ export class NonZeroExitError extends Exception {
 	}
 }
 
-/** Exception for explicit process abortion (via signal). */
-export class AbortError extends Exception {
+/**
+ * A child process was killed on purpose: a signal fired, or the tree was disposed.
+ *
+ * Named for the layer it comes from. Three unrelated classes in this workspace used to be called
+ * `AbortError` -- this one, the signal-shaped one in `abortable.ts`, and a cancelled provider request
+ * in `@veyyon/ai` -- and `@veyyon/utils`'s barrel exported THIS one, so `import { AbortError } from
+ * "@veyyon/utils"` handed you the process-abort class whichever one you meant. A wrong constructor
+ * call is the cheap version of that trap; an `instanceof AbortError` check that compiles, passes, and
+ * asks about a different class than the author had in mind is the expensive one.
+ *
+ * The `name` stays `"AbortError"` on the wire. `isAbortError` reads the name rather than testing an
+ * instance, precisely so a caller never has to know which class it caught, and session message shapes
+ * and log output carry that string. `Exception` derives `name` from the constructor, so the wire name
+ * is restored here, and only for THIS class: {@link TimeoutError} extends it and keeps its own name,
+ * which `isTimeoutError` depends on.
+ */
+export class ProcessAbortError extends Exception {
 	constructor(
 		public readonly reason: unknown,
 		stderr: string,
 	) {
 		const msg = reason instanceof Error ? reason.message : String(reason ?? "aborted");
 		super(`Operation cancelled: ${msg}`, -1, stderr);
+		if (new.target === ProcessAbortError) {
+			this.name = "AbortError";
+		}
 	}
 	get aborted() {
 		return true;
@@ -60,7 +80,7 @@ export class AbortError extends Exception {
 }
 
 /** Exception for process timeout. */
-export class TimeoutError extends AbortError {
+export class TimeoutError extends ProcessAbortError {
 	constructor(timeout: number, stderr: string) {
 		super(new Error(`Timed out after ${Math.round(timeout / 1000)}s`), stderr);
 	}
@@ -127,7 +147,15 @@ export class ChildProcess<In extends InMask = InMask> {
 					this.#stderrTail += dec.decode(chunk, { stream: true });
 					trim();
 				}
-			} catch {}
+			} catch (error) {
+				// The tail is not a debug convenience: it IS the diagnostic
+				// `NonZeroExitError` shows when a child fails. A drain that stopped early
+				// used to leave a tail that looked complete, so the reader saw a truncated
+				// trace and concluded the child said nothing more. The marker goes into the
+				// tail itself rather than a log, because the tail is the surface the reader
+				// is already looking at.
+				this.#stderrTail += `\n[stderr capture stopped early: ${errorMessage(error)}]`;
+			}
 			this.#stderrTail += dec.decode();
 			trim();
 		})();
@@ -158,7 +186,7 @@ export class ChildProcess<In extends InMask = InMask> {
 				}
 
 				const ex = this.proc.killed
-					? new AbortError(new Error("process killed"), this.#stderrTail)
+					? new ProcessAbortError(new Error("process killed"), this.#stderrTail)
 					: new NonZeroExitError(-1, this.#stderrTail);
 				this.#exitReason = ex;
 				reject(ex);
@@ -225,7 +253,7 @@ export class ChildProcess<In extends InMask = InMask> {
 	// ── Output helpers ───────────────────────────────────────────────────
 
 	async text(): Promise<string> {
-		const p = new Response(this.stdout).text();
+		const p = readPipeText(this.stdout);
 		if (this.#nothrow) return p;
 		const [text] = await Promise.all([p, this.exitedCleanly]);
 		return text;
@@ -286,7 +314,7 @@ export class ChildProcess<In extends InMask = InMask> {
 			},
 		);
 
-		const stdoutP = new Response(this.stdout).text();
+		const stdoutP = readPipeText(this.stdout);
 		const stderrP =
 			stderrMode === "full"
 				? this.#stderrDone.then(() => new TextDecoder().decode(Buffer.concat(this.#stderrChunks)))
@@ -315,7 +343,7 @@ export class ChildProcess<In extends InMask = InMask> {
 	// ── Signal / timeout ─────────────────────────────────────────────────
 
 	attachSignal(signal: AbortSignal): void {
-		const onAbort = () => this.kill(new AbortError(signal.reason, "<cancelled>"));
+		const onAbort = () => this.kill(new ProcessAbortError(signal.reason, "<cancelled>"));
 		if (signal.aborted) return void onAbort();
 		signal.addEventListener("abort", onAbort, { once: true });
 		this.#exited.catch(() => {}).finally(() => signal.removeEventListener("abort", onAbort));
@@ -336,7 +364,7 @@ export class ChildProcess<In extends InMask = InMask> {
 
 	[Symbol.dispose](): void {
 		if (this.proc.exitCode !== null) return;
-		this.kill(new AbortError("process disposed", this.#stderrTail));
+		this.kill(new ProcessAbortError("process disposed", this.#stderrTail));
 	}
 }
 

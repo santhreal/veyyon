@@ -13,7 +13,12 @@
  * come back.
  */
 import { describe, expect, it } from "bun:test";
-import { classifySentinelBumpState, isSentinelRewriteExcluded, planSentinelRewrite, sentinelExportName } from "./release.ts";
+import {
+	classifySentinelBumpState,
+	isSentinelRewriteExcluded,
+	planSentinelRewrite,
+	sentinelExportName,
+} from "./release.ts";
 
 describe("sentinelExportName", () => {
 	it("maps a clean semver to its sentinel export symbol", () => {

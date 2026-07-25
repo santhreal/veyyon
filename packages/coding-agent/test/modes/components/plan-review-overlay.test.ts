@@ -5,6 +5,7 @@ import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/components/h
 import { PlanReviewOverlay } from "@veyyon/coding-agent/modes/components/plan-review-overlay";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { setKeybindings } from "@veyyon/tui";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
@@ -29,6 +30,12 @@ const APPROVAL_OPTIONS = [
 ];
 
 describe("PlanReviewOverlay", () => {
+	// The hover-band checks assert a raw background sequence, and both the
+	// positive and the negative form need the policy declared: `theme.bg` is the
+	// identity function unless the policy is `full`, which makes
+	// `not.toContain(selectedBg)` vacuously true and its positive twin
+	// impossible. Declare the policy rather than inherit it from the terminal.
+	useFullColor();
 	beforeAll(async () => {
 		darkTheme = await getThemeByName("dark");
 		if (!darkTheme) throw new Error("Failed to load dark theme");

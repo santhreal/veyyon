@@ -3,6 +3,12 @@ import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager"
 import { executeSSH } from "@veyyon/coding-agent/ssh/ssh-executor";
 import * as sshfsMount from "@veyyon/coding-agent/ssh/sshfs-mount";
 import { type ChildProcess, ptree } from "@veyyon/utils";
+// `executeSSH` calls `Settings.init()` itself, which opens `AgentStorage` under the
+// ACTIVE PROFILE's agent dir. Without this the suite tries to create the developer's
+// real `~/.veyyon/profiles/<profile>/agent` and the real-data tripwire fails both tests.
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
+useIsolatedAgentDir({ globalSettings: true });
 
 type TestStdin = "pipe" | "ignore" | Buffer | Uint8Array | null;
 

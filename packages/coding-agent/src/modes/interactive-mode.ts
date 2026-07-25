@@ -64,6 +64,7 @@ import {
 	onStatusLineSessionAccentChanged,
 	type QuarantinedSettingsFile,
 	Settings,
+	type SettingsSaveFailure,
 	settings,
 } from "../config/settings";
 import type {
@@ -82,7 +83,7 @@ import type { Skill } from "../extensibility/skills";
 import { loadSlashCommands } from "../extensibility/slash-commands";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../goals/guided-setup";
 import type { Goal, GoalModeState } from "../goals/state";
-import { resolveLocalUrlToPath } from "../internal-urls";
+import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../internal-urls";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../lsp/startup-events";
 import type { MCPManager } from "../mcp";
 import {
@@ -96,10 +97,7 @@ import {
 	resolveApprovedPlan,
 	resolvePlanTitle,
 } from "../plan-mode/approved-plan";
-import planModeApprovedPrompt from "../prompts/system/plan-mode-approved.md" with { type: "text" };
-import planModeCompactInstructionsPrompt from "../prompts/system/plan-mode-compact-instructions.md" with {
-	type: "text",
-};
+import { PROMPTS } from "../prompts/registry";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import {
 	type AgentSession,
@@ -120,6 +118,7 @@ import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-pro
 import { formatTaskId } from "../task/render";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { LspStartupServerInfo } from "../tools";
+import { hasForegroundBashWait, onForegroundBashWaitChange } from "../tools/bash-foreground-registry";
 import { normalizeLocalScheme } from "../tools/path-utils";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
 import { setAutoQaConsentHandler } from "../tools/report-tool-issue";
@@ -680,6 +679,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	#observerUiSyncTimer?: NodeJS.Timeout;
 	#observerUiSyncNeedsTodoReconcile = false;
 	#agentRegistryUnsubscribe?: () => void;
+	/**
+	 * Unsubscribe for the foreground-bash registry. The `ctrl+b background` chip
+	 * has to appear the moment a command starts waiting and vanish the moment it
+	 * settles, and neither edge coincides with a draft/busy/queue transition, so
+	 * the bar cannot be refreshed off those alone.
+	 */
+	#bashForegroundUnsubscribe?: () => void;
 	#agentRegistrySubscriptionTarget?: AgentRegistry;
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
@@ -823,6 +829,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editorContainer.addChild(this.editor);
 		this.composerShortcuts = new ComposerShortcutsBar();
 		this.#refreshComposerShortcuts();
+		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
 		this.statusLine = new StatusLineComponent(session);
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
 		// The borderless composer, per the agreed design mockups: a static
@@ -841,15 +848,29 @@ export class InteractiveMode implements InteractiveModeContext {
 		// mode is active) is clickable — it opens the same goal detail view as
 		// the keyboard path. Hit-testing comes from the footline's own recorded
 		// layout, so the target is exactly the pixels the segment occupies.
+		// The context gauge is clickable too, and opens the same breakdown panel as
+		// `/context`. The footline can only afford one number, and the question
+		// behind it ("what is filling my window?") needs the per-category split, so
+		// the gauge is the handle for it. It has to be a click rather than a hover:
+		// the main screen arms `\x1b[?1000h\x1b[?1006h` (button events) without
+		// 1003h motion reporting, so no mouse position arrives until a press.
 		this.capabilityLine.onClick = col => {
 			const segmentId = this.statusLine.quietSegmentAt(col);
 			if (segmentId === "mode" && (this.goalModeEnabled || this.goalModePaused)) {
 				void this.openGoalDetail();
+				return;
+			}
+			if (segmentId === "context_pct" || segmentId === "context_total") {
+				this.handleContextCommand();
 			}
 		};
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");
 		this.proseOnlyThinking = settings.get("proseOnlyThinking");
+		// Seeded from the remembered preference, so a session opens showing tool
+		// input and output the way the last one was left rather than resetting to
+		// collapsed and making the reader press the toggle again.
+		this.toolOutputExpanded = settings.get("display.toolOutputExpanded");
 
 		const hookCommands: SlashCommand[] = (
 			this.session.extensionRunner?.getRegisteredCommands(BUILTIN_SLASH_COMMAND_RESERVED_NAMES) ?? []
@@ -1529,6 +1550,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				busy: this.#isAutoSubmitBlocked(),
 				hasDraft: this.editor.getText().trim().length > 0,
 				hasQueue: this.session.queuedMessageCount > 0,
+				canBackgroundBash: hasForegroundBashWait(),
 			}),
 		);
 		// Live refresh: draft/busy/queue transitions call this after init, so the
@@ -2627,21 +2649,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 *  A fallback for `resolveApprovedPlan` when the agent dropped `extra.title`,
 	 *  so the plan it wrote is still found by scanning recent `*-plan.md` files. */
 	async #listLocalPlanFiles(): Promise<string[]> {
-		const localRoot = this.#resolvePlanFilePath("local://");
-		try {
-			const entries = await fs.readdir(localRoot, { withFileTypes: true });
-			const plans = await Promise.all(
-				entries
-					.filter(entry => entry.isFile() && /plan\.md$/i.test(entry.name))
-					.map(async name => {
-						const stat = await fs.stat(path.join(localRoot, name.name)).catch(() => null);
-						return { url: `local://${name.name}`, mtime: stat?.mtimeMs ?? 0 };
-					}),
-			);
-			return plans.sort((a, b) => b.mtime - a.mtime).map(plan => plan.url);
-		} catch {
-			return [];
-		}
+		return listLocalPlanFileUrls(this.#resolvePlanFilePath("local://"));
 	}
 
 	showPlanReview(
@@ -2734,6 +2742,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		try {
 			return await fs.open(terminalPath, "r+");
 		} catch {
+			// No controlling terminal: piped stdin, a CI runner, a detached process. That is ordinary rather
+			// than a failure, and null is the same "cannot hand a terminal to an editor" the win32 branch above
+			// returns, so the caller already has one path for it.
 			return null;
 		}
 	}
@@ -2953,7 +2964,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				// past the cancel guard — see the comment at the cancel branch.
 				// Cancellation skips the synthetic-prompt dispatch (operator's explicit
 				// abort is honored); failure proceeds best-effort — approval intent stands.
-				const compactionPrompt = prompt.render(planModeCompactInstructionsPrompt, {
+				const compactionPrompt = prompt.render(PROMPTS["plan-mode/compact-instructions"].text, {
 					planFilePath: options.planFilePath,
 				});
 				// Pin the plan reference path BEFORE compaction so any user messages
@@ -3029,7 +3040,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// markPlanReferenceSent fires only on the dispatch path so the synthetic
 		// plan-approved prompt is the source of the reference injection.
 		this.session.markPlanReferenceSent();
-		const planModePrompt = prompt.render(planModeApprovedPrompt, {
+		const planModePrompt = prompt.render(PROMPTS["plan-mode/approved"].text, {
 			planFilePath: options.planFilePath,
 			contextPreserved: options.preserveContext === true,
 		});
@@ -3776,6 +3787,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#agentRegistryUnsubscribe?.();
 		this.#agentRegistryUnsubscribe = undefined;
 		this.#agentRegistrySubscriptionTarget = undefined;
+		this.#bashForegroundUnsubscribe?.();
+		this.#bashForegroundUnsubscribe = undefined;
 		this.#eventController.dispose();
 		this.statusLine.dispose();
 		if (this.#resizeHandler) {
@@ -4190,10 +4203,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.setWorkingMessage(message);
 	}
 
-	showUpdateInstalledNotification(installedVersion: string): void {
-		this.#uiHelpers.showUpdateInstalledNotification(installedVersion);
-	}
-
 	showUpdateReadyNotification(newVersion: string): void {
 		this.#uiHelpers.showUpdateReadyNotification(newVersion);
 	}
@@ -4216,6 +4225,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void {
 		this.#uiHelpers.showUnparseableSettingsNotification(files);
+	}
+
+	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void {
+		this.#uiHelpers.showSettingsSaveFailureNotification(failure);
 	}
 
 	clearEditor(): void {

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -285,8 +285,8 @@ external binaries and keys.</p>
 </thead>
 <tbody>
 <tr><td><strong>Interactive model</strong></td><td>Main conversation</td><td><code>/model</code>, <code>--model</code>; persisted as <code>modelRoles.default</code></td></tr>
-<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>task</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
-<tr><td><strong>Subagent override</strong></td><td>Task subagents</td><td><code>subagent.model</code> (overrides <code>modelRoles.task</code> when set; else inherit interactive)</td></tr>
+<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
+<tr><td><strong>Subagent model</strong></td><td>Spawned subagents</td><td><code>subagent.model</code> (or a per-agent model in <code>subagent.agents</code>; unset inherits interactive)</td></tr>
 <tr><td><strong>Compaction override</strong></td><td>Compaction / handoff</td><td><code>compaction.model</code> (else inherit interactive)</td></tr>
 </tbody>
 </table>

@@ -66,6 +66,40 @@ export function canonicalSnapshotKey(absolutePath: string): string {
 }
 
 /**
+ * The 1-indexed line numbers `count` lines from `startLine`, inclusive.
+ *
+ * ONE owner for a calculation three producers need: range reads, raw reads and
+ * the post-write snapshot all have to say WHICH lines their content covered,
+ * and each of them previously either hand-rolled the loop or skipped the
+ * argument entirely. Callers pass the result as a snapshot's `seenLines`.
+ */
+export function contiguousLineNumbers(startLine: number, count: number): number[] {
+	const lines: number[] = [];
+	for (let offset = 0; offset < count; offset++) lines.push(startLine + offset);
+	return lines;
+}
+
+/**
+ * Every line of `normalizedText`, as `seenLines` for a snapshot the model
+ * authored in full.
+ *
+ * WHY A WRITE RECORDS THIS RATHER THAN NOTHING. The hashline patcher's
+ * unseen-anchor gate reads `snapshot.seenLines` and returns early when the set
+ * is absent or empty, so a snapshot recorded without provenance has the gate
+ * switched OFF rather than satisfied. A write is the one case where the model
+ * demonstrably saw every byte -- it produced them -- so the honest record is
+ * "all lines seen", and the gate then RUNS and passes. The observable behaviour
+ * is the same today; what changes is that post-write edits stop depending on an
+ * implicit "empty means skip" reading that a future change to the gate could
+ * silently invert into "no lines seen, refuse every anchor".
+ */
+export function allLineNumbers(normalizedText: string): number[] {
+	let lines = 1;
+	for (let i = 0; i < normalizedText.length; i++) if (normalizedText.charCodeAt(i) === 10) lines++;
+	return contiguousLineNumbers(1, lines);
+}
+
+/**
  * Read the full text of `absolutePath` (within {@link SNAPSHOT_MAX_BYTES}),
  * record it as a version snapshot, and return its content-hash tag. Returns
  * `undefined` when the file exceeds the cap or cannot be read — callers then

@@ -39,6 +39,25 @@ describe("release.yml tags only after CI is green", () => {
 		// commits CI has not finished testing.
 		expect(raw).toContain('if [ "$CI_HEAD_SHA" != "$main_head" ]');
 	});
+
+	/**
+	 * The stranded-cut recovery has to be WIRED, not merely written.
+	 *
+	 * `release.ts` moves `## [Unreleased]` into the new version's section at cut time, so a cut whose CI
+	 * then fails leaves a tag with no release and an empty changelog, and the changelog-only gate reports
+	 * "nothing to release" forever. `v1.0.33` and `v1.0.34` sat unpublished that way. The decision logic
+	 * lives in `release-gate-decision.ts` with its own suite; what this pins is that the workflow calls
+	 * it rather than the changelog-only script it replaced, and that `gh` has a token to answer with.
+	 */
+	it("the gate asks the stranded-cut-aware script, with a token for it to query GitHub", async () => {
+		const raw = await Bun.file(path.join(workflowsDir, "workflows/release.yml")).text();
+
+		expect(raw).toContain("bun scripts/release-gate-decision.ts");
+		expect(raw).not.toContain("bun scripts/has-releasable-changes.ts");
+		const wf = await loadYaml("workflows/release.yml");
+		const decide = wf.jobs.gate.steps.find((step: { id?: string }) => step.id === "decide");
+		expect(decide.env.GH_TOKEN).toBeDefined();
+	});
 });
 
 describe("a red release run is loud (release_train_alert)", () => {

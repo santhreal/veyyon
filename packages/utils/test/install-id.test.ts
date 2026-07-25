@@ -1,48 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import {
 	__resetInstallIdCacheForTests,
-	getAgentDir,
 	getConfigRootDir,
 	getGlobalConfigRootDir,
 	getInstallId,
-	setAgentDir,
 	setProfile,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "./helpers/isolated-config-root";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 describe("getInstallId", () => {
-	let tempRoot = "";
-	let originalAgentDir = "";
-	let originalConfigDir: string | undefined;
+	let isolated: IsolatedConfigRoot;
 
-	beforeEach(async () => {
-		originalAgentDir = getAgentDir();
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		const slug = `veyyon-install-id-${Snowflake.next()}`;
-		tempRoot = path.join(os.tmpdir(), slug);
-		await fs.mkdir(tempRoot, { recursive: true });
-		// Point the resolver's config root at the temp dir. Using VEYYON_CONFIG_DIR
-		// keeps the parent equal to os.homedir() but flips the basename, so the
-		// install-id file lands inside our temp tree.
-		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);
-		setAgentDir(path.join(tempRoot, "agent"));
+	beforeEach(() => {
+		// `enterIsolatedConfigRoot` rather than setting VEYYON_CONFIG_DIR and calling
+		// `setAgentDir` by hand, which is what this suite used to do. `setAgentDir`
+		// WRITES `VEYYON_CODING_AGENT_DIR`, and restoring it with
+		// `setAgentDir(original)` cannot restore "the variable was unset": the suite
+		// left the developer's real agent dir exported to every file that ran after
+		// it in the same process. `scripts/find-test-leaks.ts` reported it.
+		isolated = enterIsolatedConfigRoot("install-id", { defaultProfile: true });
 		__resetInstallIdCacheForTests();
 	});
 
-	afterEach(async () => {
+	afterEach(() => {
 		__resetInstallIdCacheForTests();
-		if (originalConfigDir === undefined) {
-			delete process.env.VEYYON_CONFIG_DIR;
-		} else {
-			process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		}
-		setAgentDir(originalAgentDir);
-		await fs.rm(tempRoot, { recursive: true, force: true });
+		isolated.restore();
 	});
 
 	it("generates and persists a UUID on first call", async () => {

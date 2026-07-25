@@ -15,11 +15,11 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
 	withCompact,
-	ModalRevealDriver,
 } from "./modal-shell";
 
 const LOGOUT_SELECTOR_MAX_VISIBLE = 10;

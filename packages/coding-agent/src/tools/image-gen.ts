@@ -27,7 +27,7 @@ import { isAuthenticated, type ModelRegistry } from "../config/model-registry";
 import { settings } from "../config/settings";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
-import imageGenDescription from "../prompts/tools/image-gen.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { resolveReadPath } from "./path-utils";
 
@@ -1089,7 +1089,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 	label: "GenerateImage",
 	strict: false,
 	approval: "write",
-	description: prompt.render(imageGenDescription),
+	description: prompt.render(PROMPTS["tools/image-gen"].text),
 	parameters: imageGenSchema,
 	async execute(_toolCallId, params, _onUpdate, ctx, signal) {
 		return untilAborted(signal, async () => {

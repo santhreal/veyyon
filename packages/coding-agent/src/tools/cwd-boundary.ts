@@ -21,7 +21,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isEnoent, isEnotdir } from "@veyyon/utils";
+import { isMissingPath } from "@veyyon/utils";
 import {
 	globSearchBase,
 	isInternalUrlPath,
@@ -63,7 +63,7 @@ function physicalPath(target: string): string | typeof UNRESOLVABLE {
 			const real = fs.realpathSync(current);
 			return tail.length ? path.join(real, ...[...tail].reverse()) : real;
 		} catch (err) {
-			if (!isEnoent(err) && !isEnotdir(err)) return UNRESOLVABLE;
+			if (!isMissingPath(err)) return UNRESOLVABLE;
 			const parent = path.dirname(current);
 			if (parent === current) {
 				// Reached the filesystem root without resolving anything (pathological):

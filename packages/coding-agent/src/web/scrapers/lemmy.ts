@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { isCancellation, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, loadPage, tryParseUrl } from "./types";
 
@@ -125,6 +125,15 @@ function renderComments(comments: LemmyCommentView[]): string {
 	return renderThread(0, 0).trim();
 }
 
+/**
+ * Handle Lemmy post and comment URLs via API.
+ *
+ * Failures return `null` on purpose. The match is a path shape (`/post/<id>` or
+ * `/comment/<id>`) on an arbitrary host, which any site can have, so an API call that
+ * does not answer means "this host is not a Lemmy instance" rather than "the scrape
+ * failed". A degrade note here would appear on unrelated sites. `scraper-wiring-lock`
+ * allows the quiet catch below for the same reason.
+ */
 export const handleLemmy: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -198,7 +207,11 @@ export const handleLemmy: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "lemmy-api", fetchedAt, notes: ["Fetched via Lemmy API"] });
-	} catch {}
+	} catch (error) {
+		// A cancellation must not become a quiet non-match: the dispatcher would move on to
+		// the generic fetch and make the request the user just cancelled.
+		if (isCancellation(error)) throw error;
+	}
 
 	return null;
 };

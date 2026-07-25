@@ -33,10 +33,10 @@
  */
 
 import { afterAll, describe, expect, it } from "bun:test";
+import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
+import { buildArgotGate } from "@veyyon/coding-agent/argot-wire";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
-import { buildArgotGate } from "@veyyon/coding-agent/lexpack-wire";
-import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { getAllSettingDefs, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 import { ArgotSession, DEFAULT_TOKEN_BUDGET, EMPTY_GATE, shouldEncode } from "argot";
 
 const MODEL = "google-antigravity/gemini-3.5-flash";
@@ -258,13 +258,35 @@ const ARGOT_SETTING_PATHS = [
 	"argot.subagents",
 ] as const;
 
-/** The Argot settings the context tab would render, given the current global Settings. */
+/**
+ * The Argot settings the settings UI would render, given the current global Settings.
+ *
+ * Scans every definition rather than one named tab. This asked
+ * `getSettingsForTab("context")`, and when the group moved to the Experimental
+ * tab all five settings vanished from the result — so three tests reported
+ * "only the master toggle is visible" as `[]`, which reads like the whole
+ * feature disappeared from the UI rather than like a tab move. The tab a group
+ * lives in is a product decision that will move again; what this suite is about
+ * is the CONDITION, so the tab is not part of the question.
+ */
 function visibleArgotSettings(): string[] {
 	invalidateSettingDefsCache();
-	return getSettingsForTab("context")
+	return getAllSettingDefs()
 		.filter(def => (ARGOT_SETTING_PATHS as readonly string[]).includes(def.path))
 		.filter(def => !def.condition || def.condition())
 		.map(def => def.path);
+}
+
+/** Every Argot setting is registered in the UI at all, whatever tab holds them. */
+function argotSettingTabs(): string[] {
+	invalidateSettingDefsCache();
+	return [
+		...new Set(
+			getAllSettingDefs()
+				.filter(def => (ARGOT_SETTING_PATHS as readonly string[]).includes(def.path))
+				.map(def => def.tab),
+		),
+	];
 }
 
 /**
@@ -282,6 +304,18 @@ describe("the Argot settings group is a disabled-vs-enabled differential", () =>
 	// Restore a clean singleton afterward so later files see no leaked global.
 	afterAll(() => {
 		resetSettingsForTest();
+	});
+
+	/**
+	 * The group lives on ONE tab. Splitting it would put the master toggle and the
+	 * knobs it reveals on different screens, so revealing them would look like
+	 * nothing happened. The tab NAME is deliberately not asserted: which tab holds
+	 * Argot is a product decision, and pinning it here is what made three
+	 * visibility tests fail for a reason that had nothing to do with visibility.
+	 */
+	it("keeps the whole group on a single tab", async () => {
+		await setGlobalArgotEnabled(true);
+		expect(argotSettingTabs()).toHaveLength(1);
 	});
 
 	it("with Argot OFF (the shipped default), only the master toggle is visible", async () => {

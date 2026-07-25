@@ -140,12 +140,14 @@ Malformed provider data fails at load. Silent fallback to a weaker provider is t
 The conversation model (`/model` or `--model`) is separate from background roles. Roles are configured
 under `modelRoles`:
 
-- `modelRoles.task`: default for spawned subagents unless an agent definition pins its own model.
 - `modelRoles.tiny` (or `smol`): lightweight background work (titles, memory, auto-thinking).
 
-Precedence for subagents is explicit: an agent definition's own model pattern wins, otherwise
-`modelRoles.task`, otherwise the conversation model. There is no silent blend. `/status` and
-`veyyon plugin doctor` report the effective values. See
+Subagent models are not roles. They live in the Subagents settings area, where four layers can
+name one, highest first: that agent's row in `subagent.agents`, the blanket `subagent.model`, the
+agent definition's own `model:`, otherwise the conversation model. There is no silent blend, and a
+configured value that matches no available model refuses the spawn instead of quietly handing the
+decision to the next layer. `/agents` shows the resolved model and which of the four decided.
+See [Settings: Subagents](../../../settings.md#subagents) and
 [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Automation note

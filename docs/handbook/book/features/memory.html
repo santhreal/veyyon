@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -246,7 +246,7 @@ these primary fields:</p>
 <tr><th>Setting</th><th>Key</th><th>Values</th></tr>
 </thead>
 <tbody>
-<tr><td>Threshold</td><td><code>compaction.thresholdPercent</code></td><td>percent of the context window (<code>compaction.thresholdTokens</code> optional)</td></tr>
+<tr><td>Threshold</td><td><code>compaction.threshold</code></td><td><code>auto</code>, a percent of the window (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
 <tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
@@ -258,6 +258,16 @@ Run on demand with <code>/compact</code>. See <a href="../context/compaction-mem
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes
 a plan and pair citations with fresh repo evidence.</p>
+<p>It arrives in two places. The guidance that stays the same all session is part of the system prompt.
+Anything that changes while you work, the memories recalled for your current question and the mental
+models when they reload, arrives as a message next to your prompt instead.</p>
+<p>That split is about cost, not ordering. The provider caches the system prompt as the prefix of every
+request; changing it mid-session throws that cache away and the next request re-reads the whole
+conversation at the uncached rate. A recalled memory in the prompt made every recall cost a full
+re-read. The model reads the same text either way.</p>
+<p>A block is sent once. A reload that finds the same memories sends nothing, so your context does not
+grow by a copy of your memories every turn. <code>/memory view</code> shows both halves, so what you read there
+is what the model gets.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>Use <code>/memory</code> or <code>/settings</code> (Memory group), or set keys under <code>memory.*</code>, <code>mnemopi.*</code>,
 <code>hindsight.*</code>, or <code>memories.*</code> depending on the active backend.</p>

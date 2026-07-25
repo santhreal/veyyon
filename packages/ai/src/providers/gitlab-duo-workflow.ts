@@ -9,10 +9,12 @@ import {
 	errorMessage,
 	getNonBlankStringProperty,
 	isRecord,
+	logger,
 	scopedTimeoutSignal,
 	trimTrailingSlashes,
 	tryParseJson,
 } from "@veyyon/utils";
+import { parseToolArgsText } from "../dialect/coercion";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -784,24 +786,25 @@ function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
 		getNonBlankStringProperty(args, "name") ??
 		"";
 	const toolName = rawName.startsWith("mcp__veyyon__") ? rawName.slice("mcp__veyyon__".length) : rawName;
-	const parsedArgs = parseGitLabDuoWorkflowMcpArguments(args.args ?? args.arguments);
+	const parsedArgs = parseGitLabDuoWorkflowMcpArguments(args.args ?? args.arguments, toolName || undefined);
 	if (toolName === "edit" && typeof parsedArgs.input === "string") {
 		return { name: "edit", arguments: { input: parsedArgs.input } };
 	}
 	return { name: toolName, arguments: parsedArgs };
 }
 
-function parseGitLabDuoWorkflowMcpArguments(value: unknown): Record<string, unknown> {
+function parseGitLabDuoWorkflowMcpArguments(value: unknown, tool?: string): Record<string, unknown> {
 	if (value === undefined) return {};
-	if (typeof value === "string") {
-		try {
-			const parsed = JSON.parse(value) as unknown;
-			return isRecord(parsed) ? (parsed as Record<string, unknown>) : {};
-		} catch {
-			return {};
-		}
-	}
-	return isRecord(value) ? (value as Record<string, unknown>) : {};
+	// Arguments arriving as text go through the same owner the streaming dialects use, so a payload that
+	// will not parse is reported instead of being flattened to "this call had no arguments".
+	if (typeof value === "string") return parseToolArgsText(value, { source: "gitlab-duo-workflow", tool });
+	if (isRecord(value)) return value as Record<string, unknown>;
+	logger.warn("Tool call arguments were not an object; the tool is being called with none", {
+		source: "gitlab-duo-workflow",
+		tool,
+		received: Array.isArray(value) ? "array" : typeof value,
+	});
+	return {};
 }
 
 function gitLabDuoWorkflowProviderSessionStateKey(
@@ -956,6 +959,9 @@ async function readGitLabDuoWorkflowResponseErrorMessage(response: Response): Pr
 			getGitLabDuoWorkflowErrorField(payload, "message") ?? getGitLabDuoWorkflowErrorField(payload, "error");
 		return message ? gitLabDuoWorkflowErrorText(message) : undefined;
 	} catch {
+		// This is reading a better message OUT OF an error response that is already being reported. Undefined
+		// means "no message in the body", so the caller falls back to the status line it already has; there
+		// is no loss to surface because the failure itself is what the caller is in the middle of raising.
 		return undefined;
 	}
 }
@@ -1935,7 +1941,7 @@ export function runGitLabDuoWorkflowSocket(
 	};
 	const abort = (): void => {
 		close();
-		settle("closed", new AIError.AbortError("GitLab Duo Workflow request aborted"));
+		settle("closed", new AIError.RequestAbortError("GitLab Duo Workflow request aborted"));
 	};
 	if (options.signal?.aborted) {
 		abort();

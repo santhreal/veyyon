@@ -7,6 +7,7 @@ import {
 	installRuntimeModuleResolver,
 	resolveRuntimeModule,
 	splitBareSpecifier,
+	uninstallRuntimeModuleResolver,
 	writeRuntimeManifest,
 } from "../src/runtime-install";
 
@@ -19,6 +20,15 @@ import {
 const tempDirs: string[] = [];
 
 afterEach(async () => {
+	// The resolver patch is process-global, and leaving it installed changes module
+	// resolution for every suite that runs after this one in the same process:
+	// `Module._resolveFilename` being hooked at all makes Bun resolve relative
+	// `createRequire(import.meta.url)` requires against the CWD instead of the
+	// importing module. This suite installed it against a temp `node_modules`,
+	// deleted the tree, and left the hook behind, which broke
+	// `packages/coding-agent/test/extensibility/legacy-pi-inplace-load.test.ts`
+	// three packages away — a suite that passed alone and blamed itself.
+	uninstallRuntimeModuleResolver();
 	await Promise.all(tempDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -171,6 +181,65 @@ describe("installRuntimeModuleResolver", () => {
 			path.join(nodeModules, "@huggingface", "transformers", "dist", "transformers.node.cjs"),
 		);
 		expect(resolver._resolveFilename("sharp", runtimeParent, false)).toBe(sharpStub);
+	});
+
+	/**
+	 * The patch must be removable, or every suite downstream inherits it.
+	 *
+	 * Before `uninstallRuntimeModuleResolver` existed the `PATCHED` guard made the
+	 * hook permanent: a second install was a no-op and nothing took the first off.
+	 * The return value is asserted rather than just called, because a cleanup that
+	 * quietly did nothing is exactly the failure this is guarding against.
+	 */
+	test("uninstalls the patch and restores stock resolution", async () => {
+		const nodeModules = await makeNodeModules({
+			"kokoro-js": { manifest: { main: "dist/kokoro.cjs" }, files: ["dist/kokoro.cjs"] },
+		});
+		const moduleWithResolver = Module as unknown as { default?: ResolveFilenameModule } & ResolveFilenameModule;
+		const resolver = moduleWithResolver.default ?? moduleWithResolver;
+		const stock = resolver._resolveFilename;
+
+		installRuntimeModuleResolver({ runtimeNodeModules: nodeModules });
+		expect(resolver._resolveFilename).not.toBe(stock);
+
+		expect(uninstallRuntimeModuleResolver()).toBe(true);
+
+		expect(resolver._resolveFilename).toBe(stock);
+		// Idempotent, and honest about having done nothing the second time.
+		expect(uninstallRuntimeModuleResolver()).toBe(false);
+	});
+
+	/**
+	 * A relative `createRequire(import.meta.url)` require must still resolve
+	 * against the importing module once the patch is off.
+	 *
+	 * This is the cross-suite failure reproduced in one process: an extension that
+	 * requires a sibling CommonJS helper resolves it while the patch is installed
+	 * ONLY when the CWD happens to contain that file, because Bun calls the hook
+	 * with no parent and stock resolution then falls back to the CWD. The
+	 * uninstall has to restore the module-relative answer.
+	 */
+	test("a sibling CommonJS require resolves after the patch is removed", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-runtime-sibling-"));
+		tempDirs.push(dir);
+		await Bun.write(path.join(dir, "config.cjs"), "module.exports = { value: 'sibling-ok' };\n");
+		await Bun.write(
+			path.join(dir, "ext.mjs"),
+			[
+				'import { createRequire } from "node:module";',
+				"const require = createRequire(import.meta.url);",
+				'export const value = require("./config.cjs").value;',
+			].join("\n"),
+		);
+		const nodeModules = await makeNodeModules({
+			"kokoro-js": { manifest: { main: "dist/kokoro.cjs" }, files: ["dist/kokoro.cjs"] },
+		});
+
+		installRuntimeModuleResolver({ runtimeNodeModules: nodeModules });
+		uninstallRuntimeModuleResolver();
+
+		const loaded = (await import(`${path.join(dir, "ext.mjs")}?probe=1`)) as { value: string };
+		expect(loaded.value).toBe("sibling-ok");
 	});
 });
 

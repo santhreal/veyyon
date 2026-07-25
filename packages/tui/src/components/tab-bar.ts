@@ -10,7 +10,7 @@
  */
 import { matchesKey } from "../keys";
 import type { Component } from "../tui";
-import { clamp, clampLow, truncateToWidth, visibleWidth } from "../utils";
+import { clamp, clampLow, padding, truncateToWidth, visibleWidth } from "../utils";
 
 /** Tab definition */
 export interface Tab {
@@ -172,6 +172,11 @@ export class TabBar implements Component {
 	 * Wrapping to multiple lines is the last resort.
 	 */
 	render(width: number): readonly string[] {
+		// A zero-column bar has nothing legal to draw: `truncateToWidth(text, 0)`
+		// still returns the ellipsis, which is one cell wider than the space the
+		// caller has, and a component that overruns its width corrupts every
+		// line to its right. Report the row as empty instead.
+		if (!(width >= 1)) return [""];
 		const maxWidth = Math.max(1, width);
 
 		interface TabChunk {
@@ -287,6 +292,8 @@ export class TabBar implements Component {
 	 * exactly as after a horizontal `render`.
 	 */
 	renderVertical(width: number, cursor = "> "): readonly string[] {
+		// Same zero-width contract as the horizontal bar, and the same reason.
+		if (!(width >= 1)) return [""];
 		const maxWidth = Math.max(1, width);
 		const cursorW = visibleWidth(cursor);
 		this.#hitZones = [];
@@ -301,7 +308,10 @@ export class TabBar implements Component {
 				label = tab.short;
 			}
 			let text = truncateToWidth(`${active ? cursor : " ".repeat(cursorW)}${label}`, maxWidth);
-			text += " ".repeat(Math.max(0, maxWidth - visibleWidth(text)));
+			// `padding()` rather than `" ".repeat()`: a bad resize can hand this an
+			// Infinite or multi-million width, and `repeat` throws a RangeError on
+			// Infinity — a throw here takes down the whole frame, not just the bar.
+			text += padding(maxWidth - visibleWidth(text));
 			const style = tab.muted
 				? (this.#theme.mutedTab ?? this.#theme.inactiveTab)
 				: active

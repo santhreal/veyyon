@@ -187,6 +187,14 @@ DEL 20
   - `line N: bare range hunk header "N M" is not valid. Hunk headers need a verb: write \`SWAP ${bareRange[1]}.=${bareRange[2]}:\` or \`DEL ${bareRange[1]}.=${bareRange[2]}\`.`
 - Out-of-range anchor:
   - `Line N does not exist (file has M lines)`
+- Anchor on a line the tag never showed. A snapshot records which lines the producer displayed, so a tag minted by a
+  ranged read, a search hit or a folded summary does not license an edit anywhere else in the file:
+  - `This edit anchors to lines N of <path> that [<path>#TAG] never displayed (it showed a partial range, a search hit, or a
+    folded summary).` The message then either previews the real content at those lines, in which case a straight retry with the
+    same header succeeds, or tells you to re-read the range with `<path>:N` first. A ranged read skips summarization and mints a
+    fresh tag; a plain re-read just folds the same lines again.
+  - A tag minted by `write` carries every line as displayed, because the model produced the whole file, so a post-write edit can
+    anchor anywhere without an intervening read.
 - Stale snapshot tag: the `Patcher` first attempts snapshot-based recovery. When recovery cannot prove a valid result it throws `MismatchError`, which distinguishes recognized-but-drifted hashes from never-recorded hashes. The error includes the current file hash plus context around each anchor.
 - No-op edit:
   - `Edits to <path> parsed and applied cleanly, but produced no change: your body row(s) are byte-identical to the file at the targeted lines. The bug is somewhere else — re-read the file before issuing another edit. Do NOT widen the payload or add lines; verify the anchor first.`

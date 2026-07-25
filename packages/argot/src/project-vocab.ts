@@ -8,7 +8,7 @@
 
 import { createHash } from "node:crypto";
 import { cacheDictPath, listingSignature, type ResolvedCache, readDictFile, resolveProjectCache } from "./cache.js";
-import { DEFAULT_TOKEN_BUDGET } from "./constants.js";
+import { DEFAULT_TOKEN_BUDGET, GENERATOR_REVISION } from "./constants.js";
 import { type CorpusNotice, gatherRepoFiles, walkProjectTree } from "./corpus.js";
 import { projectCacheId, resolveProjectRoot } from "./project.js";
 import type { Vocabulary } from "./types.js";
@@ -103,17 +103,29 @@ function reportCacheWriteFailure(result: ResolvedCache, onNotice?: (n: ProjectVo
 }
 
 /**
- * Fold the effective token budget into the cache signature. A cache entry is a
- * pure function of the repository state AND the generation options that shape the
- * dictionary, so the budget must be part of the key: two budgets over the same
- * repo state are two different dictionaries and must not alias to one entry. The
- * default budget maps to the bare signature, so entries generated under the
- * default (the common case) keep their plain `<sig>.dict` name and existing
- * caches still hit; a non-default budget derives a distinct signature.
+ * Fold the generation inputs into the cache signature. A cache entry is a pure
+ * function of the repository state AND of everything that shapes the dictionary
+ * built from it, so both belong in the key.
+ *
+ * Two things are folded in. The effective token budget, because two budgets over
+ * one repo state are two different dictionaries and must not alias to one entry.
+ * And {@link GENERATOR_REVISION}, because the repository state alone is only a
+ * sufficient key while the generator itself holds still: after a change to the
+ * ranking or to a default, an unchanged HEAD would otherwise go on serving a
+ * dictionary the current generator would never produce, so an upgrade would
+ * silently do nothing until the project's next commit.
+ *
+ * Revision 1 at the default budget maps to the bare signature, which is what
+ * every entry written before this keying existed is named, so those entries are
+ * addressable rather than orphaned. Anything else derives a distinct signature
+ * and regenerates once.
  */
 export function budgetKeyedSignature(rawSig: string, tokenBudget: number): string {
-	if (tokenBudget === DEFAULT_TOKEN_BUDGET) return rawSig;
-	return createHash("sha256").update(`${rawSig}\0tokenBudget=${tokenBudget}`).digest("hex").slice(0, 32);
+	if (tokenBudget === DEFAULT_TOKEN_BUDGET && GENERATOR_REVISION === 1) return rawSig;
+	return createHash("sha256")
+		.update(`${rawSig}\0tokenBudget=${tokenBudget}\0generator=${GENERATOR_REVISION}`)
+		.digest("hex")
+		.slice(0, 32);
 }
 
 /**

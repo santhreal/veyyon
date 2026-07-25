@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { XDG_BASE_DIRS } from "../../../utils/test/helpers/isolated-config-root";
 import { hermeticSpawnEnv } from "./hermetic-spawn-env";
 
 const testRoot = path.resolve(import.meta.dir, "..");
@@ -38,6 +39,44 @@ describe("hermetic spawn env", () => {
 		} finally {
 			delete process.env.VEYYON_PROFILE;
 		}
+	});
+
+	/**
+	 * The XDG bases have to go too, and a temp HOME does not remove them.
+	 *
+	 * `DirResolver` resolves the `data`, `state` and `cache` categories under `XDG_DATA_HOME`,
+	 * `XDG_STATE_HOME` and `XDG_CACHE_HOME` in preference to the config root, so a developer running
+	 * with any of them set handed every spawned CLI a root inside their real tree — where `runCli`'s
+	 * legacy-layout migration can then MUTATE it. This helper named only the three veyyon variables;
+	 * it now imports the same two lists `enterIsolatedConfigRoot` clears, so the in-process and
+	 * child-process answers cannot drift apart.
+	 */
+	it("strips every XDG base directory, which outranks the config root per category", () => {
+		const previous = XDG_BASE_DIRS.map(key => [key, process.env[key]] as const);
+		for (const key of XDG_BASE_DIRS) process.env[key] = `/real/${key}`;
+		try {
+			const { env, cleanup } = hermeticSpawnEnv();
+
+			for (const key of XDG_BASE_DIRS) expect(env[key], key).toBeUndefined();
+			cleanup();
+		} finally {
+			for (const [key, value] of previous) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	});
+
+	/**
+	 * An explicit extra still wins, including for an XDG base. Stripping is the default, not a
+	 * prohibition: a suite that wants the child to write its state somewhere it can inspect passes
+	 * the base in and must get it.
+	 */
+	it("lets an explicit extra override a stripped variable", () => {
+		const { env, cleanup } = hermeticSpawnEnv({ XDG_STATE_HOME: "/chosen/state" });
+
+		expect(env.XDG_STATE_HOME).toBe("/chosen/state");
+		cleanup();
 	});
 
 	it("every spawn-CLI and -e probe test file isolates HOME or the config dir", async () => {

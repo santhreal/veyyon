@@ -14,7 +14,8 @@
  *     while every encode arm allowlisted `gemini-3.5-flash`, so the documented
  *     command was refused by the pre-run treatment guard,
  *   - `BACKLOG.md` pointed 19 times at `packages/argot/`, a directory that does
- *     not exist (the package named `argot` lives in `packages/lexpack/`).
+ *     not exist (the package named `argot` lived in `packages/lexpack/` at the time;
+ *     both now agree on `argot`).
  *
  * None of those is catchable by a typecheck, and none of them announces itself:
  * the docs read fine, and the failure lands on whoever tries to follow them.

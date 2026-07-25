@@ -26,7 +26,7 @@ path keys off, so keeping it current is what keeps releases flowing.
 runs the **Release** workflow's gate. When any publishable package has an
 `## [Unreleased]` bullet waiting, it cuts a `patch` release with no human action,
 so shipped changes reach users the same day instead of piling up. The gate is
-`scripts/has-releasable-changes.ts`, and it is self-limiting:
+`scripts/release-gate-decision.ts`, and it is self-limiting:
 
 - `release.ts` moves `## [Unreleased]` into the new version section when it cuts
   the release, so the `chore: bump version to X` commit it pushes has nothing
@@ -34,6 +34,26 @@ so shipped changes reach users the same day instead of piling up. The gate is
 - A docs-, test-, or chore-only merge adds no bullet, so it does not release.
 - To land a user-facing change without shipping it yet, put `[skip release]` in
   the commit message; the gate skips that push.
+
+That last property has a cost when a cut fails. The changelog section is already
+consumed by the time CI runs, so a failed publish leaves a tag with no release and
+nothing left to ask for: `v1.0.33` and `v1.0.34` were both tagged, both failed the
+same test, and the installable version stayed at `v1.0.27`. The gate therefore has
+a second signal. When nothing is unreleased, it looks for a tag newer than the
+latest published release, and cuts again when that tag's CI definitively failed and
+`main` has moved on since.
+
+Two bounds keep that from inventing versions:
+
+- A re-cut needs `main` to have moved past the failed tag. Cutting the same tree
+  again would fail the same way.
+- Two unpublished tags stop the gate. A second stranded cut in a row is not a
+  flake, so it prints what needs attention and waits for you to fix the failing
+  publish and run the workflow by hand.
+
+A tag whose CI is still running is left alone, and a tag whose CI SUCCEEDED without
+producing a release is reported rather than cut over: that is a publish step that
+claimed success, and a new version would bury it.
 
 **Manual (an explicit version).** Run the **Release** workflow from the Actions
 tab and give it a version: `major`, `minor`, `patch`, or an explicit `x.y.z`.
@@ -62,7 +82,10 @@ script, and the only difference is that a local run also watches CI afterwards.
    (the same omp→veyyon rebrand and fork split the website uses), so GitHub's repo
    page shows the same changelog as `veyyon.dev/changelog`. That file is generated,
    never hand-edited: run `bun run changelog:root` after any source-changelog edit,
-   and the `changelog:root:check` PR guard fails if it drifts.
+   and the `changelog:root:check` PR guard fails if it drifts. If you did write an
+   entry into the root by mistake, the regeneration refuses rather than deleting
+   it, and lists every entry no package claims so you can move each one to its
+   package. `--force` discards them deliberately.
 4. Run `bun run check`.
 5. Commit `chore: bump version to X.Y.Z` (bare version, no `v`): CI keys the
    never-cancel release concurrency group off the `chore: bump version to ` subject
@@ -93,6 +116,24 @@ in the repo `AGENTS.md`):
 - the **install endpoint** (`get.veyyon.dev`), the same built tree deployed to the
   second Cloudflare Pages project, so `curl | sh` and the auto-updater always serve
   the current install script for the release that just shipped.
+
+### Every published release needs a changelog entry
+
+The website build fails if a version exists on GitHub Releases that
+`packages/coding-agent/CHANGELOG.md` does not describe. Users can install that
+version, so the changelog has to say what is in it.
+
+This used to be a warning, and the build exited 0 anyway. Eight releases went
+undocumented before anyone noticed, so those eight are listed in
+`UNDOCUMENTED_RELEASE_BASELINE` in `website/tools/gen-changelog.mjs` and still
+pass. Anything outside that list fails the build that introduced it.
+
+When you see the failure, write the entry. Do not add the version to the
+baseline: the list is a shrinking record of old debt, not somewhere to park a new
+gap, and the error message says so. When you backfill one of the eight, delete it
+from the list and update the count pinned in
+`website/tools/undocumented-release-ratchet.test.ts`. Once the list is empty the
+gate is unconditional with no further change.
 
 Binaries compile with Bun bytecode by default (`VEYYON_BUILD_BYTECODE=0` opts out),
 ~70ms warm startup instead of ~650ms of JS parse per launch, at the cost of a

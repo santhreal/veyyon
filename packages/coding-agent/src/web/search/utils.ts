@@ -16,6 +16,23 @@ export function dateToAgeSeconds(dateStr: string | null | undefined): number | u
 }
 
 /**
+ * How many results a search provider returns when the caller does not say.
+ *
+ * One value, one place. It was written out as a private `DEFAULT_NUM_RESULTS = 10` in
+ * fifteen provider files, so changing what the agent asks for by default meant fifteen
+ * edits — and, worse, a reader could not tell the fifteen copies apart from the two
+ * providers that deviate on purpose. Deviating is allowed; doing it silently is not, so a
+ * provider that wants a different default declares its own constant with a comment saying
+ * why, and everything else imports this.
+ *
+ * Ten is a page of results: enough for the model to find the answer without spending a
+ * large fraction of the context window on links it will not open. It is not the MAXIMUM,
+ * which is per-provider (their APIs cap differently) and passed to {@link clampNumResults}
+ * alongside this.
+ */
+export const SEARCH_DEFAULT_NUM_RESULTS = 10;
+
+/**
  * Clamp a result count to the integer range [1, maxVal], returning defaultVal
  * when value is absent, zero, or NaN. A result count is always a whole number,
  * so a fractional input is floored: every provider hands the result straight to

@@ -267,15 +267,14 @@ describe("ACP lazy startup", () => {
 		const { runRootCommand } = await import("@veyyon/coding-agent/main");
 
 		const explicit = {
-			"task.isolation.mode": "rcopy",
-			"task.isolation.merge": "branch",
-			"task.isolation.commits": "ai",
-			"task.eager": "always",
-			"task.batch": false,
-			"task.maxConcurrency": 4,
-			"task.maxRecursionDepth": 5,
-			"task.disabledAgents": ["scout"],
-			"task.agentModelOverrides": { task: "claude-sonnet-4-20250514" },
+			"subagent.isolation.mode": "rcopy",
+			"subagent.isolation.merge": "branch",
+			"subagent.isolation.commits": "ai",
+			"subagent.delegation": "required",
+			"subagent.batch": false,
+			"subagent.maxConcurrency": 4,
+			"subagent.maxRecursionDepth": 5,
+			"subagent.agents": { scout: { enabled: true } },
 			"memory.backend": "local",
 			"memories.enabled": true,
 			"advisor.enabled": true,

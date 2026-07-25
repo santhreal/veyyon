@@ -50,3 +50,17 @@ export function renderAsciiBar(fraction: number | undefined, width = 24, uiTheme
 	const bar = `${"█".repeat(filled)}${"░".repeat(Math.max(0, width - filled))}`;
 	return `[${shimmerText(bar, progressBarTheme)}] ${pct}%`;
 }
+
+/**
+ * Render a provider slug the way a person writes it: `openai-compat` becomes `Openai Compat`.
+ *
+ * Three surfaces showed the same provider name (the `/usage` report, the usage CLI, and the command
+ * controller's status line) and each had its own copy of this, so a change to how a provider reads
+ * would have landed in one of the three.
+ */
+export function formatProviderName(provider: string): string {
+	return provider
+		.split(/[-_]/g)
+		.map(part => (part ? part[0].toUpperCase() + part.slice(1) : ""))
+		.join(" ");
+}

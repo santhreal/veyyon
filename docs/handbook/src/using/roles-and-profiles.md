@@ -4,7 +4,7 @@
 
 | Concept | Meaning |
 | --- | --- |
-| **Interactive model** | The model used for the main conversation. Chosen with `/model` or `--model`. Persisted under `modelRoles.default` (legacy key name; not a selectable “role” in the UI). |
+| **Default model** | The model used for the main conversation, and the one a new session starts on. Chosen with `/model` or `--model`, or in `/settings` under Model. Persisted under `modelRoles.default`, which is a slot rather than a selectable role, so it does not appear in role pickers. |
 | **Role** | A named model assignment for a kind of work (`smol`, `plan`, `task`, …). Configured in `modelRoles` / settings → Model → Roles. |
 | **Slot overrides** | `subagent.model` and `compaction.model`, dedicated destinations that override the corresponding role or inherit the interactive model when unset. |
 | **Profile** | User config tree at `~/.veyyon/profiles/<name>/` (including `default`). |
@@ -41,19 +41,24 @@ From `packages/coding-agent/src/config/model-roles.ts`:
 | `plan` | Architect | Plan mode; `--plan` or env `VEYYON_PLAN_MODEL` |
 | `designer` | Designer | Design-oriented work |
 | `commit` | Commit | Commit / changelog generation |
-| `tiny` | Tiny | Lightweight background (titles, classifiers); else falls back toward `@smol` |
-| `task` | Subtask | Task subagents unless `subagent.model` is set |
-| `advisor` | Advisor | Advisor runtime; unset uses thinking-model chain |
+| `tiny` | Tiny | Lightweight background work: titles, classifiers |
+| `advisor` | Advisor | Advisor runtime |
 
 Custom role names can appear via `modelRoles`, `modelTags`, or `cycleOrder` entries.
 
-Unset selectable roles **inherit the live interactive model** at use time (except `advisor`, which uses its own chain when unset).
+Unset selectable roles, `advisor` included, **inherit the live interactive model** at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.
+
+A caller may still ask for several roles in order. Title generation, for example, asks for `tiny`, then `commit`, then `smol`, and takes the first one you have set. That order belongs to the caller, not to the role: `tiny` does not fall back to `smol`, the title generator prefers `tiny` and accepts `smol`. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.
+
+There is no `task` role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see [Settings: Subagents](../../../settings.md#subagents).
+
+To return an assigned role or slot to its unset state, open its picker in `/settings` and choose the first row, `(inherit main model)` (the default model's picker reads `(auto-select on launch)`). Del or Backspace with an empty search does the same.
 
 ## Slot overrides
 
 | Setting | Effect |
 | --- | --- |
-| `subagent.model` | Model for task subagents. Unset → inherit interactive. When set, overrides `modelRoles.task`. |
+| `subagent.model` | Model for every subagent that has no model of its own. Unset → inherit interactive. A per-agent model in `subagent.agents` wins over it. |
 | `compaction.model` | Model for compaction/handoff. Unset → inherit interactive. |
 
 ```yaml

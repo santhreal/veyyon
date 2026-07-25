@@ -20,8 +20,8 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
-	computeModalDims,
 	applyModalReveal,
+	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,

@@ -37,7 +37,7 @@
 import * as fs from "node:fs";
 import { countTokens as nativeCountTokens } from "@veyyon/natives";
 import { generateDict } from "argot";
-import { REFERENCE_RATE_CARD } from "./cost-model";
+import { REFERENCE_RATE_CARD, retainedTokenCost } from "./cost-model";
 
 const countTokens = (text: string): number => nativeCountTokens(text);
 
@@ -65,20 +65,6 @@ export function encodeGreedy(text: string, handles: ReadonlyArray<readonly [stri
 		i += 1;
 	}
 	return out;
-}
-
-/**
- * What one token costs, in dollars, if it enters the context at `turn` of
- * `totalTurns` and stays for the rest of the session.
- *
- * It is billed once as fresh input on the turn it appears, then as a cache read
- * on every subsequent turn. This is the number that makes context compression
- * worth far more than output compression: at 66 turns, a token added early
- * costs about eighteen times its face value.
- */
-export function retainedTokenCost(turn: number, totalTurns: number): number {
-	const rereads = Math.max(0, totalTurns - turn - 1);
-	return (REFERENCE_RATE_CARD.input + REFERENCE_RATE_CARD.cacheRead * rereads) / 1_000_000;
 }
 
 export interface SweepRow {

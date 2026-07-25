@@ -83,7 +83,7 @@ function makePreparation(model: Model): CompactionPreparation {
 		isSplitTurn: true,
 		tokensBefore: 12_345,
 		fileOps: createFileOps(),
-		settings: { ...DEFAULT_COMPACTION_SETTINGS, remoteEnabled: false },
+		settings: { ...DEFAULT_COMPACTION_SETTINGS },
 	};
 }
 

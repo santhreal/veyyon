@@ -2,7 +2,13 @@ import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import dialectPrompt from "./gemini.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, joinUserBodies, messageContentText } from "./rendering";
+import {
+	assistantTranscriptParts,
+	collectToolResultRun,
+	geminiTurn,
+	joinUserBodies,
+	messageContentText,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -554,10 +560,6 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 	}
 	if (pendingUserPreamble) out += geminiTurn("user", pendingUserPreamble);
 	return out;
-}
-
-function geminiTurn(role: "model" | "user", body: string): string {
-	return `<start_of_turn>${role}\n${body}<end_of_turn>\n`;
 }
 
 function pyValue(value: unknown): string {

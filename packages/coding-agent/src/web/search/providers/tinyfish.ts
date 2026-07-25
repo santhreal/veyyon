@@ -7,13 +7,12 @@
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const TINYFISH_SEARCH_URL = "https://api.search.tinyfish.ai";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 const MAX_PAGE = 10;
 
@@ -107,8 +106,12 @@ function appendTinyFishSources(sources: SearchSource[], results: readonly TinyFi
 
 /** Execute TinyFish web search. */
 export async function searchTinyFish(params: SearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
-	const pageSize = Math.min(numResults, DEFAULT_NUM_RESULTS);
+	const numResults = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
+	const pageSize = Math.min(numResults, SEARCH_DEFAULT_NUM_RESULTS);
 	const tinyFishParams: TinyFishSearchParams = {
 		query: params.query,
 		num_results: pageSize,

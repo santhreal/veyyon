@@ -1,0 +1,35 @@
+# Keep the newest turn's unsigned thinking; drop every older summary.
+#
+# WHY THIS ARM EXISTS. Of 1,023 thinking blocks measured across nine live
+# baseline sessions, ZERO carried a `thinkingSignature`. That is not a sampling
+# artefact and it is not a bug on the ingest path: `consumeGoogleStream` assigns
+# the field correctly on every thinking delta, and Gemini simply attaches its
+# signature to the function call instead. The same measurement found 100.0% of
+# signature bytes sitting on `toolCall`, which is the same fact from the other
+# side.
+#
+# So every one of those blocks takes the demotion path in `convertMessages` and
+# is re-uploaded as PLAIN TEXT on every request: 1,292,300 characters, about
+# 323k tokens, 10.8% of the conversation body. A thought summary is what Gemini
+# writes for a human to read. It carries nothing the provider can replay, so
+# this mass buys whatever the model gains from re-reading its own words, and
+# nothing else.
+#
+# THIS IS A SEPARATE VARIABLE FROM THE SIGNATURE WINDOW. Do not run it in the
+# same comparison as sig-last1 or sig-last8. Two levers moved at once produce a
+# delta attributable to neither, which is the exact defect the single-IV rule
+# exists to prevent.
+#
+# WHERE IT COULD BREAK. Re-reading its own earlier reasoning may genuinely help
+# the model hold a plan across a long task, signature or no signature. If it
+# does, reward drops here and the summaries are worth their bytes. That is a
+# real answer either way, and it is cheaper to find out than to argue about.
+#
+# Signed thinking is never dropped, whatever this is set to, so the arm cannot
+# discard replayable reasoning even in principle.
+#
+# Reward is the gate. Report the paired sign test on reward first, then cost.
+argot:
+  enabled: false
+context:
+  thinkingRetention: 1

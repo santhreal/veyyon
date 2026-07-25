@@ -11,7 +11,6 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { initTheme } from "../../src/modes/theme/theme";
 import { enterTempHome, type TempHome } from "../helpers/temp-home";
@@ -39,7 +38,7 @@ describe("refreshCompletionsForInstalledBinary", () => {
 
 		stderr = "";
 		const original = process.stderr.write.bind(process.stderr);
-		process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+		process.stderr.write = ((chunk: string | Uint8Array) => {
 			stderr += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
 			return true;
 		}) as typeof process.stderr.write;

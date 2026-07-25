@@ -1,6 +1,6 @@
 import type { ClipboardImage } from "@veyyon/natives";
 import * as native from "@veyyon/natives";
-import { logger } from "@veyyon/utils";
+import { logger, readPipeText } from "@veyyon/utils";
 
 /**
  * Run a subprocess and capture its stdout without blocking the event loop.
@@ -30,7 +30,7 @@ async function spawnCapture(cmd: string[], options: { input?: string; timeoutMs?
 		proc.kill();
 	}, timeoutMs);
 	try {
-		const stdout = await new Response(proc.stdout).text();
+		const stdout = await readPipeText(proc.stdout);
 		await proc.exited;
 		if (timedOut) {
 			throw new Error(`${cmd[0]} timed out after ${timeoutMs}ms`);
@@ -203,7 +203,7 @@ async function readImageViaPowerShell(): Promise<ClipboardImage | null> {
 		const timer = setTimeout(() => proc.kill(), POWERSHELL_TIMEOUT_MS);
 		let stdout = "";
 		try {
-			stdout = await new Response(proc.stdout).text();
+			stdout = await readPipeText(proc.stdout);
 			await proc.exited;
 		} catch (err) {
 			// powershell.exe can be a Windows process reached either natively or
@@ -260,7 +260,7 @@ async function readTextViaPowerShell(): Promise<string | null> {
 		const timer = setTimeout(() => proc.kill(), POWERSHELL_TIMEOUT_MS);
 		let stdout = "";
 		try {
-			stdout = await new Response(proc.stdout).text();
+			stdout = await readPipeText(proc.stdout);
 			await proc.exited;
 		} catch (err) {
 			logger.warn("clipboard: powershell text read failed", { error: String(err) });

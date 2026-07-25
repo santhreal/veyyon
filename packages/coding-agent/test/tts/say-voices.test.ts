@@ -8,14 +8,22 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { KOKORO_VOICES, TTS_LOCAL_MODELS } from "../../src/tts/models";
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
 
 async function runSay(args: string[], stdin?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	const home = mkdtempSync(path.join(tmpdir(), "veyyon-say-voices-"));
+	// HOME alone isolates a CHILD process: `os.homedir()` reads it at startup, so the
+	// config root lands under this temp home. The dir overrides are STRIPPED rather than
+	// set: `VEYYON_CONFIG_DIR` names the directory under the home, so the absolute value
+	// this used to pass was joined onto it and produced `<home>/<home>/.veyyon`. Clearing
+	// them also stops a developer's own override from leaking in through `process.env`.
+	const env: Record<string, string | undefined> = { ...process.env, HOME: home, NO_COLOR: "1" };
+	for (const key of DIR_OVERRIDE_ENV_KEYS) delete env[key];
 	const proc = Bun.spawn(["bun", cliPath, "say", ...args], {
-		env: { ...process.env, HOME: home, VEYYON_CONFIG_DIR: path.join(home, ".veyyon"), NO_COLOR: "1" },
+		env,
 		stdin: stdin === undefined ? "ignore" : new Blob([stdin]),
 		stdout: "pipe",
 		stderr: "pipe",

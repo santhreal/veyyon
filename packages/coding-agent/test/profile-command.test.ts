@@ -1,3 +1,14 @@
+/**
+ * `/profile` command behaviour: what it changes on disk, and what it tells the user.
+ *
+ * The message assertions read `port.statuses` / `port.errors` as complete
+ * lists rather than asking whether the expected text appears among them. Each
+ * of these commands emits exactly one message, and an existence check cannot
+ * see a SECOND one: a switch that reported "Switching to profile" and then
+ * also surfaced a spurious warning, or a delete that emitted both the success
+ * and the cancellation line, satisfied every one of the old assertions. The
+ * count is the part a user would notice first.
+ */
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -13,7 +24,8 @@ import {
 	parseProfileCommand,
 	runProfileCommand,
 } from "@veyyon/coding-agent/slash-commands/profile-command";
-import { getActiveProfile, profileExists, removeWithRetries, setProfile } from "@veyyon/utils";
+import { profileExists, removeWithRetries, setProfile } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 describe("parseProfileCommand", () => {
 	it("maps empty input to the interactive picker", () => {
@@ -126,20 +138,28 @@ function makePort(
 
 describe("runProfileCommand effects", () => {
 	let tempHome: string;
-	let originalActiveProfile: string | undefined;
+	// `setProfile(theOldProfile)` is not an inverse: it EXPORTS `VEYYON_PROFILE` (and the
+	// profile's agent dir) even when neither was set before, so this file used to hand every
+	// later file — and every child process they spawn — a profile it never chose.
+	let dirOverrides: DirOverridesSnapshot;
 
 	beforeEach(async () => {
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-cmd-"));
 		spyOn(os, "homedir").mockReturnValue(tempHome);
 		// The active profile is cached at module load from the machine's global
 		// default; force the default profile so a named profile is never active.
-		originalActiveProfile = getActiveProfile();
+		dirOverrides = captureDirOverrides();
 		setProfile(undefined);
 	});
 
 	afterEach(async () => {
-		setProfile(originalActiveProfile);
+		// The homedir mock comes off FIRST. Restoring the overrides rebuilds the dir
+		// resolver, and rebuilding it while `os.homedir()` still answers with the temp home
+		// bakes that temp path into every resolved dir for the rest of the process — the
+		// leak tracer reported exactly that as
+		// `state.agentDir: …/.veyyon/profiles/work/agent -> /tmp/veyyon-profile-cmd-…`.
 		spyOn(os, "homedir").mockRestore();
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(tempHome);
 	});
 
@@ -149,7 +169,8 @@ describe("runProfileCommand effects", () => {
 		await runProfileCommand(parseProfileCommand("work"), port);
 		expect(port.relaunched).toEqual([{ VEYYON_PROFILE: "work" }]);
 		expect(port.shutdownCalls).toBe(1);
-		expect(port.statuses.some(s => s.includes('Switching to profile "work"'))).toBe(true);
+		expect(port.statuses).toHaveLength(1);
+		expect(port.statuses[0]).toContain('Switching to profile "work"');
 	});
 
 	it("reports an error and does not relaunch for an unknown switch target", async () => {
@@ -157,7 +178,8 @@ describe("runProfileCommand effects", () => {
 		await runProfileCommand(parseProfileCommand("ghost"), port);
 		expect(port.relaunched).toHaveLength(0);
 		expect(port.shutdownCalls).toBe(0);
-		expect(port.errors.some(e => e.includes('No profile named "ghost"'))).toBe(true);
+		expect(port.errors).toHaveLength(1);
+		expect(port.errors[0]).toContain('No profile named "ghost"');
 	});
 
 	it("renames a profile by writing its display name", async () => {
@@ -165,7 +187,8 @@ describe("runProfileCommand effects", () => {
 		const port = makePort();
 		await runProfileCommand(parseProfileCommand("work rename to Renamed"), port);
 		expect(await readProfileDisplayName("work")).toBe("Renamed");
-		expect(port.statuses.some(s => s.includes('Renamed profile "work" to "Renamed"'))).toBe(true);
+		expect(port.statuses).toHaveLength(1);
+		expect(port.statuses[0]).toContain('Renamed profile "work" to "Renamed"');
 		// A distinct, reachable name carries no caveat.
 		expect(port.statuses.some(s => s.includes("Heads up"))).toBe(false);
 	});
@@ -214,7 +237,8 @@ describe("runProfileCommand effects", () => {
 		}));
 		await runProfileCommand(parseProfileCommand("rm scratch"), port);
 		expect(profileExists("scratch")).toBe(false);
-		expect(port.statuses.some(s => s.includes('Deleted profile "scratch"'))).toBe(true);
+		expect(port.statuses).toHaveLength(1);
+		expect(port.statuses[0]).toContain('Deleted profile "scratch"');
 	});
 
 	it("keeps the profile when the delete confirmation is cancelled", async () => {
@@ -233,13 +257,15 @@ describe("runProfileCommand effects", () => {
 		}));
 		await runProfileCommand(parseProfileCommand("delete scratch"), port);
 		expect(profileExists("scratch")).toBe(true);
-		expect(port.statuses.some(s => s.includes("Deletion cancelled"))).toBe(true);
+		expect(port.statuses).toHaveLength(1);
+		expect(port.statuses[0]).toContain("Deletion cancelled");
 	});
 
 	it("refuses to remove the default profile", async () => {
 		const port = makePort();
 		await runProfileCommand(parseProfileCommand("rm default"), port);
-		expect(port.errors.some(e => e.includes("Cannot remove the default profile"))).toBe(true);
+		expect(port.errors).toHaveLength(1);
+		expect(port.errors[0]).toContain("Cannot remove the default profile");
 	});
 
 	it("creates a profile from the copy-items dialog", async () => {
@@ -258,7 +284,8 @@ describe("runProfileCommand effects", () => {
 		}));
 		await runProfileCommand(parseProfileCommand("new fresh"), port);
 		expect(profileExists("fresh")).toBe(true);
-		expect(port.statuses.some(s => s.includes('Created profile "fresh"'))).toBe(true);
+		expect(port.statuses).toHaveLength(1);
+		expect(port.statuses[0]).toContain('Created profile "fresh"');
 	});
 
 	it("prefills the composer when the picker chooses create-new", async () => {

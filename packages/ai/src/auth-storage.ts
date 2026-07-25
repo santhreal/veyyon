@@ -26,7 +26,12 @@ import {
 } from "@veyyon/utils";
 import { tableExists } from "@veyyon/utils/sqlite";
 import type { ApiKeyResolver } from "./auth-retry";
-import { CREDENTIAL_CLOCK_TOLERANCE_MS, epochSecondsToMs, isRecordFromFutureClock, msToEpochSeconds } from "./credential-clock";
+import {
+	CREDENTIAL_CLOCK_TOLERANCE_MS,
+	epochSecondsToMs,
+	isRecordFromFutureClock,
+	msToEpochSeconds,
+} from "./credential-clock";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
 import { getProviderDefinition, PASTE_CODE_LOGIN_PROVIDERS } from "./registry";
@@ -1027,6 +1032,8 @@ function parseUsageCacheEntry<T>(raw: string): UsageCacheEntry<T> | undefined {
 		if (!expiresAt || !Number.isFinite(expiresAt)) return undefined;
 		return { value: parsed.value as T, expiresAt };
 	} catch {
+		// A cache entry we cannot read is a cache MISS, which is the same answer an absent entry gives and
+		// the caller handles by fetching fresh. Never a wrong answer, only a slower one.
 		return undefined;
 	}
 }
@@ -1038,11 +1045,11 @@ function parseUsageCacheEntry<T>(raw: string): UsageCacheEntry<T> | undefined {
  */
 function raceUsageWithSignal<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
 	if (!signal) return promise;
-	if (signal.aborted) return Promise.reject(new AIError.AbortError("usage fetch aborted"));
+	if (signal.aborted) return Promise.reject(new AIError.RequestAbortError("usage fetch aborted"));
 	return new Promise<T>((resolve, reject) => {
 		const onAbort = (): void => {
 			signal.removeEventListener("abort", onAbort);
-			reject(new AIError.AbortError("usage fetch aborted"));
+			reject(new AIError.RequestAbortError("usage fetch aborted"));
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
 		promise.then(
@@ -1064,9 +1071,9 @@ function raceCredentialRefreshWithSignal<T>(
 	message = "credential refresh aborted",
 ): Promise<T> {
 	if (!signal) return promise;
-	if (signal.aborted) return Promise.reject(new AIError.AbortError(message));
+	if (signal.aborted) return Promise.reject(new AIError.RequestAbortError(message));
 	const abort = Promise.withResolvers<never>();
-	const onAbort = (): void => abort.reject(new AIError.AbortError(message));
+	const onAbort = (): void => abort.reject(new AIError.RequestAbortError(message));
 	signal.addEventListener("abort", onAbort, { once: true });
 	return Promise.race([promise, abort.promise]).finally(() => {
 		signal.removeEventListener("abort", onAbort);
@@ -1665,6 +1672,27 @@ export class AuthStorage {
 
 		const credentialId = this.#getStoredCredentials(provider)[credentialIndex]?.id;
 		if (credentialId === undefined) return blockedUntil;
+		// The one place where the persisted read deliberately DIVERGES from the
+		// in-memory read above, which honours an unscoped block under every scope.
+		// The asymmetry is about where each copy can have come from, so it is not
+		// the inconsistency it looks like:
+		//
+		//  - An in-memory unscoped block was written by THIS process, by one of the
+		//    three credential-wide writers (a transient token-refresh failure, or a
+		//    rotate-away after an upstream rejection). Those really are global — the
+		//    credential itself is unusable — so every scope must see them.
+		//  - A PERSISTED unscoped row for `openai-codex` may instead be LEGACY data:
+		//    older versions recorded Codex rate-limit windows without a scope, so a
+		//    row that reads as "globally blocked for a week" may really have been one
+		//    quota window. Honouring it under a scope would strand an account that a
+		//    scoped read can see is fine, for as long as the stale deadline runs.
+		//
+		// Hence: a scoped Codex read skips the persisted global row and trusts the
+		// scoped one. Pinned by `auth-storage-global-block-scope-agreement.test.ts`
+		// and by "ignores legacy global Codex blocks when a scoped quota window has
+		// fresh siblings" in `auth-storage-codex-selection.test.ts`. Do not
+		// "simplify" this to an unconditional read; that was tried and it broke the
+		// legacy case.
 		if (!blockScope || provider !== "openai-codex") {
 			const persistedGlobalBlockedUntil = this.#readPersistedCredentialBlock(credentialId, providerKey, "");
 			if (
@@ -1684,6 +1712,26 @@ export class AuthStorage {
 			}
 		}
 		return blockedUntil;
+	}
+
+	/**
+	 * When a credential's temporary block expires, or `undefined` if it is not
+	 * blocked for the given scope. Resolves the same way the selector does: the
+	 * in-memory and persisted copies of both the global and the scoped block are
+	 * consulted and the LATEST deadline wins.
+	 *
+	 * Public because "why is this account being skipped?" is a question the
+	 * doctor and status surfaces have to answer, and because the resolution rule
+	 * is subtle enough that a second implementation would drift from this one.
+	 * `credentialIndex` is the position in {@link listOAuthAccounts}.
+	 */
+	credentialBlockedUntil(
+		provider: string,
+		providerKey: string,
+		credentialIndex: number,
+		blockScope?: string,
+	): number | undefined {
+		return this.#getCredentialBlockedUntil(provider, providerKey, credentialIndex, blockScope);
 	}
 
 	/** Checks if a credential is temporarily blocked due to usage limits. */
@@ -2307,7 +2355,7 @@ export class AuthStorage {
 		let leasedCredentialId: number | undefined;
 
 		while (hasDurableLease) {
-			if (options.signal?.aborted) throw new AIError.AbortError("OAuth refresh ownership aborted by caller");
+			if (options.signal?.aborted) throw new AIError.RequestAbortError("OAuth refresh ownership aborted by caller");
 			const rows = this.#store.listAuthCredentials(provider);
 			this.#setStoredCredentials(
 				provider,
@@ -4607,10 +4655,26 @@ export class AuthStorage {
 	 * The credential a PEER already rotated, if one exists and is usable.
 	 *
 	 * Reads by id including disabled rows, because the peer's winning row may be the
-	 * one a loser disabled. Returns it only when the refresh token actually differs
-	 * from what we hold (proof of a rotation, not a re-read of our own row) and it is
-	 * not about to expire, so we never hand back a token that would immediately need
-	 * refreshing again.
+	 * one a loser disabled. Returns it only when the row still belongs to the provider
+	 * we are refreshing, the refresh token actually differs from what we hold (proof of
+	 * a rotation, not a re-read of our own row), and it is not about to expire, so we
+	 * never hand back a token that would immediately need refreshing again.
+	 *
+	 * The provider check is what makes reading by a bare id safe. Nothing in the
+	 * lookup constrains WHICH provider the returned row belongs to: `readAuthCredentialById`
+	 * is an optional method on the `AuthCredentialStore` interface, so the row comes
+	 * from whatever store is plugged in, and the ids in the shipped SQLite store are
+	 * not the only ones that can appear there — the explicit-id INSERT paths used by
+	 * migration and import write ids chosen elsewhere. A row for another provider is
+	 * a live, unexpired OAuth credential whose refresh token differs from ours, which
+	 * is exactly the signature this function reads as "a peer rotated it", so without
+	 * the check that provider's token would be returned here and sent upstream as
+	 * ours. Refuse, loudly (Law 10), instead of falling through to a credential that
+	 * merely has the right shape.
+	 *
+	 * (The shipped `SqliteAuthCredentialStore` declares `id INTEGER PRIMARY KEY
+	 * AUTOINCREMENT`, so it will not hand a freed id back on its own. This is a
+	 * boundary check on the interface, not a fix for a race in that one store.)
 	 */
 	#freshRotatedCredential(
 		provider: Provider,
@@ -4621,6 +4685,16 @@ export class AuthStorage {
 		if (!readById) return undefined;
 		const latest = readById(credentialId);
 		if (!latest || latest.credential.type !== "oauth") return undefined;
+		if (latest.provider !== provider) {
+			// Names only: the row is somebody else's credential, and nothing about its
+			// contents belongs in a log.
+			logger.warn("OAuth credential row changed provider mid-refresh; refusing the peer's token", {
+				credentialId,
+				expectedProvider: provider,
+				storedProvider: latest.provider,
+			});
+			return undefined;
+		}
 		const rotated = latest.credential;
 		if (rotated.refresh === previous.refresh) return undefined;
 		if (Date.now() + OAUTH_REFRESH_SKEW_MS >= rotated.expires) return undefined;
@@ -4685,7 +4759,7 @@ export class AuthStorage {
 
 		const owner = crypto.randomUUID();
 		for (;;) {
-			if (signal?.aborted) throw new AIError.AbortError("OAuth refresh ownership aborted by caller");
+			if (signal?.aborted) throw new AIError.RequestAbortError("OAuth refresh ownership aborted by caller");
 			// A peer may have finished while we waited; prefer its token over spending ours.
 			const peerFresh = this.#freshRotatedCredential(provider, credentialId, credential);
 			if (peerFresh) return peerFresh;
@@ -4820,9 +4894,9 @@ export class AuthStorage {
 		);
 		if (signal) {
 			if (signal.aborted) {
-				cancellation.reject(new AIError.AbortError("OAuth token refresh aborted by caller"));
+				cancellation.reject(new AIError.RequestAbortError("OAuth token refresh aborted by caller"));
 			} else {
-				onAbort = () => cancellation.reject(new AIError.AbortError("OAuth token refresh aborted by caller"));
+				onAbort = () => cancellation.reject(new AIError.RequestAbortError("OAuth token refresh aborted by caller"));
 				signal.addEventListener("abort", onAbort, { once: true });
 			}
 		}
@@ -5704,6 +5778,8 @@ export class AuthStorage {
 			const parsed = JSON.parse(apiKey) as { token?: unknown };
 			return typeof parsed.token === "string" ? parsed.token : undefined;
 		} catch {
+			// This asks whether an API key is a structured envelope carrying a token. Text that only LOOKS like
+			// JSON is not one, so undefined means "use the key as-is", exactly as for a plain key.
 			return undefined;
 		}
 	}
@@ -7552,7 +7628,13 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				status: (row.status ?? undefined) as UsageHistoryEntry["status"],
 				resetsAt: row.resets_at ?? undefined,
 			}));
-		} catch {
+		} catch (error) {
+			// An empty list is how this says "you have no recorded usage", so a failed query used to present a
+			// database it could not read as a clean history. The caller keeps its empty list, because a usage
+			// panel that cannot query is more useful empty than crashed, and the report is the difference.
+			logger.warn("Usage history could not be read; the usage view is showing none of it", {
+				error: errorMessage(error),
+			});
 			return [];
 		}
 	}
@@ -7588,7 +7670,13 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				accountKey: row.account_key,
 				costUsd: row.cost_usd,
 			}));
-		} catch {
+		} catch (error) {
+			// Same as `listUsageHistory`: zero recorded cost and an unreadable cost table are the same empty
+			// list, and reporting a total of $0 for a database that could not be queried is worse than saying
+			// so. The empty list is still returned so the view renders.
+			logger.warn("Usage cost history could not be read; the reported totals are missing all of it", {
+				error: errorMessage(error),
+			});
 			return [];
 		}
 	}

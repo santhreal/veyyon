@@ -16,6 +16,7 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	planModalChrome,
 	renderModalShell,
 	withCompact,
 } from "./modal-shell";
@@ -140,7 +141,7 @@ export class ModelPickerComponent implements Component {
 		}
 
 		const allModels = this.#scopedModels.length > 0 ? models : this.#registry.getAll();
-		const roles = resolveRoleAssignments(this.#settings, allModels, models);
+		const roles = resolveRoleAssignments(this.#settings, allModels);
 		const storage = this.#settings.getStorage();
 		const mruOrder = storage?.getModelUsageOrder() ?? [];
 		this.#modelItems = buildBrowserItems(models);
@@ -199,7 +200,28 @@ export class ModelPickerComponent implements Component {
 			return Array.from({ length: termRows }, () => padding(width));
 		}
 
-		const listBudget = Math.max(MIN_VISIBLE, dims.modalHeight - 8 - BROWSER_FRAME_ROWS);
+		const shortcuts = [
+			{ label: "up/down models" },
+			{ label: "enter use", clickable: true, id: "confirm" },
+			{ label: "type to search" },
+			// The esc chip mirrors the browser's cancel ladder: with a live
+			// query esc clears the search (close comes on the next press), so
+			// the chip must not advertise "close" it will not perform.
+			{ label: this.#browser.query.length > 0 ? "esc clear" : "esc close", clickable: true, id: "close" },
+		];
+		// The body is the status line plus the browser, so the list gets whatever
+		// the card shows minus those. The old `- 8` was right only by accident: the
+		// shell reserves 7 at this sizing and the status line is the eighth, three
+		// unnamed rows that happened to add up. Change `vPad`, `footerLines`, or
+		// the status line and it silently starts dropping the bottom of the list.
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+		const listBudget = Math.max(MIN_VISIBLE, chrome.maxBodyRows - 1 - BROWSER_FRAME_ROWS);
 		this.#browser.setMaxVisible(listBudget);
 
 		const status = this.#configError ? theme.fg("error", this.#configError) : theme.fg("muted", STATUS_HINT);
@@ -211,15 +233,7 @@ export class ModelPickerComponent implements Component {
 			areaWidth: width,
 			areaHeight: termRows,
 			body,
-			shortcuts: [
-				{ label: "up/down models" },
-				{ label: "enter use", clickable: true, id: "confirm" },
-				{ label: "type to search" },
-				// The esc chip mirrors the browser's cancel ladder: with a live
-				// query esc clears the search (close comes on the next press), so
-				// the chip must not advertise "close" it will not perform.
-				{ label: this.#browser.query.length > 0 ? "esc clear" : "esc close", clickable: true, id: "close" },
-			],
+			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});

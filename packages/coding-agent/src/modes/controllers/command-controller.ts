@@ -11,7 +11,16 @@ import {
 	type UsageReport,
 } from "@veyyon/ai";
 import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/tui";
-import { APP_NAME, CHANGELOG_URL, clamp01, errorMessage, formatDuration, Snowflake, sanitizeText } from "@veyyon/utils";
+import {
+	APP_NAME,
+	CHANGELOG_URL,
+	clamp01,
+	errorMessage,
+	formatDuration,
+	isAbortError,
+	Snowflake,
+	sanitizeText,
+} from "@veyyon/utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -26,7 +35,7 @@ import {
 	seedAlreadyExists,
 	summarizeMentalModel,
 } from "../../hindsight";
-import { resolveMemoryBackend } from "../../memory-backend";
+import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory-backend";
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
 import { BorderedLoader } from "../../modes/components/bordered-loader";
 import { DynamicBorder } from "../../modes/components/dynamic-border";
@@ -45,6 +54,7 @@ import type { CompactMode } from "../../session/compact-modes";
 import type { NewSessionOptions } from "../../session/session-entries";
 import { formatShakeSummary, type ShakeMode, type ShakeResult } from "../../session/shake-types";
 import { limitMatchesActiveAccount } from "../../slash-commands/helpers/active-oauth-account";
+import { formatProviderName } from "../../slash-commands/helpers/format";
 import { outputMeta } from "../../tools/output-meta";
 import { resolveToCwd, stripOuterDoubleQuotes } from "../../tools/path-utils";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
@@ -499,7 +509,7 @@ export class CommandController {
 		const backend = await resolveMemoryBackend(this.ctx.settings);
 
 		if (action === "view") {
-			const payload = await backend.buildDeveloperInstructions(agentDir, this.ctx.settings, this.ctx.session);
+			const payload = await buildMemoryPayloadForDisplay(backend, agentDir, this.ctx.settings, this.ctx.session);
 			if (!payload) {
 				this.ctx.showWarning("Memory payload is empty (memory backend off, disabled, or no memory available).");
 				return;
@@ -881,14 +891,18 @@ export class CommandController {
 		const { promise, resolve } = Promise.withResolvers<MoveOverlayResult | undefined>();
 		let overlayHandle: OverlayHandle | undefined;
 		let closed = false;
-		const overlay = new MoveOverlay(this.ctx.sessionManager.getCwd(), result => {
-			if (closed) return;
-			closed = true;
-			overlayHandle?.hide();
-			this.ctx.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-			resolve(result);
-		}, modalRevealEnabled());
+		const overlay = new MoveOverlay(
+			this.ctx.sessionManager.getCwd(),
+			result => {
+				if (closed) return;
+				closed = true;
+				overlayHandle?.hide();
+				this.ctx.focusActiveEditorArea();
+				this.ctx.ui.requestRender();
+				resolve(result);
+			},
+			modalRevealEnabled(),
+		);
 		overlay.setOnRequestRender(() => this.ctx.ui.requestRender());
 		overlayHandle = this.ctx.ui.showOverlay(overlay, {
 			anchor: "top-left",
@@ -1257,7 +1271,7 @@ export class CommandController {
 			}
 		} catch (error) {
 			const message = errorMessage(error);
-			if (message === "Handoff cancelled" || (error instanceof Error && error.name === "AbortError")) {
+			if (message === "Handoff cancelled" || isAbortError(error)) {
 				this.ctx.showError("Handoff cancelled");
 			} else {
 				this.ctx.showError(`Handoff failed: ${message}`);
@@ -1298,13 +1312,6 @@ function truncateJobLabel(label: string, maxWidth: number): string {
 	}
 
 	return `${out}…`;
-}
-
-function formatProviderName(provider: string): string {
-	return provider
-		.split(/[-_]/g)
-		.map(part => (part ? part[0].toUpperCase() + part.slice(1) : ""))
-		.join(" ");
 }
 
 function formatDecimal(value: number, maxFractionDigits = 1): string {

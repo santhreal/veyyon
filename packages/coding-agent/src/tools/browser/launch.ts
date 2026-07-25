@@ -194,6 +194,8 @@ function isExecutableFile(p: string): boolean {
 		const st = fs.statSync(p);
 		return st.isFile();
 	} catch {
+		// A candidate path we cannot stat is a candidate we cannot launch, so it is not the browser we
+		// are looking for. The search moves to the next candidate and reports if every one fails.
 		return false;
 	}
 }
@@ -418,6 +420,8 @@ async function resolveMacOsProductVersion(): Promise<string> {
 		const plist = await Bun.file("/System/Library/CoreServices/SystemVersion.plist").text();
 		return plist.match(/<key>ProductVersion<\/key>\s*<string>([^<]+)<\/string>/)?.[1] ?? "";
 	} catch {
+		// The version only decorates a user-agent string, and an unreadable plist leaves it out the same
+		// way a non-macOS host does. Nothing downstream branches on it, so there is no loss to report.
 		return "";
 	}
 }

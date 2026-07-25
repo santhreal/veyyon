@@ -138,7 +138,7 @@ export function isLowSignalTitleInput(message: string): boolean {
  * Sentinel a capable title model may emit when a message carries no concrete
  * task. Treated as "no title yet" so the caller can defer titling. Backstop for
  * the deterministic {@link isLowSignalTitleInput} filter; kept in sync with the
- * `<title/>` instruction in `prompts/system/title-system.md`.
+ * `<title/>` instruction in `prompts/titles/system.md`.
  */
 export const NO_TITLE_SENTINEL = "none";
 

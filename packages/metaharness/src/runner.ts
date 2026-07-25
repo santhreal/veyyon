@@ -742,6 +742,9 @@ export function readTrials(jobDir: string): Trial[] {
 	try {
 		entries = fs.readdirSync(jobDir, { withFileTypes: true });
 	} catch {
+		// A job directory that cannot be listed has no trials to report, and this drives a live progress
+		// view that polls: the next tick retries, so a transient failure resolves itself rather than being
+		// reported over and over. A run whose directory never appears shows zero trials, which is visible.
 		return [];
 	}
 	const trials: Trial[] = [];
@@ -857,6 +860,8 @@ function tailFile(file: string, maxLines: number): string[] {
 		const lines = buf.split("\n").filter(l => l.trim().length > 0);
 		return lines.slice(-maxLines);
 	} catch {
+		// A log that is not there yet is the normal state of a trial that has just started, and this is
+		// re-read on every render tick. Empty means "nothing to tail", and the pane simply stays blank.
 		return [];
 	}
 }
@@ -1038,6 +1043,9 @@ function newestTarball(benchDir: string): string | null {
 			.sort((a, b) => b.m - a.m)[0];
 		return tgz ? path.join(benchDir, tgz.f) : null;
 	} catch {
+		// Null means "no packed tarball to install", which is the same answer a directory holding none gives,
+		// and the caller falls back to building one. A directory we cannot read is a directory with nothing
+		// usable in it as far as this decision goes.
 		return null;
 	}
 }

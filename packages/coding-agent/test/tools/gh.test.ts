@@ -17,7 +17,8 @@ import {
 	resolveTailLimit,
 } from "@veyyon/coding-agent/tools/gh";
 import * as git from "@veyyon/coding-agent/utils/git";
-import { getAgentDir, hashPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { hashPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 // Isolate every `git` invocation in this file from the developer's host
 // configuration. The fixture spawns dozens of git subprocesses against tiny
@@ -203,12 +204,12 @@ async function setupTempHome(): Promise<{ home: string; cleanup: () => Promise<v
 	// `dirs.configRoot` is computed at constructor time from `os.homedir()`, so
 	// we must rebuild the resolver after the spy + env scrub are in place.
 	// `setAgentDir` recreates it; we point it at the temp home's default agent dir.
-	const originalAgentDir = getAgentDir();
+	const dirOverrides = captureDirOverrides();
 	setAgentDir(path.join(home, ".veyyon", "agent"));
 	return {
 		home,
 		cleanup: async () => {
-			setAgentDir(originalAgentDir);
+			restoreDirOverrides(dirOverrides);
 			for (const key of xdgKeys) {
 				const previous = xdgPrevious[key];
 				if (previous === undefined) delete process.env[key];

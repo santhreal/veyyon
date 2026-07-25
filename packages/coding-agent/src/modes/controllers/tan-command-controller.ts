@@ -2,8 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { assistantText } from "@veyyon/ai";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
-import backgroundTanDispatchPrompt from "../../prompts/system/background-tan-dispatch.md" with { type: "text" };
-import tanContextSwitchPrompt from "../../prompts/system/tan-context-switch.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
 import * as sdk from "../../sdk";
 import type { AgentSession } from "../../session/agent-session";
@@ -89,7 +88,7 @@ export class TanCommandController {
 		const sessionDir = parentFile.slice(0, -6);
 		const settings = createSubagentSettings(this.ctx.settings);
 		const customTools = mcpManager ? createMCPProxyTools(mcpManager) : undefined;
-		const enableLsp = this.ctx.settings.get("task.enableLsp") !== false;
+		const enableLsp = this.ctx.settings.get("subagent.enableLsp") !== false;
 		const agentRegistry = AgentRegistry.global();
 		const cloneId = `Tan-${Snowflake.next()}`;
 		const cloneFile = path.join(sessionDir, `${cloneId}.jsonl`);
@@ -154,7 +153,7 @@ export class TanCommandController {
 						const injectContextSwitch = () => {
 							clone?.agent.appendMessage({
 								role: "developer",
-								content: tanContextSwitchPrompt,
+								content: PROMPTS["side-channel/tan-context-switch"].text,
 								attribution: "agent",
 								timestamp: Date.now(),
 							});
@@ -211,7 +210,7 @@ export class TanCommandController {
 			return;
 		}
 
-		const content = prompt.render(backgroundTanDispatchPrompt, { jobId, work: trimmedWork });
+		const content = prompt.render(PROMPTS["side-channel/background-tan-dispatch"].text, { jobId, work: trimmedWork });
 		// /tan is meant to run alongside an active session. While the parent turn is
 		// still streaming, queue the dispatch breadcrumb for the next turn rather than
 		// steering the in-flight response; when idle this same call appends + persists

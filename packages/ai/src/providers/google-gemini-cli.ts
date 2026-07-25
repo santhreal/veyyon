@@ -965,7 +965,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 					for (let emptyAttempt = 0; emptyAttempt <= MAX_EMPTY_STREAM_RETRIES; emptyAttempt++) {
 						if (options?.signal?.aborted) {
-							throw new AIError.AbortError("Request was aborted");
+							throw new AIError.RequestAbortError("Request was aborted");
 						}
 
 						if (emptyAttempt > 0) {
@@ -973,7 +973,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							try {
 								await scheduler.wait(backoffMs, { signal: options?.signal });
 							} catch {
-								throw new AIError.AbortError("Request was aborted");
+								throw new AIError.RequestAbortError("Request was aborted");
 							}
 
 							if (!requestUrl) {
@@ -1023,7 +1023,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					}
 
 					if (options?.signal?.aborted) {
-						throw new AIError.AbortError("Request was aborted");
+						throw new AIError.RequestAbortError("Request was aborted");
 					}
 
 					if (!sawFinishReason) {

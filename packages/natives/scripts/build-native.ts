@@ -38,7 +38,9 @@ const effectiveCrossTarget = nativeRoute?.kind === "zigbuild" ? nativeRoute.targ
 if (nativeRoute?.kind === "zigbuild") {
 	console.log(`Routing linux-gnu build through cargo-zigbuild at the release glibc floor: ${nativeRoute.target}`);
 } else if (nativeRoute?.kind === "hostOnly" && !isCrossCompile) {
-	console.warn(`[build-native] building against the HOST glibc (${nativeRoute.reason}); portability checked after build.`);
+	console.warn(
+		`[build-native] building against the HOST glibc (${nativeRoute.reason}); portability checked after build.`,
+	);
 }
 
 type X64Variant = "modern" | "baseline";

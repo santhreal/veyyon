@@ -23,7 +23,7 @@ import {
 	untilAborted,
 } from "@veyyon/utils";
 import type { ArgotSession, StreamDecoder } from "argot";
-import { createSubagentStreamDecoder, expandSubagentReturn } from "../lexpack-wire";
+import { createSubagentStreamDecoder, expandSubagentReturn } from "../argot-wire";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -45,8 +45,7 @@ import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import type { MCPManager } from "../mcp/manager";
 import type { MnemopiSessionState } from "../mnemopi/state";
-import subagentSystemPromptTemplate from "../prompts/system/subagent-system-prompt.md" with { type: "text" };
-import submitReminderTemplate from "../prompts/system/subagent-yield-reminder.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
 import { type CreateAgentSessionOptions, createAgentSession, discoverAuthStorage } from "../sdk";
@@ -126,20 +125,25 @@ function formatSalvageSnippet(text: string, maxLength = 500): string {
  *
  * 1. an explicit `:level` suffix on the resolved model pattern (e.g.
  *    `subagent.model = "anthropic/claude-sonnet-4-5:high"`) always wins;
- * 2. otherwise the agent definition's own default (e.g. a task agent that asks
- *    for `auto`);
+ * 2. otherwise `configuredThinkingLevel`, the level the CALLER already resolved;
  * 3. otherwise the level derived from the pattern match itself.
  *
  * `explicitThinkingLevel` is set by the model resolver when it stripped a
  * concrete `:level` suffix off the pattern; in that case `resolvedThinkingLevel`
- * carries that level and it is authoritative, so the agent default is ignored.
+ * carries that level and it is authoritative, so the caller's level is ignored.
+ *
+ * `configuredThinkingLevel` is NOT the agent definition's frontmatter, though it
+ * was named and documented as if it were. Every caller passes the output of
+ * `resolveSubagentThinkingLevel` (row, then blanket, then frontmatter), and this
+ * function must not re-apply any of those layers — resolving frontmatter a second
+ * time behind the caller is how the same axis came to have two answers.
  */
 export function resolveEffectiveSubagentThinkingLevel(
 	explicitThinkingLevel: boolean,
 	resolvedThinkingLevel: ConfiguredThinkingLevel | undefined,
-	agentDefaultThinkingLevel: ConfiguredThinkingLevel | undefined,
+	configuredThinkingLevel: ConfiguredThinkingLevel | undefined,
 ): ConfiguredThinkingLevel | undefined {
-	return explicitThinkingLevel ? resolvedThinkingLevel : (agentDefaultThinkingLevel ?? resolvedThinkingLevel);
+	return explicitThinkingLevel ? resolvedThinkingLevel : (configuredThinkingLevel ?? resolvedThinkingLevel);
 }
 
 /** Agent event types to forward for progress tracking. */
@@ -985,7 +989,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 
 	// Expand the child's own shorthand at the RETURN boundary before its raw
 	// assistant text becomes the parent's tool result. See `expandSubagentReturn`
-	// (lexpack-wire.ts) for why this seam exists; the only wrinkle here is that the
+	// (argot-wire.ts) for why this seam exists; the only wrinkle here is that the
 	// child codec lives on the currently-attached session.
 	const expandChildOutput = (text: string): string => {
 		try {
@@ -1788,7 +1792,7 @@ async function driveSessionToYield(
 			if (lastBeforeReminder?.stopReason === "error") break;
 			try {
 				retryCount++;
-				const reminder = prompt.render(submitReminderTemplate, {
+				const reminder = prompt.render(PROMPTS["subagent/yield-reminder"].text, {
 					retryCount,
 					maxRetries: MAX_YIELD_RETRIES,
 					budgetStop,
@@ -2317,21 +2321,21 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		agent.readSummarize === false ? { "read.summarize.enabled": false } : undefined,
 		options.parentServiceTier,
 	);
-	const maxRecursionDepth = settings.get("task.maxRecursionDepth") ?? 2;
+	const maxRecursionDepth = settings.get("subagent.maxRecursionDepth") ?? 2;
 	const maxRuntimeMs = Math.max(
 		0,
-		Math.trunc(Number(options.maxRuntimeMs ?? settings.get("task.maxRuntimeMs") ?? 0) || 0),
+		Math.trunc(Number(options.maxRuntimeMs ?? settings.get("subagent.maxRuntimeMs") ?? 0) || 0),
 	);
 	// TTL before an adopted idle subagent is parked by the lifecycle manager.
 	// <= 0 disables parking (the session stays live until process teardown).
-	const agentIdleTtlMs = Math.trunc(Number(settings.get("task.agentIdleTtlMs") ?? 420_000) || 0);
+	const agentIdleTtlMs = Math.trunc(Number(settings.get("subagent.idleTtlMs") ?? 420_000) || 0);
 	const configuredDefaultBudget = Math.max(
 		0,
-		Math.trunc(Number(settings.get("task.softRequestBudget") ?? SOFT_REQUEST_BUDGET.default) || 0),
+		Math.trunc(Number(settings.get("subagent.softRequestBudget") ?? SOFT_REQUEST_BUDGET.default) || 0),
 	);
 	const softRequestBudget =
 		configuredDefaultBudget === 0 ? 0 : (SOFT_REQUEST_BUDGET[agent.name] ?? configuredDefaultBudget);
-	const softRequestBudgetNotice = settings.get("task.softRequestBudgetNotice") ?? false;
+	const softRequestBudgetNotice = settings.get("subagent.softRequestBudgetNotice") ?? false;
 	const parentDepth = options.taskDepth ?? 0;
 	const childDepth = parentDepth + 1;
 	const atMaxDepth = maxRecursionDepth >= 0 && childDepth >= maxRecursionDepth;
@@ -2362,7 +2366,13 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		toolNames = Array.from(new Set(expanded));
 	}
 
-	const modelPatterns = normalizeModelPatterns(modelOverride ?? agent.model);
+	// The caller resolved this through `resolveSubagentModel`, the one owner of
+	// "what model does this subagent run", and handed the patterns down. Falling
+	// back to `agent.model` here would re-create the defect this replaced: the
+	// definition's frontmatter deciding behind the operator's back on any path that
+	// forgot to resolve, which is how bundled role aliases outranked the subagent
+	// model setting.
+	const modelPatterns = normalizeModelPatterns(modelOverride);
 	// Always a durable file — subagents never run in-memory (see subtaskSessionFile above).
 	const sessionFile: string = subtaskSessionFile;
 	const spawnsEnv = atMaxDepth
@@ -2614,7 +2624,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				preloadedExtensionPaths: options.preloadedExtensionPaths,
 				preloadedCustomToolPaths: options.preloadedCustomToolPaths,
 				systemPrompt: defaultPrompt => {
-					const subagentPrompt = prompt.render(subagentSystemPromptTemplate, {
+					const subagentPrompt = prompt.render(PROMPTS["subagent/system-prompt"].text, {
 						agent: agent.systemPrompt,
 						context: options.context?.trim() ?? "",
 						planReference: options.planReference?.content ?? "",

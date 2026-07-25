@@ -5,7 +5,9 @@ import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { ROLE_INHERIT_LABEL } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { MODAL_SIZING_LARGE } from "@veyyon/coding-agent/modes/components/modal-shell";
 import {
 	type ModelHubCallbacks,
 	ModelHubComponent,
@@ -22,9 +24,23 @@ function normalize(lines: readonly string[]): string {
 
 /**
  * The strip row (hint line or an active chip strip) of a rendered frame: the
- * last line of the sidebar|body split, directly above the ModalShell divider
- * that separates the body from its own footer shortcut chips. Located
- * dynamically since the ModalShell card floats and is vertically centered.
+ * last line of the sidebar|body split. Located dynamically since the ModalShell
+ * card floats and is vertically centered.
+ *
+ * It is NOT the row directly above the divider. ModalShell charges `vPad`
+ * TWICE, once above the body and once below it, so up to `MODAL_SIZING_LARGE.vPad`
+ * blank card rows sit between the strip and the divider that separates the body
+ * from the footer shortcut chips. Reading `dividerIndex - 1` returned one of
+ * those pad rows, which is why eleven strip assertions in this file all failed
+ * with the same empty `│ … │` line and none of them said anything about the
+ * strip. The pad count shrinks on a short card (`renderModalShell` drops vPad
+ * before it drops chrome), so this skips blank rows rather than subtracting a
+ * fixed two.
+ *
+ * The climb is bounded and it throws instead of returning a body row: every
+ * caller asserts strip CONTENT, so a blank strip is a real failure and must not
+ * be papered over by silently walking further up into the model list, which
+ * would turn a missing hint into a confusing mismatch against an unrelated row.
  */
 function footerLine(lines: readonly string[]): string {
 	const stripped = lines.map(line => stripVTControlCharacters(line));
@@ -33,7 +49,13 @@ function footerLine(lines: readonly string[]): string {
 		return trimmed.startsWith("├") && trimmed.endsWith("┤");
 	});
 	if (dividerIndex <= 0) return "";
-	return stripped[dividerIndex - 1] ?? "";
+	for (let skipped = 0; skipped <= MODAL_SIZING_LARGE.vPad; skipped++) {
+		const row = stripped[dividerIndex - 1 - skipped] ?? "";
+		if (row.replace(/[│\s]/g, "") !== "") return row;
+	}
+	throw new Error(
+		`no strip row within ${MODAL_SIZING_LARGE.vPad} pad rows above the footer divider at line ${dividerIndex}`,
+	);
 }
 
 function makeModel(provider: string, id: string, contextWindow = 128_000): Model {
@@ -186,7 +208,15 @@ describe("ModelHub", () => {
 			expect(rendered).toContain("▪smol");
 		});
 
-		test("list rows carry no role chips; only the selected model's detail line is tagged", () => {
+		/**
+		 * With no role configured, the hub must claim NOTHING about which model a
+		 * role would use. It used to paint hollow `▫smol` / `▫slow` chips by
+		 * expanding the role through a built-in priority chain, which advertised a
+		 * model the operator never assigned and pointed different roles at
+		 * different models on a stock install. Unset means inherit the main model,
+		 * so no chip of either kind belongs on any row.
+		 */
+		test("unset roles paint no chips at all", () => {
 			const settings = Settings.isolated({});
 			const haiku = makeModel("test", "claude-haiku-4.5");
 			const codex = makeModel("test", "gpt-5.1-codex");
@@ -194,12 +224,20 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			const rendered = normalize(hub.render(220));
-			// Auto-selection tags smol → haiku and slow → codex, but only the
-			// selected model's chips render (in the detail line). With row
-			// chips both would appear at once.
-			const hollow = ["▫smol", "▫slow"].filter(chip => rendered.includes(chip));
-			expect(hollow).toHaveLength(1);
-			expect(rendered).not.toContain("▪smol");
+			expect(["▫smol", "▫slow", "▪smol", "▪slow"].filter(chip => rendered.includes(chip))).toEqual([]);
+		});
+
+		/** A configured role still chips the model it names, on the selected model's detail line only. */
+		test("a configured role chips only the selected model's detail line", () => {
+			const haiku = makeModel("test", "claude-haiku-4.5");
+			const codex = makeModel("test", "gpt-5.1-codex");
+			const settings = Settings.isolated({ modelRoles: { smol: "test/claude-haiku-4.5" } });
+			const { hub } = createHub({ models: [haiku, codex], scoped: true, settings });
+			installTestTheme();
+
+			const rendered = normalize(hub.render(220));
+			expect(rendered).toContain("▪smol");
+			expect(rendered).not.toContain("▫smol");
 		});
 
 		test("roles view reflects auto thinking from defaultThinkingLevel and :auto suffixes", () => {
@@ -228,7 +266,7 @@ describe("ModelHub", () => {
 			expect(slowRow).not.toContain("auto");
 		});
 
-		test("x clears a configured role back to auto-selection", () => {
+		test("x clears a configured role back to inherit", () => {
 			const model = makeModel("test", "worker-model");
 			const settings = Settings.isolated({
 				modelRoles: { smol: "test/worker-model" },
@@ -251,10 +289,11 @@ describe("ModelHub", () => {
 			expect(settings.getModelRole("smol")).toBeUndefined();
 			const lines = hub.render(220).map(line => stripVTControlCharacters(line));
 			const smolRow = lines.find(line => line.includes("SMOL"));
-			// No auto candidate resolves for this synthetic model, so the row
-			// reads as unassigned instead of keeping the cleared value.
+			// Clearing drops the persisted value AND the row's claim about it: the
+			// role now follows the main model, which the row states outright instead
+			// of showing a dash or a chain-picked substitute.
 			expect(smolRow).not.toContain("worker-model");
-			expect(smolRow).toContain("—");
+			expect(smolRow).toContain(ROLE_INHERIT_LABEL);
 		});
 	});
 
@@ -620,10 +659,15 @@ describe("ModelHub", () => {
 			const rendered = normalize(hub.render(220));
 			expect(rendered).toContain("test/*");
 			expect(rendered).toContain("↳ test/model-a");
-			expect(rendered).toContain("+ New fallback…");
 			expect(rendered).toMatch(/─{10,}/); // the roles/fallbacks divider
+			// Eight roles plus + New role…, the separator, the chain key and its
+			// selector already fill the pane at 40 terminal rows, so the last row
+			// starts outside the window. It must not be lost: the window follows
+			// the selection, which the wrap-around UP below proves.
+			expect(rendered).not.toContain("+ New fallback…");
 
-			hub.handleInput(UP); // + New fallback…
+			hub.handleInput(UP); // wraps to + New fallback…, scrolling it into view
+			expect(normalize(hub.render(220))).toContain("+ New fallback…");
 			hub.handleInput(UP); // ↳ test/model-a
 			hub.handleInput(UP); // test/* header (separator is skipped)
 			hub.handleInput("x");

@@ -13,6 +13,7 @@ import type { Box, Component } from "@veyyon/tui";
 import { Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
 import { getMarkdownTheme, type Theme, theme } from "../../modes/theme/theme";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
+import { reportRendererFailure } from "./renderer-failure";
 
 /**
  * Card-outline paint: the OSC 11-derived ground tint when the terminal
@@ -54,19 +55,33 @@ export interface RebuildFrameOptions<M extends FramedMessage> {
 	customRenderer?: FramedRenderer<M>;
 }
 
+/** Reader-facing name for a framed message's renderer, used in a failure notice. */
+export function framedRendererSubject(customType: string): string {
+	return `custom message "${customType}"`;
+}
+
 /**
  * Attempt the custom renderer; on failure or undefined return, populate `box`
  * with the default outlined card — an `icon customType` header + markdown body —
  * and return undefined. When the custom renderer succeeds, return its Component
  * so the caller can mount it and skip the default box.
+ *
+ * A renderer that RETURNS undefined is declining to draw, which is a supported
+ * choice and stays silent. A renderer that THROWS is broken, so the card the
+ * operator gets instead carries a loud notice row (Law 10: no silent fallback).
  */
 export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameOptions<M>): Component | undefined {
+	let failureRow: Text | undefined;
 	if (opts.customRenderer) {
 		try {
 			const component = opts.customRenderer(opts.message, { expanded: opts.expanded }, theme);
 			if (component) return component;
-		} catch {
-			// Fall through to default rendering
+		} catch (err) {
+			failureRow = reportRendererFailure(
+				framedRendererSubject(opts.message.customType),
+				err,
+				"showing the default card",
+			);
 		}
 	}
 
@@ -79,6 +94,7 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 
 	const tag = opts.icon ? `${opts.icon} ${opts.message.customType}` : opts.message.customType;
 	opts.box.addChild(new Text(theme.fg("customMessageLabel", theme.bold(tag)), 0, 0));
+	if (failureRow) opts.box.addChild(failureRow);
 	opts.box.addChild(new Spacer(1));
 
 	let text: string;

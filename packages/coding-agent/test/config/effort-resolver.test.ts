@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import {
 	ANY_MODEL_EFFORT_KEY,
 	formatEffortRow,
 	resolveEffort,
 	withLegacyDefaultEffort,
 } from "@veyyon/coding-agent/config/effort-resolver";
-import { ThinkingLevel } from "@veyyon/agent-core";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 /**

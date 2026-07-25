@@ -2,12 +2,12 @@ import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, collapseWhitespace } from "../utils";
+import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError, resolveExternalResultUrl, withHardTimeout } from "./utils";
 
 /**
  * Startpage proxies Google's index behind a privacy frontend and serves fully
@@ -19,8 +19,10 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
  * the homepage, lift the form's hidden inputs, POST them back with the query.
  */
 const STARTPAGE_HOME_URL = "https://www.startpage.com/";
+
+/** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
+const STARTPAGE_OWN_HOSTS: readonly string[] = ["startpage.com"];
 const STARTPAGE_SEARCH_URL = "https://www.startpage.com/sp/search";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 
 /**
@@ -73,16 +75,7 @@ function parseSearchFormInputs(html: string): Record<string, string> | undefined
 
 /** Accept only http(s) result targets that point away from Startpage itself. */
 function sanitizeResultUrl(href: string | null | undefined): string | undefined {
-	if (!href) return undefined;
-	let url: URL;
-	try {
-		url = new URL(href, STARTPAGE_HOME_URL);
-	} catch {
-		return undefined;
-	}
-	if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-	if (url.hostname === "startpage.com" || url.hostname.endsWith(".startpage.com")) return undefined;
-	return url.href;
+	return resolveExternalResultUrl(href, STARTPAGE_HOME_URL, STARTPAGE_OWN_HOSTS);
 }
 
 /**
@@ -175,7 +168,11 @@ async function callStartpageHtml(params: SearchParams): Promise<string> {
 
 /** Execute a Startpage web search via the homepage-token form flow. */
 export async function searchStartpage(params: SearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
 	const html = await callStartpageHtml(params);
 	const parsed = parseHtmlResults(html);
 

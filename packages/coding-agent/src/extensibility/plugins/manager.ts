@@ -11,6 +11,7 @@ import {
 	getProjectPluginOverridesPath,
 	isEnoent,
 	logger,
+	readPipeText,
 } from "@veyyon/utils";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { withExitGuard } from "../utils";
@@ -488,8 +489,8 @@ export class PluginManager {
 			// buffers eagerly, doing this leaks unbounded memory.
 			const [installExit, , installStderr] = await Promise.all([
 				installProc.exited,
-				new Response(installProc.stdout).text(),
-				new Response(installProc.stderr).text(),
+				readPipeText(installProc.stdout),
+				readPipeText(installProc.stderr),
 			]);
 			if (installExit !== 0) {
 				throw new Error(`bun install failed: ${installStderr}`);
@@ -541,8 +542,8 @@ export class PluginManager {
 				// Same drain-concurrent-with-exit pattern as the bun install above.
 				const [updateExit, , updateStderr] = await Promise.all([
 					updateProc.exited,
-					new Response(updateProc.stdout).text(),
-					new Response(updateProc.stderr).text(),
+					readPipeText(updateProc.stdout),
+					readPipeText(updateProc.stderr),
 				]);
 				if (updateExit !== 0) {
 					throw new Error(`bun update ${actualName} failed: ${updateStderr}`);
@@ -652,11 +653,7 @@ export class PluginManager {
 
 		// Drain both pipes concurrently with proc.exited to avoid a pipe-buffer
 		// deadlock if bun uninstall floods stdout/stderr.
-		const [exitCode] = await Promise.all([
-			proc.exited,
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-		]);
+		const [exitCode] = await Promise.all([proc.exited, readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 		if (exitCode !== 0) {
 			throw new Error(`npm uninstall failed for ${name}`);
 		}
@@ -1052,10 +1049,20 @@ export class PluginManager {
 		return checks;
 	}
 
+	/**
+	 * Reinstall the plugins directory for `doctor --fix`.
+	 *
+	 * The boolean becomes the check's `fixed` field, so a failure is already visible as a check that
+	 * stayed red -- but only as "Missing from node_modules", with no hint why the fix did not take. The
+	 * output was drained and thrown away even on a non-zero exit, which is the interesting half: a
+	 * network failure, a lockfile conflict and a missing `bun` on PATH all looked identical. They are
+	 * reported here, and the boolean is unchanged so the check reads the same as before.
+	 */
 	async #fixMissingPlugin(): Promise<boolean> {
+		const cwd = getPluginsDir();
 		try {
 			const proc = Bun.spawn(["bun", "install"], {
-				cwd: getPluginsDir(),
+				cwd,
 				stdin: "ignore",
 				stdout: "pipe",
 				stderr: "pipe",
@@ -1063,13 +1070,26 @@ export class PluginManager {
 			});
 			// Drain pipes concurrently with proc.exited; otherwise a chatty
 			// bun install can block on a full OS pipe buffer.
-			const [exit] = await Promise.all([
+			const [exit, , stderr] = await Promise.all([
 				proc.exited,
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
+				readPipeText(proc.stdout),
+				readPipeText(proc.stderr),
 			]);
+			if (exit !== 0) {
+				logger.warn("Reinstalling plugins failed; the missing plugin was not restored", {
+					cwd,
+					exitCode: exit,
+					stderr: stderr.trim().slice(-2000),
+				});
+			}
 			return exit === 0;
-		} catch {
+		} catch (err) {
+			// `bun` is not on PATH, or the plugins directory cannot be entered. Nothing ran, so there is no
+			// exit code or output to attach; the reason lives only in this error.
+			logger.warn("Reinstalling plugins could not be started; the missing plugin was not restored", {
+				cwd,
+				error: errorMessage(err),
+			});
 			return false;
 		}
 	}

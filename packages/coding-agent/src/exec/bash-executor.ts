@@ -36,6 +36,16 @@ export interface BashExecutorOptions {
 	artifactPath?: string;
 	artifactId?: string;
 	/**
+	 * How many bytes of output may stay inline, from the caller's session.
+	 *
+	 * The executor has no session, so it cannot price this itself, and the flat
+	 * default it used instead is how a large result ended up re-read on every
+	 * turn for the rest of the session. Callers that own a `ToolSession` pass
+	 * `inlineBudgetFor(session)`; a caller with no session omits it and gets the
+	 * flat budget, which is the previous behaviour.
+	 */
+	spillThreshold?: number;
+	/**
 	 * Invoked when the native minimizer rewrote the command's output, giving
 	 * the caller a chance to persist the lossless original capture (typically
 	 * via the session's `ArtifactManager`). The returned id is spliced into
@@ -245,6 +255,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		onChunk: options?.onChunk,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
+		...(options?.spillThreshold !== undefined ? { spillThreshold: options.spillThreshold } : {}),
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
 		chunkThrottleMs: options?.onChunk ? (options.chunkThrottleMs ?? 50) : 0,

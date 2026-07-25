@@ -295,7 +295,7 @@ Use `ANTHROPIC_SEARCH_BASE_URL` (optionally with `ANTHROPIC_SEARCH_API_KEY`) to 
 | `VEYYON_PY`                 | Boolean-like override for the Python eval backend: truthy (`1`/`true`/`yes`/`on`) enables, any other value disables; unset defers to the `eval.py` setting (default enabled)        |
 | `VEYYON_JS`                 | Same boolean-like override for the JavaScript eval backend; unset defers to the `eval.js` setting (default enabled)                                                                 |
 | `VEYYON_PYTHON_SKIP_CHECK`  | If `1`, skips Python interpreter availability checks (subprocess runner still starts on demand)                     |
-| `VEYYON_PYTHON_INTEGRATION` | If `1`, opts gated integration tests in (e.g. `python-runner.integration.test.ts`) into running against real Python |
+| `VEYYON_PYTHON_INTEGRATION` | If `1`, opts gated integration tests in (e.g. `python-runner-integration.test.ts`) into running against real Python |
 | `VEYYON_PYTHON_IPC_TRACE`   | If `1`, logs NDJSON frames exchanged with the Python runner subprocess                                              |
 | `VIRTUAL_ENV`           | Highest-priority venv path for Python runtime resolution                                                            |
 
@@ -360,7 +360,7 @@ These are consumed via `@veyyon/utils/dirs` and affect where coding-agent stores
 
 | Variable              | Default / behavior                                                            |
 | --------------------- | ----------------------------------------------------------------------------- |
-| `VEYYON_CONFIG_DIR`   | Config root dirname under home (default `.veyyon`)|
+| `VEYYON_CONFIG_DIR`   | Config root dirname under home (default `.veyyon`). A name, not a path: an absolute value is refused at startup. |
 | `VEYYON_PROFILE`      | Activate a named profile (relocates the user base to `~/.veyyon/profiles/<name>`)|
 | `VEYYON_WORKTREE_DIR` | Base directory for task-isolation worktrees (default `~/.veyyon/profiles/<name>/wt`)|
 | `VEYYON_GITHUB_CACHE_DB` | Path override for the GitHub tool cache database|

@@ -63,6 +63,8 @@ function createPathContext(): SegmentContext {
 		contextPercent: 0,
 		contextTokens: 0,
 		contextWindow: 0,
+		contextLimit: 0,
+		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
 		subagentCount: 0,
 		activeMs: 0,

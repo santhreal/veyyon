@@ -88,7 +88,7 @@ Streaming: none. `WebSearchTool.execute()` forwards its `AbortSignal` into `exec
 5. For each provider in order, `executeSearch()` calls `provider.search()` with:
    - `query`,
    - `limit`, `recency`, `temperature`, `maxOutputTokens`, `numSearchResults`,
-   - `systemPrompt` from `packages/coding-agent/src/prompts/system/web-search.md`.
+   - `systemPrompt` from `packages/coding-agent/src/prompts/tools/web-search-system.md`.
 6. A `SearchResponse` with no renderable content (`hasRenderableSearchContent()` returns false) is rejected as a `SearchProviderError` (status `204`) so the loop advances to the next provider. On the first response that has renderable content, `formatForLLM()` renders answer/sources/citations/related/search-queries into one text block and returns it with `details.response`.
 7. If a provider throws, `executeSearch()` records the error and tries the next provider. There is no provider-level parallel fan-out; fallback is sequential.
 8. After all candidates fail, `formatProviderError()` normalizes each error:

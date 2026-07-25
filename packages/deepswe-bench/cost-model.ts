@@ -70,6 +70,25 @@ export const REFERENCE_RATE_CARD: RateCard = {
 	source: "published Google Gemini Flash rates (input $0.30/M, cached input $0.075/M, output $2.50/M)",
 };
 
+/**
+ * What one token costs, in dollars, if it enters the context at `turn` of
+ * `totalTurns` and stays for the rest of the session.
+ *
+ * It is billed once as fresh input on the turn it appears, then as a cache read
+ * on every subsequent turn. This is the number that makes context compression
+ * worth far more than output compression: at 66 turns, a token added early
+ * costs about eighteen times its face value.
+ *
+ * It lives here, beside the rate card it reads and `priceTokens`, because both
+ * ceiling scripts price their sweeps with it and each had its own copy. Two
+ * definitions of how retention is billed is two answers to the question every
+ * saving claim in this bench is expressed in.
+ */
+export function retainedTokenCost(turn: number, totalTurns: number): number {
+	const rereads = Math.max(0, totalTurns - turn - 1);
+	return (REFERENCE_RATE_CARD.input + REFERENCE_RATE_CARD.cacheRead * rereads) / 1_000_000;
+}
+
 /** The token counts a priced comparison needs, kept separate on purpose. */
 export interface TokenMix {
 	readonly inputTokens: number;

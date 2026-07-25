@@ -10,7 +10,7 @@ import {
 	resolveRoleSelection,
 	resolveRoleSelectionWithInherit,
 } from "../config/model-resolver";
-import { MODEL_ROLE_IDS } from "../config/model-roles";
+import { DEFAULT_MODEL_SLOT, MODEL_ROLE_IDS } from "../config/model-roles";
 import type { Settings } from "../config/settings";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import { concreteThinkingLevel } from "../thinking";
@@ -56,7 +56,7 @@ export async function resolvePrimaryModel(
 		// authoritative and still fails hard. With no configured default at all
 		// there is nothing to warn about — picking an available model IS the
 		// default resolution (mirrors main.ts's un-warned scopedModels[0] path).
-		const configuredDefault = settings.getModelRole("default");
+		const configuredDefault = settings.getModelRole(DEFAULT_MODEL_SLOT);
 		const fallback = fallbackForUnavailableDefault(configuredDefault, available);
 		if (fallback) {
 			if (configuredDefault) warn(fallback.warning);

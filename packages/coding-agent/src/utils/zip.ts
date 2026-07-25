@@ -7,7 +7,7 @@
 // build ZIP/tar, or call `Bun.Archive`, anywhere else.
 import * as path from "node:path";
 import * as zlib from "node:zlib";
-import { errorMessage, formatBytes, logger } from "@veyyon/utils";
+import { formatBytes, logger } from "@veyyon/utils";
 import { ToolError, toolFailure } from "../tools/tool-errors";
 
 /** A ZIP archive decoded to a `path → bytes` map of its file members. */

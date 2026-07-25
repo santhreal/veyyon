@@ -170,7 +170,13 @@ export class BlobStore {
 		}
 	}
 
-	/** Check if a blob exists. */
+	/**
+	 * Check if a blob exists.
+	 *
+	 * Any failure to reach it counts as absent, including a permission failure on a blob that is
+	 * really there. That is safe here and only here: blobs are content-addressed, so the caller's
+	 * response to "absent" is to write the same bytes under the same name, which is idempotent.
+	 */
 	async has(hash: string): Promise<boolean> {
 		try {
 			await fsp.access(path.join(this.dir, hash));

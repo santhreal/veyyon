@@ -11,7 +11,7 @@ import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapsho
 import { normalizeToLF } from "../edit/normalize";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import astEditDescription from "../prompts/tools/ast-edit.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
@@ -261,7 +261,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 	readonly deferrable = true;
 	readonly loadMode = "discoverable";
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(astEditDescription);
+		this.description = prompt.render(PROMPTS["tools/ast-edit"].text);
 	}
 
 	async execute(

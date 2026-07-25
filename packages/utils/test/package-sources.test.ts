@@ -70,7 +70,11 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 	});
 
 	it("exposes the canonical skip-set constants", () => {
-		expect([...SKIP_DIR_NAMES].sort()).toEqual(["dist", "node_modules", "vendor"]);
+		// `repo-cache` is the deepswe benchmark's 113 cloned upstream projects. It
+		// belongs here rather than in each lock: walking it makes every ownership
+		// lock read another project's sources and judge them against this
+		// repository's rules.
+		expect([...SKIP_DIR_NAMES].sort()).toEqual(["dist", "node_modules", "repo-cache", "vendor"]);
 		expect([...EXEMPT_PACKAGE_NAMES]).toEqual(["argot"]);
 		expect(PACKAGES_DIR.endsWith("packages")).toBe(true);
 	});

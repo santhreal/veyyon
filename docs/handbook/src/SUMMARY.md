@@ -38,6 +38,7 @@
   - [Safety](./using/safety.md)
 - [Models and providers](./using/models.md)
 - [Sessions](./using/sessions.md)
+- [Subagents](./features/subagents.md)
 - [Cockpit](./features/cockpit.md)
 - [Keybindings and Vim mode](./features/keybindings.md)
 - [Web search](./features/web-search.md)

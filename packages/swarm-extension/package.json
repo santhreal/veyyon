@@ -34,7 +34,7 @@
     "@veyyon/utils": "workspace:*"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14"
+    "@types/bun": "catalog:"
   },
   "peerDependencies": {
     "@veyyon/coding-agent": "catalog:"

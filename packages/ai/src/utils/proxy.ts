@@ -179,7 +179,7 @@ export async function connectProxiedSocket(
 	options?: ConnectProxiedSocketOptions,
 ): Promise<tls.TLSSocket> {
 	if (options?.signal?.aborted) {
-		throw new AIError.AbortError("Proxy tunnel aborted");
+		throw new AIError.RequestAbortError("Proxy tunnel aborted");
 	}
 
 	const proxyUrl = new URL(proxyUrlStr);
@@ -230,7 +230,7 @@ export async function connectProxiedSocket(
 		cleanup();
 		resolve(socket);
 	};
-	const onAbort = (): void => rejectOnce(new AIError.AbortError("Proxy tunnel aborted"));
+	const onAbort = (): void => rejectOnce(new AIError.RequestAbortError("Proxy tunnel aborted"));
 	const onRawError = (error: Error): void => rejectOnce(error);
 	const onTunnelError = (error: Error): void => rejectOnce(error);
 	const onTunnelReady = (): void => {

@@ -1592,6 +1592,8 @@ function parseResponseReasoningReplayItem(signature: string | undefined): Respon
 		if (!("id" in parsed) || typeof parsed.id !== "string") return undefined;
 		return parsed as ResponseReasoningItem;
 	} catch {
+		// A signature that is not a reasoning-item envelope cannot be replayed, which is the same undefined
+		// the three shape checks above return, and the caller then replays the turn without it.
 		return undefined;
 	}
 }

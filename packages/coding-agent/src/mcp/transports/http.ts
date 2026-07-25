@@ -5,7 +5,7 @@
  * Based on MCP spec 2025-03-26.
  */
 import * as AIError from "@veyyon/ai/error";
-import { logger, readSseJson, Snowflake } from "@veyyon/utils";
+import { isAbortError, logger, readSseJson, Snowflake } from "@veyyon/utils";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,
@@ -115,7 +115,7 @@ export class HttpTransport implements MCPTransport {
 			response = timeoutPromise === null ? await fetchPromise : await Promise.race([fetchPromise, timeoutPromise]);
 		} catch (error) {
 			if (this.#sseConnection === connection) this.#sseConnection = null;
-			if (error instanceof Error && error.name !== "AbortError" && !timedOut) {
+			if (error instanceof Error && !isAbortError(error) && !timedOut) {
 				this.onError?.(error);
 			}
 			return;
@@ -155,7 +155,7 @@ export class HttpTransport implements MCPTransport {
 				this.#dispatchSSEMessage(message);
 			}
 		} catch (error) {
-			if (error instanceof Error && error.name !== "AbortError") {
+			if (error instanceof Error && !isAbortError(error)) {
 				logger.debug("HTTP SSE stream error", { url: this.config.url, error: error.message });
 				this.onError?.(error);
 			}

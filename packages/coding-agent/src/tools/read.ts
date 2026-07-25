@@ -20,8 +20,12 @@ import {
 	getRemoteDir,
 	hasUrlScheme,
 	type ImageMetadata,
+	isAbortError,
+	isCancellation,
+	isMissingPath,
 	isProbablyBinary,
 	isProbablyBinaryHeader,
+	isTimeoutError,
 	logger,
 	prompt,
 	readImageMetadata,
@@ -33,6 +37,7 @@ import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
 import {
 	canonicalSnapshotKey,
+	contiguousLineNumbers,
 	getFileSnapshotStore,
 	recordFileSnapshot,
 	recordSeenLines,
@@ -48,7 +53,7 @@ import { parseInternalUrl } from "../internal-urls/parse";
 import type { InternalUrl } from "../internal-urls/types";
 import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { getLanguageFromPath, type Theme } from "../modes/theme/theme";
-import readDescription from "../prompts/tools/read.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../sdk";
 import {
 	DEFAULT_MAX_BYTES,
@@ -172,6 +177,8 @@ async function readBracketContextFullLines(absolutePath: string, fileSize: numbe
 	try {
 		return normalizeToLF(await Bun.file(absolutePath).text()).split("\n");
 	} catch {
+		// Bracket context is extra: the read of this same file is about to happen on the caller's main
+		// path, which reports the failure with the path. Undefined here only means no context lines.
 		return undefined;
 	}
 }
@@ -335,12 +342,6 @@ function countTextLines(text: string): number {
 	return lines;
 }
 
-function contiguousLineNumbers(startLine: number, count: number): number[] {
-	const lines: number[] = [];
-	for (let offset = 0; offset < count; offset++) lines.push(startLine + offset);
-	return lines;
-}
-
 function lineNumbersFromSpans(spans: readonly { startLine: number; endLine: number }[]): number[] {
 	const lines: number[] = [];
 	for (const span of spans) {
@@ -417,10 +418,29 @@ const RANGE_LEADING_CONTEXT_LINES = 1;
 const RANGE_TRAILING_CONTEXT_LINES = 3;
 
 /**
+ * How many context lines a range read gets on each side. The one owner of that
+ * arithmetic: the in-memory range path and both streaming range paths (plain
+ * file, artifact) each need the same two numbers, and each used to derive them
+ * from the two constants itself.
+ *
+ * A start of 0 (no explicit offset) gets no leading context — that is already
+ * an open-ended read from the top — and leading padding never runs past the
+ * top of the file.
+ */
+function rangeContextLines(
+	requestedStart: number,
+	expandStart: boolean,
+	expandEnd: boolean,
+): { leading: number; trailing: number } {
+	return {
+		leading: expandStart ? Math.min(requestedStart, RANGE_LEADING_CONTEXT_LINES) : 0,
+		trailing: expandEnd ? RANGE_TRAILING_CONTEXT_LINES : 0,
+	};
+}
+
+/**
  * Expand a [start, end) range with leading/trailing context lines on the
- * sides where the user actually constrained the range. A start of 0 (no
- * explicit offset) does not get leading context — that's already an
- * open-ended read from the top.
+ * sides where the user actually constrained the range.
  */
 function expandRangeWithContext(
 	requestedStart: number,
@@ -429,10 +449,47 @@ function expandRangeWithContext(
 	expandStart: boolean,
 	expandEnd: boolean,
 ): { startLine: number; endLine: number } {
+	const context = rangeContextLines(requestedStart, expandStart, expandEnd);
 	return {
-		startLine: expandStart ? Math.max(0, requestedStart - RANGE_LEADING_CONTEXT_LINES) : requestedStart,
-		endLine: expandEnd ? Math.min(totalLines, requestedEnd + RANGE_TRAILING_CONTEXT_LINES) : requestedEnd,
+		startLine: requestedStart - context.leading,
+		endLine: Math.min(totalLines, requestedEnd + context.trailing),
 	};
+}
+
+/**
+ * Say, in the result itself, that some of the returned lines are padding.
+ *
+ * A bounded selector returns more lines than it asked for: `read file:1-3`
+ * answers with six lines, three requested and three of trailing context. The
+ * expansion is deliberate (it saves the follow-up read that a one-line-off
+ * anchor would need), and documenting it in `docs/tools/read.md` was not
+ * enough: the surprise happens at CALL TIME, where the result looked like the
+ * selector had been ignored. A dogfooder flagged the same read twice for that
+ * reason, which is what this notice answers.
+ *
+ * Returns `undefined` when nothing was padded, so an exact read stays exact
+ * and unannotated. Line numbers are 1-indexed and inclusive, as displayed.
+ */
+function formatContextPaddingNotice(options: {
+	requestedFirstLine: number;
+	/** Undefined for an open-ended read, which never gets trailing padding. */
+	requestedLastLine: number | undefined;
+	displayedFirstLine: number;
+	displayedLastLine: number;
+}): string | undefined {
+	const leading = Math.max(0, options.requestedFirstLine - options.displayedFirstLine);
+	const trailing =
+		options.requestedLastLine === undefined ? 0 : Math.max(0, options.displayedLastLine - options.requestedLastLine);
+	if (leading === 0 && trailing === 0) return undefined;
+
+	const requested =
+		options.requestedLastLine === undefined || options.requestedLastLine === options.requestedFirstLine
+			? `line ${options.requestedFirstLine}`
+			: `lines ${options.requestedFirstLine}-${options.requestedLastLine}`;
+	const padding: string[] = [];
+	if (leading > 0) padding.push(`${formatCount("line", leading)} of leading context`);
+	if (trailing > 0) padding.push(`${formatCount("line", trailing)} of trailing context`);
+	return `[Showing lines ${options.displayedFirstLine}-${options.displayedLastLine}: you requested ${requested}, plus ${padding.join(" and ")}]`;
 }
 
 async function streamLinesFromFile(
@@ -647,12 +704,6 @@ async function streamLinesFromFile(
 const MAX_IMAGE_SIZE = MAX_IMAGE_INPUT_BYTES;
 const GLOB_TIMEOUT_MS = 5000;
 
-function isNotFoundError(error: unknown): boolean {
-	if (!error || typeof error !== "object") return false;
-	const code = (error as { code?: string }).code;
-	return code === "ENOENT" || code === "ENOTDIR";
-}
-
 /**
  * Escape glob metacharacters so a literal path (e.g. `foo[1].ts`) interpolated
  * into a suffix-glob pattern matches itself. Each metachar is wrapped in a
@@ -695,10 +746,19 @@ async function findUniqueSuffixMatch(
 		);
 		matches = result.matches.map(m => m.path);
 	} catch (error) {
-		if (error instanceof Error && error.name === "AbortError") {
-			if (!signal?.aborted) return null; // timeout — give up silently
-			throw new ToolAbortError();
-		}
+		// The suffix search is a convenience, so a deadline on it is not the
+		// caller's problem: give up silently and let the path resolve as missing.
+		// A real cancellation is the caller's problem and must propagate with its
+		// reason, so the operator learns why the read stopped rather than reading
+		// the generic sentinel.
+		//
+		// This used to ask `isAbortError` and then infer which of the two had
+		// happened from `!signal?.aborted`, because `AbortError` stamped its own
+		// name over the `TimeoutError` reason and the guard could not see a
+		// timeout as one. The error now carries its own name, so the question is
+		// asked directly.
+		if (isTimeoutError(error)) return null;
+		if (isAbortError(error)) throwIfAborted(signal, "read");
 		return null;
 	} finally {
 		cancel();
@@ -710,6 +770,22 @@ async function findUniqueSuffixMatch(
 		absolutePath: path.resolve(cwd, matches[0]),
 		displayPath: matches[0],
 	};
+}
+
+/**
+ * Whether a failed summarize attempt is worth reporting, and what to say about it.
+ *
+ * Summarizing a read is optional: when it fails you get the whole file where you would have got an
+ * outline, which is still a correct read, so the failure must not propagate. It used to be swallowed
+ * entirely, and a file that could not be parsed then looked like a file with nothing to fold.
+ *
+ * Cancellation is the one case that stays quiet, because it is not a failure of summarizing: the
+ * caller asked for the read to stop, and the read path reports that itself. Returns the message to
+ * log, or null when there is nothing to report.
+ */
+export function summarizeFailureReport(error: unknown): string | null {
+	if (isAbortError(error) || isTimeoutError(error) || isCancellation(error)) return null;
+	return errorMessage(error);
 }
 
 function decodeUtf8Text(bytes: Uint8Array): string | null {
@@ -940,7 +1016,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			Math.min(session.settings.get("read.defaultLimit") ?? DEFAULT_MAX_LINES, DEFAULT_MAX_LINES),
 		);
 		this.#inspectImageEnabled = session.settings.get("inspect_image.enabled");
-		this.description = prompt.render(readDescription, {
+		this.description = prompt.render(PROMPTS["tools/read"].text, {
 			DEFAULT_LIMIT: String(this.#defaultLimit),
 			DEFAULT_MAX_LINES: String(DEFAULT_MAX_LINES),
 			IS_HL_MODE: displayMode.hashLines,
@@ -1034,7 +1110,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					suffixResolution,
 				};
 			} catch (error) {
-				if (!isNotFoundError(error) || isRemoteMountPath(absolutePath)) continue;
+				if (!isMissingPath(error) || isRemoteMountPath(absolutePath)) continue;
 
 				const suffixMatch = await this.#findSuffixMatchCached(suffixCache, candidate.archivePath, signal);
 				if (!suffixMatch) continue;
@@ -1051,7 +1127,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						suffixResolution,
 					};
 				} catch (retryError) {
-					if (!isNotFoundError(retryError)) {
+					if (!isMissingPath(retryError)) {
 						throw retryError;
 					}
 				}
@@ -1083,7 +1159,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					suffixResolution,
 				};
 			} catch (error) {
-				if (!isNotFoundError(error) || isRemoteMountPath(absolutePath)) continue;
+				if (!isMissingPath(error) || isRemoteMountPath(absolutePath)) continue;
 
 				const suffixMatch = await this.#findSuffixMatchCached(suffixCache, candidate.sqlitePath, signal);
 				if (!suffixMatch) continue;
@@ -1102,7 +1178,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						suffixResolution,
 					};
 				} catch (retryError) {
-					if (!isNotFoundError(retryError)) {
+					if (!isMissingPath(retryError)) {
 						throw retryError;
 					}
 				}
@@ -1134,7 +1210,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			}
 			return members.sort();
 		} catch (error) {
-			if (isNotFoundError(error)) return [];
+			if (isMissingPath(error)) return [];
 			throw error;
 		}
 	}
@@ -1146,7 +1222,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			await fs.stat(markerPath);
 			return imageDir;
 		} catch (error) {
-			if (!isNotFoundError(error)) throw error;
+			if (!isMissingPath(error)) throw error;
 		}
 
 		await fs.rm(imageDir, { recursive: true, force: true });
@@ -1468,6 +1544,19 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				outputText = formatLineEntries(buildLineEntries(endLine), startLineDisplay);
 			}
 		}
+
+		// Self-disclose the padding, once, after whichever branch built the body.
+		const displayedLastLine = Math.min(
+			endLine,
+			startLineDisplay + Math.max(0, countTextLines(truncation.content) - 1),
+		);
+		const paddingNotice = formatContextPaddingNotice({
+			requestedFirstLine: requestedStart + 1,
+			requestedLastLine: limit !== undefined ? requestedEnd : undefined,
+			displayedFirstLine: startLineDisplay,
+			displayedLastLine,
+		});
+		if (paddingNotice) outputText += `\n\n${paddingNotice}`;
 
 		if (hashContext?.tag && options.sourcePath && seenLines) {
 			recordSeenLines(this.session, options.sourcePath, hashContext.tag, seenLines);
@@ -2038,7 +2127,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			const usable = result.parsed && result.elided ? result : false;
 			cache.set(cacheKey, usable);
 			return usable || null;
-		} catch {
+		} catch (error) {
+			const reason = summarizeFailureReport(error);
+			if (reason !== null) {
+				logger.warn("Read could not be summarized; returning the full file", { path: absolutePath, error: reason });
+			}
 			return null;
 		}
 	}
@@ -2293,7 +2386,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					if (stat.isDirectory())
 						throw new ToolError(`Path '${pdfImageMemberPath.pdfPath}' is a directory, not a PDF file`);
 				} catch (error) {
-					if (!isNotFoundError(error) || isRemoteMountPath(absolutePdfPath)) throw error;
+					if (!isMissingPath(error) || isRemoteMountPath(absolutePdfPath)) throw error;
 					const suffixMatch = await this.#findSuffixMatchCached(suffixCache, pdfImageMemberPath.pdfPath, signal);
 					if (!suffixMatch) throw new ToolError(`Path '${pdfImageMemberPath.pdfPath}' not found`);
 					absolutePdfPath = suffixMatch.absolutePath;
@@ -2323,7 +2416,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			fileSize = stat.size;
 			isDirectory = stat.isDirectory();
 		} catch (error) {
-			if (isNotFoundError(error)) {
+			if (isMissingPath(error)) {
 				// Attempt unique suffix resolution before falling back to fuzzy suggestions
 				if (!isRemoteMountPath(absolutePath)) {
 					const suffixMatch = await this.#findSuffixMatchCached(suffixCache, localReadPath, signal);
@@ -2549,8 +2642,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					const requestedStart = offset ? Math.max(0, offset - 1) : 0;
 					const expandStart = !rawSelector && offset !== undefined && offset > 1;
 					const expandEnd = !rawSelector && limit !== undefined;
-					const leadingContext = expandStart ? Math.min(requestedStart, RANGE_LEADING_CONTEXT_LINES) : 0;
-					const trailingContext = expandEnd ? RANGE_TRAILING_CONTEXT_LINES : 0;
+					const { leading: leadingContext, trailing: trailingContext } = rangeContextLines(
+						requestedStart,
+						expandStart,
+						expandEnd,
+					);
 					const startLine = requestedStart - leadingContext;
 					const startLineDisplay = startLine + 1;
 
@@ -2774,6 +2870,14 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						sourcePath = absolutePath;
 					}
 
+					const paddingNotice = formatContextPaddingNotice({
+						requestedFirstLine: requestedStart + 1,
+						requestedLastLine: limit !== undefined ? requestedStart + limit : undefined,
+						displayedFirstLine: startLineDisplay,
+						displayedLastLine: displayedEndLine,
+					});
+					if (paddingNotice) outputText += `\n\n${paddingNotice}`;
+
 					if (hashContext?.tag) {
 						recordSeenLinesFromBody(this.session, absolutePath, hashContext.tag, outputText, clippedLines);
 					}
@@ -2992,8 +3096,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		// Raw mode never adds context lines — see the plain-file range path.
 		const expandStart = !rawSelector && offset !== undefined && offset > 1;
 		const expandEnd = !rawSelector && limit !== undefined;
-		const leadingContext = expandStart ? Math.min(requestedStart, RANGE_LEADING_CONTEXT_LINES) : 0;
-		const trailingContext = expandEnd ? RANGE_TRAILING_CONTEXT_LINES : 0;
+		const { leading: leadingContext, trailing: trailingContext } = rangeContextLines(
+			requestedStart,
+			expandStart,
+			expandEnd,
+		);
 		const startLine = requestedStart - leadingContext;
 		const startLineDisplay = startLine + 1;
 		const effectiveLimit = limit ?? this.#defaultLimit;
@@ -3098,6 +3205,14 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					: `\n\n[More lines in artifact (${formatBytes(artifact.size)} total; not scanned to EOF). Use ${artifactUrl}:${nextOffset} to continue]`;
 			}
 		}
+
+		const paddingNotice = formatContextPaddingNotice({
+			requestedFirstLine: requestedStart + 1,
+			requestedLastLine: limit !== undefined ? requestedStart + limit : undefined,
+			displayedFirstLine: startLineDisplay,
+			displayedLastLine: startLineDisplay + Math.max(0, collectedLines.length - 1),
+		});
+		if (paddingNotice) outputText += `\n\n${paddingNotice}`;
 
 		if (!rawSelector && artifact.size > MAX_ARTIFACT_RAW_INLINE_BYTES) {
 			outputText += `\n\n[${this.#formatArtifactWorkflowNotice(artifact, artifactUrl)}]`;
@@ -3350,6 +3465,8 @@ function firstReadSelectorLine(sel: string | undefined): number | undefined {
 		if (parsed.kind !== "lines") return undefined;
 		return parsed.ranges[0].startLine;
 	} catch {
+		// A selector this renderer cannot parse has no first line to scroll to. The tool call itself
+		// parses the same selector and reports it; the renderer must not raise a second time.
 		return undefined;
 	}
 }

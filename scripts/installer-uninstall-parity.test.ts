@@ -35,10 +35,7 @@ function fnBody(body: string, start: string, end: string): string {
 const repoRoot = path.resolve(import.meta.dir, "..");
 const installSh = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8");
 const installPs1 = fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8");
-const loaderState = fs.readFileSync(
-	path.join(repoRoot, "packages", "natives", "native", "loader-state.js"),
-	"utf8",
-);
+const loaderState = fs.readFileSync(path.join(repoRoot, "packages", "natives", "native", "loader-state.js"), "utf8");
 
 /** The uninstall body of each script, so assertions cannot match an install-path string. */
 function uninstallBody(body: string, startMarker: string, endMarker: string): string {
@@ -57,7 +54,7 @@ describe("native addon cache path is owned by loader-state.js", () => {
 		// This is the contract both uninstallers mirror. If this assertion ever
 		// fails, loader-state changed the cache location and BOTH installers below
 		// must be updated in the same change, not left resolving a dead path.
-		expect(loaderState).toContain('const xdgDataHome = process.env.XDG_DATA_HOME;');
+		expect(loaderState).toContain("const xdgDataHome = process.env.XDG_DATA_HOME;");
 		expect(loaderState).toContain('fs.existsSync(path.join(xdgDataHome, "veyyon"))');
 		expect(loaderState).toContain('path.join(xdgDataHome, "veyyon", "natives")');
 		expect(loaderState).toContain('path.join(os.homedir(), ".veyyon", "natives")');
@@ -153,9 +150,9 @@ describe("the Windows binary install stages its download", () => {
 			.filter(line => !line.trimStart().startsWith("#"))
 			.join("\n");
 		expect(body).not.toContain("Remove-Item $OutPath");
-		expect((body.match(/Remove-Item \$StagingPath -ErrorAction SilentlyContinue/g) ?? []).length).toBeGreaterThanOrEqual(
-			4,
-		);
+		expect(
+			(body.match(/Remove-Item \$StagingPath -ErrorAction SilentlyContinue/g) ?? []).length,
+		).toBeGreaterThanOrEqual(4);
 	});
 
 	it("moves the previous binary aside rather than overwriting a locked image", () => {
@@ -173,8 +170,58 @@ describe("the Windows binary install stages its download", () => {
 	it("sweeps moved-aside binaries on the next run instead of failing this one", () => {
 		// A `.old` still mapped by a running process cannot be deleted, and
 		// failing an otherwise-good install over it would be absurd.
-		expect(installPs1).toContain("function Clear-StaleBinaryBackups {");
-		expect(installPs1).toContain('Clear-StaleBinaryBackups -Dir $InstallDir -BaseName "$BinName.exe"');
+		expect(installPs1).toContain("function Clear-StaleInstallArtifacts {");
+		expect(installPs1).toContain(
+			'Clear-StaleInstallArtifacts -Dir $InstallDir -BaseName "$BinName.exe" -BinName $BinName',
+		);
+	});
+
+	it("sweeps a staged download a killed install left behind, not only `.old` files", () => {
+		// Only the uninstall used to reclaim `.download` staging files, so every
+		// killed install left another full copy of the binary (~100 MB) hidden in
+		// the install directory and the user had no command to get it back short
+		// of uninstalling. install.sh's sweep_stale_staging is the POSIX half.
+		const fn = installPs1.slice(installPs1.indexOf("function Clear-StaleInstallArtifacts {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain('-Filter ".$BinName.*.download"');
+		expect(installSh).toContain("sweep_stale_staging() {");
+		// Both install paths sweep before staging their own file, not just one.
+		expect(installSh.match(/^\s*sweep_stale_staging$/gm)?.length).toBe(2);
+	});
+
+	it("neither sweep touches a file whose owning process is still running", () => {
+		// The pid is in the staging path precisely so two concurrent installers
+		// cannot share one; sweeping a live one would delete the other process's
+		// partial download out from under it, which is the bug the pid fixed.
+		const fn = installPs1.slice(installPs1.indexOf("function Clear-StaleInstallArtifacts {"));
+		const psBody = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(psBody).toContain("Get-Process -Id $ownerPid -ErrorAction SilentlyContinue");
+		expect(psBody).toContain("another installer (pid $ownerPid) is using it");
+
+		const shBody = installSh.slice(
+			installSh.indexOf("sweep_stale_staging() {"),
+			installSh.indexOf("\n}", installSh.indexOf("sweep_stale_staging() {")),
+		);
+		expect(shBody).toContain('pid_is_running "$_ss_pid"');
+		expect(shBody).toContain("another installer (pid $_ss_pid) is using it");
+		// `kill -0` cannot answer this: it reports EPERM for a process this user
+		// may not signal, and reading that as "gone" deleted a live file.
+		expect(shBody).not.toContain("kill -0");
+		expect(installSh).toContain('ps -p "$1" >/dev/null 2>&1');
+	});
+
+	it("both sweeps announce every removal rather than deleting quietly", () => {
+		// Removing files from a directory the user owns is a visible change; a
+		// silent cleanup is indistinguishable from files vanishing on their own.
+		const fn = installPs1.slice(installPs1.indexOf("function Clear-StaleInstallArtifacts {"));
+		const psBody = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(psBody).toContain("left by an interrupted install (pid $ownerPid)");
+
+		const shBody = installSh.slice(
+			installSh.indexOf("sweep_stale_staging() {"),
+			installSh.indexOf("\n}", installSh.indexOf("sweep_stale_staging() {")),
+		);
+		expect(shBody).toContain('ok "removed $_ss_path left by an interrupted install (pid $_ss_pid)"');
 	});
 
 	it("uninstall reclaims the staging and moved-aside files too", () => {
@@ -279,7 +326,7 @@ describe("neither installer moves an empty staged file into place", () => {
 	});
 
 	it("both name the staged path and the next step in the refusal", () => {
-		expect(installSh).toContain('refusing to install; $empty_hint');
+		expect(installSh).toContain("refusing to install; $empty_hint");
 		expect(installPs1).toContain("retry or use -Source");
 	});
 });
@@ -343,7 +390,7 @@ describe("a failed rc rewrite never destroys the rc", () => {
 	it("the warning names the file and the command that restores it", () => {
 		// "could not rewrite your .bashrc" with an empty .bashrc and no next step
 		// is the worst possible message.
-		expect(installSh).toContain('its previous contents are in $tmp');
+		expect(installSh).toContain("its previous contents are in $tmp");
 		expect(installSh).toContain(`restore it with: cp '$tmp' '$rc'`);
 	});
 

@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import type { Skill } from "./extensibility/skills";
-import { RUNTIME_SECTIONS } from "./system-prompt-builder/prompt-blocks";
-import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+import { PROMPTS } from "./prompts/registry";
 import { buildSystemPrompt } from "./system-prompt";
+import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**
  * Settings-parity harness for the default system prompt.
  *
  * WHY THIS EXISTS: prompt experiments edit the monolithic template
- * (`prompts/system/system-prompt.md`) by hand. A variant that silently drops a
+ * (`prompts/session/system-prompt.md`) by hand. A variant that silently drops a
  * `{{#if <setting>}}` branch renders that setting useless with ZERO other test
  * failure. That is exactly how delegation settings (`taskIrcEnabled`,
  * `eagerTasksAlways`) were rendered dead during prompt experiments: the setting
@@ -112,6 +112,8 @@ const GATING_PROPS = [
 	"taskBatch",
 	"taskMaxConcurrency",
 	"taskIrcEnabled",
+	"subagentNames",
+	"hasSubagentSpecialists",
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
@@ -333,6 +335,34 @@ describe("system prompt settings parity: delegation (the regression this harness
 		expect(await renderBlock0({ taskIrcEnabled: false })).not.toContain("ask A via `irc`");
 	});
 
+	/**
+	 * The delegation prose may name a specialist only when this session can spawn
+	 * it. Bundled specialists ship unadvertised (`subagent.agents.*`), so a prompt
+	 * that hard-codes `scout` tells the model to route research to an agent absent
+	 * from the `task` description — an instruction it can only fail to follow.
+	 */
+	it(`${asserted("subagentNames")} names the scout only when the scout is on offer`, async () => {
+		const withScout = await renderBlock0({ subagentNames: ["task", "scout"] });
+		const workerOnly = await renderBlock0({ subagentNames: ["task"] });
+		expect(withScout).toContain("read-only `scout`");
+		expect(workerOnly).not.toContain("scout");
+		// The rule the clause hangs off must survive either way, or the gate has
+		// swallowed the whole bullet rather than just the specialist reference.
+		expect(workerOnly).toContain("Spawn-one-then-wait is a bug");
+	});
+
+	/**
+	 * With only the general worker spawnable there is no agent TYPE to choose, so
+	 * the advice to match a slice to a specialist is pure noise. It appears as soon
+	 * as any second agent does.
+	 */
+	it(`${asserted("hasSubagentSpecialists")} toggles the agent-typing gate`, async () => {
+		const specialists = await renderBlock0({ subagentNames: ["task", "reviewer"] });
+		const workerOnly = await renderBlock0({ subagentNames: ["task"] });
+		expect(specialists).toContain("Pick the agent type per slice");
+		expect(workerOnly).not.toContain("Pick the agent type per slice");
+	});
+
 	it(`${asserted("useCodexTaskPrompt")} switches delegation to the Codex policy for gpt-5.6`, async () => {
 		const codexEager = await renderBlock0({ model: "openai/gpt-5.6", eagerTasks: true });
 		const codexQuiet = await renderBlock0({ model: "openai/gpt-5.6", eagerTasks: false });
@@ -404,6 +434,8 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	taskBatch: "taskBatch",
 	MAX_CONCURRENCY: "taskMaxConcurrency",
 	taskIrcEnabled: "taskIrcEnabled",
+	subagentNames: "subagentNames",
+	hasSubagentSpecialists: "hasSubagentSpecialists",
 	useCodexTaskPrompt: "useCodexTaskPrompt",
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",
@@ -452,7 +484,7 @@ describe("system prompt settings parity: coverage contract", () => {
 	 * failure — exactly the silent-drop class this whole harness exists to stop.
 	 */
 	it("accounts for every gating identifier present in the shipped template", () => {
-		const found = extractGatingIdentifiers(systemPromptTemplate);
+		const found = extractGatingIdentifiers(PROMPTS["session/system-prompt"].text);
 		// Guard against an extractor regression silently returning nothing, which
 		// would make the "unaccounted" check pass vacuously. These gates are known
 		// to exist in the template; if the extractor stops finding them it is broken.

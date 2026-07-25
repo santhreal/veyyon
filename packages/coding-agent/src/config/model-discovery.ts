@@ -6,7 +6,7 @@
  * discovery lives in pi-catalog's provider-models.
  */
 import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/ai";
-import type { Api, Model, RemoteCompactionConfig } from "@veyyon/ai/types";
+import type { Api, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import {
 	getBundledModelReferenceIndex,
@@ -96,7 +96,6 @@ export interface DiscoveryProviderConfig {
 	baseUrl?: string;
 	headers?: Record<string, string>;
 	compat?: ModelSpec<Api>["compat"];
-	remoteCompaction?: RemoteCompactionConfig<Api>;
 	discovery: ProviderDiscovery;
 	optional?: boolean;
 }

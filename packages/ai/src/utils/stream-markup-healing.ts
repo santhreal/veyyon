@@ -9,13 +9,14 @@
 
 import { isDeepseekModelIdOrName } from "@veyyon/catalog/identity";
 
+// The markers below have ONE owner each: the dialect that defines the format.
+// They used to be retyped here, byte-identical, which is how a dialect can change
+// its closing token and leave the healer silently matching the old one.
+import { DSML_TOOL_CALLS_CLOSE_ASCII, DSML_TOOL_CALLS_CLOSE_FULLWIDTH } from "../dialect/deepseek";
 import { createInbandScanner } from "../dialect/factory";
+import { KIMI_SECTION_END } from "../dialect/kimi";
 import { ThinkingInbandScanner } from "../dialect/thinking";
 import type { InbandScanEvent, InbandScanner } from "../dialect/types";
-
-const KIMI_SECTION_END = "<|tool_calls_section_end|>";
-const DSML_TOOL_CALLS_CLOSE_FULLWIDTH = "</｜DSML｜tool_calls>";
-const DSML_TOOL_CALLS_CLOSE_ASCII = "</|DSML|tool_calls>";
 
 export interface HealedToolCall {
 	readonly id: string;

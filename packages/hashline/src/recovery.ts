@@ -236,6 +236,9 @@ function replayRemappedAnchorsOnCurrent(
 	try {
 		applied = applyEdits(currentText, remapped.edits);
 	} catch {
+		// Recovery is an ATTEMPT: null means "these edits could not be replayed onto the current text", which
+		// is the same answer a failed remap gives above, and the caller then reports the original conflict to
+		// the user rather than a recovery failure. Applying half of them would corrupt the file.
 		return null;
 	}
 	if (applied.text === currentText) return null;

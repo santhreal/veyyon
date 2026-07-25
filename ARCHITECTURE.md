@@ -51,7 +51,38 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 | `packages/natives` | JS bindings for the Rust native addon. |
 | `packages/utils` | Shared utilities (logger, streams, env, dirs). |
 | `packages/stats` | Local observability dashboard (`veyyon stats`). |
+| `packages/argot` | Per-project shorthand vocabularies: a lossless substitution codec over an `AGENTS.dict` file. Published standalone, so it depends on nothing in this repo. |
+| `packages/hashline` | The line-anchored patch language the edit tool applies, with a pluggable filesystem backend. |
+| `packages/mnemopi` | Local SQLite memory engine: triples, embeddings, recall. |
+| `packages/wire` | Dependency-free collab live-session wire types, so a browser or test client need not depend on `coding-agent`. |
+| `packages/tool-render` | Shared React tool-call renderers for the HTML export and `collab-web`. |
+| `packages/collab-web` | Browser guest client and local relay for collab live sessions (private). |
+| `packages/swarm-extension` | Swarm orchestration extension. |
+| `packages/metaharness` | Benchmark runners plus Harbor run storage, its REST/SSE API, and the live dashboard (private). |
+| `packages/deepswe-bench` | DeepSWE bench runner for performance-affecting changes (private). |
+| `packages/typescript-edit-benchmark` | Edit-tool benchmark built from TypeScript source mutations (private). |
 | `crates/veyyon-natives` (+ siblings) | Rust hot paths: grep, PTY, shell, text/AST. |
+
+`packages/tsconfig.workspace.json` is shared TypeScript configuration, not a workspace member — it
+has no `package.json` and no sources. Tooling that enumerates packages skips entries without a
+manifest.
+
+## Generated directories
+
+Some directories at the root and inside packages hold output, not source. They are gitignored and
+nothing in them is tracked:
+
+| Path | Written by |
+| --- | --- |
+| `runs/` | default artifact sink for the benchmark harnesses (`deepswe-bench`, `metaharness`) |
+| `website-get/` | `website/build.mjs`, deployed to get.veyyon.dev by the `deploy_website` CI job |
+| `relative-cache/` | Bun, at whatever directory it is invoked from |
+| `packages/deepswe-bench/runs/` | benchmark trial output |
+| `packages/deepswe-bench/repo-cache/` | cloned upstream task repositories (several gigabytes) |
+
+`scripts/root-layout.test.ts` asserts each one carries a deliberate ignore entry and tracks zero
+files, and that the `website-get/` staging step still exists — an ignore rule that outlives the build
+step writing it is how an install endpoint starts deploying an empty directory.
 
 ## Cross-cutting rules
 
@@ -63,6 +94,12 @@ These are enforced conventions, documented in [`AGENTS.md`](AGENTS.md):
 - **Bun first** — Bun APIs (`Bun.file`, Bun Shell, `bun:sqlite`, single-file
   `--compile`, the worker-reentry model) over `node:*` where they fit.
 - **One home per value** — constants, parsers, and predicates have a single owner.
+- **One home per dependency version** — third-party versions live in `workspaces.catalog`
+  in the root `package.json`, and packages write `"react": "catalog:"` rather than a range.
+  A dependency two or more packages use belongs in the catalog. Peer dependencies stay
+  literal, because a consumer outside this workspace cannot resolve `catalog:`, but the
+  range must name the version the catalog resolves. `scripts/workspace-catalog-pins.test.ts`
+  enforces all three.
 
 ## Build, test, ship
 

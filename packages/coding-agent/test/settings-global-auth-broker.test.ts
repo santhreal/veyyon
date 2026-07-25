@@ -9,31 +9,29 @@
  * press save, token gone") the mask contract exists to prevent.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import {
 	AUTH_BROKER_TOKEN_MASK,
 	GLOBAL_SETTING_BINDINGS,
 	GLOBAL_SETTINGS,
 } from "../src/config/settings-domains/global";
 
-let configDirName: string;
+let isolated: IsolatedConfigRoot | undefined;
 let configRoot: string;
-let originalConfigDir: string | undefined;
 
 beforeEach(() => {
-	configDirName = `.veyyon-auth-broker-binding-test-${process.pid}-${Math.random().toString(36).slice(2)}`;
-	configRoot = join(homedir(), configDirName);
-	originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-	process.env.VEYYON_CONFIG_DIR = configDirName;
+	// A temp root rather than a dot-directory name under the real home: this suite writes
+	// a broker token, and the name form put it in the developer's actual home directory.
+	isolated = enterIsolatedConfigRoot("auth-broker-binding");
+	configRoot = isolated.root;
 });
 
 afterEach(() => {
-	if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
-	else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-	rmSync(configRoot, { recursive: true, force: true });
+	isolated?.restore();
+	isolated = undefined;
 });
 
 const urlBinding = GLOBAL_SETTING_BINDINGS.authBrokerUrl!;

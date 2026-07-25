@@ -194,6 +194,8 @@ function unknownToString(value: unknown): string | undefined {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// A value with a cycle in it has no string form, and this only renders registry metadata for
+		// display. Undefined means the field is not shown, the same as a field that was absent.
 		return undefined;
 	}
 }

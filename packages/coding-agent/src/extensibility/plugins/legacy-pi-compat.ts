@@ -4,10 +4,13 @@ import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
 import {
+	errorMessage,
 	escapeRegExp,
 	hasUriScheme,
 	isCompiledBinary,
+	isEnoent,
 	isRecord,
+	logger,
 	stripWindowsExtendedLengthPathPrefix,
 } from "@veyyon/utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
@@ -619,6 +622,14 @@ function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): 
 	return `${stripWindowsExtendedLengthPathPrefix(resolvedPath)}?mtime=${mtimeTag}`;
 }
 
+/**
+ * Whether anything exists at `p`.
+ *
+ * A throwing `stat` is how "absent" arrives, which is the question being asked, and the callers treat
+ * false as "keep looking" rather than as a fact about the filesystem: every use is a candidate path in
+ * a resolution walk that tries several. A permission error also lands here and reaches the same place,
+ * because a path this process cannot examine is one it cannot load from either.
+ */
 async function pathExists(p: string): Promise<boolean> {
 	try {
 		await fs.promises.stat(p);
@@ -898,11 +909,33 @@ async function readPackageManifest(packageRoot: string): Promise<Record<string, 
 	return promise;
 }
 
+/**
+ * A package's manifest, or null when this directory is not a package.
+ *
+ * Null for an ABSENT `package.json` is the ordinary answer and stays silent: resolution walks up
+ * through directories that are not packages, so warning there would fire constantly. A `package.json`
+ * that exists and cannot be PARSED is a different thing entirely -- a broken package -- and it used to
+ * reach the same null, so dependency resolution gave up and the import failed with "cannot resolve
+ * <specifier>", which sends the reader hunting a missing dependency instead of the malformed manifest
+ * sitting in front of them. That case is now reported, once per package root because the caller caches
+ * this promise.
+ */
 async function readPackageManifestUncached(packageRoot: string): Promise<Record<string, unknown> | null> {
+	const manifestPath = path.join(packageRoot, "package.json");
 	try {
-		const manifest = await Bun.file(path.join(packageRoot, "package.json")).json();
-		return isRecord(manifest) ? manifest : null;
-	} catch {
+		const manifest = await Bun.file(manifestPath).json();
+		if (isRecord(manifest)) return manifest;
+		logger.warn("A plugin package.json is not an object; its dependencies cannot be resolved", {
+			path: manifestPath,
+		});
+		return null;
+	} catch (err) {
+		if (!isEnoent(err)) {
+			logger.warn("A plugin package.json could not be parsed; its dependencies cannot be resolved", {
+				path: manifestPath,
+				error: errorMessage(err),
+			});
+		}
 		return null;
 	}
 }
@@ -1116,6 +1149,9 @@ async function moduleRequiresNativeAddon(modulePath: string): Promise<boolean> {
 async function moduleRequiresNativeAddonUncached(modulePath: string): Promise<boolean> {
 	let source: string;
 	try {
+		// A module whose source cannot be read cannot be scanned, and false is the conservative answer: the
+		// requires are left alone rather than rewritten on a guess. Nothing is hidden by staying quiet, since
+		// the very next step is to import this same file, which fails loudly and names it.
 		source = await Bun.file(modulePath).text();
 	} catch {
 		return false;
@@ -1492,6 +1528,9 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 			try {
 				return { path: Bun.resolveSync(args.path, importerDir) };
 			} catch {
+				// Every remapping this plugin knows about has been tried. Undefined hands the specifier back to
+				// Bun's own resolver, which either finds it or throws the module-not-found naming the specifier
+				// and the importer -- a better error than anything this shim could invent.
 				return undefined;
 			}
 		}

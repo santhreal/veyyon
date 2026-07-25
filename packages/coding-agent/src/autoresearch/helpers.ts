@@ -96,6 +96,27 @@ export function formatNum(value: number | null, unit: string): string {
 	return `${fmtNum(value, 2)}${unit}`;
 }
 
+/**
+ * Percent change against a baseline, signed: `+12.3%`, `-4.0%`. `undefined` when there is
+ * nothing to compare against.
+ *
+ * The owner of that format, and of the three conditions under which a delta must NOT be
+ * shown: no baseline, a zero baseline (the division has no meaning), and a value equal to
+ * the baseline (`+0.0%` next to an unchanged number is noise). The computation and all
+ * three guards were written out five times across the dashboard and the log-experiment
+ * tool, which is how the run overlay and the tool's own report came to be two places to
+ * change one format.
+ *
+ * Positive deltas carry an explicit `+` because the reader is comparing runs, and a bare
+ * `12.3%` beside a metric reads as the metric's own percentage. Negative values already
+ * carry their sign.
+ */
+export function formatPercentChange(value: number, baseline: number | null | undefined): string | undefined {
+	if (baseline === null || baseline === undefined || baseline === 0 || value === baseline) return undefined;
+	const delta = ((value - baseline) / baseline) * 100;
+	return `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%`;
+}
+
 export function formatElapsed(milliseconds: number): string {
 	const totalSeconds = Math.floor(milliseconds / 1000);
 	const minutes = Math.floor(totalSeconds / 60);

@@ -1,7 +1,7 @@
 import { scheduler } from "node:timers/promises";
 import { bareModelId, parseAnthropicModel } from "@veyyon/catalog/identity";
 import { toNumber } from "@veyyon/catalog/utils";
-import { clamp, clamp01, HOUR_MS, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
+import { clamp, clamp01, HOUR_MS, isCancellation, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
 import * as AIError from "../error";
 import { claudeCodeVersion } from "../providers/anthropic";
 import {
@@ -225,7 +225,7 @@ function isRetryableStatus(status: number): boolean {
 function isAbortError(error: unknown, signal?: AbortSignal): boolean {
 	if (signal?.aborted) return true;
 	if (!isRecord(error)) return false;
-	return error.name === "AbortError" || error.name === "TimeoutError";
+	return isCancellation(error);
 }
 
 function retryDelayMs(attempt: number, retryAfter: string | null): number {

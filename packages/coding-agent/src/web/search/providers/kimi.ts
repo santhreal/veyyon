@@ -9,7 +9,7 @@ import { $env } from "@veyyon/utils";
 
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, dateToAgeSeconds } from "../utils";
+import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
@@ -18,7 +18,6 @@ type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
 
 const KIMI_SEARCH_URL = "https://api.kimi.com/coding/v1/search";
 
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 const DEFAULT_TIMEOUT_SECONDS = 30;
 
@@ -133,7 +132,7 @@ export async function searchKimi(params: KimiSearchParams): Promise<SearchRespon
 		);
 	}
 
-	const limit = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const limit = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const { response, requestId } = await withAuth(
 		keyOrResolver,
 		key =>

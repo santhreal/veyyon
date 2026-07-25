@@ -176,11 +176,42 @@ describe("ircToolRenderer inbox", () => {
 				{ op: "inbox", peek: true },
 			),
 		);
-		expect(rendered[0]).toContain("2 messages");
-		expect(rendered[0]).toContain("peek");
-		expect(rendered.some(line => line.includes("bus landed."))).toBe(true);
-		expect(rendered.some(line => line.includes("RateLimiter"))).toBe(true);
-		expect(rendered.some(line => line.includes("receipts carry outcome."))).toBe(true);
+		// The whole tree, in order. Three `some(line => line.includes(...))` checks
+		// stood here before, and between them they could not see which sender each
+		// body belonged to, which message came first, that the last message gets
+		// the closing `└─` connector, or that the reply marker sits on RateLimiter
+		// and not on AuthLoader. An inbox that rendered both bodies under the wrong
+		// senders satisfied all three.
+		expect(rendered).toEqual([
+			"IRC inbox 2 messages · peek",
+			"├─ AuthLoader just now",
+			"│  ▏ bus landed.",
+			"└─ RateLimiter just now ⟦reply⟧",
+			"   ▏ receipts carry outcome.",
+		]);
+	});
+
+	it("marks only the message that is a reply", async () => {
+		// The negative twin for the marker above: with neither message carrying a
+		// `replyTo`, no row may claim to be one.
+		const uiTheme = await theme();
+		const rendered = lines(
+			ircToolRenderer.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: {
+						op: "inbox",
+						from: "Main",
+						inbox: [msg({ from: "AuthLoader", body: "bus landed." })],
+					} satisfies IrcDetails,
+				},
+				{ expanded: false, isPartial: false },
+				uiTheme,
+				{ op: "inbox", peek: true },
+			),
+		);
+
+		expect(rendered).toEqual(["IRC inbox 1 message · peek", "└─ AuthLoader just now", "   ▏ bus landed."]);
 	});
 });
 

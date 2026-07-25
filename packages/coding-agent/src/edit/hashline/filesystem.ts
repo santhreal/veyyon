@@ -18,7 +18,13 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { Filesystem, NotFoundError, type PreflightWriteOptions, sameExistingFile, type WriteResult } from "@veyyon/hashline";
+import {
+	Filesystem,
+	NotFoundError,
+	type PreflightWriteOptions,
+	sameExistingFile,
+	type WriteResult,
+} from "@veyyon/hashline";
 import { atomicWriteFilePreservingMode, isEnoent } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";

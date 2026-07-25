@@ -17,7 +17,11 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { EMBER as SUN_EMBER_RAMP, GLYPH as SUN_GLYPH } from "@veyyon/coding-agent/modes/components/sun";
+import {
+	EMBER as SUN_EMBER_RAMP,
+	FALLOFF as SUN_FALLOFF,
+	GLYPH as SUN_GLYPH,
+} from "@veyyon/coding-agent/modes/components/sun";
 import { SILVER_STOPS } from "@veyyon/coding-agent/modes/components/welcome";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 
@@ -56,6 +60,34 @@ function expectSunFieldParity(js: string, source: string): void {
 	expect(glyphMatch, `${source} must define a GLYPH ramp`).not.toBeNull();
 	const webGlyphs = [...glyphMatch![1].matchAll(/"([^"]*)"/g)].map(m => m[1]);
 	expect(webGlyphs, `${source}: glyph ramp equals the terminal GLYPH ramp`).toEqual([...SUN_GLYPH]);
+}
+
+/**
+ * Assert that a renderer's disc has the SAME SHAPE as the terminal sun: the same
+ * smoothstep band and the same limb-darkening term.
+ *
+ * The ramp and the glyphs had a parity pin; the shape did not, and three
+ * renderers wrote the formula out by hand. When the terminal sun gained limb
+ * darkening the web copies kept the saturated disc, and every existing assert
+ * passed — a saturated disc has the identical colors and glyphs, it just uses
+ * only the top band. This reads the four numbers back out of the source and pins
+ * them to {@link SUN_FALLOFF}, so a copy that drifts fails by name.
+ */
+function expectFalloffParity(source: string, label: string): void {
+	const { innerEdge, outerEdge, limbStrength, limbExponent } = SUN_FALLOFF;
+	// `smooth(0.72, 1.02, d)` — the band where the disc fades out.
+	const band = new RegExp(
+		`smooth(?:step)?\\(\\s*(?:FALLOFF\\.innerEdge|${innerEdge})\\s*,\\s*` +
+			`(?:FALLOFF\\.outerEdge|${outerEdge})\\s*,\\s*d\\s*\\)`,
+	);
+	expect(band.test(source), `${label}: disc fades between ${innerEdge}R and ${outerEdge}R`).toBe(true);
+	// `(1 - 0.34 * Math.pow(d, 1.5))` in JS, `(1 - 0.34 * d ** 1.5)` in TS.
+	const limb = new RegExp(
+		`1\\s*-\\s*(?:FALLOFF\\.limbStrength|${limbStrength})\\s*\\*\\s*` +
+			`(?:Math\\.pow\\(\\s*d\\s*,\\s*(?:FALLOFF\\.limbExponent|${limbExponent})\\s*\\)` +
+			`|d\\s*\\*\\*\\s*(?:FALLOFF\\.limbExponent|${limbExponent}))`,
+	);
+	expect(limb.test(source), `${label}: limbs darken by ${limbStrength} * d ** ${limbExponent}`).toBe(true);
 }
 
 // Every paintable background surface must stay TRANSPARENT — it inherits the
@@ -190,6 +222,25 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		const field = fs.readFileSync(path.join(import.meta.dir, "../../../website/sun-field.js"), "utf-8");
 		expectSunFieldParity(field, "website/sun-field.js");
 	});
+
+	// The disc's SHAPE has copies too, and they are not in sun-field.js: the hero
+	// (website/sun.js), the structural marks (website/sunmark.js) and the OAuth
+	// page each write the falloff out by hand. Pin the shape wherever it is
+	// written, including the terminal owner, so a fifth copy cannot appear
+	// unnoticed and the four existing ones cannot drift.
+	const FALLOFF_SOURCES = [
+		{ label: "sun.ts", rel: "../src/modes/components/sun.ts" },
+		{ label: "website/sun.js", rel: "../../../website/sun.js" },
+		{ label: "website/sunmark.js", rel: "../../../website/sunmark.js" },
+		{ label: "packages/ai oauth.html", rel: "../../ai/src/registry/oauth/oauth.html" },
+	] as const;
+
+	for (const { label, rel } of FALLOFF_SOURCES) {
+		it(`keeps the disc falloff in ${label} in parity with FALLOFF`, () => {
+			const source = fs.readFileSync(path.join(import.meta.dir, rel), "utf-8");
+			expectFalloffParity(source, label);
+		});
+	}
 
 	// The OAuth callback page (packages/ai) is served self-contained by the local
 	// auth server, so it cannot import the shared source and carries its own

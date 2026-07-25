@@ -405,6 +405,8 @@ function isValidRegexCondition(condition: string): boolean {
 		new RegExp(condition);
 		return true;
 	} catch {
+		// This asks whether the condition IS a valid regex, so a throw is the answer rather than an error:
+		// invalid means the rule is reported as invalid by the validator that called this.
 		return false;
 	}
 }
@@ -609,6 +611,8 @@ function stringifyToolArguments(args: unknown): string {
 		const text = JSON.stringify(args);
 		return typeof text === "string" ? text : "";
 	} catch {
+		// Arguments with a cycle have no text form to match a rule against, and an empty string matches no
+		// rule condition. Failing closed on purpose: a rule must not fire on arguments it could not read.
 		return "";
 	}
 }

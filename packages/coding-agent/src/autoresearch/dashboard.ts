@@ -1,6 +1,6 @@
 import { matchesKey, replaceTabs, ScrollView, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import type { Theme } from "../modes/theme/theme";
-import { formatElapsed, formatNum, isBetter } from "./helpers";
+import { formatElapsed, formatNum, formatPercentChange, isBetter } from "./helpers";
 import { currentResults, findBaselineMetric, findBaselineRunNumber, findBaselineSecondary } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentResult, ExperimentState } from "./types";
 
@@ -290,11 +290,8 @@ export function renderDashboardLines(
 	if (best) {
 		const bestRunNumber = best.result.runNumber ?? best.index + 1;
 		let progress = `Best: ${formatNum(best.result.metric, state.metricUnit)} (#${bestRunNumber})`;
-		if (baseline !== null && baseline !== 0 && best.result.metric !== baseline) {
-			const delta = ((best.result.metric - baseline) / baseline) * 100;
-			const sign = delta > 0 ? "+" : "";
-			progress += ` ${sign}${delta.toFixed(1)}%`;
-		}
+		const bestChange = formatPercentChange(best.result.metric, baseline);
+		if (bestChange) progress += ` ${bestChange}`;
 		if (state.confidence !== null) {
 			progress += `  conf ${state.confidence.toFixed(1)}x`;
 		}
@@ -367,10 +364,8 @@ function renderResultRow(
 function renderSecondaryCell(value: number | undefined, unit: string, baseline: number | undefined): string {
 	if (value === undefined) return "-";
 	const formatted = formatNum(value, unit);
-	if (baseline === undefined || baseline === 0 || baseline === value) return formatted;
-	const delta = ((value - baseline) / baseline) * 100;
-	const sign = delta > 0 ? "+" : "";
-	return `${formatted} ${sign}${delta.toFixed(1)}%`;
+	const change = formatPercentChange(value, baseline);
+	return change ? `${formatted} ${change}` : formatted;
 }
 
 function renderSecondarySummary(
@@ -380,12 +375,9 @@ function renderSecondarySummary(
 	unit: string,
 ): string | null {
 	if (value === undefined) return null;
-	if (baseline === undefined || baseline === 0 || baseline === value) {
-		return `${name} ${formatNum(value, unit)}`;
-	}
-	const delta = ((value - baseline) / baseline) * 100;
-	const sign = delta > 0 ? "+" : "";
-	return `${name} ${formatNum(value, unit)} ${sign}${delta.toFixed(1)}%`;
+	const change = formatPercentChange(value, baseline);
+	if (!change) return `${name} ${formatNum(value, unit)}`;
+	return `${name} ${formatNum(value, unit)} ${change}`;
 }
 
 function renderOverlayRunningLine(

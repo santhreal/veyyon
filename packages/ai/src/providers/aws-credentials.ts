@@ -22,7 +22,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $env, isEnoent, logger, scopedTimeoutSignal } from "@veyyon/utils";
+import { $env, isEnoent, logger, readPipeText, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 import { raceWithSignal } from "../utils/abort";
@@ -385,8 +385,8 @@ async function readCredentialProcess(
 		signal,
 	});
 	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
+		readPipeText(child.stdout),
+		readPipeText(child.stderr),
 		child.exited,
 	]);
 	if (exitCode !== 0) {
@@ -585,6 +585,9 @@ async function readImdsCredentials(
 		if (body.Expiration) out.expiresAt = Date.parse(body.Expiration);
 		return out;
 	} catch {
+		// Undefined means "IMDS did not give us credentials", which is also what a host with no instance
+		// role gives. The credential chain moves to the next source and reports when EVERY source fails,
+		// naming them; failing here would break the chain on a host that simply is not on EC2.
 		return undefined;
 	} finally {
 		imdsTimeout.cancel();

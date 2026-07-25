@@ -1,4 +1,5 @@
 import { isRecord } from "@veyyon/utils";
+import { UNSET_NUMBER_OPTION_VALUE } from "./optional-number";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";
 import { EDITING_SETTINGS } from "./settings-domains/editing";
@@ -7,6 +8,7 @@ import { GLOBAL_SETTINGS } from "./settings-domains/global";
 import { INTERACTION_SETTINGS } from "./settings-domains/interaction";
 import { MODEL_SETTINGS } from "./settings-domains/model";
 import { PROVIDERS_SETTINGS } from "./settings-domains/providers";
+import { SUBAGENTS_SETTINGS } from "./settings-domains/subagents";
 import { TASKS_SETTINGS } from "./settings-domains/tasks";
 import { TOOLS_SETTINGS } from "./settings-domains/tools";
 
@@ -43,7 +45,9 @@ export type SettingTab =
 	| "shell"
 	| "tools"
 	| "tasks"
-	| "providers";
+	| "subagents"
+	| "providers"
+	| "experimental";
 
 /** Tab display metadata - icon is resolved via theme.symbol() */
 export type TabMetadata = { label: string; icon: `tab.${string}` };
@@ -64,7 +68,9 @@ export const SETTING_TABS: SettingTab[] = [
 	"shell",
 	"tools",
 	"tasks",
+	"subagents",
 	"providers",
+	"experimental",
 	"global",
 ];
 
@@ -80,7 +86,9 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	shell: { label: "Shell", icon: "tab.shell" },
 	tools: { label: "Tools", icon: "tab.tools" },
 	tasks: { label: "Tasks", icon: "tab.tasks" },
+	subagents: { label: "Subagents", icon: "tab.subagents" },
 	providers: { label: "Providers", icon: "tab.providers" },
+	experimental: { label: "Experimental", icon: "tab.experimental" },
 };
 
 /**
@@ -116,8 +124,8 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Agent",
 		"Git",
 	],
-	context: ["General", "Rules (TTSR)", "Experimental", "Session instrumentation"],
-	memory: ["General", "Auto-Learn", "Mnemopi", "Hindsight"],
+	context: ["General", "Rules (TTSR)", "Session instrumentation"],
+	memory: ["General", "Mnemopi", "Hindsight"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
 	shell: ["Bash", "Eval & Runtimes"],
 	tools: [
@@ -130,8 +138,10 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Discovery & MCP",
 		"Developer",
 	],
-	tasks: ["Modes", "Subagents", "Isolation", "Commands & Skills"],
+	tasks: ["Modes", "Commands & Skills"],
+	subagents: ["Delegation", "Agents", "Models", "Limits", "Isolation", "Coordination"],
 	providers: ["Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
+	experimental: ["Argot", "Tool Calling", "Auto-Learn", "Display"],
 };
 
 /** Status line segment identifiers */
@@ -180,6 +190,14 @@ interface UiBase {
 	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
 	advanced?: boolean;
 	/**
+	 * Words a user would type looking for this setting that its label does not
+	 * contain: "reasoning" for effort, "clipboard" for copy, "wrap" for soft
+	 * wrapping. Search weights these like the label, because to the person typing
+	 * they ARE the name. Living next to the setting keeps the vocabulary in one
+	 * place instead of a lookup table that drifts as labels change.
+	 */
+	keywords?: readonly string[];
+	/**
 	 * Persistence scope. Omitted or "profile": the value lives in the active
 	 * profile's `agent/config.yml`. "global": the value is cross-profile and lives
 	 * in `~/.veyyon/config.yml`; reads and writes route through a matching entry in
@@ -217,38 +235,55 @@ export type AnyUiMetadata = UiBase & {
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
 };
 
-interface BooleanDef {
+/**
+ * Fields every setting definition shares, whatever its type.
+ */
+interface SettingDefBase {
+	/**
+	 * The key it was replaced by, when this setting is superseded.
+	 *
+	 * A retired key stays in the schema so an existing config keeps working and a
+	 * migration can read it, but it is no longer something to choose: it is hidden
+	 * from `config list` and from the settings UI, and `config get`/`set` name the
+	 * replacement. Without this marker a superseded key kept advertising itself as
+	 * settable next to the key that replaced it, which is the confusion the
+	 * supersession was meant to end (operator review 2026-07-24).
+	 */
+	retiredBy?: string;
+}
+
+interface BooleanDef extends SettingDefBase {
 	type: "boolean";
 	default: boolean | undefined;
 	ui?: UiBoolean;
 }
 
-interface StringDef {
+interface StringDef extends SettingDefBase {
 	type: "string";
 	default: string | undefined;
 	ui?: UiString;
 }
 
-interface NumberDef {
+interface NumberDef extends SettingDefBase {
 	type: "number";
 	default: number | undefined;
 	ui?: UiNumber;
 }
 
-interface EnumDef<T extends readonly string[]> {
+interface EnumDef<T extends readonly string[]> extends SettingDefBase {
 	type: "enum";
 	values: T;
 	default: T[number];
 	ui?: UiEnum<T>;
 }
 
-interface ArrayDef<T> {
+interface ArrayDef<T> extends SettingDefBase {
 	type: "array";
 	default: T[];
 	ui?: UiBase;
 }
 
-interface RecordDef<T> {
+interface RecordDef<T> extends SettingDefBase {
 	type: "record";
 	default: Record<string, T>;
 	ui?: UiBase;
@@ -277,6 +312,31 @@ export interface ModelTagsSettings {
 	[key: string]: ModelTagDef;
 }
 
+/**
+ * Every domain slice, keyed by its file, in the order they are composed below.
+ *
+ * The spread that builds {@link SETTINGS_SCHEMA} has to stay a literal for the
+ * `SettingPath` inference to work, so this list exists alongside it rather than
+ * driving it. Nothing reads it at runtime: it is here so the composition guard in
+ * `test/config/settings-domain-composition.test.ts` compares the schema against a
+ * list that lives NEXT TO the spread instead of a copy maintained in the test,
+ * where a new domain was simply forgotten and the guard silently stopped covering
+ * it. Add a slice below and here in the same edit; the guard fails if you do not.
+ */
+export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
+	global: GLOBAL_SETTINGS,
+	general: GENERAL_SETTINGS,
+	appearance: APPEARANCE_SETTINGS,
+	model: MODEL_SETTINGS,
+	interaction: INTERACTION_SETTINGS,
+	context: CONTEXT_SETTINGS,
+	editing: EDITING_SETTINGS,
+	tools: TOOLS_SETTINGS,
+	tasks: TASKS_SETTINGS,
+	subagents: SUBAGENTS_SETTINGS,
+	providers: PROVIDERS_SETTINGS,
+};
+
 export const SETTINGS_SCHEMA = {
 	...GLOBAL_SETTINGS,
 	...GENERAL_SETTINGS,
@@ -287,6 +347,7 @@ export const SETTINGS_SCHEMA = {
 	...EDITING_SETTINGS,
 	...TOOLS_SETTINGS,
 	...TASKS_SETTINGS,
+	...SUBAGENTS_SETTINGS,
 	...PROVIDERS_SETTINGS,
 } as const;
 
@@ -300,7 +361,21 @@ type Schema = typeof SETTINGS_SCHEMA;
 export type SettingPath = keyof Schema;
 
 /** Infer the value type for a setting path */
-export type SettingValue<P extends SettingPath> = Schema[P] extends { type: "boolean"; default: undefined }
+/**
+ * The value type behind a settings path.
+ *
+ * The outer `P extends SettingPath` is what makes this DISTRIBUTE. Without it,
+ * passing the whole `SettingPath` union (which is what a generic walk over the
+ * schema does) makes `Schema[P]` a union that matches none of the branches
+ * below, so the whole type collapsed to `never` — and a `never` return silently
+ * defeats every narrowing at the call site rather than failing where the mistake
+ * is. `docs/settings-reference.md`'s generator hit exactly that: its
+ * array-default branch was unreachable code the compiler could not warn about
+ * usefully.
+ */
+export type SettingValue<P extends SettingPath> = P extends SettingPath ? SettingValueFor<P> : never;
+
+type SettingValueFor<P extends SettingPath> = Schema[P] extends { type: "boolean"; default: undefined }
 	? boolean | undefined
 	: Schema[P] extends { type: "boolean" }
 		? boolean
@@ -344,6 +419,32 @@ export function getPathsForTab(tab: SettingTab): SettingPath[] {
 	});
 }
 
+/**
+ * The key that replaced `path`, or `undefined` when the setting is current.
+ *
+ * One place answers "is this key still something to choose?", so the CLI listing,
+ * the settings UI, and any future surface cannot disagree about it.
+ */
+export function retiredBy(path: SettingPath): string | undefined {
+	if (!(path in SETTINGS_SCHEMA)) return undefined;
+	const def = SETTINGS_SCHEMA[path] as { retiredBy?: string };
+	return def.retiredBy;
+}
+
+/**
+ * Whether an arbitrary string names a real setting.
+ *
+ * The one place that answers "does veyyon know this key?", and the type guard
+ * that turns an untrusted string into a `SettingPath`. Every surface that
+ * accepts a key from outside the program asks this: the `config` CLI, a config
+ * file, an eval harness staging an overlay. Each one hand-rolling
+ * `path in SETTINGS_SCHEMA` is how they drift apart on what counts, and a
+ * caller that forgets to ask silently accepts a key nothing will ever read.
+ */
+export function isSettingPath(path: string): path is SettingPath {
+	return path in SETTINGS_SCHEMA;
+}
+
 /** Get the type of a setting */
 export function getType(path: SettingPath): SettingDef["type"] {
 	return SETTINGS_SCHEMA[path].type;
@@ -380,9 +481,9 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 	// carry readonly defaults (`readonly ["interactive"]`), which are not
 	// assignable to the mutable shapes in that union. Only `type` and `values` are
 	// needed here, and both are safe to read from the literal.
-	const def = (SETTINGS_SCHEMA as unknown as Record<string, { type?: string; values?: readonly string[] } | undefined>)[
-		path
-	];
+	const def = (
+		SETTINGS_SCHEMA as unknown as Record<string, { type?: string; values?: readonly string[] } | undefined>
+	)[path];
 	if (def?.type === undefined || value === undefined) return undefined;
 
 	const found = describeValueType(value);
@@ -413,6 +514,25 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 }
 
 /** Get enum values for an enum setting */
+/**
+ * True when `path` is a numeric setting whose submenu offers the shared unset row,
+ * so the UI shows `Default` and stores {@link UNSET_NUMBER}.
+ *
+ * Derived from the schema rather than listed by hand: the selector used to carry a
+ * hardcoded set of three compaction paths, which silently excluded the six sampling
+ * settings that spell the same idea, and would have gone stale the moment a new
+ * optional numeric setting shipped.
+ */
+export function isUnsetNumberPath(path: SettingPath): boolean {
+	// Synthetic UI ids (e.g. the default-model row) are not schema paths; asking
+	// about one is legitimate from the selector, so answer instead of throwing.
+	if (!(path in SETTINGS_SCHEMA)) return false;
+	if (getType(path) !== "number") return false;
+	const options = getUi(path)?.options;
+	if (!options || options === "runtime") return false;
+	return options.some(option => option.value === UNSET_NUMBER_OPTION_VALUE);
+}
+
 export function getEnumValues(path: SettingPath): readonly string[] | undefined {
 	const def = SETTINGS_SCHEMA[path];
 	return "values" in def ? (def.values as readonly string[]) : undefined;
@@ -441,7 +561,11 @@ export type Personality = SettingValue<"personality">;
 export interface CompactionSettings {
 	enabled: boolean;
 	strategy: "handoff" | "summary";
+	/** The one compaction-trigger value, unit included: `auto`, `85%`, or `170000`. */
+	threshold: string;
+	/** Retired; read only by `withLegacyCompactionThreshold`. */
 	thresholdPercent: number;
+	/** Retired; read only by `withLegacyCompactionThreshold`. */
 	thresholdTokens: number;
 	model?: string;
 	reserveTokens: number | undefined;
@@ -449,10 +573,8 @@ export interface CompactionSettings {
 	midTurnEnabled: boolean;
 	handoffSaveToDisk: boolean;
 	autoContinue: boolean;
-	remoteEnabled: boolean;
+	/** Optional summarizer endpoint for the `summary` strategy — returns summary text. */
 	remoteEndpoint: string | undefined;
-	remoteStreamingV2Enabled: boolean;
-	v2RetainedMessageBudget: number;
 	idleEnabled: boolean;
 	idleThresholdTokens: number;
 	idleTimeoutSeconds: number;
@@ -604,6 +726,8 @@ export interface GcSettings {
 	coldArchiveAfterDays: number;
 	retainNewestGlobal: number;
 	retainNewestPerCwd: number;
+	/** Minutes a file must have gone unwritten before GC may delete or archive it. Floored at 1. */
+	writeGraceMinutes: number;
 }
 
 /** Map group prefix -> typed settings interface */

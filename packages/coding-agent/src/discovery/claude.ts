@@ -5,7 +5,7 @@
  * Priority: 80 (tool-specific, below builtin but above shared standards)
  */
 import * as path from "node:path";
-import { hasFsCode, tryParseJson } from "@veyyon/utils";
+import { isMissingPath, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
@@ -46,10 +46,6 @@ function getUserClaude(ctx: LoadContext): string {
  */
 function getProjectClaude(ctx: LoadContext): string {
 	return path.join(ctx.cwd, CONFIG_DIR);
-}
-
-function isMissingDirectoryError(error: unknown): boolean {
-	return hasFsCode(error, "ENOENT") || hasFsCode(error, "ENOTDIR");
 }
 
 // =============================================================================
@@ -200,7 +196,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	if (userResult.status === "fulfilled") {
 		items.push(...userResult.value.items);
 		warnings.push(...(userResult.value.warnings ?? []));
-	} else if (!isMissingDirectoryError(userResult.reason)) {
+	} else if (!isMissingPath(userResult.reason)) {
 		warnings.push(`Failed to scan Claude user skills in ${userSkillsDir}: ${String(userResult.reason)}`);
 	}
 
@@ -208,7 +204,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 		if (projectResult.status === "fulfilled") {
 			items.push(...projectResult.value.items);
 			warnings.push(...(projectResult.value.warnings ?? []));
-		} else if (!isMissingDirectoryError(projectResult.reason)) {
+		} else if (!isMissingPath(projectResult.reason)) {
 			warnings.push(`Failed to scan Claude project skills: ${String(projectResult.reason)}`);
 		}
 	}

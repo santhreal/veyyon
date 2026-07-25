@@ -10,7 +10,14 @@ import { type Component, Container, matchesKey, Spacer, Text, truncateToWidth } 
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
-import { buildBrowserItems, ModelBrowser, type ModelBrowserItem, sortModelItems } from "./model-browser";
+import {
+	buildBrowserItems,
+	buildInheritRow,
+	INHERIT_ROW_SELECTOR,
+	ModelBrowser,
+	type ModelBrowserItem,
+	sortModelItems,
+} from "./model-browser";
 
 /** Auth posture shown next to a model id in the selector. */
 export type ModelAuthStatus = "authenticated" | "unauthenticated" | "keyless";
@@ -22,8 +29,14 @@ export interface ModelSelectorOptions {
 	description?: string;
 	/** Currently assigned selector (`provider/id`), highlighted as current. */
 	currentSelector?: string;
-	/** When true, Del/Backspace with an empty search clears the assignment. */
+	/**
+	 * When true, the slot can return to its unset state: a pinned
+	 * {@link INHERIT_ROW_SELECTOR} row leads the list, and Del/Backspace with
+	 * an empty search clears the assignment. Both paths fire `onClear`.
+	 */
 	allowClear?: boolean;
+	/** Label of the pinned clear row, e.g. `(inherit main model)`. Defaults to it. */
+	clearLabel?: string;
 	/** Optional session context size for over-limit dimming. */
 	currentContextTokens?: number;
 }
@@ -111,25 +124,51 @@ export class ModelSelectorPanel extends Container {
 			disableOverContext: false,
 			emptyText: () => "No models available — configure a provider or /login",
 		});
-		this.#browser.setCurrentSelector(options.currentSelector);
 
 		const items = buildAuthAwareBrowserItems(models, registry);
 		sortModelItems(items, {});
+		if (this.#allowClear) {
+			// The way back to unset is a visible first-class row, not only a key.
+			const label = options.clearLabel ?? "(inherit main model)";
+			const detailState = label.startsWith("(") && label.endsWith(")") ? label.slice(1, -1) : label;
+			items.unshift(buildInheritRow(label, `Clear the assignment — ${detailState}.`));
+		}
 		this.#browser.setItems(items);
+		if (options.currentSelector) {
+			this.#browser.setCurrentSelector(options.currentSelector);
+			// Open with the assigned model selected, so a quick Enter re-picks it
+			// instead of landing on the pinned clear row.
+			this.#browser.selectSelector(options.currentSelector);
+		} else if (this.#allowClear) {
+			// Unset slot: the inherit row IS the current value, so it wears the mark.
+			this.#browser.setCurrentSelector(INHERIT_ROW_SELECTOR);
+		}
 
 		this.#browser.onActivate = item => {
+			if (item.selector === INHERIT_ROW_SELECTOR) {
+				this.#onClear?.();
+				return;
+			}
 			callbacks.onPick(item.model, item.selector);
 		};
-		this.#browser.onCancel = () => callbacks.onCancel();
+		// Through the field, like `#onClear` above. Reading `callbacks.onCancel`
+		// straight from the closure left `#onCancel` assigned and never read, so the
+		// two neighbouring callbacks looked identical while only one was live: a
+		// later edit reassigning `#onCancel` would have changed nothing.
+		this.#browser.onCancel = () => this.#onCancel();
 
 		this.addChild(this.#browser as unknown as Component);
 		this.addChild(new Spacer(1));
-		const clearHint = this.#allowClear ? " · Del clear" : "";
+		const clearHint = this.#allowClear ? " · Del or (inherit) clears" : "";
 		this.addChild(new Text(theme.fg("dim", `  type to search · ↑/↓ · Enter select${clearHint} · Esc back`), 0, 0));
 	}
 
 	handleInput(data: string): void {
-		if (this.#allowClear && this.#browser.query.length === 0 && matchesKey(data, "delete")) {
+		if (
+			this.#allowClear &&
+			this.#browser.query.length === 0 &&
+			(matchesKey(data, "delete") || matchesKey(data, "backspace"))
+		) {
 			this.#onClear?.();
 			return;
 		}

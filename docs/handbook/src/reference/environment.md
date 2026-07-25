@@ -14,7 +14,7 @@ active profile is selected by its own variable:
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). Does not accept a full path. |
+| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). It is a name, not a path. An absolute value is refused at startup, with a message naming the directory it would otherwise have created inside your home; to place the config root on another volume, use the `XDG_*_HOME` variables below. |
 | `VEYYON_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<config-dir-name>/profiles/<active-or-default>/agent`). |
 | `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). |
 | `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). |

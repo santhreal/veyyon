@@ -1,10 +1,8 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
+	buildEvalSessionKey,
 	buildManagedKernelEnv,
 	buildManagedKernelEnvPatch,
 	createCancelledKernelResult,
@@ -15,17 +13,14 @@ import {
 	getRemainingTimeoutMs,
 	isCancellationError,
 	isTimedOutCancellation,
+	type KernelMode,
+	normalizeSessionCwd,
 	waitForPromiseWithCancellation,
 } from "../executor-base";
 import type { JsStatusEvent } from "../js/shared/types";
+import type { KernelExecutor } from "../kernel-base";
 import { ensureKernelToolBridge } from "../kernel-tool-bridge";
-import {
-	checkRubyKernelAvailability,
-	type KernelDisplayOutput,
-	type KernelExecuteOptions,
-	type KernelExecuteResult,
-	RubyKernel,
-} from "./kernel";
+import { checkRubyKernelAvailability, type KernelDisplayOutput, RubyKernel } from "./kernel";
 import { resolveExplicitRubyRuntime } from "./runtime";
 
 export interface RubyExecutorOptions {
@@ -52,6 +47,11 @@ export interface RubyExecutorOptions {
 	interpreter?: string;
 	/** Restart the kernel before executing */
 	reset?: boolean;
+	/**
+	 * Whether the kernel outlives this call (`ruby.kernelMode`). Defaults to `session`, which is the
+	 * behaviour every Ruby eval had before the setting existed.
+	 */
+	kernelMode?: KernelMode;
 	/** Session file path for accessing task outputs */
 	sessionFile?: string;
 	/** Effective artifacts directory for the current session. */
@@ -78,10 +78,6 @@ export interface RubyExecutorOptions {
 	bridgeSessionId?: string;
 	/** @internal Bridge endpoint info, set by `executeRuby` before delegating. */
 	bridge?: { url: string; token: string };
-}
-
-export interface RubyKernelExecutor {
-	execute: (code: string, options?: KernelExecuteOptions) => Promise<KernelExecuteResult>;
 }
 
 export interface RubyResult {
@@ -126,25 +122,6 @@ interface StartingRubySession extends RubySessionOwners {
 const sessions = new Map<string, RubySession>();
 const startingSessions = new Map<string, StartingRubySession>();
 const resettingSessions = new Map<string, Promise<void>>();
-
-function normalizeSessionCwd(cwd: string): string {
-	return path.resolve(cwd);
-}
-
-function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefined): string {
-	if (interpreter === undefined) return "";
-	const resolved = resolveExplicitRubyRuntime(interpreter, cwd, {}).rubyPath;
-	try {
-		return fs.realpathSync.native(resolved);
-	} catch {
-		return resolved;
-	}
-}
-
-function buildSessionKey(sessionId: string, cwd: string, interpreter: string | undefined): string {
-	const normalizedCwd = normalizeSessionCwd(cwd);
-	return `${sessionId}\0${normalizedCwd}\0${normalizeExplicitInterpreter(normalizedCwd, interpreter)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Cancellation plumbing
@@ -353,7 +330,7 @@ export async function disposeRubyKernelSessionsByOwner(ownerId: string): Promise
 // ---------------------------------------------------------------------------
 
 async function executeWithKernel(
-	kernel: RubyKernelExecutor,
+	kernel: KernelExecutor,
 	code: string,
 	options: RubyExecutorOptions | undefined,
 ): Promise<RubyResult> {
@@ -392,9 +369,36 @@ async function ensureToolBridge(options: RubyExecutorOptions): Promise<void> {
 	}
 }
 
+/**
+ * Run one cell on a kernel that exists only for it.
+ *
+ * Nothing carries over: no variable an earlier cell defined, no `require` it performed, no monkey patch.
+ * That is the point of `per-call`, and it is why the kernel is shut down in a `finally` -- a leaked
+ * kernel would keep a Ruby process alive for the rest of the session, which is the opposite of what the
+ * user asked for. The shutdown failure is swallowed deliberately: the cell's result is what the caller
+ * asked for, and turning a shutdown hiccup into a failed eval would lose it.
+ */
+async function executePerCall(code: string, cwd: string, options: RubyExecutorOptions): Promise<RubyResult> {
+	if (options.bridge && !options.bridgeSessionId) {
+		options.bridgeSessionId = `rb-bridge:${crypto.randomUUID()}`;
+	}
+	const kernel = await startKernel(cwd, options);
+	try {
+		return await executeWithKernel(kernel, code, { ...options, cwd });
+	} finally {
+		await kernel.shutdown().catch(() => undefined);
+	}
+}
+
 async function executeOnSession(code: string, cwd: string, options: RubyExecutorOptions): Promise<RubyResult> {
 	const sessionId = options.sessionId ?? `session:${cwd}`;
-	const sessionKey = buildSessionKey(sessionId, cwd, options.interpreter);
+	const sessionKey = buildEvalSessionKey({
+		sessionId,
+		cwd,
+		interpreter: options.interpreter,
+		resolveInterpreterPath: (interpreter, resolvedCwd) =>
+			resolveExplicitRubyRuntime(interpreter, resolvedCwd, {}).rubyPath,
+	});
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = sessionId;
 	}
@@ -450,7 +454,7 @@ async function executeOnSession(code: string, cwd: string, options: RubyExecutor
 }
 
 export async function executeRubyWithKernel(
-	kernel: RubyKernelExecutor,
+	kernel: KernelExecutor,
 	code: string,
 	options?: RubyExecutorOptions,
 ): Promise<RubyResult> {
@@ -479,6 +483,9 @@ export async function executeRuby(code: string, options?: RubyExecutorOptions): 
 		}
 		await ensureKernelAvailable(cwd, executionOptions);
 		await ensureToolBridge(executionOptions);
+		if ((executionOptions.kernelMode ?? "session") === "per-call") {
+			return await executePerCall(code, cwd, executionOptions);
+		}
 		return await executeOnSession(code, cwd, executionOptions);
 	} catch (err) {
 		if (isCancellationError(err, RubyExecutionCancelledError) || executionOptions.signal?.aborted) {

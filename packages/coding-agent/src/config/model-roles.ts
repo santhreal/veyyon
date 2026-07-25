@@ -25,17 +25,7 @@ export function formatModelRoleAlias(role: string): string {
 	return `${MODEL_ROLE_ALIAS_PREFIX}${role}`;
 }
 
-export type ModelRole =
-	| "default"
-	| "smol"
-	| "slow"
-	| "vision"
-	| "plan"
-	| "designer"
-	| "commit"
-	| "tiny"
-	| "task"
-	| "advisor";
+export type ModelRole = "default" | "smol" | "slow" | "vision" | "plan" | "designer" | "commit" | "tiny" | "advisor";
 
 export interface ModelRoleInfo {
 	tag?: string;
@@ -44,9 +34,10 @@ export interface ModelRoleInfo {
 	/** If true, the role is functional but not shown in the model selector UI. */
 	hidden?: boolean;
 	/**
-	 * What an unset role resolves to, shown in role pickers. Every role
-	 * inherits the live main model when unset (resolveRoleSelectionWithInherit)
-	 * except advisor, which resolves the thinking priority chain by design.
+	 * What an unset role resolves to, shown in role pickers. EVERY role inherits
+	 * the live main model when unset (resolveRoleSelectionWithInherit) — no role
+	 * carries a built-in model chain, so a picker never has to explain a model
+	 * the operator did not choose.
 	 */
 	unsetLabel?: string;
 }
@@ -54,6 +45,14 @@ export interface ModelRoleInfo {
 /** Picker label for roles that follow the live main model when unset. */
 export const ROLE_INHERIT_LABEL = "inherit (follows main model)";
 
+/**
+ * There is deliberately NO `task` role. The model a subagent runs lives in the
+ * Subagents settings area (`subagent.model`, and `subagent.agents.<name>.model`
+ * per agent), which is its one owner. A `modelRoles.task` entry beside those was
+ * a second owner for the same value, and it is what made "I changed the subagent
+ * model" fail to take: role expansion answered first. Old configs are migrated
+ * onto `subagent.model`; see `#migrateSubagentSettings`.
+ */
 export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	/** Legacy only — not selectable; interactive model is the session model, not a role. */
 	default: { tag: "DEFAULT", name: "Default", color: "success", hidden: true },
@@ -64,27 +63,53 @@ export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	designer: { tag: "DESIGNER", name: "Designer", color: "muted" },
 	commit: { tag: "COMMIT", name: "Commit", color: "dim" },
 	tiny: { tag: "TINY", name: "Tiny", color: "dim" },
-	task: { tag: "TASK", name: "Subtask", color: "muted" },
-	advisor: { tag: "ADVISOR", name: "Advisor", color: "accent", unsetLabel: "auto (thinking-model chain)" },
+	advisor: { tag: "ADVISOR", name: "Advisor", color: "accent" },
 };
 
-export const MODEL_ROLE_IDS: ModelRole[] = [
-	"smol",
-	"slow",
-	"vision",
-	"plan",
-	"designer",
-	"commit",
-	"tiny",
-	"task",
-	"advisor",
-];
+export const MODEL_ROLE_IDS: ModelRole[] = ["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor"];
 
 /** Built-in roles that may appear in settings-backed role assignment UI. */
 export const SELECTABLE_MODEL_ROLE_IDS: ModelRole[] = MODEL_ROLE_IDS;
 
-/** Legacy default role — not selectable in pickers; interactive model is not a role slot. */
-export const LEGACY_DEFAULT_MODEL_ROLE = "default" as const;
+/**
+ * The slot every interactive model choice persists to, and the ONE name for it.
+ *
+ * It is not a selectable role: pickers list the named roles (smol, slow, plan, …)
+ * while this holds "the model you are working with", the one startup restores.
+ */
+export const DEFAULT_MODEL_SLOT = "default" as const;
+
+/**
+ * Every spelling a CALLER may pass to mean {@link DEFAULT_MODEL_SLOT}.
+ *
+ * The slot accumulated names — `default` in storage, `interactive` in `setModel`'s
+ * parameter default and in the session log — with the translation between them
+ * written inline at each call site, including one line that stored `default` and
+ * logged `interactive` for the same write (operator review 2026-07-24). Callers now
+ * pass whatever they have and {@link resolveModelSlot} translates, once, here.
+ *
+ * This is about role arguments only. Enumerating CONFIGURED roles (cycle order,
+ * `modelRoles` keys) compares against {@link DEFAULT_MODEL_SLOT} itself, because
+ * storage only ever holds the canonical key and a custom role a user happened to
+ * name `interactive` must still appear in pickers.
+ */
+export const DEFAULT_MODEL_SLOT_ALIASES: readonly string[] = ["default", "interactive"];
+
+/** True when `role` is any spelling of the default slot. */
+export function isDefaultModelSlot(role: string): boolean {
+	return DEFAULT_MODEL_SLOT_ALIASES.includes(role);
+}
+
+/**
+ * The slot a role name refers to: any alias of the default slot collapses to
+ * {@link DEFAULT_MODEL_SLOT}, and every named role passes through unchanged.
+ *
+ * This is the single translation point. Comparing a role against `"interactive"`
+ * or `"default"` anywhere else re-creates the divergence this replaced.
+ */
+export function resolveModelSlot(role: string): string {
+	return isDefaultModelSlot(role) ? DEFAULT_MODEL_SLOT : role;
+}
 
 export type RoleInfo = ModelRoleInfo;
 
@@ -105,11 +130,11 @@ export function getKnownRoleIds(settings: Settings): string[] {
 	};
 
 	for (const role of settings.get("cycleOrder")) {
-		if (role === LEGACY_DEFAULT_MODEL_ROLE) continue;
+		if (role === DEFAULT_MODEL_SLOT) continue;
 		addRole(role);
 	}
 	for (const role in settings.getModelRoles()) {
-		if (role === LEGACY_DEFAULT_MODEL_ROLE) continue;
+		if (role === DEFAULT_MODEL_SLOT) continue;
 		addRole(role);
 	}
 	for (const role in settings.get("modelTags")) addRole(role);

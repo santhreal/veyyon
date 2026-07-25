@@ -773,6 +773,9 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				return null;
 			}
 		} catch {
+			// A base directory we cannot stat has no completions to offer, which is the same answer a path
+			// that is a file gives. Null means "no suggestions", the state of every half-typed path, and the
+			// prompt simply shows none; the read the user is completing towards reports its own failure.
 			return null;
 		}
 
@@ -1007,6 +1010,9 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			}
 			return suggestions;
 		} catch {
+			// Completion is a suggestion list, not a result: an empty one is how the prompt says "nothing to
+			// offer", and it is what a directory with no matching entries gives too. Silent on purpose here
+			// because this runs on every keystroke, and the command the user is typing reports for itself.
 			return [];
 		}
 	}

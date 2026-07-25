@@ -10,8 +10,8 @@
   - `packages/coding-agent/src/registry/agent-registry.ts`: process-global agent directory and status.
   - `packages/coding-agent/src/registry/agent-lifecycle.ts`: revival of parked recipients on direct send.
   - `packages/coding-agent/src/session/agent-session.ts`: `deliverIrcMessage(...)`: recipient-side injection and wake turns.
-  - `packages/coding-agent/src/prompts/system/irc-incoming.md`: incoming-message rendering for the recipient.
-  - `packages/coding-agent/src/prompts/system/irc-autoreply.md`: prompt for the ephemeral auto-reply side turn (busy recipient, async disabled).
+  - `packages/coding-agent/src/prompts/side-channel/irc-incoming.md`: incoming-message rendering for the recipient.
+  - `packages/coding-agent/src/prompts/side-channel/irc-autoreply.md`: prompt for the ephemeral auto-reply side turn (busy recipient, async disabled).
   - `packages/coding-agent/src/config/settings-schema.ts`: `irc.timeoutMs`.
   - `packages/coding-agent/src/modes/controllers/event-controller.ts`: renders IRC events into chat UI.
 

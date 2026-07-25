@@ -19,12 +19,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
-import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
-import { expandAssistantContent, expandSessionContext, expandToolArguments } from "@veyyon/coding-agent/lexpack-wire";
+import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
+import { expandAssistantContent, expandSessionContext, expandToolArguments } from "@veyyon/coding-agent/argot-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
-import { RUNTIME_SECTIONS, withSectionBanner } from "@veyyon/coding-agent/system-prompt-builder/prompt-blocks";
-import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
+import { RUNTIME_SECTIONS, withSectionBanner } from "@veyyon/coding-agent/system-prompt-builder/section-registry";
+import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
 import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict, renderPreamble } from "argot";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 import { makeToolSession } from "./helpers/tool-session";
@@ -294,7 +294,7 @@ describe("argot preamble and handle-table injection into the system prompt", () 
 
 	// The prompt is an ordered list of banner-delimited blocks, and a runtime
 	// section's banner is prepended by the assembler rather than carried in its
-	// text (see prompt-blocks.ts). So the block that ships is never byte-equal to
+	// text (see section-registry.ts). So the block that ships is never byte-equal to
 	// the raw text passed in, and asserting `toContain(rawText)` on the array —
 	// which is element EQUALITY, not substring — could only ever fail.
 	//
@@ -308,8 +308,8 @@ describe("argot preamble and handle-table injection into the system prompt", () 
 		// Guards the two lookups above: if a section were renamed, every assertion
 		// built on it would silently compare against `undefined` instead of failing
 		// for the right reason.
-		expect(shorthandSection?.banner).toBe("SHORTHAND\n==");
-		expect(handlesSection?.banner).toBe("SHORTHAND HANDLES\n==");
+		expect(shorthandSection?.name).toBe("SHORTHAND");
+		expect(handlesSection?.name).toBe("SHORTHAND HANDLES");
 	});
 
 	it("injects the handle table when argotHandles is passed", async () => {

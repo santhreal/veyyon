@@ -2,7 +2,6 @@
 name: librarian
 description: Researches external libraries and APIs by reading source code. Returns definitive, source-verified answers.
 tools: read, grep, glob, bash, lsp, web_search, ast_grep
-model: "@smol"
 thinking-level: minimal
 read-summarize: false
 output:

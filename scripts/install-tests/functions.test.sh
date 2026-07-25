@@ -1750,6 +1750,85 @@ check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-b
   check "an unrelated dotfile in the install dir is left alone" "$( [ -e "$_h/bin/.someone-elses-file" ] && echo present || echo absent )" "present" )
 export HOME="$SANDBOX/home"
 
+# --- sweep_stale_staging: an install reclaims what a killed install left ---
+#
+# The EXIT/INT/TERM trap covers Ctrl-C, but nothing survives SIGKILL or a power
+# loss, and until now only `--uninstall` swept staging files. Each one is a full
+# copy of the binary (~100 MB), so a user whose install kept getting killed
+# accumulated hundreds of megabytes of hidden files in their install directory
+# with nothing on screen naming them and no command to reclaim them.
+( _h="$SANDBOX/sweep-dead-pid"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  # Pid 1 is always alive; a pid this shell just reaped never is.
+  sh -c 'exit 0' & dead_pid=$!; wait "$dead_pid" 2>/dev/null
+  printf 'partial-download' > "$_h/bin/.veyyon.download.$dead_pid"
+  printf 'partial-copy' > "$_h/bin/.veyyon.local.$dead_pid"
+  out=$(sweep_stale_staging 2>&1)
+  check "a staging file from a dead pid is removed" \
+      "$( [ -e "$_h/bin/.veyyon.download.$dead_pid" ] && echo present || echo absent )" "absent"
+  check "both phases are swept, not just the download" \
+      "$( [ -e "$_h/bin/.veyyon.local.$dead_pid" ] && echo present || echo absent )" "absent"
+  # A removal the user cannot see is indistinguishable from files vanishing.
+  check "the removal is announced with the path and the pid" \
+      "$(printf '%s' "$out" | grep -c "left by an interrupted install (pid $dead_pid)")" "2" )
+
+( _h="$SANDBOX/sweep-live-pid"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  # Pid 1 always exists, so this stands in for a concurrent installer. Sweeping
+  # it would delete that process's partial download out from under it - the exact
+  # collision the pid in staging_path was added to prevent.
+  printf 'someone-elses-download' > "$_h/bin/.veyyon.download.1"
+  out=$(sweep_stale_staging 2>&1)
+  check "a staging file owned by a LIVE pid survives the sweep" \
+      "$(cat "$_h/bin/.veyyon.download.1")" "someone-elses-download"
+  check "leaving it alone is said out loud" \
+      "$(printf '%s' "$out" | grep -c 'another installer (pid 1) is using it')" "1" )
+
+# pid 1 is the case that broke the first implementation: an unprivileged user
+# cannot signal init, so `kill -0 1` fails with EPERM, and reading that exit
+# status as "the process is gone" made the sweep delete a file belonging to a
+# process that was very much alive. `ps -p` answers for processes this user does
+# not own, which is the whole point.
+( pid_is_running 1 ); check "pid_is_running says init is running even though we cannot signal it" "$?" "0"
+( pid_is_running "$$" ); check "pid_is_running says this shell is running" "$?" "0"
+( sh -c 'exit 0' & _p=$!; wait "$_p" 2>/dev/null; pid_is_running "$_p" )
+check "pid_is_running says a reaped child is not running" "$?" "1"
+# With no `ps` the answer is unknowable, and guessing "gone" would cost another
+# installer its download, so it fails safe toward "running".
+( has() { return 1; }; pid_is_running 999999 )
+check "pid_is_running fails safe to running when ps is unavailable" "$?" "0"
+
+( _h="$SANDBOX/sweep-not-ours"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  # Only `.<bin>.<phase>.<pid>` is ours. A user's own dotfile in their own bin
+  # directory, the natives cache, and the installed binary itself all stay.
+  printf 'user' > "$_h/bin/.someone-elses-file"
+  printf 'natives' > "$_h/bin/.veyyon.notapid"
+  printf 'bin' > "$_h/bin/veyyon"
+  sweep_stale_staging >/dev/null 2>&1
+  check "an unrelated dotfile is not swept" "$(cat "$_h/bin/.someone-elses-file")" "user"
+  check "a name whose last token is not a pid is not swept" "$(cat "$_h/bin/.veyyon.notapid")" "natives"
+  check "the installed binary is not swept" "$(cat "$_h/bin/veyyon")" "bin" )
+
+( _h="$SANDBOX/sweep-empty-dir"
+  export HOME="$_h"
+  mkdir -p "$_h/bin"
+  export VEYYON_INSTALL_DIR="$_h/bin"
+  # The unmatched glob expands to the literal pattern; treating that as a path
+  # would try to remove `.veyyon.*` itself.
+  out=$(sweep_stale_staging 2>&1); status=$?
+  check "sweeping an install dir with nothing to sweep succeeds" "$status" "0"
+  check "and says nothing" "$out" "" )
+export HOME="$SANDBOX/home"
+unset VEYYON_INSTALL_DIR
+export VEYYON_INSTALL_DIR="$SANDBOX/bin"
+
 # `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
 # fallback would append a SECOND zero and make the arithmetic below choke.
 PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}

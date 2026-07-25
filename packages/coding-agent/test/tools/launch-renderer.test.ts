@@ -79,12 +79,21 @@ describe("launchToolRenderer", () => {
 		);
 		expect(rendered[0]).toContain("Launch logs");
 		expect(rendered[0]).toContain("cursor 2210");
-		expect(rendered.some(line => line.includes("line one"))).toBe(true);
-		expect(rendered.some(line => line.includes("line two"))).toBe(true);
-		expect(rendered.some(line => line.includes("[web: running"))).toBe(false);
 		expect(rendered[0]).toContain("┌");
-		expect(rendered.some(line => line.includes("Output"))).toBe(true);
+		expect(rendered[1]).toContain("Output");
 		expect(rendered.at(-1)).toContain("└");
+
+		// The log body, in order and complete. Two `some(...)` checks asserted the
+		// lines existed somewhere and a third asserted the `[web: running; ...]`
+		// suffix did not, none of which could tell whether the tail was rendered in
+		// order, which is the one thing a log tail has to get right. Reading the
+		// body out as an array proves the ordering and the suffix stripping at
+		// once: a line that survived would have to appear here.
+		const body = rendered
+			.filter(line => line.startsWith("│"))
+			.map(line => line.replace(/^│\s?/, "").replace(/\s*│$/, "").trimEnd());
+
+		expect(body).toEqual(["line one", "line two"]);
 	});
 
 	it("replays terminal screen rows so cursor rewrites retain their final color and weight", async () => {
@@ -136,9 +145,18 @@ describe("launchToolRenderer", () => {
 			),
 		);
 		expect(rendered[0]).toContain("11 processes");
-		expect(rendered.some(line => line.includes("svc-0"))).toBe(true);
-		expect(rendered.some(line => line.includes("svc-10"))).toBe(false);
-		expect(rendered.some(line => line.includes("3 more processes"))).toBe(true);
+
+		// Which eight survived the cap, in which order, and that the notice is the
+		// last row. The three checks that stood here said only that svc-0 appeared,
+		// svc-10 did not, and the words "3 more processes" were present somewhere:
+		// a renderer that kept svc-3 through svc-10 and dropped the first three
+		// satisfied every one of them, and so did one that put the more-row first.
+		// Each row's uptime is derived from the clock, so the row IDENTITY is read
+		// out rather than the whole line.
+		const rows = rendered.slice(1).map(line => line.split(" ")[0]);
+
+		expect(rows).toEqual(["svc-0", "svc-1", "svc-2", "svc-3", "svc-4", "svc-5", "svc-6", "svc-7", "…"]);
+		expect(rendered.at(-1)).toContain("3 more processes");
 	});
 
 	it("marks a failed start with the daemon's exit reason even though the result is not an error", async () => {

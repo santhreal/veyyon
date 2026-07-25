@@ -20,7 +20,7 @@ import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import type { Theme } from "../modes/theme/theme";
-import grepDescription from "../prompts/tools/grep.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import {
 	artifactFooter,
 	DEFAULT_MAX_COLUMN,
@@ -28,6 +28,7 @@ import {
 	truncateHead,
 	truncateLine,
 } from "../session/streaming-output";
+import { delegationEnabled } from "../task/subagent-settings";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -47,7 +48,7 @@ import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import { formatMatchLine } from "./match-line-format";
-import { saveOutputArtifact } from "./output-artifact";
+import { inlineBudgetFor, saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
 import {
 	expandDelimitedPathEntries,
@@ -910,9 +911,13 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 
 	constructor(private readonly session: ToolSession) {
 		const displayMode = resolveFileDisplayMode(session);
-		this.description = prompt.render(grepDescription, {
+		this.description = prompt.render(PROMPTS["tools/grep"].text, {
 			IS_HL_MODE: displayMode.hashLines,
 			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
+			// Only tell the model to hand a search off when this session can delegate
+			// at all; with `subagent.delegation: off` there is no task tool to hand it
+			// to, and the rule would be an instruction it can only fail.
+			canDelegate: delegationEnabled(session.settings),
 		});
 	}
 
@@ -1553,7 +1558,15 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				// save the FULL match set to an artifact and append the recoverable
 				// `artifact://<id>` footer so nothing is lost and the huge result is
 				// not carried verbatim for every later turn.
-				const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+				// Bounded by the same turn-scaled budget every other tool uses. grep keeps
+				// a HEAD window rather than head-and-tail because matches arrive in
+				// order, but the SIZE of that window is priced identically: an early
+				// result is re-read for the rest of the session whichever tool produced
+				// it. See `inlineBudgetFor`.
+				const truncation = truncateHead(rawOutput, {
+					maxLines: Number.MAX_SAFE_INTEGER,
+					maxBytes: inlineBudgetFor(this.session),
+				});
 				let output = truncation.content;
 				let spillArtifactId: string | undefined;
 				if (truncation.truncated) {

@@ -23,7 +23,7 @@ const PUBLIC_ENGINE_IDS = [
 	"mojeek",
 ] as const satisfies readonly SearchProviderId[];
 
-/** Aggregates get a wider default window than single engines: consensus needs breadth. */
+/** Aggregates get a wider default window than the shared SEARCH_DEFAULT_NUM_RESULTS: consensus needs breadth. */
 const DEFAULT_NUM_RESULTS = 15;
 const MAX_NUM_RESULTS = 30;
 

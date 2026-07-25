@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { RawSseDebugBuffer } from "@veyyon/coding-agent/debug/raw-sse-buffer";
 import { createReportBundle } from "@veyyon/coding-agent/debug/report-bundle";
-import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { getReportsDir } from "@veyyon/utils";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 
 const model: Model<"anthropic-messages"> = buildModel({
 	id: "claude-test",
@@ -21,36 +20,40 @@ const model: Model<"anthropic-messages"> = buildModel({
 	maxTokens: 8_192,
 });
 
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const originalXdgStateHome = process.env.XDG_STATE_HOME;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
-let cleanupRoot: string | undefined;
+/**
+ * The report bundle lands under the CONFIG root, so that is the root this suite
+ * has to move.
+ *
+ * It used to redirect `XDG_STATE_HOME` and the agent dir, and it deliberately
+ * pointed the agent dir at `path.join(getConfigRootDir(), "agent")` when no
+ * override was set — the developer's real config root. `createReportBundle` calls
+ * `getReportsDir()`, which resolves from the config root and not from either
+ * lever this suite pulled, so every run wrote a tarball of system info, sanitized
+ * env, and resolved settings into the real `~/.veyyon/profiles/<profile>/reports`.
+ * The real-data tripwire refused the `mkdir` and that is how it was found. It had
+ * been passing only because whichever suite ran before it happened to leave an
+ * isolated config root in place; fixing those leaks exposed this one.
+ *
+ * It also used to redirect `XDG_STATE_HOME` by hand, and that lever did nothing: the
+ * assignment came AFTER `enterIsolatedConfigRoot` had already built the resolver, so
+ * `getReportsDir()` never saw it and the assertion below was passing on the config root
+ * alone. `enterIsolatedConfigRoot` clears the XDG base directories itself now, which is
+ * where that belongs — a developer who runs with `XDG_STATE_HOME` set otherwise has every
+ * state-category path resolve under their real home inside a supposedly isolated root.
+ */
+let isolated: IsolatedConfigRoot | undefined;
 
-afterEach(async () => {
-	if (originalXdgStateHome === undefined) {
-		delete process.env.XDG_STATE_HOME;
-	} else {
-		process.env.XDG_STATE_HOME = originalXdgStateHome;
-	}
-	if (originalAgentDir) {
-		setAgentDir(originalAgentDir);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
-	if (cleanupRoot) {
-		await removeWithRetries(cleanupRoot);
-		cleanupRoot = undefined;
-	}
+afterEach(() => {
+	isolated?.restore();
+	isolated = undefined;
 });
 
 describe("raw SSE report bundle", () => {
 	it("includes captured raw SSE text and dropped-record disclosure", async () => {
-		cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-raw-sse-report-"));
-		const xdgStateHome = path.join(cleanupRoot, "state");
-		await fs.mkdir(path.join(xdgStateHome, "veyyon"), { recursive: true });
-		process.env.XDG_STATE_HOME = xdgStateHome;
-		setAgentDir(fallbackAgentDir);
+		isolated = enterIsolatedConfigRoot("raw-sse-report", { defaultProfile: true });
+		// Proof, not intention: the reports directory is the one this test writes
+		// into, and it must be inside the temp root before anything is written.
+		expect(path.relative(isolated.root, path.resolve(getReportsDir())).startsWith("..")).toBe(false);
 
 		const buffer = new RawSseDebugBuffer();
 		buffer.recordResponse(
@@ -69,6 +72,10 @@ describe("raw SSE report bundle", () => {
 
 		const result = await createReportBundle({ sessionFile: undefined, rawSseText });
 
+		// The bundle itself must be inside the temp root. Asserting the returned
+		// path (not just that the call succeeded) is what makes this suite unable to
+		// regress into writing a report into a real home again.
+		expect(path.relative(isolated.root, path.resolve(result.path)).startsWith("..")).toBe(false);
 		expect(result.files).toContain("raw-sse.txt");
 		const archive = new Bun.Archive(await Bun.file(result.path).bytes());
 		const files = await archive.files();

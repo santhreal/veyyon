@@ -4,7 +4,7 @@
  * unset), the set→get roundtrip persistence, and the exit-1 error surfaces.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
@@ -120,6 +120,61 @@ describe("veyyon config", () => {
 		expect(exitCode).toBe(1);
 		expect(stderr).toContain("config get <key>");
 	}, 30_000);
+
+	/**
+	 * A one-shot command must not report a write it did not achieve.
+	 *
+	 * `set` and `reset` printed their green tick and exited 0 without ever waiting for the
+	 * debounced save, so a config path that cannot be written produced a
+	 * successful-looking command and a setting that was never persisted. A script checking
+	 * the exit status was told the change landed.
+	 */
+	describe("a config file that cannot be written", () => {
+		/** A home whose profile config path is a DIRECTORY, so every write to it fails. */
+		function homeWithBlockedConfig(): Record<string, string | undefined> {
+			const home = mkdtempSync(path.join(tmpdir(), "veyyon-config-home-"));
+			const agentDir = path.join(home, ".veyyon", "profiles", "default", "agent");
+			mkdirSync(path.join(agentDir, "config.yml"), { recursive: true });
+			return makeEnv(home);
+		}
+
+		it("set exits 1 and names the path and the reason instead of printing success", async () => {
+			const env = homeWithBlockedConfig();
+			const { stdout, stderr, exitCode } = await runConfig(env, ["set", "git.enabled", "false"]);
+			expect(exitCode).toBe(1);
+			expect(stderr).toContain("Could not save");
+			expect(stderr).toContain("config.yml");
+			expect(stderr).toContain("writable");
+			// The success line must not appear: that is the whole defect.
+			expect(stdout).not.toContain("Set git.enabled");
+		}, 30_000);
+
+		it("reset exits 1 for the same reason", async () => {
+			const env = homeWithBlockedConfig();
+			const { stdout, exitCode } = await runConfig(env, ["reset", "git.enabled"]);
+			expect(exitCode).toBe(1);
+			expect(stdout).not.toContain("Reset git.enabled");
+		}, 30_000);
+
+		it("set --json exits 1 rather than emitting a JSON success a script would trust", async () => {
+			// The JSON contract is what automation reads. Printing `{"key":...}` here
+			// would be a machine-readable lie.
+			const env = homeWithBlockedConfig();
+			const { stdout, exitCode } = await runConfig(env, ["set", "git.enabled", "false", "--json"]);
+			expect(exitCode).toBe(1);
+			expect(stdout.trim()).toBe("");
+		}, 30_000);
+
+		it("still exits 0 and persists when the path IS writable", async () => {
+			// The negative twin: a suite that only checked the failure would pass with a
+			// `set` that always exits 1.
+			const env = makeEnv(mkdtempSync(path.join(tmpdir(), "veyyon-config-home-")));
+			const set = await runConfig(env, ["set", "git.enabled", "false"]);
+			expect(set.exitCode).toBe(0);
+			const get = await runConfig(env, ["get", "git.enabled"]);
+			expect(get.stdout.trim()).toBe("false");
+		}, 30_000);
+	});
 
 	it("path prints the agent directory under the temp home", async () => {
 		const home = mkdtempSync(path.join(tmpdir(), "veyyon-config-home-"));

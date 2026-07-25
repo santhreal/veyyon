@@ -87,7 +87,12 @@ function viewportText(term: VirtualTerminal): string[] {
  * from being trimmed as if it were chrome.
  */
 function contentText(term: VirtualTerminal, width = 40): string[] {
-	return term.getViewport().map(row => Bun.stripANSI(row).padEnd(width, " ").slice(0, width - 1).trimEnd());
+	return term.getViewport().map(row =>
+		Bun.stripANSI(row)
+			.padEnd(width, " ")
+			.slice(0, width - 1)
+			.trimEnd(),
+	);
 }
 
 describe("scroll isolation", () => {

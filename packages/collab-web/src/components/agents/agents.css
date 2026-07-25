@@ -99,6 +99,17 @@
 	overflow-wrap: anywhere;
 }
 
+/* Unparseable transcript rows were skipped, so what is rendered has holes in it.
+   A warning rather than an error: polling continues and the readable rows show. */
+.ag-transcript-dropped {
+	padding: 8px 10px;
+	color: var(--warn);
+	font-size: 12px;
+	text-align: center;
+	border-top: 1px solid color-mix(in srgb, var(--warn) 25%, transparent);
+	overflow-wrap: anywhere;
+}
+
 /* ── Status dot ───────────────────────────────────────────────────── */
 
 .ag-dot {

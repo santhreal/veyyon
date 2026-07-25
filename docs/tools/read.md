@@ -101,7 +101,8 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
   - When an elided block sits between matching brace lines, `#renderSummary()` may merge them into one anchored line rather than emitting separate opener/closer lines.
 - Explicit selector or summarization miss: streamed text read.
   - Default open-ended limit is `min(session setting read.defaultLimit, DEFAULT_MAX_LINES)`.
-  - Explicit ranges expand by `RANGE_LEADING_CONTEXT_LINES = 1` / `RANGE_TRAILING_CONTEXT_LINES = 3` on the constrained sides only.
+  - Explicit ranges expand by `RANGE_LEADING_CONTEXT_LINES = 1` / `RANGE_TRAILING_CONTEXT_LINES = 3` on the constrained sides only. Both counts come from `rangeContextLines()`, the one owner of that arithmetic, which the in-memory path and both streaming paths call.
+  - A padded result says so on its last line: `formatContextPaddingNotice()` appends e.g. `[Showing lines 1-6: you requested lines 1-3, plus 3 lines of trailing context]`. The counts are derived from the range that was actually displayed, so padding clamped by the end of the file is reported as the smaller number, and an unpadded read carries no notice.
   - Non-raw output uses `resolveFileDisplayMode()`:
     - hashline numbered output when edit mode is hashline, read is not raw, source is mutable, and the edit tool exists
     - otherwise optional line numbers when `readLineNumbers === true`
@@ -256,7 +257,7 @@ Notes: ...
   - `DEFAULT_MAX_LINES = 3000`
   - `DEFAULT_MAX_BYTES = 50 * 1024`
 - Local text open-ended default line limit: `read.defaultLimit`, clamped to `[1, DEFAULT_MAX_LINES]`.
-- Explicit line ranges add `1` leading and `3` trailing context lines on the constrained sides (`RANGE_LEADING_CONTEXT_LINES` / `RANGE_TRAILING_CONTEXT_LINES`).
+- Explicit line ranges add `1` leading and `3` trailing context lines on the constrained sides (`RANGE_LEADING_CONTEXT_LINES` / `RANGE_TRAILING_CONTEXT_LINES`). The result discloses the padding it added on its last line.
 - File streaming chunk size: `8 * 1024` bytes (`READ_CHUNK_SIZE`).
 - Local streamed byte budget for line reads: `max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512)`.
 - Structural summaries only run when file size `<= 2 MiB` and line count `<= 20_000`.

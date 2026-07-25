@@ -3,6 +3,7 @@ import { ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/comp
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 
 /**
@@ -74,19 +75,12 @@ async function conversation(turns: number): Promise<Rig> {
 	tui.start();
 
 	// These cases drive the PRODUCTION scheduler (the real interactive path), so
-	// a fixed sleep can return mid-flight and read a half-applied frame. Settle
-	// converges instead: pump until the engine's own state stops moving.
-	const settle = async () => {
-		let previous = "";
-		for (let attempt = 0; attempt < 40; attempt++) {
-			await new Promise(resolve => setTimeout(resolve, 12));
-			await term.flush();
-			const current = `${tui.virtualScrollNewRows}/${tui.composedFrameRows}/${tui.scrollTapeRows}/${tui.committedRows}`;
-			if (current === previous) return;
-			previous = current;
-		}
-		throw new Error("frame never settled");
-	};
+	// a fixed sleep can return mid-flight and read a half-applied frame. The
+	// shared helper waits on the engine's own "a frame is owed" signal; the
+	// counter-sampling version this replaced could not tell an idle engine from
+	// one that had not started, and this suite's frozen-view snapshot was moved
+	// by wheel events that were still queued when it returned.
+	const settle = () => settleFrames(term, tui);
 	await settle();
 	for (let turn = 0; turn < turns; turn++) {
 		transcript.addChild(new Block([`› turn ${turn}`, "", `  reply body for turn ${turn}`, ""]));

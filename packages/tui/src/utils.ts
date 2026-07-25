@@ -8,7 +8,7 @@ import {
 	wrapTextWithAnsi as nativeWrapTextWithAnsi,
 	type SliceResult,
 } from "@veyyon/natives";
-import { clamp, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+import { clamp, collapseWhitespace, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
 
 export { Ellipsis } from "@veyyon/natives";
 
@@ -230,12 +230,17 @@ export function replaceTabs(text: string): string {
  * Flatten text to a single trimmed line: expand tabs, collapse every run of
  * whitespace (including newlines) to one space. Used by list components that
  * render one row per item and must never let an embedded newline break the row.
+ *
+ * The collapse itself belongs to `collapseWhitespace` in `@veyyon/utils`, the
+ * repo-wide owner of that idiom; this is the tab-expanding wrapper over it, not a
+ * second implementation. It used to inline the regexes (`[\r\n]+` then `\s+`,
+ * the first of which the second already covers), which is the kind of copy that
+ * drifts: `ask-dialog.ts` and `transcript-render-helpers.ts` were already calling
+ * `collapseWhitespace(replaceTabs(...))` by hand for the same effect, so the
+ * repository had two answers to one question.
  */
 export function sanitizeSingleLine(text: string): string {
-	return replaceTabs(text)
-		.replace(/[\r\n]+/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
+	return collapseWhitespace(replaceTabs(text));
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 	getOwnProperty,
 	getStringProperty,
 	isRecord,
+	isThenable,
 	setSafeProperty,
 	toError,
 	trimmedString,
@@ -46,6 +47,23 @@ describe("toError / errorMessage", () => {
 		expect(errorMessage("plain string")).toBe("plain string");
 		expect(errorMessage(404)).toBe("404");
 		expect(errorMessage(undefined)).toBe("undefined");
+	});
+
+	/** Callers splice this into a sentence ("renderer threw: <msg>"), so an empty
+	 * message used to produce text that trailed off after the colon and named
+	 * nothing. The constructor name is the least-wrong thing still available. */
+	it("errorMessage falls back to the constructor name when the message is empty", () => {
+		expect(errorMessage(new TypeError(""))).toBe("TypeError");
+		expect(errorMessage(new Error())).toBe("Error");
+		class ConfigError extends Error {}
+		expect(errorMessage(new ConfigError())).toBe("Error");
+	});
+
+	/** A blank-but-not-empty message is a real message: the caller collapses
+	 * whitespace if it cares, and silently swapping it for the class name would
+	 * hide that the throw site produced junk. */
+	it("errorMessage keeps a whitespace-only message rather than substituting the name", () => {
+		expect(errorMessage(new Error(" "))).toBe(" ");
 	});
 });
 
@@ -197,7 +215,14 @@ const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"utils/src/ptree.ts",
 	"utils/src/type-guards.ts",
 ]);
-const INLINE_ERRORMESSAGE = /instanceof Error \? \w+\.message : String\(/;
+// Matches the bare ternary AND the `|| x.name` variant. The variant is not
+// hypothetical: `renderer-failure.ts` shipped it on 2026-07-25 and the old
+// pattern, which required `.message` to be immediately followed by ` : String(`,
+// let it through — a local copy of the owner living unnoticed behind a lock that
+// was supposed to make that impossible. It also drifted, since it was written to
+// fall back to the error NAME on an empty message and the owner then did not, so
+// the same call produced different text depending on which copy ran.
+const INLINE_ERRORMESSAGE = /instanceof Error \? \w+\.message(?:\s*\|\|\s*\w+\.name)? : String\(/;
 
 const ISRECORD_DEF = /function\s+isRecord\s*\(/;
 const ERRORMESSAGE_DEF = /function\s+errorMessage\s*\(/;
@@ -472,5 +497,53 @@ describe("type-guards source locks", () => {
 			if (ISRECORD_DEF.test(text)) offenders.push(rel);
 		}
 		expect(offenders, "test-local isRecord copies — import it from @veyyon/utils instead").toEqual([]);
+	});
+});
+
+/**
+ * isThenable is the promise-detection guard the IPC `send()` sites and the MCP stdio transport use
+ * to decide whether a
+ * send result needs a `.catch` attached (an async rejection to swallow) versus a plain synchronous
+ * return. It had no direct test. It must accept a real Promise, a bare thenable object, AND a
+ * callable that also carries a `then` (functions are objects), while rejecting null/undefined
+ * (the `!= null` guard), plain objects, and an object whose `then` is not callable. A regression
+ * that treated a non-thenable as thenable would attach `.catch` to `undefined` and throw; one that
+ * missed a real thenable would let its rejection escape to `unhandledRejection`.
+ *
+ * These tests came with the function. It used to exist twice, once in `coding-agent/src/utils/ipc.ts`
+ * and once privately in `mcp/transports/stdio.ts`, whose comment claimed the copy was justified
+ * because it was "battle-tested there" — a five-line predicate is not battle-tested separately, and
+ * only one of the two was tested at all.
+ */
+describe("isThenable", () => {
+	// Attach the property through a variable key so the identifier `then` never
+	// appears statically (biome's noThenProperty lint rejects a literal `then`).
+	const thenKey = "then";
+	const withThen = (value: unknown): Record<string, unknown> => {
+		const target: Record<string, unknown> = {};
+		target[thenKey] = value;
+		return target;
+	};
+
+	it("accepts a real Promise, a bare thenable object, and a callable carrying then", () => {
+		expect(isThenable(Promise.resolve(1))).toBe(true);
+		expect(isThenable(withThen(() => {}))).toBe(true);
+		const callableThenable = Object.assign(() => {}, {}) as (() => void) & Record<string, unknown>;
+		callableThenable[thenKey] = () => {};
+		expect(isThenable(callableThenable)).toBe(true);
+	});
+
+	it("rejects null and undefined", () => {
+		expect(isThenable(null)).toBe(false);
+		expect(isThenable(undefined)).toBe(false);
+	});
+
+	it("rejects a plain object and a primitive", () => {
+		expect(isThenable({})).toBe(false);
+		expect(isThenable(5)).toBe(false);
+	});
+
+	it("rejects an object whose then is not a function", () => {
+		expect(isThenable(withThen(5))).toBe(false);
 	});
 });

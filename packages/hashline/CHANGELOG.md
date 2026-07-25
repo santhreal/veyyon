@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A patch to a file reached through a chain of symlinks now lands on the real file. The write followed one hop, so with `entry.ts` linking to `middle.ts` linking to the real file, it replaced `middle.ts` with a regular file: the link was destroyed and the file you keep never received the edit. Both halves were silent, because reading back through `entry.ts` returned the new bytes. The whole chain is followed now and every link survives.
+- `NodeFilesystem` refuses to write over a path that is not a regular file. The write ends in a rename, and a rename pointed at a named pipe destroys it and leaves a regular file behind, breaking whatever process was reading the other end; sockets and device nodes went the same way. The refusal names the path and what it actually is. A directory now reports that instead of a bare `EISDIR`.
+- A write is flushed to disk before it is published. The rename already prevented a truncated file, but the contents were not fsynced, so power loss could leave the file present and empty. The write handle and the directory entry are both flushed now.
+- A write that fails names the file you asked to write. The failure came from the temporary sibling the write stages into, so a read-only directory reported `EACCES` on `.mod.ts.4711.1.tmp` — a path that never existed as far as you are concerned and changes every attempt. The reason and the error code are kept, the real target is named, and the original travels as `cause`.
+- Writing to a path whose parent directory does not exist creates the directory instead of failing. A patch that creates `src/new/mod.ts` is an ordinary create. Parents are never created for a symlink, where a missing target directory means the link is dangling.
+
 ## [1.0.37] - 2026-07-24
 
 ### Fixed

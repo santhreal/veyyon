@@ -457,7 +457,6 @@ Built-in role ids (see `model-roles.ts`):
 | `designer` | Yes | Design-oriented work |
 | `commit` | Yes | Commit / changelog |
 | `tiny` | Yes | Lightweight background (titles, classifiers); else `@smol` |
-| `task` | Yes | Task subagents (overridden by `subagent.model` when set) |
 | `advisor` | Yes | Advisor runtime |
 
 `cycleOrder` defaults to `["smol","slow"]`; the entry `default` is stripped on load. Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default` (interactive). Quote `@` aliases in YAML values (`fable: "@slow"`). Each role value can append a thinking selector (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).

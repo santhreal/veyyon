@@ -3,9 +3,11 @@ import { stripVTControlCharacters } from "node:util";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import type { ExtensionAskDialogQuestion } from "@veyyon/coding-agent/extensibility/extensions/types";
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "@veyyon/coding-agent/modes/components/hook-editor";
 import { activityColorToken, getShimmerActivity, setShimmerActivity } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { setKeybindings } from "@veyyon/tui";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 const DOWN = "\x1b[B";
 const ENTER = "\n";
@@ -892,9 +894,14 @@ describe("AskDialogComponent", () => {
 		const lines = title.split("\n");
 		// Title must be bounded to at most MAX_PROMPT_TITLE_ROWS lines.
 		expect(lines.length).toBeLessThanOrEqual(3);
-		// Each line must fit within the terminal content width.
+		// Each line must fit within the terminal content width. That width is the
+		// title row's own padding subtracted from the terminal, taken from the
+		// component that applies it: this assertion used to hardcode 4, matching a
+		// bug in the source where the border was credited with two columns it does
+		// not consume. See hook-editor-title-width.test.ts.
+		const contentWidth = (process.stdout.columns ?? 80) - HOOK_EDITOR_TEXT_PAD_COLS * 2;
 		for (const line of lines) {
-			expect(stripVTControlCharacters(line).length).toBeLessThanOrEqual((process.stdout.columns ?? 80) - 4);
+			expect(stripVTControlCharacters(line).length).toBeLessThanOrEqual(contentWidth);
 		}
 		// Must contain the prefix and a truncation indicator on the last line.
 		expect(stripVTControlCharacters(title)).toContain("Custom answer:");
@@ -1219,6 +1226,12 @@ describe("AskDialogComponent", () => {
  * green" — so it can never silently regress to a bland static prompt.
  */
 describe("AskDialogComponent living-status wiring", () => {
+	// These assertions pin the exact bytes the `ask` token emits. `theme.fg` and
+	// `theme.bg` return their input unchanged unless the ANSI policy is `full`,
+	// so without this declaration the expected sequence is never rendered and the
+	// suite fails wherever the harness default applies. A suite whose subject is
+	// colour declares the policy rather than inheriting it from the terminal.
+	useFullColor();
 	beforeEach(() => {
 		setThemeInstance(darkTheme!);
 		setShimmerActivity("idle");

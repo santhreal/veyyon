@@ -151,7 +151,7 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 ### Disabled-agent settings
 
-`TaskTool.#executeSync` checks `task.disabledAgents` after resolving the agent. If the requested name is disabled, execution returns an immediate error listing enabled alternatives when available.
+`TaskTool.#executeSync` checks `subagent.agents.<name>.enabled` after resolving the agent, through `isSubagentSpawnable`. Only an explicit `false` refuses; a merely unadvertised agent (the default for every bundled specialist) still runs when a caller names it, which is what keeps `/review` working with the specialists off. A refusal names the setting and lists the offered agents.
 
 ### Parent spawn policy
 
@@ -172,7 +172,7 @@ If denied: immediate `Cannot spawn '...'. Allowed: ...` response.
 In `runSubprocess` (`src/task/executor.ts`):
 
 - depth computed from `taskDepth`
-- `task.maxRecursionDepth` controls cutoff
+- `subagent.maxRecursionDepth` controls cutoff
 - when at max depth:
   - `task` tool is removed from child tool list
   - child `spawns` env is set to empty

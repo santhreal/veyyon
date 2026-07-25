@@ -18,6 +18,7 @@ import type { logger as PiLogger } from "@veyyon/utils";
 import type { type as ArkType } from "arktype";
 import type * as zod from "zod/v4";
 import type { Rule } from "../../capability/rule";
+import type { CompactionEngineAction } from "../../config/compaction-strategy";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
@@ -95,6 +96,13 @@ export interface CustomToolContext {
 	abort(): void;
 	/** Settings instance for the current session. Prefer over the global singleton. */
 	settings?: Settings;
+	/**
+	 * Which turn the session is on, so a tool result can be priced by how long it
+	 * will sit in context rather than by a flat byte cap. Absent means unpriced,
+	 * which is the flat behaviour and the safe default for a host that has no
+	 * notion of turns.
+	 */
+	getTurnIndex?: () => number;
 	/** Fetch implementation for outbound HTTP; defaults to global fetch when omitted. */
 	fetch?: FetchImpl;
 	/** Calling session's `local://` root mapping for tools that bridge out of the veyyon process. */
@@ -124,11 +132,11 @@ export type CustomToolSessionEvent =
 	| {
 			reason: "auto_compaction_start";
 			trigger: "threshold" | "overflow" | "idle" | "incomplete";
-			action: "context-full" | "handoff" | "shake";
+			action: CompactionEngineAction;
 	  }
 	| {
 			reason: "auto_compaction_end";
-			action: "context-full" | "handoff" | "shake";
+			action: CompactionEngineAction;
 			result: CompactionResult | undefined;
 			aborted: boolean;
 			willRetry: boolean;
@@ -231,7 +239,17 @@ export interface CustomTool<TParams extends TSchema = TSchema, TDetails = any> {
 	/** Lines appended after the standard approval prompt header. */
 	formatApprovalDetails?: (args: unknown) => string | string[] | undefined;
 	/**
-	 * Execute the tool.
+	 * Execute the tool. The signal comes LAST here.
+	 *
+	 * An extension tool registered with `pi.registerTool`
+	 * (`ToolDefinition.execute`) takes the same five arguments in a different
+	 * order: `(toolCallId, params, signal, onUpdate, ctx)`. Copying one signature
+	 * into the other place fails quietly, because the arguments still arrive and
+	 * `ctx` ends up being the update callback; `examples/extensions/api-demo.ts`
+	 * shipped exactly that. `CustomToolAdapter` is the one place that translates
+	 * between the two, and both orders are pinned in
+	 * `test/tool-adapter-argument-order.test.ts`.
+	 *
 	 * @param toolCallId - Unique ID for this tool call
 	 * @param params - Parsed parameters matching the schema
 	 * @param onUpdate - Callback for streaming partial results (for UI, not LLM)

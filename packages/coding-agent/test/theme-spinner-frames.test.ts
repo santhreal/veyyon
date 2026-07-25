@@ -5,14 +5,17 @@ import * as path from "node:path";
 import { SPINNER_GLYPH_ADVANCE_MS, sharedSpinnerFrame } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { SPINNER_FRAMES } from "@veyyon/coding-agent/modes/theme/symbols";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { getConfigRootDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 // Path of the built-in dark theme JSON, used as a known-valid base we can
 // extend with custom `symbols.spinnerFrames` shapes.
 const DARK_THEME_PATH = path.join(import.meta.dir, "..", "src", "modes", "theme", "dark.json");
 
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+// which leaked into every file that ran after this one.
+const dirOverrides = captureDirOverrides();
 
 let tmpAgentDir: string;
 
@@ -36,12 +39,7 @@ describe("theme symbols.spinnerFrames", () => {
 	});
 
 	afterEach(async () => {
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(tmpAgentDir);
 	});
 

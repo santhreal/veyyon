@@ -140,7 +140,10 @@ function primaryArg(name: string, args: Record<string, unknown> | undefined): st
 	try {
 		return oneLine(JSON.stringify(rest));
 	} catch {
-		return "";
+		// A circular reference or a BigInt makes the args unserializable. Returning "" here rendered the
+		// call as if it took no arguments at all, which is a false reading of the transcript; naming the
+		// keys keeps the row honest and still tells you which arguments were there.
+		return oneLine(`{unserializable: ${Object.keys(rest).join(", ")}}`);
 	}
 }
 

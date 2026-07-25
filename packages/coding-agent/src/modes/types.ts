@@ -5,7 +5,7 @@ import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } fro
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import type { KeybindingsManager } from "../config/keybindings";
-import type { QuarantinedSettingsFile, Settings } from "../config/settings";
+import type { QuarantinedSettingsFile, Settings, SettingsSaveFailure } from "../config/settings";
 import type {
 	AutocompleteProviderFactory,
 	ExtensionAskDialogQuestion,
@@ -261,7 +261,6 @@ export interface InteractiveModeContext {
 	showWarning(message: string): void;
 	showNewVersionNotification(newVersion: string): void;
 	/** One line confirming an update landed, on the first launch after it. */
-	showUpdateInstalledNotification(installedVersion: string): void;
 	showUpdateReadyNotification(newVersion: string): void;
 	showUpdateFailedNotification(newVersion: string, error: string): void;
 	/** `marketplace.autoUpdate: notify` found plugin updates the user can install. */
@@ -270,6 +269,8 @@ export interface InteractiveModeContext {
 	showPluginUpdatesInstalledNotification(count: number): void;
 	/** Report settings files that could not be parsed and are therefore ignored. */
 	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void;
+	/** Report a config file this session repeatedly could not WRITE, so a changed setting is not persisted. */
+	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void;
 	clearEditor(): void;
 	/** Restore keyboard focus to whatever currently owns the editor slot (the
 	 *  editor itself, or a hook selector/input/editor pushed into it while a

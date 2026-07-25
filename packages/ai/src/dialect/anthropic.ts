@@ -1,18 +1,17 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
-import type { Message, ToolCall } from "../types";
+import type { ToolCall } from "../types";
 import dialectPrompt from "./anthropic.md" with { type: "text" };
-import { buildArgShapes, buildStringArgsResolver, mintToolCallId, setToolArg, type ToolArgShape } from "./coercion";
+import { buildStringArgsResolver, mintToolCallId, setToolArg } from "./coercion";
 import {
-	escapeXmlAttr,
-	escapeXmlText,
-	renderLegacyTextTranscript,
+	legacyTextTranscriptRenderer,
+	renderFunctionResults,
+	renderInvokes,
+	renderInvokeToolCall,
 	renderXmlThinkingTags,
-	stringifyJson,
 } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
-	DialectToolResult,
 	InbandScanEvent,
 	InbandScanner,
 	InbandScannerOptions,
@@ -546,63 +545,24 @@ function couldBeTagPrefix(buffer: string, prefixes: readonly string[]): boolean 
 	return false;
 }
 
-function renderToolCall(call: ToolCall, options: DialectRenderOptions = {}): string {
-	return renderInvoke(call, buildArgShapes(options.tools).get(call.name));
-}
-
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
 	if (calls.length === 0) return "";
 	return `<function_calls>\n${renderInvokes(calls, options.tools ?? [])}\n</function_calls>`;
-}
-
-function renderToolResults(results: readonly DialectToolResult[]): string {
-	const body = results
-		.map(result => {
-			const tag = result.isError ? "error" : "result";
-			const streamTag = result.isError ? "stderr" : "stdout";
-			return `<${tag}>\n<tool_name>${escapeXmlText(result.name)}</tool_name>\n<${streamTag}>${result.text}</${streamTag}>\n</${tag}>`;
-		})
-		.join("\n");
-	return `<function_results>\n${body}\n</function_results>`;
-}
-
-function renderThinking(text: string): string {
-	return renderXmlThinkingTags(text);
-}
-
-function renderTranscript(messages: readonly Message[], options: DialectRenderOptions = {}): string {
-	return renderLegacyTextTranscript(messages, options, {
-		renderThinking,
-		renderCalls: renderAssistantToolCalls,
-		renderResults: renderToolResults,
-	});
-}
-
-function renderInvoke(call: ToolCall, shape: ToolArgShape | undefined): string {
-	let body = `<invoke name="${escapeXmlAttr(call.name)}">`;
-	for (const key in call.arguments) {
-		const value = call.arguments[key];
-		const isString = shape?.stringArgs.has(key) === true;
-		const rendered = isString && typeof value === "string" ? value : stringifyJson(value);
-		body += `<parameter name="${escapeXmlAttr(key)}">${rendered}</parameter>`;
-	}
-	return `${body}</invoke>`;
-}
-
-function renderInvokes(calls: readonly ToolCall[], tools: NonNullable<DialectRenderOptions["tools"]>): string {
-	const shapes = buildArgShapes(tools);
-	return calls.map(call => renderInvoke(call, shapes.get(call.name))).join("\n");
 }
 
 const definition: DialectDefinition = {
 	dialect: "anthropic",
 	prompt: dialectPrompt,
 	createScanner: options => new AnthropicInbandScanner(options),
-	renderToolCall,
+	renderToolCall: renderInvokeToolCall,
 	renderAssistantToolCalls,
-	renderToolResults,
-	renderThinking,
-	renderTranscript,
+	renderToolResults: renderFunctionResults,
+	renderThinking: renderXmlThinkingTags,
+	renderTranscript: legacyTextTranscriptRenderer({
+		renderThinking: renderXmlThinkingTags,
+		renderCalls: renderAssistantToolCalls,
+		renderResults: renderFunctionResults,
+	}),
 };
 
 export default definition;

@@ -403,7 +403,7 @@ The complete resolved Tier-A config that governed the run, keyed by dotted setti
   "kind": "full",
   "values": {
     "compaction.strategy": "summarize",
-    "task.maxConcurrency": 4,
+    "subagent.maxConcurrency": 4,
     "thinkingBudgets.high": 8000,
     "session.instrumentation": "ultra"
   }

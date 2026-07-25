@@ -39,8 +39,6 @@ const PAGE = join(HERE, "..", "changelog.html");
 
 /** How many recent releases to render; the rest live in the full history. */
 export const MAX_RELEASES = 14;
-/** Collapse a section's bullets behind a "show all" toggle past this many. */
-export const COLLAPSE_AFTER = 6;
 /**
  * The oh-my-pi version veyyon forked from. Every changelog entry at this version
  * and older is inherited upstream history, not a veyyon release; veyyon's own
@@ -263,20 +261,23 @@ export function compareVersions(a, b) {
 	return 0;
 }
 
+/**
+ * Render one section of a release: its tag and every bullet it has.
+ *
+ * EVERY bullet is rendered, always. Sections past six bullets used to hide the
+ * rest behind a `N more` toggle, which put the longest releases -- the ones with
+ * the most to say -- behind a click, and hid them from find-in-page and from
+ * anything reading the page without running its JavaScript. A changelog exists
+ * to be read; a release that shipped 23 fixes should show 23 fixes.
+ */
 function renderSection(sec) {
 	const { cls, label } = tagFor(sec.name);
 	const items = sec.items.map(it => `\t\t\t\t<li>${renderInline(rebrand(it))}</li>`);
-	const visible = items.slice(0, COLLAPSE_AFTER).join("\n");
-	const hidden = items.slice(COLLAPSE_AFTER);
-	const more =
-		hidden.length > 0
-			? `\n\t\t\t\t<li class="more"><details><summary>${hidden.length} more</summary><ul>\n${hidden.join("\n")}\n\t\t\t\t</ul></details></li>`
-			: "";
 	return [
 		`\t\t\t<div class="sec">`,
 		`\t\t\t\t<span class="tag ${cls}">${label}</span>`,
 		`\t\t\t\t<ul class="notes">`,
-		visible + more,
+		items.join("\n"),
 		`\t\t\t\t</ul>`,
 		`\t\t\t</div>`,
 	].join("\n");
@@ -526,7 +527,12 @@ export function buildChangelogHtml(reconciledReleases, { unreleased = null, fork
 		parts.push(renderRelease(veyyon[i], { isLatest: i === latestIdx, isUpstream: false }));
 	}
 	// Upstream (pre-fork) history is credited + linked, never replayed as cards.
-	if (upstreamCount > 0) parts.push(upstreamNote(forkPointVersion));
+	// Unconditional. The credit used to be gated on upstream entries still being
+	// present in the source changelog, so stripping that inherited history from the
+	// file silently removed the attribution from the page too. Veyyon is a fork
+	// whether or not we still carry the pre-fork entries, and the note is where a
+	// reader is told where the project came from.
+	parts.push(upstreamNote(forkPointVersion));
 	return { html: parts.join("\n"), veyyonCount: veyyon.length, upstreamCount, hasUnreleased: Boolean(unreleased), latestIdx };
 }
 
@@ -556,6 +562,73 @@ export function resolveRepo(argv = process.argv) {
 	return DEFAULT_REPO;
 }
 
+/**
+ * Published releases that predate this gate and have no CHANGELOG entry.
+ *
+ * A warning was not enough. Every build printed one, exited 0, and the gap grew
+ * until a user could install eight versions the changelog did not describe —
+ * "600 commits and it mentions almost nothing", reported 2026-07-25.
+ *
+ * A blanket "fail on any gap" would break the site deploy today over a backlog
+ * that predates the check, and a blanket "--allow" flag would be ignored the
+ * same way the warning was. So this is a RATCHET: these exact versions are
+ * grandfathered and the build still passes, but a release outside the list
+ * fails immediately. The list can only shrink. Delete a version from it as its
+ * entry lands, and the day it is empty the gate is unconditional with no code
+ * change.
+ *
+ * See CHANGELOG-28-RELEASES-UNDOCUMENTED in BACKLOG.md for the backfill.
+ */
+export const UNDOCUMENTED_RELEASE_BASELINE = Object.freeze([
+	"1.0.36",
+	"1.0.27",
+	"1.0.26",
+	"1.0.25",
+	"1.0.24",
+	"1.0.23",
+	"1.0.22",
+	"1.0.21",
+]);
+
+/**
+ * Fail on a published release the CHANGELOG does not describe, unless it is one
+ * of the grandfathered {@link UNDOCUMENTED_RELEASE_BASELINE} versions.
+ *
+ * Exported so the gate is testable without a network round trip: it takes the
+ * reconciliation's unmatched list, nothing else.
+ *
+ * Also reports a baseline entry that no longer appears — a version whose entry
+ * has landed. That is not a failure, it is the ratchet asking to be tightened,
+ * and saying so is what keeps the list from ossifying into permanent noise.
+ */
+export function reportUndocumentedReleases(unmatchedPublished, baseline = UNDOCUMENTED_RELEASE_BASELINE) {
+	const grandfathered = new Set(baseline);
+	const unexpected = unmatchedPublished.filter(r => !grandfathered.has(r.version));
+	if (unexpected.length) {
+		throw new Error(
+			`changelog: ${unexpected.length} published GitHub release(s) have no CHANGELOG entry: ` +
+				`${unexpected.map(r => `v${r.version}`).join(", ")}. ` +
+				"Add them to packages/coding-agent/CHANGELOG.md. " +
+				"A release is not documented until its entry exists; do not add it to UNDOCUMENTED_RELEASE_BASELINE, " +
+				"which is a shrinking list of pre-existing gaps and not a place to park new ones.",
+		);
+	}
+	const stillMissing = unmatchedPublished.map(r => r.version);
+	if (stillMissing.length) {
+		console.warn(
+			`changelog: ${stillMissing.length} grandfathered release(s) still undocumented: ` +
+				`${stillMissing.map(v => `v${v}`).join(", ")}. Backfill them and shrink UNDOCUMENTED_RELEASE_BASELINE.`,
+		);
+	}
+	const landed = baseline.filter(v => !stillMissing.includes(v));
+	if (landed.length) {
+		console.log(
+			`changelog: ${landed.length} baseline release(s) are now documented (${landed.map(v => `v${v}`).join(", ")}). ` +
+				"Remove them from UNDOCUMENTED_RELEASE_BASELINE.",
+		);
+	}
+}
+
 async function main() {
 	const argv = process.argv;
 	const noGithub = argv.includes("--no-github");
@@ -581,10 +654,7 @@ async function main() {
 	}
 
 	const { releases, unmatchedPublished } = reconcile(all, ghReleases);
-	if (unmatchedPublished.length) {
-		// Coherence failure between the two sources — surface it, do not hide it.
-		console.warn(`changelog: WARNING — ${unmatchedPublished.length} published GitHub release(s) have no CHANGELOG entry: ` + unmatchedPublished.map(r => `v${r.version}`).join(", ") + ". Add them to packages/coding-agent/CHANGELOG.md.");
-	}
+	reportUndocumentedReleases(unmatchedPublished);
 
 	const unreleased = parseUnreleased(md);
 	const { html, veyyonCount, upstreamCount, hasUnreleased } = buildChangelogHtml(releases, { unreleased });

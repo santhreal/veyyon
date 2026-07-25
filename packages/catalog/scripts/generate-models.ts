@@ -20,6 +20,7 @@ import { fetchCodexModels } from "../src/discovery/codex";
 import { buildGitLabDuoWorkflowFallbackModel } from "../src/discovery/gitlab-duo-workflow";
 import { isOpenAIOSeriesModelId } from "../src/identity/family";
 import { createModelManager } from "../src/model-manager";
+import { hasBillableCost } from "../src/models";
 import prevModelsJson from "../src/models.json" with { type: "json" };
 import { toModelSpec } from "../src/provider-models/bundled-references";
 import {
@@ -228,10 +229,6 @@ function applyPremiumMultiplierOverrides(models: readonly ModelSpec[]): ModelSpe
 		};
 	});
 }
-function hasBillableCost(cost: ModelSpec["cost"]): boolean {
-	return cost.input !== 0 || cost.output !== 0 || cost.cacheRead !== 0 || cost.cacheWrite !== 0;
-}
-
 function applyCodexPricingFallback(models: readonly ModelSpec[]): ModelSpec[] {
 	const openAIModels = new Map(
 		models

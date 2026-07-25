@@ -6,10 +6,11 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import { isRollbackSupported, rollbackToVersion } from "../../cli/update-cli";
 import type { KeyId } from "../../config/keybindings";
 import { formatModelSelectorValue } from "../../config/model-resolver";
-import { modalRevealEnabled } from "../components/modal-shell";
-import { getRoleInfo } from "../../config/model-roles";
+import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
+import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../config/optional-number";
 import { settings } from "../../config/settings";
 import { disableProvider, enableProvider } from "../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
@@ -57,6 +58,7 @@ import { ExtensionDashboard } from "../components/extensions";
 import { HistorySearchComponent } from "../components/history-search";
 import { LoginDialogComponent } from "../components/login-dialog";
 import { LogoutAccountSelectorComponent } from "../components/logout-account-selector";
+import { modalRevealEnabled } from "../components/modal-shell";
 import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { OAuthSelectorComponent } from "../components/oauth-selector";
@@ -221,102 +223,115 @@ export class SelectorController {
 	}
 
 	showSettingsSelector(initialItemId?: string): void {
-		Promise.all([getAvailableThemes(), resolveAvailablePersonalities({ cwd: getProjectDir() })]).then(
-			([availableThemes, availablePersonalities]) => {
-				// Fullscreen settings editor on the alternate screen: the overlay
-				// enables mouse tracking (click/hover/wheel) for its lifetime and
-				// the transcript stays untouched underneath.
-				let overlayHandle: OverlayHandle | undefined;
-				const done = () => {
-					overlayHandle?.hide();
-					this.focusActiveEditorArea();
-					this.ctx.ui.requestRender();
-				};
-				const selector = new SettingsSelectorComponent(
-					{
-						availableThinkingLevels: [...this.ctx.session.getAvailableThinkingLevels()],
-						thinkingLevel: this.ctx.session.thinkingLevel,
-						availableThemes,
-						availablePersonalities,
-						providers: [...new Set(this.ctx.session.getAvailableModels().map(model => model.provider))].sort(
-							(a, b) => a.localeCompare(b),
-						),
-						cwd: getProjectDir(),
-						model: this.ctx.session.model,
-						imageBudget: this.ctx.ui.imageBudget,
-						requestRender: () => this.ctx.ui.requestRender(),
-						modelRegistry: this.ctx.session.modelRegistry,
-						availableModels: this.ctx.session.getAvailableModels(),
-					},
-					{
-						onChange: (id, value) => this.handleSettingChange(id, value),
-						onThemePreview: async themeName => {
-							const result = await previewTheme(themeName);
-							if (result.success) {
-								this.ctx.statusLine.invalidate();
-								this.ctx.ui.invalidate();
-								this.ctx.ui.requestRender();
-							}
-						},
-						onStatusLinePreview: previewSettings => {
-							// Update status line with preview settings
-							this.ctx.statusLine.updateSettings({
-								preset: settings.get("statusLine.preset"),
-								leftSegments: settings.get("statusLine.leftSegments"),
-								rightSegments: settings.get("statusLine.rightSegments"),
-								separator: settings.get("statusLine.separator"),
-								showHookStatus: settings.get("statusLine.showHookStatus"),
-								sessionAccent: settings.get("statusLine.sessionAccent"),
-								transparent: settings.get("statusLine.transparent"),
-								compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-								...previewSettings,
-							});
-							this.ctx.ui.requestRender();
-						},
-						getStatusLinePreview: () => {
-							// Preview the quiet composer zones (what the operator actually sees),
-							// two rows: location above, capability below.
-							const width = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
-							const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(width);
-							return `${locationLine}\n${capabilityLine}`;
-						},
-						onPluginsChanged: async () => {
-							const projectPath = await resolveActiveProjectRegistryPath(this.ctx.sessionManager.getCwd());
-							clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
-							await this.ctx.refreshSlashCommandState();
-							await this.ctx.session.refreshSshTool({ activateIfAvailable: true });
-							this.ctx.ui.requestRender();
-						},
-						onCancel: () => {
-							done();
-							// Restore status line to saved settings
-							this.ctx.statusLine.updateSettings({
-								preset: settings.get("statusLine.preset"),
-								leftSegments: settings.get("statusLine.leftSegments"),
-								rightSegments: settings.get("statusLine.rightSegments"),
-								separator: settings.get("statusLine.separator"),
-								showHookStatus: settings.get("statusLine.showHookStatus"),
-								sessionAccent: settings.get("statusLine.sessionAccent"),
-								transparent: settings.get("statusLine.transparent"),
-								compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-							});
-							this.ctx.ui.requestRender();
-						},
-					},
-					initialItemId,
-					modalRevealEnabled(),
-				);
-				overlayHandle = this.ctx.ui.showOverlay(selector, {
-					anchor: "bottom-center",
-					width: "100%",
-					maxHeight: "100%",
-					margin: 0,
-					fullscreen: true,
-				});
-				this.ctx.ui.setFocus(selector);
+		Promise.all([
+			getAvailableThemes(),
+			resolveAvailablePersonalities({ cwd: getProjectDir() }),
+			// Asked BEFORE the panel is built: the rollback row is offered only on
+			// an install that can actually perform one, and a source checkout
+			// cannot. Showing it there would put a row in front of the operator
+			// whose only outcome is a refusal.
+			isRollbackSupported(),
+		]).then(([availableThemes, availablePersonalities, rollbackSupported]) => {
+			// Fullscreen settings editor on the alternate screen: the overlay
+			// enables mouse tracking (click/hover/wheel) for its lifetime and
+			// the transcript stays untouched underneath.
+			let overlayHandle: OverlayHandle | undefined;
+			const done = () => {
+				overlayHandle?.hide();
+				this.focusActiveEditorArea();
 				this.ctx.ui.requestRender();
-			},
-		);
+			};
+			const selector = new SettingsSelectorComponent(
+				{
+					availableThinkingLevels: [...this.ctx.session.getAvailableThinkingLevels()],
+					thinkingLevel: this.ctx.session.thinkingLevel,
+					availableThemes,
+					availablePersonalities,
+					providers: [...new Set(this.ctx.session.getAvailableModels().map(model => model.provider))].sort(
+						(a, b) => a.localeCompare(b),
+					),
+					cwd: getProjectDir(),
+					model: this.ctx.session.model,
+					imageBudget: this.ctx.ui.imageBudget,
+					requestRender: () => this.ctx.ui.requestRender(),
+					modelRegistry: this.ctx.session.modelRegistry,
+					availableModels: this.ctx.session.getAvailableModels(),
+				},
+				{
+					onChange: (id, value) => this.handleSettingChange(id, value),
+					onOpenUrl: url => openPath(url),
+					// Supplying this is what makes the "Roll back version" row appear.
+					// The install runs AFTER the overlay is torn down, because it
+					// prints progress and can fail with a message worth reading, none
+					// of which survives painting under a screen about to be restored.
+					onRollback: rollbackSupported ? version => rollbackToVersion(version) : undefined,
+					onError: message => this.ctx.showWarning(message),
+					onThemePreview: async themeName => {
+						const result = await previewTheme(themeName);
+						if (result.success) {
+							this.ctx.statusLine.invalidate();
+							this.ctx.ui.invalidate();
+							this.ctx.ui.requestRender();
+						}
+					},
+					onStatusLinePreview: previewSettings => {
+						// Update status line with preview settings
+						this.ctx.statusLine.updateSettings({
+							preset: settings.get("statusLine.preset"),
+							leftSegments: settings.get("statusLine.leftSegments"),
+							rightSegments: settings.get("statusLine.rightSegments"),
+							separator: settings.get("statusLine.separator"),
+							showHookStatus: settings.get("statusLine.showHookStatus"),
+							sessionAccent: settings.get("statusLine.sessionAccent"),
+							transparent: settings.get("statusLine.transparent"),
+							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
+							...previewSettings,
+						});
+						this.ctx.ui.requestRender();
+					},
+					getStatusLinePreview: () => {
+						// Preview the quiet composer zones (what the operator actually sees),
+						// two rows: location above, capability below.
+						const width = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
+						const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(width);
+						return `${locationLine}\n${capabilityLine}`;
+					},
+					onPluginsChanged: async () => {
+						const projectPath = await resolveActiveProjectRegistryPath(this.ctx.sessionManager.getCwd());
+						clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
+						await this.ctx.refreshSlashCommandState();
+						await this.ctx.session.refreshSshTool({ activateIfAvailable: true });
+						this.ctx.ui.requestRender();
+					},
+					onCancel: () => {
+						done();
+						// Restore status line to saved settings
+						this.ctx.statusLine.updateSettings({
+							preset: settings.get("statusLine.preset"),
+							leftSegments: settings.get("statusLine.leftSegments"),
+							rightSegments: settings.get("statusLine.rightSegments"),
+							separator: settings.get("statusLine.separator"),
+							showHookStatus: settings.get("statusLine.showHookStatus"),
+							sessionAccent: settings.get("statusLine.sessionAccent"),
+							transparent: settings.get("statusLine.transparent"),
+							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
+						});
+						this.ctx.ui.requestRender();
+					},
+				},
+				initialItemId,
+				modalRevealEnabled(),
+			);
+			overlayHandle = this.ctx.ui.showOverlay(selector, {
+				anchor: "bottom-center",
+				width: "100%",
+				maxHeight: "100%",
+				margin: 0,
+				fullscreen: true,
+			});
+			this.ctx.ui.setFocus(selector);
+			this.ctx.ui.requestRender();
+		});
 	}
 
 	showAdvisorConfigure(): void {
@@ -414,7 +429,7 @@ export class SelectorController {
 	async showAgentsDashboard(): Promise<void> {
 		const activeModel = this.ctx.session.model;
 		const activeModelPattern = activeModel ? `${activeModel.provider}/${activeModel.id}` : undefined;
-		const defaultModelPattern = this.ctx.settings.getModelRole("default");
+		const defaultModelPattern = this.ctx.settings.getModelRole(DEFAULT_MODEL_SLOT);
 		const dashboard = await AgentDashboard.create(
 			getProjectDir(),
 			this.ctx.settings,
@@ -589,34 +604,19 @@ export class SelectorController {
 				});
 				break;
 			}
-			case "temperature": {
-				const temp = typeof value === "number" ? value : Number(value);
-				this.ctx.session.agent.temperature = temp >= 0 ? temp : undefined;
-				break;
-			}
-			case "topP": {
-				const topP = typeof value === "number" ? value : Number(value);
-				this.ctx.session.agent.topP = topP >= 0 ? topP : undefined;
-				break;
-			}
-			case "topK": {
-				const topK = typeof value === "number" ? value : Number(value);
-				this.ctx.session.agent.topK = topK >= 0 ? topK : undefined;
-				break;
-			}
-			case "minP": {
-				const minP = typeof value === "number" ? value : Number(value);
-				this.ctx.session.agent.minP = minP >= 0 ? minP : undefined;
-				break;
-			}
-			case "presencePenalty": {
-				const presencePenalty = typeof value === "number" ? value : Number(value);
-				this.ctx.session.agent.presencePenalty = presencePenalty >= 0 ? presencePenalty : undefined;
-				break;
-			}
+			// Every sampling knob applies the same way: read "is this unset" through
+			// the ONE owner and hand the rest to the agent. Each of these used to be
+			// its own case testing `value >= 0`, which discarded every NEGATIVE value
+			// along with the sentinel — and `presencePenalty` and `repetitionPenalty`
+			// accept negatives, so configuring one did nothing. The same test was
+			// also written out in sdk.ts, where the bug had to be fixed twice.
+			case "temperature":
+			case "topP":
+			case "topK":
+			case "minP":
+			case "presencePenalty":
 			case "repetitionPenalty": {
-				const repetitionPenalty = typeof value === "number" ? value : Number(value);
-				this.ctx.session.agent.repetitionPenalty = repetitionPenalty >= 0 ? repetitionPenalty : undefined;
+				applySamplingKnob(this.ctx.session.agent, id, optionalNumber(toNumberOrUndefined(value)));
 				break;
 			}
 			case "git.enabled":
@@ -731,7 +731,7 @@ export class SelectorController {
 							await this.ctx.session.setModelTemporary(model, roleThinkingLevel);
 							this.ctx.showStatus(`Session-only model: ${selector}`);
 						} else {
-							await this.ctx.session.setModel(model, "interactive", {
+							await this.ctx.session.setModel(model, DEFAULT_MODEL_SLOT, {
 								selector,
 								thinkingLevel: roleThinkingLevel === AUTO_THINKING ? ThinkingLevel.Inherit : roleThinkingLevel,
 								persist: true,
@@ -801,9 +801,10 @@ export class SelectorController {
 					const concreteThinking = isAuto || thinkingLevel === undefined ? undefined : thinkingLevel;
 					const selectorValue = selector ?? `${model.provider}/${model.id}`;
 					try {
-						if (role === "default" || role === "interactive") {
-							// Interactive model is not a role slot — persist as session/interactive only.
-							const { switched } = await this.ctx.session.setModel(model, "interactive", {
+						if (isDefaultModelSlot(role)) {
+							// Not a named role slot: this is the model you are working with, stored
+							// in the default slot that startup restores from.
+							const { switched } = await this.ctx.session.setModel(model, DEFAULT_MODEL_SLOT, {
 								selector,
 								thinkingLevel: isAuto ? ThinkingLevel.Inherit : concreteThinking,
 								persist: true,
@@ -956,15 +957,19 @@ export class SelectorController {
 			overlayHandle?.hide();
 			this.ctx.ui.requestRender();
 		};
-		const selector = new CopySelectorComponent(targets, {
-			onPick: target => {
-				done();
-				if (target.content === undefined) return;
-				void copyToClipboard(target.content);
-				this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
+		const selector = new CopySelectorComponent(
+			targets,
+			{
+				onPick: target => {
+					done();
+					if (target.content === undefined) return;
+					void copyToClipboard(target.content);
+					this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
+				},
+				onCancel: done,
 			},
-			onCancel: done,
-		}, modalRevealEnabled());
+			modalRevealEnabled(),
+		);
 
 		overlayHandle = this.ctx.ui.showOverlay(selector, {
 			anchor: "top-left",
@@ -1425,7 +1430,7 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
-			
+
 				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };

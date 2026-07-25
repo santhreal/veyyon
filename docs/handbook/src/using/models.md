@@ -96,8 +96,8 @@ $ veyyon --model openai/gpt-5
 | Piece | Purpose | Config |
 | --- | --- | --- |
 | **Interactive model** | Main conversation | `/model`, `--model`; persisted as `modelRoles.default` |
-| **Roles** | Named assignments (`smol`, `slow`, `plan`, `task`, `advisor`, …) | `modelRoles` / settings → Model → Roles |
-| **Subagent override** | Task subagents | `subagent.model` (overrides `modelRoles.task` when set; else inherit interactive) |
+| **Roles** | Named assignments (`smol`, `slow`, `plan`, `advisor`, …) | `modelRoles` / settings → Model → Roles |
+| **Subagent model** | Spawned subagents | `subagent.model` (or a per-agent model in `subagent.agents`; unset inherits interactive) |
 | **Compaction override** | Compaction / handoff | `compaction.model` (else inherit interactive) |
 
 ```yaml

@@ -229,6 +229,9 @@ function normalizeExtractedUrl(candidate: string): string | null {
 	try {
 		return new URL(url).toString();
 	} catch {
+		// A citation URL trimmed out of model prose. The trailing-punctuation loop above strips what it can,
+		// and what is left either parses or was never a URL, so the throw is the answer: no citation rather
+		// than a guessed one, since the URL is shown to the reader as a source.
 		return null;
 	}
 }

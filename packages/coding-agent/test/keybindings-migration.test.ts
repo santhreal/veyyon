@@ -445,6 +445,62 @@ describe("KeybindingsManager.create", () => {
  * overwrite the user's real bindings with defaults (the same data-loss class the migration tests
  * above guard). An empty directory must report false.
  */
+/**
+ * `keybindings.yml` is a file the docs tell people to write by hand, and the migration
+ * REWRITES it when it finds an old binding name. That rewrite used to re-serialize the config
+ * object, which discarded the comments explaining their bindings, their blank-line grouping
+ * and their key order — a silent edit to a file nobody asked veyyon to reformat. The write
+ * edits the file in place now.
+ */
+describe("a migrating write-back keeps what the user wrote", () => {
+	beforeEach(() => {
+		setKeybindings(KeybindingsManager.inMemory());
+	});
+
+	afterEach(() => {
+		resetKeybindingsForTests();
+	});
+
+	it("keeps comments and blank lines while renaming a legacy binding", async () => {
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-preserve-"));
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+		await Bun.write(
+			ymlPath,
+			["# my bindings", "interrupt: ctrl+x", "", "# leave this one alone", "fork: ctrl+f", ""].join("\n"),
+		);
+
+		try {
+			KeybindingsManager.create(agentDir);
+
+			// The BYTES, not the values: both keys are renamed and both keep the position,
+			// the comment and the blank-line grouping the user gave them.
+			expect(await Bun.file(ymlPath).text()).toBe(
+				"# my bindings\napp.interrupt: ctrl+x\n\n# leave this one alone\napp.session.fork: ctrl+f\n",
+			);
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+
+	it("still parses to the migrated config after an edit-in-place write", async () => {
+		// Preserving formatting is worthless if the bindings stop loading.
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-preserve-parse-"));
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+		await Bun.write(ymlPath, ["# mine", "interrupt: ctrl+x", "clear: ctrl+l", ""].join("\n"));
+
+		try {
+			KeybindingsManager.create(agentDir);
+
+			expect(YAML.parse(await Bun.file(ymlPath).text())).toEqual({
+				"app.interrupt": "ctrl+x",
+				"app.clear": "ctrl+l",
+			});
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
+});
+
 describe("profileHasKeybindingsFile", () => {
 	it("returns false for a directory with no keybindings file", async () => {
 		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-kb-none-"));

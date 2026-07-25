@@ -10,7 +10,8 @@ import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import astGrepDescription from "../prompts/tools/ast-grep.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
+import { delegationEnabled } from "../task/subagent-settings";
 import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
@@ -190,7 +191,11 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 	readonly loadMode = "discoverable";
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(astGrepDescription);
+		// See GrepTool: the delegation bullet is dropped when this session has no
+		// task tool to delegate to.
+		this.description = prompt.render(PROMPTS["tools/ast-grep"].text, {
+			canDelegate: delegationEnabled(session.settings),
+		});
 	}
 
 	async execute(

@@ -512,9 +512,25 @@ function runTimeoutParamDesc(c: CorpusCase): void {
 	).toBe(exp.text);
 }
 
+/**
+ * `noticeContains` exists for the retired mode names (`soft`, `remote`): the
+ * notice is a full sentence naming the replacement, and pinning it byte-for-byte
+ * in the corpus would copy user-facing prose into a data file that then has to be
+ * edited every time the wording is improved. The substring is the contract — the
+ * user is told the name is retired — and the rest of the parse is still compared
+ * exactly, so a stray extra field cannot slip through.
+ */
 function runParseCompactArgs(c: CorpusCase): void {
 	const input = c.input as { args: string };
-	expect(parseCompactArgs(input.args) as unknown).toEqual(c.expect);
+	const { noticeContains, ...expected } = c.expect as Record<string, unknown> & { noticeContains?: string };
+	const parsed = parseCompactArgs(input.args) as Record<string, unknown>;
+	if (noticeContains === undefined) {
+		expect(parsed as unknown).toEqual(expected);
+		return;
+	}
+	const { notice, ...rest } = parsed;
+	expect(String(notice)).toContain(noticeContains);
+	expect(rest as unknown).toEqual(expected);
 }
 
 function runFindCompactMode(c: CorpusCase): void {

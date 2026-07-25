@@ -10,6 +10,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 const repoRoot = path.resolve(import.meta.dir, "..", "..", "..", "..");
@@ -71,10 +72,20 @@ describe("__complete settings", () => {
 	it("carries the description the settings panel shows", async () => {
 		// The tooltip a shell displays should say what the UI says; two wordings
 		// for one setting is two places to keep right.
+		//
+		// Read from the schema rather than pinned as a literal, because a literal
+		// here IS the second place. It made this suite fail the moment the wording
+		// was improved, which teaches the wrong lesson: that editing a description
+		// breaks a test, rather than that the two must agree. Now the assertion is
+		// the agreement itself, and it can never go stale.
+		const expected = SETTINGS_SCHEMA["startup.autoUpdate"].ui?.description;
+		expect(expected, "startup.autoUpdate should carry a UI description to complete with").toBeTruthy();
+
 		const { stdout } = await complete("settings", "--", "startup.autoUpdate");
 		const [key, description] = stdout.trim().split("\t");
+
 		expect(key).toBe("startup.autoUpdate");
-		expect(description).toBe("Install a newer version in the background; it takes effect on the next launch");
+		expect(description).toBe(expected);
 	});
 
 	it("emits exactly one line per candidate, with no stray output", async () => {

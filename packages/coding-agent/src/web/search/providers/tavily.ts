@@ -14,6 +14,9 @@ import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
+// Deliberately below the shared SEARCH_DEFAULT_NUM_RESULTS: five is Tavily's own
+// upstream default for `max_results`, so an unset limit behaves the same whether the
+// request goes through this provider or straight to their API.
 const DEFAULT_NUM_RESULTS = 5;
 const MAX_NUM_RESULTS = 20;
 

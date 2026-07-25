@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { type } from "arktype";
-import retainDescription from "../prompts/tools/retain.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from ".";
 
 const memoryRetainSchema = type({
@@ -18,7 +18,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 	readonly name = "retain";
 	readonly approval = "read" as const;
 	readonly label = "Retain";
-	readonly description = retainDescription;
+	readonly description = PROMPTS["tools/retain"].text;
 	readonly parameters = memoryRetainSchema;
 	readonly strict = true;
 	readonly loadMode = "discoverable";

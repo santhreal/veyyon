@@ -96,6 +96,50 @@ export function pickWeightedTip(tips: readonly string[], r: number): string {
 	return tips[tips.length - 1] ?? "";
 }
 
+/**
+ * A tip this launch must show instead of a random one.
+ *
+ * The post-update notice used to be its own transcript block above the welcome
+ * card: a second piece of chrome saying a small thing, in a place reserved for
+ * conversation. It is a tip in every respect — one line, once, about something
+ * you can do next — so it belongs in the slot that already exists for exactly
+ * that, and the card stays one card.
+ *
+ * "Forced" rather than "added to the corpus" because the launch after an update
+ * is the ONLY launch where this is worth the slot. A weighted entry would show
+ * it at random for weeks and miss the launch it was written for.
+ */
+let forcedTip: string | undefined;
+
+/**
+ * Make the next welcome render show `tip` in place of a random one.
+ *
+ * One-shot: {@link WelcomeComponent.tip} clears it after reading, so a second
+ * welcome in the same process (`/welcome`, a resumed session) gets the ordinary
+ * rotation rather than repeating a stale announcement.
+ */
+export function setLaunchTip(tip: string): void {
+	forcedTip = tip;
+}
+
+/** Drop a pending forced tip. Exists so a test cannot leak one into the next. */
+export function clearLaunchTip(): void {
+	forcedTip = undefined;
+}
+
+/**
+ * The one-line hint shown on the first launch after an update.
+ *
+ * It has to carry three things and stay one line: WHAT happened (the version,
+ * so the number in a bug report is the one you are running), WHERE the notes
+ * are, and — the part that was missing entirely — that this is CONTROLLABLE.
+ * Auto-update has been switchable in `/settings` all along and nothing ever
+ * said so, which is why updates felt like something done to you.
+ */
+export function updateInstalledTip(version: string): string {
+	return `Updated to ${APP_NAME} ${version} · /changelog · roll back or turn auto-update off in /settings`;
+}
+
 /** Static silver-bright tag — no rainbow, no motion (brand: restrained chrome). */
 function renderNewTag(): string {
 	return `\x1b[1m${silverEscape(1)}${NEW_TAG_TEXT}\x1b[0m`;
@@ -179,6 +223,12 @@ export class WelcomeComponent implements Component {
 	) {}
 
 	get tip(): string | undefined {
+		if (this.#selectedTip === undefined && forcedTip !== undefined) {
+			// Read once and clear, so the announcement belongs to this launch and
+			// not to every welcome the process renders afterwards.
+			this.#selectedTip = forcedTip;
+			forcedTip = undefined;
+		}
 		if (this.#selectedTip === undefined) {
 			if (theme.getSymbolPreset() === "unicode" && Math.random() < 0.1) {
 				this.#selectedTip = "Please use nerdfont for the best symbol rendering.";
@@ -468,8 +518,32 @@ export const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
 	[230, 233, 238], // #E6E9EE — silver bright (website --silver-hi / titanium `silverBright`)
 ];
 
+/**
+ * The same three stops for a light ground, taken from the light theme's own
+ * silver vars (`silverDim`, `silver`, `silverStrong` in `light.json`).
+ *
+ * The dark stops above are the brand silvers, and on a white ground the middle
+ * one sits a few percent off the background: the wordmark, the largest and most
+ * prominent thing on the launch screen, was very nearly invisible on every light
+ * theme. Silver is a value, not a hue, so the light ground needs the family
+ * inverted rather than a different colour — dim, brand, strong, running from
+ * least to most contrast exactly as the dark ramp does.
+ *
+ * `wordmark-light-contrast.test.ts` pins these to `light.json` so the two cannot
+ * drift apart, the same way the brand-conformance tests pin the dark stops to
+ * `site.css`.
+ */
+export const LIGHT_SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
+	[124, 131, 142], // #7C838E — light `silverDim`
+	[92, 100, 112], // #5C6470 — light `silver`
+	[52, 59, 69], // #343B45 — light `silverStrong`
+];
+
 /** 256-color approx for the three silver stops. */
 const SILVER_RAMP_256 = [243, 250, 255];
+
+/** 256-color approx for the light-ground stops, running dark as intensity rises. */
+const LIGHT_SILVER_RAMP_256 = [246, 242, 238];
 
 /**
  * Foreground SGR for a silver intensity in [0, 1] (0 = silver-dark, 0.5 = brand, 1 = bright).
@@ -477,19 +551,23 @@ const SILVER_RAMP_256 = [243, 250, 255];
  */
 export function silverEscape(intensity: number): string {
 	const t = clamp01(intensity);
+	// Which ground the wordmark is painted on decides which end of the silver
+	// family reads as "bright". Same ramp shape, opposite direction.
+	const stops = theme.isLight ? LIGHT_SILVER_STOPS : SILVER_STOPS;
+	const ramp256 = theme.isLight ? LIGHT_SILVER_RAMP_256 : SILVER_RAMP_256;
 	if (TERMINAL.trueColor) {
-		const seg = t * (SILVER_STOPS.length - 1);
-		const i = Math.min(SILVER_STOPS.length - 2, Math.floor(seg));
+		const seg = t * (stops.length - 1);
+		const i = Math.min(stops.length - 2, Math.floor(seg));
 		const f = seg - i;
-		const a = SILVER_STOPS[i];
-		const b = SILVER_STOPS[i + 1];
+		const a = stops[i];
+		const b = stops[i + 1];
 		const r = Math.round(a[0] + (b[0] - a[0]) * f);
 		const g = Math.round(a[1] + (b[1] - a[1]) * f);
 		const bl = Math.round(a[2] + (b[2] - a[2]) * f);
 		return `\x1b[38;2;${r};${g};${bl}m`;
 	}
-	const idx = Math.min(SILVER_RAMP_256.length - 1, Math.max(0, Math.round(t * (SILVER_RAMP_256.length - 1))));
-	return `\x1b[38;5;${SILVER_RAMP_256[idx]}m`;
+	const idx = Math.min(ramp256.length - 1, Math.max(0, Math.round(t * (ramp256.length - 1))));
+	return `\x1b[38;5;${ramp256[idx]}m`;
 }
 
 export interface ShineConfig {

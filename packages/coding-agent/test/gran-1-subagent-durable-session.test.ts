@@ -33,7 +33,8 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { getAgentDir, getSessionsDir, Snowflake, setAgentDir } from "@veyyon/utils";
+import { getSessionsDir, Snowflake, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 function model(provider: string, id: string): Model<Api> {
 	return buildModel({
@@ -95,18 +96,18 @@ function registry() {
 }
 
 describe("GRAN-1: subagent always persists a durable session file", () => {
-	let originalAgentDir: string;
+	let dirOverrides: DirOverridesSnapshot;
 	let home: string;
 
 	beforeEach(() => {
-		originalAgentDir = getAgentDir();
+		dirOverrides = captureDirOverrides();
 		home = fs.mkdtempSync(path.join(os.tmpdir(), "gran1-home-"));
 		setAgentDir(home);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-		setAgentDir(originalAgentDir);
+		restoreDirOverrides(dirOverrides);
 		fs.rmSync(home, { recursive: true, force: true });
 	});
 

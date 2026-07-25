@@ -73,6 +73,10 @@ async function isMastodonInstance(hostname: string, timeout: number, signal?: Ab
 		// Mastodon instances return uri/domain field
 		return !!(data.uri || data.domain || data.title);
 	} catch {
+		// This is a probe against an ARBITRARY host, so "not a Mastodon instance" arrives as a refused
+		// connection, a timeout, an HTML error page that will not parse as JSON, or a 404 -- every one of
+		// which is the answer rather than a swallowed failure. The caller falls back to fetching the page
+		// normally, which is what a non-Mastodon host deserves.
 		return false;
 	}
 }

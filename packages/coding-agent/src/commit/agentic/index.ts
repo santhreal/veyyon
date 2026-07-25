@@ -9,12 +9,12 @@ import { resolvePrimaryModel, resolveSmolModel } from "../../commit/model-select
 import type { CommitCommandArgs, ConventionalAnalysis, NumstatEntry } from "../../commit/types";
 import { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
+import { PROMPTS } from "../../prompts/registry";
 import { discoverAuthStorage, discoverContextFiles } from "../../sdk";
 import * as git from "../../utils/git";
 import { type ExistingChangelogEntries, runCommitAgentSession } from "./agent";
 import { generateFallbackProposal } from "./fallback";
 import { assignLockFilesToPlan } from "./lock-files";
-import splitConfirmPrompt from "./prompts/split-confirm.md" with { type: "text" };
 import type { CommitAgentState, CommitProposal, HunkSelector, SplitCommitPlan } from "./state";
 import { computeDependencyOrder } from "./topo-sort";
 import { detectTrivialChange } from "./trivial";
@@ -339,7 +339,9 @@ async function confirmSplitCommitPlan(plan: SplitCommitPlan): Promise<boolean> {
 	}
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	try {
-		const splitConfirmQuestion = prompt.render(splitConfirmPrompt, { count: plan.commits.length });
+		const splitConfirmQuestion = prompt.render(PROMPTS["commit-agentic/split-confirm"].text, {
+			count: plan.commits.length,
+		});
 		const answer = await rl.question(splitConfirmQuestion);
 		return ["y", "yes"].includes(answer.trim().toLowerCase());
 	} finally {

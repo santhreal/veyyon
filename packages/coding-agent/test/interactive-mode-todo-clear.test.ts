@@ -277,10 +277,16 @@ describe("InteractiveMode todo HUD anchor", () => {
 			.render(80)
 			.flatMap(line => line.split("\n"))
 			.map(line => Bun.stripANSI(line));
-		// Active stage + four following stages render; the rest are dropped.
-		expect(lines.some(line => line.includes("II. Two"))).toBe(true);
-		expect(lines.some(line => line.includes("V. Five"))).toBe(true);
-		expect(lines.some(line => line.includes("Six"))).toBe(false);
+		// Which stages are in the window, and in which order. Sampling "II. Two" and
+		// "V. Five" left everything between them unstated: a window that dropped
+		// Three and Four, or listed the five in the wrong order, or repeated one of
+		// them, satisfied both checks. The cap is a rule about WHICH stages survive,
+		// so the surviving list is what gets asserted.
+		const stageHeadings = lines.flatMap(
+			line => line.match(/\b(?:[IVX]+\. )?(?:Discovery|Two|Three|Four|Five|Six|Seven)\b(?! task)/) ?? [],
+		);
+
+		expect(stageHeadings).toEqual(["I. Discovery", "II. Two", "III. Three", "IV. Four", "V. Five"]);
 		// No overflow row — the header's "1/7" implies the hidden stages.
 		expect(lines.some(line => line.includes("more"))).toBe(false);
 		const root = lines.find(line => line.includes("Todos"));

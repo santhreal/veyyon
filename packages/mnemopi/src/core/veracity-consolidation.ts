@@ -105,6 +105,8 @@ function parseSources(raw: string | null): string[] {
 		}
 		return out;
 	} catch {
+		// Same as the episodic tag reader: an unparseable stored list yields no entries, matching what a row
+		// with none gives, and consolidation proceeds with the memory rather than dropping it.
 		return [];
 	}
 }

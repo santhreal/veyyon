@@ -26,11 +26,11 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
 	withCompact,
-	ModalRevealDriver,
 } from "./modal-shell";
 
 export interface MoveOverlayResult {
@@ -66,6 +66,10 @@ function readDirCached(dir: string): fs.Dirent[] {
 		dirCache.set(dir, { time: now, entries });
 		return entries;
 	} catch {
+		// An unreadable directory browses as an empty one. Deliberately silent: this runs on every
+		// keystroke of the path input, where most failures are ENOENT on a half-typed path, and the
+		// overlay shows the path it is listing so an empty result is visible rather than hidden. The
+		// failure is NOT cached, so the next keystroke retries instead of remembering the emptiness.
 		return [];
 	}
 }
@@ -117,6 +121,8 @@ export function resolveExistingDirectory(input: string, cwd: string): string | n
 	try {
 		return fs.statSync(resolved).isDirectory() ? resolved : null;
 	} catch {
+		// A path we cannot stat is not a directory we can move to, which is the same answer a file gives.
+		// The move itself reports what went wrong with the path the user confirmed.
 		return null;
 	}
 }

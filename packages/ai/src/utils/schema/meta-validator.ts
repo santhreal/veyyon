@@ -142,6 +142,9 @@ function checkNode(node: Json, epoch: number): boolean {
 		try {
 			new RegExp(node.pattern);
 		} catch {
+			// A `pattern` that is not a usable regex makes the schema invalid, which is the question this
+			// function answers. False is the verdict, not a swallowed error, and the caller reports the schema
+			// as invalid.
 			return false;
 		}
 	}
@@ -159,6 +162,9 @@ export function isValidJsonSchema(schema: unknown): boolean {
 	try {
 		return checkNode(schema, epochNext());
 	} catch {
+		// Fail CLOSED: a schema whose validation blew up (recursion depth, a hostile shape) is treated as
+		// invalid rather than accepted, because this gate decides what gets sent to a provider as a tool
+		// schema. "Could not prove it valid" must never read as "valid".
 		return false;
 	}
 }

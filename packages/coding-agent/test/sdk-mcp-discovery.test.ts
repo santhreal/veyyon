@@ -159,13 +159,13 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 		expect(searchTool?.description).toContain("Total discoverable tools available:");
 	});
 
-	it("exposes task under tools.discoveryMode all when task.eager is preferred", async () => {
+	it("exposes task under tools.discoveryMode all when delegation is preferred", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			modelRegistry,
 			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "tools.discoveryMode": "all", "task.eager": "preferred" }),
+			settings: Settings.isolated({ "tools.discoveryMode": "all", "subagent.delegation": "preferred" }),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,
 			skills: [],
@@ -180,7 +180,7 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 		await session.dispose();
 	});
 
-	it("hides task under tools.discoveryMode all when task.eager is default", async () => {
+	it("hides task under tools.discoveryMode all when delegation is merely allowed", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
 			agentDir: tempDir,

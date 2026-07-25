@@ -131,6 +131,9 @@ function parseJsonStringArray(value: string | null): string[] {
 		}
 		return strings;
 	} catch {
+		// A stored tag list that is not JSON has no tags to return, which is the same empty list a row with no
+		// tags gives and the same one a non-array value gives above. Reading it cannot repair it, and the
+		// caller treats the memory as untagged rather than skipping the memory.
 		return [];
 	}
 }

@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isRecord, logger, WhichCachePolicy } from "@veyyon/utils";
-import { YAML } from "bun";
+import { isRecord, logger, parseJsonOrYamlByExtension, WhichCachePolicy } from "@veyyon/utils";
 import { getConfigDirPaths } from "../config";
 import { getPreloadedPluginRoots } from "../discovery/helpers";
 import { hasRootMarkers, resolveCommand } from "../lsp/config";
@@ -17,14 +16,6 @@ interface NormalizedConfig {
 
 interface ConfigSource {
 	read(): NormalizedConfig | null;
-}
-
-function parseConfigContent(content: string, filePath: string): unknown {
-	const extension = path.extname(filePath).toLowerCase();
-	if (extension === ".yaml" || extension === ".yml") {
-		return YAML.parse(content) as unknown;
-	}
-	return JSON.parse(content) as unknown;
 }
 
 function normalizeConfig(value: unknown): NormalizedConfig | null {
@@ -62,7 +53,7 @@ function normalizeAdapterConfig(config: unknown): DapAdapterConfig | null {
 function readConfigFile(filePath: string): NormalizedConfig | null {
 	try {
 		const content = fs.readFileSync(filePath, "utf-8");
-		return normalizeConfig(parseConfigContent(content, filePath));
+		return normalizeConfig(parseJsonOrYamlByExtension(content, filePath));
 	} catch {
 		return null;
 	}

@@ -6,7 +6,7 @@
  * from the same cursor forever.
  */
 import { describe, expect, it, vi } from "bun:test";
-import type { HostFrame, SessionEntry } from "@veyyon/wire";
+import { type HostFrame, type SessionEntry, TRANSCRIPT_TIMEOUT_MS } from "@veyyon/wire";
 import { GuestClient } from "../src/lib/client";
 import { encodeBase64Url } from "../src/lib/link";
 import { decideTranscriptPoll } from "../src/lib/transcript-poll";
@@ -49,7 +49,7 @@ describe("GuestClient.fetchTranscript", () => {
 		try {
 			const client = new GuestClient(LINK, "tester");
 			const promise = client.fetchTranscript("agent-1", 0);
-			vi.advanceTimersByTime(10_000);
+			vi.advanceTimersByTime(TRANSCRIPT_TIMEOUT_MS);
 			expect(await promise).toBeNull();
 		} finally {
 			vi.useRealTimers();
@@ -68,7 +68,7 @@ describe("GuestClient.fetchTranscript", () => {
 		try {
 			const client = new GuestClient(LINK, "tester");
 			const first = client.fetchTranscript("agent-1", 0);
-			vi.advanceTimersByTime(10_000);
+			vi.advanceTimersByTime(TRANSCRIPT_TIMEOUT_MS);
 			expect(await first).toBeNull();
 			// Late frame for the expired reqId must not throw or leak.
 			client.applyFrameForTest(transcriptFrame(1, "late", 4));
@@ -107,6 +107,7 @@ describe("decideTranscriptPoll", () => {
 			newSize: text.length,
 			carry: '{"type":"mes',
 			fresh: [entry],
+			skipped: [],
 		});
 	});
 
@@ -123,7 +124,58 @@ describe("decideTranscriptPoll", () => {
 			newSize: 100,
 			carry: "",
 			fresh: [entry],
+			skipped: [],
 		});
+	});
+
+	/**
+	 * A corrupt transcript row must leave a trace. The parser used to drop
+	 * unparseable lines silently, so the drawer rendered a transcript with a hole
+	 * in it that was indistinguishable from the agent having said nothing there.
+	 * The decision now carries every drop out, with the offset of the record
+	 * inside the polled buffer and the text that could not be parsed.
+	 */
+	it("reports an unparseable row instead of dropping it silently", () => {
+		const entry = messageEntry("m3", "after the bad row", 3);
+		const text = `{"type":"message"\n${JSON.stringify(entry)}\n`;
+		const decision = decideTranscriptPoll({ kind: "rows", text, newSize: text.length }, "");
+
+		expect(decision).toEqual({
+			action: "advance",
+			newSize: text.length,
+			carry: "",
+			// The readable row still arrives: one bad line does not discard the poll.
+			fresh: [entry],
+			skipped: [{ offset: 0, snippet: '{"type":"message"' }],
+		});
+	});
+
+	/** Offsets are relative to `carry + text`, so a row split across two polls is
+	 *  reported at its own start (0 here) rather than at the chunk boundary. */
+	it("reports a bad row that was completed from the carry at the record's own offset", () => {
+		const decision = decideTranscriptPoll({ kind: "rows", text: 'e":"messag\n', newSize: 40 }, '{"typ');
+
+		expect(decision).toEqual({
+			action: "advance",
+			newSize: 40,
+			carry: "",
+			fresh: [],
+			skipped: [{ offset: 0, snippet: '{"type":"messag' }],
+		});
+	});
+
+	/** Every bad row is reported, in file order, with its own offset — one skip
+	 *  per record, not one per poll. */
+	it("reports every bad row in order with per-record offsets", () => {
+		const text = "nope\n{}\nalso-nope\n";
+		const decision = decideTranscriptPoll({ kind: "rows", text, newSize: text.length }, "");
+
+		expect(decision.action).toBe("advance");
+		if (decision.action !== "advance") throw new Error("expected advance");
+		expect(decision.skipped).toEqual([
+			{ offset: 0, snippet: "nope" },
+			{ offset: 8, snippet: "also-nope" },
+		]);
 	});
 
 	it("surfaces the error after rows were already read (rows then error sequence)", () => {

@@ -99,6 +99,11 @@ export async function fetchCursorUsableModels(
 		const references = createCursorReferenceMap();
 		return normalizeCursorModels(parsedDecoded.models, options.baseUrl, references);
 	} catch {
+		// Null means this provider produced no catalog, which the caller records as an unavailable provider.
+		// The reason is not carried yet: only `fetchOpenAICompatibleModels` takes an `onFailure` channel so far
+		// (see the README section on failures travelling back), and threading it through the remaining discovery
+		// readers is a tracked task. Nothing here is swallowed twice over: `[]` is never returned for a failure,
+		// so the caller can still tell 'no catalog' from 'a catalog with no models'.
 		return null;
 	}
 }
@@ -205,6 +210,11 @@ function decodeGetUsableModelsResponse(payload: Uint8Array) {
 		try {
 			return fromBinary(GetUsableModelsResponseSchema, framedBody);
 		} catch {
+			// Null means this provider produced no catalog, which the caller records as an unavailable provider.
+			// The reason is not carried yet: only `fetchOpenAICompatibleModels` takes an `onFailure` channel so far
+			// (see the README section on failures travelling back), and threading it through the remaining discovery
+			// readers is a tracked task. Nothing here is swallowed twice over: `[]` is never returned for a failure,
+			// so the caller can still tell 'no catalog' from 'a catalog with no models'.
 			return null;
 		}
 	}
@@ -212,6 +222,11 @@ function decodeGetUsableModelsResponse(payload: Uint8Array) {
 	try {
 		return fromBinary(GetUsableModelsResponseSchema, payload);
 	} catch {
+		// Null means this provider produced no catalog, which the caller records as an unavailable provider.
+		// The reason is not carried yet: only `fetchOpenAICompatibleModels` takes an `onFailure` channel so far
+		// (see the README section on failures travelling back), and threading it through the remaining discovery
+		// readers is a tracked task. Nothing here is swallowed twice over: `[]` is never returned for a failure,
+		// so the caller can still tell 'no catalog' from 'a catalog with no models'.
 		return null;
 	}
 }

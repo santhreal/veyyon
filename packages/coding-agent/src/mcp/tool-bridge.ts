@@ -7,7 +7,7 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { normalizeSchemaForMCP } from "@veyyon/ai/utils/schema";
-import { errorMessage, isRecord, untilAborted } from "@veyyon/utils";
+import { errorMessage, isAbortError, isRecord, untilAborted } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { SourceMeta } from "../capability/types";
 import type {
@@ -20,7 +20,7 @@ import { resolveLocalUrlToFile } from "../internal-urls/local-protocol";
 import type { Theme } from "../modes/theme/theme";
 import type { OutputMeta } from "../tools/output-meta";
 import { normalizeLocalScheme } from "../tools/path-utils";
-import { ToolAbortError, throwIfAborted } from "../tools/tool-errors";
+import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors";
 import { callTool } from "./client";
 import { renderMCPCall, renderMCPResult } from "./render";
 import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "./types";
@@ -246,11 +246,25 @@ function buildErrorResult(
 	};
 }
 
-/** Re-throw abort-related errors so they bypass error-result handling. */
-function rethrowIfAborted(error: unknown, signal?: AbortSignal): void {
+/**
+ * Re-throw abort-related errors so they bypass error-result handling.
+ *
+ * The guard itself was always right: it fires before every error-to-result
+ * conversion, which is why a cancelled MCP call was never quietly turned into a
+ * tool result. What it used to lose was WHY. Two of its three branches minted a
+ * bare `new ToolAbortError()`, so an MCP call stopped by an expired deadline, by
+ * a parent tool cancelling a child, or by the call's own timeout all reached the
+ * operator as the generic "Operation aborted", and the `TimeoutError` identity
+ * that distinguishes a deadline from an Escape was dropped with the message.
+ *
+ * Both branches now go through `toolAbort` / `throwIfAborted`, the same owners
+ * the tools layer uses, so the reason survives in the message and on `cause`.
+ * `what` names the operation for the case where nothing else says anything.
+ */
+function rethrowIfAborted(error: unknown, signal?: AbortSignal, what = "MCP call"): void {
 	if (error instanceof ToolAbortError) throw error;
-	if (error instanceof Error && error.name === "AbortError") throw new ToolAbortError();
-	if (signal?.aborted) throw new ToolAbortError();
+	if (isAbortError(error)) throw toolAbort(error, what);
+	throwIfAborted(signal, what);
 }
 
 async function reconnectWithAbort(reconnect: MCPReconnect, signal?: AbortSignal): Promise<MCPServerConnection | null> {

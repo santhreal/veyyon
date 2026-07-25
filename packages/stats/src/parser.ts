@@ -11,7 +11,20 @@ import {
 	type Usage,
 } from "@veyyon/ai";
 import { emptyCost } from "@veyyon/catalog/models";
-import { clampLow, contentText, getSessionsDir, isEnoent, readLines, tryParseJson } from "@veyyon/utils";
+import {
+	clampLow,
+	contentText,
+	decodeJsonlLine,
+	errorMessage,
+	getSessionsDir,
+	isEnoent,
+	type JsonlByteSkip,
+	logger,
+	parseJsonlBytes,
+	readLines,
+	tryParseJson,
+	visitJsonlBytes,
+} from "@veyyon/utils";
 import type {
 	AgentType,
 	MessageStats,
@@ -288,43 +301,71 @@ function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry):
 	};
 }
 
-const LF = 0x0a;
-const CR = 0x0d;
-const jsonLineDecoder = new TextDecoder();
-
-function parseJsonLine(bytes: Uint8Array, start: number, end: number): SessionEntry | null {
-	while (end > start && bytes[end - 1] === CR) end--;
-	if (end <= start) return null;
-	return tryParseJson<SessionEntry>(jsonLineDecoder.decode(bytes.subarray(start, end)));
+/**
+ * A session line is usable only if it decoded to an OBJECT.
+ *
+ * `visitJsonlBytes` treats any successfully parsed value as an item, which is right in general and
+ * wrong here: a line holding `null`, a number or a string is valid JSON and is not a session entry,
+ * and visiting it would push a non-entry into every downstream sum. Reporting it as a skip is the
+ * truthful outcome, and it preserves the behaviour this parser had before the walk moved to
+ * `@veyyon/utils`.
+ */
+function decodeSessionEntry(text: string): SessionEntry | undefined {
+	const parsed = tryParseJson<SessionEntry>(text);
+	return parsed !== null && typeof parsed === "object" ? parsed : undefined;
 }
 
-function visitSessionEntriesLenient(bytes: Uint8Array, visit: (entry: SessionEntry) => void): number {
-	let cursor = 0;
-	let read = 0;
+/**
+ * A complete line that did not parse, so its message is missing from every statistic.
+ *
+ * A trailing PARTIAL line is not one of these: the session file is appended to while the
+ * dashboard reads it, so a cut-off last line is the ordinary case and is picked up on the next
+ * pass at the same offset. Only a line that ended in a newline and still failed is data loss.
+ */
+type SkippedLine = JsonlByteSkip;
 
-	while (cursor < bytes.length) {
-		const newline = bytes.indexOf(LF, cursor);
-		const hasNewline = newline !== -1;
-		const lineEnd = hasNewline ? newline : bytes.length;
-		const entry = parseJsonLine(bytes, cursor, lineEnd);
-		if (entry) {
-			visit(entry);
-			read = hasNewline ? newline + 1 : lineEnd;
-		} else if (hasNewline) {
-			read = newline + 1;
-		} else {
-			break;
-		}
-		cursor = hasNewline ? newline + 1 : lineEnd;
-	}
-
-	return read;
+/**
+ * Walk the session entries in a byte buffer whose tail may be a partial line.
+ *
+ * The byte-level walk itself lives in `@veyyon/utils` as `visitJsonlBytes`; this is the session-shaped
+ * wrapper over it. It used to be a fourth hand-written JSONL loop here, which is how it came to drop a
+ * malformed line with no report while the two string-based readers in utils both had one.
+ */
+function visitSessionEntriesLenient(
+	bytes: Uint8Array,
+	visit: (entry: SessionEntry) => void,
+	onSkip?: (skip: SkippedLine) => void,
+): number {
+	return visitJsonlBytes<SessionEntry>(bytes, visit, { decode: decodeSessionEntry, onSkip });
 }
 
-function parseSessionEntriesLenient(bytes: Uint8Array): { entries: SessionEntry[]; read: number } {
-	const entries: SessionEntry[] = [];
-	const read = visitSessionEntriesLenient(bytes, entry => entries.push(entry));
-	return { entries, read };
+function parseSessionEntriesLenient(
+	bytes: Uint8Array,
+	onSkip?: (skip: SkippedLine) => void,
+): { entries: SessionEntry[]; read: number } {
+	const { items, read } = parseJsonlBytes<SessionEntry>(bytes, { decode: decodeSessionEntry, onSkip });
+	return { entries: items, read };
+}
+
+/** Longest list of skipped-line offsets reported, so one corrupt file cannot flood the log. */
+const REPORTED_SKIPS_MAX = 20;
+
+/**
+ * Report the lines a session file lost, once per file rather than once per line.
+ *
+ * Every number the stats dashboard shows — token counts, cost, tool-call totals — is a sum over
+ * the entries that parsed. A dropped line silently lowers all of them, and the result still looks
+ * like a complete session, so nobody has a reason to doubt it. The count is the part that matters;
+ * the offsets are there so the line can actually be found.
+ */
+function reportSkippedLines(sessionPath: string, skips: SkippedLine[], start: number): void {
+	if (skips.length === 0) return;
+	logger.warn("Session file has unparseable lines; their messages are missing from every statistic", {
+		path: sessionPath,
+		skipped: skips.length,
+		offsets: skips.slice(0, REPORTED_SKIPS_MAX).map(skip => start + skip.offset),
+		truncatedOffsets: skips.length > REPORTED_SKIPS_MAX,
+	});
 }
 
 function scanLastServiceTier(bytes: Uint8Array): ServiceTierByFamily | undefined {
@@ -378,7 +419,9 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 	const userByEntryId = new Map<string, UserMessageStats>();
 	const start = clampLow(fromOffset, 0, bytes.length);
 	const unprocessed = bytes.subarray(start);
-	const { entries, read } = parseSessionEntriesLenient(unprocessed);
+	const skipped: SkippedLine[] = [];
+	const { entries, read } = parseSessionEntriesLenient(unprocessed, skip => skipped.push(skip));
+	reportSkippedLines(sessionPath, skipped, start);
 	let currentServiceTier: ServiceTierByFamily | undefined;
 	if (start > 0) {
 		currentServiceTier = scanLastServiceTier(bytes.subarray(0, start));
@@ -432,25 +475,46 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 
 /**
  * List all session directories (folders).
+ *
+ * An absent sessions directory returns an empty list, because that is the truth: nothing has been
+ * recorded yet. Any OTHER failure is reported. Both used to return the same empty list, and every
+ * number the dashboard shows is a sum over the files under these folders, so a directory that
+ * exists but cannot be read presented as a user who has never run a session, with the totals to
+ * match and nothing to say otherwise.
  */
 export async function listSessionFolders(): Promise<string[]> {
+	const sessionsDir = getSessionsDir();
 	try {
-		const sessionsDir = getSessionsDir();
 		const entries = await fs.readdir(sessionsDir, { withFileTypes: true });
 		return entries.filter(e => e.isDirectory()).map(e => path.join(sessionsDir, e.name));
-	} catch {
+	} catch (err) {
+		if (isEnoent(err)) return [];
+		logger.warn("Sessions directory could not be read; every statistic below is missing all of it", {
+			path: sessionsDir,
+			error: errorMessage(err),
+		});
 		return [];
 	}
 }
 
 /**
  * List all session files in a folder.
+ *
+ * Same rule as {@link listSessionFolders}, applied per folder: a folder that has gone away between
+ * the listing and the walk is not an anomaly and stays quiet, while a folder that is there and
+ * unreadable drops every session inside it from every total, so it is reported and the sync
+ * continues with the folders it could read.
  */
 export async function listSessionFiles(folderPath: string): Promise<string[]> {
 	try {
 		const entries = await fs.readdir(folderPath, { recursive: true, withFileTypes: true });
 		return entries.filter(e => e.isFile() && e.name.endsWith(".jsonl")).map(e => path.join(e.parentPath, e.name));
-	} catch {
+	} catch (err) {
+		if (isEnoent(err)) return [];
+		logger.warn("Session folder could not be read; its sessions are missing from every statistic", {
+			path: folderPath,
+			error: errorMessage(err),
+		});
 		return [];
 	}
 }
@@ -497,7 +561,7 @@ export async function getSessionEntryWithContext(
 	const byId = new Map<string, SessionEntry>();
 	try {
 		for await (const line of readLines(Bun.file(sessionPath).stream())) {
-			const entry = parseJsonLine(line, 0, line.length);
+			const entry = decodeJsonlLine<SessionEntry>(line, { decode: decodeSessionEntry });
 			if (entry && "id" in entry && typeof entry.id === "string" && entry.id.length > 0) {
 				byId.set(entry.id, entry);
 			}

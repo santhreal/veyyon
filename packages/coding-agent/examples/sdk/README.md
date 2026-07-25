@@ -29,18 +29,16 @@ npx tsx examples/sdk/01-minimal.ts
 ## Quick Reference
 
 ```typescript
-import { getModel } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 import {
 	AuthStorage,
 	createAgentSession,
 	discoverAuthStorage,
-	discoverModels,
 	discoverSkills,
-	discoverHooks,
-	discoverCustomTools,
+	discoverAndLoadCustomTools,
 	discoverContextFiles,
 	discoverSlashCommands,
-	loadSettings,
+	Settings,
 	buildSystemPrompt,
 	ModelRegistry,
 	SessionManager,
@@ -51,14 +49,14 @@ import {
 } from "@veyyon/coding-agent";
 
 // Auth and models setup
-const authStorage = discoverAuthStorage();
-const modelRegistry = discoverModels(authStorage);
+const authStorage = await discoverAuthStorage();
+const modelRegistry = new ModelRegistry(authStorage);
 
 // Minimal
 const { session } = await createAgentSession({ authStorage, modelRegistry });
 
-// Custom model
-const model = getModel("anthropic", "claude-opus-4-5");
+// Custom model (bundled models live in @veyyon/catalog)
+const model = getBundledModel("anthropic", "claude-opus-4-5");
 const { session } = await createAgentSession({ model, thinkingLevel: "high", authStorage, modelRegistry });
 
 // Modify prompt

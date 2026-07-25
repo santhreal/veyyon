@@ -10,6 +10,7 @@ import type {
 	SubagentProgressPayload,
 	WireMessage,
 } from "@veyyon/wire";
+import { SNAPSHOT_PROGRESS_TIMEOUT_MS } from "@veyyon/wire";
 import { GuestClient } from "../src/lib/client";
 import { COLLAB_PROTO, encodeBase64Url } from "../src/lib/link";
 import { CollabSocket } from "../src/lib/socket";
@@ -101,13 +102,16 @@ describe("GuestClient frame apply", () => {
 			client.applyFrameForTest(welcomeFrame(2));
 			expect(client.getSnapshot().phase).toBe("connecting");
 
-			vi.advanceTimersByTime(29_999);
+			// Relative to the budget @veyyon/wire owns, not a copy of its current value: a hardcoded
+			// advance stops reaching the deadline the moment the budget grows, and the test then HANGS
+			// on the await rather than failing (that is what happened to the transcript-poll suite).
+			vi.advanceTimersByTime(SNAPSHOT_PROGRESS_TIMEOUT_MS - 1);
 			expect(client.getSnapshot().phase).toBe("connecting");
 			client.applyFrameForTest(snapshotChunk([firstEntry], false));
 			expect(client.getSnapshot().entries).toEqual([firstEntry]);
 			expect(client.getSnapshot().phase).toBe("connecting");
 
-			vi.advanceTimersByTime(29_999);
+			vi.advanceTimersByTime(SNAPSHOT_PROGRESS_TIMEOUT_MS - 1);
 			expect(client.getSnapshot().phase).toBe("connecting");
 			vi.advanceTimersByTime(1);
 			const snap = client.getSnapshot();
@@ -117,7 +121,7 @@ describe("GuestClient frame apply", () => {
 			const completeClient = new GuestClient(LINK, "tester");
 			completeClient.applyFrameForTest(welcomeFrame(1));
 			completeClient.applyFrameForTest(snapshotChunk([firstEntry]));
-			vi.advanceTimersByTime(30_000);
+			vi.advanceTimersByTime(SNAPSHOT_PROGRESS_TIMEOUT_MS);
 			expect(completeClient.getSnapshot().phase).toBe("live");
 		} finally {
 			vi.useRealTimers();

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import type { SessionKernel } from "@veyyon/coding-agent/eval/kernel-base";
 import {
 	disposeAllKernelSessions,
 	disposeKernelSessionsByOwner,
@@ -27,12 +28,11 @@ const OK_RESULT: KernelExecuteResult = {
 
 type FakeKernelShutdownOptions = { timeoutMs?: number };
 
-class FakeKernel {
+class FakeKernel implements SessionKernel {
 	execute = vi.fn(async () => OK_RESULT);
 	shutdown = vi.fn(
 		async (_options?: FakeKernelShutdownOptions): Promise<KernelShutdownResult> => ({ confirmed: true }),
 	);
-	ping = vi.fn(async () => true);
 	alive = true;
 
 	isAlive(): boolean {

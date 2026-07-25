@@ -9,6 +9,7 @@
  * Inverse direction (source-of-truth for item shapes): ../../providers/openai-responses.ts
  */
 
+import { isEffort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, isRecord, logger } from "@veyyon/utils";
 import { type } from "arktype";
@@ -25,6 +26,7 @@ import type {
 	Tool,
 	ToolCall,
 } from "../types";
+import { isServiceTier } from "../types";
 import {
 	type OpenAIResponsesFunctionCallItem,
 	type OpenAIResponsesFunctionCallOutputItem,
@@ -34,26 +36,11 @@ import {
 	type OpenAIResponsesTool,
 	openaiResponsesRequestSchema,
 } from "./openai-responses-server-schema";
-import { encodeTextSignatureV1, formatOpenAiError, parseTextSignature } from "./openai-shared";
+import { encodeTextSignatureV1, parseTextSignature } from "./openai-shared";
 
 export type { ParsedRequest };
 
 // ─── narrow guards ──────────────────────────────────────────────────────────
-
-function isReasoningEffort(value: unknown): value is NonNullable<ParsedRequest["options"]["reasoning"]> {
-	return (
-		value === "minimal" ||
-		value === "low" ||
-		value === "medium" ||
-		value === "high" ||
-		value === "xhigh" ||
-		value === "max"
-	);
-}
-
-function isServiceTier(value: unknown): value is NonNullable<ParsedRequest["options"]["serviceTier"]> {
-	return value === "auto" || value === "default" || value === "flex" || value === "scale" || value === "priority";
-}
 
 function stringOrUndefined(v: unknown): string | undefined {
 	return typeof v === "string" ? v : undefined;
@@ -444,7 +431,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	}
 	const toolChoice = mapToolChoice(data.tool_choice as ParsedToolChoice | undefined);
 	if (toolChoice !== undefined) options.toolChoice = toolChoice;
-	if (data.reasoning?.effort && isReasoningEffort(data.reasoning.effort)) {
+	if (data.reasoning?.effort && isEffort(data.reasoning.effort)) {
 		options.reasoning = data.reasoning.effort;
 	}
 	// OpenAI summary: `none` → suppress; `auto`/`concise`/`detailed` → request
@@ -499,9 +486,7 @@ function findToolNameById(messages: Message[], callId: string): string {
 
 // ─── formatError ────────────────────────────────────────────────────────────
 
-export function formatError(status: number, type: string, message: string): Response {
-	return formatOpenAiError(status, type, message);
-}
+export { formatOpenAiError as formatError } from "./openai-shared";
 
 // ─── output item builders (shared by streaming + non-streaming encoders) ────
 

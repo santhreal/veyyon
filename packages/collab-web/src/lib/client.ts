@@ -20,6 +20,7 @@ import type {
 	SubagentLifecyclePayload,
 	SubagentProgressPayload,
 } from "@veyyon/wire";
+import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
 import { importRoomKey } from "./codec";
 import { COLLAB_PROTO, encodeBase64Url, parseCollabLink } from "./link";
 import { CollabSocket } from "./socket";
@@ -68,11 +69,10 @@ export interface GuestSnapshot {
 }
 
 const MAX_NOTICES = 50;
-const TRANSCRIPT_TIMEOUT_MS = 10_000;
-/** Mirrors the TUI guest's WELCOME_TIMEOUT_MS: a host that never answers hello ends the join. */
-const WELCOME_TIMEOUT_MS = 30_000;
-/** Mirrors the TUI guest's SNAPSHOT_PROGRESS_TIMEOUT_MS: every snapshot chunk must make progress. */
-const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
+// The join budgets used to be declared here and kept in step with the TUI guest
+// by hand, which is how the transcript one drifted to 10 s while the terminal
+// used 20 s. They are protocol-level, so @veyyon/wire owns them and both guests
+// import the same values.
 
 /**
  * One fetch-transcript round trip.

@@ -1,9 +1,11 @@
 /**
  * Read the Docs handler for web-fetch
  */
+import { errorMessage, isCancellation } from "@veyyon/utils";
 import {
 	buildResult,
 	htmlToBasicMarkdown,
+	loadFailure,
 	loadPage,
 	type RenderResult,
 	type SpecialHandler,
@@ -100,9 +102,19 @@ export const handleReadTheDocs: SpecialHandler = async (
 			if (sourceResult.ok && sourceResult.content.length > 0 && sourceResult.content.length < 1_000_000) {
 				content = sourceResult.content;
 				notes.push(`Fetched raw source from ${sourceUrl}`);
+			} else {
+				// The raw source is the better answer: it is the page's own markup rather than
+				// a markdown rendering of rendered HTML. Falling back keeps the content, so
+				// this is not a failure, but the reader has to know which of the two they got.
+				notes.push(
+					`Raw source at ${sourceUrl} was unusable (${loadFailure(sourceResult)}); converted the HTML instead`,
+				);
 			}
-		} catch {
-			// Ignore errors, fall back to HTML
+		} catch (error) {
+			if (isCancellation(error)) throw error;
+			notes.push(
+				`Raw source at ${sourceUrl} could not be fetched (${errorMessage(error)}); converted the HTML instead`,
+			);
 		}
 	}
 

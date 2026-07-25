@@ -1,4 +1,3 @@
-import { errorMessage } from "@veyyon/utils";
 /**
  * Shared ACP client bridge routing for file-write sites.
  *

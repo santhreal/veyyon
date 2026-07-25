@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { compareDottedNumeric, compareSemver, isNewerVersion } from "@veyyon/utils/semver";
+import { bareVersion, compareDottedNumeric, compareSemver, isNewerVersion } from "@veyyon/utils/semver";
+import { collectPackageSources } from "./support/package-sources";
 
 /**
  * The hand-rolled comparator this module replaced, kept verbatim so the
@@ -273,5 +274,74 @@ describe("compareDottedNumeric", () => {
 				expect(sign(compareDottedNumeric(a, b))).toBe(sign(changelogComparator(a, b)));
 			}
 		});
+	});
+});
+
+describe("bareVersion", () => {
+	it("strips the git-tag prefix", () => {
+		expect(bareVersion("v1.2.3")).toBe("1.2.3");
+	});
+
+	it("leaves an already-bare version untouched", () => {
+		// Callers hold versions both ways (`ReleaseInfo.tag` vs `.version`), so
+		// this has to be safe to apply twice.
+		expect(bareVersion("1.2.3")).toBe("1.2.3");
+	});
+
+	it("is idempotent", () => {
+		expect(bareVersion(bareVersion("v1.2.3"))).toBe("1.2.3");
+	});
+
+	it("removes only ONE leading v, so `vv1.0.0` stays visibly wrong", () => {
+		// A broader strip would quietly mangle malformed input into something that
+		// looks valid, which is worse than leaving it recognizably broken.
+		expect(bareVersion("vv1.0.0")).toBe("v1.0.0");
+	});
+
+	it("does not touch a v anywhere but the front", () => {
+		expect(bareVersion("1.2.3-preview")).toBe("1.2.3-preview");
+	});
+
+	it("keeps the prerelease and build tail", () => {
+		expect(bareVersion("v1.2.3-rc.1+build.7")).toBe("1.2.3-rc.1+build.7");
+	});
+
+	it("leaves an empty string alone rather than throwing", () => {
+		expect(bareVersion("")).toBe("");
+	});
+});
+
+// Repo-wide source lock: stripping a release tag's `v` prefix has exactly ONE
+// owner, packages/utils/src/semver.ts. The five former copies (utils dirs.ts,
+// coding-agent cli/update-cli.ts twice, cli/rollback-cli.ts, and
+// utils/tools-manager.ts) re-point here, so the grandfathered set is empty.
+//
+// This one is worth locking because its copies drift INVISIBLY. Each site
+// independently decides what "the version part" of a tag is, and a mismatch
+// does not raise: it builds a download URL that 404s, or a changelog anchor
+// that lands at the top of the page. The failure looks like a bad link rather
+// than like a bug in version handling, so nobody traces it back here.
+// The monorepo walk + skip-set is shared with every other source-ownership lock
+// (see ./support/package-sources).
+const INLINE_V_STRIP = /\.replace\(\s*\/\^v\/\s*,\s*""\s*\)/;
+
+describe("version tag prefix source lock", () => {
+	it("recognizes the idiom it bans, so the lock cannot pass vacuously", () => {
+		// A lock whose pattern stopped matching would report zero offenders for the
+		// worst possible reason and keep passing forever. These are the exact forms
+		// that were in the tree before the unification.
+		expect(INLINE_V_STRIP.test('const version = tag.replace(/^v/, "");')).toBe(true);
+		expect(INLINE_V_STRIP.test('return data.tag_name.replace( /^v/ , "" );')).toBe(true);
+		expect(INLINE_V_STRIP.test("const bare = bareVersion(version);")).toBe(false);
+	});
+
+	it("no production source strips a leading v outside utils/src/semver.ts", async () => {
+		const offenders: string[] = [];
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (rel === "utils/src/semver.ts") continue;
+			if (INLINE_V_STRIP.test(text)) offenders.push(rel);
+		}
+
+		expect(offenders, 'inline `.replace(/^v/, "")`: call bareVersion from @veyyon/utils instead').toEqual([]);
 	});
 });

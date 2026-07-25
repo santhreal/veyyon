@@ -108,6 +108,26 @@ $ veyyon profile default work
 - `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`. If you remove the profile that is set as the launch default, its `defaultProfile` pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.
 - `default [name]` shows or sets the global `defaultProfile` (which profile a bare `vey` launches); `default --clear` removes it.
 
+### Reading the size in `profile list --json`
+
+`veyyon profile list --json` prints one object per profile. Two of its fields describe disk usage:
+
+```console
+$ veyyon profile list --json
+[
+  {
+    "name": "work",
+    "rootDir": "/home/you/.veyyon/profiles/work",
+    "bytes": 41238904,
+    "bytesComplete": true
+  }
+]
+```
+
+`bytes` is the total size of every file under `rootDir`. `bytesComplete` tells you whether that total is the whole story. The walk skips anything it cannot read rather than failing the listing, so a directory with no read permission would otherwise make a large profile look small. When a path is skipped, `bytesComplete` is `false`, `bytes` becomes a lower bound, and the skipped paths are written to the profile's log with the message `Profile size is incomplete; some paths could not be read`. Check that log when you need to know which path to fix.
+
+A profile whose directory does not exist yet reports `"bytes": 0` with `"bytesComplete": true`: there is nothing there, which is a measurement rather than a failure.
+
 In the TUI, `/profile new <name>` (or `/profile create <name>`) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items. Deleting is available too: `/profile rm <name>` (or the picker's **Delete** action) removes a profile after a confirmation, and refuses the active and default profiles. See [TUI profile commands](#tui-profile-commands) for the full verb list.
 
 You can still create a profile implicitly by running `veyyon --profile <name>` once; use `profile new` when you want seeding without launching the TUI.

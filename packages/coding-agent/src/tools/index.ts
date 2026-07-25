@@ -22,6 +22,7 @@ import type { CustomMessage } from "../session/messages";
 import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import type { AgentOutputManager } from "../task/output-manager";
+import { delegationEnabled } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
@@ -164,6 +165,15 @@ export interface ToolSession {
 	trackEvalExecution?<T>(execution: Promise<T>, abortController: AbortController): Promise<T>;
 	/** Get session ID */
 	getSessionId?: () => string | null;
+	/**
+	 * How many assistant turns have already happened in this session.
+	 *
+	 * Used to price how long a tool result will sit in context. A result is
+	 * billed once as fresh input and then re-read as a cache token on every later
+	 * turn, so an early result costs far more than the same bytes late in a
+	 * session. See `inlineCapForTurn` in session/streaming-output.
+	 */
+	getTurnIndex?: () => number;
 	/** Get Hindsight runtime state for this agent session. */
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
 	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
@@ -443,11 +453,11 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	// session to load into, so the factory returns null and the tool is absent.
 	[ARGOT_LOAD_TOOL]: async s =>
 		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./lexpack")).ArgotLoadTool(s)
+			? new (await import("./argot")).ArgotLoadTool(s)
 			: null,
 	[ARGOT_UNLOAD_TOOL]: async s =>
 		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./lexpack")).ArgotUnloadTool(s)
+			? new (await import("./argot")).ArgotUnloadTool(s)
 			: null,
 };
 
@@ -610,7 +620,12 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 			);
 		}
 		if (name === "task") {
-			return canSpawnAtDepth(session.settings.get("task.maxRecursionDepth") ?? 2, session.taskDepth ?? 0);
+			// `subagent.delegation: off` means this session does not delegate at all,
+			// so the tool itself is absent rather than present-but-discouraged. A
+			// prompt that says "do not spawn subagents" while still shipping the tool
+			// description spends tokens describing something the operator turned off.
+			if (!delegationEnabled(session.settings)) return false;
+			return canSpawnAtDepth(session.settings.get("subagent.maxRecursionDepth") ?? 2, session.taskDepth ?? 0);
 		}
 		return true;
 	};

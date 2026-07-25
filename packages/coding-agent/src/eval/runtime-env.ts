@@ -14,6 +14,24 @@ export const SECRET_KEY_PATTERN =
 	/API[_-]?KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|ACCESS[_-]?KEY|PRIVATE[_-]?KEY/i;
 
 /**
+ * Cross-language base allow-PREFIXES shared by every eval sandbox (py/rb/jl).
+ *
+ * A prefix admits any variable whose name starts with it, so this list is the
+ * widest part of the sandbox's env surface and the part most worth having one
+ * owner for. Locale (`LC_`) and XDG base directories are needed by every
+ * interpreter; `VEYYON_` carries our own runtime plumbing (the secret-shaped
+ * members of that namespace are refused by `SECRET_ENV_DENYLIST`, which is why
+ * the broad prefix is safe here).
+ *
+ * Each runtime layers its own language prefixes on top: Ruby adds the gem and
+ * version-manager namespaces, Julia adds its package and BLAS ones. Those
+ * additions are deliberate and differ per language; the base does not, and it
+ * was previously retyped in all three files under the same name with three
+ * different values, which is exactly the shape that drifts unnoticed.
+ */
+export const BASE_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "VEYYON_"];
+
+/**
  * Cross-language base allowlist shared by every eval sandbox (py/rb/jl).
  * Covers the common shell/locale/proxy vars every interpreter needs to start
  * up and find libraries. Language-runtime-specific vars (Python's venv/conda

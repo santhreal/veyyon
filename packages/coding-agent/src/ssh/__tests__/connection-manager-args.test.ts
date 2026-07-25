@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getRemoteHostDir } from "@veyyon/utils";
+import { useIsolatedConfigRoot } from "../../../test/helpers/isolated-agent-dir";
 import {
 	buildRemoteCommand,
 	extractProbePayload,
@@ -15,7 +16,6 @@ import {
 	TRANSFER_PROBE_MARKER,
 } from "../connection-manager";
 import { buildSshTarget, sanitizeHostName } from "../utils";
-import { useIsolatedConfigRoot } from "../../../test/helpers/isolated-agent-dir";
 
 // The shell-classification test writes a host record into `getRemoteHostDir()`,
 // which resolves under the CONFIG root — so without this it creates and then

@@ -22,12 +22,12 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { clampLow, formatNumber } from "@veyyon/utils";
+import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
-import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { Settings } from "../../config/settings";
 import type { ModelPerfStats } from "../../session/agent-storage";
-import { AUTO_THINKING, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../../thinking";
+import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { type ThemeColor, theme } from "../theme/theme";
 import {
 	matchesSelectCancel,
@@ -49,30 +49,38 @@ export interface ModelBrowserItem {
 	badge?: string;
 	/** Color for {@link badge}. */
 	badgeColor?: ThemeColor;
+	/**
+	 * When set, the row renders as a pinned ACTION row (this text, no provider
+	 * prefix, no metadata columns) instead of a model row. Used for virtual
+	 * rows like the clear-to-inherit entry; activation is the host's business.
+	 */
+	virtualLabel?: string;
+	/** Explanation shown in the detail block while a virtual row is selected. */
+	virtualDetail?: string;
 }
 
 /** Resolved role assignment as displayed by the browser and the hub. */
 export interface RoleAssignment {
 	model: Model;
 	thinkingLevel: ConfiguredThinkingLevel;
-	/** True when the role has no configured value and fell back to auto-selection. */
-	autoSelected: boolean;
 }
 
-/** Map of role id to its resolved assignment (absent roles are unresolved). */
+/** Map of role id to its resolved assignment (absent roles are unassigned). */
 export type RoleAssignments = Record<string, RoleAssignment | undefined>;
 
 /**
- * Resolve every known role to its display assignment: configured role values
- * resolve against `allModels`; unconfigured roles fall back to auto-selection
- * over `autoCandidates` (skipped when empty). Shared by the /models hub and
- * the alt+p session picker.
+ * Resolve every known role that the operator has CONFIGURED to its display
+ * assignment, against `allModels`. Shared by the /models hub and the alt+p
+ * session picker.
+ *
+ * An unset role gets no assignment. It used to get an "auto-selected" one, shown
+ * as a hollow chip, by expanding `@role` through a built-in `priority.json`
+ * chain — so the hub advertised a model for a role the operator never assigned,
+ * and different roles pointed at different models on a stock install. Unset now
+ * means inherit the main model, and the roles view says exactly that, so there
+ * is no second model to display.
  */
-export function resolveRoleAssignments(
-	settings: Settings,
-	allModels: ReadonlyArray<Model>,
-	autoCandidates: ReadonlyArray<Model>,
-): RoleAssignments {
+export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyArray<Model>): RoleAssignments {
 	const resolvedThinkingLevel = (
 		role: string,
 		resolved: { explicitThinkingLevel: boolean; thinkingLevel?: ConfiguredThinkingLevel },
@@ -97,34 +105,16 @@ export function resolveRoleAssignments(
 
 	const roles: RoleAssignments = {};
 	const matchPreferences = getModelMatchPreferences(settings);
-	const knownRoles = getKnownRoleIds(settings);
-	const configuredRoles = new Set<string>();
 	const catalog = [...allModels];
 
-	for (const role of knownRoles) {
+	for (const role of getKnownRoleIds(settings)) {
 		const roleValue = settings.getModelRole(role);
 		if (!roleValue) continue;
-		configuredRoles.add(role);
 		const resolved = resolveModelRoleValue(roleValue, catalog, { settings, matchPreferences });
 		if (resolved.model) {
 			roles[role] = {
 				model: resolved.model,
 				thinkingLevel: resolvedThinkingLevel(role, resolved),
-				autoSelected: false,
-			};
-		}
-	}
-
-	if (autoCandidates.length > 0) {
-		const candidates = [...autoCandidates];
-		for (const role of knownRoles) {
-			if (configuredRoles.has(role)) continue;
-			const resolved = resolveModelRoleValue(`pi/${role}`, candidates, { settings, matchPreferences });
-			if (!resolved.model) continue;
-			roles[role] = {
-				model: resolved.model,
-				thinkingLevel: resolvedThinkingLevel(role, resolved),
-				autoSelected: true,
 			};
 		}
 	}
@@ -140,6 +130,43 @@ export function buildBrowserItems(models: ReadonlyArray<Model>): ModelBrowserIte
 		model,
 		selector: `${model.provider}/${model.id}`,
 	}));
+}
+
+/** Selector of the pinned clear-to-inherit action row. Never a real `provider/id` key. */
+export const INHERIT_ROW_SELECTOR = "__inherit__";
+
+/** Placeholder model carried by virtual (non-model) rows so `item.model` stays total. */
+function virtualRowModel(): Model {
+	return buildModel({
+		id: "virtual",
+		name: "virtual",
+		api: "ollama-chat",
+		provider: "",
+		baseUrl: "",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 0,
+		maxTokens: 0,
+	});
+}
+
+/**
+ * The pinned top row that returns a model slot to its unset (inheriting or
+ * auto-selected) state. Hosts prepend it to the picker items when clearing is
+ * allowed; the browser renders it as an action row ahead of every model row,
+ * and activating it is the host's clear, never a model pick. Searching keeps
+ * it visible only while the query matches its label.
+ */
+export function buildInheritRow(label: string, detail: string): ModelBrowserItem {
+	return {
+		provider: "",
+		id: INHERIT_ROW_SELECTOR,
+		selector: INHERIT_ROW_SELECTOR,
+		virtualLabel: label,
+		virtualDetail: detail,
+		model: virtualRowModel(),
+	};
 }
 
 /** Extract the first version number from a model ID (e.g. "gemini-2.5-pro" → 2.5, "claude-sonnet-4-6" → 4.6). */
@@ -268,17 +295,15 @@ export function thinkingLevelGlyph(level: ConfiguredThinkingLevel): string {
 }
 
 /**
- * A slim role chip: `●default ◉` — solid dot for configured assignments,
- * hollow for auto-selected fallbacks, thinking glyph attached when set.
+ * A slim role chip: `●default ◉` — solid dot for the operator's assignment,
+ * thinking glyph attached when set. Only configured roles produce a chip; an
+ * unset role inherits the main model and has nothing of its own to show.
  */
 export function formatRoleChip(role: string, assignment: RoleAssignment, settings: Settings): string {
 	const info = getRoleInfo(role, settings);
 	const label = (info.tag ?? info.name ?? role).toLowerCase();
 	const glyph = thinkingLevelGlyph(assignment.thinkingLevel);
 	const suffix = glyph ? ` ${theme.fg("dim", glyph)}` : "";
-	if (assignment.autoSelected) {
-		return theme.fg("dim", `${theme.status.shadowed}${label}`) + suffix;
-	}
 	return theme.fg(info.color ?? "muted", `${theme.status.enabled}${label}`) + suffix;
 }
 
@@ -587,24 +612,17 @@ export class ModelBrowser implements Component {
 	}
 	#insertSeparator(items: ModelBrowserItem[]): ModelBrowserItem[] {
 		const filtered = items.filter(item => item.id !== "separator");
-		const firstNonRecentIndex = filtered.findIndex(item => !this.#isRecentOrRole(item));
+		// Virtual action rows (inherit/clear) pin ahead of the separator and
+		// recents: they are not "recent", but they must not trigger it either.
+		const firstNonRecentIndex = filtered.findIndex(
+			item => item.virtualLabel === undefined && !this.#isRecentOrRole(item),
+		);
 		if (firstNonRecentIndex > 0 && firstNonRecentIndex < filtered.length) {
 			const separatorItem: ModelBrowserItem = {
 				id: "separator",
 				provider: "",
 				selector: "separator",
-				model: buildModel({
-					id: "separator",
-					name: "separator",
-					api: "ollama-chat",
-					provider: "",
-					baseUrl: "",
-					reasoning: false,
-					input: ["text"],
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-					contextWindow: 0,
-					maxTokens: 0,
-				}),
+				model: virtualRowModel(),
 			};
 			return [...filtered.slice(0, firstNonRecentIndex), separatorItem, ...filtered.slice(firstNonRecentIndex)];
 		}
@@ -617,8 +635,11 @@ export class ModelBrowser implements Component {
 		if (query.trim()) {
 			// Match against the displayed "provider/id" string so the user can
 			// type what they see: bare names, provider prefixes, or scoped
-			// queries all flow through the same fuzzy matcher.
-			const ranked = fuzzyRank(this.#baseItems, query, ({ provider, id }) => `${provider}/${id}`);
+			// queries all flow through the same fuzzy matcher. Virtual action
+			// rows match on their label instead ("inherit" finds the clear row).
+			const ranked = fuzzyRank(this.#baseItems, query, item =>
+				item.virtualLabel !== undefined ? item.virtualLabel : `${item.provider}/${item.id}`,
+			);
 			const matches = ranked.map(result => result.item);
 			if (this.#preserveQueryOrder) {
 				items = matches;
@@ -762,7 +783,7 @@ export class ModelBrowser implements Component {
 		let cost = 0;
 		let perf = 0;
 		for (const item of this.#visibleItems) {
-			if (!item) continue;
+			if (!item || item.virtualLabel !== undefined) continue;
 			ctx = Math.max(ctx, visibleWidth(formatContext(item.model)));
 			cost = Math.max(cost, visibleWidth(formatCostPair(item.model)));
 			perf = Math.max(perf, visibleWidth(this.#perfCell(item, perfMode)));
@@ -795,6 +816,17 @@ export class ModelBrowser implements Component {
 			const dashCount = Math.max(0, width - 4);
 			const line = theme.fg("muted", "─".repeat(dashCount));
 			return `  ${line}  `;
+		}
+		if (item.virtualLabel !== undefined) {
+			// Action row (e.g. clear-to-inherit): cursor + label + current mark,
+			// no provider prefix and no metadata columns.
+			const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
+			const name = selected ? theme.fg("accent", item.virtualLabel) : theme.fg("muted", item.virtualLabel);
+			const currentMark =
+				item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
+			const text = truncateToWidth(`${prefix}${name}${currentMark}`, width);
+			const line = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+			return hovered ? theme.bg("selectedBg", line) : line;
 		}
 		const disabled = this.#isDisabled(item);
 		const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
@@ -836,6 +868,17 @@ export class ModelBrowser implements Component {
 	#detailLines(width: number): [string, string] {
 		const selected = this.getSelected();
 		if (!selected) return ["", ""];
+		if (selected.virtualLabel !== undefined) {
+			const line1 = truncateToWidth(
+				theme.fg("muted", `  ${selected.virtualDetail ?? selected.virtualLabel}`),
+				width,
+			);
+			const line2 =
+				selected.selector === this.#currentSelector
+					? truncateToWidth(`  ${theme.fg("success", `${theme.status.enabled} current`)}`, width)
+					: "";
+			return [line1, line2];
+		}
 		const model = selected.model;
 
 		const facts: string[] = [model.name];

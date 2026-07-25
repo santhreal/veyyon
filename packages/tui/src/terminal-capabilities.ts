@@ -881,6 +881,9 @@ export function getPngDimensions(base64Data: string): ImageDimensions | null {
 
 		return { widthPx: width, heightPx: height };
 	} catch {
+		// This asks "are these PNG bytes, and how big is the image". A truncated or corrupt header answers
+		// no, which is the same null the signature check above returns, and the caller then tries the next
+		// format and finally reports that it could not read the image.
 		return null;
 	}
 }
@@ -924,6 +927,8 @@ export function getJpegDimensions(base64Data: string): ImageDimensions | null {
 
 		return null;
 	} catch {
+		// Same contract as the PNG reader: a JPEG whose segment lengths run past the buffer is not a JPEG we
+		// can size, and null is already this function's answer for "no dimensions found".
 		return null;
 	}
 }
@@ -946,6 +951,8 @@ export function getGifDimensions(base64Data: string): ImageDimensions | null {
 
 		return { widthPx: width, heightPx: height };
 	} catch {
+		// A GIF header too short to hold the logical screen size is not a GIF we can size; null is the same
+		// answer the signature check above gives.
 		return null;
 	}
 }
@@ -985,6 +992,8 @@ export function getWebpDimensions(base64Data: string): ImageDimensions | null {
 
 		return null;
 	} catch {
+		// A WebP whose chunk headers run past the buffer has no readable dimensions, matching the explicit
+		// short-buffer returns above.
 		return null;
 	}
 }
@@ -1065,6 +1074,9 @@ export function renderImage(
 			const sequence = encodeSixel(decoded, targetWidthPx, targetHeightPx);
 			return { sequence, rows: fit.rows };
 		} catch {
+			// Sixel encoding failed, so this terminal gets no image and the caller falls back to the textual
+			// representation it already uses for terminals with no image protocol at all. Null is that
+			// "cannot draw it here" answer; the reader sees the fallback, which is why it is not also logged.
 			return null;
 		}
 	}

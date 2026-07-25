@@ -3,6 +3,7 @@ import * as fsp from "node:fs/promises";
 import * as Module from "node:module";
 import * as path from "node:path";
 import { tryParseJson } from "./json";
+import { readPipeText } from "./stream";
 import { isRecord } from "./type-guards";
 
 /**
@@ -157,6 +158,8 @@ interface ResolverRegistration {
 
 const REGISTRY = Symbol.for("veyyon.runtimeModuleResolver.registry");
 const PATCHED = Symbol.for("veyyon.runtimeModuleResolver.patched");
+/** Stock `_resolveFilename`, kept so the patch can be taken back off. */
+const ORIGINAL = Symbol.for("veyyon.runtimeModuleResolver.original");
 
 /**
  * The registration list lives on `globalThis` so a bundled copy and a
@@ -200,6 +203,24 @@ export interface RuntimeResolverOptions {
  * its TS source next to `dist/` (e.g. `@huggingface/hub`'s root `index.ts`)
  * resolves to the wrong file. When the stock hit lands inside a registered
  * runtime root, the manifest-aware resolution wins.
+ *
+ * COST OF INSTALLING THIS, which is not local to bare specifiers. Patching
+ * `Module._resolveFilename` at all changes how Bun resolves RELATIVE requires
+ * made through `createRequire(import.meta.url)`: unpatched, Bun resolves them
+ * against the importing module; with any JS hook present it calls the hook with
+ * `parent === undefined`, and stock resolution then falls back to
+ * `process.cwd()`. A legacy Pi extension doing
+ * `createRequire(import.meta.url)` then `require("./config.js")` therefore
+ * resolves the CWD's `./config.js`, or fails with `Cannot find module
+ * './config.js' from ''` when the CWD has no such file. Verified with a
+ * minimal script: a pass-through hook that does nothing but call the original
+ * reproduces it, so the fault is the hook's existence, not this logic. The hook
+ * cannot repair it, because Bun hands it no importer to resolve against.
+ *
+ * So install this only when a runtime cache is actually in use, and use
+ * {@link uninstallRuntimeModuleResolver} to take it back off when it is not —
+ * in particular in tests, where leaving a process-global patch installed
+ * silently changes module resolution for every suite that runs afterwards.
  */
 export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }: RuntimeResolverOptions): void {
 	const registry = resolverRegistry();
@@ -210,7 +231,13 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 	const resolver = (Module as unknown as { default?: ModuleResolver } & ModuleResolver).default ?? Module;
 	const target = resolver as unknown as ModuleResolver & { [PATCHED]?: boolean };
 	if (target[PATCHED]) return;
-	const original = target._resolveFilename.bind(target);
+	// Two references to the same function, deliberately. The BOUND copy is what the
+	// hook calls; the UNBOUND one is what `uninstallRuntimeModuleResolver` puts
+	// back. Restoring the bound copy would look like a restore and not be one: it
+	// is still a replacement function, so Bun keeps treating the resolver as hooked
+	// and relative `createRequire` requires keep resolving against the CWD.
+	const stock = target._resolveFilename;
+	const original = stock.bind(target);
 	target._resolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown): string => {
 		let stockResolved: string | null = null;
 		let stockError: unknown;
@@ -256,6 +283,38 @@ export function installRuntimeModuleResolver({ runtimeNodeModules, stubs = {} }:
 		throw stockError;
 	};
 	target[PATCHED] = true;
+	(target as { [ORIGINAL]?: ModuleResolver["_resolveFilename"] })[ORIGINAL] = stock;
+}
+
+/**
+ * Remove the resolver patch and every registration, restoring stock resolution.
+ *
+ * The patch is process-global and, before this existed, permanent: the `PATCHED`
+ * guard made a second install a no-op and nothing could take the first one off.
+ * That is a problem for the reason described on {@link installRuntimeModuleResolver}
+ * — the hook's mere presence redirects relative `createRequire` resolution to the
+ * CWD — and it is how `runtime-install.test.ts` came to break an unrelated suite
+ * three packages away: it installed the patch against a temp `node_modules`,
+ * deleted the temp tree, and left the hook in place for the rest of the process.
+ * `legacy-pi-inplace-load.test.ts` then failed to load a CommonJS helper, passed
+ * when run alone, and blamed itself.
+ *
+ * Returns `true` when a patch was actually removed, so a caller can assert that
+ * its cleanup did something rather than assuming it did.
+ */
+export function uninstallRuntimeModuleResolver(): boolean {
+	resolverRegistry().length = 0;
+	const resolver = (Module as unknown as { default?: ModuleResolver } & ModuleResolver).default ?? Module;
+	const target = resolver as unknown as ModuleResolver & {
+		[PATCHED]?: boolean;
+		[ORIGINAL]?: ModuleResolver["_resolveFilename"];
+	};
+	const original = target[ORIGINAL];
+	if (!target[PATCHED] || !original) return false;
+	target._resolveFilename = original;
+	delete target[PATCHED];
+	delete target[ORIGINAL];
+	return true;
 }
 
 /** Pinned dependency set materialized into a runtime cache directory. */
@@ -314,11 +373,6 @@ export async function writeRuntimeManifest(runtimeDir: string, install: RuntimeI
 	await Bun.write(path.join(runtimeDir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
 }
 
-async function readPipe(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-	if (!stream) return "";
-	return new Response(stream).text();
-}
-
 async function runRuntimeInstall(runtimeDir: string): Promise<void> {
 	// `process.execPath` is plain bun in source/bundle mode and the compiled
 	// binary otherwise; BUN_BE_BUN makes the compiled binary act as bun.
@@ -328,8 +382,8 @@ async function runRuntimeInstall(runtimeDir: string): Promise<void> {
 		stderr: "pipe",
 	});
 	const [stdout, stderr, exitCode] = await Promise.all([
-		readPipe(proc.stdout as ReadableStream<Uint8Array> | null),
-		readPipe(proc.stderr as ReadableStream<Uint8Array> | null),
+		readPipeText(proc.stdout as ReadableStream<Uint8Array> | null),
+		readPipeText(proc.stderr as ReadableStream<Uint8Array> | null),
 		proc.exited,
 	]);
 	if (exitCode === 0) return;

@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isCancellation } from "@veyyon/utils";
 /**
  * Spotify URL handler for podcasts, tracks, albums, and playlists
  *
@@ -174,6 +174,9 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 			notes.push(`oEmbed API returned status ${response.status || "error"}`);
 		}
 	} catch (err) {
+		// A cancelled request is the user leaving, not a Spotify failure: recording it as a
+		// note and carrying on would make the SECOND request below after they asked to stop.
+		if (isCancellation(err)) throw err;
 		notes.push(`Failed to fetch oEmbed data: ${errorMessage(err)}`);
 	}
 
@@ -188,6 +191,7 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 			notes.push(`Page fetch returned status ${pageResponse.status || "error"}`);
 		}
 	} catch (err) {
+		if (isCancellation(err)) throw err;
 		notes.push(`Failed to fetch page HTML: ${errorMessage(err)}`);
 	}
 

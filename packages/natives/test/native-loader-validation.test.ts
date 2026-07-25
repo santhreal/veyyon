@@ -49,10 +49,14 @@ describe("evaluateLoadedBindings — accept", () => {
 
 	it("accepts regardless of workspace vs installed when the sentinel matches", () => {
 		const bindings = addonBuiltFor("2.3.4");
-		expect(evaluateLoadedBindings(ctxFor({ packageVersion: "2.3.4", isWorkspaceLoad: true }), bindings, "a.node")).toEqual({
+		expect(
+			evaluateLoadedBindings(ctxFor({ packageVersion: "2.3.4", isWorkspaceLoad: true }), bindings, "a.node"),
+		).toEqual({
 			action: "accept",
 		});
-		expect(evaluateLoadedBindings(ctxFor({ packageVersion: "2.3.4", isWorkspaceLoad: false }), bindings, "a.node")).toEqual({
+		expect(
+			evaluateLoadedBindings(ctxFor({ packageVersion: "2.3.4", isWorkspaceLoad: false }), bindings, "a.node"),
+		).toEqual({
 			action: "accept",
 		});
 	});
@@ -75,7 +79,11 @@ describe("evaluateLoadedBindings — installed/compiled load fails closed (the u
 		// which — a user could not tell what to rebuild/reinstall. It now reports
 		// the built version, the expected version, and the offending file.
 		const ctx = ctxFor({ packageVersion: "1.0.20", isWorkspaceLoad: false });
-		const decision = evaluateLoadedBindings(ctx, addonBuiltFor("1.0.15"), "/opt/veyyon/native/1.0.20/veyyon_natives.linux-x64-modern.node");
+		const decision = evaluateLoadedBindings(
+			ctx,
+			addonBuiltFor("1.0.15"),
+			"/opt/veyyon/native/1.0.20/veyyon_natives.linux-x64-modern.node",
+		);
 		expect(decision.action).toBe("throw");
 		if (decision.action !== "throw") throw new Error(`expected throw, got ${decision.action}`);
 		expect(decision.message).toContain("@veyyon/natives@1.0.15"); // built for
@@ -105,7 +113,11 @@ describe("evaluateLoadedBindings — workspace load boots loudly, never silently
 		// 'accept' — the silent skip here is exactly the Law-10 fallback that let
 		// the stale native ship uncaught.
 		const ctx = ctxFor({ packageVersion: "1.0.20", isWorkspaceLoad: true });
-		const decision = evaluateLoadedBindings(ctx, addonBuiltFor("1.0.15"), "packages/natives/native/veyyon_natives.linux-x64-modern.node");
+		const decision = evaluateLoadedBindings(
+			ctx,
+			addonBuiltFor("1.0.15"),
+			"packages/natives/native/veyyon_natives.linux-x64-modern.node",
+		);
 		expect(decision.action).toBe("warn");
 		if (decision.action !== "warn") throw new Error(`expected warn, got ${decision.action}`);
 		expect(decision.builtVersion).toBe("1.0.15");

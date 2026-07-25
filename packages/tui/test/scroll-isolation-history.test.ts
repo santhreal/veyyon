@@ -130,12 +130,21 @@ function view(term: VirtualTerminal): string[] {
 /** Viewport rows with the scroll-track column dropped, so a case about content
  * asserts content. The track's own bytes are asserted separately below. */
 function content(term: VirtualTerminal): string[] {
-	return term.getViewport().map(r => Bun.stripANSI(r).padEnd(WIDTH, " ").slice(0, WIDTH - 1).trimEnd());
+	return term.getViewport().map(r =>
+		Bun.stripANSI(r)
+			.padEnd(WIDTH, " ")
+			.slice(0, WIDTH - 1)
+			.trimEnd(),
+	);
 }
 
 /** The last column of each viewport row: the scroll track. */
 function trackColumn(term: VirtualTerminal): string[] {
-	return term.getViewport().map(r => Bun.stripANSI(r).padEnd(WIDTH, " ").slice(WIDTH - 1));
+	return term.getViewport().map(r =>
+		Bun.stripANSI(r)
+			.padEnd(WIDTH, " ")
+			.slice(WIDTH - 1),
+	);
 }
 
 describe("scroll isolation over dropped history", () => {

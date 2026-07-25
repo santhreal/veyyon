@@ -25,7 +25,7 @@ import {
 } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Settings } from "../config/settings";
-import githubDescription from "../prompts/tools/github.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import * as git from "../utils/git";
 import type { ToolSession } from ".";
 import { formatShortSha } from "./gh-format";
@@ -1781,6 +1781,9 @@ async function tryResolveCurrentRepoFresh(cwd: string, signal: AbortSignal | und
 	try {
 		return await resolveGitHubRepo(cwd, undefined, undefined, signal);
 	} catch {
+		// Undefined does not go unnoticed: the one caller compares it against the explicit `repo` and throws a
+		// ToolError naming "not a GitHub repository", so an unresolvable cwd fails CLOSED rather than letting a
+		// watch stream a confident wrong-repo status. Reporting here as well would say it twice.
 		return undefined;
 	}
 }
@@ -2450,7 +2453,7 @@ export class GithubTool implements AgentTool<typeof githubSchema, GhToolDetails>
 	readonly summary = "Interact with GitHub issues, pull requests, and repositories";
 	readonly loadMode = "discoverable";
 	readonly label = "GitHub";
-	readonly description = prompt.render(githubDescription);
+	readonly description = prompt.render(PROMPTS["tools/github"].text);
 	readonly parameters = githubSchema;
 	readonly strict = true;
 

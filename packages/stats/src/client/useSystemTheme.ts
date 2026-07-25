@@ -1,70 +1,31 @@
+/**
+ * The stats dashboard's theme, bound to React.
+ *
+ * The store itself is `createThemeStore` in `@veyyon/utils/theme-store`, shared with the
+ * collab client: both pages resolve a preference against the browser's, write it onto
+ * `<html>`, and notify their readers, and each used to carry its own copy of that. Only
+ * the storage key and this React binding are local, and the binding stays here because
+ * `@veyyon/utils` has no UI dependency.
+ *
+ * The shared store also fixes what this copy got wrong: it read `localStorage` behind a
+ * `typeof localStorage === "undefined"` check, which does not catch the getter THROWING,
+ * as it does in Safari private browsing and wherever storage is blocked by policy. The
+ * read ran at module scope, so the dashboard failed to start at all for those readers.
+ */
+
+import { createThemeStore, type SystemTheme, type ThemePreference } from "@veyyon/utils/theme-store";
 import { useSyncExternalStore } from "react";
 
-export type SystemTheme = "light" | "dark";
-export type ThemePreference = "system" | "light" | "dark";
+export type { SystemTheme, ThemePreference };
 
-const STORAGE_KEY = "veyyon-stats-theme";
-const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
+const store = createThemeStore({ storageKey: "veyyon-stats-theme" });
 
-function readStoredPreference(): ThemePreference {
-	if (typeof localStorage === "undefined") return "system";
-	const stored = localStorage.getItem(STORAGE_KEY);
-	return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
-}
+/** Choose a preference. Applies it to the page and notifies every chart. */
+export const setThemePreference = store.setPreference;
 
-function getSystemTheme(): SystemTheme {
-	if (typeof window === "undefined") return "dark";
-	return window.matchMedia(DARK_SCHEME_QUERY).matches ? "dark" : "light";
-}
-
-// Module-level store shared by the toggle (writer) and every chart (reader) so
-// an explicit override and the system default resolve through one source.
-let preference: ThemePreference = readStoredPreference();
-let resolved: SystemTheme = preference === "system" ? getSystemTheme() : preference;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-	for (const listener of listeners) listener();
-}
-
-function applyResolvedTheme(): void {
-	resolved = preference === "system" ? getSystemTheme() : preference;
-	if (typeof document !== "undefined") {
-		document.documentElement.dataset.theme = resolved;
-		document.documentElement.style.colorScheme = resolved;
-	}
-}
-
-if (typeof window !== "undefined") {
-	applyResolvedTheme();
-	window.matchMedia(DARK_SCHEME_QUERY).addEventListener("change", () => {
-		// System changes only move the needle while following the system.
-		if (preference === "system") {
-			applyResolvedTheme();
-			emit();
-		}
-	});
-}
-
-export function setThemePreference(next: ThemePreference): void {
-	preference = next;
-	if (typeof localStorage !== "undefined") localStorage.setItem(STORAGE_KEY, next);
-	applyResolvedTheme();
-	emit();
-}
-
-function subscribe(callback: () => void): () => void {
-	listeners.add(callback);
-	return () => listeners.delete(callback);
-}
-
-/** Reader for the active resolved theme. Reflects system default and overrides. */
+/** Reader for the active resolved theme. Reflects the system default and any override. */
 export function useSystemTheme(): SystemTheme {
-	return useSyncExternalStore(
-		subscribe,
-		() => resolved,
-		() => "dark" as SystemTheme,
-	);
+	return useSyncExternalStore(store.subscribe, store.getResolved, () => "dark" as SystemTheme);
 }
 
 /** Reader + writer for the theme preference (powers the toggle). */
@@ -73,15 +34,7 @@ export function useThemePreference(): {
 	resolved: SystemTheme;
 	setPreference: (next: ThemePreference) => void;
 } {
-	const pref = useSyncExternalStore(
-		subscribe,
-		() => preference,
-		() => "system" as ThemePreference,
-	);
-	const res = useSyncExternalStore(
-		subscribe,
-		() => resolved,
-		() => "dark" as SystemTheme,
-	);
-	return { preference: pref, resolved: res, setPreference: setThemePreference };
+	const preference = useSyncExternalStore(store.subscribe, store.getPreference, () => "system" as ThemePreference);
+	const resolved = useSyncExternalStore(store.subscribe, store.getResolved, () => "dark" as SystemTheme);
+	return { preference, resolved, setPreference: store.setPreference };
 }

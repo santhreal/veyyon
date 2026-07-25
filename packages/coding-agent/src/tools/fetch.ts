@@ -6,7 +6,17 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
 import { htmlToMarkdown } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
-import { $which, errorMessage, formatCount, isCancellation, ptree, trimTrailingSlashes, truncate } from "@veyyon/utils";
+import {
+	$which,
+	errorMessage,
+	formatCount,
+	isCancellation,
+	isEnoent,
+	logger,
+	ptree,
+	trimTrailingSlashes,
+	truncate,
+} from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -186,6 +196,8 @@ function buildLlmEndpointCandidates(url: string): string[] {
 
 		return endpoints;
 	} catch {
+		// `new URL` threw, so there is no origin to hang an llms.txt path off. No endpoints is the honest
+		// answer, and the caller's own fetch of the same URL reports the malformed input.
 		return [];
 	}
 }
@@ -393,6 +405,8 @@ async function tryMdSuffix(url: string, timeout: number, signal?: AbortSignal): 
 			candidates.push(`${parsed.origin}${pathname}.md`);
 		}
 	} catch {
+		// Same as above: an unparseable URL has no markdown sibling to guess at, and the fetch that
+		// follows reports the URL itself.
 		return null;
 	}
 
@@ -1718,7 +1732,12 @@ function getReadUrlCacheKey(session: ToolSession, requestedUrl: string, raw: boo
 	return `${scope}::${raw ? "raw" : "rendered"}::${normalizeUrl(requestedUrl)}`;
 }
 
-async function findArtifactPath(session: ToolSession, artifactId: string): Promise<string | null> {
+/**
+ * Resolve an `artifact://<id>` reference to the file that holds it, or null when there is no such
+ * artifact. Exported for the regression suite that pins what an unreadable artifact directory
+ * reports; production callers reach it through the read_url cache.
+ */
+export async function findArtifactPath(session: ToolSession, artifactId: string): Promise<string | null> {
 	const artifactsDir = session.getArtifactsDir?.();
 	if (!artifactsDir) return null;
 
@@ -1726,7 +1745,17 @@ async function findArtifactPath(session: ToolSession, artifactId: string): Promi
 		const files = await fs.readdir(artifactsDir);
 		const match = files.find(file => file.startsWith(`${artifactId}.`));
 		return match ? path.join(artifactsDir, match) : null;
-	} catch {
+	} catch (err) {
+		// An absent directory means no artifact has been written yet, which is a genuine miss. A
+		// directory that is there and unreadable is not: returning the same null told the user their
+		// `artifact://` URL pointed at nothing, when it pointed at a file this process could not list.
+		if (!isEnoent(err)) {
+			logger.warn("Artifact directory could not be read; the artifact cannot be resolved", {
+				dir: artifactsDir,
+				artifactId,
+				error: errorMessage(err),
+			});
+		}
 		return null;
 	}
 }

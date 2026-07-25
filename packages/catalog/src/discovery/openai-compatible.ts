@@ -1,4 +1,4 @@
-import { normalizeBaseUrl } from "@veyyon/utils";
+import { errorMessage, normalizeBaseUrl } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Api, FetchImpl, ModelSpec, Provider } from "../types";
 import { discoveryFetch } from "../utils";
@@ -82,6 +82,25 @@ export interface OpenAICompatibleModelMapperContext<TApi extends Api> {
 }
 
 /**
+ * Why a discovery attempt produced no model list.
+ *
+ * `stage` says how far the attempt got, which is what tells an operator where to look:
+ *
+ * - `base-url` — the configured base URL is not usable, so nothing was requested.
+ * - `request` — the request never completed (DNS, connection refused, TLS, timeout, abort).
+ * - `status` — the endpoint answered, with a status that is not ok.
+ * - `body` — the response body was not readable JSON.
+ * - `payload` — the JSON did not hold a model list in any shape this reader understands.
+ */
+export interface OpenAICompatibleDiscoveryFailure {
+	stage: "base-url" | "request" | "status" | "body" | "payload";
+	/** The `/models` URL that was attempted, or the configured base URL when nothing was requested. */
+	url: string;
+	/** Human-readable detail: the error message, or the status line. */
+	detail: string;
+}
+
+/**
  * Options for fetching and normalizing OpenAI-compatible `/models` catalogs.
  */
 export interface FetchOpenAICompatibleModelsOptions<TApi extends Api> {
@@ -115,12 +134,25 @@ export interface FetchOpenAICompatibleModelsOptions<TApi extends Api> {
 		defaults: ModelSpec<TApi>,
 		context: OpenAICompatibleModelMapperContext<TApi>,
 	) => ModelSpec<TApi> | null;
+	/**
+	 * Called once with the reason when discovery returns `null`.
+	 *
+	 * This exists because `null` on its own is a loss the caller cannot explain: a provider whose endpoint
+	 * refused the connection and a provider that is simply unreachable present identically, and what the
+	 * user sees is a model picker missing models they pay for, with nothing saying why. The reason travels
+	 * back as a value rather than being logged here, because this package is a data library and its callers
+	 * already own the per-provider discovery state they report from.
+	 *
+	 * Never called when discovery succeeds, including when it succeeds with an empty list: an endpoint that
+	 * answers "no models" is not a failure.
+	 */
+	onFailure?: (failure: OpenAICompatibleDiscoveryFailure) => void;
 }
 
 /**
  * Fetches and normalizes an OpenAI-compatible `/models` catalog.
  *
- * Returns `null` on transport/protocol failures.
+ * Returns `null` on transport/protocol failures, and calls `options.onFailure` with the reason first.
  * Returns `[]` only when the endpoint responds successfully with no usable models.
  */
 export async function fetchOpenAICompatibleModels<TApi extends Api>(
@@ -128,6 +160,7 @@ export async function fetchOpenAICompatibleModels<TApi extends Api>(
 ): Promise<ModelSpec<TApi>[] | null> {
 	const baseUrl = normalizeBaseUrl(options.baseUrl, "");
 	if (!baseUrl) {
+		options.onFailure?.({ stage: "base-url", url: options.baseUrl, detail: "base URL is empty or unusable" });
 		return null;
 	}
 
@@ -141,24 +174,30 @@ export async function fetchOpenAICompatibleModels<TApi extends Api>(
 
 	const fetchImpl = discoveryFetch(options.fetch);
 	const fetchPayload = async (signal?: AbortSignal): Promise<unknown | null> => {
+		const url = `${baseUrl}${MODELS_PATH}`;
 		let response: Response;
 		try {
-			response = await fetchImpl(`${baseUrl}${MODELS_PATH}`, {
+			response = await fetchImpl(url, {
 				method: "GET",
 				headers: requestHeaders,
 				signal,
 			});
-		} catch {
+		} catch (error) {
+			// The request never completed. Null alone would be indistinguishable from an endpoint that
+			// answered with no models, which is why the reason goes back to the caller.
+			options.onFailure?.({ stage: "request", url, detail: errorMessage(error) });
 			return null;
 		}
 
 		if (!response.ok) {
+			options.onFailure?.({ stage: "status", url, detail: `HTTP ${response.status} ${response.statusText}`.trim() });
 			return null;
 		}
 
 		try {
 			return await response.json();
-		} catch {
+		} catch (error) {
+			options.onFailure?.({ stage: "body", url, detail: errorMessage(error) });
 			return null;
 		}
 	};
@@ -174,6 +213,13 @@ export async function fetchOpenAICompatibleModels<TApi extends Api>(
 
 	const entries = extractModelEntries(payload);
 	if (entries === null) {
+		// The endpoint answered and the body parsed, but nothing in it looks like a model list. That is a
+		// protocol mismatch rather than an empty catalog, so it is reported as a failure and not as `[]`.
+		options.onFailure?.({
+			stage: "payload",
+			url: `${baseUrl}${MODELS_PATH}`,
+			detail: "response held no recognizable model list",
+		});
 		return null;
 	}
 

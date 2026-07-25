@@ -5,6 +5,7 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { grepToolRenderer } from "../../src/tools/grep";
+import { expectNotAccented } from "../helpers/theme-assertions";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -43,8 +44,7 @@ describe("grepToolRenderer", () => {
 		const plainLines = sanitizeText(renderedLines.join("\n")).split("\n");
 
 		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
-		expect(renderedLines[0]).not.toContain(uiTheme.fg("accent", uiTheme.symbol("icon.search")));
-		expect(renderedLines[0]).not.toContain(uiTheme.fg("accent", "Search"));
+		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
 	});
 
 	it("keeps truncation status in the header without a bottom notice", async () => {
@@ -112,10 +112,22 @@ describe("grepToolRenderer", () => {
 		const renderedLines = sanitizeText(collapsed.render(240).join("\n")).split("\n");
 		const bodyLines = renderedLines.slice(1);
 
-		expect(bodyLines).toHaveLength(6);
-		expect(bodyLines.some(line => line.includes("const firstFlag = true;"))).toBe(true);
-		expect(bodyLines.some(line => line.includes("const secondFlag = true;"))).toBe(true);
-		expect(bodyLines.some(line => line.includes("1 more match"))).toBe(true);
+		// The whole collapsed body, in order. The count and three existence checks
+		// that stood here could not see that each match still sits under its own
+		// file heading, that the files keep their input order, or that the
+		// truncation notice is the LAST line rather than somewhere in the middle.
+		// A renderer that emitted the two matches before either heading passed.
+		expect(bodyLines).toEqual([
+			" ├─ # src/ ",
+			" │  ## first.ts#aaaa ",
+			" │  *2│const firstFlag = true; ",
+			" │  ## second.ts#bbbb ",
+			" │  *4│const secondFlag = true; ",
+			" └─ … 1 more match ",
+		]);
+		// Kept as negatives: context lines and the budgeted-out third file must be
+		// absent from ANY line, which an equality check states only for this exact
+		// body and these say for the shape in general.
 		expect(bodyLines.some(line => line.includes("before"))).toBe(false);
 		expect(bodyLines.some(line => line.includes("thirdFlag"))).toBe(false);
 	});

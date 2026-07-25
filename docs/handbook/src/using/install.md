@@ -28,6 +28,14 @@ The first interactive `vey` opens the first-run setup, which moves through a spl
 
 Your configuration home is `~/.veyyon`, and the default profile keeps its agent directory at `~/.veyyon/profiles/default/agent/`.
 
+If an install is interrupted, run it again. The installer stages the binary beside its final path and moves it into place only once the file is complete, so a cancelled install never leaves you with a half-written `veyyon`. Cancelling with Ctrl-C removes the staged file on the way out; a kill the process cannot catch leaves it behind, and the next install reclaims it and names it:
+
+```console
+  ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
+```
+
+A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other's download.
+
 On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a "not found" error from the dynamic loader about a file that is plainly there.
 
 ## Install a specific version, or from source
@@ -87,15 +95,15 @@ veyyon 1.2.0 installed · restart to use it
 ```
 
 The running process keeps the version it started with, so the update takes
-effect the next time you launch. On that launch you get one line naming the new
-version:
+effect the next time you launch. On that launch the welcome card's tip line
+names the new version and points at what you can do about it:
 
 ```text
-Updated to veyyon 1.2.0 · run /changelog for release notes
+Tip: Updated to veyyon 1.2.0 · /changelog · roll back or turn auto-update off in /settings
 ```
 
-`/changelog` opens the release notes on the web rather than printing them into
-your terminal.
+You see it once per update, on the first launch after it. `/changelog` opens the
+release notes on the web rather than printing them into your terminal.
 
 Two settings control this, both on by default:
 
@@ -115,6 +123,66 @@ You can always update on demand, whichever settings are in force:
 ```console
 $ veyyon update
 ```
+
+### Going back to an older version
+
+If a release breaks something you depend on, you do not have to wait for the next
+one. `veyyon rollback` moves your install to any published version.
+
+Run it with no arguments and you get a picker over every published version:
+
+```console
+$ veyyon rollback
+```
+
+The list opens on the version you are running. Type to filter it, press `c` to
+open the highlighted version's changelog in your browser, and press enter to
+choose one. Nothing installs until you choose, and the change takes effect the
+next time you launch.
+
+If you already know the version you want, or you are writing a script, the same
+command works without the picker. Start by seeing what there is:
+
+```console
+$ veyyon rollback --list
+VERSION  PUBLISHED
+1.3.0    2026-07-01  (newer)
+1.2.0    2026-06-01  (current)
+1.1.0    2026-05-01  (previously run)
+```
+
+The markers tell you where you stand: `current` is the version running now,
+`newer` is a version you would move forward to, and `previously run` is one this
+machine has been on before. Then name the one you want:
+
+```console
+$ veyyon rollback 1.1.0
+```
+
+That installs 1.1.0 the same way an update installs a new release, verifies the
+binary really is the version it claims, and prints the changelog link for it. Like
+an update, it takes effect the next time you launch.
+
+Two things it refuses rather than guesses at. Rolling back to the version you are
+already running does nothing useful, so it says so instead of reinstalling and
+reporting success. And a source checkout cannot be rolled back: it updates by
+fast-forwarding its git branch, which only moves forward, so Veyyon tells you
+that rather than quietly reinstalling the latest version. To run an older version
+from a checkout, check the tag out yourself, or install the binary build and roll
+back from there.
+
+Add `--json` to `--list` when you want the same information for a script; each
+row carries the version, its publish date, the markers, and the changelog URL.
+Without a terminal on both ends, the bare `veyyon rollback` prints the list
+rather than opening a picker nothing can drive, so it is safe in a pipeline.
+
+You can also reach the picker without leaving a session. Open `/settings`, go to
+the `Interaction` tab, and you will find `Roll back version` directly under
+`Automatic Updates`, showing the version you are running now. It opens the same
+picker, and choosing a version closes the settings panel first so you can watch
+the install and read anything it has to tell you. The row appears only on an
+install that can actually perform the move, so you will not see it on a source
+checkout.
 
 Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the `curl` installer from veyyon.dev) replaces its own binary

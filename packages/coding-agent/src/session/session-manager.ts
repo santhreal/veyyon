@@ -2075,8 +2075,10 @@ export class SessionManager {
 	 * directory (session header) and the latest `session_init` contract (system
 	 * prompt / tools / output schema) WITHOUT taking the single-writer lock that
 	 * {@link open} acquires — the caller re-opens for the actual revive. Returns
-	 * null when the file can't be read; `init` is null for files written before
-	 * `session_init` was recorded (no faithful contract to rebuild from).
+	 * null when the file can't be read, and reports it first unless the file is
+	 * simply absent, so an unreadable session is not silently a missing one;
+	 * `init` is null for files written before `session_init` was recorded (no
+	 * faithful contract to rebuild from).
 	 */
 	static async peekSessionInit(
 		filePath: string,
@@ -2095,7 +2097,16 @@ export class SessionManager {
 		let loaded: FileEntry[];
 		try {
 			loaded = await loadEntriesFromFile(filePath, storage);
-		} catch {
+		} catch (err) {
+			// A session file that is not there is a normal miss and the caller says so. A file that IS
+			// there and could not be loaded is a different fact, and returning the same null told the
+			// user their session did not exist when it did.
+			if (!isEnoent(err)) {
+				logger.warn("Session file exists but could not be loaded; treating it as missing", {
+					path: filePath,
+					error: errorMessage(err),
+				});
+			}
 			return null;
 		}
 		// A missing/empty file has no usable session — nothing to revive from.

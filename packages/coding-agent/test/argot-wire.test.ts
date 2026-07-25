@@ -1,5 +1,5 @@
 /**
- * Unit-locks lexpack-wire.ts, the ONE module through which veyyon touches the argot
+ * Unit-locks argot-wire.ts, the ONE module through which veyyon touches the argot
  * codec. Its whole safety story rests on a set of guards that let the executor
  * route everything through these functions unconditionally: "identity until a
  * dict loads", "an `off` child (no codec) is inert", and "return `undefined` when
@@ -23,7 +23,7 @@ import {
 	expandSessionContext,
 	expandSubagentReturn,
 	expandToolArguments,
-} from "@veyyon/coding-agent/lexpack-wire";
+} from "@veyyon/coding-agent/argot-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { ArgotSession, EMPTY_GATE, StreamDecoder, type Vocabulary } from "argot";
 
@@ -232,15 +232,17 @@ describe("ArgotStreamDisplayDecoder", () => {
 		// message_end is covered by displayAssistantContent's own tests.
 	});
 
-	it("leaves toolCall blocks and undecoded indices untouched", () => {
+	it("returns blocks it has no decoded text for by reference", () => {
+		// An index the stream never fed (and a block carrying no handle) is passed
+		// straight back, so a render that changes nothing allocates nothing.
 		const decoder = new ArgotStreamDisplayDecoder(loadedCodec());
 		decoder.push(0, "§db");
-		const toolCall = { type: "toolCall", id: "t1", name: "read", arguments: { path: "§db" } } as const;
+		const plain = { type: "toolCall", id: "t1", name: "read", arguments: { path: "src/main.ts" } } as const;
 		const out = decoder.decodeContent([
 			{ type: "text", text: "§db" },
-			toolCall,
+			plain,
 		] as unknown as AssistantMessage["content"]);
-		expect(out[1]).toBe(toolCall);
+		expect(out[1]).toBe(plain);
 	});
 
 	it("is fully inert (same reference back) with no codec or an unarmed one", () => {

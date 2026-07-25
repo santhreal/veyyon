@@ -56,6 +56,12 @@ const DEFAULT_CONFIG_DIR: &str = ".veyyon";
 /// in `packages/utils/src/dirs.ts`. Kept in sync with the JS authority so the
 /// native crash handler resolves logs to the exact directory the JS logger
 /// uses; a divergence would silently scatter crash reports away from the logs.
+///
+/// The value is a NAME joined onto the home directory, never a path that
+/// replaces it, and the validation of that lives on the JS side ONLY:
+/// `getConfigDirName` refuses an absolute value while `dirs.ts` is being
+/// imported, which happens long before this hook can run, so a bad value never
+/// reaches here. Do not add a second copy of the check — one owner.
 const CONFIG_DIR_ENV_KEYS: [&str; 1] = ["VEYYON_CONFIG_DIR"];
 
 /// Env key that overrides the agent dir, mirroring `AGENT_DIR_ENV_KEYS` in

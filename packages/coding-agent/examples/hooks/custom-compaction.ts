@@ -12,9 +12,12 @@
  * Usage:
  *   veyyon --hook examples/hooks/custom-compaction.ts
  */
-import { complete, getModel } from "@veyyon/ai";
+
+import { serializeConversation } from "@veyyon/agent-core";
+import { complete } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 import type { HookAPI } from "@veyyon/coding-agent";
-import { convertToLlm, serializeConversation } from "@veyyon/coding-agent";
+import { convertToLlm } from "@veyyon/coding-agent";
 
 export default function (pi: HookAPI) {
 	pi.on("session_before_compact", async (event, ctx) => {
@@ -24,7 +27,7 @@ export default function (pi: HookAPI) {
 		const { messagesToSummarize, turnPrefixMessages, tokensBefore, firstKeptEntryId, previousSummary } = preparation;
 
 		// Use Gemini Flash for summarization (cheaper/faster than most conversation models)
-		const model = getModel("google", "gemini-2.5-flash");
+		const model = getBundledModel("google", "gemini-2.5-flash");
 		if (!model) {
 			ctx.ui.notify(`Could not find Gemini Flash model, using default compaction`, "warning");
 			return;

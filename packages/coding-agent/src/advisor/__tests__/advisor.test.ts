@@ -8,7 +8,7 @@ import type { Settings } from "../../config/settings";
 import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "../../modes/components/advisor-config";
 import { createAdvisorMessageCard } from "../../modes/components/advisor-message";
 import { getThemeByName, setThemeInstance } from "../../modes/theme/theme";
-import advisorSystemPrompt from "../../prompts/advisor/system.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { SecretObfuscator } from "../../secrets/obfuscator";
 import { formatSessionHistoryMarkdown } from "../../session/session-history-format";
 import { YieldQueue } from "../../session/yield-queue";
@@ -65,9 +65,11 @@ describe("advisor", () => {
 
 			expect(rendered).toContain("→ grep(needle @ packages/coding-agent/src) ⇒ error");
 			expect(rendered).not.toContain("paths[0]");
-			expect(advisorSystemPrompt).toContain("Arguments absent from the rendered transcript are UNKNOWN");
-			expect(advisorSystemPrompt).toContain("NEVER assert concrete values, array indexes");
-			expect(advisorSystemPrompt).toContain("NEVER claim `paths[0]`, array flattening, or malformed `paths`");
+			expect(PROMPTS["advisor/system"].text).toContain("Arguments absent from the rendered transcript are UNKNOWN");
+			expect(PROMPTS["advisor/system"].text).toContain("NEVER assert concrete values, array indexes");
+			expect(PROMPTS["advisor/system"].text).toContain(
+				"NEVER claim `paths[0]`, array flattening, or malformed `paths`",
+			);
 		});
 	});
 

@@ -7,7 +7,7 @@ import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import todoDescription from "../prompts/tools/todo.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../sdk";
 import type { SessionEntry } from "../session/session-entries";
 import { framedBlock, renderStatusLine, renderTreeList } from "../tui";
@@ -619,7 +619,7 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 	];
 	readonly loadMode = "discoverable";
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(todoDescription);
+		this.description = prompt.render(PROMPTS["tools/todo"].text);
 	}
 
 	async execute(

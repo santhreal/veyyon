@@ -2,7 +2,7 @@ import { describe, expect, it, type Mock, vi } from "bun:test";
 import type { ImageContent } from "@veyyon/ai";
 import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import manualContinuePrompt from "../src/prompts/system/manual-continue.md" with { type: "text" };
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 
 type FakeEditor = {
 	onEscape?: () => void;
@@ -563,7 +563,7 @@ describe("InputController keybinding setup", () => {
 			await editor.onSubmit?.(shortcut);
 
 			expect(onInput, `shortcut ${shortcut}`).toHaveBeenCalledWith({
-				text: manualContinuePrompt,
+				text: PROMPTS["turn-control/manual-continue"].text,
 				cancelled: false,
 				started: true,
 				synthetic: true,

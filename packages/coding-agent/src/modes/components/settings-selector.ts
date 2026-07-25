@@ -1,17 +1,16 @@
-import type { ThinkingLevel } from "@veyyon/agent-core";
+import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
 import { type Api, type Effort, type Model, THINKING_EFFORTS } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import {
 	type Component,
 	Container,
 	extractPrintableText,
-	fuzzyRank,
 	getKeybindings,
-	getSettingItemFilterText,
 	type ImageBudget,
 	Input,
 	matchesKey,
 	padding,
+	rankSettingItems,
 	replaceTabs,
 	routeSelectListMouse,
 	routeSgrMouseInput,
@@ -27,10 +26,17 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage, VERSION } from "@veyyon/utils";
+import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
-import { resolveModelRoleValue } from "../../config/model-resolver";
-import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
+import { extractExplicitThinkingSelector, resolveModelRoleValue } from "../../config/model-resolver";
+import {
+	DEFAULT_MODEL_SLOT,
+	getRoleInfo,
+	ROLE_INHERIT_LABEL,
+	SELECTABLE_MODEL_ROLE_IDS,
+} from "../../config/model-roles";
+import { UNSET_NUMBER, UNSET_NUMBER_OPTION_VALUE } from "../../config/optional-number";
 import {
 	getDefault,
 	getType,
@@ -39,19 +45,35 @@ import {
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../../config/settings";
+import type { SubagentAgentSettings } from "../../config/settings-domains/subagents";
 import type {
 	SettingTab,
 	StatusLinePreset,
 	StatusLineSegmentId,
 	StatusLineSeparatorStyle,
+	SubmenuOption,
 } from "../../config/settings-schema";
-import { SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
+import { isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
-import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
+import { discoverAgents } from "../../task/discovery";
+import {
+	nextSubagentEnableValue,
+	resolveSubagentModel,
+	resolveSubagentThinkingLevel,
+	SUBAGENT_ENABLE_STATE_LABEL,
+	subagentEnableState,
+	subagentModelSourceLabel,
+	subagentSettingsFor,
+} from "../../task/subagent-settings";
+import type { AgentDefinition } from "../../task/types";
+import {
+	AUTO_THINKING,
+	type ConfiguredThinkingLevel,
+	configuredThinkingLevelOptions,
+	INHERIT_EFFORT_OPTION_VALUE,
+} from "../../thinking";
 import { getTabBarTheme } from "../shared";
-import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
-import { extractExplicitThinkingSelector } from "../../config/model-resolver";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
 	applyModalReveal,
@@ -59,6 +81,7 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_SETTINGS,
+	planModalChrome,
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -70,6 +93,7 @@ import {
 } from "./modal-shell";
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
+import { RollbackPanelComponent } from "./rollback-panel";
 import { DEFAULT_MODEL_SETTING_ID, getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
 import { getPreset } from "./status-line/presets";
 
@@ -242,6 +266,271 @@ class SelectSubmenu extends Container {
 	}
 }
 
+/** Sentinel for the drill-down's free-text entries; never a stored value. */
+const THRESHOLD_CUSTOM_VALUE = "__custom__";
+
+type ThresholdMode = "auto" | "percent" | "tokens";
+
+/**
+ * The stored string's mode, decided by the same parser auto-compaction runs
+ * on, so the drill-down can never disagree with the session about which mode
+ * a value means. Garbage parses to auto WITH `invalidRaw`, which the mode view
+ * surfaces as a warning instead of silently presenting Auto as chosen.
+ */
+function thresholdModeOf(raw: string): { mode: ThresholdMode; invalidRaw?: string } {
+	const spec = parseCompactionThreshold(raw);
+	if (spec.kind === "percent") return { mode: "percent" };
+	if (spec.kind === "tokens") return { mode: "tokens" };
+	return { mode: "auto", ...(spec.invalidRaw !== undefined ? { invalidRaw: spec.invalidRaw } : {}) };
+}
+
+/**
+ * Short display form for a stored threshold: `200000` renders `200k`,
+ * `1000000` renders `1M`, a percent normalizes to `<n>%` (`85 %` renders
+ * `85%`); `auto` and anything unparseable pass through untouched. Used by the
+ * outer settings row and the mode rows' current markers, so both always spell
+ * one value the same way.
+ */
+function formatThresholdShort(raw: string): string {
+	const spec = parseCompactionThreshold(raw);
+	if (spec.kind === "tokens") {
+		if (spec.tokens % 1_000_000 === 0) return `${spec.tokens / 1_000_000}M`;
+		if (spec.tokens % 1_000 === 0) return `${spec.tokens / 1_000}k`;
+		return String(spec.tokens);
+	}
+	if (spec.kind === "percent") return `${spec.percent}%`;
+	return raw;
+}
+
+/**
+ * Two-level picker for `compaction.threshold`: mode first (Auto / Percent /
+ * Tokens), then the mode's values. The flat submenu listed all 19 presets in
+ * one list, which hid that the setting has three semantics — auto follows the
+ * model's window, a percent scales with it, a token amount is fixed across
+ * models. The active mode carries the green check and its current value, so
+ * the mode view alone answers "what will trigger compaction".
+ *
+ * The schema's `ui.options` stay the single source of presets; they are
+ * partitioned by unit at render time. A stored value no preset spells (a
+ * hand-edited `170000`, a legacy fold-in) appears as a marked custom row in
+ * its mode's list, never silently presented as a preset pick.
+ */
+class CompactionThresholdSubmenu extends Container {
+	#selectList: SelectList | undefined;
+
+	constructor(
+		private readonly options: ReadonlyArray<SubmenuOption>,
+		private readonly onPersist: () => void,
+		private readonly onClose: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#showModes();
+	}
+
+	/** The raw stored value; read fresh so re-renders after a persist show the new pick. */
+	#currentRaw(): string {
+		return String(settings.get("compaction.threshold") ?? AUTO_COMPACTION_THRESHOLD);
+	}
+
+	/** Green check for the active row, blank padding for the rest, so labels align. */
+	#marker(active: boolean): string {
+		return active ? `${theme.fg("success", theme.status.enabled)} ` : "  ";
+	}
+
+	#showModes(): void {
+		this.clear();
+		this.#selectList = undefined;
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Auto-Compaction Threshold")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg(
+					"muted",
+					"When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model.",
+				),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+
+		const raw = this.#currentRaw();
+		const { mode, invalidRaw } = thresholdModeOf(raw);
+		if (invalidRaw !== undefined) {
+			this.addChild(
+				new Text(
+					theme.fg(
+						"warning",
+						`Stored value "${invalidRaw}" is not auto, a percent, or a token amount; Auto is in effect.`,
+					),
+					0,
+					0,
+				),
+			);
+			this.addChild(new Spacer(1));
+		}
+
+		// The current amount rides on the Percent/Tokens rows; Auto names itself.
+		const current = theme.fg("dim", `(current: ${formatThresholdShort(raw)})`);
+		const items: SelectItem[] = [
+			{
+				value: "auto",
+				label: `${this.#marker(mode === "auto")}Auto`,
+				description: "The model's context window minus the reserve",
+			},
+			{
+				value: "percent",
+				label: `${this.#marker(mode === "percent")}Percent${mode === "percent" ? ` ${current}` : ""}`,
+				description: "Scales with each model's window",
+			},
+			{
+				value: "tokens",
+				label: `${this.#marker(mode === "tokens")}Tokens${mode === "tokens" ? ` ${current}` : ""}`,
+				description: "The same trigger on every model",
+			},
+		];
+
+		this.#selectList = new SelectList(items, items.length, getSelectListTheme());
+		this.#selectList.setSelectedIndex(items.findIndex(item => item.value === mode));
+		this.#selectList.onSelect = item => {
+			if (item.value === "auto") {
+				this.#persist(AUTO_COMPACTION_THRESHOLD);
+				return;
+			}
+			if (item.value === "percent" || item.value === "tokens") {
+				this.#showValuePicker(item.value);
+				this.requestRender?.();
+			}
+		};
+		this.#selectList.onCancel = this.onClose;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
+	}
+
+	#showValuePicker(mode: "percent" | "tokens"): void {
+		this.clear();
+		this.#selectList = undefined;
+		const title = mode === "percent" ? "Auto-Compaction Threshold — Percent" : "Auto-Compaction Threshold — Tokens";
+		this.addChild(new Text(theme.bold(theme.fg("accent", title)), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg(
+					"muted",
+					mode === "percent"
+						? "Compact once the context passes this share of the model's window. Follows the window when you switch models."
+						: "Compact once the context passes this many tokens, on every model. Larger than the window compacts at the window's edge instead.",
+				),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+
+		const raw = this.#currentRaw();
+		const presets = this.options.filter(option =>
+			mode === "percent" ? option.value.endsWith("%") : /^[0-9_]+$/.test(option.value),
+		);
+		const items: SelectItem[] = presets.map(option => ({
+			value: option.value,
+			label: `${this.#marker(option.value === raw)}${option.label}`,
+			...(option.description !== undefined ? { description: option.description } : {}),
+		}));
+		// A stored value no preset spells (hand-edited config, legacy fold-in)
+		// still gets a truthful row, checked, instead of vanishing behind Custom.
+		if (thresholdModeOf(raw).mode === mode && !presets.some(option => option.value === raw)) {
+			items.unshift({
+				value: raw,
+				label: `${this.#marker(true)}${formatThresholdShort(raw)} ${theme.fg("dim", "(custom)")}`,
+				description: "Set by hand; not one of the presets",
+			});
+		}
+		items.push({
+			value: THRESHOLD_CUSTOM_VALUE,
+			label: `  Custom…`,
+			description: mode === "percent" ? "Type any whole percent from 1 to 99" : "Type any token amount",
+		});
+
+		this.#selectList = new SelectList(items, Math.min(items.length, 10), getSelectListTheme());
+		const currentIndex = items.findIndex(item => item.value === raw);
+		if (currentIndex !== -1) this.#selectList.setSelectedIndex(currentIndex);
+		this.#selectList.onSelect = item => {
+			if (item.value === THRESHOLD_CUSTOM_VALUE) {
+				this.#showCustomInput(mode);
+			} else {
+				this.#persist(item.value);
+			}
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = () => {
+			this.#showModes();
+			this.requestRender?.();
+		};
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to go back"), 0, 0));
+	}
+
+	#showCustomInput(mode: "percent" | "tokens"): void {
+		this.clear();
+		this.#selectList = undefined;
+		const raw = this.#currentRaw();
+		const input = new TextInputSubmenu(
+			mode === "percent" ? "Custom Percent" : "Custom Token Amount",
+			mode === "percent"
+				? "A whole percent from 1 to 99 (the parser's clamp range); the % sign is optional."
+				: "A positive token amount, e.g. 170000. Underscores are fine (170_000).",
+			thresholdModeOf(raw).mode === mode ? raw : "",
+			value => {
+				this.#persist(this.#validateCustom(mode, value));
+				this.requestRender?.();
+			},
+			() => {
+				this.#showValuePicker(mode);
+				this.requestRender?.();
+			},
+		);
+		this.addChild(input);
+	}
+
+	/**
+	 * Validate and normalize a typed value to its stored form. Throws with the
+	 * fix in the message; TextInputSubmenu renders it in the error line.
+	 */
+	#validateCustom(mode: "percent" | "tokens", value: string): string {
+		const text = value.trim();
+		if (mode === "percent") {
+			const percent = Number(text.replace(/%$/, "").trim());
+			if (!Number.isInteger(percent) || percent < 1 || percent > 99) {
+				throw new Error(`"${value}" is not a whole percent from 1 to 99.`);
+			}
+			return `${percent}%`;
+		}
+		const tokens = Number(text.replace(/_/g, ""));
+		if (!Number.isInteger(tokens) || tokens <= 0) {
+			throw new Error(`"${value}" is not a positive token amount (e.g. 170000).`);
+		}
+		return String(tokens);
+	}
+
+	#persist(value: string): void {
+		settings.set("compaction.threshold", value);
+		this.onPersist();
+		this.#showModes();
+		this.requestRender?.();
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
 class ProviderLimitsSubmenu extends Container {
 	#selectList: SelectList | undefined;
 
@@ -350,6 +639,20 @@ class ProviderLimitsSubmenu extends Container {
 }
 
 /**
+ * Bare `provider/id` for picker preselection from a stored value that may
+ * carry a `:effort` suffix (`provider/id:high`) — the encoding
+ * {@link renderEffortStep} persists. Without this the picker cannot match the
+ * current row, so selection lands on the pinned (inherit) row and a quick
+ * Enter clears instead of re-picking. Falls back to the raw string when the
+ * value does not resolve, so an unmatched selector still shows as typed.
+ */
+export function barePickerSelector(raw: string | undefined, models: ReadonlyArray<Model<Api>>): string | undefined {
+	if (!raw) return undefined;
+	const resolved = resolveModelRoleValue(raw, models).model;
+	return resolved ? `${resolved.provider}/${resolved.id}` : raw;
+}
+
+/**
  * Role list → reusable {@link ModelSelectorPanel} for each role.
  * Assignments write through `settings.setModelRole` (profile-scoped).
  */
@@ -420,8 +723,8 @@ class ModelRolesSubmenu extends Container {
 			this.#models,
 			{
 				title: `${info.name} model`,
-				description: `Role \`${role}\` — used when that work type runs. Del clears (${info.unsetLabel ?? "inherit main model"}).`,
-				currentSelector: current,
+				description: `Role \`${role}\` — used when that work type runs. Del or the (inherit) row clears (${info.unsetLabel ?? "inherit main model"}).`,
+				currentSelector: barePickerSelector(current, this.#models as Model<Api>[]),
 				allowClear: true,
 			},
 			{
@@ -467,6 +770,343 @@ class ModelRolesSubmenu extends Container {
 		this.onChange();
 		this.#showRoleList();
 		this.requestRender?.();
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/**
+ * Row ids inside the per-agent editor. NUL-prefixed for the same reason as
+ * {@link ADD_EFFORT_ROW}: an agent may legitimately be named `model`.
+ */
+const AGENT_ROW_OFFERED = "\\u0000agent-offered";
+const AGENT_ROW_MODEL = "\\u0000agent-model";
+const AGENT_ROW_EFFORT = "\\u0000agent-effort";
+const AGENT_ROW_RESET = "\\u0000agent-reset";
+
+/**
+ * The `subagent.agents` table: the discovered agents, each with its offered
+ * state, its model and its effort.
+ *
+ * Every answer comes from `task/subagent-settings.ts` — the enable default, the
+ * state wording, the model precedence and the layer that decided it — so this and
+ * `/agents` cannot describe the same row differently. It edits settings rows only;
+ * writing an agent FILE stays in `/agents`, which is why the footer points there.
+ *
+ * The list is discovered rather than read off the stored table: a row exists only
+ * once something is overridden, so a table-driven list would be empty on a stock
+ * install and would hide exactly the specialists the operator came to turn on.
+ */
+class SubagentAgentsSubmenu extends Container {
+	#selectList: SelectList | undefined;
+	#agents: AgentDefinition[] = [];
+	#loadError: string | undefined;
+	#loaded = false;
+
+	constructor(
+		private readonly cwd: string,
+		private readonly models: ReadonlyArray<Model>,
+		private readonly registry: ModelRegistry,
+		/** The session's live model, so an inheriting row shows what it will actually run. */
+		private readonly activeModelPattern: string | undefined,
+		private readonly onChange: () => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#showAgentList();
+		void this.#load();
+	}
+
+	async #load(): Promise<void> {
+		try {
+			const { agents } = await discoverAgents(this.cwd);
+			this.#agents = [...agents].sort((a, b) => a.name.localeCompare(b.name));
+		} catch (error) {
+			// Loud: a discovery failure means the list is incomplete, and quietly
+			// showing a short list reads as "these are all the agents there are".
+			this.#loadError = errorMessage(error);
+		}
+		this.#loaded = true;
+		this.#showAgentList();
+		this.requestRender?.();
+	}
+
+	/** The stored table, always an object so callers can spread it. */
+	#table(): Record<string, SubagentAgentSettings> {
+		const stored = settings.get("subagent.agents");
+		return stored && typeof stored === "object" ? ({ ...stored } as Record<string, SubagentAgentSettings>) : {};
+	}
+
+	#row(name: string): SubagentAgentSettings {
+		return { ...subagentSettingsFor(settings, name) };
+	}
+
+	/**
+	 * Write one agent's row, dropping empty fields and the row itself when nothing
+	 * is left. An empty row and no row must not be distinguishable: a bare `{}` in
+	 * the file reads as "configured" to anything checking for a row.
+	 */
+	#writeRow(name: string, next: SubagentAgentSettings): void {
+		const table = this.#table();
+		const cleaned: SubagentAgentSettings = {};
+		if (next.enabled !== undefined) cleaned.enabled = next.enabled;
+		if (next.model?.trim()) cleaned.model = next.model.trim();
+		if (next.thinkingLevel?.trim()) cleaned.thinkingLevel = next.thinkingLevel.trim();
+		if (Object.keys(cleaned).length === 0) delete table[name];
+		else table[name] = cleaned;
+		settings.set("subagent.agents", table);
+		this.onChange();
+	}
+
+	/** One agent's model column: the resolved pattern plus the layer that chose it. */
+	#modelSummary(agent: AgentDefinition): string {
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: agent.name,
+			agentModel: agent.model,
+			activeModelPattern: this.activeModelPattern,
+		});
+		if (resolved.unresolved) return theme.fg("error", `${resolved.unresolved.value} matches no model`);
+		const pattern = resolved.patterns[0];
+		if (!pattern) return theme.fg("dim", "no model resolved");
+		const summary = formatSelectorSummary(pattern);
+		return resolved.source === "inherit"
+			? theme.fg("dim", `inherit · ${summary}`)
+			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name)}`)}`;
+	}
+
+	#showAgentList(): void {
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Agents")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg("muted", "Which agent types this session offers, and what each one runs. A blank model inherits."),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+		this.#selectList = undefined;
+
+		if (this.#loadError) {
+			this.addChild(new Text(theme.fg("error", `  Could not read the agent directories: ${this.#loadError}`), 0, 0));
+			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			return;
+		}
+		if (!this.#loaded) {
+			this.addChild(new Text(theme.fg("dim", "  Reading agents…"), 0, 0));
+			return;
+		}
+
+		const items: SelectItem[] = this.#agents.map(agent => ({
+			value: agent.name,
+			label: agent.name,
+			description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
+		}));
+		if (items.length === 0) {
+			this.addChild(new Text(theme.fg("dim", "  No agents found."), 0, 0));
+			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			return;
+		}
+
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			this.#showAgentEditor(item.value);
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = this.onCancel;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(theme.fg("dim", "  Enter to configure · /agents to write agent files · Esc to go back"), 0, 0),
+		);
+	}
+
+	#agent(name: string): AgentDefinition | undefined {
+		return this.#agents.find(candidate => candidate.name === name);
+	}
+
+	#showAgentEditor(name: string): void {
+		const agent = this.#agent(name);
+		if (!agent) {
+			this.#showAgentList();
+			return;
+		}
+		const row = this.#row(name);
+		const resolvedEffort = resolveSubagentThinkingLevel({ settings, agentName: name });
+
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", `Agent: ${name}`)), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("muted", agent.description || `${agent.source} agent`), 0, 0));
+		this.addChild(new Spacer(1));
+
+		const items: SelectItem[] = [
+			{
+				value: AGENT_ROW_OFFERED,
+				label: "Offered",
+				description: SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, row.enabled)],
+			},
+			{ value: AGENT_ROW_MODEL, label: "Model", description: this.#modelSummary(agent) },
+			{
+				value: AGENT_ROW_EFFORT,
+				label: "Effort",
+				description: row.thinkingLevel?.trim()
+					? row.thinkingLevel.trim()
+					: theme.fg("dim", `inherit${resolvedEffort ? ` · ${resolvedEffort}` : ""}`),
+			},
+		];
+		if (Object.keys(row).length > 0) {
+			items.push({
+				value: AGENT_ROW_RESET,
+				label: "Reset to defaults",
+				description: theme.fg("dim", `clears subagent.agents.${name}`),
+			});
+		}
+
+		this.#selectList = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			switch (item.value) {
+				case AGENT_ROW_OFFERED:
+					this.#writeRow(name, { ...row, enabled: nextSubagentEnableValue(row.enabled) });
+					this.#showAgentEditor(name);
+					break;
+				case AGENT_ROW_MODEL:
+					this.#showAgentModelPicker(name);
+					break;
+				case AGENT_ROW_EFFORT:
+					this.#showAgentEffortPicker(name);
+					break;
+				case AGENT_ROW_RESET:
+					this.#writeRow(name, {});
+					this.#showAgentEditor(name);
+					break;
+			}
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = () => {
+			this.#showAgentList();
+			this.requestRender?.();
+		};
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to change · Esc to go back"), 0, 0));
+	}
+
+	#showAgentModelPicker(name: string): void {
+		const agent = this.#agent(name);
+		if (!agent) return;
+		this.clear();
+		this.#selectList = undefined;
+		// What this agent would run with no row of its own, so clearing the override
+		// says where the value comes from next instead of just "inherit".
+		const withoutRow = resolveSubagentModel({
+			settings,
+			agentName: name,
+			agentModel: agent.model,
+			activeModelPattern: this.activeModelPattern,
+			ignoreAgentRow: true,
+		});
+		const cleared = withoutRow.patterns[0] ? formatSelectorSummary(withoutRow.patterns[0]) : "the session model";
+		this.addChild(
+			new ModelSelectorPanel(
+				settings,
+				this.registry,
+				this.models,
+				{
+					title: `${name} model`,
+					description: `Model for the \`${name}\` subagent. Del or the (inherit) row clears it, leaving ${cleared} (${subagentModelSourceLabel(withoutRow.source, name)}).`,
+					currentSelector: barePickerSelector(this.#row(name).model?.trim(), this.models as Model<Api>[]),
+					allowClear: true,
+				},
+				{
+					onPick: (model, selector) => {
+						const efforts = getSupportedEfforts(model);
+						if (efforts.length === 0) {
+							this.#persistAgentModel(name, selector);
+							return;
+						}
+						this.#selectList = renderEffortStep(
+							this,
+							selector,
+							efforts,
+							value => this.#persistAgentModel(name, value),
+							() => {
+								this.#showAgentModelPicker(name);
+								this.requestRender?.();
+							},
+						);
+						this.requestRender?.();
+					},
+					onClear: () => {
+						this.#writeRow(name, { ...this.#row(name), model: undefined });
+						this.#showAgentEditor(name);
+						this.requestRender?.();
+					},
+					onCancel: () => {
+						this.#showAgentEditor(name);
+						this.requestRender?.();
+					},
+				},
+			),
+		);
+	}
+
+	#persistAgentModel(name: string, value: string): void {
+		this.#writeRow(name, { ...this.#row(name), model: value });
+		this.#showAgentEditor(name);
+		this.requestRender?.();
+	}
+
+	/**
+	 * Per-agent effort, with an inherit row: a per-agent effort the operator cannot
+	 * clear from the UI is a value they can only undo by editing the file.
+	 */
+	#showAgentEffortPicker(name: string): void {
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", `${name} effort`)), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg("muted", "Effort this subagent runs at. Inherit follows Subagent Effort, then the session."),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+
+		// The same rows as the blanket Subagent Effort setting, from the one effort
+		// vocabulary — a second list here is how two surfaces come to disagree about
+		// which levels exist. Only the inherit row's wording differs, because here it
+		// falls back to that blanket setting first.
+		const items: SelectItem[] = configuredThinkingLevelOptions().map(option =>
+			option.value === INHERIT_EFFORT_OPTION_VALUE
+				? { value: option.value, label: "Inherit", description: "Follow Subagent Effort, then the session" }
+				: { value: option.value, label: option.label, description: option.description },
+		);
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			this.#writeRow(name, { ...this.#row(name), thinkingLevel: item.value || undefined });
+			this.#showAgentEditor(name);
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = () => {
+			this.#showAgentEditor(name);
+			this.requestRender?.();
+		};
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
 	}
 
 	handleInput(data: string): void {
@@ -576,10 +1216,11 @@ class DefaultEffortSubmenu extends Container {
 				allowClear: false,
 			},
 			{
-				onPick: (model, selector) => {
-					// The bare `provider/id` is the row key: an effort belongs in the
-					// row's VALUE, so a selector that arrived carrying `:level` must not
-					// become a second key meaning the same model.
+				// The picker's `selector` argument is deliberately ignored: the bare
+				// `provider/id` is the row key, an effort belongs in the row's VALUE, and a
+				// selector arriving with `:level` attached must not become a second key
+				// meaning the same model.
+				onPick: model => {
 					this.#showEffortPicker(`${model.provider}/${model.id}`, model);
 					this.requestRender?.();
 				},
@@ -596,8 +1237,7 @@ class DefaultEffortSubmenu extends Container {
 		const model = picked ?? this.models.find(m => `${m.provider}/${m.id}` === key);
 		// The any-model row is not a model, so its choices are every effort veyyon
 		// knows; a model row offers what that model supports.
-		const efforts =
-			key === ANY_MODEL_EFFORT_KEY || !model ? [...THINKING_EFFORTS] : [...getSupportedEfforts(model)];
+		const efforts = key === ANY_MODEL_EFFORT_KEY || !model ? [...THINKING_EFFORTS] : [...getSupportedEfforts(model)];
 		this.#selectList = renderEffortStep(
 			this,
 			key === ANY_MODEL_EFFORT_KEY ? "any model" : key,
@@ -679,16 +1319,17 @@ class DefaultModelSubmenu extends Container {
 	#showModelPicker(): void {
 		this.clear();
 		this.#selectList = undefined;
-		const current = settings.getModelRole("default")?.trim();
+		const current = settings.getModelRole(DEFAULT_MODEL_SLOT)?.trim();
 		const panel = new ModelSelectorPanel(
 			settings,
 			this.registry,
 			this.models,
 			{
 				title: "Default model",
-				description: "The model each new session starts on. Del clears the pin (auto-selects on launch).",
-				currentSelector: current,
+				description: "The model each new session starts on. Clearing the pin auto-selects on launch.",
+				currentSelector: barePickerSelector(current, this.models as Model<Api>[]),
 				allowClear: true,
+				clearLabel: "(auto-select on launch)",
 			},
 			{
 				onPick: (model, selector) => {
@@ -701,7 +1342,7 @@ class DefaultModelSubmenu extends Container {
 					this.requestRender?.();
 				},
 				onClear: () => {
-					settings.setModelRole("default", undefined);
+					settings.setModelRole(DEFAULT_MODEL_SLOT, undefined);
 					this.onChange();
 					this.onCancel();
 				},
@@ -725,7 +1366,7 @@ class DefaultModelSubmenu extends Container {
 	}
 
 	#persist(value: string): void {
-		settings.setModelRole("default", value);
+		settings.setModelRole(DEFAULT_MODEL_SLOT, value);
 		this.onChange();
 		this.onCancel();
 	}
@@ -831,16 +1472,6 @@ class ModelEffortSubmenu extends Container {
 /** Synthetic item id prefix for the per-tab "Advanced" fold toggle row. */
 const ADVANCED_TOGGLE_ID_PREFIX = "__advanced:";
 
-// Numeric compaction settings whose -1 sentinel renders as (and is set via)
-// the "default" submenu option: -1 = derive the value from the model/provider.
-// Exported so the settings round-trip guard (test) treats this as the single
-// authority on which paths accept the "default" sentinel option value.
-export const COMPACTION_DEFAULT_SENTINEL_PATHS: ReadonlySet<string> = new Set([
-	"compaction.thresholdPercent",
-	"compaction.thresholdTokens",
-	"compaction.modelContextWindow",
-]);
-
 function advancedToggleId(tab: SettingTab): string {
 	return `${ADVANCED_TOGGLE_ID_PREFIX}${tab}`;
 }
@@ -850,6 +1481,16 @@ function isAdvancedToggleId(id: string): boolean {
 }
 
 /** Columns between the sidebar and the settings pane: `│` hairline + two spaces. */
+/**
+ * Footer tip candidates. One array so the chrome plan is computed from the SAME
+ * tip the card renders: the tip and its gap are droppable rows, so a plan built
+ * from a different list would disagree with the card about how tall it is.
+ */
+const SETTINGS_TIPS: readonly string[] = [
+	'Tip · Ask the agent: "change theme to titanium" or "what does compact do?"',
+	"Tip · Ask the agent to change a setting",
+];
+
 const SIDEBAR_GAP_COLS = 3;
 
 /** Footer chips while keyboard focus rests on the category sidebar. */
@@ -918,6 +1559,9 @@ export interface StatusLinePreviewSettings {
 	compactThinkingLevel?: boolean;
 }
 
+/** Id of the actionable rollback row. Exported so tests address it by name. */
+export const ROLLBACK_ROW_ID = "__action:rollback";
+
 export interface SettingsCallbacks {
 	/** Called when any setting value changes */
 	onChange: (path: SettingPath, newValue: unknown) => void;
@@ -931,6 +1575,24 @@ export interface SettingsCallbacks {
 	onPluginsChanged?: () => void | Promise<void>;
 	/** Called when settings panel is closed */
 	onCancel: () => void;
+	/**
+	 * Opens a URL in the operator's browser.
+	 *
+	 * Supplied by the host because a component has no business spawning a
+	 * process. Absent means the rollback row's changelog key does nothing rather
+	 * than crashing, which is the right degrade for a convenience affordance.
+	 */
+	onOpenUrl?: (url: string) => void;
+	/**
+	 * Moves the install to another published version.
+	 *
+	 * The ROW IS ONLY OFFERED WHEN THIS IS SUPPLIED. A "Roll back version" row
+	 * that opened a picker and then could not install anything would be worse
+	 * than no row: it would look like the feature is there and broken.
+	 */
+	onRollback?: (version: string) => Promise<void>;
+	/** Reports a failure that happens after the panel closes. */
+	onError?: (message: string) => void;
 }
 
 /**
@@ -1133,10 +1795,26 @@ export class SettingsSelectorComponent implements Component {
 				]
 			: [];
 
-		// Non-body chrome (borders, search row, footer band) costs ~10 rows —
-		// mirrors renderModalShell's own nonBody() budget below. The sidebar
-		// runs parallel to the pane, so it costs no vertical budget.
-		const estimatedBody = Math.max(10, dims.modalHeight - 10);
+		// Ask the shell how many body rows it will give, rather than estimating.
+		// This read `dims.modalHeight - 10` under a comment admitting it "mirrors
+		// renderModalShell's own nonBody() budget", and a mirror is exactly what
+		// goes stale: this card carries search chrome AND a tip band, so its real
+		// reservation moves with the tip, the tip gap, and any chip row that wraps.
+		// Four sibling overlays shipped content off the end of a card this way.
+		// The sidebar runs parallel to the pane, so it costs no vertical budget.
+		const settingsShortcuts = this.#settingsShortcuts();
+		const estimatedBody = Math.max(
+			1,
+			planModalChrome({
+				sizing,
+				modalHeight: dims.modalHeight,
+				contentWidth,
+				shortcuts: settingsShortcuts,
+				hoveredShortcutId: this.#hoveredShortcutId,
+				tipCandidates: SETTINGS_TIPS,
+				hasSearch: true,
+			}).maxBodyRows,
+		);
 		const list = this.#searchList ?? this.#currentList;
 		let listLines: readonly string[] = [];
 		if (list) {
@@ -1177,11 +1855,8 @@ export class SettingsSelectorComponent implements Component {
 			areaHeight: termHeight,
 			body,
 			searchLine: this.#searchChromeLine(contentWidth),
-			tipCandidates: [
-				'Tip · Ask the agent: "change theme to titanium" or "what does compact do?"',
-				"Tip · Ask the agent to change a setting",
-			],
-			shortcuts: this.#settingsShortcuts(),
+			tipCandidates: SETTINGS_TIPS,
+			shortcuts: settingsShortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});
@@ -1367,7 +2042,7 @@ export class SettingsSelectorComponent implements Component {
 				const item = this.#defToItem(def);
 				if (item) candidates.push(item);
 			}
-			const ranked = fuzzyRank(candidates, query, getSettingItemFilterText);
+			const ranked = rankSettingItems(candidates, query);
 			const matched = ranked.map(result => result.item);
 			counts.set(tab, matched.length);
 			if (matched.length === 0) continue;
@@ -1485,7 +2160,18 @@ export class SettingsSelectorComponent implements Component {
 	/**
 	 * Convert a setting definition to a SettingItem for the UI.
 	 */
+	/**
+	 * Build a list item, then attach the fields search ranks on: the group and the
+	 * schema's declared synonyms. Done once here rather than in each `case` below,
+	 * so a new widget type cannot ship unsearchable by forgetting them.
+	 */
 	#defToItem(def: SettingDef): SettingItem | null {
+		const item = this.#defToItemBase(def);
+		if (!item) return null;
+		return { ...item, group: def.group, keywords: def.keywords };
+	}
+
+	#defToItemBase(def: SettingDef): SettingItem | null {
 		// Check condition: applies to every variant — booleans, enums, submenus, text inputs.
 		if (def.condition && !def.condition()) {
 			return null;
@@ -1526,6 +2212,16 @@ export class SettingsSelectorComponent implements Component {
 					description: def.description,
 					currentValue: this.#getSubmenuCurrentValue(def.path, currentValue),
 					submenu: (cv, done) => this.#createSubmenu(def, cv, done),
+					changed,
+				};
+
+			case "compactionThreshold":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: formatThresholdShort(String(currentValue ?? AUTO_COMPACTION_THRESHOLD)),
+					submenu: (_cv, done) => this.#createCompactionThresholdInput(def, done),
 					changed,
 				};
 
@@ -1579,6 +2275,16 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
+			case "subagentAgents":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatSubagentAgentsValue(),
+					submenu: (_cv, done) => this.#createSubagentAgentsInput(done),
+					changed,
+				};
+
 			case "defaultModel":
 				return {
 					id: def.path,
@@ -1597,7 +2303,7 @@ export class SettingsSelectorComponent implements Component {
 	#getCurrentValue(def: SettingDef): unknown {
 		// The default-model entry is synthetic (no schema key): its value lives in
 		// the `default` model-role slot, so read it from there, not settings.get.
-		if (def.type === "defaultModel") return settings.getModelRole("default");
+		if (def.type === "defaultModel") return settings.getModelRole(DEFAULT_MODEL_SLOT);
 		return settings.get(def.path);
 	}
 
@@ -1611,8 +2317,15 @@ export class SettingsSelectorComponent implements Component {
 
 	#getSubmenuCurrentValue(path: SettingPath, value: unknown): string {
 		const rawValue = String(value ?? "");
-		if (COMPACTION_DEFAULT_SENTINEL_PATHS.has(path) && (rawValue === "-1" || rawValue === "")) {
-			return "default";
+		// An optional numeric setting displays its unset state as the shared `Default`
+		// row, whichever way the stored value spells it. The set of such paths comes
+		// from the schema (isUnsetNumberPath), not a list maintained here, which used
+		// to name three compaction paths and miss the six sampling ones.
+		// An absent key reads back as the schema default, which for these paths is
+		// undefined; a legacy config may still hold the old `-1` sentinel, and an
+		// unmigrated project overlay always can, so both spell the Default row.
+		if (isUnsetNumberPath(path) && (value === undefined || rawValue === String(UNSET_NUMBER) || rawValue === "")) {
+			return UNSET_NUMBER_OPTION_VALUE;
 		}
 		return rawValue;
 	}
@@ -1819,12 +2532,7 @@ export class SettingsSelectorComponent implements Component {
 		// widen and narrow by runtime type instead.
 		const current: unknown = settings.get(path);
 		const rawCurrent = typeof current === "string" ? current.trim() : undefined;
-		// The stored value may carry a `:effort` suffix; resolve it back to the bare
-		// `provider/id` so the model row highlights as current in the picker.
-		const resolvedCurrent = rawCurrent
-			? resolveModelRoleValue(rawCurrent, ctx.models as Model<Api>[]).model
-			: undefined;
-		const currentSelector = resolvedCurrent ? `${resolvedCurrent.provider}/${resolvedCurrent.id}` : rawCurrent;
+		const currentSelector = barePickerSelector(rawCurrent, ctx.models as Model<Api>[]);
 		const label =
 			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
 		return new ModelEffortSubmenu(
@@ -1835,6 +2543,25 @@ export class SettingsSelectorComponent implements Component {
 			currentSelector || undefined,
 			done,
 			value => this.callbacks.onChange(path, value),
+			this.context.requestRender,
+		);
+	}
+
+	/** Row summary for the threshold: `Auto`, `85%`, `200k`, or the invalid raw text. */
+	#formatCompactionThresholdValue(): string {
+		return formatThresholdShort(String(settings.get("compaction.threshold") ?? AUTO_COMPACTION_THRESHOLD));
+	}
+
+	#createCompactionThresholdInput(
+		def: SettingDef & { type: "compactionThreshold" },
+		done: (value?: string) => void,
+	): Container {
+		return new CompactionThresholdSubmenu(
+			def.options,
+			() => {
+				this.callbacks.onChange("compaction.threshold", settings.get("compaction.threshold"));
+			},
+			() => done(this.#formatCompactionThresholdValue()),
 			this.context.requestRender,
 		);
 	}
@@ -1869,6 +2596,51 @@ export class SettingsSelectorComponent implements Component {
 				this.callbacks.onChange("defaultEffort", settings.get("defaultEffort"));
 			},
 			() => done(this.#formatDefaultEffortValue()),
+			this.context.requestRender,
+		);
+	}
+
+	/**
+	 * Row summary for the Agents table: how many agents carry a row, and how many
+	 * of those are blocked. Counting rows rather than discovered agents keeps this
+	 * synchronous — discovery is async, and a row that says "6 agents" before the
+	 * directories are read would be a guess.
+	 */
+	#formatSubagentAgentsValue(): string {
+		const stored = settings.get("subagent.agents");
+		const table = stored && typeof stored === "object" ? (stored as Record<string, SubagentAgentSettings>) : {};
+		const rows = Object.values(table);
+		if (rows.length === 0) return "defaults";
+		const blocked = rows.filter(row => row?.enabled === false).length;
+		const pinned = rows.filter(row => row?.model?.trim()).length;
+		const parts = [`${rows.length} configured`];
+		if (blocked > 0) parts.push(`${blocked} blocked`);
+		if (pinned > 0) parts.push(`${pinned} pinned`);
+		return parts.join(", ");
+	}
+
+	#createSubagentAgentsInput(done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			fallback.addChild(new Spacer(1));
+			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "escape") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
+		return new SubagentAgentsSubmenu(
+			this.context.cwd,
+			ctx.models,
+			ctx.registry,
+			active,
+			() => {
+				this.callbacks.onChange("subagent.agents", settings.get("subagent.agents"));
+			},
+			() => done(this.#formatSubagentAgentsValue()),
 			this.context.requestRender,
 		);
 	}
@@ -1909,8 +2681,12 @@ export class SettingsSelectorComponent implements Component {
 		return new DefaultModelSubmenu(
 			ctx.models,
 			ctx.registry,
-			() => this.callbacks.onChange(DEFAULT_MODEL_SETTING_ID as SettingPath, settings.getModelRole("default") ?? ""),
-			() => done(this.#formatModelSelectorValue(settings.getModelRole("default"))),
+			() =>
+				this.callbacks.onChange(
+					DEFAULT_MODEL_SETTING_ID as SettingPath,
+					settings.getModelRole(DEFAULT_MODEL_SLOT) ?? "",
+				),
+			() => done(this.#formatModelSelectorValue(settings.getModelRole(DEFAULT_MODEL_SLOT))),
 			this.context.requestRender,
 		);
 	}
@@ -1945,8 +2721,10 @@ export class SettingsSelectorComponent implements Component {
 	#setSettingValue(path: SettingPath, value: string): void {
 		const currentValue = settings.get(path);
 		const schemaType = getType(path);
-		if (COMPACTION_DEFAULT_SENTINEL_PATHS.has(path) && value === "default") {
-			settings.set(path, -1 as never);
+		if (isUnsetNumberPath(path) && value === UNSET_NUMBER_OPTION_VALUE) {
+			// "Default" REMOVES the key rather than storing a sentinel, so the value
+			// the provider would accept is not stolen to mean "no value".
+			settings.unset(path);
 		} else if (schemaType === "record") {
 			let parsed: unknown;
 			try {
@@ -2085,6 +2863,14 @@ export class SettingsSelectorComponent implements Component {
 				lastGroup = def.group;
 			}
 			items.push(item);
+			// Rolling back is not a setting: it has no stored value and no default,
+			// it is an action you take once. But it belongs next to the update
+			// settings, because "updates happen automatically" and "I can undo one"
+			// are the same question, and answering only the first is what made
+			// updates feel like something done to you. So it is a row in the group
+			// rather than a schema entry, sitting under the toggle it qualifies.
+			const rollbackRow = this.#rollbackRow(def);
+			if (rollbackRow) items.push(rollbackRow);
 		}
 
 		if (advancedTotal > 0) {
@@ -2104,6 +2890,35 @@ export class SettingsSelectorComponent implements Component {
 		}
 
 		return items;
+	}
+
+	/**
+	 * The "Roll back version" row, when the host can actually perform one.
+	 *
+	 * Anchored after `startup.autoUpdate` rather than at a fixed index, so it
+	 * stays under the toggle it qualifies however the group is later reordered.
+	 */
+	#rollbackRow(def: SettingDef): SettingItem | null {
+		if (def.path !== "startup.autoUpdate") return null;
+		const rollback = this.callbacks.onRollback;
+		if (!rollback) return null;
+		return {
+			id: ROLLBACK_ROW_ID,
+			label: "Roll back version",
+			description: "Move this install to another published version. Takes effect on restart.",
+			currentValue: VERSION,
+			group: def.group,
+			keywords: ["downgrade", "revert", "version", "previous", "older"],
+			submenu: (_cv, done) =>
+				new RollbackPanelComponent({
+					currentVersion: VERSION,
+					openUrl: url => this.callbacks.onOpenUrl?.(url),
+					rollback,
+					reportError: message => this.callbacks.onError?.(message),
+					requestRender: () => this.context.requestRender?.(),
+					done: () => done(),
+				}),
+		};
 	}
 
 	/** Re-evaluate condition gates against the current settings and refresh the active list. */

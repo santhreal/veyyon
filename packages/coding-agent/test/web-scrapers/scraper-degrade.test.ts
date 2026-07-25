@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { handleSpecialUrls } from "@veyyon/coding-agent/tools/fetch";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 import { handleCratesIo } from "@veyyon/coding-agent/web/scrapers/crates-io";
 import { handleMastodon } from "@veyyon/coding-agent/web/scrapers/mastodon";
 import { isScraperDegrade, scraperDegrade, tryParseUrl } from "@veyyon/coding-agent/web/scrapers/types";
@@ -31,6 +32,38 @@ describe("scraperDegrade contract", () => {
 
 		const fromString = scraperDegrade("mdn", "unexpected response shape");
 		expect(fromString.note).toBe("mdn scraper failed (unexpected response shape); fell back to a generic fetch");
+	});
+
+	it("rethrows a cancellation instead of describing it as a scraper failure", () => {
+		// Handlers call this from a blanket `catch (error)`, which also catches the user's
+		// Ctrl-C and any deadline that fires mid-request. Turning those into a degrade told
+		// the dispatcher to fall through to the generic fetch, which then made the very
+		// request that had just been cancelled. All three shapes cancellation arrives in are
+		// covered: the DOMException `fetch` raises, the plain Error `utils/abortable` raises,
+		// and the ToolAbortError the tool layer uses.
+		const domAbort = new DOMException("The operation was aborted.", "AbortError");
+		expect(() => scraperDegrade("crates-io", domAbort)).toThrow(domAbort);
+
+		const namedAbort = Object.assign(new Error("Aborted: Cancelled"), { name: "AbortError" });
+		expect(() => scraperDegrade("crates-io", namedAbort)).toThrow(namedAbort);
+
+		const timeout = new DOMException("The operation timed out.", "TimeoutError");
+		expect(() => scraperDegrade("crates-io", timeout)).toThrow(timeout);
+
+		const toolAbort = new ToolAbortError();
+		expect(() => scraperDegrade("crates-io", toolAbort)).toThrow(toolAbort);
+	});
+
+	it("still describes an ordinary failure that merely mentions aborting", () => {
+		// The negative twin. The test is the error NAME, not its text: an HTTP 500 whose
+		// body happens to say "aborted" is a scrape failure and must stay a degrade.
+		const ordinary = new Error("upstream aborted the connection");
+		expect(scraperDegrade("crates-io", ordinary).note).toBe(
+			"crates-io scraper failed (upstream aborted the connection); fell back to a generic fetch",
+		);
+		expect(scraperDegrade("crates-io", "AbortError").note).toBe(
+			"crates-io scraper failed (AbortError); fell back to a generic fetch",
+		);
 	});
 
 	it("rejects non-degrade values in the guard", () => {

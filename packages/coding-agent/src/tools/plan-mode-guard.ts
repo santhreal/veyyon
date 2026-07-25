@@ -37,6 +37,8 @@ function localSandboxRoot(session: ToolSession): string | null {
 	try {
 		return path.resolve(resolveLocalRoot(planLocalProtocolOptions(session)));
 	} catch {
+		// No sandbox root means no path can be inside it, so every caller below treats null as "not
+		// scratch space" and plan mode keeps the write blocked. Fail closed, deliberately.
 		return null;
 	}
 }
@@ -86,6 +88,8 @@ export function targetsLocalSandbox(session: ToolSession, targetPath: string): b
 	try {
 		resolved = resolvePlanPath(session, targetPath);
 	} catch {
+		// A path we cannot resolve cannot be proven to be inside the sandbox, and this guard is what
+		// decides whether plan mode allows a write. Unprovable is refused, never assumed.
 		return false;
 	}
 	if (!path.isAbsolute(resolved)) return false;
@@ -100,6 +104,8 @@ export function targetsLocalSandbox(session: ToolSession, targetPath: string): b
 		const realParent = fs.realpathSync.native(path.dirname(absolute));
 		return isWithinRoot(path.join(realParent, path.basename(absolute)), realRoot);
 	} catch {
+		// Symlink resolution failed, so the sandbox identity cannot be established. Same rule as above:
+		// the guard refuses rather than granting scratch-space treatment it cannot justify.
 		return false;
 	}
 }

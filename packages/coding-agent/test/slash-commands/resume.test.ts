@@ -7,11 +7,14 @@ import { resolveResumableSession } from "@veyyon/coding-agent/session/session-li
 import { computeDefaultSessionDir } from "@veyyon/coding-agent/session/session-paths";
 import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
-import { getConfigRootDir, setAgentDir } from "@veyyon/utils";
+import { setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 let tempDir: string;
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+// which leaked into every file that ran after this one.
+const dirOverrides = captureDirOverrides();
 const storage = new FileSessionStorage();
 
 beforeEach(async () => {
@@ -20,12 +23,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-	if (originalAgentDir) {
-		setAgentDir(originalAgentDir);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
+	restoreDirOverrides(dirOverrides);
 	await fs.rm(tempDir, { recursive: true, force: true });
 });
 

@@ -41,12 +41,17 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
-import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 
 // The code under test opens `AgentStorage`, which resolves `agent.db` under the
 // ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
 // real `~/.veyyon/profiles/<profile>/agent`.
-useIsolatedAgentDir();
+//
+// `globalSettings` rather than a second `useIsolatedGlobalSettings()` call: `executeBash`
+// calls `Settings.init()` itself, reaching past the session stub to the real config root,
+// so the singleton has to be pre-initialized in memory too. Two file-level helpers would
+// restore in registration order and the second would put this file's temp agent dir back
+// on the way out, which is exactly the leak this file used to produce.
+useIsolatedAgentDir({ globalSettings: true });
 
 /**
  * Modes that gate a mutating call by ASKING. `plan` is deliberately absent: it
@@ -62,11 +67,6 @@ const READ_GATING_MODES: string[] = ["plan", "ask", "auto-edit"];
 
 /** Plan mode's own refusal, which fires before any approval prompt. */
 const PLAN_DENY = /non-mutating tools only/;
-
-// `executeBash` calls `Settings.init()` itself, reaching past the session stub to
-// the real config root. One line isolates the singleton (and the dir resolver and
-// env) for this whole file; see the helper for why a session stub is not enough.
-useIsolatedGlobalSettings();
 
 const BASE_SETTINGS = {
 	"async.enabled": false,

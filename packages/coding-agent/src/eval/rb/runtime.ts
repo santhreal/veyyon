@@ -7,6 +7,7 @@
  * mirrors the same allowlist/denylist + explicit-interpreter shape.
  */
 import {
+	BASE_ENV_ALLOW_PREFIXES,
 	BASE_ENV_ALLOWLIST,
 	createEnvFilter,
 	enumerateRuntimes,
@@ -45,7 +46,7 @@ const WINDOWS_ENV_ALLOWLIST = [
 
 // Ruby version managers and gem layout live behind these prefixes; passing them
 // through lets `bundle`/`gem`/rbenv/asdf-shimmed code resolve consistently.
-const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "VEYYON_", "GEM_", "BUNDLE", "RBENV_", "RUBY", "CHRUBY_", "ASDF_"];
+const RUBY_ENV_ALLOW_PREFIXES = [...BASE_ENV_ALLOW_PREFIXES, "GEM_", "BUNDLE", "RBENV_", "RUBY", "CHRUBY_", "ASDF_"];
 
 export interface RubyRuntime {
 	/** Path to the ruby executable. */
@@ -58,7 +59,7 @@ export const filterEnv = createEnvFilter({
 	allowList: BASE_ENV_ALLOWLIST,
 	windowsAllowList: WINDOWS_ENV_ALLOWLIST,
 	denyList: SECRET_ENV_DENYLIST,
-	allowPrefixes: DEFAULT_ENV_ALLOW_PREFIXES,
+	allowPrefixes: RUBY_ENV_ALLOW_PREFIXES,
 });
 
 /**

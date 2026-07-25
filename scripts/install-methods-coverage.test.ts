@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { existingOnly } from "./check-doc-links";
 
 /**
  * Locks the release gate to the install methods veyyon actually ships, and locks
@@ -47,10 +48,18 @@ const removedNpmMachinery = [
 function markdownFiles(root: string): string[] {
 	const out = Bun.spawnSync(["git", "ls-files", "*.md"], { cwd: root });
 	expect(out.exitCode, "git ls-files must succeed").toBe(0);
-	return new TextDecoder()
-		.decode(out.stdout)
-		.split("\n")
-		.filter(line => line.length > 0);
+	// `existingOnly`: git lists the INDEX, which still contains a doc deleted in
+	// the working tree but not yet committed. Reading one killed this test with a
+	// raw ENOENT naming that file — an error about tree state, in a test about
+	// install instructions. A deleted doc also cannot tell a user to install
+	// anything, so skipping it is the correct answer and not a workaround.
+	return existingOnly(
+		root,
+		new TextDecoder()
+			.decode(out.stdout)
+			.split("\n")
+			.filter(line => line.length > 0),
+	);
 }
 
 describe("the release gate covers both shipped install channels", () => {
@@ -233,13 +242,13 @@ describe("the gate runs the installer itself, not only what it installs", () => 
 		expect(runCi).toContain('expect_absent "$INSTALLER_BIN/veyyon"');
 		expect(runCi).toContain('expect_absent "$INSTALLER_HOME/.local/share/bash-completion/completions/vey"');
 		expect(runCi).toContain('expect_absent "$INSTALLER_HOME/.config/fish/completions/vey.fish"');
-		expect(runCi).toContain('uninstall left the PATH line in .bashrc');
+		expect(runCi).toContain("uninstall left the PATH line in .bashrc");
 	});
 
 	it("proves uninstall leaves the user's own rc content alone", () => {
 		// "Removes everything it added, and only what it added" is the documented
 		// contract; the second half is the one that costs a user their config.
-		expect(runCi).toContain("echo \"alias ll='ls -la'\" >> \"$INSTALLER_HOME/.bashrc\"");
+		expect(runCi).toContain('echo "alias ll=\'ls -la\'" >> "$INSTALLER_HOME/.bashrc"');
 		expect(runCi).toContain("uninstall removed the user's own .bashrc content");
 	});
 

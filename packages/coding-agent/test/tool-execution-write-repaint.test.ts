@@ -110,9 +110,13 @@ describe("ToolExecutionComponent write repaint seam", () => {
 			tui.start();
 			await scheduler.drain(term);
 			const pendingRows = plainBuffer(term);
-			expect(pendingRows.some(row => row.includes("… (8 earlier lines)"))).toBe(true);
-			expect(pendingRows.some(row => row.includes("… (streaming)"))).toBe(true);
-			expect(pendingRows.some(row => row.includes("20 line 20"))).toBe(true);
+			// Counted rather than merely present, for the same reason as the SSH
+			// repaint suite: the bug this exists to catch is a frame drawn a second
+			// time below the first, and `some(...)` is true whether the row was
+			// repainted in place or duplicated.
+			expect(pendingRows.filter(row => row.includes("… (8 earlier lines)"))).toHaveLength(1);
+			expect(pendingRows.filter(row => row.includes("… (streaming)"))).toHaveLength(1);
+			expect(pendingRows.filter(row => row.includes("20 line 20"))).toHaveLength(1);
 
 			component.setArgsComplete();
 			tui.requestRender();
@@ -129,9 +133,9 @@ describe("ToolExecutionComponent write repaint seam", () => {
 			expect(rows.some(row => row.includes("20 line 20"))).toBe(false);
 			// The first partial-result frame is what remains: progress line plus the
 			// top-anchored preview.
-			expect(rows.some(row => row.includes("Writing notes.txt..."))).toBe(true);
-			expect(rows.some(row => row.includes("  1 line 1"))).toBe(true);
-			expect(rows.some(row => row.includes("… 14 more lines"))).toBe(true);
+			expect(rows.filter(row => row.includes("Writing notes.txt..."))).toHaveLength(1);
+			expect(rows.filter(row => row.includes("  1 line 1"))).toHaveLength(1);
+			expect(rows.filter(row => row.includes("… 14 more lines"))).toHaveLength(1);
 		} finally {
 			tui.stop();
 			await term.flush();

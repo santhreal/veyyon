@@ -131,16 +131,31 @@ describe("settings migrations are fixed points", () => {
 	});
 
 	/**
-	 * A boolean-to-enum migration must not re-fire on the enum it produced.
-	 * `always` is not a boolean, so the second pass leaves it be.
+	 * A boolean-to-enum migration must not re-fire on the enum it produced, and
+	 * the key it lands on moved too: `task.eager` (boolean, then a three-value
+	 * enum) is now `subagent.delegation`, whose scale adds `off` at the bottom.
+	 * The legacy `true` meant the strongest push, which is `required`.
 	 */
-	test("maps task.eager from boolean to enum once", async () => {
+	test("maps a boolean task.eager onto subagent.delegation once", async () => {
 		writeConfig({ task: { eager: true } });
 
-		const { first, second } = await loadTwice("task.eager");
+		const { first, second } = await loadTwice("subagent.delegation");
 
-		expect(first).toBe("always");
-		expect(second).toBe("always");
+		expect(first).toBe("required");
+		expect(second).toBe("required");
+	});
+
+	/**
+	 * The middle of that scale keeps its meaning across the move, so an operator
+	 * who asked for "preferred" does not get promoted to a first-turn reminder.
+	 */
+	test("maps the enum form of task.eager onto the matching delegation strength", async () => {
+		writeConfig({ task: { eager: "preferred" } });
+
+		const { first, second } = await loadTwice("subagent.delegation");
+
+		expect(first).toBe("preferred");
+		expect(second).toBe("preferred");
 	});
 
 	/**
@@ -151,7 +166,7 @@ describe("settings migrations are fixed points", () => {
 	test("maps a legacy isolation mode once", async () => {
 		writeConfig({ task: { isolation: { mode: "worktree" } } });
 
-		const { first, second } = await loadTwice("task.isolation.mode");
+		const { first, second } = await loadTwice("subagent.isolation.mode");
 
 		expect(first).toBe("rcopy");
 		expect(second).toBe("rcopy");
@@ -165,7 +180,7 @@ describe("settings migrations are fixed points", () => {
 	test("maps task.isolation.enabled to a mode once", async () => {
 		writeConfig({ task: { isolation: { enabled: true } } });
 
-		const { first, second } = await loadTwice("task.isolation.mode");
+		const { first, second } = await loadTwice("subagent.isolation.mode");
 
 		expect(first).toBe("auto");
 		expect(second).toBe("auto");

@@ -17,7 +17,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { type ArmResult, emptyArmResult, renderReferenceCostSection, summarizeCell } from "./aggregate";
-import { costShares, priceTokens, REFERENCE_RATE_CARD } from "./cost-model";
+import { costShares, priceTokens, REFERENCE_RATE_CARD, retainedTokenCost } from "./cost-model";
 
 describe("the reference cost section refuses to price what it cannot attribute", () => {
 	/**
@@ -31,9 +31,8 @@ describe("the reference cost section refuses to price what it cannot attribute",
 	 */
 	test("withholds the table for rows that predate the cache split", () => {
 		const legacy = { ...emptyArmResult("old", "t", 0), inputTokens: 1000, outputTokens: 500, cacheTokens: 900_000 };
-		// biome-ignore lint/performance/noDelete: reproduces a legacy row, which lacks the property entirely.
+		// `delete` rather than `= undefined`: a legacy row lacks the property entirely.
 		delete (legacy as Partial<ArmResult>).cacheReadTokens;
-		// biome-ignore lint/performance/noDelete: same.
 		delete (legacy as Partial<ArmResult>).cacheWriteTokens;
 		expect(summarizeCell([legacy]).refCostMeasurable).toBe(false);
 		expect(renderReferenceCostSection([legacy], ["old"])).toContain("Not computed for old");
@@ -215,5 +214,64 @@ describe("costShares", () => {
 			cacheWrite: 0,
 			output: 0,
 		});
+	});
+});
+
+/**
+ * `retainedTokenCost`, moved here with the function.
+ *
+ * It replaces charging a token once. Context is re-read on every later turn, so a token's real
+ * price depends on when it enters the session, and charging the dictionary once made a dictionary
+ * that loses money look like it saved it. Both ceiling scripts had their own copy of the
+ * arithmetic, which is two answers to the question every saving claim in this bench is stated in.
+ */
+describe("retainedTokenCost", () => {
+	/**
+	 * A token entering on the final turn is never re-read, so it costs exactly
+	 * fresh input and nothing more. This is the boundary the reread arithmetic
+	 * gets wrong by one if `totalTurns - turn` is used instead of minus one.
+	 */
+	test("charges a last-turn token as fresh input only", () => {
+		expect(retainedTokenCost(9, 10)).toBeCloseTo(REFERENCE_RATE_CARD.input / 1_000_000, 15);
+	});
+
+	/**
+	 * The finding that reframed the whole effort, as arithmetic: a token entering
+	 * at turn 0 of a 66-turn session is billed once as input and 65 times as
+	 * cache read, roughly seventeen times its face value. This is why context
+	 * size dominates the bill and why the dictionary, which sits in the prompt
+	 * from turn 0, is the most expensive place to put anything.
+	 */
+	test("charges a turn-0 token of a 66-turn session at ~17x face value", () => {
+		const unit = retainedTokenCost(0, 66);
+		const face = REFERENCE_RATE_CARD.input / 1_000_000;
+		expect(unit / face).toBeCloseTo(17.25, 2);
+	});
+
+	/** Cost falls monotonically the later a token enters, which is what makes late context cheaper than early context. */
+	test("falls monotonically as a token enters later", () => {
+		const costs = [0, 10, 20, 30].map(turn => retainedTokenCost(turn, 40));
+		for (let i = 1; i < costs.length; i++) expect(costs[i]).toBeLessThan(costs[i - 1]);
+	});
+
+	/** A turn index past the end cannot produce a negative reread count and a negative price. */
+	test("never returns less than the fresh-input price", () => {
+		expect(retainedTokenCost(99, 10)).toBeCloseTo(REFERENCE_RATE_CARD.input / 1_000_000, 15);
+	});
+});
+
+describe("retainedTokenCost has one owner", () => {
+	/**
+	 * The lock. `online-codec-ceiling.ts` and `context-encode-ceiling.ts` each defined it, and both
+	 * price their sweeps with it, so a copy reappearing means two sweeps can report savings on
+	 * different billing models while both look like this bench's numbers.
+	 */
+	test("neither ceiling script defines its own", async () => {
+		for (const file of ["online-codec-ceiling.ts", "context-encode-ceiling.ts"]) {
+			const source = await Bun.file(new URL(file, import.meta.url)).text();
+
+			expect(source).not.toContain("function retainedTokenCost");
+			expect(source).toContain('retainedTokenCost } from "./cost-model"');
+		}
 	});
 });

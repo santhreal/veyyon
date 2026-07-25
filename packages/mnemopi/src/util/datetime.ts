@@ -42,6 +42,8 @@ export function parseTsFast(value: string): Date | undefined {
 		TS_CACHE.set(value, parsed);
 		return parsed;
 	} catch {
+		// Undefined means "not a timestamp", which is what this asks. The caller decides what an undated row
+		// means; parsing cannot. Not cached, so a fix to the parser takes effect without a restart.
 		return undefined;
 	}
 }

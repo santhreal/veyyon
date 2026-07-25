@@ -102,6 +102,58 @@ describe("the workspace typecheck covers every package", () => {
 });
 
 /**
+ * `scripts/` is checked too, and it is the blind spot the suite above cannot see.
+ *
+ * The workspace fan-out covers `packages/*` and nothing else, so every generator,
+ * CI driver, and repo-level test under `scripts/` — thousands of lines that
+ * import package sources directly — was typechecked by NOTHING. `tsconfig.tools.json`
+ * existed and included them, and no command ever ran it.
+ *
+ * What that cost (2026-07-25): `gen-settings-reference.ts` declared its tab
+ * titles as `Record<SettingTab, string>` with three tabs that do not exist and
+ * six real ones missing. That is a compile error the moment anything checks it.
+ * Unchecked, the lookup returned `undefined` and the shipped settings reference
+ * carried six headings reading `## undefined`. Running the check then found five
+ * more, including `jules-port-manager.ts` fingerprinting a `{name, key}` object
+ * as if it were the API key and passing that object as the credential — a lane
+ * path that could never have authenticated.
+ */
+describe("the typecheck covers scripts/ as well as the workspaces", () => {
+	const rootScripts = (): Record<string, string> =>
+		JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")).scripts ?? {};
+
+	/** The root's own check:types is what points at tsconfig.tools.json. */
+	it("declares a root check:types that runs the type checker on the tools project", () => {
+		const script = rootScripts()["check:types"];
+		expect(script, "the root package must declare check:types for scripts/").toBeDefined();
+		expect(script).toContain("tsconfig.tools.json");
+		expect(script?.includes("tsgo") || script?.includes("tsc")).toBe(true);
+	});
+
+	/** Declaring it is not running it: the gate has to invoke it. */
+	it("runs it from check:ts, so the gate covers scripts/", () => {
+		expect(
+			rootScripts()["check:ts"],
+			"check:ts must run the root check:types; --workspaces alone never reaches scripts/",
+		).toContain("check:types");
+		expect(rootScripts()["check:ts"]).toContain("bun run check:types");
+	});
+
+	/**
+	 * The tools project must stay non-composite. Composite requires every file in
+	 * the program to be listed, and these scripts import package sources by
+	 * relative path, so composite turns five legitimate imports into TS6307 and the
+	 * check becomes unrunnable — which is how it came to be skipped in the first
+	 * place.
+	 */
+	it("keeps the tools project non-composite so the check can actually run", () => {
+		const config = readFileSync(join(REPO_ROOT, "tsconfig.tools.json"), "utf8");
+		expect(config).not.toContain('"composite": true');
+		expect(config).toContain('"noEmit": true');
+	});
+});
+
+/**
  * Repo-level test suites are only coverage if some runner runs them.
  *
  * `repoScriptTests` in `ci-test-ts.ts` is a hand-maintained list, and drift

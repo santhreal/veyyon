@@ -20,10 +20,9 @@
  */
 
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { errorMessage } from "@veyyon/utils";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot";
 import { type } from "arktype";
-import { loadArgotFolder, unloadArgotFolder } from "../lexpack-cache";
+import { loadArgotFolder, unloadArgotFolder } from "../argot-cache";
 import type { ToolSession } from ".";
 import { resolveToCwd } from "./path-utils";
 import { ToolError, toolFailure } from "./tool-errors";

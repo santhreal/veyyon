@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { useFullColor } from "../../helpers/theme-assertions";
 
 beforeAll(async () => {
 	await initTheme();
@@ -40,6 +41,8 @@ function type(component: HistorySearchComponent, text: string): void {
 }
 
 describe("HistorySearchComponent", () => {
+	useFullColor();
+
 	it("paints the selected row with the selectedBg highlight bar and a relative timestamp", () => {
 		const component = new HistorySearchComponent(
 			fakeStorage([makeEntry(1, "deploy the release"), makeEntry(2, "older prompt", 7200)]),

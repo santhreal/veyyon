@@ -207,7 +207,7 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 			}
 
 			if (abortTracker.wasCallerAbort()) {
-				throw new AIError.AbortError();
+				throw new AIError.RequestAbortError();
 			}
 
 			if (!sawTerminalResponseEvent) {

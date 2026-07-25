@@ -221,6 +221,9 @@ async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 		const payload = await options.modelsDev.fetch();
 		return normalizeModelList<TApi>(options.modelsDev.map(payload, options.providerId));
 	} catch {
+		// Null means this source produced no list, and the manager then falls through to the next source (cache,
+		// then static models) rather than reporting an empty catalog. The reason is not carried back yet; see the
+		// README on failures travelling back.
 		return null;
 	}
 }
@@ -235,6 +238,9 @@ async function fetchDynamicModels<TApi extends Api>(
 		}
 		return normalizeModelList<TApi>(models);
 	} catch {
+		// Null means this source produced no list, and the manager then falls through to the next source (cache,
+		// then static models) rather than reporting an empty catalog. The reason is not carried back yet; see the
+		// README on failures travelling back.
 		return null;
 	}
 }

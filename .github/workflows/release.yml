@@ -11,10 +11,17 @@
 #     sat at v1.0.27 while the tags marched on. Gating on the CI conclusion means
 #     a red main can never grow a release tag. The gate below then cuts a `patch`
 #     release whenever a publishable package has an `## [Unreleased]` changelog
-#     bullet waiting (see scripts/has-releasable-changes.ts). It is self-limiting:
+#     bullet waiting (see scripts/release-gate-decision.ts). It is self-limiting:
 #     release.ts empties the Unreleased section when it cuts the release, so the
 #     bump commit it pushes is not itself releasable and never loops, and a
 #     docs/chore-only merge with no bullet does not release.
+#
+#     That same self-limiting property strands work when a cut FAILS: the section
+#     is already consumed, so the changelog signal can never ask for it again, and
+#     the tag sits with no published release. So the gate has a second signal —
+#     an unpublished tag whose CI definitively failed, with main moved on since —
+#     bounded so it cannot inflate versions: two stranded tags stop it and ask for
+#     a person instead of cutting a third.
 #   - workflow_dispatch: manual release of an explicit version (major/minor/patch
 #     or x.y.z), bypassing both the green-CI gate and the releasable gate.
 #
@@ -75,6 +82,10 @@ jobs:
               # Only defined for workflow_run events; empty on dispatch.
               HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
               CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+              # The gate now also asks GitHub whether a previous cut was stranded (a tag newer than the
+              # latest published release whose CI failed). Without a token that query fails, and the
+              # script says so and falls back to the changelog signal alone rather than freezing releases.
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
               set -euo pipefail
               if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -108,13 +119,17 @@ jobs:
                   echo "[skip release] marker present; not releasing."
                   echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
               esac
-              releasable="$(bun scripts/has-releasable-changes.ts)"
+              # Two signals, not one. A waiting `## [Unreleased]` bullet cuts, as it always has. In
+              # addition, a tag NEWER than the latest published release whose CI definitively failed
+              # means a previous cut was stranded: `release.ts` consumed `## [Unreleased]` at cut time,
+              # so the changelog signal alone can never recover it. The script bounds the recovery (main
+              # must have moved past the failed tag, and two stranded tags stop it and ask for a person)
+              # and prints its reasoning to stderr, which lands in this log either way.
+              releasable="$(bun scripts/release-gate-decision.ts)"
               if [ "$releasable" = "true" ]; then
-                echo "an Unreleased changelog bullet is waiting; cutting a patch release."
                 echo "should-release=true" >> "$GITHUB_OUTPUT"
                 echo "version=patch" >> "$GITHUB_OUTPUT"
               else
-                echo "nothing unreleased; not releasing."
                 echo "should-release=false" >> "$GITHUB_OUTPUT"
               fi
 

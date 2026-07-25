@@ -1,7 +1,19 @@
+// Type checking for `scripts/`: the generators, CI drivers, and their tests.
+//
+// Deliberately NOT a composite project. Scripts import package sources directly
+// by relative path (a generator reads the settings schema, a CI driver calls the
+// binary builder), and a composite project must list every file in its program,
+// so composite made five of those imports a TS6307 error and the whole check
+// unusable. Nothing builds this project — it only ever runs with `--noEmit` —
+// so composite bought nothing and cost the gate.
+//
+// Run by the root `check:types` script, which `check:ts` invokes alongside the
+// per-workspace checks. Before that wiring existed nothing typechecked `scripts/`
+// at all, and a `Record<SettingTab, string>` missing six of its keys shipped a
+// settings reference with six `## undefined` headings.
 {
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
-		"composite": true,
 		"noEmit": true,
 		"emitDeclarationOnly": false,
 		"allowImportingTsExtensions": true

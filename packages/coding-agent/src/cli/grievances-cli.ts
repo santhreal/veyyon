@@ -1,7 +1,8 @@
 /**
  * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.
  */
-import { formatCount, pluralize } from "@veyyon/utils";
+import { existsSync } from "node:fs";
+import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { flushGrievances, openAutoQaDb } from "../tools/report-tool-issue";
@@ -35,16 +36,39 @@ export interface PushGrievancesOptions {
 	/** Emit the {@link FlushResult} as JSON instead of a status line. */
 	json?: boolean;
 }
+/**
+ * The one explanation for a missing database handle, shared by every subcommand.
+ *
+ * `openAutoQaDb` returns null both when auto-QA has never been used and when the database is there
+ * and cannot be opened. Every handler used to print the first explanation for both, so a permissions
+ * problem on an existing database was reported as "enable auto-QA", advice that cannot help and hides
+ * the fact that reports are being dropped. The two cases are told apart by looking for the file.
+ */
+function grievanceDbUnavailable(): { reason: "no_db" | "unreadable_db"; message: string } {
+	const dbPath = getAutoQaDbDir();
+	if (existsSync(dbPath)) {
+		return {
+			reason: "unreadable_db",
+			message: `Grievances database at ${dbPath} exists but could not be opened. Check its permissions; reported tool issues are not being recorded.`,
+		};
+	}
+	return {
+		reason: "no_db",
+		message: "No grievances database found. Enable auto-QA with VEYYON_AUTO_QA=1 or the dev.autoqa setting.",
+	};
+}
+
+/** Print the explanation above, on stderr in `--json` mode so a machine reader's stdout stays parseable. */
+function reportGrievanceDbUnavailable(json: boolean | undefined, unavailable: { message: string }): void {
+	if (json) console.error(chalk.dim(unavailable.message));
+	else console.log(chalk.dim(unavailable.message));
+}
+
 export async function listGrievances(options: ListGrievancesOptions): Promise<void> {
 	const db = openAutoQaDb();
 	if (!db) {
-		if (options.json) {
-			console.log("[]");
-		} else {
-			console.log(
-				chalk.dim("No grievances database found. Enable auto-QA with VEYYON_AUTO_QA=1 or the dev.autoqa setting."),
-			);
-		}
+		if (options.json) console.log("[]");
+		reportGrievanceDbUnavailable(options.json, grievanceDbUnavailable());
 		return;
 	}
 
@@ -107,13 +131,8 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 
 	const db = openAutoQaDb();
 	if (!db) {
-		if (options.json) {
-			console.log(JSON.stringify({ deleted: 0 }));
-		} else {
-			console.log(
-				chalk.dim("No grievances database found. Enable auto-QA with VEYYON_AUTO_QA=1 or the dev.autoqa setting."),
-			);
-		}
+		if (options.json) console.log(JSON.stringify({ deleted: 0 }));
+		reportGrievanceDbUnavailable(options.json, grievanceDbUnavailable());
 		return;
 	}
 
@@ -203,11 +222,11 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
 export async function pushGrievances(options: PushGrievancesOptions): Promise<void> {
 	const db = openAutoQaDb();
 	if (!db) {
+		const unavailable = grievanceDbUnavailable();
 		if (options.json) {
-			console.log(JSON.stringify({ pushed: 0, ok: false, skipped: true, reason: "no_db" }));
-		} else {
-			console.log(chalk.dim("No grievances database found — nothing to push."));
+			console.log(JSON.stringify({ pushed: 0, ok: false, skipped: true, reason: unavailable.reason }));
 		}
+		reportGrievanceDbUnavailable(options.json, unavailable);
 		return;
 	}
 	const settings = await Settings.init();

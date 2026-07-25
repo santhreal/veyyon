@@ -10,7 +10,7 @@ import type { Model } from "@veyyon/ai/types";
 import { getAgentDir, isRecord, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
-import { promptSectionNames, type PromptSectionName } from "../system-prompt-builder/prompt-sections";
+import { type PromptSectionName, promptSectionNames } from "../system-prompt-builder/prompt-sections";
 
 export interface HarnessModelProfile {
 	/** When false, schema repair is skipped for this model. Default: true. */
@@ -37,7 +37,7 @@ export function resetHarnessProfileFileCache(): void {
 }
 
 // Built on first use, not at module load: `prompt-sections.ts` derives its names
-// from `prompt-blocks.ts`, and reading that while this module evaluates would put
+// from `section-registry.ts`, and reading that while this module evaluates would put
 // the order dependency straight back.
 let promptSectionNameSet: ReadonlySet<string> | undefined;
 function knownPromptSectionNames(): ReadonlySet<string> {

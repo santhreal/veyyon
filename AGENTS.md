@@ -5,7 +5,14 @@
 Do not use tmux captures to judge, verify, or "live-verify" any visual change. Ever. The user has said this repeatedly and it keeps being violated. Why it fails: tmux renders on a pure-black default ground, strips or distorts styling in `capture-pane`, and hides exactly the class of bugs that matter (explicit dark background fills looked invisible in tmux and shipped as black slabs on the user's grey terminal — 2026-07-22). A tmux dump is not evidence; treating it as evidence has caused shipped regressions.
 
 What counts as visual evidence instead:
-1. **Real-render image proofs**: render the actual shipped component off-screen and rasterize to PNG/SVG on BOTH a grey ground (`#1e2127`-class) and a black ground, then look at the image (see the `*-shot.ts` harness pattern; the 10-minute rule's differential applies — before/after, both grounds).
+1. **Real-render image proofs**: render the actual shipped component off-screen and rasterize to PNG on BOTH a grey ground (`#1e2127`-class) and a black ground, then look at the image. The tool is `scripts/demos/render-proof.ts`: it takes any renderer's ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`.
+
+   ```sh
+   bun scripts/demos/render-transcript-rail.ts --width 100 --ruler |
+     bun scripts/demos/render-proof.ts --out /tmp/rail-after --width 100 --scale 3
+   ```
+
+   Write a small renderer under `scripts/demos/` for the surface you are changing (see `render-transcript-rail.ts` and `render-status-footline.ts`), constructing the REAL components rather than mock-ups. Take the pair BEFORE your change and again after, and compare all four images: an explicit dark fill is invisible on black and reads as a slab on grey, so one ground answers half the question. The tool reports any character it has no glyph for; add it to `scripts/demos/lib/glyphs.ts` when it matters to what you are proving, rather than reading the placeholder boxes as a rendering bug.
 2. **String/ANSI assertions** in tests that pin exact bytes, colors, and widths.
 3. **The user's own screenshots** are ground truth; when they contradict any other signal, they win.
 
@@ -29,7 +36,19 @@ This repo contains multiple packages, but **`packages/coding-agent/`** is the pr
 | `packages/natives`      | Bindings for native text/image/grep operations       |
 | `packages/stats`        | Local observability dashboard (`veyyon stats`)       |
 | `packages/utils`        | Shared utilities (logger, streams, temp files)       |
+| `packages/argot`        | Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo |
+| `packages/hashline`     | Line-anchored patch language the edit tool applies, with a pluggable filesystem backend |
+| `packages/mnemopi`      | Local SQLite memory engine: triples, embeddings, recall |
+| `packages/wire`         | Dependency-free collab wire types, so a browser or test client need not depend on coding-agent |
+| `packages/tool-render`  | Shared React tool-call renderers for HTML export and collab-web |
+| `packages/collab-web`   | Browser guest client and local relay for collab live sessions (private) |
+| `packages/swarm-extension` | Swarm orchestration extension |
+| `packages/metaharness`  | Benchmark runners, Harbor run storage, REST/SSE API, live dashboard (private) |
+| `packages/deepswe-bench` | DeepSWE bench runner for performance-affecting changes (private) |
+| `packages/typescript-edit-benchmark` | Edit-tool benchmark from TypeScript source mutations (private) |
 | `crates/veyyon-natives`     | Rust crate for performance-critical text/grep ops    |
+
+`packages/tsconfig.workspace.json` is shared TypeScript config, not a package: no `package.json`, no sources. `scripts/package-map-coverage.test.ts` fails when a directory under `packages/` carries a manifest and is missing from either table, so a new package cannot land undocumented.
 
 **Catalog import convention**: code in this repo imports catalog *values* (bundled models, model-thinking helpers, identity, descriptors, model manager/cache) from `@veyyon/catalog/<module>` — never via `@veyyon/ai`. The pi-ai barrel re-exports only the model/effort *types* its own signatures use (`Model`, `Api`, `ThinkingConfig`, `Effort`, …); type-only imports of those from `@veyyon/ai` are fine.
 
@@ -65,6 +84,7 @@ If a feature cannot meet this bar, it is experimental and must say so in its set
 - **NEVER use `ReturnType<>`** — use the actual type name.
 - **NEVER use inline imports** — no `await import()`, no `import("pkg").Type` in type positions, no dynamic type imports. Always top-level.
 - Check `node_modules` for external API types instead of guessing.
+- **Dependency versions live in the catalog.** Third-party versions belong in `workspaces.catalog` in the root `package.json`; a package writes `"react": "catalog:"`, never a literal range. Adding a dependency a second package already uses means adding it to the catalog and repointing both. Peer dependencies stay literal (a consumer outside this workspace cannot resolve `catalog:`) but must name the version the catalog resolves. `scripts/workspace-catalog-pins.test.ts` fails on all three mistakes.
 - **Barrel exports**: prefer `export * from "./module"` over named re-exports, including `export type { ... } from`. In pure `index.ts` barrels, use star re-exports even for single-specifier cases. If stars create ambiguity, remove the redundant export path; do not keep duplicates.
 - **Class privacy**: use ES `#private` fields; leave externally accessible members bare. **No `private`/`protected`/`public` keyword on fields or methods**, except on **constructor parameter properties** where TypeScript requires it (e.g. `constructor(private readonly session: ToolSession)`).
 - **Promises**: use `Promise.withResolvers()` instead of `new Promise((resolve, reject) => ...)`.
@@ -241,11 +261,11 @@ For the bash tool specifically:
 
 Argot is the codec that lets the model write short `§handle` tokens; veyyon expands them to full text before anything outside the model's history sees them. **The complete integration spec lives in the `argot` package's [`INTEGRATING.md`](packages/argot/INTEGRATING.md) — read it, do not re-derive it.** All codec logic (longest match, the boundary rule, streaming a handle split across token deltas) lives in argot behind named functions. veyyon's job is only to call those functions at the seams; never hand-roll handle logic here.
 
-- **Every seam is wired in one place: `packages/coding-agent/src/lexpack-wire.ts`.** It is the only veyyon module that touches the codec. The seams (argot's manual numbers them 1-6): `expandToolArguments` (tool args), `expandAssistantContent` (finished display), `createSubagentStreamDecoder` (the live streamed preview — feeds `StreamDecoder.push`/`flush`, never a raw delta), `expandSessionContext` (transcript/export/resume), and `expandSubagentReturn` (a subagent's result to its parent).
+- **Every seam is wired in one place: `packages/coding-agent/src/argot-wire.ts`.** It is the only veyyon module that touches the codec. The seams (argot's manual numbers them 1-6): `expandToolArguments` (tool args), `expandAssistantContent` (finished display), `createSubagentStreamDecoder` (the live streamed preview — feeds `StreamDecoder.push`/`flush`, never a raw delta), `expandSessionContext` (transcript/export/resume), and `expandSubagentReturn` (a subagent's result to its parent).
 - **The contract is absolute: a user NEVER sees a raw `§handle`.** That includes the live subagent HUD preview (`progress.recentOutput` in `task/executor.ts`), which decodes streamed deltas through `createSubagentStreamDecoder`. A raw handle reaching any display, tool, transcript, or the parent is a defect, not a cosmetic issue.
-- **Adding a new place the model's text crosses out of its history is adding a seam.** Route it through an `lexpack-wire.ts` function; if none fits, add one there (a thin delegate to `argot`), never a new codec call site scattered elsewhere.
+- **Adding a new place the model's text crosses out of its history is adding a seam.** Route it through an `argot-wire.ts` function; if none fits, add one there (a thin delegate to `argot`), never a new codec call site scattered elsewhere.
 - Tests: `test/argot-subagent-*.test.ts` drive the real executor and prove each seam with a negative control (revert the expand → the handle leaks). Any new seam gets the same treatment.
-- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential `assets/argot-settings-off.png` and `assets/argot-settings-on.png` (regenerated together by `scripts/demos/record-argot-settings.sh`, which seeds `argot.enabled` off then on with `config set` and records the single-state tape `assets/tapes/argot-settings.tape` twice) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/lexpack-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
+- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential `assets/argot-settings-off.png` and `assets/argot-settings-on.png` (regenerated together by `scripts/demos/record-argot-settings.sh`, which seeds `argot.enabled` off then on with `config set` and records the single-state tape `assets/tapes/argot-settings.tape` twice) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/argot-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
 
 ## Commands
 
@@ -257,8 +277,9 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 | Command | What it does |
 | --- | --- |
 | `bun run check` | Type check TS **and** Rust in parallel (`check:ts` + `check:rs`). The release preflight runs this. |
-| `bun run check:ts` | Biome + workspace `tsc --noEmit` across every package. |
-| `bun run lint` / `lint:ts` | Biome lint (advisory; fix real bugs, don't contort for style). |
+| `bun run check:ts` | Workspace `tsc --noEmit` across every package. Despite the name it runs no Biome. |
+| `bun run check:tools` | `biome check`: formatting, import order, and error-level lint rules. CI gate. |
+| `bun run lint` / `lint:ts` | `biome lint` only, so it sees neither formatting nor import order. Its warnings are advisory; fix real bugs, don't contort for style. |
 | `bun run test` | Local TS test runner (`scripts/ci-test-ts.ts local`). |
 | `bun run ci:test:ts:workspace` | The exact workspace test bucket CI runs. |
 | `bun run ci:build:native` | Build the `veyyon_natives` addon — required before tests that touch native paths. |
@@ -300,7 +321,8 @@ Location: `packages/*/CHANGELOG.md` (per package).
 - `### Removed`
 
 **Rules:**
-- New entries always go under `## [Unreleased]`.
+- New entries always go under `## [Unreleased]` in the OWNING package's `packages/<name>/CHANGELOG.md`.
+- **Never write an entry into the repo-root `CHANGELOG.md`.** It is generated from every package changelog by `bun run changelog:root`, so an entry written there is not a changelog entry: it is content the next regeneration deletes. The root is the file you open first and it reads as hand-written, which is exactly why this keeps happening — 23 entries across several packages were written there and would have been lost. The write path now refuses when the root holds an unreleased entry the render does not produce, and names each one, so the deletion can no longer be silent.
 - Never modify already-released sections (e.g., `## [0.12.2]`) — they are immutable.
 - Don't flag changelog section order or formatting in reviews or PRs — `bun run release` runs `fix-changelogs` which normalizes everything automatically.
 
@@ -320,7 +342,7 @@ Two workflows run in `.github/workflows/`. Know which one gates your change.
 Runs on GitHub-hosted runners so it works on the public repo without the self-hosted
 runners the release pipeline needs. Three jobs, all of which must be green:
 
-1. **Lint & type check** — `bun run check:ts` then `bun run lint:ts`.
+1. **Lint & type check** — `bun run check:ts`, then `bun run lint:ts`, then `bun run check:tools` (formatting and import order).
 2. **TypeScript tests** — `bun run ci:test:ts:workspace`.
 3. **Secret scan (keyhog)** — pinned keyhog binary scans the tree; fails on any *new*
    secret (the committed `.keyhog-baseline.json` suppresses known public OAuth client

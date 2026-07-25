@@ -13,7 +13,6 @@
  *     the broker already has.
  *   - `status` — health-pings the configured remote broker.
  */
-import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,20 +32,12 @@ import {
 	SqliteAuthCredentialStore,
 } from "@veyyon/ai";
 import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "@veyyon/ai/auth-broker";
-import {
-	$which,
-	APP_NAME,
-	errorMessage,
-	getActiveAuthDbPath,
-	getConfigRootDir,
-	isEnoent,
-	logger,
-	VERSION,
-} from "@veyyon/utils";
+import { $which, APP_NAME, errorMessage, getActiveAuthDbPath, logger, VERSION } from "@veyyon/utils";
 import { setTransports as setLoggerTransports } from "@veyyon/utils/logger";
 import { $ } from "bun";
 import chalk from "chalk";
 import { resolveAuthBrokerConfig } from "../session/auth-broker-config";
+import { AuthTokenFile, printToken } from "./auth-token-file";
 
 export type AuthBrokerAction = "serve" | "token" | "login" | "logout" | "status" | "import" | "migrate" | "list";
 
@@ -90,43 +81,8 @@ const CALLBACK_PORTS: Record<string, number> = Object.fromEntries(
 	),
 );
 
-function getTokenFilePath(): string {
-	return path.join(getConfigRootDir(), "auth-broker.token");
-}
-
-async function readToken(): Promise<string | null> {
-	try {
-		const raw = await Bun.file(getTokenFilePath()).text();
-		const trimmed = raw.trim();
-		return trimmed.length > 0 ? trimmed : null;
-	} catch (err) {
-		if (isEnoent(err)) return null;
-		throw err;
-	}
-}
-
-async function writeToken(token: string): Promise<void> {
-	const file = getTokenFilePath();
-	await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-	await Bun.write(file, token);
-	try {
-		await fs.chmod(file, 0o600);
-	} catch {
-		// Best-effort (e.g. Windows).
-	}
-}
-
-function generateToken(): string {
-	return crypto.randomBytes(32).toString("base64url");
-}
-
-async function ensureToken(): Promise<string> {
-	const existing = await readToken();
-	if (existing) return existing;
-	const token = generateToken();
-	await writeToken(token);
-	return token;
-}
+/** The broker's bearer-token file. Behaviour is owned by {@link AuthTokenFile}. */
+const TOKEN_FILE = new AuthTokenFile("auth-broker.token");
 
 async function runServe(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	// The broker is a long-running headless service: route structured logs to
@@ -135,7 +91,7 @@ async function runServe(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	setLoggerTransports({ console: true, file: false });
 
 	const bind = flags.bind ?? DEFAULT_AUTH_BROKER_BIND;
-	const token = await ensureToken();
+	const token = await TOKEN_FILE.ensure();
 	const dbPath = getActiveAuthDbPath();
 	const store = await SqliteAuthCredentialStore.open(dbPath);
 	const storage = new AuthStorage(store);
@@ -147,7 +103,7 @@ async function runServe(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 		version: VERSION,
 	});
 	logger.info("auth-broker listening", { url: handle.url });
-	logger.info("auth-broker bearer token loaded", { path: getTokenFilePath(), mode: "0600" });
+	logger.info("auth-broker bearer token loaded", { path: TOKEN_FILE.path(), mode: "0600" });
 
 	const credentialDisabledUnsub = storage.onCredentialDisabled((event: CredentialDisabledEvent) => {
 		logger.warn("auth-broker credential disabled", { ...event });
@@ -165,25 +121,6 @@ async function runServe(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 
 	// Block forever; lifecycle is signal-driven.
 	await new Promise<never>(() => {});
-}
-
-async function runToken(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
-	if (flags.regenerate) {
-		const next = generateToken();
-		await writeToken(next);
-		if (flags.json) {
-			process.stdout.write(`${JSON.stringify({ token: next, path: getTokenFilePath() })}\n`);
-		} else {
-			process.stdout.write(`${next}\n`);
-		}
-		return;
-	}
-	const token = await ensureToken();
-	if (flags.json) {
-		process.stdout.write(`${JSON.stringify({ token, path: getTokenFilePath() })}\n`);
-	} else {
-		process.stdout.write(`${token}\n`);
-	}
 }
 
 async function runLogin(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
@@ -915,7 +852,7 @@ export async function runAuthBrokerCommand(cmd: AuthBrokerCommandArgs): Promise<
 			await runServe(cmd.flags);
 			return;
 		case "token":
-			await runToken(cmd.flags);
+			await printToken(TOKEN_FILE, cmd.flags);
 			return;
 		case "login":
 			await runLogin(cmd.flags);

@@ -3,38 +3,20 @@
  * Unlike the former single object literal (where TypeScript hard-errors on a
  * duplicate key), a key defined in two domain files would silently last-write
  * win in the spread. This guard makes that collision a loud test failure.
+ *
+ * The slice list comes from `SETTINGS_DOMAIN_SLICES`, which sits beside the spread
+ * itself. It used to be retyped here, and when the Subagents domain was added the
+ * copy was not updated: the guard kept passing while covering one slice less than
+ * the schema actually had.
  */
 import { describe, expect, it } from "bun:test";
-import { APPEARANCE_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/appearance";
-import { CONTEXT_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/context";
-import { EDITING_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/editing";
-import { GENERAL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/general";
-import { GLOBAL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/global";
-import { INTERACTION_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/interaction";
-import { MODEL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/model";
-import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
-import { TASKS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/tasks";
-import { TOOLS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/tools";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-
-const DOMAINS: Record<string, Record<string, unknown>> = {
-	global: GLOBAL_SETTINGS,
-	general: GENERAL_SETTINGS,
-	appearance: APPEARANCE_SETTINGS,
-	model: MODEL_SETTINGS,
-	interaction: INTERACTION_SETTINGS,
-	context: CONTEXT_SETTINGS,
-	editing: EDITING_SETTINGS,
-	tools: TOOLS_SETTINGS,
-	tasks: TASKS_SETTINGS,
-	providers: PROVIDERS_SETTINGS,
-};
+import { SETTINGS_DOMAIN_SLICES, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 
 describe("SETTINGS_SCHEMA domain composition", () => {
 	it("no setting path is defined in two domain slices", () => {
 		const owners = new Map<string, string>();
 		const collisions: string[] = [];
-		for (const [domain, slice] of Object.entries(DOMAINS)) {
+		for (const [domain, slice] of Object.entries(SETTINGS_DOMAIN_SLICES)) {
 			for (const path of Object.keys(slice)) {
 				const owner = owners.get(path);
 				if (owner) collisions.push(`${path} (in ${owner} and ${domain})`);

@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { errorMessage, isCancellation, logger, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
@@ -58,7 +58,20 @@ export const handleOpenVsx: SpecialHandler = async (
 			try {
 				const readmeResult = await loadPage(readmeUrl, { timeout: Math.min(timeout, 10), signal });
 				if (readmeResult.ok) readme = readmeResult.content;
-			} catch {}
+				else
+					logger.warn("Open VSX readme could not be fetched; the extension renders without it", {
+						url: readmeUrl,
+						reason: loadFailure(readmeResult),
+					});
+			} catch (error) {
+				if (isCancellation(error)) throw error;
+				// The readme is most of what a reader wants from an extension page, and its
+				// absence looks identical to an extension that ships none.
+				logger.warn("Open VSX readme could not be fetched; the extension renders without it", {
+					url: readmeUrl,
+					error: errorMessage(error),
+				});
+			}
 		}
 
 		const displayName = data.displayName || data.name || `${namespace}/${extension}`;

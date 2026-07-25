@@ -10,15 +10,14 @@ import type { ModelRegistry } from "../config/model-registry";
 
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import titleMarkerInstruction from "../prompts/system/title-marker-instruction.md" with { type: "text" };
-import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { formatTitleUserMessage } from "../tiny/message-preproc";
 import { isTinyTitleLocalModelKey, ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { isLowSignalTitleInput, normalizeGeneratedTitle } from "../tiny/text";
 import { tinyTitleClient } from "../tiny/title-client";
 
-const TITLE_SYSTEM_PROMPT = prompt.render(titleSystemPrompt);
-const TITLE_MARKER_INSTRUCTION = prompt.render(titleMarkerInstruction);
+const TITLE_SYSTEM_PROMPT = prompt.render(PROMPTS["titles/system"].text);
+const TITLE_MARKER_INSTRUCTION = prompt.render(PROMPTS["titles/marker-instruction"].text);
 
 const DEFAULT_TERMINAL_TITLE = "vey";
 const TERMINAL_TITLE_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
@@ -101,7 +100,7 @@ export async function generateSessionTitle(
 		return null;
 	}
 
-	const titleSystemPrompt = customSystemPrompt?.trim() || undefined;
+	const customTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
 	const tinyModel = settings.get("providers.tinyModel");
 	if (tinyModel === ONLINE_TINY_TITLE_MODEL_KEY) {
 		return generateTitleOnline(
@@ -112,7 +111,7 @@ export async function generateSessionTitle(
 			currentModel,
 			metadataResolver,
 			undefined,
-			titleSystemPrompt,
+			customTitleSystemPrompt,
 		);
 	}
 
@@ -131,8 +130,10 @@ export async function generateSessionTitle(
 		return null;
 	}
 	try {
-		const localTitle = titleSystemPrompt
-			? await tinyTitleClient.generate(tinyModel, firstMessage, { systemPrompt: titleSystemPrompt })
+		const localTitle = customTitleSystemPrompt
+			? await tinyTitleClient.generate(tinyModel, firstMessage, {
+					systemPrompt: customTitleSystemPrompt,
+				})
 			: await tinyTitleClient.generate(tinyModel, firstMessage);
 		if (!localTitle) {
 			logger.warn("title-generator: local tiny model produced no title; skipping (no online fallback)", {
@@ -169,13 +170,15 @@ export async function generateTitleOnline(
 		return null;
 	}
 
-	const titleSystemPrompt = customSystemPrompt?.trim() || undefined;
+	const customTitleSystemPrompt = customSystemPrompt?.trim() || undefined;
 	// The model is always asked to wrap the title in `<title>...</title>` and
 	// the title is parsed from text. A forced `set_title` tool call was the old
 	// scheme, but hosts that ignore or reject forced `tool_choice` then echoed
 	// the prompt's `{"title": ...}` JSON example verbatim as the session title;
 	// markers work uniformly everywhere.
-	const systemPrompt = titleSystemPrompt ? [titleSystemPrompt, TITLE_MARKER_INSTRUCTION] : [TITLE_SYSTEM_PROMPT];
+	const systemPrompt = customTitleSystemPrompt
+		? [customTitleSystemPrompt, TITLE_MARKER_INSTRUCTION]
+		: [TITLE_SYSTEM_PROMPT];
 	const userMessage = formatTitleUserMessage(firstMessage);
 	const modelName = `${model.provider}/${model.id}`;
 	const modelContext = {

@@ -251,6 +251,8 @@ export function normalizeMetadata(input: unknown): Metadata {
 		try {
 			return normalizeMetadata(JSON.parse(input) as unknown);
 		} catch {
+			// Metadata that is not JSON has no fields to normalize, and an empty record is what a memory stored
+			// without metadata gives. The memory itself is still returned; only its annotations are absent.
 			return {};
 		}
 	}

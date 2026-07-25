@@ -178,6 +178,34 @@ export function getConfiguredThinkingLevelMetadata(level: ConfiguredThinkingLeve
  */
 export const CLI_THINKING_LEVELS: readonly string[] = [ThinkingLevel.Off, ...THINKING_EFFORTS, AUTO_THINKING];
 
+/** The value an effort picker stores for "no effort of my own — inherit". */
+export const INHERIT_EFFORT_OPTION_VALUE = "";
+
+/**
+ * The same selectors as {@link CLI_THINKING_LEVELS}, as picker rows with their
+ * labels and descriptions, preceded by an explicit inherit row.
+ *
+ * One owner because effort is chosen on several surfaces — the blanket subagent
+ * effort in `/settings`, the per-agent effort beside it, and the `--thinking`
+ * flag's option list — and a surface that spelled its own list is how a free-text
+ * effort field came to accept a typo that silently meant "inherited". Rows carry
+ * the metadata table's wording, so no surface renames a level either.
+ */
+export function configuredThinkingLevelOptions(): ReadonlyArray<{
+	value: string;
+	label: string;
+	description: string;
+}> {
+	return [
+		{ value: INHERIT_EFFORT_OPTION_VALUE, label: "Inherit", description: "Follow the session's effort" },
+		...CLI_THINKING_LEVELS.map(selector => {
+			const level = parseConfiguredThinkingLevel(selector);
+			const meta = level !== undefined ? getConfiguredThinkingLevelMetadata(level) : undefined;
+			return { value: selector, label: meta?.label ?? selector, description: meta?.description ?? "" };
+		}),
+	];
+}
+
 /**
  * Parses a `--thinking` CLI value. Accepts every {@link parseConfiguredThinkingLevel}
  * selector (`off`, `auto`, `minimal`..`max`) but rejects

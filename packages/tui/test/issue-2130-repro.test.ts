@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { type Component, type NativeScrollbackLiveRegion, TUI } from "@veyyon/tui";
+import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression test for https://github.com/can1357/oh-my-pi/issues/2130
@@ -46,12 +47,12 @@ class StreamingLiveRegion implements Component, NativeScrollbackLiveRegion {
 	}
 }
 
-async function settle(term: VirtualTerminal): Promise<void> {
-	const nextTick = Promise.withResolvers<void>();
-	process.nextTick(nextTick.resolve);
-	await nextTick.promise;
-	await Bun.sleep(40);
-	await term.flush();
+async function settle(term: VirtualTerminal, tui: TUI): Promise<void> {
+	// Was `nextTick` + a fixed `Bun.sleep` + flush, i.e. a bet on how long the
+	// throttled frame takes. That bet loses under a loaded sweep (see
+	// `packages/tui/test/helpers/settle-frames.ts`), so the engine is asked
+	// instead, through its `renderPending` signal.
+	await settleFrames(term, tui);
 }
 
 async function withTmuxEnv<T>(run: () => T | Promise<T>): Promise<T> {
@@ -88,7 +89,7 @@ describe("issue #2130: tmux rewind/branch leaves the viewport anchored to the pa
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Stream a tall reply so `#planLiveRegionPinnedRender` ramps
 				// `#scrollbackHighWater` past the viewport boundary.
@@ -96,7 +97,7 @@ describe("issue #2130: tmux rewind/branch leaves the viewport anchored to the pa
 				for (let chunk = 5; chunk <= tall.length; chunk += 5) {
 					stream.setLines(tall.slice(0, chunk));
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				// Branch/rewind: the coding-agent replaces the transcript with
@@ -106,7 +107,7 @@ describe("issue #2130: tmux rewind/branch leaves the viewport anchored to the pa
 				// the viewport (4 rows vs height = 8).
 				stream.setLines(["A", "B", "C", "D"]);
 				tui.requestRender(true, { clearScrollback: true });
-				await settle(term);
+				await settle(term, tui);
 
 				// Any subsequent frame after the rewind would re-route through
 				// `#planLiveRegionPinnedRender`. Before the fix the stale
@@ -116,7 +117,7 @@ describe("issue #2130: tmux rewind/branch leaves the viewport anchored to the pa
 				// `lines.length` and wrote eight blank rows.
 				stream.setLines(["A", "B", "C", "D", "E"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = term.getViewport().map(row => Bun.stripANSI(row).trimEnd());
 

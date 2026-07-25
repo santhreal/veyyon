@@ -5,6 +5,7 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/statu
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { useFullColor } from "./helpers/theme-assertions";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -65,6 +66,8 @@ async function flushUsageRefresh(): Promise<void> {
 }
 
 describe("usage status-line segment", () => {
+	useFullColor();
+
 	it("renders untiered five-hour and seven-day limits", () => {
 		const result = renderSegment("usage", {
 			usage: { fiveHour: { percent: 24, resetMinutes: 30 }, sevenDay: { percent: 8, resetHours: 141 } },

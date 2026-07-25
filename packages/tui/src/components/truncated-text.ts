@@ -36,8 +36,13 @@ export class TruncatedText implements Component {
 			result.push(emptyLine);
 		}
 
-		// Calculate available width after horizontal padding
-		const availableWidth = Math.max(1, width - this.#paddingX * 2);
+		// Calculate available width after horizontal padding.
+		//
+		// The floor is 0, not 1: at zero columns `truncateToWidth` still returns the
+		// ellipsis, so a `Math.max(1, …)` floor made this one cell WIDER than the
+		// space it was given, and a component that overruns its width corrupts the
+		// row. Zero columns means draw nothing.
+		const availableWidth = Math.max(0, width - this.#paddingX * 2);
 
 		// Take only the first line. Cut at the first CR or LF: cutting on `\n`
 		// alone leaves a stray `\r` from a CRLF source in the output, which moves

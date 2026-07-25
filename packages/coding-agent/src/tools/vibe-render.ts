@@ -346,4 +346,3 @@ export function createVibeToolRenderer(op: VibeOp) {
 		},
 	};
 }
-

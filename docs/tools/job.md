@@ -104,6 +104,7 @@ Lifecycle and exact state names:
 - Background work / cancellation
   - Waiting uses a timeout plus optional tool-call abort signal.
   - Cancelling a job does not synchronously await teardown; it flips state, aborts, and returns control to the manager/job promise.
+  - A session lifecycle transition (dispose, `newSession`, `switchSession`, branch, handoff) cancels the jobs owned by that agent AND by every agent below it in the spawn tree, resolved through `AgentRegistry.descendantsOf(...)` in `packages/coding-agent/src/registry/agent-registry.ts`. It reaches downward only: a parent's, a sibling's, and an unrelated session's jobs are left running. Cancelling only the agent's own `ownerId` left a grandchild job running for a session that no longer existed.
 
 ## Limits & Caps
 - Poll wait duration comes from `async.pollWaitDuration` ("Max Poll Time") in `packages/coding-agent/src/config/settings-schema.ts`:

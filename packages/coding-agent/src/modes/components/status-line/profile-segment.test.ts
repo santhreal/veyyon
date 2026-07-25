@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, setProfile } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { ASCII_SYMBOLS, NERD_SYMBOLS, UNICODE_SYMBOLS } from "../../theme/symbols";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
 import { STATUS_LINE_PRESETS } from "./presets";
@@ -24,10 +25,14 @@ beforeAll(async () => {
 	setThemeInstance(loaded);
 });
 
+// Not `setProfile(undefined)` in the afterEach: the default profile is a state of its
+// own, not "no state", so forcing it handed every later file in the process the default
+// profile while the developer (or CI) was running under a named one. The snapshot also
+// covers `VEYYON_PROFILE`, which `setProfile` exports.
+const dirOverrides = captureDirOverrides();
+
 afterEach(() => {
-	// Every test that activates a profile must return to the default so the shared
-	// process-global `activeProfile` cannot leak into the next test.
-	setProfile(undefined);
+	restoreDirOverrides(dirOverrides);
 });
 
 describe("status-line profile segment", () => {

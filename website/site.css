@@ -221,17 +221,8 @@ h3{text-wrap:balance;letter-spacing:-.015em}
 .notes li::before{content:"";position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:1px;
   background:var(--line-2)}
 .notes li.more{padding-left:0}
-.notes li.more::before{display:none}
 .notes li .inline{color:var(--sun-hi)}
 .notes li a{color:var(--sun-hi)}
-.notes .more details{margin-top:2px}
-.notes .more summary{cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.05em;color:var(--muted);
-  list-style:none;padding:4px 0}
-.notes .more summary::-webkit-details-marker{display:none}
-.notes .more summary::before{content:"+ ";color:var(--sun-hi)}
-.notes .more details[open] summary::before{content:"− "}
-.notes .more summary:hover{color:var(--fg)}
-.notes .more ul{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:11px}
 .tag{align-self:start;font-family:var(--mono);font-weight:600;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   border:1px solid var(--line-2);border-radius:4px;padding:3px 9px;color:var(--muted);white-space:nowrap}
 .tag.add{color:var(--green);border-color:color-mix(in srgb,var(--green) 45%,transparent)}

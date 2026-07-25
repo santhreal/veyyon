@@ -2,9 +2,8 @@ import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { completeSimple } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
-import reduceSystemPrompt from "../../commit/prompts/reduce-system.md" with { type: "text" };
-import reduceUserPrompt from "../../commit/prompts/reduce-user.md" with { type: "text" };
 import type { ConventionalAnalysis, FileObservation } from "../../commit/types";
+import { PROMPTS } from "../../prompts/registry";
 import { toReasoningEffort } from "../../thinking";
 import { createConventionalAnalysisTool, parseConventionalAnalysisResponse } from "../shared-llm";
 
@@ -29,7 +28,7 @@ export async function runReducePhase({
 	scopeCandidates,
 	typesDescription,
 }: ReducePhaseInput): Promise<ConventionalAnalysis> {
-	const userContent = prompt.render(reduceUserPrompt, {
+	const userContent = prompt.render(PROMPTS["commit/reduce-user"].text, {
 		types_description: typesDescription,
 		observations: observations.flatMap(obs => obs.observations.map(line => `- ${obs.file}: ${line}`)).join("\n"),
 		stat,
@@ -38,7 +37,7 @@ export async function runReducePhase({
 	const response = await completeSimple(
 		model,
 		{
-			systemPrompt: [prompt.render(reduceSystemPrompt)],
+			systemPrompt: [prompt.render(PROMPTS["commit/reduce-system"].text)],
 			messages: [{ role: "user", content: userContent, timestamp: Date.now() }],
 			tools: [ReduceTool],
 		},

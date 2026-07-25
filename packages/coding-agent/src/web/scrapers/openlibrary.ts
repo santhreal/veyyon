@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/utils";
+import { errorMessage, isCancellation, logger, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
-import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface OpenLibraryAuthor {
 	name?: string;
@@ -318,7 +318,19 @@ async function fetchAuthorNames(authorKeys: string[], timeout: number, signal?: 
 				const author = tryParseJson<{ name?: string }>(result.content);
 				return author?.name || null;
 			}
-		} catch {}
+			logger.warn("Open Library author lookup failed; the book renders without that author", {
+				author: authorKey,
+				reason: loadFailure(result),
+			});
+		} catch (error) {
+			if (isCancellation(error)) throw error;
+			// A dropped author is invisible in the output: the book simply appears to have
+			// fewer authors than it has.
+			logger.warn("Open Library author lookup failed; the book renders without that author", {
+				author: authorKey,
+				error: errorMessage(error),
+			});
+		}
 		return null;
 	});
 

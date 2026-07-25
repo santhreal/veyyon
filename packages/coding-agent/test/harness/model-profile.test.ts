@@ -13,6 +13,7 @@ import {
 	resolvePromptSectionOrderForModel,
 } from "@veyyon/coding-agent/harness/model-profile";
 import { removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const model: Model = buildModel({
 	id: "gpt-test",
@@ -27,11 +28,17 @@ const model: Model = buildModel({
 	maxTokens: 4096,
 }) as Model;
 
+// Two of the tests below point the agent dir at a temp tree and nothing put it back,
+// so the whole process kept resolving `harness-profiles.yml` (and everything else under
+// the agent dir) inside a directory this file had already deleted.
+const dirOverrides = captureDirOverrides();
+
 describe("harness model profiles (A3 MVP)", () => {
 	let tempDir: string;
 
 	afterEach(() => {
 		resetHarnessProfileFileCache();
+		restoreDirOverrides(dirOverrides);
 		if (tempDir) removeSyncWithRetries(tempDir);
 	});
 

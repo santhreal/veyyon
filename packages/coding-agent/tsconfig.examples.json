@@ -1,6 +1,9 @@
 {
 	"extends": "../tsconfig.workspace.json",
-	"include": [
-		"examples"
-	]
+	"include": ["examples"],
+	// `with-deps` is its own package: it exists to prove that jiti resolves an
+	// extension's OWN node_modules, so its `ms` dependency deliberately is not a
+	// workspace dependency and cannot resolve from here. Typecheck it from inside
+	// that directory after installing there, not as part of the workspace pass.
+	"exclude": ["examples/extensions/with-deps"]
 }

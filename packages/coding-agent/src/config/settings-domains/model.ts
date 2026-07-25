@@ -1,5 +1,6 @@
 import { THINKING_EFFORTS } from "@veyyon/ai";
 import { AUTO_THINKING } from "../../thinking";
+import { unsetNumberOption } from "../optional-number";
 import {
 	SERVICE_TIER_ANTHROPIC_OPTIONS,
 	SERVICE_TIER_ANTHROPIC_VALUES,
@@ -39,6 +40,7 @@ export const MODEL_SETTINGS = {
 			label: "Default Effort",
 			description:
 				'Effort per model, applied when a run does not ask for one. Add a model and pick its effort; the "any model" row covers every model without its own. Per profile.',
+			keywords: ["thinking", "reasoning", "effort", "depth", "budget"],
 		},
 	},
 
@@ -51,6 +53,7 @@ export const MODEL_SETTINGS = {
 		type: "enum",
 		values: [...THINKING_EFFORTS, AUTO_THINKING],
 		default: "high",
+		retiredBy: "defaultEffort",
 	},
 
 	hideThinkingBlock: {
@@ -61,6 +64,7 @@ export const MODEL_SETTINGS = {
 			group: "Thinking",
 			label: "Hide Thinking Blocks",
 			description: "Hide thinking blocks in assistant responses",
+			keywords: ["reasoning", "thoughts", "hide"],
 		},
 	},
 	proseOnlyThinking: {
@@ -218,52 +222,60 @@ export const MODEL_SETTINGS = {
 	// Sampling
 	temperature: {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
+		// for the penalties, so it cannot also mean "no value".
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Sampling",
 			label: "Temperature",
-			description: "Sampling temperature (0 = deterministic, 1 = creative, -1 = provider default)",
+			description: "Sampling temperature. 0 is deterministic, 1 is creative. Unset lets the provider choose.",
 			options: [
-				{ value: "-1", label: "Default", description: "Use provider default" },
+				unsetNumberOption("Use provider default"),
 				{ value: "0", label: "0", description: "Deterministic" },
 				{ value: "0.2", label: "0.2", description: "Focused" },
 				{ value: "0.5", label: "0.5", description: "Balanced" },
 				{ value: "0.7", label: "0.7", description: "Creative" },
 				{ value: "1", label: "1", description: "Maximum variety" },
 			],
+			keywords: ["sampling", "randomness", "creativity"],
 		},
 	},
 
 	topP: {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
+		// for the penalties, so it cannot also mean "no value".
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Sampling",
 			label: "Top P",
-			description: "Nucleus sampling cutoff (0-1, -1 = provider default)",
+			description: "Nucleus sampling cutoff, 0 to 1. Unset lets the provider choose.",
 			options: [
-				{ value: "-1", label: "Default", description: "Use provider default" },
+				unsetNumberOption("Use provider default"),
 				{ value: "0.1", label: "0.1", description: "Very focused" },
 				{ value: "0.3", label: "0.3", description: "Focused" },
 				{ value: "0.5", label: "0.5", description: "Balanced" },
 				{ value: "0.9", label: "0.9", description: "Broad" },
 				{ value: "1", label: "1", description: "No nucleus filtering" },
 			],
+			keywords: ["sampling", "nucleus"],
 		},
 	},
 
 	topK: {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
+		// for the penalties, so it cannot also mean "no value".
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Sampling",
 			label: "Top K",
-			description: "Sample from top-K tokens (-1 = provider default)",
+			description: "Sample from the top K tokens. Unset lets the provider choose.",
 			options: [
-				{ value: "-1", label: "Default", description: "Use provider default" },
+				unsetNumberOption("Use provider default"),
 				{ value: "1", label: "1", description: "Greedy top token" },
 				{ value: "20", label: "20", description: "Focused" },
 				{ value: "40", label: "40", description: "Balanced" },
@@ -274,14 +286,16 @@ export const MODEL_SETTINGS = {
 
 	minP: {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
+		// for the penalties, so it cannot also mean "no value".
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Sampling",
 			label: "Min P",
-			description: "Minimum probability threshold (0-1, -1 = provider default)",
+			description: "Minimum probability threshold, 0 to 1. Unset lets the provider choose.",
 			options: [
-				{ value: "-1", label: "Default", description: "Use provider default" },
+				unsetNumberOption("Use provider default"),
 				{ value: "0.01", label: "0.01", description: "Very permissive" },
 				{ value: "0.05", label: "0.05", description: "Balanced" },
 				{ value: "0.1", label: "0.1", description: "Strict" },
@@ -291,14 +305,17 @@ export const MODEL_SETTINGS = {
 
 	presencePenalty: {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
+		// for the penalties, so it cannot also mean "no value".
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Sampling",
 			label: "Presence Penalty",
-			description: "Penalty for introducing already-present tokens (-1 = provider default)",
+			description:
+				"Penalty for introducing tokens already present. Negative values encourage repetition; unset lets the provider choose.",
 			options: [
-				{ value: "-1", label: "Default", description: "Use provider default" },
+				unsetNumberOption("Use provider default"),
 				{ value: "0", label: "0", description: "No penalty" },
 				{ value: "0.5", label: "0.5", description: "Mild novelty" },
 				{ value: "1", label: "1", description: "Encourage novelty" },
@@ -309,14 +326,17 @@ export const MODEL_SETTINGS = {
 
 	repetitionPenalty: {
 		type: "number",
-		default: -1,
+		// Unset is an ABSENT key, not a sentinel: `-1` is a value the provider takes
+		// for the penalties, so it cannot also mean "no value".
+		default: undefined,
 		ui: {
 			tab: "model",
 			group: "Sampling",
 			label: "Repetition Penalty",
-			description: "Penalty for repeated tokens (-1 = provider default)",
+			description:
+				"Penalty for repeated tokens. Values below 1 encourage repetition; unset lets the provider choose.",
 			options: [
-				{ value: "-1", label: "Default", description: "Use provider default" },
+				unsetNumberOption("Use provider default"),
 				{ value: "0.8", label: "0.8", description: "Allow repetition" },
 				{ value: "1", label: "1", description: "No penalty" },
 				{ value: "1.1", label: "1.1", description: "Mild penalty" },
@@ -352,7 +372,8 @@ export const MODEL_SETTINGS = {
 			group: "Sampling",
 			label: "Service Tier — OpenAI",
 			description:
-				"Processing tier for OpenAI / OpenAI-Codex requests, and OpenAI-family models routed via OpenRouter (none = omit). Sent as `service_tier`.",
+				"How your OpenAI / OpenAI-Codex requests are queued and served, including OpenAI-family models routed via OpenRouter (none = omit the field). Sent as `service_tier`. This is serving speed and cost, not reasoning depth; depth is Default Effort.",
+			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_OPENAI_OPTIONS,
 		},
 	},
@@ -366,7 +387,8 @@ export const MODEL_SETTINGS = {
 			group: "Sampling",
 			label: "Service Tier — Anthropic",
 			description:
-				'Processing tier for Claude requests. `priority` realizes fast mode (`speed: "fast"`) on supported direct Anthropic models; ignored on Bedrock/Vertex Claude and via OpenRouter.',
+				'How your Claude requests are queued and served. `priority` realizes fast mode (`speed: "fast"`) on supported direct Anthropic models, and is ignored on Bedrock/Vertex Claude and via OpenRouter. This is serving speed and cost, not reasoning depth; depth is Default Effort.',
+			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_ANTHROPIC_OPTIONS,
 		},
 	},
@@ -380,7 +402,8 @@ export const MODEL_SETTINGS = {
 			group: "Sampling",
 			label: "Service Tier — Google",
 			description:
-				"Processing tier for Gemini (Google AI Studio + Vertex) requests, and Google-family models routed via OpenRouter (none = omit). Sent as the top-level `serviceTier` field.",
+				"How your Gemini (Google AI Studio + Vertex) requests are queued and served, including Google-family models routed via OpenRouter (none = omit the field). Sent as the top-level `serviceTier` field. This is serving speed and cost, not reasoning depth; depth is Default Effort.",
+			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_GOOGLE_OPTIONS,
 		},
 	},
@@ -394,7 +417,8 @@ export const MODEL_SETTINGS = {
 			group: "Sampling",
 			label: "Service Tier — Subagent",
 			description:
-				"Service Tier for spawned task/eval subagents. Inherit = match the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
+				"How spawned task/eval subagent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
+			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_INHERIT_OPTIONS,
 		},
 	},
@@ -408,7 +432,8 @@ export const MODEL_SETTINGS = {
 			group: "Sampling",
 			label: "Service Tier — Advisor",
 			description:
-				"Service Tier for the advisor model. None = standard processing; Inherit = match the main agent's live per-family tiers; pick a value to apply it to the advisor model's family.",
+				"How advisor-model requests are queued and served. None is standard processing, Inherit matches the main agent's live per-family tiers, and picking a value applies it to the advisor model's family.",
+			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_INHERIT_OPTIONS,
 			condition: "advisorEnabled",
 		},

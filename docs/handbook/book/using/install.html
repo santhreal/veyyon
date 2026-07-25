@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,7 +200,8 @@
 <h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and prints a <code>doctor:</code> line confirming the binary runs. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
+<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and runs a <code>doctor:</code> self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because <code>veyyon --version</code> answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.</p>
+<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile and tells you to restart your shell.</p>
 <h2 id="install-on-windows"><a class="header" href="#install-on-windows">Install on Windows</a></h2>
 <pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
 </code></pre>
@@ -209,6 +210,10 @@
 </code></pre>
 <p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
 <p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p>If an install is interrupted, run it again. The installer stages the binary beside its final path and moves it into place only once the file is complete, so a cancelled install never leaves you with a half-written <code>veyyon</code>. Cancelling with Ctrl-C removes the staged file on the way out; a kill the process cannot catch leaves it behind, and the next install reclaims it and names it:</p>
+<pre><code class="language-console">  ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
+</code></pre>
+<p>A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other’s download.</p>
 <p>On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a “not found” error from the dynamic loader about a file that is plainly there.</p>
 <h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
 <p>The installer takes a few options. Pass them after <code>-- </code> when you pipe the script:</p>
@@ -243,12 +248,12 @@ version, and if it finds one it downloads the new binary in the background:</p>
 <pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
 </code></pre>
 <p>The running process keeps the version it started with, so the update takes
-effect the next time you launch. On that launch you get one line naming the new
-version:</p>
-<pre><code class="language-text">Updated to veyyon 1.2.0 · run /changelog for release notes
+effect the next time you launch. On that launch the welcome card’s tip line
+names the new version and points at what you can do about it:</p>
+<pre><code class="language-text">Tip: Updated to veyyon 1.2.0 · /changelog · roll back or turn auto-update off in /settings
 </code></pre>
-<p><code>/changelog</code> opens the release notes on the web rather than printing them into
-your terminal.</p>
+<p>You see it once per update, on the first launch after it. <code>/changelog</code> opens the
+release notes on the web rather than printing them into your terminal.</p>
 <p>Two settings control this, both on by default:</p>
 <div class="table-wrapper">
 <table>
@@ -267,11 +272,60 @@ your terminal.</p>
 <p>You can always update on demand, whichever settings are in force:</p>
 <pre><code class="language-console">$ veyyon update
 </code></pre>
+<h3 id="going-back-to-an-older-version"><a class="header" href="#going-back-to-an-older-version">Going back to an older version</a></h3>
+<p>If a release breaks something you depend on, you do not have to wait for the next
+one. <code>veyyon rollback</code> moves your install to any published version.</p>
+<p>Run it with no arguments and you get a picker over every published version:</p>
+<pre><code class="language-console">$ veyyon rollback
+</code></pre>
+<p>The list opens on the version you are running. Type to filter it, press <code>c</code> to
+open the highlighted version’s changelog in your browser, and press enter to
+choose one. Nothing installs until you choose, and the change takes effect the
+next time you launch.</p>
+<p>If you already know the version you want, or you are writing a script, the same
+command works without the picker. Start by seeing what there is:</p>
+<pre><code class="language-console">$ veyyon rollback --list
+VERSION  PUBLISHED
+1.3.0    2026-07-01  (newer)
+1.2.0    2026-06-01  (current)
+1.1.0    2026-05-01  (previously run)
+</code></pre>
+<p>The markers tell you where you stand: <code>current</code> is the version running now,
+<code>newer</code> is a version you would move forward to, and <code>previously run</code> is one this
+machine has been on before. Then name the one you want:</p>
+<pre><code class="language-console">$ veyyon rollback 1.1.0
+</code></pre>
+<p>That installs 1.1.0 the same way an update installs a new release, verifies the
+binary really is the version it claims, and prints the changelog link for it. Like
+an update, it takes effect the next time you launch.</p>
+<p>Two things it refuses rather than guesses at. Rolling back to the version you are
+already running does nothing useful, so it says so instead of reinstalling and
+reporting success. And a source checkout cannot be rolled back: it updates by
+fast-forwarding its git branch, which only moves forward, so Veyyon tells you
+that rather than quietly reinstalling the latest version. To run an older version
+from a checkout, check the tag out yourself, or install the binary build and roll
+back from there.</p>
+<p>Add <code>--json</code> to <code>--list</code> when you want the same information for a script; each
+row carries the version, its publish date, the markers, and the changelog URL.
+Without a terminal on both ends, the bare <code>veyyon rollback</code> prints the list
+rather than opening a picker nothing can drive, so it is safe in a pipeline.</p>
+<p>You can also reach the picker without leaving a session. Open <code>/settings</code>, go to
+the <code>Interaction</code> tab, and you will find <code>Roll back version</code> directly under
+<code>Automatic Updates</code>, showing the version you are running now. It opens the same
+picker, and choosing a version closes the settings panel first so you can watch
+the install and read anything it has to tell you. The row appears only on an
+install that can actually perform the move, so you will not see it on a source
+checkout.</p>
 <p>Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the <code>curl</code> installer from veyyon.dev) replaces its own binary
 with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
-place a binary ever comes from. A source checkout updates in its own terms:
+place a binary ever comes from. Before it keeps the new binary it runs the same
+two checks the installer runs: the binary reports the version the release
+claims, and a real search confirms the native addon loads. If either fails the
+previous binary goes back in place and the update reports why, so a release with
+no build for your platform cannot leave you with a binary that starts and then
+fails on your first command. A source checkout updates in its own terms:
 <code>veyyon update</code> fast-forwards the checkout, reinstalls dependencies, and
 regenerates build artifacts, and refreshes the native addon, all in one command.
 It then reads the checkout’s own version back and refuses to report success
@@ -314,6 +368,23 @@ file per shell into the directory bash, zsh, and fish each autoload from. If a
 shell will not load that directory (zsh’s <code>$fpath</code> often does not include it,
 and bash needs the <code>bash-completion</code> package), the installer says so and prints
 the exact line to add, rather than leaving you a file nothing reads.</p>
+<p>Completion knows more than the command names. It offers the models in the
+catalog for <code>--model</code>, your saved sessions for <code>--resume</code>, and for <code>veyyon config</code> it offers the settings that exist and the values each one accepts:</p>
+<pre><code class="language-console">$ veyyon config set startup.&lt;Tab&gt;
+startup.autoUpdate  startup.checkUpdate  startup.quiet  startup.setupWizard
+$ veyyon config set startup.autoUpdate &lt;Tab&gt;
+true  false
+</code></pre>
+<p>Those candidates come from the installed binary itself, so they describe the
+version you are running rather than the version the script was written for. A
+value only you know, an API key or a search term, is left alone: completion
+offers nothing rather than a list of your files.</p>
+<p>Attachments complete as paths. A word starting with <code>@</code> names a file to send
+along with your message, so the shell completes it the way it completes any
+path:</p>
+<pre><code class="language-console">$ vey @src/ma&lt;Tab&gt;
+@src/main.ts
+</code></pre>
 <p>Windows works differently, because PowerShell has no directory it autoloads
 completions from. The installer writes <code>veyyon-completions.ps1</code> next to your
 profile and adds one line to the profile that loads it:</p>
@@ -329,6 +400,9 @@ anyway would give your tool Veyyon’s subcommands. You can ask for that form
 yourself:</p>
 <pre><code class="language-console">$ veyyon completions zsh --no-alias
 </code></pre>
+<p>Updates keep that decision. When Veyyon rewrites your completion files it reads
+the ones already there to see whether they bind <code>vey</code>, and regenerates them the
+same way, so an update never starts completing a command that is not ours.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>The installer removes everything it added, and only what it added: the binary, the <code>vey</code> alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>

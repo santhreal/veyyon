@@ -88,7 +88,15 @@ function getAncestorDirs(cwd: string, stopAt?: string | null): Array<{ dir: stri
 	return ancestors;
 }
 
-async function findNearestProjectConfigDir(
+/**
+ * The nearest ancestor `.veyyon/` directory, walking up from `cwd`.
+ *
+ * Exported because it defines where PROJECT-level configuration lives, and
+ * anything that adds a project-level file has to look in the same place
+ * `SYSTEM.md` does. A second walk-up with its own rules would put two
+ * project-level surfaces in two different directories.
+ */
+export async function findNearestProjectConfigDir(
 	cwd: string,
 	repoRoot?: string | null,
 ): Promise<{ dir: string; depth: number } | null> {

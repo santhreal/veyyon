@@ -1,4 +1,4 @@
-import ultrathinkNotice from "../prompts/system/ultrathink-notice.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-highlight";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
@@ -18,7 +18,7 @@ import { keywordInProse } from "./markdown-prose";
 const ULTRATHINK_WORD = magicKeywordRegex("ultrathink");
 
 /** Hidden system notice appended after a user message that mentions "ultrathink". */
-export const ULTRATHINK_NOTICE: string = ultrathinkNotice.trim();
+export const ULTRATHINK_NOTICE: string = PROMPTS["turn-control/ultrathink-notice"].text.trim();
 
 /**
  * Whether `text` contains the standalone keyword "ultrathink" (lowercase,

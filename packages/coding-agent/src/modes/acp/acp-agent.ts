@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
 	type Agent,
@@ -55,7 +54,7 @@ import { runExtensionCompact } from "../../extensibility/extensions/compact-hand
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
-import { resolveLocalUrlToPath } from "../../internal-urls";
+import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
 import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
@@ -1759,21 +1758,7 @@ export class AcpAgent implements Agent {
 	/** `local://` URLs of plan files in the session-local root, newest first —
 	 *  the `resolveApprovedPlan` fallback for a dropped `extra.title`. */
 	async #listAcpLocalPlanFiles(session: AgentSession): Promise<string[]> {
-		const localRoot = this.#resolveAcpPlanFilePath(session, "local://");
-		try {
-			const entries = await fs.readdir(localRoot, { withFileTypes: true });
-			const plans = await Promise.all(
-				entries
-					.filter(entry => entry.isFile() && /plan\.md$/i.test(entry.name))
-					.map(async entry => {
-						const stat = await fs.stat(path.join(localRoot, entry.name)).catch(() => null);
-						return { url: `local://${entry.name}`, mtime: stat?.mtimeMs ?? 0 };
-					}),
-			);
-			return plans.sort((a, b) => b.mtime - a.mtime).map(plan => plan.url);
-		} catch {
-			return [];
-		}
+		return listLocalPlanFileUrls(this.#resolveAcpPlanFilePath(session, "local://"));
 	}
 
 	/**

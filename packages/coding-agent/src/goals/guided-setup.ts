@@ -2,8 +2,7 @@ import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core
 import type { Tool } from "@veyyon/ai";
 import { isRecord, prompt, Snowflake } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
-import guidedGoalInterviewPrompt from "../prompts/goals/guided-goal-interview.md" with { type: "text" };
-import guidedGoalSystemPrompt from "../prompts/goals/guided-goal-system.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { AgentSession } from "../session/agent-session";
 import { concreteThinkingLevel, shouldDisableReasoning, toReasoningEffort } from "../thinking";
 
@@ -99,7 +98,7 @@ export async function runGuidedGoalTurn(
 		throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
 	}
 
-	const userPrompt = prompt.render(guidedGoalInterviewPrompt, {
+	const userPrompt = prompt.render(PROMPTS["goals/guided-goal-interview"].text, {
 		messages: options.messages.map(message => ({ label: message.role.toUpperCase(), content: message.content })),
 	});
 	// Secret obfuscation: route the user-authored transcript through the session obfuscator the
@@ -111,7 +110,7 @@ export async function runGuidedGoalTurn(
 	const response = await instrumentedCompleteSimple(
 		resolved.model,
 		{
-			systemPrompt: [prompt.render(guidedGoalSystemPrompt)],
+			systemPrompt: [prompt.render(PROMPTS["goals/guided-goal-system"].text)],
 			messages: [{ role: "user", content: [{ type: "text", text: promptText }], timestamp: Date.now() }],
 			tools: [RESPOND_TOOL],
 		},

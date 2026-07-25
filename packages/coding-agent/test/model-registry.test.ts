@@ -558,14 +558,6 @@ describe("ModelRegistry", () => {
 						compat: {
 							supportsImageDetailOriginal: false,
 						},
-						remoteCompaction: {
-							enabled: true,
-							api: "openai-responses",
-							endpoint: "http://127.0.0.1:8080/v1/responses/provider-compact",
-							v2StreamingEnabled: true,
-							streamingEndpoint: "http://127.0.0.1:8080/v1/responses",
-							model: "provider-compact",
-						},
 						models: [
 							{
 								id: "gpt-5.5",
@@ -575,11 +567,6 @@ describe("ModelRegistry", () => {
 								contextWindow: 200_000,
 								maxTokens: 100_000,
 								compactionModel: "cc-switch/gpt-5.4",
-								remoteCompaction: {
-									endpoint: "http://127.0.0.1:8080/v1/responses/model-compact",
-									v2Endpoint: "http://127.0.0.1:8080/v1/responses/model-stream",
-									model: "gpt-5.5-compact",
-								},
 							},
 						],
 					},
@@ -640,18 +627,12 @@ describe("ModelRegistry", () => {
 			expect(compat?.supportsImageDetailOriginal).toBe(false);
 		});
 
-		test("custom Responses providers preserve compaction config", () => {
+		test("custom Responses providers carry the per-model compaction model through", () => {
+			// `compactionModel` names the model compaction runs on. It is the one
+			// compaction knob a custom provider still has: `remoteCompaction`, which
+			// this test also covered, was retired with provider-native compaction.
 			const model = customResponsesCompat.find("cc-switch", "gpt-5.5");
 			expect(model?.compactionModel).toBe("cc-switch/gpt-5.4");
-			expect(model?.remoteCompaction).toEqual({
-				enabled: true,
-				api: "openai-responses",
-				endpoint: "http://127.0.0.1:8080/v1/responses/model-compact",
-				v2StreamingEnabled: true,
-				streamingEndpoint: "http://127.0.0.1:8080/v1/responses",
-				v2Endpoint: "http://127.0.0.1:8080/v1/responses/model-stream",
-				model: "gpt-5.5-compact",
-			});
 		});
 
 		test("model-level compat overrides provider-level compat for custom models", () => {
@@ -1744,7 +1725,6 @@ describe("ModelRegistry", () => {
 		let specialCache: ModelRegistry;
 		let vertexAuthoritative: ModelRegistry;
 		let syntheticCacheLoad: ModelRegistry;
-		let cachedDiscoverableRemoteCompaction: ModelRegistry;
 		let vertexNonAuthoritative: ModelRegistry;
 		let vertexStale: ModelRegistry;
 		let litellmStaleNamespaceCache: ModelRegistry;
@@ -1953,49 +1933,6 @@ describe("ModelRegistry", () => {
 						),
 				},
 			);
-			cachedDiscoverableRemoteCompaction = readonlyRegistry(
-				{
-					providers: {
-						"cached-compact-proxy": {
-							baseUrl: "https://compact-proxy.example.com/v1",
-							apiKey: "TEST_KEY",
-							api: "openai-responses",
-							discovery: { type: "openai-models-list" },
-							remoteCompaction: {
-								enabled: true,
-								api: "openai-responses",
-								endpoint: "https://compact-proxy.example.com/v1/responses/provider-compact",
-								model: "provider-compact",
-							},
-							models: [],
-						},
-					},
-				},
-				{
-					seedCache: dbPath =>
-						writeModelCache(
-							"cached-compact-proxy:openai-models-list-context-v2",
-							Date.now(),
-							[
-								buildModel({
-									id: "cached-compact-model",
-									name: "Cached Compact Model",
-									api: "openai-responses",
-									provider: "cached-compact-proxy",
-									baseUrl: "https://compact-proxy.example.com/v1",
-									reasoning: true,
-									input: ["text"],
-									cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-									contextWindow: 128_000,
-									maxTokens: 16_384,
-								}),
-							],
-							true,
-							"",
-							dbPath,
-						),
-				},
-			);
 			const litellmProxyConfig = () => ({
 				providers: {
 					"litellm-proxy": {
@@ -2070,17 +2007,6 @@ describe("ModelRegistry", () => {
 			expect(specialCache.find("google-antigravity", "gemini-cache-only-flash")?.maxTokens).toBe(8_192);
 			expect(specialCache.find("google-gemini-cli", "gemini-3.5-flash")?.maxTokens).toBe(16_384);
 			expect(specialCache.find("openai-codex", "gpt-5.4-codex-pro")?.maxTokens).toBe(128_000);
-		});
-
-		test("applies provider remoteCompaction to cached configured discovery models", () => {
-			expect(
-				cachedDiscoverableRemoteCompaction.find("cached-compact-proxy", "cached-compact-model")?.remoteCompaction,
-			).toEqual({
-				enabled: true,
-				api: "openai-responses",
-				endpoint: "https://compact-proxy.example.com/v1/responses/provider-compact",
-				model: "provider-compact",
-			});
 		});
 
 		test("ignores litellm discovery rows cached under the retired rich-v1 namespace", () => {

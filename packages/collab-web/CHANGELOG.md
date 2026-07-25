@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Frame sealing comes from `@veyyon/wire`. This client carried a full copy of the AES-256-GCM
+  layout, described in its own header as a browser-safe mirror of the host's, which is the shape of
+  duplication that goes wrong quietly: the host seals what this opens, and a disagreement about the
+  IV length or the order of the parts fails authentication without saying why. Only the frame type
+  binding stays here.
+
+- The theme store moved into `@veyyon/utils` as `createThemeStore`, shared with the stats dashboard, which carried a byte-identical copy of the same ~90 lines and neither copy had a test. Only the storage key and the React binding stay here. The two had drifted in their storage guard, and the dashboard had the broken half; this client's try/catch is the behaviour that was kept.
+
+- The wire envelope codec and the WebCrypto byte coercion now come from the shared packages that own them, `@veyyon/wire` and `@veyyon/utils/bytes`, instead of being restated here. The envelope matters most: the host writes the envelopes this client reads, and both sides had their own copy of the byte order and the header width. A disagreement there does not fail, because the sealed payload is untouched by it, so a frame would simply be delivered to the wrong peer. No behaviour change.
+
 ## [16.5.1] - 2026-07-14
 
 ### Fixed

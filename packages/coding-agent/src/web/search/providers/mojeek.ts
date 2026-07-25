@@ -4,17 +4,19 @@ import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults, collapseWhitespace } from "../utils";
+import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError, resolveExternalResultUrl, withHardTimeout } from "./utils";
 
 const MOJEEK_ORIGIN = "https://www.mojeek.de";
 const MOJEEK_HOME_URL = `${MOJEEK_ORIGIN}/?arc=none&lang=en&lb=en&theme=dark`;
+
+/** Hosts that belong to the engine itself, so a link back into it is not a result. Matched as the host or any subdomain. */
+const MOJEEK_OWN_HOSTS: readonly string[] = ["mojeek.com", "mojeek.co.uk", "mojeek.fr", "mojeek.de"];
 const MOJEEK_SEARCH_URL = `${MOJEEK_ORIGIN}/search`;
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 /**
  * ALTCHA can complete quickly, but its verified redirect is occasionally
@@ -34,26 +36,7 @@ interface ParsedResult {
  * intra-Mojeek navigation rows (verticals, paging) that share the markup.
  */
 function normalizeResultUrl(href: string): string | undefined {
-	let url: URL;
-	try {
-		url = new URL(href, MOJEEK_HOME_URL);
-	} catch {
-		return undefined;
-	}
-	if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-	if (
-		url.hostname === "mojeek.com" ||
-		url.hostname.endsWith(".mojeek.com") ||
-		url.hostname === "mojeek.co.uk" ||
-		url.hostname.endsWith(".mojeek.co.uk") ||
-		url.hostname === "mojeek.fr" ||
-		url.hostname.endsWith(".mojeek.fr") ||
-		url.hostname === "mojeek.de" ||
-		url.hostname.endsWith(".mojeek.de")
-	) {
-		return undefined;
-	}
-	return url.href;
+	return resolveExternalResultUrl(href, MOJEEK_HOME_URL, MOJEEK_OWN_HOSTS);
 }
 
 /**
@@ -172,7 +155,11 @@ async function callMojeekHtml(params: SearchParams, numResults: number): Promise
 
 /** Execute a Mojeek web search against the standard HTML results page. */
 export async function searchMojeek(params: SearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
 	const html = await callMojeekHtml(params, numResults);
 	const parsed = parseHtmlResults(html);
 

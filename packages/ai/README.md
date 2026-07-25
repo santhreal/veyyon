@@ -110,10 +110,11 @@ See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
 ## Quick Start
 
 ```typescript
-import { z, getModel, stream, complete, Context, Tool } from "@veyyon/ai";
+import { z, stream, complete, Context, Tool } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 // Fully typed with auto-complete support for both providers and models
-const model = getModel("openai", "gpt-4o-mini");
+const model = getBundledModel("openai", "gpt-4o-mini");
 
 // Define tools with Zod schemas for type safety and validation
 const tools: Tool[] = [
@@ -420,9 +421,10 @@ Models with vision capabilities can process images. You can check if a model sup
 
 ```typescript
 import * as fs from "node:fs";
-import { getModel, complete } from "@veyyon/ai";
+import { complete } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
-const model = getModel("openai", "gpt-4o-mini");
+const model = getBundledModel("openai", "gpt-4o-mini");
 
 // Check if model supports images
 if (model.input.includes("image")) {
@@ -459,16 +461,17 @@ Many models support thinking/reasoning capabilities where they can show their in
 ### Unified Interface (streamSimple/completeSimple)
 
 ```typescript
-import { getModel, streamSimple, completeSimple } from "@veyyon/ai";
+import { streamSimple, completeSimple } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 // Many models across providers support thinking/reasoning
-const model = getModel("anthropic", "claude-sonnet-4-20250514");
-// or getModel('openai', 'gpt-5-mini');
-// or getModel('google', 'gemini-2.5-flash');
-// or getModel('xai', 'grok-code-fast-1');
-// or getModel('groq', 'openai/gpt-oss-20b');
-// or getModel('cerebras', 'gpt-oss-120b');
-// or getModel('openrouter', 'z-ai/glm-4.5v');
+const model = getBundledModel("anthropic", "claude-sonnet-4-20250514");
+// or getBundledModel('openai', 'gpt-5-mini');
+// or getBundledModel('google', 'gemini-2.5-flash');
+// or getBundledModel('xai', 'grok-code-fast-1');
+// or getBundledModel('groq', 'openai/gpt-oss-20b');
+// or getBundledModel('cerebras', 'gpt-oss-120b');
+// or getBundledModel('openrouter', 'z-ai/glm-4.5v');
 
 // Check if model supports reasoning
 if (model.reasoning) {
@@ -501,24 +504,25 @@ for (const block of response.content) {
 For fine-grained control, use the provider-specific options:
 
 ```typescript
-import { getModel, complete } from "@veyyon/ai";
+import { complete } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 // OpenAI Reasoning (o1, o3, gpt-5)
-const openaiModel = getModel("openai", "gpt-5-mini");
+const openaiModel = getBundledModel("openai", "gpt-5-mini");
 await complete(openaiModel, context, {
 	reasoningEffort: "medium",
 	reasoningSummary: "detailed", // OpenAI Responses API only
 });
 
 // Anthropic Thinking (Claude Sonnet 4)
-const anthropicModel = getModel("anthropic", "claude-sonnet-4-20250514");
+const anthropicModel = getBundledModel("anthropic", "claude-sonnet-4-20250514");
 await complete(anthropicModel, context, {
 	thinkingEnabled: true,
 	thinkingBudgetTokens: 8192, // Optional token limit
 });
 
 // Google Gemini Thinking
-const googleModel = getModel("google", "gemini-2.5-flash");
+const googleModel = getBundledModel("google", "gemini-2.5-flash");
 await complete(googleModel, context, {
 	thinking: {
 		enabled: true,
@@ -588,9 +592,10 @@ if (message.stopReason === "error" || message.stopReason === "aborted") {
 The abort signal allows you to cancel in-progress requests. Aborted requests have `stopReason === 'aborted'`:
 
 ```typescript
-import { getModel, stream } from "@veyyon/ai";
+import { stream } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
-const model = getModel("openai", "gpt-4o-mini");
+const model = getBundledModel("openai", "gpt-4o-mini");
 
 // Abort after 2 seconds
 const signal = AbortSignal.timeout(2000);
@@ -689,14 +694,14 @@ A **provider** offers models through a specific API. For example:
 ### Querying Providers and Models
 
 ```typescript
-import { getProviders, getModels, getModel } from "@veyyon/ai";
+import { getBundledProviders, getBundledModels, getBundledModel } from "@veyyon/catalog";
 
 // Get all available providers
-const providers = getProviders();
+const providers = getBundledProviders();
 console.log(providers); // ['openai', 'anthropic', 'google', 'xai', 'groq', ...]
 
 // Get all models from a provider (fully typed)
-const anthropicModels = getModels("anthropic");
+const anthropicModels = getBundledModels("anthropic");
 for (const model of anthropicModels) {
 	console.log(`${model.id}: ${model.name}`);
 	console.log(`  API: ${model.api}`); // 'anthropic-messages'
@@ -706,7 +711,7 @@ for (const model of anthropicModels) {
 }
 
 // Get a specific model (both provider and model ID are auto-completed in IDEs)
-const model = getModel("openai", "gpt-4o-mini");
+const model = getBundledModel("openai", "gpt-4o-mini");
 console.log(`Using ${model.name} via ${model.api} API`);
 ```
 
@@ -817,7 +822,7 @@ Models are typed by their API, ensuring type-safe options:
 
 ```typescript
 // TypeScript knows this is an Anthropic model
-const claude = getModel("anthropic", "claude-sonnet-4-20250514");
+const claude = getBundledModel("anthropic", "claude-sonnet-4-20250514");
 
 // So these options are type-checked for AnthropicOptions
 await stream(claude, context, {
@@ -843,10 +848,11 @@ When messages from one provider are sent to a different provider, the library au
 ### Example: Multi-Provider Conversation
 
 ```typescript
-import { getModel, complete, Context } from "@veyyon/ai";
+import { complete, Context } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 // Start with Claude
-const claude = getModel("anthropic", "claude-sonnet-4-20250514");
+const claude = getBundledModel("anthropic", "claude-sonnet-4-20250514");
 const context: Context = {
 	messages: [],
 };
@@ -858,13 +864,13 @@ const claudeResponse = await complete(claude, context, {
 context.messages.push(claudeResponse);
 
 // Switch to GPT-5 - it will see Claude's thinking as <thinking> tagged text
-const gpt5 = getModel("openai", "gpt-5-mini");
+const gpt5 = getBundledModel("openai", "gpt-5-mini");
 context.messages.push({ role: "user", content: "Is that calculation correct?" });
 const gptResponse = await complete(gpt5, context);
 context.messages.push(gptResponse);
 
 // Switch to Gemini
-const gemini = getModel("google", "gemini-2.5-flash");
+const gemini = getBundledModel("google", "gemini-2.5-flash");
 context.messages.push({ role: "user", content: "What was the original question?" });
 const geminiResponse = await complete(gemini, context);
 ```
@@ -890,7 +896,8 @@ This enables flexible workflows where you can:
 The `Context` object can be easily serialized and deserialized using standard JSON methods, making it simple to persist conversations, implement chat history, or transfer contexts between services:
 
 ```typescript
-import { Context, getModel, complete } from "@veyyon/ai";
+import { Context, complete } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 // Create and use a context
 const context: Context = {
@@ -898,7 +905,7 @@ const context: Context = {
 	messages: [{ role: "user", content: "What is TypeScript?" }],
 };
 
-const model = getModel("openai", "gpt-4o-mini");
+const model = getBundledModel("openai", "gpt-4o-mini");
 const response = await complete(model, context);
 context.messages.push(response);
 
@@ -914,7 +921,7 @@ const restored: Context = JSON.parse(localStorage.getItem("conversation")!);
 restored.messages.push({ role: "user", content: "Tell me more about its type system" });
 
 // Continue with any model
-const newModel = getModel("anthropic", "claude-haiku-4-5-20251001");
+const newModel = getBundledModel("anthropic", "claude-haiku-4-5-20251001");
 const continuation = await complete(newModel, restored);
 ```
 
@@ -925,10 +932,11 @@ const continuation = await complete(newModel, restored);
 The library supports browser environments. You must pass the API key explicitly since environment variables are not available in browsers:
 
 ```typescript
-import { getModel, complete } from "@veyyon/ai";
+import { complete } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 // API key must be passed explicitly in browser
-const model = getModel("anthropic", "claude-haiku-4-5-20251001");
+const model = getBundledModel("anthropic", "claude-haiku-4-5-20251001");
 
 const response = await complete(
 	model,
@@ -1018,7 +1026,7 @@ When set, the library automatically uses these keys:
 
 ```typescript
 // Uses OPENAI_API_KEY from environment
-const model = getModel("openai", "gpt-4o-mini");
+const model = getBundledModel("openai", "gpt-4o-mini");
 const response = await complete(model, context);
 
 // Or override with explicit key
@@ -1071,10 +1079,11 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 ```
 
 ```typescript
-import { getModel, complete } from "@veyyon/ai";
+import { complete } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 
 (async () => {
-	const model = getModel("google-vertex", "gemini-2.5-flash");
+	const model = getBundledModel("google-vertex", "gemini-2.5-flash");
 	const response = await complete(model, {
 		messages: [{ role: "user", content: "Hello from Vertex AI" }],
 	});
@@ -1109,33 +1118,31 @@ For the current API-key onboarding flows, the library covers Together, Moonshot,
 
 The library provides login and token refresh functions. Credential storage is the caller's responsibility.
 
+Each login function is imported from the provider module it belongs to, not from the package root. OAuth providers live under `registry/oauth`, and providers that onboard with a pasted API key live directly under `registry`:
+
+```typescript
+// OAuth providers
+import { loginAnthropic } from "@veyyon/ai/registry/oauth/anthropic";
+import { loginOpenAICodex } from "@veyyon/ai/registry/oauth/openai-codex";
+import { loginGitHubCopilot } from "@veyyon/ai/registry/oauth/github-copilot";
+import { loginGeminiCli } from "@veyyon/ai/registry/oauth/google-gemini-cli";
+import { loginAntigravity } from "@veyyon/ai/registry/oauth/google-antigravity";
+import { loginXiaomi } from "@veyyon/ai/registry/oauth/xiaomi";
+
+// API-key onboarding providers
+import { loginTogether } from "@veyyon/ai/registry/together";
+import { loginMoonshot } from "@veyyon/ai/registry/moonshot";
+```
+
+The same shape applies to the rest: `loginQianfan`, `loginNvidia`, `loginNanoGPT`, `loginNovita`, `loginHuggingface`, `loginVenice`, `loginVllm`, `loginLiteLLM`, `loginCloudflareAiGateway`, and `loginQwenPortal` each come from `@veyyon/ai/registry/<provider>`.
+
+Token management and the credential types do come from the package root:
+
 ```typescript
 import {
-	// Login functions (return credentials, do not store)
-	loginAnthropic,
-	loginOpenAICodex,
-	loginGitHubCopilot,
-	loginGeminiCli,
-	loginAntigravity,
-	loginCloudflareAiGateway,
-	loginHuggingface,
-	loginLiteLLM,
-	loginMoonshot,
-	loginNvidia,
-	loginNanoGPT,
-	loginQianfan,
-	loginQwenPortal,
-	loginTogether,
-	loginVenice,
-	loginVllm,
-	loginXiaomi,
-
-	// Token management
 	refreshOAuthToken, // (provider, credentials) => new credentials
 	getOAuthApiKey, // (provider, credentialsMap) => { newCredentials, apiKey } | null
-
-	// Types
-	type OAuthProvider, // includes 'anthropic', 'openai-codex', 'github-copilot', 'google-gemini-cli', 'google-antigravity', 'together', 'moonshot', 'qianfan', 'nvidia', 'nanogpt', 'novita', 'huggingface', 'venice', 'xiaomi', 'vllm', 'litellm', 'cloudflare-ai-gateway', 'qwen-portal', ...
+	type OAuthProvider,
 	type OAuthCredentials,
 } from "@veyyon/ai";
 ```
@@ -1152,7 +1159,7 @@ await loginOpenAICodex({
 ### Login Flow Example
 
 ```typescript
-import { loginGitHubCopilot } from "@veyyon/ai";
+import { loginGitHubCopilot } from "@veyyon/ai/registry/oauth/github-copilot";
 import * as fs from "node:fs";
 
 const credentials = await loginGitHubCopilot({
@@ -1176,7 +1183,8 @@ fs.writeFileSync("credentials.json", JSON.stringify(auth, null, 2));
 Use `getOAuthApiKey()` to get an API key, automatically refreshing if expired:
 
 ```typescript
-import { getModel, complete, getOAuthApiKey } from "@veyyon/ai";
+import { complete, getOAuthApiKey } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog";
 import * as fs from "node:fs";
 
 // Load your stored credentials
@@ -1191,7 +1199,7 @@ auth["github-copilot"] = { type: "oauth", ...result.newCredentials };
 fs.writeFileSync("credentials.json", JSON.stringify(auth, null, 2));
 
 // Use the API key
-const model = getModel("github-copilot", "gpt-4o");
+const model = getBundledModel("github-copilot", "gpt-4o");
 const response = await complete(
 	model,
 	{

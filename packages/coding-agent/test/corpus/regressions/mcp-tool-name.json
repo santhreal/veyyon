@@ -153,14 +153,14 @@
 		},
 		{
 			"id": "mcp-name-numeric-segments",
-			"contract": "Digit-only server and tool names sanitize to the server/tool fallback tokens",
+			"contract": "Digit-only server and tool names are kept verbatim, so numbered servers stay distinct",
 			"surface": "mcp-tool-name",
 			"tags": ["boundary", "adversarial"],
 			"input": { "server": "42", "tool": "7" },
 			"expect": {
-				"name": "mcp__server_tool",
-				"serverName": "server",
-				"toolName": "tool"
+				"name": "mcp__42_7",
+				"serverName": "42",
+				"toolName": "7"
 			}
 		},
 		{

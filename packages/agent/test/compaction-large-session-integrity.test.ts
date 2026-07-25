@@ -111,7 +111,12 @@ function largeSession(turns: number): SessionEntry[] {
 		}
 		if (turn % 5 === 0) {
 			entries.push(
-				messageEntry({ role: "bashExecution", command: `git status ${turn}`, output: "clean", timestamp: 1 } as never),
+				messageEntry({
+					role: "bashExecution",
+					command: `git status ${turn}`,
+					output: "clean",
+					timestamp: 1,
+				} as never),
 			);
 		}
 	}

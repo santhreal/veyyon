@@ -232,11 +232,37 @@ function Move-StagedBinaryIntoPlace {
 
 # Reclaim moved-aside binaries whose owning process has since exited. Deleting
 # one that is still mapped fails, which is fine: it is retried next run.
-function Clear-StaleBinaryBackups {
-    param([string]$Dir, [string]$BaseName)
+# Remove artifacts a previous install left behind: a moved-aside `.old` binary and
+# a staged `.download` that never made it into place.
+#
+# The `.download` half is why this exists. Nothing survives a killed process, and
+# until now only Uninstall-Veyyon ever swept those files, so an install that kept
+# being killed accumulated a full copy of the binary (~100 MB) per attempt in the
+# user's install directory, hidden, with nothing on screen to explain them. Both
+# names carry the writer's $PID, so a file whose process is STILL RUNNING belongs
+# to a concurrent installer and is left alone: the pid is in the path precisely so
+# two installers cannot truncate each other's download. Every removal is
+# announced, because deleting files in a directory the user owns is a visible
+# change and not something to do quietly. Mirrors sweep_stale_staging in install.sh.
+function Clear-StaleInstallArtifacts {
+    param([string]$Dir, [string]$BaseName, [string]$BinName)
     if (-not (Test-Path $Dir)) { return }
-    foreach ($old in @(Get-ChildItem -Path $Dir -Filter "$BaseName.*.old" -File -ErrorAction SilentlyContinue)) {
-        Remove-Item $old.FullName -Force -ErrorAction SilentlyContinue
+    foreach ($leftover in @(Get-ChildItem -Path $Dir -Filter "$BaseName.*.old" -File -ErrorAction SilentlyContinue) +
+                          @(Get-ChildItem -Path $Dir -Filter ".$BinName.*.download" -File -Force -ErrorAction SilentlyContinue)) {
+        # `<base>.<pid>.old` / `.<bin>.<pid>.download` - the pid is the token
+        # before the extension. Anything else was not written by this installer.
+        $parts = $leftover.Name.Split('.')
+        $pidToken = if ($parts.Length -ge 2) { $parts[$parts.Length - 2] } else { "" }
+        $ownerPid = 0
+        if (-not [int]::TryParse($pidToken, [ref]$ownerPid)) { continue }
+        if ($ownerPid -ne $PID -and (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue)) {
+            Write-Host "    leaving $($leftover.FullName) alone - another installer (pid $ownerPid) is using it"
+            continue
+        }
+        Remove-Item $leftover.FullName -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $leftover.FullName)) {
+            Write-Host "OK  removed $($leftover.FullName) left by an interrupted install (pid $ownerPid)" -ForegroundColor Green
+        }
     }
 }
 
@@ -1096,7 +1122,7 @@ function Install-Binary {
     # running image, so upgrading from an open session failed at the download
     # and then tried to delete the binary it could not write. The path is
     # per-process so two installers cannot truncate each other's download.
-    Clear-StaleBinaryBackups -Dir $InstallDir -BaseName "$BinName.exe"
+    Clear-StaleInstallArtifacts -Dir $InstallDir -BaseName "$BinName.exe" -BinName $BinName
     $StagingPath = Join-Path $InstallDir ".$BinName.$PID.download"
     try {
         Invoke-WebRequest -Uri $BinaryUrl -OutFile $StagingPath -TimeoutSec 900

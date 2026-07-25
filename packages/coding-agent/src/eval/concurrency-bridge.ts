@@ -28,7 +28,7 @@ export interface EvalConcurrencyResult {
  * values collapse to `0` (unbounded), matching the `task` tool's own handling.
  */
 export function runEvalConcurrency(_args: unknown, options: EvalConcurrencyBridgeOptions): EvalConcurrencyResult {
-	const raw = options.session.settings.get("task.maxConcurrency");
+	const raw = options.session.settings.get("subagent.maxConcurrency");
 	const limit = Number.isFinite(raw) ? Math.trunc(raw) : 0;
 	return { limit: limit > 0 ? limit : 0 };
 }

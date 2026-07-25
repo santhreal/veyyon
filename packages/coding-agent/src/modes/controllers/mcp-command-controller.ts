@@ -5,7 +5,7 @@
  */
 import * as path from "node:path";
 import { type Component, replaceTabs, Spacer, Text } from "@veyyon/tui";
-import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
+import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep } from "../../discovery/helpers";
 import {
@@ -1515,7 +1515,7 @@ export class MCPCommandController {
 			await this.#syncManagerConnection(name, config);
 			this.#showMessage(lines.join("\n"));
 		} catch (error) {
-			if (abortController.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+			if (abortController.signal.aborted || isAbortError(error)) {
 				this.ctx.showStatus(`Cancelled MCP test for "${name}"`);
 				return;
 			}

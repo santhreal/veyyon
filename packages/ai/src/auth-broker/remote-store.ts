@@ -967,11 +967,11 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	 */
 	#raceWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 		if (!signal) return promise;
-		if (signal.aborted) return Promise.reject(new AIError.AbortError("auth-broker request aborted"));
+		if (signal.aborted) return Promise.reject(new AIError.RequestAbortError("auth-broker request aborted"));
 		return new Promise<T>((resolve, reject) => {
 			const onAbort = (): void => {
 				signal.removeEventListener("abort", onAbort);
-				reject(new AIError.AbortError("auth-broker request aborted"));
+				reject(new AIError.RequestAbortError("auth-broker request aborted"));
 			};
 			signal.addEventListener("abort", onAbort, { once: true });
 			promise.then(

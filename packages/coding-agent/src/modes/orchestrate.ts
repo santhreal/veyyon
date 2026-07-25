@@ -1,4 +1,4 @@
-import orchestrateNotice from "../prompts/system/orchestrate-notice.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-highlight";
 import { magicKeywordRegex } from "./magic-keyword-boundary";
 import { keywordInProse } from "./markdown-prose";
@@ -19,7 +19,7 @@ import { keywordInProse } from "./markdown-prose";
 const ORCHESTRATE_WORD = magicKeywordRegex("orchestrate");
 
 /** Hidden system notice appended after a user message that mentions "orchestrate". */
-export const ORCHESTRATE_NOTICE: string = orchestrateNotice.trim();
+export const ORCHESTRATE_NOTICE: string = PROMPTS["subagent/orchestrate-notice"].text.trim();
 
 /**
  * Whether `text` contains the standalone keyword "orchestrate" (lowercase,

@@ -112,3 +112,148 @@ export function encodePreambleSilentlyDropped(preambleFlags: readonly (boolean |
 	const known = preambleFlags.filter((f): f is boolean => f !== null);
 	return known.length > 0 && known.every(f => f === false);
 }
+
+/**
+ * Every dotted path in an arm's config that the settings schema does not know.
+ *
+ * WHY THIS EXISTS. An arm is a config overlay, and nothing else. A key veyyon
+ * does not recognise is not an error anywhere: the overlay is merged, the
+ * unknown key sits there unread, and the arm runs with default behaviour under
+ * a name that claims a treatment. The report then compares the control against
+ * a second copy of the control and calls the difference noise, which is the
+ * most expensive possible way to be wrong, because the answer looks like a real
+ * measurement.
+ *
+ * That is the same defect class as the argot allowlist mismatch above, one
+ * layer up: there, a real setting failed to apply; here, the setting was never
+ * a setting. `tools.discoveryMode`, `tools.inlineOutputFloor` and every future
+ * knob reach the container this way, so one typo silently voids the experiment.
+ * A renamed or removed setting does the same thing later, without anyone
+ * touching the arm.
+ *
+ * `isKnownPath` is a parameter so this stays a pure function with tests that do
+ * not load the schema. The runner passes the real one.
+ *
+ * Both YAML spellings are accepted, because both are in use across `arms/`:
+ * nested (`tools:` then `inlineOutputFloor: 0.1`) and flat
+ * (`tools.inlineOutputFloor: 0.1`). Descent stops as soon as a prefix is itself
+ * a known setting, so a record-valued setting like `tools.approval` keeps its
+ * arbitrary keys instead of having each one reported as unknown.
+ *
+ * Returns the offending paths sorted, most specific first in the sense that a
+ * leaf is named rather than its parent, so the error can quote what to fix.
+ */
+export function unknownArmSettings(config: unknown, isKnownPath: (path: string) => boolean): string[] {
+	const unknown: string[] = [];
+	const walk = (node: unknown, prefix: string): void => {
+		const isMapping = node !== null && typeof node === "object" && !Array.isArray(node);
+		if (!isMapping) {
+			if (prefix !== "") unknown.push(prefix);
+			return;
+		}
+		const entries = Object.entries(node as Record<string, unknown>);
+		// An empty mapping under an unrecognised prefix has no leaf to name, so
+		// report the prefix. Descending silently would let `nonsense: {}` pass.
+		if (entries.length === 0) {
+			if (prefix !== "") unknown.push(prefix);
+			return;
+		}
+		for (const [key, value] of entries) {
+			const path = prefix === "" ? key : `${prefix}.${key}`;
+			if (isKnownPath(path)) continue;
+			walk(value, path);
+		}
+	};
+	walk(config, "");
+	return unknown.sort();
+}
+
+/** What the settings schema says a path holds. */
+export interface ArmSettingType {
+	/** The schema's declared kind: "boolean", "number", "string", "enum", "array", "record". */
+	readonly kind: string;
+	/** Permitted values, for an enum. */
+	readonly values?: readonly string[];
+}
+
+/** A key whose value the schema would not accept, and why. */
+export interface MistypedArmSetting {
+	readonly path: string;
+	readonly expected: string;
+	readonly actual: string;
+}
+
+/**
+ * Every key in an arm whose VALUE the settings schema would reject.
+ *
+ * The sibling of {@link unknownArmSettings}, and it exists because the key
+ * check is only half the question. `tools.discoveryMode: yes` names a real
+ * setting, so it passes that check, and then YAML parses the bare word as the
+ * boolean `true` while the schema wants one of a fixed set of strings. The
+ * overlay merges, the value is not usable, and the arm runs as the control
+ * under a treatment's name: exactly the same silent-null-result failure, from a
+ * mistake nothing else can catch.
+ *
+ * YAML makes this easy to hit rather than exotic. Bare `yes`, `no`, `on` and
+ * `off` are booleans, `0.1` is a number but `.1` is a string, and a quoted
+ * `"0.1"` is a string that looks identical in a diff.
+ *
+ * `typeOf` returns the schema's declared type for a path, or undefined for a
+ * path it does not know. Unknown paths are skipped rather than reported here,
+ * because {@link unknownArmSettings} already owns that message and reporting a
+ * typo twice, once as unknown and once as mistyped, helps nobody.
+ */
+export function mistypedArmSettings(
+	config: unknown,
+	typeOf: (path: string) => ArmSettingType | undefined,
+): MistypedArmSetting[] {
+	const problems: MistypedArmSetting[] = [];
+	const walk = (node: unknown, prefix: string): void => {
+		const declared = prefix === "" ? undefined : typeOf(prefix);
+		if (declared !== undefined) {
+			const problem = describeMismatch(declared, node);
+			if (problem !== undefined) problems.push({ path: prefix, ...problem });
+			return;
+		}
+		if (node === null || typeof node !== "object" || Array.isArray(node)) return;
+		for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+			walk(value, prefix === "" ? key : `${prefix}.${key}`);
+		}
+	};
+	walk(config, "");
+	return problems.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** The `expected`/`actual` pair for a value the schema would reject, or undefined when it is fine. */
+function describeMismatch(declared: ArmSettingType, value: unknown): Omit<MistypedArmSetting, "path"> | undefined {
+	const actual = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+	switch (declared.kind) {
+		case "boolean":
+			return actual === "boolean" ? undefined : { expected: "boolean", actual };
+		case "number":
+			// A non-finite number is as unusable as a string here, and YAML's `.inf`
+			// and `.nan` both parse to one.
+			return typeof value === "number" && Number.isFinite(value) ? undefined : { expected: "number", actual };
+		case "string":
+			return actual === "string" ? undefined : { expected: "string", actual };
+		case "enum": {
+			const allowed = declared.values ?? [];
+			if (typeof value === "string" && allowed.includes(value)) return undefined;
+			return {
+				expected: `one of ${allowed.join(", ")}`,
+				actual: actual === "string" ? `"${String(value)}"` : actual,
+			};
+		}
+		case "array":
+			return Array.isArray(value) ? undefined : { expected: "array", actual };
+		case "record":
+			return value !== null && typeof value === "object" && !Array.isArray(value)
+				? undefined
+				: { expected: "record", actual };
+		default:
+			// A kind this function has not been taught is not an error to report: it
+			// would fail every arm that uses the setting. Adding a kind to the schema
+			// should not break the bench.
+			return undefined;
+	}
+}

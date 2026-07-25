@@ -208,6 +208,9 @@ export async function* iterateWithIdleTimeout<T>(
 		try {
 			return options.isProgressItem(item);
 		} catch {
+			// True on purpose: treating an unclassifiable item as PROGRESS keeps the idle timer from firing on
+			// a stream that is in fact moving. The conservative direction here is to not kill a live stream,
+			// and the opposite default would abort a working request because a predicate threw.
 			return true;
 		}
 	};
@@ -218,6 +221,9 @@ export async function* iterateWithIdleTimeout<T>(
 		try {
 			return options.hasPendingLocalWork();
 		} catch {
+			// False matches the documented default for a caller that supplies no predicate at all, so a
+			// throwing predicate cannot hold the idle timer off forever. The timer is the safety net; a
+			// predicate that fails must not disable it.
 			return false;
 		}
 	};
@@ -530,6 +536,6 @@ export async function* iterateWithTerminalGrace<T>(
 function abortReason(signal: AbortSignal): Error {
 	const reason = signal.reason;
 	if (reason instanceof Error) return reason;
-	if (typeof reason === "string") return new AIError.AbortError(reason);
-	return new AIError.AbortError();
+	if (typeof reason === "string") return new AIError.RequestAbortError(reason);
+	return new AIError.RequestAbortError();
 }

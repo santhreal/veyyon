@@ -8,6 +8,7 @@
 import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { prompt } from "@veyyon/utils";
+import { AGENT_PROMPTS } from "../prompts/registry";
 import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
 import type { AgentMessage } from "../types";
 import { estimateTokens } from "./compaction";
@@ -19,8 +20,6 @@ import {
 	createCustomMessage,
 	defaultConvertToLlm,
 } from "./messages";
-import branchSummaryPrompt from "./prompts/branch-summary.md" with { type: "text" };
-import branchSummaryPreamble from "./prompts/branch-summary-preamble.md" with { type: "text" };
 import {
 	computeFileLists,
 	createFileOps,
@@ -291,9 +290,9 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 // Summary Generation
 // ============================================================================
 
-const BRANCH_SUMMARY_PREAMBLE = prompt.render(branchSummaryPreamble);
+const BRANCH_SUMMARY_PREAMBLE = prompt.render(AGENT_PROMPTS["compaction/branch-summary-preamble"].text);
 
-const BRANCH_SUMMARY_PROMPT = prompt.render(branchSummaryPrompt);
+const BRANCH_SUMMARY_PROMPT = prompt.render(AGENT_PROMPTS["compaction/branch-summary"].text);
 
 /**
  * Generate a summary of abandoned branch entries.

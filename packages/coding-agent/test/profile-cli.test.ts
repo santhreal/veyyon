@@ -14,7 +14,7 @@ import {
 	setProfile,
 	VERSION,
 } from "@veyyon/utils/dirs";
-import { Snowflake } from "@veyyon/utils/snowflake";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { runCli } from "../src/cli";
 import * as profileAliasCli from "../src/cli/profile-alias";
 
@@ -38,13 +38,15 @@ async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 describe("global --profile flag", () => {
-	let configDir = "";
+	let isolated: IsolatedConfigRoot | undefined;
+	/** The absolute config root for the current test, so expected paths name the temp tree
+	 * instead of being rebuilt from the home directory and a directory name. */
+	let configRoot = "";
 	let originalProfile: string | undefined;
 	let originalAgentDir = "";
 	let originalAgentDirEnv: string | undefined;
 	let originalVeyyonProfileEnv: string | undefined;
 	let originalPiProfileEnv: string | undefined;
-	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
@@ -52,20 +54,16 @@ describe("global --profile flag", () => {
 		originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
 		originalVeyyonProfileEnv = process.env.VEYYON_PROFILE;
 		originalPiProfileEnv = process.env.VEYYON_PROFILE;
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
-		configDir = `.veyyon-profile-cli-test-${Snowflake.next()}`;
-		process.env.VEYYON_CONFIG_DIR = configDir;
+		// A temp root rather than a fresh dot-directory name under the real home, which is
+		// what wrote profile trees into the developer's actual home directory.
+		isolated = enterIsolatedConfigRoot("profile-cli");
+		configRoot = isolated.root;
 		process.exitCode = 0;
 	});
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		setProfile(undefined);
-		if (originalConfigDir === undefined) {
-			delete process.env.VEYYON_CONFIG_DIR;
-		} else {
-			process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		}
 		if (originalProfile) {
 			setProfile(originalProfile);
 		} else if (originalAgentDirEnv !== undefined) {
@@ -90,7 +88,8 @@ describe("global --profile flag", () => {
 		}
 		__resetProfileSnapshotForTests();
 		process.exitCode = 0;
-		await removeWithRetries(path.join(os.homedir(), configDir));
+		isolated?.restore();
+		isolated = undefined;
 	});
 
 	it("activates a profile before dispatching root flags", async () => {
@@ -101,7 +100,7 @@ describe("global --profile flag", () => {
 		expect(process.exitCode).toBe(0);
 		expect(writeSpy).toHaveBeenCalled();
 		expect(getActiveProfile()).toBe("work");
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent"));
+		expect(getAgentDir()).toBe(path.join(configRoot, "profiles", "work", "agent"));
 	});
 
 	it("activates a profile inherited from VEYYON_PROFILE at run time", async () => {
@@ -114,8 +113,8 @@ describe("global --profile flag", () => {
 		expect(process.exitCode).toBe(0);
 		expect(writeSpy).toHaveBeenCalled();
 		expect(getActiveProfile()).toBe("work");
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent"));
-		expect(getAgentDbPath()).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent", "agent.db"));
+		expect(getAgentDir()).toBe(path.join(configRoot, "profiles", "work", "agent"));
+		expect(getAgentDbPath()).toBe(path.join(configRoot, "profiles", "work", "agent", "agent.db"));
 	});
 
 	it("accepts the profile flag after other root flags", async () => {
@@ -125,7 +124,7 @@ describe("global --profile flag", () => {
 
 		expect(process.exitCode).toBe(0);
 		expect(getActiveProfile()).toBe("office");
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "office", "agent"));
+		expect(getAgentDir()).toBe(path.join(configRoot, "profiles", "office", "agent"));
 	});
 
 	it("installs a shell alias and exits before command dispatch", async () => {

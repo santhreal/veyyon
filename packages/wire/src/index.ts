@@ -4,7 +4,9 @@
  * Dependency-free JSON shapes produced by `@veyyon/coding-agent`
  * (`src/collab/protocol.ts` and friends). Browser and test clients import this
  * package instead of depending on the coding-agent runtime; conformance is
- * asserted type-only in `packages/coding-agent/test/collab/web-wire.types.ts`.
+ * asserted per variant in
+ * `packages/coding-agent/test/collab/web-wire-conformance.test.ts`, which fails
+ * the typecheck when a host-side entry stops being assignable to its wire shape.
  *
  * Unknown entry/event variants arrive over the wire as plain JSON. The unions
  * below cover only the variants this client renders; consumers cast at the
@@ -46,7 +48,32 @@ export interface ToolCallContent {
 	intent?: string;
 }
 
-export type AssistantContent = TextContent | ThinkingContent | RedactedThinkingContent | ToolCallContent;
+/**
+ * Anthropic server-side-fallback boundary marker, persisted on an assistant turn whose request opted
+ * into `AnthropicOptions.fallbacks`.
+ *
+ * It is here because it ARRIVES: the host serializes its assistant messages verbatim, and this block
+ * is one of the five an assistant turn's content can hold. Leaving it out of the union did not stop it
+ * reaching a guest, it only stopped the type from admitting so — and a client written against an
+ * exhaustive `switch` had no reason to handle a block it was told could not exist.
+ *
+ * Renderers should ignore it. It marks where one model handed off to another and carries no content of
+ * its own; the coding-agent's own converters strip it on any cross-provider hop for the same reason.
+ */
+export interface FallbackContent {
+	type: "fallback";
+	/** The model the turn started on. */
+	from: { model: string };
+	/** The model the provider fell back to. */
+	to: { model: string };
+}
+
+export type AssistantContent =
+	| TextContent
+	| ThinkingContent
+	| RedactedThinkingContent
+	| ToolCallContent
+	| FallbackContent;
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 
@@ -408,6 +435,53 @@ export const INTENT_FIELD = "i";
 /** Plaintext envelope prefix: `[4B uint32 BE peerId][sealed payload]`. */
 export const ENVELOPE_HEADER_LENGTH = 4;
 
+/**
+ * Wrap a sealed payload in the plaintext envelope.
+ *
+ * Host→relay: peerId 0 broadcasts to all guests, peerId N targets guest N.
+ * Guest→relay: always 0, and the relay rewrites it to the sender's id.
+ *
+ * The three envelope functions live here, with the constant they read, because
+ * both ends of the link have to agree on them byte for byte: a host that wrote
+ * the peer id little-endian and a guest that read it big-endian would exchange
+ * frames that decrypt cleanly and address the wrong peer. They used to be
+ * duplicated in `coding-agent/src/collab/protocol.ts` and
+ * `collab-web/src/lib/link.ts`, which is the arrangement that allows that drift.
+ * Nothing here touches Node, so the browser guest imports it directly.
+ */
+export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array<ArrayBuffer> {
+	const out = new Uint8Array(ENVELOPE_HEADER_LENGTH + sealed.byteLength);
+	new DataView(out.buffer).setUint32(0, peerId, false);
+	out.set(sealed, ENVELOPE_HEADER_LENGTH);
+	return out;
+}
+
+/**
+ * Split an envelope into its peer id and payload, or null when it is too short
+ * to carry a header.
+ *
+ * The payload is a VIEW over the same buffer, not a copy: the sealed bytes go
+ * straight to `crypto.subtle.decrypt`, and copying every frame would double the
+ * per-frame allocation on a transcript stream.
+ */
+export function unpackEnvelope(data: Uint8Array): { peerId: number; payload: Uint8Array } | null {
+	if (data.byteLength < ENVELOPE_HEADER_LENGTH) return null;
+	const peerId = new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).getUint32(0, false);
+	return { peerId, payload: data.subarray(ENVELOPE_HEADER_LENGTH) };
+}
+
+/**
+ * Rewrite the peer id in place, without copying the payload.
+ *
+ * This is the relay's hot path: it stamps the sender's id onto a frame it is
+ * about to forward, and the sealed payload is untouched because the relay has no
+ * room key. `byteOffset` is passed explicitly so a frame that arrived as a view
+ * into a larger read buffer is stamped at its own start, not the buffer's.
+ */
+export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
+	new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).setUint32(0, peerId, false);
+}
+
 export const ROOM_ID_BYTES = 16;
 
 /** AES-256-GCM room key; the seal key for every collab frame. */
@@ -419,6 +493,135 @@ export const ROOM_KEY_BYTES = 32;
  * proves prompt/abort/agent-cmd capability to the host.
  */
 export const WRITE_TOKEN_BYTES = 16;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Frame sealing (AES-256-GCM)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The sealed-frame layout: a 12-byte random IV, then the AES-GCM ciphertext with its tag.
+ *
+ * The host seals what the browser guest opens, so this is a wire format like the rest of this file
+ * and not an implementation detail of either side. Both sides used to carry their own copy of the
+ * whole thing, IV length and byte order included. That is the failure the envelope codec above had
+ * as well, and it is worse here: change the IV length on one side and every frame fails to
+ * authenticate, with the plaintext never recovered and nothing to say why, because a GCM tag
+ * mismatch cannot distinguish a wrong key from a wrong layout.
+ *
+ * Nothing here reaches for Node, only WebCrypto, which is what lets the browser guest import it.
+ */
+const AES_ALGORITHM = "AES-GCM";
+
+/** Bytes of random IV prefixed to every sealed frame. */
+export const SEAL_IV_BYTES = 12;
+
+const SEAL_TEXT_ENCODER = new TextEncoder();
+const SEAL_TEXT_DECODER = new TextDecoder();
+
+/** A fresh random room key. The key never leaves the link fragment; the relay sees only ciphertext. */
+export function generateRoomKey(): Uint8Array {
+	const key = new Uint8Array(ROOM_KEY_BYTES);
+	crypto.getRandomValues(key);
+	return key;
+}
+
+/** A fresh random write token, which is what proves prompt/abort capability to the host. */
+export function generateWriteToken(): Uint8Array {
+	const token = new Uint8Array(WRITE_TOKEN_BYTES);
+	crypto.getRandomValues(token);
+	return token;
+}
+
+/**
+ * Import a raw room key for sealing and opening.
+ *
+ * The length check is not a formality: WebCrypto accepts 16, 24 and 32 byte AES keys, so a
+ * truncated key from a mangled link would import cleanly as AES-128 and then fail to open every
+ * frame, which looks like a relay fault rather than a bad link.
+ *
+ * `async` so the length failure arrives as a rejection, the same way a WebCrypto failure does. The
+ * previous shape returned a promise but threw the length error synchronously, and one caller passes
+ * the promise on without awaiting it (`new CollabSocket({ key: importRoomKey(...) })`), so a
+ * mangled link threw out of the socket's construction where nothing was positioned to catch it.
+ */
+export async function importRoomKey(raw: Uint8Array): Promise<CryptoKey> {
+	if (raw.byteLength !== ROOM_KEY_BYTES) {
+		throw new Error(`Room key must be ${ROOM_KEY_BYTES} bytes, got ${raw.byteLength}`);
+	}
+	// A fresh copy: WebCrypto reads the whole backing buffer of a view, so a key that arrived as a
+	// slice of a larger read would otherwise import its neighbouring bytes too.
+	return crypto.subtle.importKey("raw", new Uint8Array(raw), AES_ALGORITHM, false, ["encrypt", "decrypt"]);
+}
+
+/**
+ * Seal a frame as JSON under the room key.
+ *
+ * Generic over the frame type because the two sides name it differently: the browser guest works in
+ * the JSON skeleton this file pins (`WireFrame`), while the host's frames carry richer session
+ * types that serialize into those same shapes. The bytes are identical either way, which is the
+ * only thing that has to agree.
+ */
+export async function sealFrame<Frame>(key: CryptoKey, frame: Frame): Promise<Uint8Array> {
+	const iv = new Uint8Array(SEAL_IV_BYTES);
+	crypto.getRandomValues(iv);
+	const plaintext = SEAL_TEXT_ENCODER.encode(JSON.stringify(frame));
+	const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, key, plaintext));
+	const out = new Uint8Array(SEAL_IV_BYTES + ciphertext.byteLength);
+	out.set(iv, 0);
+	out.set(ciphertext, SEAL_IV_BYTES);
+	return out;
+}
+
+/**
+ * Inverse of {@link sealFrame}. Throws on authentication failure or malformed input.
+ *
+ * The caller names the frame type it expects; this does not validate it. The seal proves the frame
+ * came from someone holding the room key, and the frame grammar is checked where it is handled.
+ */
+export async function openFrame<Frame>(key: CryptoKey, data: Uint8Array): Promise<Frame> {
+	if (data.byteLength <= SEAL_IV_BYTES) {
+		throw new Error("Sealed frame too short");
+	}
+	// Both slices are copied rather than viewed. WebCrypto reads a view's whole backing buffer, and
+	// neither of these spans its own: the ciphertext always sits behind the IV.
+	const iv = new Uint8Array(data.subarray(0, SEAL_IV_BYTES));
+	const ciphertext = new Uint8Array(data.subarray(SEAL_IV_BYTES));
+	const plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
+	return JSON.parse(SEAL_TEXT_DECODER.decode(plaintext)) as Frame;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Guest join & request budgets
+// ═══════════════════════════════════════════════════════════════════════════
+
+/*
+ * Every guest implementation waits on the same three host round trips, so the
+ * budgets belong to the protocol rather than to either client. There are two
+ * guests today, the TUI's `collab/guest.ts` and the web client, and they had
+ * each declared their own copies. Two of the three were kept in step by hand
+ * (the web client's comments literally read "Mirrors the TUI guest's ..."),
+ * and the third had already drifted: transcript fetches gave up after 10 s in
+ * the browser and 20 s in the terminal, so the same host on the same relay
+ * looked responsive to one guest and dead to the other. A comment is not a
+ * mechanism, so the values live here now and both guests import them.
+ */
+
+/** A host that never answers `hello` ends the join. */
+export const WELCOME_TIMEOUT_MS = 30_000;
+
+/**
+ * Every snapshot chunk must make progress; the timer resets on each arrival,
+ * so a multi-MB snapshot fails only when the relay genuinely stalls rather
+ * than because its total wall-clock crossed the welcome budget.
+ */
+export const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
+
+/**
+ * One `fetch-transcript` round trip. Generous relative to a normal response
+ * because the host may be reading a large transcript from disk, and short
+ * enough that a wedged host does not leave a viewer waiting indefinitely.
+ */
+export const TRANSCRIPT_TIMEOUT_MS = 20_000;
 
 /**
  * Default public relay; bare `<roomId>.<key>` links resolve against it.

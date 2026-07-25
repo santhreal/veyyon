@@ -1,4 +1,4 @@
-import { trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
+import { isCancellation, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, htmlToBasicMarkdown, loadPage, tryParseUrl } from "./types";
 
@@ -98,7 +98,18 @@ function buildPostUrl(baseUrl: string, postId: string): string {
 }
 
 /**
- * Handle Discourse forum URLs via API
+ * Handle Discourse forum URLs via API.
+ *
+ * Every failure here returns `null`, and that is deliberate: this handler matches by
+ * PATH SHAPE (`/t/<slug>/<id>`) on an arbitrary host, so a Discourse API call that
+ * does not answer means "this host is not a Discourse forum" rather than "the
+ * scrape failed". Returning a degrade would print `discourse scraper failed` on
+ * unrelated sites whose URLs happen to look like a topic. `scraper-wiring-lock`
+ * records the same reasoning and allows the quiet catch here for that reason.
+ *
+ * A CANCELLATION is different and must not be swallowed: turning the user's abort
+ * into a non-match sent the dispatcher on to the generic fetch, which then made the
+ * request they had just cancelled.
  */
 export const handleDiscourse: SpecialHandler = async (
 	url: string,
@@ -192,7 +203,9 @@ export const handleDiscourse: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "discourse-api", fetchedAt, notes: ["Fetched via Discourse API"] });
-	} catch {}
+	} catch (error) {
+		if (isCancellation(error)) throw error;
+	}
 
 	return null;
 };

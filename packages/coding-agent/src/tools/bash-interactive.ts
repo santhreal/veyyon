@@ -302,6 +302,8 @@ export async function runInteractiveBashPty(
 		env?: Record<string, string>;
 		artifactPath?: string;
 		artifactId?: string;
+		/** Inline byte budget, priced by the caller's session. See `BashExecutorOptions.spillThreshold`. */
+		spillThreshold?: number;
 	},
 ): Promise<BashInteractiveResult> {
 	const settings = await Settings.init();
@@ -311,6 +313,7 @@ export async function runInteractiveBashPty(
 	const sink = new OutputSink({
 		artifactPath: options.artifactPath,
 		artifactId: options.artifactId,
+		...(options.spillThreshold !== undefined ? { spillThreshold: options.spillThreshold } : {}),
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
 	});

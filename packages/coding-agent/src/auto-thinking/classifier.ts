@@ -19,8 +19,7 @@ import { prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import difficultySystemPrompt from "../prompts/system/auto-thinking-difficulty.md" with { type: "text" };
-import difficultyLocalPrompt from "../prompts/system/auto-thinking-difficulty-local.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
 import { clampAutoThinkingEffort } from "../thinking";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
@@ -31,7 +30,7 @@ import {
 } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 
-const DIFFICULTY_SYSTEM_PROMPT = prompt.render(difficultySystemPrompt);
+const DIFFICULTY_SYSTEM_PROMPT = prompt.render(PROMPTS["thinking/difficulty"].text);
 
 /** Local classifiers occasionally need more room for chat-template boilerplate. */
 const LOCAL_ANSWER_MAX_TOKENS = 16;
@@ -118,7 +117,7 @@ async function classifyLocal(input: string, modelKey: string, deps: ClassifyDiff
 	const maxTokens = isTinyMemoryReasoningModelKey(modelKey)
 		? Math.max(LOCAL_ANSWER_MAX_TOKENS, REASONING_SAFE_MAX_TOKENS)
 		: LOCAL_ANSWER_MAX_TOKENS;
-	const builtPrompt = prompt.render(difficultyLocalPrompt, { prompt: input });
+	const builtPrompt = prompt.render(PROMPTS["thinking/difficulty-local"].text, { prompt: input });
 	const text = await tinyModelClient.complete(modelKey, builtPrompt, {
 		maxTokens,
 		signal: deps.signal,

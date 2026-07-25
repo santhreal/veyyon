@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isAbortError } from "@veyyon/utils";
 import { isUsageLimit } from "./flags";
 
 /** A gateway-facing classification of an arbitrary upstream/internal error. */
@@ -31,7 +31,7 @@ export function classifyGatewayError(err: unknown): GatewayErrorClassification {
 			: undefined;
 	if (statusProp !== undefined) return bucketStatus(statusProp, message);
 
-	if (err instanceof Error && err.name === "AbortError") return { status: 499, type: "request_aborted", message };
+	if (isAbortError(err)) return { status: 499, type: "request_aborted", message };
 
 	// 2. Status code embedded in the message. Requires a contextual keyword
 	// (`HTTP`, `API error`, `status`, …) or a leading `(NNN)` token so we

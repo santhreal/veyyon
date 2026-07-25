@@ -13,9 +13,8 @@ import type {
 } from "@veyyon/ai";
 import { streamSimple } from "@veyyon/ai";
 import { replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { formatDuration, getProjectDir } from "@veyyon/utils";
+import { formatDuration } from "@veyyon/utils";
 import chalk from "chalk";
-import { ModelRegistry } from "../config/model-registry";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import {
 	formatModelString,
@@ -24,9 +23,10 @@ import {
 	resolveCliModel,
 	resolveModelRoleValue,
 } from "../config/model-resolver";
-import { Settings } from "../config/settings";
-import dryBalanceBenchPrompt from "../prompts/dry-balance-bench.md" with { type: "text" };
-import { discoverAuthStorage, loadCliExtensionProviders } from "../sdk";
+import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
+import type { Settings } from "../config/settings";
+import { PROMPTS } from "../prompts/registry";
+import { createCliModelRuntime } from "./model-runtime";
 
 const DEFAULT_SAMPLE_COUNT = 100;
 const DEFAULT_CONCURRENCY = 32;
@@ -35,7 +35,7 @@ const BENCH_RENDER_INTERVAL_MS = 80;
 const BENCH_ACCOUNT_WIDTH = 60;
 const BENCH_ERROR_WIDTH = 110;
 const BENCH_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-const DRY_BALANCE_BENCH_PROMPT = dryBalanceBenchPrompt.trim();
+const DRY_BALANCE_BENCH_PROMPT = PROMPTS["bench/balance"].text.trim();
 
 export interface DryBalanceCommandArgs {
 	model?: string;
@@ -527,24 +527,6 @@ async function runBenchTargets(
 	);
 }
 
-async function createDefaultRuntime(): Promise<DryBalanceRuntime> {
-	const authStorage = await discoverAuthStorage();
-	try {
-		const cwd = getProjectDir();
-		const settings = await Settings.init({ cwd });
-		const modelRegistry = new ModelRegistry(authStorage);
-		await loadCliExtensionProviders(modelRegistry, settings, cwd);
-		return {
-			modelRegistry,
-			settings,
-			close: () => authStorage.close(),
-		};
-	} catch (error) {
-		authStorage.close();
-		throw error;
-	}
-}
-
 async function resolveDryBalanceModel(
 	modelSelector: string | undefined,
 	modelRegistry: DryBalanceModelRegistry,
@@ -570,7 +552,7 @@ async function resolveDryBalanceModel(
 		);
 	}
 
-	const defaultRoleSpec = resolveModelRoleValue(settings?.getModelRole("default"), allowedModels, {
+	const defaultRoleSpec = resolveModelRoleValue(settings?.getModelRole(DEFAULT_MODEL_SLOT), allowedModels, {
 		settings,
 		matchPreferences: preferences,
 	});
@@ -760,7 +742,7 @@ export function formatDryBalanceText(summary: DryBalanceSummary): string {
 		}));
 		lines.push(
 			"",
-			chalk.bold("bench"),
+			chalk.bold("bench/throughput"),
 			`requests: ${summary.bench.total}`,
 			`${chalk.green("success")} ${summary.bench.success.total}`,
 			`avg TTFT: ${avgTtft}`,
@@ -792,7 +774,7 @@ export async function runDryBalanceCommand(
 		});
 	const streamFn = deps.streamSimple ?? streamSimple;
 	const now = deps.now ?? (() => performance.now());
-	const runtime = await (deps.createRuntime ?? createDefaultRuntime)();
+	const runtime = await (deps.createRuntime ?? createCliModelRuntime)();
 	let progress: DryBalanceBenchProgressSink | undefined;
 	let progressClosed = false;
 	const closeProgress = (): void => {

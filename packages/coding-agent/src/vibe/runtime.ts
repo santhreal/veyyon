@@ -18,18 +18,23 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage, logger, prompt, Snowflake } from "@veyyon/utils";
 import type { AsyncJob, AsyncJobManager } from "../async/job-manager";
-import { resolveAgentModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
 import { MCPManager } from "../mcp/manager";
-import vibeTurnResultTemplate from "../prompts/tools/vibe-turn-result.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { getBundledAgent } from "../task/agents";
 import { type ExecutorOptions, runSubagentFollowUpTurn, runSubprocess } from "../task/executor";
 import { generateTaskName } from "../task/name-generator";
 import { AgentOutputManager } from "../task/output-manager";
+import {
+	resolveSubagentModel,
+	resolveSubagentThinkingLevel,
+	subagentModelSourceLabel,
+} from "../task/subagent-settings";
 import { type AgentDefinition, type AgentProgress, oneLineLabel, type SingleResult } from "../task/types";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ToolSession } from "../tools";
 import { formatDuration } from "../tools/render-utils";
 import { ToolError } from "../tools/tool-errors";
@@ -38,11 +43,11 @@ import { ToolError } from "../tools/tool-errors";
 export type VibeCli = "fast" | "good";
 
 /**
- * CLI flavor → bundled agent type. This IS the model-tier mapping: `sonic`
- * carries `model: "@smol"` (the configured fast/low-latency role) and `task`
- * carries `model: "@task"` (inherits the session's strong model).
- * Resolution goes through {@link resolveAgentModelPatterns} exactly like a
- * `task` spawn, so `task.agentModelOverrides` and model-role settings apply.
+ * CLI flavor → bundled agent type. `sonic` is the low-reasoning worker (medium
+ * effort, mechanical work) and `task` the general-purpose one. Neither pins a
+ * model: resolution goes through {@link resolveSubagentModel} exactly like a
+ * `task` spawn, so the operator's Subagents settings decide — the agent row
+ * first, then the blanket subagent model, then the session's own model.
  */
 export const VIBE_CLI_AGENT: Record<VibeCli, string> = {
 	fast: "sonic",
@@ -84,6 +89,13 @@ interface VibeRecord {
 	ownerId: string;
 	agent: AgentDefinition;
 	modelOverride?: string | string[];
+	/**
+	 * Effort resolved from `subagent.*` when the worker started, held beside
+	 * `modelOverride` so both come from one moment's settings. Reading
+	 * `agent.thinkingLevel` at spawn time instead is what made a vibe worker ignore
+	 * both the blanket subagent effort and its own per-agent row.
+	 */
+	thinkingLevel?: ConfiguredThinkingLevel;
 	state: VibeSessionState;
 	createdAt: number;
 	lastActivityAt: number;
@@ -285,14 +297,20 @@ export class VibeSessionRegistry {
 			throw new ToolError(`Bundled agent "${agentName}" for vibe cli "${args.cli}" is unavailable.`);
 		}
 
-		const agentModelOverrides = session.settings.get("task.agentModelOverrides");
-		const modelOverride = resolveAgentModelPatterns({
-			settingsOverride: agentModelOverrides[agentName],
-			agentModel: agent.model,
+		const resolvedModel = resolveSubagentModel({
 			settings: session.settings,
+			agentName,
+			agentModel: agent.model,
 			activeModelPattern: session.getActiveModelString?.(),
 			fallbackModelPattern: session.getModelString?.(),
 		});
+		if (resolvedModel.unresolved) {
+			const { source, value } = resolvedModel.unresolved;
+			throw new ToolError(
+				`Cannot start vibe worker "${agentName}": ${subagentModelSourceLabel(source, agentName)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
+			);
+		}
+		const modelOverride = resolvedModel.patterns;
 
 		if (!session.agentOutputManager) {
 			session.agentOutputManager = new AgentOutputManager(session.getArtifactsDir ?? (() => null));
@@ -306,6 +324,11 @@ export class VibeSessionRegistry {
 			ownerId: owner,
 			agent,
 			modelOverride,
+			thinkingLevel: resolveSubagentThinkingLevel({
+				settings: session.settings,
+				agentName,
+				agentThinkingLevel: agent.thinkingLevel,
+			}),
 			state: "starting",
 			createdAt: Date.now(),
 			lastActivityAt: Date.now(),
@@ -508,11 +531,11 @@ export class VibeSessionRegistry {
 			detached: true,
 			modelOverride: record.modelOverride,
 			parentActiveModelPattern: session.getActiveModelString?.(),
-			thinkingLevel: record.agent.thinkingLevel,
+			thinkingLevel: record.thinkingLevel,
 			sessionFile,
 			persistArtifacts: Boolean(sessionFile),
 			artifactsDir,
-			enableLsp: (session.enableLsp ?? true) && session.settings.get("task.enableLsp"),
+			enableLsp: (session.enableLsp ?? true) && session.settings.get("subagent.enableLsp"),
 			signal,
 			eventBus: session.eventBus,
 			onProgress,
@@ -671,7 +694,7 @@ export class VibeSessionRegistry {
 		let text: string;
 		try {
 			text = prompt
-				.render(vibeTurnResultTemplate, {
+				.render(PROMPTS["tools/vibe-turn-result"].text, {
 					id: record.id,
 					cli: record.cli,
 					turn: turnIndex,

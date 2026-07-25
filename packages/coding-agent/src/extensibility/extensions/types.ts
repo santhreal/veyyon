@@ -356,8 +356,8 @@ export interface CompactOptions {
 	onError?: (error: Error) => void;
 	/**
 	 * Force a one-off compaction mode for this invocation, overriding the
-	 * configured `compaction.strategy` / `remoteEnabled` (the `/compact`
-	 * subcommands: `soft` | `remote`). Omitted = configured behavior.
+	 * configured `compaction.strategy` (the `/compact` subcommands: `summary` |
+	 * `handoff`). Omitted = configured behavior.
 	 */
 	mode?: CompactMode;
 	/**
@@ -528,7 +528,17 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	mcpServerName?: string;
 	/** Original MCP tool name for discovery/search metadata. */
 	mcpToolName?: string;
-	/** Execute the tool. */
+	/**
+	 * Execute the tool. The signal comes THIRD here, matching how the agent calls
+	 * every tool.
+	 *
+	 * A custom tool (a file under `tools/`, `CustomTool.execute`) takes the same
+	 * five arguments in a different order: `(toolCallId, params, onUpdate, ctx,
+	 * signal)`. Copying one signature into the other place fails quietly, because
+	 * the arguments still arrive and `ctx` ends up being the update callback;
+	 * `examples/extensions/api-demo.ts` shipped exactly that. Both orders are pinned
+	 * in `test/tool-adapter-argument-order.test.ts`.
+	 */
 	execute(
 		toolCallId: string,
 		params: Static<TParams>,
@@ -962,8 +972,21 @@ export type { ToolResultEventResult } from "../shared-events";
 
 export interface BeforeAgentStartEventResult {
 	message?: CustomMessagePayload;
-	/** Replace the system prompt for this turn. If multiple extensions return this, they are chained. */
-	systemPrompt?: string[];
+	/**
+	 * Replace the system prompt for this turn. A single string is taken as a
+	 * one-section prompt.
+	 *
+	 * This REPLACES rather than appends. To append, return the prompt the event
+	 * handed you plus your own section: `[...event.systemPrompt, extra]`. The
+	 * event's copy already carries what earlier extensions returned, which is what
+	 * lets several extensions extend one prompt in the same turn.
+	 *
+	 * The string form is typed because the runner has always accepted it and
+	 * extensions are plain JavaScript files loaded at runtime, so nothing stops one
+	 * from returning a string. Leaving it out of the type made the runner's own
+	 * branch read like dead code.
+	 */
+	systemPrompt?: string | string[];
 }
 
 export type {

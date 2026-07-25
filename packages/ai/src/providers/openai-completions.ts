@@ -1326,11 +1326,11 @@ const streamOpenAICompletionsOnce = (
 				throw localAbortReason;
 			}
 			if (abortTracker.wasCallerAbort()) {
-				throw new AIError.AbortError();
+				throw new AIError.RequestAbortError();
 			}
 
 			if (output.stopReason === "aborted") {
-				throw new AIError.AbortError();
+				throw new AIError.RequestAbortError();
 			}
 			if (output.stopReason === "error") {
 				throw new AIError.ProviderResponseError(output.errorMessage || "Provider returned an error stop reason", {

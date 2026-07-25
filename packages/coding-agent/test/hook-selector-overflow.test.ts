@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { HookSelectorComponent } from "@veyyon/coding-agent/modes/components/hook-selector";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { visibleWidth } from "@veyyon/tui";
+import { useFullColor } from "../test/helpers/theme-assertions";
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");
@@ -11,6 +12,8 @@ beforeAll(async () => {
 	setThemeInstance(theme);
 });
 describe("HookSelectorComponent", () => {
+	useFullColor();
+
 	it("keeps outlined options within render width", () => {
 		const options = [
 			"aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;bbb;aaa;b",

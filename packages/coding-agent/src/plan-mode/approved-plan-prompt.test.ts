@@ -1,26 +1,22 @@
 import { describe, expect, it } from "bun:test";
 import { prompt } from "@veyyon/utils";
-import planModeApprovedPrompt from "../prompts/system/plan-mode-approved.md" with { type: "text" };
-import planModeCompactInstructionsPrompt from "../prompts/system/plan-mode-compact-instructions.md" with {
-	type: "text",
-};
-import planModeReferencePrompt from "../prompts/system/plan-mode-reference.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 
 const PLAN_FILE_PATH = "local://durable-plan.md";
 const PLAN_SENTINEL = "SENTINEL_HEADROOM_COMPRESSED_PLAN_CONTENT";
 
 describe("approved plan execution prompts", () => {
 	it("requires reading the durable plan file without inlining plan content", () => {
-		const approved = prompt.render(planModeApprovedPrompt, {
+		const approved = prompt.render(PROMPTS["plan-mode/approved"].text, {
 			planContent: PLAN_SENTINEL,
 			planFilePath: PLAN_FILE_PATH,
 			contextPreserved: false,
 		});
-		const reference = prompt.render(planModeReferencePrompt, {
+		const reference = prompt.render(PROMPTS["plan-mode/reference"].text, {
 			planContent: PLAN_SENTINEL,
 			planFilePath: PLAN_FILE_PATH,
 		});
-		const compact = prompt.render(planModeCompactInstructionsPrompt, {
+		const compact = prompt.render(PROMPTS["plan-mode/compact-instructions"].text, {
 			planFilePath: PLAN_FILE_PATH,
 		});
 

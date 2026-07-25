@@ -14,7 +14,6 @@ Both are persisted as session entries and converted back into user-context messa
 - `packages/agent/src/compaction/branch-summarization.ts`
 - `packages/agent/src/compaction/pruning.ts`
 - `packages/agent/src/compaction/utils.ts`
-- `packages/agent/src/compaction/openai.ts`
 - `packages/coding-agent/src/session/session-manager.ts`
 - `packages/coding-agent/src/session/agent-session.ts`
 - `packages/coding-agent/src/session/messages.ts`
@@ -46,8 +45,8 @@ When context is rebuilt (`buildSessionContext`):
 
 Those custom roles are then transformed into LLM-facing messages in `convertToLlm()`: `compactionSummary` and `branchSummary` become user messages rendered through the static templates
 
-- `packages/agent/src/compaction/prompts/compaction-summary-context.md`
-- `packages/agent/src/compaction/prompts/branch-summary-context.md`
+- `packages/agent/src/prompts/compaction/compaction-summary-context.md`
+- `packages/agent/src/prompts/compaction/branch-summary-context.md`
 
 while `custom` messages pass through as developer messages with their raw content (no template).
 
@@ -124,11 +123,25 @@ The automatic paths are intentionally different:
   - Context promotion is tried before post-turn compaction.
   - If promotion is unavailable, auto maintenance runs with `reason: "threshold"` and `willRetry: false`.
   - With `compaction.strategy: "handoff"`, post-turn threshold maintenance normally schedules a post-prompt auto-handoff task instead of writing a compaction entry; pre-prompt and mid-turn checks run inline to avoid racing the next turn. Mid-turn checks suppress handoff session resets and fall back to context-full compaction.
-  - On success, if `compaction.autoContinue !== false`, post-turn maintenance schedules an agent-authored developer auto-continue prompt from `prompts/system/auto-continue.md`; mid-turn maintenance never schedules a separate continuation because the core loop already owns the next provider request.
+  - On success, if `compaction.autoContinue !== false`, post-turn maintenance schedules an agent-authored developer auto-continue prompt from `prompts/turn-control/auto-continue.md`; mid-turn maintenance never schedules a separate continuation because the core loop already owns the next provider request.
 
 - **Idle maintenance**
   - Trigger: `runIdleCompaction()` when not streaming or already compacting.
   - Uses `reason: "idle"` and does not auto-continue afterward.
+
+### What each strategy is for
+
+The two strategies differ by what survives them, and their prompts say so.
+
+`summary` continues the SAME session. The most recent turns stay in context next to the summary, so the summary covers the history it replaces and does not restate what those turns already say.
+
+`handoff` starts a NEW session. Nothing carries over except the document, so the handoff also records cold-restart state: working directory, branch, uncommitted or untracked files, the toolchain or wrapper commands the repository needs, and the exact next command to run.
+
+Both prompts ask for the same verification evidence, because that is the part of a transcript a paraphrase cannot reconstruct: commands run verbatim, pass/fail counts, durations, run IDs, and exact error text with file and line. The summary prompt also states the precedence between brevity and evidence. Prose is where the model is concise; evidence is where it is complete. When they conflict it drops the prose, because a command left out is a command the next turn has to rediscover by re-running it.
+
+Both strategies end with the same deterministic `<files>` block, produced by `computeFileLists` and `upsertFileOperations` from the session's own file operations. It costs no model call and is identical whatever model ran, so it is the cheapest useful thing in either artifact.
+
+You can measure changes to any of this with `scripts/compaction-counterfactual.ts`, which replays one real session through both strategies on two models from a single shared `prepareCompaction()` result, so strategy and model are the only variables.
 
 ### Legacy image-archive sessions
 
@@ -168,7 +181,31 @@ Tools can flag a finished result as contextually useless, a search with zero mat
 - **Threshold prune** (`pruneToolOutputs`): flagged results bypass the protect-recent window, same as superseded reads, and receive `USELESS_NOTICE` instead of the token-count placeholder.
 - **Summary serialization**: `serializeConversation` drops the whole tool call/result pair from summarizer input: the source region is discarded after summarization anyway, so the exclusion costs no cache.
 
-The flag never reaches provider wire formats, and flagged pairs are never removed from history (only blanked in place), so tool-call/result pairing and provider-native history replay stay intact.
+The flag never reaches provider wire formats, and flagged pairs are never removed from history (only blanked in place), so tool-call/result pairing stays intact.
+
+### The overarching goal
+
+All three compaction prompts (`compaction-summary`, `compaction-update-summary`, `handoff-document`) ask for the goal in one shape:
+
+```
+## Goal
+[The overarching goal for the whole session, carried forward unless the user changed it]
+Current task: [what is being worked on right now, which is allowed to change often]
+```
+
+The two are separated because they move at different speeds. When they shared a single field the model wrote whichever goal was most concrete, which is always the immediate task, and the standing objective was never recorded at all. That is a defect at the first compaction rather than decay across many: once the wrong thing is written, every later cycle faithfully carries it forward.
+
+Both strategies also carry a `Blocked` section. Handoff additionally carries `Pending`, for work nobody has started: summary is injected beside the live turns where that work is still visible, while handoff replaces everything and is the only one that has to carry it forward.
+
+`compaction-update-summary` is the prompt that matters most here, because it runs on every compaction after the first. It lets the model drop anything no longer relevant, and the overarching goal is carved out of that permission explicitly: it is removed only when the user replaces it.
+
+You do not need to pin the goal or store it as a field. Each compaction sees the previous summary alongside the live recent turns, so it is re-grounded against reality every cycle rather than copied blind, and a goal that is still active keeps being restated by the work itself.
+
+### Empty responses
+
+Neither strategy accepts an empty document. A provider can finish with `stopReason: "stop"` having spent its output budget on reasoning and emitted no text, and both call sites now raise rather than return.
+
+This matters more than an ordinary request failure. For `handoff` the caller appends the deterministic `<files>` block afterwards, so an empty document still looks like a real one and the next session starts with a file list and nothing else. For `summary` the summary replaces the history it summarizes, so storing an empty one deletes the conversation and reports success. If you hit this repeatedly, lower the compaction thinking level so the model spends its budget on the document instead of on reasoning.
 
 ### Boundary and cut-point logic
 
@@ -236,12 +273,16 @@ Prompt selection:
 - short UI summary: `compaction-short-summary.md`
 - handoff document: `handoff-document.md` (used by `generateHandoff(...)`, not serialized compaction)
 
-Remote summarization modes:
+Remote summarizer endpoint:
 
-- If `compaction.remoteEndpoint` is set and remote compaction is enabled, local summary generation POSTs one of two wire formats:
+Compaction has two strategies, `summary` and `handoff`, and no provider gets a private compaction path. `compaction.remoteEndpoint` does not add a third strategy: it moves where the `summary` strategy's text is generated. Whatever it points at must return summary text, which veyyon stores exactly like a locally generated summary.
+
+- When `compaction.remoteEndpoint` is set, summary generation POSTs one of two wire formats:
   - custom veyyon summarizer endpoints receive `{ systemPrompt, prompt }` and must return JSON containing at least `{ summary }`.
-  - OpenAI-compatible endpoints whose path ends in `/chat/completions` receive `{ model, messages, stream: false }`, where `messages` contains one system prompt and one user prompt. The summary is read from `choices[0].message.content`, which lets self-hosted servers such as llama.cpp and vLLM act as remote compactors without a separate summarizer shim.
-- For OpenAI/OpenAI Codex models, compaction first tries the provider-native `/responses/compact` endpoint when remote compaction is enabled. It preserves provider replacement history in `preserveData.openaiRemoteCompaction` and falls back to local summarization if that native request fails.
+  - OpenAI-compatible endpoints whose path ends in `/chat/completions` receive `{ model, messages, stream: false }`, where `messages` contains one system prompt and one user prompt. The summary is read from `choices[0].message.content`, which lets self-hosted servers such as llama.cpp and vLLM act as summarizers without a separate shim.
+- When it is unset, the active model generates the summary locally. That is the default for every provider.
+
+Provider-native remote compaction was removed. OpenAI and OpenAI Codex models used to send history to `/responses/compact` and store the reply in `preserveData.openaiRemoteCompaction`. What came back was an opaque `encrypted_content` blob that only that provider could replay, so the compaction entry's summary field held a fixed placeholder string instead of a summary. Switching models stranded the history, and each call re-sent the whole context uncached. Sessions compacted by the old path still load: veyyon treats such an entry as having no usable summary, re-expands the original messages behind it, and summarizes them locally.
 
 ### Handoff generation
 
@@ -413,10 +454,9 @@ From `settings-schema.ts`:
 - `compaction.keepRecentTokens` = `20000`
 - `compaction.autoContinue` = `true`
 - `compaction.midTurnEnabled` = `true`
-- `compaction.remoteEnabled` = `true`
 - `compaction.remoteEndpoint` = `undefined`
-- `compaction.thresholdTokens` = `-1`; the primary trigger is an absolute token amount, model-independent. When set `> 0`, compaction runs once context exceeds that many tokens, whatever the current model's window is, and it wins over `thresholdPercent`. When the amount is larger than the current model's window it is honored up to `contextWindow - 1` and the operator gets a one-time warning (never silently reinterpreted).
-- `compaction.thresholdPercent` = `-1`; the legacy percent-of-window trigger, used only when `thresholdTokens` is `-1`. When both are unset the threshold is `contextWindow - max(15% of contextWindow, reserveTokens)`.
+- `compaction.threshold` = `auto`; the one trigger setting, with its unit in the value. `auto` is `contextWindow - max(15% of contextWindow, reserveTokens)`. `85%` is a percent of the current model's window. `170000` is an absolute token amount, model-independent: compaction runs once context exceeds that many tokens whatever the current model's window is, and when the amount is larger than that window it is honored up to `contextWindow - 1` with a one-time warning (never silently reinterpreted). Resolution and the migration off the two retired keys live in `packages/agent/src/compaction/threshold.ts`.
+- `compaction.thresholdTokens` = `-1` and `compaction.thresholdPercent` = `-1`; retired. The global config is rewritten on load (`#migrateRawSettings`): a positive amount becomes `threshold: <amount>`, a positive percent becomes `threshold: <percent>%` (the amount wins when both are set), and both keys are dropped, so the ambiguity leaves the file without moving the trigger. Config sources that are never rewritten — project files, `--config` overlays — are folded in at read time by `withLegacyCompactionThreshold` with the same precedence, and the session reports which retired key supplied the value.
 - `compaction.idleEnabled` = `false`
 - `compaction.idleThresholdTokens` = `200000`
 - `compaction.idleTimeoutSeconds` = `300`

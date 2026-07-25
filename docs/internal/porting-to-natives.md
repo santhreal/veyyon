@@ -125,7 +125,7 @@ Keep N-API signatures simple and owned. Avoid borrowed references like `&str` in
 
 ### 4) Enum runtime exports and ESM named exports
 
-napi-rs declarations alone are not enough for JS callers that import named symbols or use enum objects at runtime. `scripts/gen-enums.ts` reads `native/index.d.ts`, writes explicit `export const ... = nativeBindings...` entries for public classes/functions, and emits enum objects in `native/index.js`. If you add or change a native export, verify both `native/index.d.ts` and the generated export block in `native/index.js`.
+napi-rs declarations alone are not enough for JS callers that import named symbols or use enum objects at runtime. `packages/natives/scripts/gen-enums.ts` reads `native/index.d.ts`, writes explicit `export const ... = nativeBindings...` entries for public classes/functions, and emits enum objects in `native/index.js`. If you add or change a native export, verify both `native/index.d.ts` and the generated export block in `native/index.js`.
 
 ### 5) Benchmarking mistakes
 

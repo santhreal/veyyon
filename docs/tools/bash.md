@@ -52,6 +52,45 @@ The tool returns a single `text` content block plus optional `details`.
 
 Stdout and stderr are merged before the model sees them. Definite non-zero exit codes are appended to the returned error result text as `Command exited with code <n>`.
 
+### Runner and build bookkeeping is folded out
+
+Output from a test runner is condensed before it goes into the conversation. Lines that only say a
+test ran, passed, or was skipped are replaced by one line stating how many went and what they were:
+
+```
+[folded 21 === RUN/CONT/PAUSE lines; failures are never folded]
+[folded 20 --- PASS/SKIP lines; failures are never folded]
+    thing_test.go:42: expected 3, got 4
+--- FAIL: TestBroken (0.01s)
+FAIL	example.com/pkg	0.312s
+```
+
+Failures, panics, assertion diffs, and anything a test printed itself are never folded. The fold
+recognises `go test`, pytest, `python -m unittest -v`, cargo, vitest, jest, `bun test`, and TAP
+output, and it applies whether the run passed or failed: a failing suite's bulk is usually
+bookkeeping for the tests that passed.
+
+Build progress folds the same way. A cold `cargo build` prints one indented `Compiling <crate>
+<version>` line per crate, hundreds on a real workspace, and none of them survive; every `error:`,
+`warning:`, and diagnostic does. The same holds for cmake and make (`[ 42%] Building C object ...`,
+`make[1]: Entering directory ...`), for gradle tasks that report they did no work (`UP-TO-DATE`,
+`SKIPPED`, `NO-SOURCE`, `FROM-CACHE`), and for docker layer ids. A gradle task that actually ran, a
+docker `Step 4/12` line, and every failing counterpart stay, because they are what you locate a
+failure by. A 41-file cmake build measured 2,556 characters before the fold and 60 after.
+
+Dependency work folds too: `go: downloading`, pip's `Requirement already satisfied` and fetch lines,
+apt and dpkg progress, and maven's `[INFO] Downloading from <repo>: <url>` pairs. Maven's other
+`[INFO]` lines, including `BUILD FAILURE` and `Tests run:`, are left alone.
+Nothing happens at all below twelve foldable lines, where the summary line would cost more than it
+saves.
+
+This exists because tool output is re-read on every later turn. On a measured 66-turn session, three
+verbose test results were 67% of all tool-result bytes, and one of them cost 4.7% of the whole bill
+on its own.
+
+In `bash` there is one output string, so a folded run shows you the marker line too, not just the
+model. `eval` keeps your copy raw.
+
 ## Flow
 1. `BashTool.execute()` in `packages/coding-agent/src/tools/bash.ts` reads `command`, normalizes `env`, and defaults `timeout` to `300`. Commands execute exactly as written: there is no pre-execution rewrite pass.
 2. If `cwd` is absent, it rewrites a leading `cd <path> && ...` into the structured `cwd` field and strips that prefix from `command`.
@@ -62,7 +101,7 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
 7. `clampTimeout("bash", requestedTimeoutSec)` enforces `TOOL_TIMEOUTS.bash` (`default: 300`, `min: 1`, `max: 3600`). When clamped, `#buildCompletedResult()` / `#buildBackgroundStartResult()` append a notice line.
 8. Execution path splits:
    1. `async: true` -> `#startManagedBashJob()` registers a session async job and returns immediately.
-   2. Non-PTY with `bash.autoBackground.enabled` or `bash.stallDetection.enabled`, an async job manager below its running-job cap, and no client-terminal bridge available (the bridge wins when both apply) -> starts a managed job and foreground-waits until it completes, the wall-clock threshold elapses (`min(thresholdMs, timeoutMs - 1000)`), or the output goes quiet for the stall window (`min(stallMs, timeoutMs - 1000)`). Whichever fires first converts the run into a background job, tagging `details.async.reason` `threshold`, `stall`, or `manual` (the operator pressed the background key, `app.bash.background`, default `Ctrl+B`; the working line advertises it with `⟦ctrl+b background⟧` only while a foreground wait is active). The threshold fires on elapsed time even while output streams; the stall fires only on idle output. A stall-only session (auto-background off) has no wall-clock timer and backgrounds solely on a stall.
+   2. Non-PTY with `bash.autoBackground.enabled` or `bash.stallDetection.enabled`, an async job manager below its running-job cap, and no client-terminal bridge available (the bridge wins when both apply) -> starts a managed job and foreground-waits until it completes, the wall-clock threshold elapses (`min(thresholdMs, timeoutMs - 1000)`), or the output goes quiet for the stall window (`min(stallMs, timeoutMs - 1000)`). Whichever fires first converts the run into a background job, tagging `details.async.reason` `threshold`, `stall`, or `manual` (the operator pressed the background key, `app.bash.background`, default `Ctrl+B`; the composer's shortcut band advertises it with a `ctrl+b background` chip, and only while a foreground wait is active). The threshold fires on elapsed time even while output streams; the stall fires only on idle output. A stall-only session (auto-background off) has no wall-clock timer and backgrounds solely on a stall.
    3. Non-PTY client-terminal bridge, when the session advertises terminal capability and `pty` is false -> creates a remote terminal, streams/polls current output, and releases the terminal after completion.
    4. Otherwise runs foreground execution.
 9. Foreground non-PTY without client terminal calls `executeBash()` from `packages/coding-agent/src/exec/bash-executor.ts`.

@@ -37,8 +37,9 @@
  * non-hermetic, and blocking reads would break legitimate suites that inspect
  * the developer's git config. Only mutation is forbidden.
  */
-import * as path from "node:path";
+
 import * as os from "node:os";
+import * as path from "node:path";
 
 /** Env var by which the test runner names the real config root it redirected away from. */
 export const REAL_CONFIG_ROOT_ENV = "VEYYON_TEST_REAL_CONFIG_ROOT";
@@ -69,6 +70,20 @@ function forbiddenRoots(): string[] {
 const FORBIDDEN = forbiddenRoots();
 const ENABLED = process.env[DISABLE_ENV] !== "1" && FORBIDDEN.length > 0;
 
+/**
+ * The real home directory, for the sibling rule below.
+ *
+ * Derived from the declared config root rather than from `os.homedir()` whenever the
+ * runner provided one, for the reason above: with a sandboxed `HOME` there is no
+ * in-process way back to the real home.
+ */
+const REAL_HOME = ((): string | undefined => {
+	const declared = process.env[REAL_CONFIG_ROOT_ENV];
+	if (declared) return path.dirname(path.resolve(declared));
+	const home = os.homedir();
+	return home ? path.resolve(home) : undefined;
+})();
+
 /** True when `candidate` is inside `root` (or is `root` itself). */
 function isInside(candidate: string, root: string): boolean {
 	const rel = path.relative(root, candidate);
@@ -86,6 +101,33 @@ function resolveTarget(target: unknown): string | undefined {
 	return undefined;
 }
 
+/**
+ * Whether `resolved` is a `.veyyon`-SIBLING directory sitting directly in the real home.
+ *
+ * Checked after the forbidden roots, not before: `~/.veyyon` itself matches this shape, and
+ * a write there deserves the original message about resolving through a temp root, not the
+ * one below about inventing a config-dir name.
+ *
+ * The forbidden-roots check above guards `~/.veyyon` and nothing else, and about a dozen
+ * suites used to isolate themselves by inventing a SIBLING of it: set
+ * `VEYYON_CONFIG_DIR` to a fresh `.veyyon-<suite>-<id>` name, which is joined onto
+ * `os.homedir()`. That isolates them from each other and not from the developer, and the
+ * tripwire could not see a single one of those writes. 133 abandoned directories, 1.9M,
+ * were found in a real home this way.
+ *
+ * They all use `enterIsolatedConfigRoot` now, and this closes the door behind them: any
+ * `~/.veyyon*` path is refused, so the pattern cannot be reintroduced by someone copying
+ * an older suite. Only the FIRST segment under the home is examined, so a temp root that
+ * merely happens to contain the word is unaffected.
+ */
+function isVeyyonSiblingInRealHome(resolved: string): boolean {
+	if (!REAL_HOME) return false;
+	const rel = path.relative(REAL_HOME, resolved);
+	if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return false;
+	const first = rel.split(path.sep)[0] ?? "";
+	return first.startsWith(".veyyon");
+}
+
 /** Throw if `target` names anything inside a forbidden root. */
 function assertNotRealData(operation: string, target: unknown): void {
 	if (!ENABLED) return;
@@ -100,6 +142,18 @@ function assertNotRealData(operation: string, target: unknown): void {
 				`Fix the TEST, never this guard: resolve paths through a temp root (see destructive-guard.ts), ` +
 				`and remember that assigning process.env.HOME does NOT redirect os.homedir() in Bun — ` +
 				`it is resolved once at process start.`,
+		);
+	}
+	if (isVeyyonSiblingInRealHome(resolved)) {
+		throw new Error(
+			`REAL-DATA TRIPWIRE: refusing ${operation} on "${resolved}".\n` +
+				`That is a veyyon config root in the real home directory ("${REAL_HOME}"). Setting ` +
+				`VEYYON_CONFIG_DIR to a fresh directory NAME isolates a suite from other suites and not ` +
+				`from the developer: the name is joined onto os.homedir(), which does not follow a HOME ` +
+				`assignment in Bun. It left 133 abandoned directories in a real home.\n` +
+				`Fix the TEST: call enterIsolatedConfigRoot() from ` +
+				`packages/utils/test/helpers/isolated-config-root.ts, which puts the root in a temp ` +
+				`directory and reaches it with a relative value.`,
 		);
 	}
 }
@@ -134,7 +188,18 @@ const FIRST_ARG_MUTATORS = [
 ] as const;
 
 /** Mutating functions whose SECOND argument is also (or instead) a destination. */
-const SECOND_ARG_MUTATORS = ["rename", "renameSync", "copyFile", "copyFileSync", "cp", "cpSync", "link", "linkSync", "symlink", "symlinkSync"] as const;
+const SECOND_ARG_MUTATORS = [
+	"rename",
+	"renameSync",
+	"copyFile",
+	"copyFileSync",
+	"cp",
+	"cpSync",
+	"link",
+	"linkSync",
+	"symlink",
+	"symlinkSync",
+] as const;
 
 /**
  * Marker set on every wrapped function.

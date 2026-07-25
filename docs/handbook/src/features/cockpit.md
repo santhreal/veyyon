@@ -16,6 +16,11 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 
 Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
+The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
+
+- The **thinking effort** joins the model label as one unit (`Sonnet 4.5 @high` in the quiet footline, `Sonnet 4.5 · high` elsewhere), in the model's own color. It is how much reasoning the model does per turn. Change it with `/thinking` (its alias is `/effort`), or set a per-model default under Settings → Model → Default Effort.
+- The **priority tier** follows the effort as its own chip, named and in the warning color (`⚡ priority`, or just `priority` when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with `/fast`, or set it per provider family under Settings → Model → Service Tier.
+
 The `git` segment shows the current branch, and appends the multi-step operation you are part-way through when there is one:
 
 ```
@@ -35,7 +40,11 @@ The `pr` segment is skipped while any of these operations is in progress. A bran
 
 The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides itself on the built-in `default` profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.
 
-In the composer's quiet footline the `context_pct` segment renders as a growing 8-cell bar instead of the `pct/window` text: `▰▰▰▓▱▱▱▱ 38% ∞`. Filled cells take the usage hue (silver, then gold, ember, and red as the window fills), and cells at the 25/50/75/90 percent marks lock in gold once reached. The cell at the fill frontier breathes while the model is running (faster once usage passes 90 percent); at rest it is a static quarter-step glyph showing how full the next cell is, so an idle screen never moves. The percent number stays; the window denominator moves to the `context_total` segment. A session-accent `∞` after the bar means auto-compaction is on, so the session continues past the window. Classic status-line presets keep the text form.
+The `context_pct` segment answers one question: how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what `context_total` prints.
+
+In the composer's quiet footline the segment renders as an 8-cell bar with a labelled percentage: `▰▰▰▰▰▰▱▱ 76% left ∞`. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent `∞` after the bar means auto-compaction is on, so the session continues past the trigger.
+
+Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: `47K/170K`. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run `/context`.
 
 Two run clocks tick alongside the segments, both measuring model runtime, never idle wall time. While the agent runs, the location line (path and git branch) ends with the current run's elapsed, in `M:SS` form and widening to `H:MM:SS` past the hour: `…keyhog  ·  main *      12:34`. When the run finishes it reads `Worked for 12m34s` and freezes; before the model has ever started it shows nothing. The working line shows how long the current step has been running, between the step label and the esc hint: `Running tests · 0:42 ⟦esc⟧`; that clock restarts whenever the step changes. The `time_spent` segment is related but cumulative: it sums every run in the session (a fresh session with `/new` starts it at zero) and appears in the `full` and `nerd` presets.
 
@@ -51,7 +60,7 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/cockpit` | Live multi-agent monitor: status, model per agent, drill-in transcript (alias `/hub`; keybinding `app.agents.hub`) |
 | `/jobs` | List background async tool jobs |
 
-The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off `task.showResolvedModelBadge` (Appearance settings).
+The inline task widget also shows the model each subagent runs on, right in its status line, so you can see which model every launched subagent used without opening the cockpit. To hide it, turn off `subagent.showResolvedModelBadge` (Subagents settings).
 
 Session files are append-only JSONL under the active profile’s agent `sessions/` directory. See [Sessions](../using/sessions.md).
 

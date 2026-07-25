@@ -7,23 +7,13 @@
  * finishes or `cancel()` runs.
  */
 import { describe, expect, it } from "bun:test";
+import { isTimeoutError } from "../src/abortable";
 import {
-	isTimeoutError,
 	raceWithTimeout,
 	scopedTimeoutSignal,
 	withScopedTimeoutSignal,
 	withTimeoutSignal,
 } from "../src/scoped-timeout";
-
-describe("isTimeoutError", () => {
-	it("matches only TimeoutError-named errors", () => {
-		expect(isTimeoutError(new DOMException("The operation timed out.", "TimeoutError"))).toBe(true);
-		expect(isTimeoutError(new DOMException("Aborted", "AbortError"))).toBe(false);
-		expect(isTimeoutError(new Error("timeout"))).toBe(false);
-		expect(isTimeoutError("TimeoutError")).toBe(false);
-		expect(isTimeoutError(undefined)).toBe(false);
-	});
-});
 
 describe("withTimeoutSignal", () => {
 	it("returns a bare timeout signal without a caller signal", () => {

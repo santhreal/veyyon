@@ -20,10 +20,10 @@ import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import speechRewritePrompt from "../prompts/system/speech-rewrite.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
-const SYSTEM_PROMPT = prompt.render(speechRewritePrompt);
+const SYSTEM_PROMPT = prompt.render(PROMPTS["side-channel/speech-rewrite"].text);
 // Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out.
 // Always reserve enough room to survive backends that ignore `disableReasoning`
 // (e.g. Qwen3 via llama.cpp catalogued `reasoning: false` but still emitting

@@ -197,8 +197,10 @@ export type SymbolKey =
 	| "tab.tools"
 	| "tab.memory"
 	| "tab.tasks"
+	| "tab.subagents"
 	| "tab.providers"
 	| "tab.global"
+	| "tab.experimental"
 	// Tool identity icons
 	| "tool.write"
 	| "tool.edit"
@@ -454,10 +456,12 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tab.tools": "",
 	"tab.memory": "",
 	"tab.tasks": "",
+	"tab.subagents": "",
 	// icon-light doctrine applies to Global too — the lone 🌐 emoji among ten
 	// bare labels read as a glitch, not an accent.
 	"tab.providers": "",
 	"tab.global": "",
+	"tab.experimental": "",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "❐",
 	"tool.edit": "✎",
@@ -774,10 +778,13 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"tab.tools": "󰠭",
 	"tab.memory": "󰧑",
 	"tab.tasks": "󰐱",
+	"tab.subagents": "󰡐",
 	"tab.providers": "󰖟",
 	// mdi-earth: single-cell like every other tab glyph — the emoji 🌐 was the
 	// one double-width cell in the column and broke label alignment.
 	"tab.global": "\u{F01E7}",
+	// mdi-flask: the experimental tab's beaker, single-cell like the rest.
+	"tab.experimental": "\u{F0093}",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "\uEA7F",
 	"tool.edit": "\uEA73",
@@ -988,8 +995,10 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"tab.tools": "[T]",
 	"tab.memory": "[Y]",
 	"tab.tasks": "[K]",
+	"tab.subagents": "[B]",
 	"tab.providers": "[P]",
 	"tab.global": "[G]",
+	"tab.experimental": "[E]",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "+f",
 	"tool.edit": "~",

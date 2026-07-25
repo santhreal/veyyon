@@ -2,7 +2,7 @@
  * Shared types and utilities for web-fetch handlers
  */
 import { scheduler } from "node:timers/promises";
-import { clamp, errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage, isCancellation } from "@veyyon/utils";
 import type TurndownService from "turndown";
 
 import type { AgentStorage } from "../../session/agent-storage";
@@ -34,7 +34,21 @@ export interface ScraperDegrade {
 	readonly note: string;
 }
 
+/**
+ * The result a site handler returns when it MATCHED the URL and could not scrape it.
+ *
+ * The dispatcher puts the note on the generic-fetch result, so the user learns the
+ * structured path was available and broke. Returning `null` instead would read as
+ * "no handler claims this site" and degrade silently.
+ *
+ * A cancellation is rethrown rather than described. Handlers call this from a
+ * blanket `catch (error)`, which also catches the user's Ctrl-C and every deadline
+ * that fires mid-request; turning those into a degrade told the dispatcher to fall
+ * through to the generic fetch and make the very request that was just cancelled.
+ * `isCancellation` is the repo-wide owner of that test.
+ */
 export function scraperDegrade(site: string, reason: unknown): ScraperDegrade {
+	if (reason instanceof ToolAbortError || isCancellation(reason)) throw reason;
 	const detail = errorMessage(reason);
 	return { scraperDegrade: true, note: `${site} scraper failed (${detail}); fell back to a generic fetch` };
 }
@@ -50,10 +64,23 @@ export function isScraperDegrade(value: unknown): value is ScraperDegrade {
 }
 
 /** Parse a URL, returning null on invalid input (a non-match, not a degrade). */
+/**
+ * Parse a URL, or `null` when the string is not one.
+ *
+ * This is the ONE place a scraper decides "that is not a URL", and every URL classifier in this
+ * directory starts with it. That matters more than it looks: the classifiers used to ALSO wrap their
+ * whole body in `try { ... } catch { return null }`, and since the parse verdict already lives here,
+ * that outer catch could only swallow a bug in the classifier itself -- a crash while picking apart the
+ * path read as "this is not a GitHub URL", the structured handler was skipped, and the page was fetched
+ * as anonymous HTML with all of its issue, PR and Actions handling silently gone. Those catches are gone
+ * now. A classifier that throws is a bug that should reach the operator, and `null` means exactly one
+ * thing: this URL is not the shape I handle.
+ */
 export function tryParseUrl(url: string): URL | null {
 	try {
 		return new URL(url);
 	} catch {
+		// The throw IS the answer being asked for; there is nothing here to report.
 		return null;
 	}
 }

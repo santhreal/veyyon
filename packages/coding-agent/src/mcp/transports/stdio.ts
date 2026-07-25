@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, getProjectDir, logger, readJsonl, Snowflake, truncate } from "@veyyon/utils";
+import { errorMessage, getProjectDir, isThenable, logger, readJsonl, Snowflake, truncate } from "@veyyon/utils";
 import { RingBuffer } from "@veyyon/utils/ring";
 import type { Subprocess } from "bun";
 import { hostHasInheritableConsole } from "../../eval/py/spawn-options";
@@ -95,6 +95,8 @@ async function fileExists(filePath: string): Promise<boolean> {
 		await fs.access(filePath);
 		return true;
 	} catch {
+		// A candidate we cannot reach is not a command we can spawn, so the PATHEXT search moves to the
+		// next extension. When every candidate fails the caller reports the command it could not find.
 		return false;
 	}
 }
@@ -172,6 +174,9 @@ async function resolveWindowsNpmShimCommand(
 	try {
 		content = await Bun.file(commandPath).text();
 	} catch {
+		// This unwraps a Windows `.cmd` shim to spawn what it wraps. A shim we cannot read is left alone,
+		// which is what happens to every non-shim command, and the spawn then fails with its own error
+		// naming the path. Guessing at the wrapped command from an unread file would be worse.
 		return null;
 	}
 
@@ -282,15 +287,6 @@ export async function resolveStdioSpawnCommand(
 interface FrameSink {
 	write(chunk: string): unknown;
 	flush(): unknown;
-}
-
-/** Narrow a value to a thenable so a rejection handler can be attached. */
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		value != null &&
-		(typeof value === "object" || typeof value === "function") &&
-		typeof (value as { then?: unknown }).then === "function"
-	);
 }
 
 /**

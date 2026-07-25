@@ -453,7 +453,7 @@ swarm:
         Review the draft.
 ```
 
-Precedence: `agents.<name>.model` → `swarm.model` → session default. Check `packages/ai/src/models.json` for available model IDs.
+Precedence: `agents.<name>.model` → `swarm.model` → session default. Check `packages/catalog/src/models.json` for available model IDs.
 
 ---
 

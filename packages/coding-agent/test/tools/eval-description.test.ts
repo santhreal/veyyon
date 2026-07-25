@@ -2,13 +2,21 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { Tool as AiTool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool, getEvalToolDescription } from "@veyyon/coding-agent/tools/eval";
 import { makeToolSession } from "../helpers/tool-session";
 
-function makeSession(opts: { spawns?: string | null; backends?: Record<string, boolean> }): ToolSession {
+/**
+ * `backends` is keyed by real setting paths, so it says so. The previous
+ * `Record<string, boolean>` plus a `key as never` cast let any string through and
+ * a renamed setting would have kept compiling while configuring nothing.
+ */
+function makeSession(opts: { spawns?: string | null; backends?: Partial<Record<SettingPath, boolean>> }): ToolSession {
 	const settings = Settings.isolated();
-	for (const [key, value] of Object.entries(opts.backends ?? {})) settings.set(key as never, value);
+	for (const [key, value] of Object.entries(opts.backends ?? {})) {
+		settings.set(key as SettingPath, value);
+	}
 	return makeToolSession({
 		cwd: "/tmp/eval-test",
 		hasUI: false,

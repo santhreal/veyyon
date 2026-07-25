@@ -12,9 +12,8 @@ import {
 	stringifyJson,
 	stripReadSelector,
 } from "@veyyon/utils";
+import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentMessage } from "../types";
-import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
-import summarizationSystemPrompt from "./prompts/summarization-system.md" with { type: "text" };
 
 // ============================================================================
 // File Operation Tracking
@@ -138,7 +137,7 @@ export function formatFileOperations(
 	if (all.length > FILE_OPERATION_SUMMARY_LIMIT) {
 		files += `\n[…${all.length - FILE_OPERATION_SUMMARY_LIMIT} files elided…]`;
 	}
-	return prompt.render(fileOperationsTemplate, { files });
+	return prompt.render(AGENT_PROMPTS["compaction/file-operations"].text, { files });
 }
 
 export function upsertFileOperations(
@@ -293,4 +292,4 @@ function renderToolCalls(calls: ToolCall[]): string {
 // Summarization System Prompt
 // ============================================================================
 
-export const SUMMARIZATION_SYSTEM_PROMPT = prompt.render(summarizationSystemPrompt);
+export const SUMMARIZATION_SYSTEM_PROMPT = prompt.render(AGENT_PROMPTS["compaction/summarization-system"].text);

@@ -37,16 +37,16 @@
 		"d3-shape": "^3.2.0",
 		"diff": "catalog:",
 		"motion": "^12.15.0",
-		"react": "^19.1.0",
-		"react-dom": "^19.1.0",
+		"react": "catalog:",
+		"react-dom": "catalog:",
 		"tailwind-merge": "^3.3.0"
 	},
 	"devDependencies": {
 		"@types/bun": "catalog:",
 		"@types/d3-scale": "^4.0.9",
 		"@types/d3-shape": "^3.1.7",
-		"@types/react": "^19.1.0",
-		"@types/react-dom": "^19.1.0",
+		"@types/react": "catalog:",
+		"@types/react-dom": "catalog:",
 		"react-refresh": "^0.18.0"
 	},
 	"engines": {

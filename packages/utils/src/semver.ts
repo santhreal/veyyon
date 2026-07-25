@@ -40,6 +40,35 @@ export function compareSemver(a: string, b: string): number {
 }
 
 /**
+ * A version with its git-tag `v` prefix removed.
+ *
+ * Releases carry the same version in two spellings: the tag is `v1.2.3` and the
+ * package version is `1.2.3`. Everything that turns one into the other — a
+ * download URL, a changelog anchor, an equality check against `VERSION` — needs
+ * the bare form, and the conversion was written inline at five call sites
+ * across three packages.
+ *
+ * Byte-identical copies still drift, and this one drifts in a way nothing
+ * catches: the release lister, the changelog link builder and the rollback
+ * argument parser each independently decide what "the version part" means, and
+ * a mismatch shows up as a 404 or a link to the top of a page rather than as an
+ * error. One owner, so they cannot disagree.
+ *
+ * Only a LEADING `v` is removed, and only one, because that is the tag
+ * convention and nothing else. A version does not otherwise begin with a
+ * letter, so a broader strip would quietly mangle input it was handed by
+ * mistake instead of leaving it recognizably wrong.
+ *
+ * ```ts
+ * bareVersion("v1.2.3"); // "1.2.3"
+ * bareVersion("1.2.3"); // "1.2.3": already bare
+ * ```
+ */
+export function bareVersion(version: string): string {
+	return version.startsWith("v") ? version.slice(1) : version;
+}
+
+/**
  * Whether `candidate` is strictly newer than `current`.
  *
  * This is the update question ("is there something to install?") stated once,
@@ -121,6 +150,9 @@ export function tryCompareSemver(a: string, b: string): number | undefined {
 	try {
 		return Bun.semver.order(a, b);
 	} catch {
+		// Undefined means "these are not both versions", which is the question this function exists to
+		// answer. See the doc above: the caller must skip the entry rather than treat it as equal, which is
+		// the bug that made a comparison returning 0 here dangerous.
 		return undefined;
 	}
 }

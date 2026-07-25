@@ -437,3 +437,49 @@ describe("global config cleanup when the file cannot be unlinked", () => {
 		expect(resolveGlobalDefaultProfile()).toBeUndefined();
 	});
 });
+
+/**
+ * The global config is a file people hand-edit (the handbook tells them to set
+ * `defaultProfile` in it), and every writer here is a read-modify-write. Re-serializing the
+ * record was discarding their comments, blank-line grouping and key order on any change —
+ * the same defect the profile `config.yml` writer had. The file is EDITED now, so a change
+ * to one key leaves the rest of the bytes alone.
+ */
+describe("the global config keeps what the user wrote", () => {
+	it("keeps a comment and the user's key order when a key changes", () => {
+		const file = path.join(getGlobalConfigRootDir(), "config.yml");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "# which profile a bare `vey` opens\ndefaultProfile: work\nprofileSharing: true\n");
+
+		writeGlobalDefaultProfile("personal");
+
+		expect(fs.readFileSync(file, "utf8")).toBe(
+			"# which profile a bare `vey` opens\ndefaultProfile: personal\nprofileSharing: true\n",
+		);
+	});
+
+	it("keeps a blank-line group and a comment on a sibling key when adding a key", () => {
+		const file = path.join(getGlobalConfigRootDir(), "config.yml");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "defaultProfile: work\n\n# shared credentials across profiles\nprofileSharing: true\n");
+
+		writeGlobalProfileSharing(false);
+
+		expect(fs.readFileSync(file, "utf8")).toBe(
+			"defaultProfile: work\n\n# shared credentials across profiles\nprofileSharing: false\n",
+		);
+	});
+
+	it("still reads back through the resolvers after an edit-in-place write", () => {
+		// Preserving formatting is worthless if the value stops resolving.
+		const file = path.join(getGlobalConfigRootDir(), "config.yml");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "# mine\ndefaultProfile: work\n");
+
+		writeGlobalProfileSharing(true);
+
+		expect(resolveGlobalDefaultProfile()).toBe("work");
+		expect(resolveGlobalProfileSharing()).toBe(true);
+		expect(fs.readFileSync(file, "utf8")).toContain("# mine");
+	});
+});

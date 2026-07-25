@@ -15,7 +15,10 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { LearnTool } from "@veyyon/coding-agent/tools/learn";
 import { removeWithRetries } from "@veyyon/utils";
 
-Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
+// No `VEYYON_PYTHON_SKIP_CHECK` here on purpose: `checkPythonKernelAvailability`
+// already returns ok without probing an interpreter under `bun test`, so setting the
+// flag bought nothing and leaked a process-global into every file that ran later.
+// Pinned by `core/python-availability-preflight-skip.test.ts`.
 
 describe("learned-lesson storage (local backend)", () => {
 	let tmp: string;

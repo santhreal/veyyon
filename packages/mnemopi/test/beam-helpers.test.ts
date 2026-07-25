@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import "./setup";
 import {
 	buildFtsQuery,
 	cjkFtsTerms,
@@ -22,6 +21,9 @@ import {
 	strictFactMatches,
 	workingMemoryVecSearch,
 } from "@veyyon/mnemopi/core/beam/helpers";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 describe("beam helper ids, weights, and metadata", () => {
 	it("generates unique timed ids and deterministic stable ids", () => {

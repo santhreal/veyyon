@@ -111,7 +111,6 @@ describe("getKnownRoleIds", () => {
 			"designer",
 			"commit",
 			"tiny",
-			"task",
 			"advisor",
 		]);
 	});
@@ -132,7 +131,6 @@ describe("getKnownRoleIds", () => {
 			"designer",
 			"commit",
 			"tiny",
-			"task",
 			"advisor",
 			"myCustom",
 			"taggedRole",
@@ -145,17 +143,6 @@ describe("getKnownRoleIds", () => {
 				modelRoles: { default: "gpt", extraRole: "claude" },
 			}),
 		);
-		expect(roles).toEqual([
-			"smol",
-			"slow",
-			"vision",
-			"plan",
-			"designer",
-			"commit",
-			"tiny",
-			"task",
-			"advisor",
-			"extraRole",
-		]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor", "extraRole"]);
 	});
 });

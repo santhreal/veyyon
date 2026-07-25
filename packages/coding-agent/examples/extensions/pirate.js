@@ -9,10 +9,12 @@ export default function pirateExtension(pi) {
         },
     });
     // Append to system prompt when pirate mode is enabled
-    pi.on("before_agent_start", async () => {
+    pi.on("before_agent_start", async (event) => {
         if (pirateMode) {
             return {
-                systemPromptAppend: `
+                systemPrompt: [
+                    ...event.systemPrompt,
+                    `
 IMPORTANT: You are now in PIRATE MODE. You must:
 - Speak like a stereotypical pirate in all responses
 - Use phrases like "Arrr!", "Ahoy!", "Shiver me timbers!", "Avast!", "Ye scurvy dog!"
@@ -21,6 +23,7 @@ IMPORTANT: You are now in PIRATE MODE. You must:
 - End sentences with nautical expressions
 - Still complete the actual task correctly, just in pirate speak
 `,
+                ],
             };
         }
         return undefined;

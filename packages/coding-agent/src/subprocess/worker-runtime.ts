@@ -10,6 +10,7 @@ import {
 	isCompiledBinary,
 	resolveRuntimeModule,
 } from "@veyyon/utils";
+import { readPipeText } from "@veyyon/utils/stream";
 import packageJson from "../../package.json" with { type: "json" };
 
 /**
@@ -190,11 +191,6 @@ async function missingOnnxRuntimeCudaProviderFiles(binDir: string): Promise<stri
 	return missing;
 }
 
-async function readPipe(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-	if (!stream) return "";
-	return new Response(stream).text();
-}
-
 async function installOnnxRuntimeCudaProviders(packageDir: string, runtimeDir: string, binDir: string): Promise<void> {
 	const script = path.join(packageDir, "script", "install.js");
 	try {
@@ -212,8 +208,8 @@ async function installOnnxRuntimeCudaProviders(packageDir: string, runtimeDir: s
 		stderr: "pipe",
 	});
 	const [stdout, stderr, exitCode] = await Promise.all([
-		readPipe(proc.stdout as ReadableStream<Uint8Array> | null),
-		readPipe(proc.stderr as ReadableStream<Uint8Array> | null),
+		readPipeText(proc.stdout as ReadableStream<Uint8Array> | null),
+		readPipeText(proc.stderr as ReadableStream<Uint8Array> | null),
 		proc.exited,
 	]);
 	if (exitCode !== 0) {

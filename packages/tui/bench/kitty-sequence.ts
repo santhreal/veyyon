@@ -1,5 +1,6 @@
 import { matchesKittySequence as nativeMatchesKittySequence } from "@veyyon/natives";
 import { parseKittySequence } from "../src/keys";
+import { makeBench } from "./_harness";
 
 const ITERATIONS = 2000;
 const LOCK_MASK = 64 + 128;
@@ -24,16 +25,7 @@ function matchesKittySequenceJs(data: string, expectedCodepoint: number, expecte
 	return false;
 }
 
-function bench(name: string, fn: () => void): number {
-	const start = Bun.nanoseconds();
-	for (let i = 0; i < ITERATIONS; i++) {
-		fn();
-	}
-	const elapsed = (Bun.nanoseconds() - start) / 1e6;
-	const perOp = (elapsed / ITERATIONS).toFixed(6);
-	console.log(`${name}: ${elapsed.toFixed(2)}ms total (${perOp}ms/op)`);
-	return elapsed;
-}
+const bench = makeBench(ITERATIONS);
 
 console.log(`Kitty sequence match benchmark (${ITERATIONS} iterations)\n`);
 

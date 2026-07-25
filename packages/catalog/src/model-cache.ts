@@ -137,6 +137,9 @@ export function readModelCache<TApi extends Api>(
 			}
 		});
 	} catch {
+		// A cache we cannot read is a cache MISS: null sends the caller to fresh discovery, which is correct and
+		// at worst slower. It is never mistaken for 'the provider has no models', because a miss and an empty
+		// cached list are different values here.
 		return null;
 	}
 }

@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import { logger, untilAborted } from "@veyyon/utils";
+import { isCancellation, logger, untilAborted } from "@veyyon/utils";
 import type { ConversionResult, Markit, StreamInfo } from "../markit";
-import { ToolAbortError } from "../tools/tool-errors";
+import { ToolAbortError, toolAbort } from "../tools/tool-errors";
 import {
 	type MarkitConversionCacheStatus,
 	markitConversionCacheKey,
@@ -96,9 +96,10 @@ async function runMarkitConversion<T>(task: (markit: Markit) => Promise<T>, sign
 		if (error instanceof ToolAbortError) {
 			throw error;
 		}
-		if (error instanceof Error && error.name === "AbortError") {
-			throw new ToolAbortError();
-		}
+		// A deadline is a cancellation here too, and its reason is worth keeping:
+		// a document conversion that ran out of time is worth retrying with a
+		// longer limit, which "Operation aborted" does not tell anyone.
+		if (isCancellation(error)) throw toolAbort(error, "markit");
 		throw error;
 	}
 }
@@ -185,7 +186,10 @@ export async function convertFileWithMarkit(
 		bytes = await untilAborted(signal, () => Bun.file(filePath).bytes());
 	} catch (error) {
 		if (error instanceof ToolAbortError) throw error;
-		if (error instanceof Error && error.name === "AbortError") throw new ToolAbortError();
+		// Must stay ahead of the degraded-result return below: a cancelled or
+		// timed-out read is not a conversion failure, and reporting it as one
+		// invites the caller to treat an empty document as the real content.
+		if (isCancellation(error)) throw toolAbort(error, "markit");
 		return { content: "", ok: false, error: normalizeError(error), cache: "miss" };
 	}
 	const streamInfo: StreamInfo = {

@@ -38,7 +38,10 @@ const BUNDLED_COST = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } 
  * A fetch impl that fails the models.dev request with `status` and answers the
  * anthropic `/v1/models` request with `discoveryBody`. Records every URL hit.
  */
-function routedFetch(discoveryBody: unknown, opts?: { modelsDevStatus?: number; modelsDevThrows?: boolean }): {
+function routedFetch(
+	discoveryBody: unknown,
+	opts?: { modelsDevStatus?: number; modelsDevThrows?: boolean },
+): {
 	fetch: FetchImpl;
 	urls: string[];
 } {

@@ -118,25 +118,61 @@ const codingAgentBucketPlans: Record<CodingAgentBucket, { label: string; paralle
 // mnemopi is intentionally excluded — its embedding suites depend on a ~270MB
 // fastembed model absent from CI runners, so they flake/time out under the parallel
 // bucket; run `bun --cwd=packages/mnemopi test` locally instead.
-const fastWorkspacePackages = [
+export const fastWorkspacePackages = [
 	"packages/hashline",
 	"packages/wire",
 	"packages/utils",
 	"packages/catalog",
 	"packages/ai",
 	"packages/agent",
+	// The six below ran in NO mode at all until 2026-07-25 — not in CI's `all`, not
+	// in `local-ts`. They were never removed; they were simply never added when the
+	// `bun run --workspaces test` fan-out was replaced by these hand-kept lists, and
+	// each reads as covered from every angle (a working `test` script, ordinary test
+	// files, a comment above claiming this covers what the fan-out covered). That is
+	// why `workspaceTestPackages` below is now checked against the tree by
+	// `scripts/workspace-test-coverage.test.ts` instead of maintained by hand alone.
+	"packages/argot",
+	"packages/stats",
+	"packages/tool-render",
+	"packages/swarm-extension",
+	"packages/deepswe-bench",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
 // or coding-agent-adjacent benchmark paths. Keep them low-concurrency and in jobs
 // that have downloaded the Linux x64 native addon artifacts.
-const nativeAndIntegrationPackages = ["packages/natives", "packages/tui", "packages/typescript-edit-benchmark"];
+export const nativeAndIntegrationPackages = [
+	"packages/natives",
+	"packages/tui",
+	"packages/typescript-edit-benchmark",
+	// Same omission as above. These two belong in this bucket rather than the fast
+	// one for the reason the comment gives: metaharness starts local servers and
+	// collab-web is browser-ish.
+	"packages/metaharness",
+	"packages/collab-web",
+];
 
 // Packages the CI buckets deliberately skip but a local full run should still
 // cover. mnemopi's embedding suites need a ~270MB fastembed model absent from CI
 // runners (so it flakes/times out there); veybot-web lives under python/veybot
 // and is outside every CI TS bucket.
-const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
+export const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
+
+/**
+ * Every package whose test suite this runner executes, across all three buckets.
+ *
+ * The one list `scripts/workspace-test-coverage.test.ts` checks against the tree,
+ * so a package that ships tests cannot go unrun and a bucket entry cannot outlive
+ * the package it names. `packages/coding-agent` is absent on purpose: its suites
+ * are discovered by walking the package (`codingAgentTestCommands`) rather than
+ * by being listed, so it needs no entry here.
+ */
+export const workspaceTestPackages = [
+	...fastWorkspacePackages,
+	...nativeAndIntegrationPackages,
+	...localOnlyWorkspacePackages,
+];
 
 // Repo-level script tests. CI's `workspace` bucket runs the release/merge gates
 // inline (see the `case "workspace"` list below): the concurrency regression
@@ -147,7 +183,7 @@ const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
 // release-notes, link-veyyon, and docs-book-pin tests. (A `ci-test-ts.test.ts`
 // entry used to sit here but the file never existed — bun silently ignores
 // unmatched filters when at least one other filter matches.)
-const repoScriptTests = [
+export const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/release-train-contracts.test.ts",
 	"scripts/ci-build-native.test.ts",
@@ -156,11 +192,16 @@ const repoScriptTests = [
 	"scripts/release-watch.test.ts",
 	"scripts/release-version.test.ts",
 	"scripts/has-releasable-changes.test.ts",
+	"scripts/release-gate-decision.test.ts",
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
+	"scripts/workspace-test-coverage.test.ts",
 	"scripts/tool-renderer-coverage.test.ts",
+	"scripts/workspace-catalog-pins.test.ts",
+	"scripts/package-map-coverage.test.ts",
+	"scripts/root-layout.test.ts",
 	"scripts/sync-root-changelog.test.ts",
 	"scripts/dependency-overrides.test.ts",
 	"scripts/installer-alias-parity.test.ts",
@@ -171,6 +212,10 @@ const repoScriptTests = [
 	"scripts/installer-source-parity.test.ts",
 	"scripts/installer-source-checkout-parity.test.ts",
 	"scripts/installer-uninstall-parity.test.ts",
+	// Runs the installer for real, once per environment in
+	// scripts/install-tests/environments.toml, so it is slower than the parity
+	// suites above and belongs in the same gate rather than a nightly.
+	"scripts/installer-environment-matrix.test.ts",
 	"scripts/pre-push-hook.test.ts",
 	"scripts/inline-functions.test.ts",
 	"scripts/differential-conformance.test.ts",
@@ -185,8 +230,20 @@ const repoScriptTests = [
 	"scripts/release-sentinel.test.ts",
 	"scripts/release-changelog.test.ts",
 	"website/tools/gen-changelog.test.ts",
+	"scripts/tracked-but-deleted-paths.test.ts",
+	"website/tools/undocumented-release-ratchet.test.ts",
 	"website/tools/gen-blog.test.ts",
 	"website/tools/nav.test.ts",
+	"scripts/demos/lib/png.test.ts",
+	"scripts/demos/lib/ansi-grid.test.ts",
+	"scripts/demos/lib/ansi-raster.test.ts",
+	"scripts/script-tests-coverage.test.ts",
+	"scripts/stray-output-path.test.ts",
+	// The leak tracer's own contract tests. Also run by the `test-leaks` job in
+	// checks.yml and by the nightly leak sweep, but listed here too because those jobs
+	// gate the TRACER, and this list is what proves no script suite runs nowhere.
+	"scripts/find-test-leaks.test.ts",
+	"scripts/find-order-polluter.test.ts",
 ];
 
 /**
@@ -469,6 +526,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 						"scripts/ci-build-native.test.ts",
 						"scripts/ci-release-notes.test.ts",
 						"scripts/has-releasable-changes.test.ts",
+						"scripts/release-gate-decision.test.ts",
 						"scripts/install-methods-coverage.test.ts",
 						"scripts/release-sentinel.test.ts",
 						"scripts/release-changelog.test.ts",

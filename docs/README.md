@@ -13,3 +13,4 @@ Rules of thumb:
 - If a page explains behavior an operator can observe or configure, it belongs at `docs/` top level (or the handbook).
 - If a page explains how a subsystem is implemented, pipelines, lifecycles, binding contracts, migration/porting notes, it belongs in `docs/internal/`.
 - One page per topic. Extend the existing page instead of adding a second one on the same subject.
+- A page generated from code says so at the top and is regenerated in the same change as the code. [`settings-reference.md`](settings-reference.md) is rendered from the settings schema by `scripts/gen-settings-reference.ts`; a test fails when the committed file and the generator disagree. Prefer generating an exhaustive reference over hand-maintaining one, and keep the prose that explains it in the hand-written page next to it.

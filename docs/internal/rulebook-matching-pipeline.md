@@ -42,6 +42,9 @@ interface Rule {
   astCondition?: string[];
   scope?: string[];
   interruptMode?: "never" | "prose-only" | "tool-only" | "always";
+  repeatMode?: "once" | "after-gap";
+  repeatGap?: number;
+  pathScope?: "outside-cwd" | "inside-cwd";
   _source: SourceMeta;
 }
 ```
@@ -76,7 +79,7 @@ Normalization:
 - `name` = filename without `.md`/`.mdc`
 - frontmatter parsed via `parseFrontmatter`
 - `content` = body (frontmatter stripped)
-- `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, and `interruptMode` are parsed by `buildRuleFromMarkdown`
+- `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by `buildRuleFromMarkdown`
 - top-level `RULES.md` is synthesized as rule name `RULES` and forced to `alwaysApply: true`
 
 Important caveat: `condition` values that look like file globs are converted into `tool:edit(...)` / `tool:write(...)` scope shorthands with catch-all condition `.*`.
@@ -88,7 +91,7 @@ Loads from both `.agent` and `.agents` directories:
 - project: walk upward from `cwd` to repo root, loading `<ancestor>/.agent/rules/*.{md,mdc}` and `<ancestor>/.agents/rules/*.{md,mdc}`
 - user: `~/.agent/rules/*.{md,mdc}` and `~/.agents/rules/*.{md,mdc}`
 
-Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, and `interruptMode`.
+Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap`.
 
 ### Cursor provider (`cursor.ts`)
 
@@ -102,7 +105,7 @@ Normalization (`transformMDCRule`):
 - `description`: kept only if string
 - `alwaysApply`: normalized to a boolean: `true` only when frontmatter has `alwaysApply: true` (anything else becomes `false`)
 - `globs`: accepts array (string elements only) or single string
-- `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, and `interruptMode` are parsed by shared rule helpers
+- `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by shared rule helpers
 - `name` from filename without extension
 
 ### Windsurf provider (`windsurf.ts`)
@@ -115,7 +118,7 @@ Loads from:
 Normalization:
 
 - `globs`: array-of-string or single string
-- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, and `interruptMode` parsed by shared rule helpers
+- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` parsed by shared rule helpers
 - `name` is fixed to `global_rules` for the user global file and derived from filename for project rules
 
 ### Cline provider (`cline.ts`)
@@ -128,7 +131,7 @@ Searches upward from `cwd` for nearest `.clinerules`:
 Normalization:
 
 - `globs`: array-of-string or single string
-- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, and `interruptMode` parsed by shared rule helpers
+- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` parsed by shared rule helpers
 - `name` is fixed to `clinerules` for a `.clinerules` file and derived from filename for `.clinerules/*.md`
 
 ## 3. Frontmatter parsing behavior and ambiguity
@@ -224,12 +227,26 @@ After rule discovery in `createAgentSession` (`sdk.ts`), `bucketRules(...)` appl
 - **Full rule content is auto-injected into the system prompt** (before the rulebook rules section).
 - Rule is also addressable via `rule://<name>` for re-reading.
 
-### `condition`, `astCondition`, `scope`, and `interruptMode`
+### `condition`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap`
 
 - `condition` is the regex TTSR trigger field; legacy `ttsr_trigger` / `ttsrTrigger` are accepted as fallback inputs during parsing.
 - `astCondition` is the ast-grep trigger field: a string or list of structural patterns, kept verbatim (no glob inference). It only matches on edit/write tool streams, where the language is inferred from the file path. A rule may set `condition`, `astCondition`, or both.
+- A `scope` token that names no registered tool is reported at warn once the tool registry is complete (`TtsrManager.reportUnknownToolScopes`, called from `sdk.ts`), with the closest registered name. A bare token is read as a TOOL NAME, so `scope: "raed"` parses cleanly and registers a rule that can never match, which looks exactly like a rule whose condition is never met. The rule is NOT refused: a tool can be registered later by an extension, and scoping a rule to an inactive tool is legitimate.
 - `scope` narrows TTSR matching scope. A `condition` token that looks like a file glob becomes `tool:edit(<glob>)` and `tool:write(<glob>)` scope entries plus catch-all condition `.*`; `astCondition` tokens never trigger this shorthand.
 - `interruptMode` can override the global TTSR interrupt mode for the rule.
+- `repeatMode` and `repeatGap` override the global `ttsr.repeatMode` / `ttsr.repeatGap` for the rule. Use them when the rule's advice is repeatable: the global default retires a rule after one injection per session, which suits a convention and not a nudge that applies again to the next directory. An unrecognised mode, a negative gap, and a fractional gap are ignored rather than coerced, so the global setting governs instead of a policy the author did not write.
+- `pathScope` requires the path the condition matched to be outside (`outside-cwd`) or inside (`inside-cwd`) the session working directory. A condition is a regex over the model's output and cannot know where the working directory is, so a rule about location fires on any path of the right shape — which is what made `cwd-reroot` advise re-rooting into the project the session was already in. The comparison runs against the LIVE working directory at match time, so it stays right after a `set_cwd`, and it resolves both paths rather than comparing strings, so `/work/project-two` is not read as inside `/work/project`. With no working directory available the rule does not fire: a rule that asked to be filtered must not fire unfiltered. `TtsrManager.lastMatchedPath(name)` returns the path that decided the match, which is how an injected body can name the directory it is advising about.
+
+### Rule bodies and their render context
+
+A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
+
+- `argot` -- whether the argot feature is enabled, for advice that names an argot tool.
+- `argotUnloaded` -- whether argot is enabled AND the project's dictionary is not loaded yet. This is the gate a nudge to CALL `argot_load` must use: the feature being on does not mean the dictionary is missing, and advising a model to load one it already loaded is advice it cannot act on. The template language has no `unless`, so the inverted condition is passed in pre-inverted.
+- `cwd` -- the session's live working directory.
+- `matchedPath` -- the path that decided a `pathScope` match, absent for every other rule, so a body that uses it must guard the reference.
+
+A body that renders to the empty string is never delivered; see `docs/internal/ttsr-injection-lifecycle.md`.
 
 ## 7. System prompt inclusion path
 

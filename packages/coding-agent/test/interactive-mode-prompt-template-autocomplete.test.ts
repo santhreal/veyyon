@@ -12,6 +12,10 @@ import { Agent, type AgentTool } from "@veyyon/agent-core";
 import { type Api, Effort, type Model } from "@veyyon/ai";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import type { PromptTemplate } from "@veyyon/coding-agent/config/prompt-templates";
+// The word the tier is named by has ONE owner; asserting the literal here is how
+// this suite went stale when the vocabulary was unified (it read "fast mode" while
+// the command said "priority tier").
+import { PRIORITY_TIER_LABEL } from "@veyyon/coding-agent/config/service-tier";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
@@ -173,11 +177,11 @@ describe("InteractiveMode prompt-template autocomplete (#2462)", () => {
 
 		await created.mode.refreshSlashCommandState(tempDir.path());
 		const offFast = (await fetchSlashItems(providerSlot.current!, "/fast")).find(item => item.value === "fast");
-		expect(offFast?.description).toBe("Toggle fast mode · off");
+		expect(offFast?.description).toBe(`Toggle the ${PRIORITY_TIER_LABEL} tier · off`);
 
 		created.session.setFastMode(true);
 		const onFast = (await fetchSlashItems(providerSlot.current!, "/fast")).find(item => item.value === "fast");
-		expect(onFast?.description).toBe("Toggle fast mode · on");
+		expect(onFast?.description).toBe(`Toggle the ${PRIORITY_TIER_LABEL} tier · on`);
 	});
 
 	it("does not duplicate templates whose names collide with builtin slash commands", async () => {

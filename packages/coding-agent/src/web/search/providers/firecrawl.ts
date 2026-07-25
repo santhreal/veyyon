@@ -7,13 +7,12 @@
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 100;
 
 const RECENCY_TBS: Record<NonNullable<SearchParams["recency"]>, string> = {
@@ -57,7 +56,7 @@ export function findApiKey(
 function buildRequestBody(params: FirecrawlSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		query: params.query,
-		limit: clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS),
+		limit: clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS),
 		sources: [{ type: "web" }],
 	};
 	if (params.recency) {
@@ -105,7 +104,7 @@ export async function searchFirecrawl(params: SearchParams): Promise<SearchRespo
 	const keyOrResolver: ApiKey = params.authStorage.resolver("firecrawl", {
 		sessionId: params.sessionId,
 	});
-	const numResults = clampNumResults(firecrawlParams.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(firecrawlParams.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 
 	const data = await withAuth(keyOrResolver, key => callFirecrawlSearch(key, firecrawlParams), {
 		signal: params.signal,

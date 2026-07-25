@@ -31,7 +31,7 @@ import type { SettingsSnapshotEntry } from "@veyyon/coding-agent/session/session
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
-const KNOWN_PATH = "task.maxConcurrency";
+const KNOWN_PATH = "subagent.maxConcurrency";
 const KNOWN_VALUE = 7;
 
 function assistantMessage(text: string) {

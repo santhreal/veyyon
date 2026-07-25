@@ -1,0 +1,69 @@
+# Drop thought signatures longer than 4,000 characters. Keep every smaller one.
+#
+# WHY THIS ARM EXISTS, and why it is the primary signature arm rather than
+# sig-last1. Signature bytes are extremely lopsided. Across the twenty baseline
+# DeepSWE sessions of 2026-07-25, 2,297 signatures averaged 2,606 characters
+# against a median of 660, with a maximum of 91,960, and the largest tenth of them
+# carried 62.1% of all signature bytes. One signature was 92KB, re-read on every
+# turn that followed it.
+#
+# That skew means a SIZE rule and a RECENCY rule buy very different trades:
+#
+#   lever          NET saving    share of signatures that lose their content
+#   sig-last1      30.5%          99%
+#   sig-last5      25.5%          96%
+#   sig-last8      22.0%          93%
+#   cap 8,000      17.9%           8%
+#   cap 4,000      22.8%          15%
+#   cap 2,000      26.0%          24%
+#   cap 1,000      28.3%          38%
+#
+# The retention rows are NET of the cache they invalidate, which is why they no
+# longer read the way an earlier version of this table did. A window's gross
+# saving is larger than its net one (sig-last1 is 31.2% gross, sig-last8 28.0%),
+# and the give-back grows with window depth because a deeper boundary rewrites
+# deeper into the cached region. A size cap gives back nothing at all, so its
+# gross and net are the same number.
+#
+# 4,000 is the choice because it clears the 20% target with margin while leaving
+# 85% of the reasoning chain untouched. If replaying older reasoning matters at
+# all, this degrades gently where sig-last1 does not, and the comparison between
+# the two arms is exactly what tells us whether it matters. Note that it is not
+# the cheapest arm available: sig-last1 nets eight points more. It is the
+# cheapest one that keeps most of the reasoning, and reward decides whether that
+# caution was worth eight points.
+#
+# That table is REPRODUCIBLE, not hand-computed. It was originally worked out by
+# hand, which meant the headline for the largest cost lever had no test behind it
+# while every smaller lever was simulated. `simulateSignatureCap` now produces it
+# from the transcripts and agrees to a tenth of a point, and the CLI prints the
+# same sweep. Re-derive it on any run with:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# CACHE-SAFE BY CONSTRUCTION. The cap is compared against each signature's OWN
+# length, which never changes, so its verdict is fixed for the session and the
+# rendered prefix stays byte-identical turn over turn. Measured: 100% of turns keep
+# the previous prefix intact, against 1.9% for sig-last1. A lever that rewrote
+# history would hand part of its saving back as cache misses.
+#
+# Savings are turn-weighted and already net of the 33-character
+# `skip_thought_signature_validator` sentinel that replaces each dropped
+# signature. Reproduce them with:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# THIS IS A SEPARATE VARIABLE FROM THE RETENTION WINDOW. Do not run it in the same
+# comparison as sig-last1 or sig-last8. The two settings intersect rather than
+# override, so moving both at once produces a delta attributable to neither.
+#
+# WHERE IT COULD BREAK. The dropped signatures are the LARGEST ones, which is
+# plausibly where the most reasoning context lives. If the model relies on
+# replaying that, reward falls here and the bytes are worth paying for. That is a
+# real answer either way and cheaper to measure than to argue about.
+#
+# Reward is the gate. Report the paired sign test on reward first, then cost.
+argot:
+  enabled: false
+context:
+  thoughtSignatureMaxLength: 4000

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f3663b17.js";
+            window.path_to_searchindex_js = "../searchindex-ce9b3186.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-de67d70d.js"></script>
+        <script src="../toc-578177b6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -211,7 +211,7 @@ active profile is selected by its own variable:</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). Does not accept a full path.</td></tr>
+<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). It is a name, not a path. An absolute value is refused at startup, with a message naming the directory it would otherwise have created inside your home; to place the config root on another volume, use the <code>XDG_*_HOME</code> variables below.</td></tr>
 <tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/profiles/&lt;active-or-default&gt;/agent</code>).</td></tr>
 <tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>).</td></tr>
 <tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix).</td></tr>

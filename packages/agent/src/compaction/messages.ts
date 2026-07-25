@@ -7,12 +7,11 @@ import type {
 	ToolResultMessage,
 } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
+import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentMessage } from "../types";
-import branchSummaryContextPrompt from "./prompts/branch-summary-context.md" with { type: "text" };
-import compactionSummaryContextPrompt from "./prompts/compaction-summary-context.md" with { type: "text" };
 
-const COMPACTION_SUMMARY_TEMPLATE = compactionSummaryContextPrompt;
-const BRANCH_SUMMARY_TEMPLATE = branchSummaryContextPrompt;
+const COMPACTION_SUMMARY_TEMPLATE = AGENT_PROMPTS["compaction/compaction-summary-context"].text;
+const BRANCH_SUMMARY_TEMPLATE = AGENT_PROMPTS["compaction/branch-summary-context"].text;
 
 export interface CustomMessage<T = unknown> {
 	role: "custom";

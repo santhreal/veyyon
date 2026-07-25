@@ -174,9 +174,22 @@ async function fetchMetadataToken(
 			headers: { "Metadata-Flavor": "Google" },
 			signal: metadataTimeout.signal,
 		});
-		if (!response.ok) return undefined;
+		if (!response.ok) {
+			// The metadata server ANSWERED and refused, which means this IS a GCE or Cloud Run instance and the
+			// problem is the service account bound to it. The caller's error lists "run on a GCE instance with a
+			// service account" as one of three fixes, advice that is wrong for exactly this case, so the status
+			// is reported here where it is still known.
+			logger.warn("GCE metadata server refused a token; Vertex credentials will fall through to an error", {
+				status: response.status,
+				url: METADATA_TOKEN_URL,
+			});
+			return undefined;
+		}
 		return (await response.json()) as TokenResponse;
 	} catch {
+		// Not on GCE or Cloud Run: nothing answers `metadata.google.internal`, so the fetch throws or the 2s
+		// probe times out. That is the ordinary case on a laptop and is not worth a warning, and it is not
+		// swallowed either -- the caller turns "no source at all" into a MissingApiKeyError naming every fix.
 		return undefined;
 	} finally {
 		metadataTimeout.cancel();

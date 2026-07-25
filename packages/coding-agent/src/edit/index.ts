@@ -3,17 +3,15 @@ import type { ToolExample } from "@veyyon/ai";
 import { MismatchError as HashlineMismatchError, HL_MOVE_KEYWORD } from "@veyyon/hashline";
 import hashlineGrammar from "@veyyon/hashline/grammar.lark" with { type: "text" };
 import hashlineDescription from "@veyyon/hashline/prompt.md" with { type: "text" };
-import { errorMessage, isAbortError, prompt } from "@veyyon/utils";
+import { errorMessage, isCancellation, prompt } from "@veyyon/utils";
 import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
-import applyPatchDescription from "../prompts/tools/apply-patch.md" with { type: "text" };
-import patchDescription from "../prompts/tools/patch.md" with { type: "text" };
-import replaceDescription from "../prompts/tools/replace.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
-import { ToolAbortError } from "../tools/tool-errors";
 import { isInternalUrlPath } from "../tools/path-utils";
+import { ToolAbortError } from "../tools/tool-errors";
 import { type EditMode, normalizeEditMode, resolveEditMode } from "../utils/edit-mode";
 import { executeHashlineSingle, hashlineEditParamsSchema } from "./hashline";
 import { type ApplyPatchParams, applyPatchSchema, expandApplyPatchToEntries } from "./modes/apply-patch";
@@ -141,7 +139,12 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
  * sequence it never has. A shared helper would have to be told that, and would
  * be a worse home for both wordings than each tool saying its own plainly.
  */
-function abortedPartway(unit: "file" | "entry", applied: readonly string[], pending: readonly string[], cause: unknown) {
+function abortedPartway(
+	unit: "file" | "entry",
+	applied: readonly string[],
+	pending: readonly string[],
+	cause: unknown,
+) {
 	const total = applied.length + pending.length;
 	// Spelled out rather than suffixed: `entry` + "s" is `entrys`, and a message
 	// that exists to be read at the worst moment of a session cannot be the place
@@ -231,7 +234,7 @@ async function executeApplyPatchPerFile(
 			// one: the caller has to be able to stop rather than re-issue. The
 			// applied/skipped summary travels in the abort's message so nothing is
 			// lost by keeping the type.
-			if (isAbortError(err)) {
+			if (isCancellation(err)) {
 				await flushAfterAbort(outerBatchRequest, cwd);
 				throw abortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), err);
 			}
@@ -366,7 +369,7 @@ async function executeSinglePathEntries(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
-			if (isAbortError(err)) {
+			if (isCancellation(err)) {
 				await flushAfterAbort(outerBatchRequest, cwd);
 				throw abortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), err);
 			}
@@ -602,7 +605,7 @@ export class EditTool implements AgentTool<TInput> {
 	#getModeDefinition(): EditModeDefinition {
 		return {
 			patch: {
-				description: () => prompt.render(patchDescription),
+				description: () => prompt.render(PROMPTS["tools/patch"].text),
 				parameters: patchEditSchema,
 				examples: [
 					{
@@ -666,7 +669,7 @@ export class EditTool implements AgentTool<TInput> {
 				},
 			},
 			apply_patch: {
-				description: () => prompt.render(applyPatchDescription),
+				description: () => prompt.render(PROMPTS["tools/apply-patch"].text),
 				parameters: applyPatchSchema,
 				examples: [
 					{
@@ -727,7 +730,7 @@ export class EditTool implements AgentTool<TInput> {
 				},
 			},
 			replace: {
-				description: () => prompt.render(replaceDescription),
+				description: () => prompt.render(PROMPTS["tools/replace"].text),
 				parameters: replaceEditSchema,
 				execute: (
 					tool: EditTool,

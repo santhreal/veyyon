@@ -220,6 +220,9 @@ async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFli
 		}
 		return { pid: parsed.pid, timestamp: parsed.timestamp, token: parsed.token };
 	} catch {
+		// Null means "no valid lease here", the same answer the shape checks above give and the same answer
+		// an absent file gives. The lease protocol then treats the slot as free, which is correct: a lease
+		// we cannot read cannot be honoured, and a stale one is exactly what this file is for.
 		return null;
 	}
 }
@@ -280,6 +283,28 @@ function isSameProviderInFlightLock(
 	return current.birthtimeMs === expected.birthtimeMs;
 }
 
+/**
+ * Report a lock directory that could not be released.
+ *
+ * All three release paths are best effort by design: a failed release must never turn into a thrown
+ * error on a request that already succeeded. What it must not be is silent. This directory IS the
+ * provider's concurrency gate, so one left behind makes the NEXT request for that provider wait for
+ * the stale timeout ({@link PROVIDER_INFLIGHT_LOCK_STALE_MS}) before it can proceed — a latency cliff
+ * with no error, no log line, and nothing pointing at a leftover directory (Law 10).
+ *
+ * A missing directory is not a leak: another process released the same lock first, which is the
+ * ordinary outcome of the race these functions are written for.
+ */
+function reportProviderInFlightLockLeak(lockDir: string, what: string, error: unknown): void {
+	if (isEnoent(error)) return;
+	logger.warn("Provider in-flight lock could not be released; the next request for this provider will wait", {
+		lockDir,
+		lock: what,
+		staleAfterMs: PROVIDER_INFLIGHT_LOCK_STALE_MS,
+		error: errorMessage(error),
+	});
+}
+
 async function releaseProviderInFlightStaleLock(lockDir: string, stale: ProviderInFlightStaleLock): Promise<void> {
 	if ("token" in stale) {
 		await releaseProviderInFlightLock(lockDir, stale.token);
@@ -292,7 +317,9 @@ async function releaseProviderInFlightStaleLock(lockDir: string, stale: Provider
 		const stat = await fs.stat(lockDir);
 		if (stat.mtimeMs !== stale.mtimeMs || Date.now() - stat.mtimeMs <= PROVIDER_INFLIGHT_LOCK_STALE_MS) return;
 		await fs.rm(lockDir, { recursive: true, force: true });
-	} catch {}
+	} catch (error) {
+		reportProviderInFlightLockLeak(lockDir, "stale lock", error);
+	}
 }
 
 // Best-effort token-checked release. A token mismatch means another process has
@@ -302,7 +329,9 @@ async function releaseProviderInFlightLock(lockDir: string, token: string): Prom
 		const info = await readProviderInFlightInfo(path.join(lockDir, "info.json"));
 		if (!info || info.token !== token) return;
 		await fs.rm(lockDir, { recursive: true, force: true });
-	} catch {}
+	} catch (error) {
+		reportProviderInFlightLockLeak(lockDir, "own lock", error);
+	}
 }
 
 async function releaseProviderInFlightLockDirIfSame(
@@ -314,7 +343,9 @@ async function releaseProviderInFlightLockDirIfSame(
 		const current = await readProviderInFlightLockIdentity(lockDir);
 		if (!isSameProviderInFlightLock(current, identity)) return;
 		await fs.rm(lockDir, { recursive: true, force: true });
-	} catch {}
+	} catch (error) {
+		reportProviderInFlightLockLeak(lockDir, "unclaimed lock dir", error);
+	}
 }
 
 async function acquireProviderInFlightLock(provider: string, signal?: AbortSignal): Promise<() => Promise<void>> {
@@ -322,7 +353,8 @@ async function acquireProviderInFlightLock(provider: string, signal?: AbortSigna
 	await fs.mkdir(path.dirname(lockDir), { recursive: true });
 
 	while (true) {
-		if (signal?.aborted) throw signal.reason ?? new AIError.AbortError("Provider request aborted before dispatch");
+		if (signal?.aborted)
+			throw signal.reason ?? new AIError.RequestAbortError("Provider request aborted before dispatch");
 		try {
 			await fs.mkdir(lockDir);
 			const lockIdentity = await readProviderInFlightLockIdentity(lockDir);
@@ -431,7 +463,7 @@ async function signalProviderInFlightWaiters(provider: string): Promise<void> {
 
 function waitForProviderInFlightSignal(provider: string, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted)
-		return Promise.reject(signal.reason ?? new AIError.AbortError("Provider request aborted before dispatch"));
+		return Promise.reject(signal.reason ?? new AIError.RequestAbortError("Provider request aborted before dispatch"));
 	const signalPath = providerInFlightSignalPath(provider);
 	const waitStarted = Date.now();
 	const { promise, resolve, reject } = Promise.withResolvers<void>();
@@ -447,7 +479,7 @@ function waitForProviderInFlightSignal(provider: string, signal?: AbortSignal): 
 		settle();
 	};
 	const onAbort = () => {
-		finish(() => reject(signal?.reason ?? new AIError.AbortError("Provider request aborted before dispatch")));
+		finish(() => reject(signal?.reason ?? new AIError.RequestAbortError("Provider request aborted before dispatch")));
 	};
 	signal?.addEventListener("abort", onAbort, { once: true });
 	try {
@@ -507,7 +539,8 @@ async function acquireProviderInFlightSlot(
 	if (limit === undefined) return async () => {};
 	let loggedWait = false;
 	while (true) {
-		if (signal?.aborted) throw signal.reason ?? new AIError.AbortError("Provider request aborted before dispatch");
+		if (signal?.aborted)
+			throw signal.reason ?? new AIError.RequestAbortError("Provider request aborted before dispatch");
 		const lease = await tryAcquireProviderInFlightLease(provider, limit, signal);
 		if (lease) return () => releaseProviderInFlightLease(lease);
 		if (!loggedWait) {
@@ -540,6 +573,9 @@ export const __providerInFlightForTesting = {
 			const identity = await readProviderInFlightLockIdentity(lockDir);
 			return () => releaseProviderInFlightLockDirIfSame(lockDir, identity);
 		} catch {
+			// No identity read means we cannot prove the lock is ours, so no release closure is handed back and
+			// nothing is unlocked. Fail closed: releasing a lock that might belong to another process is the
+			// failure that matters here, and null is the caller's "nothing to release" answer.
 			return null;
 		}
 	},
@@ -573,7 +609,7 @@ function withProviderInFlightLimit<TOptions extends Pick<StreamOptions, "signal"
 				logger.debug("Provider in-flight limit wait completed", { provider: model.provider, limit });
 			}
 			if (options?.signal?.aborted) {
-				throw options.signal.reason ?? new AIError.AbortError("Provider request aborted before dispatch");
+				throw options.signal.reason ?? new AIError.RequestAbortError("Provider request aborted before dispatch");
 			}
 			const inner = healLeakedThinking(model, dispatch());
 			try {

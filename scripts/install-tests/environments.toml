@@ -1,0 +1,146 @@
+# The environments a real install has to work in.
+#
+# Tier-B data: this file, not the test code, is the list of environments veyyon
+# claims to install into. Add a case here and the matrix runs a REAL
+# `install.sh --local` inside a disposable HOME for it; nothing in the runner
+# names a shell, an XDG variable, or a completion path.
+#
+# Each case is driven by scripts/installer-environment-matrix.test.ts, which
+# asserts the same contract for every one of them: exit 0, the binary installed
+# byte-identically and executable, the `vey` alias pointing at it, the PATH line
+# in the rc that THIS shell reads (and nowhere else), every pre-existing byte of
+# that rc preserved, the completion files at the paths this environment's XDG
+# variables imply, doctor's self-test passing, and a second run changing nothing.
+#
+# Fields:
+#   name              what the case is called in test output
+#   shell             the value of $SHELL, which is how ensure_on_path picks an rc
+#   home_dir          directory name for the disposable $HOME (spaces allowed)
+#   install_dir       install directory, relative to $HOME unless it starts with /
+#   env               extra environment variables exported for the install
+#   pre_files         files written under $HOME before installing, path = content
+#   expect_rc         rc file, relative to $HOME, that must receive the PATH line
+#   expect_completions completion files, relative to $HOME, that must be written
+#   install_dir_on_path  put the install dir on $PATH, so no rc may be touched
+
+[[case]]
+name = "zsh with default XDG paths"
+shell = "/bin/zsh"
+home_dir = "zsh-default"
+install_dir = ".local/bin"
+expect_rc = ".zshrc"
+expect_completions = [
+	".local/share/zsh/site-functions/_veyyon",
+	".local/share/bash-completion/completions/veyyon",
+	".local/share/bash-completion/completions/vey",
+	".config/fish/completions/veyyon.fish",
+	".config/fish/completions/vey.fish",
+]
+
+# zsh needs no separate alias file: the generated script's `#compdef veyyon vey`
+# line binds both names, so a second copy would be dead weight. bash and fish
+# autoload by the command name and do need one.
+[[case]]
+name = "zsh writes no separate alias completion file"
+shell = "/bin/zsh"
+home_dir = "zsh-no-alias-file"
+install_dir = ".local/bin"
+expect_rc = ".zshrc"
+expect_completions = [".local/share/zsh/site-functions/_veyyon"]
+expect_absent = [".local/share/zsh/site-functions/_vey"]
+
+[[case]]
+name = "bash on Linux writes to .bashrc"
+shell = "/usr/bin/bash"
+home_dir = "bash-linux"
+install_dir = ".local/bin"
+expect_rc = ".bashrc"
+expect_completions = [".local/share/bash-completion/completions/veyyon"]
+# The user's own rc content has to survive being appended to.
+[case.pre_files]
+".bashrc" = "# my shell\nexport EDITOR=vim\nalias ll='ls -la'\n"
+
+[[case]]
+name = "fish uses fish_add_path in config.fish"
+shell = "/usr/local/bin/fish"
+home_dir = "fish-default"
+install_dir = ".local/bin"
+expect_rc = ".config/fish/config.fish"
+expect_completions = [".config/fish/completions/veyyon.fish", ".config/fish/completions/vey.fish"]
+
+# An unrecognised shell is not a reason to skip PATH setup: ~/.profile is read by
+# every POSIX login shell, so that is where the line goes.
+[[case]]
+name = "an unknown shell falls back to .profile"
+shell = "/usr/bin/ksh"
+home_dir = "unknown-shell"
+install_dir = ".local/bin"
+expect_rc = ".profile"
+
+[[case]]
+name = "XDG_DATA_HOME and XDG_CONFIG_HOME are honoured"
+shell = "/bin/zsh"
+home_dir = "xdg-relocated"
+install_dir = ".local/bin"
+expect_rc = ".zshrc"
+expect_completions = [
+	"xdg/data/zsh/site-functions/_veyyon",
+	"xdg/data/bash-completion/completions/veyyon",
+	"xdg/config/fish/completions/veyyon.fish",
+]
+# The default locations must stay empty, or "honoured" would mean "written to
+# both" and a relocated XDG home would silently also litter ~/.local/share.
+expect_absent = [
+	".local/share/zsh/site-functions/_veyyon",
+	".local/share/bash-completion/completions/veyyon",
+	".config/fish/completions/veyyon.fish",
+]
+[case.env]
+XDG_DATA_HOME = "$HOME/xdg/data"
+XDG_CONFIG_HOME = "$HOME/xdg/config"
+
+[[case]]
+name = "a HOME containing a space"
+shell = "/bin/zsh"
+home_dir = "home with a space"
+install_dir = ".local/bin"
+expect_rc = ".zshrc"
+expect_completions = [".local/share/zsh/site-functions/_veyyon"]
+
+[[case]]
+name = "a custom VEYYON_INSTALL_DIR outside HOME conventions"
+shell = "/bin/bash"
+home_dir = "custom-install-dir"
+install_dir = "opt/veyyon/bin"
+expect_rc = ".bashrc"
+
+[[case]]
+name = "an install dir that does not exist yet"
+shell = "/bin/bash"
+home_dir = "missing-install-dir"
+install_dir = "not/created/yet/bin"
+expect_rc = ".bashrc"
+
+# Nothing to do about PATH is not the same as failing to do it: the installer
+# must leave the rc files alone entirely, not append a line no shell needs.
+[[case]]
+name = "the install dir is already on PATH"
+shell = "/bin/zsh"
+home_dir = "already-on-path"
+install_dir = ".local/bin"
+install_dir_on_path = true
+expect_absent = [".zshrc", ".profile", ".bashrc"]
+
+# A dotfiles-managed rc is a symlink into a repo. Appending must follow the link
+# and leave it a link, or the user's dotfiles quietly detach from their repo.
+[[case]]
+name = "an rc symlinked into a dotfiles repo"
+shell = "/bin/zsh"
+home_dir = "dotfiles-symlink"
+install_dir = ".local/bin"
+expect_rc = ".zshrc"
+expect_rc_stays_symlink = true
+[case.pre_files]
+"dotfiles/zshrc" = "# dotfiles-managed\nexport EDITOR=hx\n"
+[case.pre_symlinks]
+".zshrc" = "$HOME/dotfiles/zshrc"

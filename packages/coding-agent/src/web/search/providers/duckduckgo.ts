@@ -2,7 +2,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { decodeHtmlEntities } from "../../scrapers/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { browserFetch } from "./browser-page";
@@ -16,7 +16,6 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
  * agent queries (see #3799).
  */
 const DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/";
-const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 
 /**
@@ -67,6 +66,8 @@ function unwrapResultUrl(href: string): string | undefined {
 		try {
 			return decodeURIComponent(wrapMatch[1]);
 		} catch {
+			// A `uddg` payload whose percent-escapes are not valid UTF-8 is a row this scraper cannot read, and
+			// there is nothing to fall back on: half a decoded URL would be worse than no result at all.
 			return undefined;
 		}
 	}
@@ -154,7 +155,11 @@ async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
 
 /** Execute a DuckDuckGo web search via the no-JS HTML frontend. */
 export async function searchDuckDuckGo(params: SearchParams): Promise<SearchResponse> {
-	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
+	const numResults = clampNumResults(
+		params.numSearchResults ?? params.limit,
+		SEARCH_DEFAULT_NUM_RESULTS,
+		MAX_NUM_RESULTS,
+	);
 	const html = await callDuckDuckGoHtml(params);
 	const parsed = parseHtmlResults(html);
 

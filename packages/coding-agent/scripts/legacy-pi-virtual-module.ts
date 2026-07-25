@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
+import { isRecord } from "@veyyon/utils/type-guards";
 
 /** Build-time specifier resolved to bundled legacy Pi module namespaces. */
 export const LEGACY_PI_MODULES_SPECIFIER = "veyyon-legacy-pi-modules";
@@ -43,10 +44,6 @@ interface WildcardPattern {
 	readonly exportSuffix: string;
 	readonly sourcePrefix: string;
 	readonly sourceSuffix: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function bindingForSubpath(identifier: string, subpath: string): string {

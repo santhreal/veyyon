@@ -1,11 +1,11 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { prompt } from "@veyyon/utils";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import searchToolBm25Description from "../prompts/tools/search-tool-bm25.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import {
 	buildDiscoverableToolSearchIndex,
@@ -74,20 +74,48 @@ function buildSearchToolBm25Content(details: SearchToolBm25Details): string {
 	});
 }
 
-/** Get discoverable tools for description rendering. Falls back to empty array on error. */
+/**
+ * The discoverable-tool inventory, for rendering this tool's description.
+ *
+ * A throw here is reported and the description falls back to the empty inventory, because a
+ * broken inventory must not prevent the session from starting — but it is NOT silent. The
+ * description is built at prompt-build time, and rendering "no tools are currently
+ * discoverable" for a session that has fifteen of them tells the model the capability does
+ * not exist, which is a recall loss with no symptom (Law 10). The warning is how an operator
+ * finds out.
+ */
 function getDiscoverableToolsForDescription(session: ToolSession): DiscoverableTool[] {
 	try {
 		return session.getDiscoverableTools?.() ?? [];
-	} catch {
+	} catch (error) {
+		logger.warn("Discoverable tool inventory could not be read; search_tool_bm25 is describing an empty inventory", {
+			error: errorMessage(error),
+		});
 		return [];
 	}
 }
 
+/**
+ * The search index, for an actual `search_tool_bm25` call.
+ *
+ * Rebuilding when the session has no cached index is the ordinary path, not a fallback: the
+ * cache is a cache. A cache getter that THROWS is a different matter — that is a defect
+ * somewhere else, and swallowing it hid the one signal that would have led to it, so it is
+ * reported before the rebuild.
+ *
+ * The rebuild reads the same inventory as the description path, so a broken inventory
+ * surfaces there as a warning and here as an empty index. An empty index is why `execute`
+ * refuses rather than answering "no matches": see the check at its call site.
+ */
 function getDiscoverableToolSearchIndexForExecution(session: ToolSession): DiscoverableToolSearchIndex {
 	try {
 		const cached = session.getDiscoverableToolSearchIndex?.();
 		if (cached) return cached;
-	} catch {}
+	} catch (error) {
+		logger.warn("Cached discoverable-tool search index threw; rebuilding it for this call", {
+			error: errorMessage(error),
+		});
+	}
 	return buildDiscoverableToolSearchIndex(getDiscoverableToolsForDescription(session));
 }
 
@@ -146,7 +174,7 @@ export function renderSearchToolBm25Description(discoverableTools: DiscoverableT
 	const builtinToolNames = filterBySource(discoverableTools, "builtin")
 		.map(t => t.name)
 		.sort();
-	return prompt.render(searchToolBm25Description, {
+	return prompt.render(PROMPTS["tools/search-tool-bm25"].text, {
 		discoverableToolCount: summary.toolCount,
 		discoverableMCPServerSummaries: summary.servers.map(formatDiscoverableToolServerSummary),
 		hasDiscoverableMCPServers: summary.servers.length > 0,
@@ -250,6 +278,17 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 		}
 
 		const searchIndex = getDiscoverableToolSearchIndexForExecution(this.session);
+		// Discovery is enabled (checked above) and yet there is nothing to search, which means
+		// the inventory could not be read rather than that this session has no discoverable
+		// tools. Answering "0 matches" would teach the model the capability does not exist and
+		// it would stop asking — the invisible recall loss Law 10 is about. Refuse instead, so
+		// the failure reaches the transcript and the model can try another route.
+		if (searchIndex.documents.length === 0) {
+			throw new ToolError(
+				"The discoverable-tool inventory is empty, which should not happen while tool discovery is enabled. " +
+					"The session log carries the reason. Use the tools already active, or ask the operator to check it.",
+			);
+		}
 		const selectedToolNames = new Set(getSelectedToolNames(this.session));
 		let ranked: Array<{ tool: DiscoverableTool; score: number }> = [];
 		try {

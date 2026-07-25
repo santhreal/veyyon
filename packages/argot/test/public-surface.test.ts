@@ -44,6 +44,8 @@ const EXPECTED: Record<string, "function" | "string" | "number" | "object"> = {
 	ARGOT_LOAD_TOOL: "string",
 	ARGOT_UNLOAD_TOOL: "string",
 	DEFAULT_SIGIL: "string",
+	DEFAULT_SAVINGS_COVERAGE: "number",
+	GENERATOR_REVISION: "number",
 	DEFAULT_TOKEN_BUDGET: "number",
 	DICT_FILENAME: "string",
 	MAX_EXPANSION_BYTES: "number",
@@ -110,6 +112,8 @@ describe("argot public export surface", () => {
 		expect(argot.DEFAULT_SIGIL).toBe("§");
 		expect(argot.DICT_FILENAME).toBe("AGENTS.dict");
 		expect(argot.DEFAULT_TOKEN_BUDGET).toBe(1000);
+		expect(argot.DEFAULT_SAVINGS_COVERAGE).toBe(0.9);
+		expect(argot.GENERATOR_REVISION).toBe(2);
 		expect(argot.SUPPORTED_VERSION).toBe(1);
 		expect(argot.MAX_EXPANSION_BYTES).toBe(8192);
 		expect(argot.ARGOT_LOAD_TOOL).toBe("argot_load");

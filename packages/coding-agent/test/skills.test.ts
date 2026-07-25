@@ -10,7 +10,7 @@ import {
 	type Skill,
 } from "@veyyon/coding-agent/extensibility/skills";
 import { removeWithRetries } from "@veyyon/utils";
-import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
 
 const fixturesDir = path.resolve(import.meta.dirname, "fixtures/skills");
 const collisionFixturesDir = path.resolve(import.meta.dirname, "fixtures/skills-collision");
@@ -156,11 +156,11 @@ describe("skills", () => {
 		let tempHome: string;
 		let tempCwd: string;
 		let agentSkillsDir: string;
-		let originalAgentDir: string;
+		let dirOverrides: DirOverridesSnapshot;
 		let homedirSpy: ReturnType<typeof spyOn>;
 
 		beforeEach(async () => {
-			originalAgentDir = getAgentDir();
+			dirOverrides = captureDirOverrides();
 			tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-skill-scope-home-"));
 			// cwd lives under the fake home so any ancestor walk is bounded to it.
 			tempCwd = path.join(tempHome, "work");
@@ -174,7 +174,7 @@ describe("skills", () => {
 
 		afterEach(async () => {
 			homedirSpy.mockRestore();
-			setAgentDir(originalAgentDir);
+			restoreDirOverrides(dirOverrides);
 			await removeWithRetries(tempHome);
 		});
 

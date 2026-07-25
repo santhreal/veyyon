@@ -7,7 +7,7 @@
 
 import * as AIError from "@veyyon/ai/error";
 import type { FetchImpl } from "@veyyon/ai/types";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, logger, trimTrailingSlashes } from "@veyyon/utils";
 
 export interface OAuthEndpoints {
 	authorizationUrl: string;
@@ -54,6 +54,8 @@ export function extractMcpAuthServerUrl(error: Error, serverUrl?: string): strin
 	try {
 		return new URL(match[1], serverUrl).toString();
 	} catch {
+		// The server sent an `Mcp-Auth-Server` value that is not a URL, so there is no auth server to
+		// point at. Discovery continues with its well-known probes and reports if none of them work.
 		return undefined;
 	}
 }
@@ -124,6 +126,9 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 		try {
 			return new URL(authorizationUrl).searchParams.get("client_id") ?? undefined;
 		} catch {
+			// This only mines an OPTIONAL hint out of the URL. Undefined means "not advertised there",
+			// which is also what a parseable URL without the parameter returns, and the caller then falls
+			// back to dynamic registration. The URL itself is validated where it is used.
 			return undefined;
 		}
 	};
@@ -132,6 +137,8 @@ export function extractOAuthEndpoints(error: Error): OAuthEndpoints | null {
 		try {
 			return new URL(authorizationUrl).searchParams.get("scope") ?? undefined;
 		} catch {
+			// Same as `clientIdFromAuthUrl`: an optional hint, and undefined is indistinguishable from
+			// absent on purpose, because the grant carries whatever scopes the metadata advertises instead.
 			return undefined;
 		}
 	};
@@ -293,6 +300,8 @@ function normalizeIssuerUrl(value: string): string | undefined {
 		const path = trimTrailingSlashes(u.pathname);
 		return `${u.protocol}//${u.host}${path}`;
 	} catch {
+		// Not a URL, so it has no normal form to compare. Undefined means "cannot be compared", and the
+		// only caller treats that as a failed comparison rather than a passing one.
 		return undefined;
 	}
 }
@@ -310,6 +319,9 @@ function normalizeIssuerUrl(value: string): string | undefined {
  *   - the document has no `issuer` field (nonstandard / legacy servers — keep
  *     today's permissive behavior), or
  *   - the issuer matches `baseUrl` after trailing-slash normalization.
+ *
+ * An `issuer` that is present but is not a URL returns FALSE. It cannot be shown to match, and this
+ * is a security control, so an unverifiable issuer is refused rather than waved through.
  */
 function issuerMatchesBase(metadataIssuer: unknown, baseUrl: string): boolean {
 	if (typeof metadataIssuer !== "string" || !metadataIssuer.trim()) {
@@ -317,7 +329,12 @@ function issuerMatchesBase(metadataIssuer: unknown, baseUrl: string): boolean {
 	}
 	const normalizedIssuer = normalizeIssuerUrl(metadataIssuer);
 	const normalizedBase = normalizeIssuerUrl(baseUrl);
-	if (!normalizedIssuer || !normalizedBase) return true;
+	// An issuer that cannot be normalized cannot be shown to match, and this check exists to keep a
+	// grant from being routed to an authorization server we did not verify. Accepting the document
+	// because the comparison failed inverted the check exactly when it mattered: a document carrying a
+	// junk `issuer` was trusted, while one carrying a mismatching valid issuer was rejected. Failing
+	// here only skips this candidate document, so discovery moves on to the next well-known path.
+	if (!normalizedIssuer || !normalizedBase) return false;
 	return normalizedIssuer === normalizedBase;
 }
 
@@ -357,10 +374,23 @@ export async function fetchResourceMetadataScopes(
 			headers: { Accept: "application/json" },
 			redirect: "follow",
 		});
-		if (!resp.ok) return undefined;
+		if (!resp.ok) {
+			logger.warn("Protected-resource metadata could not be fetched; the grant will carry no advertised scopes", {
+				url: resourceMetadataUrl,
+				status: resp.status,
+			});
+			return undefined;
+		}
 		const meta = (await resp.json()) as Record<string, unknown>;
 		return readMetadataScopes(meta);
-	} catch {
+	} catch (error) {
+		// Undefined also means "this document advertises no scopes", which is normal, so a FAILURE to read
+		// it has to say so: the authorization request then goes out without the scopes the server expects
+		// and comes back as an opaque `invalid_scope` or `server_error` with nothing pointing here.
+		logger.warn("Protected-resource metadata could not be read; the grant will carry no advertised scopes", {
+			url: resourceMetadataUrl,
+			error: errorMessage(error),
+		});
 		return undefined;
 	}
 }

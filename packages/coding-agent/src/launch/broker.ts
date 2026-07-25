@@ -37,7 +37,10 @@ import {
 
 const DEFAULT_IDLE_GRACE_MS = 3_000;
 const MAX_REQUEST_BYTES = 1024 * 1024;
-const MAX_LOG_BYTES = 25 * 1024 * 1024;
+// Rotate a broker log once it reaches this size. Not a cap on total log bytes
+// kept: rotation preserves the previous file, so the on-disk total is a multiple
+// of this. Distinct from the bug-report bundler's much smaller read budget.
+const LOG_ROTATE_BYTES = 25 * 1024 * 1024;
 const LOG_READ_BYTES = 2 * 1024 * 1024;
 const READINESS_BUFFER_CHARS = 64 * 1024;
 const RESTART_MAX_DELAY_MS = 30_000;
@@ -166,7 +169,7 @@ class DaemonLog {
 		if (text.length === 0 || this.#closed) return text;
 		const bytes = Buffer.byteLength(text, "utf8");
 		this.#queue = this.#queue.then(async () => {
-			if (this.#currentBytes > 0 && this.#currentBytes + bytes > MAX_LOG_BYTES) await this.#rotate();
+			if (this.#currentBytes > 0 && this.#currentBytes + bytes > LOG_ROTATE_BYTES) await this.#rotate();
 			this.#writer.write(text);
 			this.#currentBytes += bytes;
 			await this.#writer.flush();

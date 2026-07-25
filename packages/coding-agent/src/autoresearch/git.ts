@@ -330,3 +330,19 @@ export function computeRunModifiedPaths(
 	}
 	return { tracked, untracked };
 }
+
+/**
+ * The commit HEAD points at, or null when there is none to read.
+ *
+ * An experiment records the commit it ran against, and a directory that is not a repository yet, or a
+ * repository with no commits, is an ordinary case there rather than a failure: the run is still worth
+ * recording, with no commit attached. The two experiment tools each had their own copy of this, so a
+ * change to what "no commit" means would have landed in one of them.
+ */
+export async function tryReadHeadSha(cwd: string): Promise<string | null> {
+	try {
+		return (await git.head.sha(cwd)) ?? null;
+	} catch {
+		return null;
+	}
+}

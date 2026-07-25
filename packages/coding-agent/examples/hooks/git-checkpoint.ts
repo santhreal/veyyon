@@ -60,7 +60,8 @@ export default function (pi: HookAPI) {
 		const status = await pi.exec("git", ["status", "--porcelain"]);
 		const dirtyCount = status.code === 0 ? status.stdout.split("\n").filter(line => line.trim()).length : 0;
 
-		const yes = dirtyCount > 0 ? `Yes, apply over my ${dirtyCount} uncommitted change(s)` : "Yes, restore code to that point";
+		const yes =
+			dirtyCount > 0 ? `Yes, apply over my ${dirtyCount} uncommitted change(s)` : "Yes, restore code to that point";
 		const question =
 			dirtyCount > 0
 				? `Restore code state? You have ${dirtyCount} uncommitted change(s); restoring merges the checkpoint into them and may conflict.`

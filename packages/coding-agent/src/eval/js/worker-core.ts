@@ -1,3 +1,8 @@
+// Subpath import, NOT the `@veyyon/utils` barrel: the barrel pulls in `env.ts`, which loads
+// dotenv at import time, and this module is reachable from the JS eval process entry where
+// that must not happen before profile bootstrap. `test/.../process-entry-import.test.ts`
+// fails if this becomes a barrel import again.
+import { isAbortError } from "@veyyon/utils/abortable";
 import { ToolError } from "../../tools/tool-errors";
 import { JsRuntime, type RuntimeHooks } from "./shared/runtime";
 import type {
@@ -60,7 +65,7 @@ function errorPayload(error: unknown): RunErrorPayload {
 			name: error.name,
 			message: error.message,
 			stack: error.stack,
-			isAbort: error.name === "AbortError" || error.name === "ToolAbortError",
+			isAbort: isAbortError(error),
 			isToolError: error.name === "ToolError" || error instanceof ToolError,
 		};
 	}

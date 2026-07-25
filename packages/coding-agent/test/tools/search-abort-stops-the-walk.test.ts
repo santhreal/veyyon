@@ -41,7 +41,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { GlobTool } from "@veyyon/coding-agent/tools/glob";
 import { GrepTool } from "@veyyon/coding-agent/tools/grep";
-import { astGrep as nativeAstGrep, GrepOutputMode, glob as nativeGlob, grep as nativeGrep } from "@veyyon/natives";
+import { GrepOutputMode, astGrep as nativeAstGrep, glob as nativeGlob, grep as nativeGrep } from "@veyyon/natives";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";

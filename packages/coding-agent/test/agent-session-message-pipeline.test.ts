@@ -669,7 +669,12 @@ describe("AgentSession message pipeline", () => {
 		await Bun.sleep(0);
 	});
 
-	it("keeps first-turn memory in the stable prompt on the next turn", async () => {
+	/** How many times `needle` appears anywhere in a request's messages. */
+	function memoryCopiesInMessages(context: Context, needle: string): number {
+		return JSON.stringify(context.messages).split(needle).length - 1;
+	}
+
+	it("keeps first-turn memory out of the system prompt and sends it exactly once", async () => {
 		const api = "test-injected-memory-append-only-cache";
 		const contexts: Context[] = [];
 		let remembered = false;
@@ -678,7 +683,9 @@ describe("AgentSession message pipeline", () => {
 			id: "mnemopi",
 			async start() {},
 			async buildDeveloperInstructions() {
-				return remembered ? `static memory instructions\n\n${injected}` : "static memory instructions";
+				// Stable for the life of the session: that is the contract now. The
+				// recalled block travels as a message, so it never reaches this string.
+				return "static memory instructions";
 			},
 			async clear() {},
 			async enqueue() {},
@@ -718,6 +725,9 @@ describe("AgentSession message pipeline", () => {
 				messages: [],
 				tools: [],
 			},
+			// The production conversion, because the memory block is a `custom` message
+			// and only this decides whether such a message reaches the model at all.
+			convertToLlm,
 		});
 		agent.setAppendOnlyContext(new AppendOnlyContextManager());
 		const session = new AgentSession({
@@ -725,11 +735,7 @@ describe("AgentSession message pipeline", () => {
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ "compaction.enabled": false, "provider.appendOnlyContext": "on" }),
 			modelRegistry: createModelRegistryStub() as never,
-			rebuildSystemPrompt: async () => ({
-				systemPrompt: remembered
-					? ["base", `static memory instructions\n\n${injected}`]
-					: ["base", "static memory instructions"],
-			}),
+			rebuildSystemPrompt: async () => ({ systemPrompt: ["base", "static memory instructions"] }),
 		});
 		sessions.push(session);
 
@@ -739,8 +745,15 @@ describe("AgentSession message pipeline", () => {
 		expect(contexts).toHaveLength(2);
 		const firstSystemPrompt = contexts[0]!.systemPrompt;
 		expect(firstSystemPrompt).toBeDefined();
-		expect(firstSystemPrompt!.join("\n")).toContain(injected);
+		// The prompt is the provider's cache prefix. The recalled memory is not in it,
+		// on either turn, and the prefix is byte-identical across the two requests.
+		expect(firstSystemPrompt!.join("\n")).not.toContain(injected);
 		expect(contexts[1]!.systemPrompt).toEqual(firstSystemPrompt);
+		expect(session.systemPromptInvalidations()).toEqual([]);
+		// It reached the model, once, as part of the first turn, and once more only
+		// because the second request re-sends the conversation that already holds it.
+		expect(memoryCopiesInMessages(contexts[0]!, injected)).toBe(1);
+		expect(memoryCopiesInMessages(contexts[1]!, injected)).toBe(1);
 	});
 
 	it("preserves append-only prefixes in subagent sessions when context handlers rewrite prior turns", async () => {
@@ -831,7 +844,7 @@ describe("AgentSession message pipeline", () => {
 		}
 	});
 
-	it("clears promoted memory from the base prompt when switching sessions", async () => {
+	it("does not carry a session's recalled memory into the session switched to", async () => {
 		using tempDir = TempDir.createSync("@pi-injected-memory-switch-");
 		const sessionManager = SessionManager.create(tempDir.path(), tempDir.join("sessions"));
 		const firstSessionFile = sessionManager.getSessionFile();
@@ -851,7 +864,8 @@ describe("AgentSession message pipeline", () => {
 			id: "mnemopi",
 			async start() {},
 			async buildDeveloperInstructions() {
-				return remembered ? `static memory instructions\n\n${injected}` : "static memory instructions";
+				// Stable for the life of the session; the recall travels as a message.
+				return "static memory instructions";
 			},
 			async clear() {},
 			async enqueue() {},
@@ -891,6 +905,9 @@ describe("AgentSession message pipeline", () => {
 				messages: [],
 				tools: [],
 			},
+			// The production conversion, because the memory block is a `custom` message
+			// and only this decides whether such a message reaches the model at all.
+			convertToLlm,
 		});
 		agent.setAppendOnlyContext(new AppendOnlyContextManager());
 		const session = new AgentSession({
@@ -902,11 +919,7 @@ describe("AgentSession message pipeline", () => {
 				"provider.appendOnlyContext": "on",
 			}),
 			modelRegistry: createModelRegistryStub() as never,
-			rebuildSystemPrompt: async () => ({
-				systemPrompt: remembered
-					? ["base", `static memory instructions\n\n${injected}`]
-					: ["base", "static memory instructions"],
-			}),
+			rebuildSystemPrompt: async () => ({ systemPrompt: ["base", "static memory instructions"] }),
 		});
 		sessions.push(session);
 		setMnemopiSessionState(session, {
@@ -919,7 +932,9 @@ describe("AgentSession message pipeline", () => {
 		} as unknown as MnemopiSessionState);
 
 		await session.sendUserMessage("first");
-		expect(session.systemPrompt.join("\n")).toContain(injected);
+		// Never in the prompt, on the session that recalled it either.
+		expect(session.systemPrompt.join("\n")).not.toContain(injected);
+		expect(memoryCopiesInMessages(contexts[0]!, injected)).toBe(1);
 		recallAvailable = false;
 
 		await session.switchSession(nextSessionFile!);
@@ -928,9 +943,12 @@ describe("AgentSession message pipeline", () => {
 		expect(session.systemPrompt.join("\n")).not.toContain(injected);
 		expect(contexts).toHaveLength(2);
 		expect(contexts[1]!.systemPrompt?.join("\n")).not.toContain(injected);
+		// The switched-to session is a different conversation: the previous session's
+		// recalled memory must not follow it there.
+		expect(memoryCopiesInMessages(contexts[1]!, injected)).toBe(0);
 	});
 
-	it("clears promoted memory from the base prompt when starting a new session", async () => {
+	it("does not carry a session's recalled memory into a new session", async () => {
 		const api = "test-injected-memory-new-session-cache";
 		const contexts: Context[] = [];
 		let remembered = false;
@@ -940,7 +958,8 @@ describe("AgentSession message pipeline", () => {
 			id: "mnemopi",
 			async start() {},
 			async buildDeveloperInstructions() {
-				return remembered ? `static memory instructions\n\n${injected}` : "static memory instructions";
+				// Stable for the life of the session; the recall travels as a message.
+				return "static memory instructions";
 			},
 			async clear() {},
 			async enqueue() {},
@@ -980,6 +999,9 @@ describe("AgentSession message pipeline", () => {
 				messages: [],
 				tools: [],
 			},
+			// The production conversion, because the memory block is a `custom` message
+			// and only this decides whether such a message reaches the model at all.
+			convertToLlm,
 		});
 		agent.setAppendOnlyContext(new AppendOnlyContextManager());
 		const session = new AgentSession({
@@ -991,11 +1013,7 @@ describe("AgentSession message pipeline", () => {
 				"provider.appendOnlyContext": "on",
 			}),
 			modelRegistry: createModelRegistryStub() as never,
-			rebuildSystemPrompt: async () => ({
-				systemPrompt: remembered
-					? ["base", `static memory instructions\n\n${injected}`]
-					: ["base", "static memory instructions"],
-			}),
+			rebuildSystemPrompt: async () => ({ systemPrompt: ["base", "static memory instructions"] }),
 		});
 		sessions.push(session);
 		setMnemopiSessionState(session, {
@@ -1008,7 +1026,8 @@ describe("AgentSession message pipeline", () => {
 		} as unknown as MnemopiSessionState);
 
 		await session.sendUserMessage("first");
-		expect(session.systemPrompt.join("\n")).toContain(injected);
+		expect(session.systemPrompt.join("\n")).not.toContain(injected);
+		expect(memoryCopiesInMessages(contexts[0]!, injected)).toBe(1);
 		recallAvailable = false;
 
 		await session.newSession();
@@ -1017,9 +1036,11 @@ describe("AgentSession message pipeline", () => {
 		expect(session.systemPrompt.join("\n")).not.toContain(injected);
 		expect(contexts).toHaveLength(2);
 		expect(contexts[1]!.systemPrompt?.join("\n")).not.toContain(injected);
+		// A fresh conversation starts without the old one's memories.
+		expect(memoryCopiesInMessages(contexts[1]!, injected)).toBe(0);
 	});
 
-	it("does not duplicate promoted memory in the base prompt when forking", async () => {
+	it("does not duplicate the recalled memory when forking", async () => {
 		using tempDir = TempDir.createSync("@pi-injected-memory-fork-");
 		const sessionManager = SessionManager.create(tempDir.path(), tempDir.join("sessions"));
 		expect(sessionManager.getSessionFile()).toBeString();
@@ -1033,7 +1054,8 @@ describe("AgentSession message pipeline", () => {
 			id: "mnemopi",
 			async start() {},
 			async buildDeveloperInstructions() {
-				return remembered ? `static memory instructions\n\n${injected}` : "static memory instructions";
+				// Stable for the life of the session; the recall travels as a message.
+				return "static memory instructions";
 			},
 			async clear() {},
 			async enqueue() {},
@@ -1073,6 +1095,9 @@ describe("AgentSession message pipeline", () => {
 				messages: [],
 				tools: [],
 			},
+			// The production conversion, because the memory block is a `custom` message
+			// and only this decides whether such a message reaches the model at all.
+			convertToLlm,
 		});
 		agent.setAppendOnlyContext(new AppendOnlyContextManager());
 		const session = new AgentSession({
@@ -1084,11 +1109,7 @@ describe("AgentSession message pipeline", () => {
 				"provider.appendOnlyContext": "on",
 			}),
 			modelRegistry: createModelRegistryStub() as never,
-			rebuildSystemPrompt: async () => ({
-				systemPrompt: remembered
-					? ["base", `static memory instructions\n\n${injected}`]
-					: ["base", "static memory instructions"],
-			}),
+			rebuildSystemPrompt: async () => ({ systemPrompt: ["base", "static memory instructions"] }),
 		});
 		sessions.push(session);
 		setMnemopiSessionState(session, {
@@ -1101,14 +1122,16 @@ describe("AgentSession message pipeline", () => {
 		} as unknown as MnemopiSessionState);
 
 		await session.sendUserMessage("first");
-		expect(session.systemPrompt.join("\n")).toContain(injected);
+		expect(session.systemPrompt.join("\n")).not.toContain(injected);
 
 		await session.fork();
 		await session.sendUserMessage("second");
 
-		const forkedPrompt = contexts[1]!.systemPrompt?.join("\n") ?? "";
-		const occurrences = forkedPrompt.split(injected).length - 1;
-		expect(occurrences).toBe(1);
+		// A fork inherits the conversation, so the memory is there exactly once: the
+		// copy the first turn delivered. Two copies would mean the fork re-injected it
+		// on top of the history it already carries.
+		expect(contexts[1]!.systemPrompt?.join("\n") ?? "").not.toContain(injected);
+		expect(memoryCopiesInMessages(contexts[1]!, injected)).toBe(1);
 	});
 
 	it("ephemeral side-channel forwards native tools, injects developer reminder, leaves toolChoice auto", async () => {

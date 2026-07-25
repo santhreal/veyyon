@@ -13,6 +13,7 @@ import {
 	getModelDbPath,
 	getSessionsDir,
 	isProcessAlive,
+	logger,
 	MINUTE_MS,
 } from "@veyyon/utils";
 import { tableExists } from "@veyyon/utils/sqlite";
@@ -32,7 +33,25 @@ const JSONL_GLOB = new Bun.Glob("**/*.jsonl");
 const JSONL_GZ_GLOB = new Bun.Glob("**/*.jsonl.gz");
 const JSONL_BACKUP_GLOB = new Bun.Glob("**/*.jsonl.*.bak");
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
-const GC_WRITE_GRACE_MS = 5 * MINUTE_MS;
+/**
+ * Smallest write-grace window an operator may configure.
+ *
+ * The grace exists so GC never deletes a blob or archives a session that a running veyyon is still
+ * writing to. A zero window removes that protection entirely, so a configured value below this floor is
+ * clamped and reported rather than honoured: the setting is a tuning knob, not a way to turn the safety
+ * margin off.
+ */
+const MIN_GC_WRITE_GRACE_MS = MINUTE_MS;
+
+/**
+ * How old a GC lock file must be before another run breaks it.
+ *
+ * Deliberately NOT the write-grace window, even though both were 5 minutes and shared one constant.
+ * They answer different questions: the grace is "might a process still be writing this file", and this
+ * is "is the process that took this lock gone". Tying them together would mean shortening the grace also
+ * made GC steal live locks from other runs.
+ */
+const GC_LOCK_STALE_MS = 5 * MINUTE_MS;
 const SESSION_SUFFIX = ".jsonl";
 const COMPRESSED_SESSION_SUFFIX = ".jsonl.gz";
 const GC_LOCK_BREAKER_SUFFIX = ".break";
@@ -47,6 +66,7 @@ export interface GcCommandFlags {
 	coldArchiveAfterDays?: number;
 	retainNewestGlobal?: number;
 	retainNewestPerCwd?: number;
+	writeGraceMinutes?: number;
 }
 
 export interface GcCommandArgs {
@@ -123,6 +143,8 @@ interface ResolvedGcOptions {
 	coldArchiveAfterDays: number;
 	retainNewestGlobal: number;
 	retainNewestPerCwd: number;
+	/** How recently a file may have been written and still be left alone, in milliseconds. */
+	writeGraceMs: number;
 }
 
 interface SqliteRunResult {
@@ -154,14 +176,34 @@ function numberSetting(value: number | undefined, fallback: unknown, defaultValu
 	return normalizeNumberSetting(fallback, defaultValue);
 }
 
+/**
+ * Turn a configured grace in minutes into milliseconds, never below the floor.
+ *
+ * Clamped and REPORTED rather than accepted: `0` reads like "sweep everything", and what it would
+ * actually do is delete a blob a running veyyon wrote a second ago. Silently substituting the floor
+ * would leave an operator believing a value that is not in effect, which is the other half of the same
+ * mistake, so the substitution is named in the log.
+ */
+function resolveWriteGraceMs(minutes: number): number {
+	const requested = minutes * MINUTE_MS;
+	if (requested >= MIN_GC_WRITE_GRACE_MS) return requested;
+	logger.warn("GC write-grace window is below the floor; using the floor instead", {
+		requestedMinutes: minutes,
+		floorMinutes: MIN_GC_WRITE_GRACE_MS / MINUTE_MS,
+		reason: "a shorter window lets GC delete a file a running session is still writing",
+	});
+	return MIN_GC_WRITE_GRACE_MS;
+}
+
 async function resolveOptions(flags: GcCommandFlags): Promise<ResolvedGcOptions> {
 	const agentDir = path.resolve(flags.agentDir ?? getAgentDir());
 	const selected = flags.blobs === true || flags.archive === true || flags.wal === true;
 	const settings =
 		flags.apply === true ? await Settings.loadIsolated({ agentDir }) : await Settings.loadReadOnly({ agentDir });
 	const getBoolean = (pathKey: "gc.blobs" | "gc.archive" | "gc.wal") => settings.get(pathKey);
-	const getNumber = (pathKey: "gc.coldArchiveAfterDays" | "gc.retainNewestGlobal" | "gc.retainNewestPerCwd") =>
-		settings.get(pathKey);
+	const getNumber = (
+		pathKey: "gc.coldArchiveAfterDays" | "gc.retainNewestGlobal" | "gc.retainNewestPerCwd" | "gc.writeGraceMinutes",
+	) => settings.get(pathKey);
 	return {
 		apply: flags.apply === true,
 		json: flags.json === true,
@@ -183,6 +225,9 @@ async function resolveOptions(flags: GcCommandFlags): Promise<ResolvedGcOptions>
 			flags.retainNewestPerCwd,
 			getNumber("gc.retainNewestPerCwd"),
 			getDefault("gc.retainNewestPerCwd"),
+		),
+		writeGraceMs: resolveWriteGraceMs(
+			numberSetting(flags.writeGraceMinutes, getNumber("gc.writeGraceMinutes"), getDefault("gc.writeGraceMinutes")),
 		),
 	};
 }
@@ -328,7 +373,7 @@ async function runBlobGc(options: ResolvedGcOptions, archiveSessionsRoot: string
 		errors: [],
 	};
 
-	const deleteBeforeMs = Date.now() - GC_WRITE_GRACE_MS;
+	const deleteBeforeMs = Date.now() - options.writeGraceMs;
 	for (const candidate of candidates) {
 		if (referenced.has(candidate.hash)) continue;
 		if (candidate.mtimeMs > deleteBeforeMs) continue;
@@ -614,7 +659,7 @@ async function runArchiveGc(options: ResolvedGcOptions, archiveRoot: string): Pr
 	const candidates: ArchiveCandidate[] = [];
 	let inactiveSeen = 0;
 	const inactiveSeenByCwd = new Map<string, number>();
-	const archiveBeforeMs = Date.now() - GC_WRITE_GRACE_MS;
+	const archiveBeforeMs = Date.now() - options.writeGraceMs;
 
 	for (const session of sessions) {
 		if (session.status && ACTIVE_STATUSES.has(session.status)) {
@@ -787,7 +832,7 @@ function shouldBreakGcLock(snapshot: GcLockSnapshot): boolean {
 
 	const createdAtMs = Date.parse(snapshot.text.split(/\r?\n/, 2)[1] ?? "");
 	const ageFromMs = Number.isFinite(createdAtMs) ? createdAtMs : snapshot.mtimeMs;
-	return Date.now() - ageFromMs > GC_WRITE_GRACE_MS;
+	return Date.now() - ageFromMs > GC_LOCK_STALE_MS;
 }
 
 async function removeStaleGcLock(lockPath: string): Promise<boolean> {

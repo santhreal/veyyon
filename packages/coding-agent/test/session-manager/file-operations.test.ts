@@ -6,7 +6,8 @@ import type { FileEntry, SessionHeader } from "@veyyon/coding-agent/session/sess
 import { findMostRecentSession, resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getConfigRootDir, getSessionsDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
+import { getSessionsDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 describe("loadEntriesFromFile", () => {
 	let tempDir: string;
@@ -159,8 +160,10 @@ describe("resolveResumableSession", () => {
 
 describe("SessionManager temp cwd session dirs", () => {
 	let testAgentDir: string;
-	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+	// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+	// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+	// which leaked into every file that ran after this one.
+	const dirOverrides = captureDirOverrides();
 
 	function expectedTempSessionDirName(tempCwd: string): string {
 		return `-tmp-${path.relative(os.tmpdir(), path.resolve(tempCwd)).replace(/[/\\:]/g, "-")}`;
@@ -179,12 +182,7 @@ describe("SessionManager temp cwd session dirs", () => {
 	});
 
 	afterEach(() => {
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		removeSyncWithRetries(testAgentDir);
 	});
 

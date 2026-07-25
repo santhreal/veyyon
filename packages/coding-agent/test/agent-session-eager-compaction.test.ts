@@ -158,7 +158,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.autoContinue": true,
-			"task.eager": "always",
+			"subagent.delegation": "required",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,
@@ -270,7 +270,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		return waitForCall(call => call.messageTexts.some(text => text.includes(CONTINUE_MARKER)));
 	}
 
-	it("re-injects the eager task reminder on the auto-continuation turn (task.eager always)", async () => {
+	it("re-injects the delegation reminder on the auto-continuation turn (delegation required)", async () => {
 		const { session, waitForCall } = await createHarness();
 		stubCompaction();
 
@@ -283,8 +283,8 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		expect(continuation.toolChoice).toBeUndefined();
 	});
 
-	it("does not re-inject the eager task reminder when task.eager is default", async () => {
-		const { session, waitForCall } = await createHarness({ "task.eager": "default" });
+	it("does not re-inject the delegation reminder when delegation is merely allowed", async () => {
+		const { session, waitForCall } = await createHarness({ "subagent.delegation": "allowed" });
 		stubCompaction();
 
 		const continuation = await runToContinuation(session, waitForCall);
@@ -292,8 +292,8 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		expect(continuation.messageTexts.some(text => text.includes("delegation is enabled"))).toBe(false);
 	});
 
-	it("does not re-inject the eager task reminder when task.eager is preferred", async () => {
-		const { session, waitForCall } = await createHarness({ "task.eager": "preferred" });
+	it("does not re-inject the delegation reminder when delegation is preferred", async () => {
+		const { session, waitForCall } = await createHarness({ "subagent.delegation": "preferred" });
 		stubCompaction();
 
 		const continuation = await runToContinuation(session, waitForCall);
@@ -322,7 +322,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 	it("re-injects the eager todo reminder on the auto-continuation turn (todo.eager preferred)", async () => {
 		const { session, waitForCall } = await createHarness({
-			"task.eager": "default",
+			"subagent.delegation": "allowed",
 			"todo.enabled": true,
 			"todo.eager": "preferred",
 		});
@@ -336,7 +336,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 	it("re-injects the eager todo reminder reminder-only for todo.eager always (no forced tool)", async () => {
 		const { session, waitForCall } = await createHarness({
-			"task.eager": "default",
+			"subagent.delegation": "allowed",
 			"todo.enabled": true,
 			"todo.eager": "always",
 		});
@@ -352,7 +352,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 	it("does not re-inject the eager todo reminder when todos survived compaction", async () => {
 		const { session, sessionManager, waitForCall } = await createHarness({
-			"task.eager": "default",
+			"subagent.delegation": "allowed",
 			"todo.enabled": true,
 			"todo.eager": "preferred",
 		});

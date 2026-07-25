@@ -153,7 +153,7 @@ describe("runSubprocess request guards", () => {
 	});
 
 	it("counts assistant requests into SingleResult.requests", async () => {
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 0 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
 		const handle = createFakeSession({
 			events: [
 				assistantMessageEnd("step one"),
@@ -176,9 +176,9 @@ describe("runSubprocess request guards", () => {
 		// Budget 4: steer fires at request 4 and must not repeat at request 5
 		// (still below the 1.5x hard stop of 6).
 		const settings = Settings.isolated({
-			"task.maxRuntimeMs": 0,
-			"task.softRequestBudget": 4,
-			"task.softRequestBudgetNotice": true,
+			"subagent.maxRuntimeMs": 0,
+			"subagent.softRequestBudget": 4,
+			"subagent.softRequestBudgetNotice": true,
 		});
 		const handle = createFakeSession({
 			events: [
@@ -206,8 +206,8 @@ describe("runSubprocess request guards", () => {
 		// Budget 4 is crossed at request 4; the notice defaults ON, so exactly
 		// one steer lands without task.softRequestBudgetNotice being set.
 		const settings = Settings.isolated({
-			"task.maxRuntimeMs": 0,
-			"task.softRequestBudget": 4,
+			"subagent.maxRuntimeMs": 0,
+			"subagent.softRequestBudget": 4,
 		});
 		const handle = createFakeSession({
 			events: [
@@ -233,9 +233,9 @@ describe("runSubprocess request guards", () => {
 		// Budget 2: notice would normally fire at 2, but the force-stop at 3 must
 		// remain active even with the notice disabled.
 		const settings = Settings.isolated({
-			"task.maxRuntimeMs": 0,
-			"task.softRequestBudget": 2,
-			"task.softRequestBudgetNotice": false,
+			"subagent.maxRuntimeMs": 0,
+			"subagent.softRequestBudget": 2,
+			"subagent.softRequestBudgetNotice": false,
 		});
 		const handle = createFakeSession({
 			hang: true,
@@ -260,9 +260,9 @@ describe("runSubprocess request guards", () => {
 		// Budget 2: with notices enabled, steer at 2 and hard stop at 3. The
 		// session hangs so only the budget abort can release it.
 		const settings = Settings.isolated({
-			"task.maxRuntimeMs": 0,
-			"task.softRequestBudget": 2,
-			"task.softRequestBudgetNotice": true,
+			"subagent.maxRuntimeMs": 0,
+			"subagent.softRequestBudget": 2,
+			"subagent.softRequestBudgetNotice": true,
 		});
 		const handle = createFakeSession({
 			hang: true,
@@ -284,7 +284,7 @@ describe("runSubprocess request guards", () => {
 	});
 
 	it("salvages the last assistant text for an aborted child with no completed output", async () => {
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 50 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
 		const handle = createFakeSession({
 			hang: true,
 			events: [
@@ -313,7 +313,7 @@ describe("runSubprocess request guards", () => {
 	});
 
 	it("clips oversized salvage snippets", async () => {
-		const settings = Settings.isolated({ "task.maxRuntimeMs": 50 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
 		const longText = `start-marker ${"x".repeat(700)}`;
 		const handle = createFakeSession({
 			hang: true,

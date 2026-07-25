@@ -68,6 +68,9 @@ async function extractFromNativeApp(): Promise<string | null> {
 		if (!token || token === "(null)") return null;
 		return token;
 	} catch {
+		// Null means "no token from the native app", which is the ordinary case: the app may not be
+		// installed, and `defaults` may not exist. The caller falls through to the browser sign-in it would
+		// use anyway, and reports if that fails too.
 		return null;
 	}
 }

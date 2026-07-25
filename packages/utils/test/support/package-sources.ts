@@ -21,8 +21,14 @@ import * as path from "node:path";
  * Directory names never descended into, at any depth: dependency trees, build
  * output, and vendored third-party code (which legitimately carries its own
  * copies of these primitives and must not be judged against the utils owner).
+ *
+ * `repo-cache` is the deepswe benchmark's tree of cloned upstream projects: 113
+ * of them, about 1.9G, each with its own sources and test suite. Judging another
+ * project's code against this repository's ownership locks is meaningless, and
+ * walking it turns a lock that reads a few thousand files into one that reads
+ * hundreds of thousands.
  */
-export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dist", "vendor"]);
+export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dist", "vendor", "repo-cache"]);
 
 /**
  * Packages exempt from every `@veyyon/utils` single-owner lock, named by their
@@ -33,8 +39,9 @@ export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dis
  *
  * Matching on the published name rather than the directory name is the point:
  * the exemption was originally keyed on the directory, the package's directory
- * was later renamed to `packages/lexpack`, and the exemption silently stopped
- * matching. Six ownership locks then failed against a package that is exempt by
+ * was renamed to `packages/lexpack`, and the exemption silently stopped
+ * matching (it is `packages/argot` again as of 2026-07-25, which changes nothing
+ * about why the name is the key). Six ownership locks then failed against a package that is exempt by
  * design. A published name is the package's stable identity; a directory name
  * is not. `packageNameFor` resolves it, and `resolveExemptPackageDirs` fails
  * loudly when an entry names no package at all, so an exemption can never again
@@ -86,15 +93,16 @@ export async function resolveExemptPackageDirs(): Promise<ReadonlySet<string>> {
 /** Absolute path to the monorepo `packages/` directory. */
 export const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "..", "..");
 
-async function walk(dir: string, includeTests: boolean, out: string[]): Promise<void> {
+async function walk(dir: string, includeTests: boolean, out: string[], includeExempt = false): Promise<void> {
 	// A missing subdir (an assets-only package has no src/, a src-only scan finds
 	// no test/) is not an error — there is simply nothing to scan there.
 	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (SKIP_DIR_NAMES.has(entry.name) || EXEMPT_PACKAGE_NAMES.has(entry.name)) continue;
-			await walk(full, includeTests, out);
+			if (SKIP_DIR_NAMES.has(entry.name)) continue;
+			if (!includeExempt && EXEMPT_PACKAGE_NAMES.has(entry.name)) continue;
+			await walk(full, includeTests, out, includeExempt);
 		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
 			out.push(full);
 		}
@@ -110,6 +118,17 @@ export interface CollectPackageSourcesOptions {
 	 * production copy does and the src-only scan never sees it.
 	 */
 	includeTests?: boolean;
+	/**
+	 * Also scan packages in {@link EXEMPT_PACKAGE_NAMES}. Defaults to `false`.
+	 *
+	 * That exemption is specific to the `@veyyon/utils` single-owner locks: a
+	 * standalone published package carries its own copies of those primitives by
+	 * design. A caller asking a different question of the tree usually must NOT
+	 * inherit it. The tripwire-preload lock is the case that exists: `argot` has
+	 * tests like every other package and therefore needs the same guard, so
+	 * exempting it there would be a hole rather than a courtesy.
+	 */
+	includeExemptPackages?: boolean;
 }
 
 /** Absolute paths of every matching `.ts` file across non-exempt packages. */
@@ -117,11 +136,11 @@ export async function collectPackageSourceFiles(options: CollectPackageSourcesOp
 	const dirs = options.dirs ?? ["src"];
 	const includeTests = options.includeTests ?? false;
 	const files: string[] = [];
-	const exemptDirs = await resolveExemptPackageDirs();
+	const exemptDirs = options.includeExemptPackages ? new Set<string>() : await resolveExemptPackageDirs();
 	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 		if (!pkg.isDirectory() || exemptDirs.has(pkg.name)) continue;
 		for (const sub of dirs) {
-			await walk(path.join(PACKAGES_DIR, pkg.name, sub), includeTests, files);
+			await walk(path.join(PACKAGES_DIR, pkg.name, sub), includeTests, files, options.includeExemptPackages);
 		}
 	}
 	return files;

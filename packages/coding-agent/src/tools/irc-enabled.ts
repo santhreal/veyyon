@@ -14,6 +14,6 @@ export function isIrcEnabled(settings: Settings, taskDepth: number): boolean {
 	if (taskDepth > 0) return true;
 	// Top-level session: peers exist only if it can still spawn subagents — the
 	// same capacity gate the task tool uses, reused here to avoid drift.
-	const maxDepth = settings.get("task.maxRecursionDepth") ?? 2;
+	const maxDepth = settings.get("subagent.maxRecursionDepth") ?? 2;
 	return canSpawnAtDepth(maxDepth, taskDepth);
 }

@@ -1,0 +1,54 @@
+# Full global-state leak sweep: runs EVERY test file in its own process with the leak
+# tracer preloaded and diffs the process globals across each file. The per-commit gate in
+# checks.yml only checks the test files a push changed, because one process per file over
+# ~3,200 files takes far longer than a commit gate should; this is where the exhaustive
+# sweep actually happens.
+#
+# What it catches: a suite that leaves a `VEYYON_*`/`PI_*`/`XDG_*` variable, `HOME`,
+# `TMPDIR`, `NODE_ENV`, the working directory, or the active profile changed makes every
+# file that runs after it order-dependent, and the failures land on innocent suites. One
+# lingering `VEYYON_NO_TITLE` made three title-generator suites fail while each passed
+# alone; two suites exported the developer's real agent dir to the whole process. A
+# changed-files gate cannot see a leak introduced by a suite it did not touch, e.g. when a
+# helper both files share starts leaking.
+name: Leak sweep
+
+on:
+  schedule:
+    # Nightly at 07:00 UTC, an hour before the hashline soak so the two long jobs do not
+    # contend, and off the release path so neither ever blocks a cut.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: "leak-sweep-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    name: Every test file, one process each
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Build native addon
+        # Suites that exercise grep/PTY/hashline through the compiled addon would fail to
+        # RUN without it, and a file whose tests do not run yields no leak verdict at all —
+        # the sweep would report "failed to run" for them and silently cover less.
+        run: bun run ci:build:native
+      - name: Tracer self-tests
+        # Fail loudly on a broken tracer rather than sweeping 3,200 files and calling them
+        # all clean.
+        run: bun test scripts/find-test-leaks.test.ts
+      - name: Sweep every test tree
+        # The script takes directories and walks them, skipping node_modules and fixtures.
+        # It exits non-zero when any file leaks or fails to run, and prints the offending
+        # key with its before -> after values plus the test index that first changed it.
+        run: bun scripts/find-test-leaks.ts packages scripts

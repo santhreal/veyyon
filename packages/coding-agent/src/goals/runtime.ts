@@ -1,7 +1,5 @@
 import { escapeXmlText, prompt, Snowflake } from "@veyyon/utils";
-import goalBudgetLimitPrompt from "../prompts/goals/goal-budget-limit.md" with { type: "text" };
-import goalContinuationPrompt from "../prompts/goals/goal-continuation.md" with { type: "text" };
-import goalModeActivePrompt from "../prompts/goals/goal-mode-active.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTokenUsage } from "./state";
 
 export interface GoalRuntimeHost {
@@ -79,10 +77,10 @@ export function goalTokenDelta(current: GoalTokenUsage, baseline: GoalTokenUsage
 export function renderGoalPrompt(kind: GoalPromptKind, goal: Goal): string {
 	const template =
 		kind === "active"
-			? goalModeActivePrompt
+			? PROMPTS["goals/goal-mode-active"].text
 			: kind === "continuation"
-				? goalContinuationPrompt
-				: goalBudgetLimitPrompt;
+				? PROMPTS["goals/goal-continuation"].text
+				: PROMPTS["goals/goal-budget-limit"].text;
 	return prompt.render(template, {
 		objective: escapeXmlText(goal.objective),
 		tokensUsed: String(goal.tokensUsed),

@@ -10,7 +10,7 @@ From the repo root (or `--cwd=packages/coding-agent` for package-local runs):
 | Command | What runs |
 | --- | --- |
 | `bun run check` | The gate: type check (TS + Rust) and lint, in parallel. Run this before every push. |
-| `bun run check:ts` | Biome + `tsc --noEmit` across every package. |
+| `bun run check:ts` | `tsc --noEmit` across every package. Despite the name it runs no Biome; `bun run check:tools` is the Biome gate. |
 | `bun run test` | The local TS test runner (`scripts/ci-test-ts.ts local`). |
 | `bun run test:ts` | Full local TypeScript suite (`local-ts`). |
 | `bun run ci:test:ts:workspace` | The exact workspace bucket CI runs. |
@@ -23,8 +23,8 @@ jobs download a prebuilt addon artifact instead.
 
 | Mode | Contents |
 | --- | --- |
-| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent) + script gates |
-| `native` | natives, tui, typescript-edit-benchmark |
+| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, deepswe-bench) + script gates |
+| `native` | natives, tui, typescript-edit-benchmark, metaharness, collab-web |
 | `coding-agent-singleton` | Settings / global-state suites (one process; do not chunk) |
 | `coding-agent-ui` | TUI/interactive suites (chunk size 5; ghostty GC ceiling) |
 | `coding-agent-runtime` | Session, RPC, SDK, MCP, extensions |
@@ -33,6 +33,19 @@ jobs download a prebuilt addon artifact instead.
 | `local` / `local-ts` | Full local TS (+ Rust for `local`) |
 
 New tests join these buckets by path and content markers in `ci-test-ts.ts`. Do not invent a second runner.
+
+A new PACKAGE joins by being added to one of the three lists in `ci-test-ts.ts`:
+`fastWorkspacePackages`, `nativeAndIntegrationPackages`, or
+`localOnlyWorkspacePackages`. Pick the fast list unless the package starts
+servers, loads the native addon, or needs a browser-ish environment.
+`packages/coding-agent` is the one exception: its suites are discovered by
+walking the package, so it is not listed.
+
+Nothing about a package makes the runner find it. Seven packages shipped working
+test suites that no mode executed, for exactly that reason, until
+`scripts/workspace-test-coverage.test.ts` began checking the lists against the
+tree. That guard fails if a package ships tests and no list names it, and also if
+a list names a package that ships none, so neither direction can drift again.
 
 ## Quality bar (SQLite-grade)
 
@@ -114,6 +127,154 @@ developer’s real `~/.veyyon`.
 Contract tests for the helper itself live in
 `packages/coding-agent/test/helpers/settings-test-state.test.ts`.
 
+### Finding out which suite leaked
+
+When a file passes alone and fails in a full run, the failure is on the victim and
+the cause is in some earlier file. To find that file, run:
+
+```sh
+bun scripts/find-test-leaks.ts packages/utils/test          # a whole tree
+bun scripts/find-test-leaks.ts packages/utils/test/profiles.test.ts
+```
+
+Each file runs in its own process with the leak tracer preloaded, and the script
+prints what the file left changed:
+
+```
+packages/utils/test/install-id.test.ts
+  left behind  env.VEYYON_CODING_AGENT_DIR: (unset) -> /home/you/.veyyon/profiles/work/agent
+    first changed by test #1: env.VEYYON_CODING_AGENT_DIR
+```
+
+The verdict is per FILE. A suite may move `VEYYON_CONFIG_DIR` between its own tests
+and restore it in `afterAll` — `logger-file-transport-rebind` does, because
+following the move is what it tests — and that is not a leak. What breaks other
+files is state still changed once the file is done, so that is what the script
+reports. The per-test trail below each finding tells you where to look first.
+
+Tracked state is the process-wide state that decides where files land. Two kinds:
+
+- Environment and cwd: every `VEYYON_*`, `PI_*`, and `XDG_*` variable, plus `HOME`,
+  `USERPROFILE`, `TMPDIR`, `NODE_ENV`, and the working directory.
+- Module state in the resolver, reported with a `state.` prefix: the active profile,
+  the resolved agent dir, the project dir, and the pre-profile agent-dir baseline.
+
+That last one is worth knowing about, because it is invisible everywhere else. The
+baseline is what `setProfile(undefined)` returns to, `setAgentDir` overwrites it, and
+no variable or resolved path shows the change. A suite could restore the environment,
+the profile, and the agent dir perfectly and still leave the baseline pointing inside
+a temp directory it had already deleted; the next file anywhere in the process that
+returned to the default profile would resolve there. Register new module state as a
+probe in `packages/utils/test/helpers/global-state-leak-probes.ts` rather than adding
+a special case to the tracer.
+
+The trap most of the findings shared is worth knowing before you write a restore:
+neither setter is its own inverse.
+
+- `setAgentDir(dir)` WRITES `VEYYON_CODING_AGENT_DIR`, so restoring with
+  `setAgentDir(theOriginal)` puts the resolver back and leaves the variable set. If
+  it had been unset, the suite has just exported the developer's real agent dir to
+  every file after it. It also CLEARS the active profile, so a suite that ran under
+  a named profile hands every later file the default one.
+- `setProfile(theOriginal)` WRITES `VEYYON_PROFILE` and exports the profile's agent
+  dir, so restoring a profile that way leaves both variables behind — and every
+  child process a later suite spawns inherits a profile nobody chose.
+
+Use `enterIsolatedConfigRoot` or one of the file-level helpers above. Outside
+`packages/coding-agent`, or for a suite that only pulls these two levers, use the
+pair that owns the whole undo:
+
+```ts
+const dirOverrides = captureDirOverrides();   // from @veyyon/utils/dirs
+afterEach(() => restoreDirOverrides(dirOverrides));
+```
+
+It restores both variables (including back to absent) and the in-memory active
+profile, then rebuilds the resolver. Its contract is pinned in
+`packages/utils/test/dir-overrides-restore.test.ts`.
+
+Two file-level isolation helpers cannot be stacked. `afterAll` callbacks run in
+REGISTRATION order, so the second helper's restore — whose snapshot was taken after
+the first had already redirected the agent dir — puts that redirection back on the
+way out. `claimFileLevelIsolation` refuses the combination with a message naming the
+replacement: `useIsolatedAgentDir({ globalSettings: true })`.
+
+One more ordering rule, from the same hunt: if a suite mocks `os.homedir()`, take
+the mock OFF before restoring the overrides. Restoring rebuilds the dir resolver, and
+rebuilding it while `homedir()` still answers with a temp path bakes that path into
+every resolved dir for the rest of the process.
+
+The tracer lives in `packages/utils/test/helpers/global-state-leak-tracer.ts` with
+its `--preload` shim beside it, and its own contract tests are in
+`scripts/find-test-leaks.test.ts`.
+
+### A fixture that leaks on purpose must not be named `*.test.ts`
+
+`scripts/find-test-leaks.ts` needs suites that genuinely leak, so
+`packages/utils/test/fixtures/` holds three of them: one sets `VEYYON_CONFIG_DIR` and
+never restores it, one activates a profile and leaves it active, and one restores
+properly so the tracer can be shown not to cry wolf.
+
+Name such a fixture `*.fixture.ts`, never `*.fixture.test.ts`. `bun test <dir>` collects
+every name containing `.test`, `_test_`, `.spec`, or `_spec_`, at any depth, so a
+fixture inside the glob runs in ordinary directory runs and poisons every file after it.
+That is what made this repository's full-suite pollution look nondeterministic for weeks:
+the victims were whichever suites happened to run after the fixture.
+
+Drive a fixture by passing its path to `bun test`:
+
+```sh
+bun test ./packages/utils/test/fixtures/leaky-suite.fixture.ts
+```
+
+An explicit path runs the file whatever its name is. A path WITHOUT the leading `./` (or
+an absolute prefix) is treated as a name FILTER instead, and a filter only matches files
+discovery already found, so a `*.fixture.ts` target silently matches nothing. This is why
+`traceFile` resolves the target to an absolute path before spawning.
+
+`packages/utils/test/deliberate-leak-fixtures-are-not-collectible.test.ts` locks the naming
+and keeps the fixtures honest, so the rename cannot be undone by accident.
+
+### When the leak is not tracked state
+
+`find-test-leaks.ts` reports the state it knows about: environment, cwd, and the dir
+resolver. A leak outside that set — a module-level singleton, a spy nobody restored, a
+timer still running — leaves no trace for it to find. For those, search by bisecting the
+file list instead:
+
+```sh
+bun scripts/find-order-polluter.ts packages/coding-agent/test/victim.test.ts
+bun scripts/find-order-polluter.ts packages/coding-agent/test/victim.test.ts --name "the one failing test"
+```
+
+The script proves two premises before it searches, and refuses rather than guess if
+either fails: the victim passes alone, and it fails with the whole candidate list in
+front of it. Then it halves the list, keeping the half that still reproduces, and prints
+the file plus a two-file command you can run yourself.
+
+Order is the part that needs care. Bun runs the files given on the command line in that
+order, and a leak only reaches the victim from a file that ran BEFORE it — so the
+candidate list, which defaults to name order, has to resemble the order the failing run
+used. When the search refuses at premise 2, capture the real order from a junit report of
+the failing run and feed it back:
+
+```sh
+bun test packages/coding-agent/test --reporter=junit --reporter-outfile=/tmp/order.xml
+rg -o 'name="[^"]+\.test\.ts' /tmp/order.xml | sed 's/name="//' > /tmp/order.txt
+# Only files that ran BEFORE the victim can pollute it, so cut the list there.
+sed "/$(basename <victim>)/q" /tmp/order.txt > /tmp/order-prefix.txt
+bun scripts/find-order-polluter.ts <victim> --order /tmp/order-prefix.txt
+```
+
+If neither half reproduces the failure on its own, the script says so and prints the
+smallest set it still reproduces with: some failures need two leaks together, and naming
+one file would be a guess.
+
+Its own contract tests are in `scripts/find-order-polluter.test.ts`. They put their
+fixture suites in the system temp directory rather than in the tree, because an identical
+fixture pair leaks a module-level global reliably from outside the repository and
+inconsistently from inside it.
+
 ### Assert every root, not the one you happened to redirect
 
 An isolation assertion only proves the one path it names. This has now caused
@@ -190,10 +351,53 @@ The levers that do work are:
 
 - Set `HOME` in a **spawned** process's environment, which it reads before its own
   resolver runs. Use `hermeticSpawnEnv()` for this.
-- Point the app's own override, `VEYYON_CONFIG_DIR`, at a temporary directory. It
-  is joined onto the home directory, so a relative path back out of the home lands
-  the whole config root in your temp directory.
+- Point the app's own override, `VEYYON_CONFIG_DIR`, at a temporary directory. It is a
+  NAME joined onto the home directory, not a path that replaces it, so you pass a
+  relative value that walks back out of the home: `path.relative(os.homedir(),
+  tempRoot)`. An absolute value is refused, because it used to be joined anyway and
+  quietly produce `~/tmp/your-temp-root`.
 - Use `XDG_CACHE_HOME` and friends for cache and state paths.
+
+Do not write that redirection by hand. There is one implementation of it,
+`enterIsolatedConfigRoot(label)` in `packages/utils/test/helpers/isolated-config-root.ts`,
+callable from any package and from a `beforeEach`. It puts the root under `os.tmpdir()`,
+computes the relative value, refreshes the resolver, and clears `VEYYON_CODING_AGENT_DIR`,
+which you will not think of and which outranks the config root outright when no named
+profile is active: `setAgentDir` writes that variable and nothing clears it, so an earlier
+suite's agent-dir isolation silently defeats your config root. For a whole file, use the
+hook form `useIsolatedConfigRoot()` in
+`packages/coding-agent/test/helpers/isolated-agent-dir.ts`, which wraps it.
+
+Never isolate by inventing a fresh config-dir NAME (`.veyyon-<suite>-<id>`). It reads as
+isolation and is not: the name is joined onto `os.homedir()`, so the tree lands in the real
+home whenever the suite runs outside the test runner's sandboxed `HOME`, which is what a
+bare `bun test path/to/file` does. That left 133 abandoned `~/.veyyon-*` directories in a
+real home, and the real-data tripwire now refuses any write to a `~/.veyyon*` path so it
+cannot happen again.
+
+To give a whole package one convention, export a hook from its shared test setup and
+call it in every suite, the way `useMnemopiTestEnv()` in `packages/mnemopi/test/setup.ts`
+does. Export a FUNCTION; do not register `beforeEach`/`beforeAll` at the setup module's
+top level. A shared setup module is imported once per test process, so hooks registered
+at its module scope belong only to the suite that imported it FIRST. Every other file
+importing it runs with no hooks at all, silently: mnemopi's module resets had that shape,
+and eleven of the twelve files importing them were getting none.
+
+Do not reach the other way either and enter a root at module scope without restoring it.
+It survives past the package's own suites and leaks `VEYYON_CONFIG_DIR` into whatever
+else shares the process. That was tried here, and it broke a utils test asserting the
+config-root refusal message, which then reported a mnemopi temp path.
+
+Restore in `afterAll` and the tree is removed for you. `process.once("exit", ...)` is not
+an alternative: it does not run under `bun test`, so it is dead code that reads like
+cleanup. As a backstop, `enterIsolatedConfigRoot` sweeps on its first use in a process,
+deleting any temp root whose owning process id no longer answers, so a root abandoned by
+a crashed run is reclaimed by the next one instead of accumulating.
+
+For a suite that also needs `HOME` itself redirected, `enterTempHome()` in
+`packages/coding-agent/test/helpers/temp-home.ts` applies both halves: `HOME` for the code
+that reads it at call time, such as shell completion paths, and the config root that `HOME`
+cannot reach. Its `restore()` puts every variable back as it found it and deletes the tree.
 
 ### Layer one: every test child gets a disposable home
 
@@ -215,6 +419,20 @@ delivered three ways: the root `bunfig.toml` for runs at the repository root, a
 one-line pointer in each package's `bunfig.toml` for runs inside a package, and an
 explicit `--preload` on every command the runner spawns. Only the pointer repeats;
 the tripwire itself has one home.
+
+If you add a package that has tests, add its `bunfig.toml` pointer at the same
+time. A package without one runs its whole suite unguarded as soon as anyone runs
+`bun test` from inside it, which is how most suites are run while working.
+`packages/utils/test/tripwire-preload-coverage.test.ts` fails when a package with
+test files has no pointer, when a pointer names a file that does not exist, and
+when a second copy of the tripwire appears anywhere under `packages/`.
+
+Bun does not read `.gitignore` when it looks for tests, so any directory holding
+cloned third-party repositories has to be pruned explicitly through
+`pathIgnorePatterns`, in the root config and in that package's own config. The
+deepswe benchmark's `repo-cache/` is the case that exists today: 113 upstream
+projects with their own suites, which a sweep will otherwise collect and fail on
+dependencies this repository does not install.
 
 It covers what prevention cannot: a hardcoded absolute path, a suite that restores
 the real `HOME` in `afterEach`, and a bare `bun test path/to/file`. It wraps
@@ -281,7 +499,7 @@ narrative comment.
 | `packages/coding-agent/test/corpus/regressions.runner.test.ts` | Dispatches rows to shipped APIs |
 | `packages/coding-agent/test/helpers/corpus-loader.ts` | Load/validate corpus (rejects missing expect / weak contract text) |
 | `packages/<pkg>/test/fixtures/` | Local JSON/JSONL/TOML tables for one package |
-| `packages/coding-agent/test/fixtures/workspaces/` | Multi-file trees for edit/grep/glob/hashline |
+| `packages/coding-agent/test/helpers/integration-workspace.ts` | Multi-file trees for edit/grep/glob/hashline: a REAL temp workspace driven through the real agent loop, not a checked-in tree |
 | `packages/hashline/test/*` | Model for pure contract + adversarial multi-file suites |
 | `packages/coding-agent/test/rpc-command-contracts.test.ts` | RPC frame id/parse/background contracts (no provider keys) |
 | `crates/*/tests/fixtures/` | Shared inputs for native crate tests |
@@ -307,7 +525,104 @@ Name files and ids for the **behavior** (`list-limit-equals-ceiling`,
 | TUI | `packages/tui/test/`, `coding-agent/test/modes/` |
 | Natives | `packages/natives/test/`, `crates/veyyon-*/` |
 | Install / binary smoke | `scripts/install-tests/`, `veyyon --smoke-test` |
+| Install per environment | `scripts/installer-environment-matrix.test.ts` + `scripts/install-tests/environments.toml` |
 | Regression corpus | `packages/coding-agent/test/corpus/regressions/` |
+
+## Installer gates per platform
+
+The installer is a shipped product surface on three platforms, and each one has
+its own gate:
+
+| Platform | Gate | What it drives |
+|---|---|---|
+| Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04` and `macos-14`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
+| Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
+| Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, uninstall |
+| Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
+
+The Windows end-to-end test edits the user PATH and the CurrentUserAllHosts
+PowerShell profile for real, because the installer does and testing a fake would
+prove nothing. It captures both before the run, asserts what the uninstall
+reclaimed, and restores them in a `finally` block. It refuses to start unless
+`VEYYON_INSTALL_E2E=1` is set, so running the suite on your own machine cannot
+edit your PATH by surprise:
+
+```powershell
+$env:VEYYON_INSTALL_E2E = "1"; pwsh -File scripts/install-tests/e2e.test.ps1
+```
+
+`-Local` on Windows is the counterpart of `--local` on Linux and macOS: it
+installs the binary the checkout has already built rather than downloading a
+release, which is what lets the real installer run in CI with no published
+release and no network.
+
+## Adding an environment to the install matrix
+
+`scripts/installer-environment-matrix.test.ts` runs `sh scripts/install.sh --local` for
+real, once per case in `scripts/install-tests/environments.toml`, inside a `$HOME` that
+exists only for that case. Every case gets the same assertions: exit 0, the binary in
+place byte-identically and executable, `vey` pointing at it, the PATH line in exactly
+the rc that shell reads and in no other, every pre-existing byte of that rc preserved,
+the completion files at the paths the case's XDG variables imply, doctor's native
+self-test passing, no staging file left behind, and a second run changing nothing.
+
+To cover a new environment, add a case to the TOML. You do not touch the test:
+
+```toml
+[[case]]
+name = "fish uses fish_add_path in config.fish"
+shell = "/usr/local/bin/fish"
+home_dir = "fish-default"
+install_dir = ".local/bin"
+expect_rc = ".config/fish/config.fish"
+expect_completions = [".config/fish/completions/veyyon.fish"]
+```
+
+`pre_files` seeds files under the disposable `$HOME` before installing, `pre_symlinks`
+seeds links (a `$HOME` in either is expanded), `expect_absent` lists paths that must not
+be created, and `install_dir_on_path` puts the install directory on `$PATH` so the
+installer has nothing to add and must leave every rc alone.
+
+The installed binary is a stand-in script rather than the compiled `veyyon`: what is
+under test is the installer's handling of the environment, and a 100 MB build per case
+would make the matrix unrunnable. The stand-in cannot silently fall behind, because one
+test reads the probes back out of `install.sh` and fails if the installer starts asking
+the binary for something the stand-in does not answer.
+
+## Waiting for a TUI frame
+
+A suite that drives a real `TUI` against a `VirtualTerminal` has to wait for the
+frame before it asserts on the screen. Ask the engine, do not guess:
+
+```ts
+import { settleFrames } from "../../tui/test/helpers/settle-frames";
+
+rows.setLines(["status-after"]);
+tui.requestRender();
+await settleFrames(term, tui);
+expect(view(term)[0]).toBe("status-after");
+```
+
+`settleFrames` pumps timers until `tui.renderPending` is false (no frame is
+requested, throttled, or held by a quiet window) and the engine's observable
+state has stopped moving. It throws with the last state if frames never stop,
+because an engine that keeps re-rendering is a defect and a quiet return would
+surface later as an unrelated assertion failure.
+
+Two older shapes are banned, and both shipped real flakes that only failed in a
+full sweep and read exactly like regressions:
+
+- **A fixed sleep.** `await Bun.sleep(40)` is a bet that the throttled frame
+  arrives in 40 ms. Under sweep load it does not, and `overlay-scroll` read
+  `"status-before"` one frame after setting the text to `"status-after"`.
+- **Sampling counters until two samples match.** That is indistinguishable from
+  an engine that has not started: nothing changed because nothing has happened
+  yet. The pinned-composer suite froze a view under that rule and three
+  still-queued wheel events then moved it.
+
+Suites with a fake scheduler they step by hand (`StressRenderScheduler`) do not
+use `settleFrames`; they drain their own scheduler, which is exact by
+construction.
 
 ## Anti-patterns (these fail review)
 
@@ -343,4 +658,8 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against tree on 2026-07-21.*
+This page carries no verification stamp. It was last read against the tree on
+2026-07-21; the isolation, tripwire, and preload sections were re-checked
+against the code on 2026-07-25, as was the TUI frame-settling section. Stamping it means asserting every claim on the
+page, which nobody has done yet; see `scripts/check-doc-freshness.ts` for the
+form a stamp takes and what it promises.

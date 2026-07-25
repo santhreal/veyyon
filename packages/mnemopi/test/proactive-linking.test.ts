@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import "./setup";
 import { configureRecallFeatures } from "@veyyon/mnemopi/config";
 import { BeamMemory } from "@veyyon/mnemopi/core/beam";
 import type { EpisodicGraph, RelatedMemory } from "@veyyon/mnemopi/core/episodic-graph";
 import { Mnemopi } from "@veyyon/mnemopi/core/memory";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 const previousProactive = process.env.MNEMOPI_PROACTIVE_LINKING;
 

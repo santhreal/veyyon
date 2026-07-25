@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import type { StopReason, Usage } from "@veyyon/ai";
 import type { GeneratedProvider } from "@veyyon/catalog/models";
-import { emptyCost, getBundledModel } from "@veyyon/catalog/models";
+import { emptyCost, getBundledModel, hasBillableCost } from "@veyyon/catalog/models";
 import { DAY_MS, getConfigRootDir, getStatsDbPath } from "@veyyon/utils";
 import { tableExists } from "@veyyon/utils/sqlite";
 import { classifyAgentType } from "./parser";
@@ -255,10 +255,6 @@ export async function initDb(): Promise<Database> {
 	backfillMissingCatalogCosts(db);
 	backfillForkDuplicates(db);
 	return db;
-}
-
-function hasBillableCost(cost: ModelCost): boolean {
-	return cost.input !== 0 || cost.output !== 0 || cost.cacheRead !== 0 || cost.cacheWrite !== 0;
 }
 
 function getBundledModelCost(provider: string, modelId: string): ModelCost | null {

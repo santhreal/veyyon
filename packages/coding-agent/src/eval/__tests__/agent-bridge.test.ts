@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
+import { useIsolatedAgentDir } from "../../../test/helpers/isolated-agent-dir";
 import { Settings } from "../../config/settings";
 import type { LocalProtocolOptions } from "../../internal-urls";
 import { AgentProtocolHandler } from "../../internal-urls/agent-protocol";
@@ -24,21 +25,32 @@ import { disposeAllVmContexts } from "../js/context-manager";
 import { executeJs } from "../js/executor";
 import { disposeAllKernelSessions, executePython } from "../py/executor";
 
+// The Python-runtime cases below start a real kernel, which calls `Settings.init` and opens
+// `AgentStorage` — that resolves `agent.db` under the ACTIVE PROFILE's agent dir, so without
+// this the suite creates storage in the developer's real
+// `~/.veyyon/profiles/<profile>/agent`. It only passed in a full run because some earlier
+// suite in the same process happened to have isolated the agent dir already; run this file
+// on its own and the real-data tripwire refuses the mkdir.
+useIsolatedAgentDir();
+
 const taskAgent = {
 	name: "task",
 	description: "Task agent",
 	systemPrompt: "Run the task.",
 	source: "bundled",
 	spawns: "*",
-	model: ["@task"],
 } satisfies AgentDefinition;
 
+// No `model:` here. It used to pin `["@smol"]`, a role alias, which stopped resolving when
+// role expansion lost its built-in chain: an unset role now reports that it names no model
+// instead of silently reaching for a small one. Nothing in this suite is about model
+// resolution — the fixture exists to be a SECOND agent to spawn by name — so pinning a
+// model only coupled it to a subsystem it does not test.
 const reviewerAgent = {
 	name: "reviewer",
 	description: "Reviewer agent",
 	systemPrompt: "Review the task.",
 	source: "bundled",
-	model: ["@smol"],
 } satisfies AgentDefinition;
 
 interface SessionOptions {
@@ -63,8 +75,8 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 		options.settings ??
 		Settings.isolated({
 			"async.enabled": false,
-			"task.isolation.mode": "none",
-			"task.enableLsp": true,
+			"subagent.isolation.mode": "none",
+			"subagent.enableLsp": true,
 		});
 	const artifactsDir = options.artifactsDir ?? null;
 	return {
@@ -240,8 +252,8 @@ describe("runEvalAgent", () => {
 					session: makeSession({
 						settings: Settings.isolated({
 							"async.enabled": false,
-							"task.isolation.mode": "none",
-							"task.maxRecursionDepth": 0,
+							"subagent.isolation.mode": "none",
+							"subagent.maxRecursionDepth": 0,
 						}),
 					}),
 				},
@@ -258,8 +270,8 @@ describe("runEvalAgent", () => {
 						depth: 1,
 						settings: Settings.isolated({
 							"async.enabled": false,
-							"task.isolation.mode": "none",
-							"task.maxRecursionDepth": 1,
+							"subagent.isolation.mode": "none",
+							"subagent.maxRecursionDepth": 1,
 						}),
 					}),
 				},
@@ -290,11 +302,11 @@ describe("runEvalAgent", () => {
 			modelString: "p/fallback",
 			settings: Settings.isolated({
 				"async.enabled": false,
-				"task.isolation.mode": "none",
-				"task.enableLsp": true,
+				"subagent.isolation.mode": "none",
+				"subagent.enableLsp": true,
 				// Default task.maxRecursionDepth is 2, which would now (correctly)
 				// block depth=2 — widen it so the test still exercises depth=2.
-				"task.maxRecursionDepth": -1,
+				"subagent.maxRecursionDepth": -1,
 			}),
 		});
 
@@ -532,9 +544,9 @@ describe("agent() through eval runtimes", () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-agent-js-parallel-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
-			"task.isolation.mode": "none",
-			"task.enableLsp": true,
-			"task.maxConcurrency": 2,
+			"subagent.isolation.mode": "none",
+			"subagent.enableLsp": true,
+			"subagent.maxConcurrency": 2,
 		});
 		const { session, sessionFile } = makeEvalSession(tempDir, "js-agent-parallel", settings);
 		mockAgents();
@@ -601,9 +613,9 @@ describe("agent() through eval runtimes", () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-agent-py-parallel-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
-			"task.isolation.mode": "none",
-			"task.enableLsp": true,
-			"task.maxConcurrency": 2,
+			"subagent.isolation.mode": "none",
+			"subagent.enableLsp": true,
+			"subagent.maxConcurrency": 2,
 		});
 		const { session, sessionFile, sessionId } = makeEvalSession(tempDir, "py-agent-parallel", settings);
 		mockAgents();
@@ -628,9 +640,9 @@ describe("agent() through eval runtimes", () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-agent-py-interrupt-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
-			"task.isolation.mode": "none",
-			"task.enableLsp": true,
-			"task.maxConcurrency": 6,
+			"subagent.isolation.mode": "none",
+			"subagent.enableLsp": true,
+			"subagent.maxConcurrency": 6,
 		});
 		const { session, sessionFile, sessionId } = makeEvalSession(tempDir, "py-agent-interrupt", settings);
 		mockAgents();
@@ -947,8 +959,8 @@ describe("runEvalAgent isolation", () => {
 		return makeSession({
 			settings: Settings.isolated({
 				"async.enabled": false,
-				"task.isolation.mode": "auto",
-				"task.isolation.merge": "patch",
+				"subagent.isolation.mode": "auto",
+				"subagent.isolation.merge": "patch",
 				...overrides,
 			}),
 		});
@@ -1042,7 +1054,7 @@ describe("runEvalAgent isolation", () => {
 		});
 
 		// Branch is the configured merge mode, but `merge: false` must demote to patch.
-		const session = isolatedSession({ "task.isolation.merge": "branch" });
+		const session = isolatedSession({ "subagent.isolation.merge": "branch" });
 		const result = await runEvalAgent({ prompt: "migration", isolated: true, merge: false }, { session });
 
 		expect(isolatedSpy).toHaveBeenCalledTimes(1);
@@ -1220,7 +1232,7 @@ describe("runEvalAgent isolation", () => {
 		);
 		const mergeSpy = vi.spyOn(isolationRunner, "mergeIsolatedChanges");
 
-		const session = isolatedSession({ "task.isolation.merge": "branch" });
+		const session = isolatedSession({ "subagent.isolation.merge": "branch" });
 		await expect(runEvalAgent({ prompt: "scout", isolated: true }, { session })).rejects.toThrow(
 			/Merge failed.*garbage at end of loose object.*Captured patch preserved at \/artifacts\//s,
 		);
@@ -1244,7 +1256,7 @@ describe("runEvalAgent isolation", () => {
 			mergedBranchForNestedPatches: false,
 		});
 
-		const session = isolatedSession({ "task.isolation.merge": "branch" });
+		const session = isolatedSession({ "subagent.isolation.merge": "branch" });
 		await expect(runEvalAgent({ prompt: "scout", isolated: true }, { session })).rejects.toThrow(
 			/isolated apply failed.*Branch merge failed.*Captured branch preserved as veyyon\/task\//s,
 		);
@@ -1358,7 +1370,7 @@ describe("runEvalAgent isolation", () => {
 		);
 		const mergeSpy = vi.spyOn(isolationRunner, "mergeIsolatedChanges");
 
-		const session = isolatedSession({ "task.isolation.merge": "branch" });
+		const session = isolatedSession({ "subagent.isolation.merge": "branch" });
 		const result = await runEvalAgent({ prompt: "scout", isolated: true, apply: false }, { session });
 
 		expect(mergeSpy).not.toHaveBeenCalled();
@@ -1378,7 +1390,7 @@ describe("runEvalAgent isolation", () => {
 		);
 		const mergeSpy = vi.spyOn(isolationRunner, "mergeIsolatedChanges");
 
-		const session = isolatedSession({ "task.isolation.merge": "branch" });
+		const session = isolatedSession({ "subagent.isolation.merge": "branch" });
 		const result = await runEvalAgent({ prompt: "scout", isolated: true, apply: false }, { session });
 
 		expect(mergeSpy).not.toHaveBeenCalled();

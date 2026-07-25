@@ -99,7 +99,10 @@ function isWireAgentEvent(event: AgentSessionEvent): event is AgentSessionEvent 
 function isWireSessionEntry(entry: StoredSessionEntry): entry is StoredSessionEntry & WireSessionEntry {
 	return entry.type in WIRE_SESSION_ENTRY_TYPES;
 }
-const CONNECT_TIMEOUT_MS = 15_000;
+// How long the host waits for the REMOTE relay websocket to open. Crosses the
+// network, so it is deliberately more generous than the loopback broker budget
+// in launch/client.ts.
+const RELAY_CONNECT_TIMEOUT_MS = 15_000;
 /** Max bytes served per fetch-transcript reply (guest re-requests from `newSize`). */
 export const TRANSCRIPT_READ_CAP = 4 * 1024 * 1024;
 const TRANSCRIPT_ENTRY_TOO_LARGE_ERROR = `transcript entry exceeds transcript fetch cap (${TRANSCRIPT_READ_CAP} bytes)`;
@@ -277,7 +280,7 @@ export class CollabHost {
 
 		const timeout = setTimeout(
 			() => firstOpen.reject(new Error("timed out connecting to relay")),
-			CONNECT_TIMEOUT_MS,
+			RELAY_CONNECT_TIMEOUT_MS,
 		);
 		try {
 			await firstOpen.promise;

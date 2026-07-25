@@ -20,6 +20,7 @@ import {
 	TERMINAL,
 	wrapTmuxPassthrough,
 } from "@veyyon/tui/terminal-capabilities";
+import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 
 type MutableTerminalInfo = { id: string; imageProtocol: ImageProtocol | null };
@@ -577,14 +578,11 @@ describe("TUI inline-image budget", () => {
 		terminal.id = originalTerminalId;
 	});
 
-	async function settle(term: VirtualTerminal): Promise<void> {
-		for (let i = 0; i < 4; i++) {
-			const tick = Promise.withResolvers<void>();
-			process.nextTick(tick.resolve);
-			await tick.promise;
-			await Bun.sleep(40);
-			await term.flush();
-		}
+	/** Four fixed 40ms rounds before; the engine's own "a frame is owed" signal
+	 *  now, which covers an image pass that queues a follow-up render without
+	 *  betting on how many rounds that takes. */
+	async function settle(term: VirtualTerminal, tui: TUI): Promise<void> {
+		await settleFrames(term, tui);
 	}
 
 	function makeImage(budget: ImageBudget, key: string): Image {
@@ -621,7 +619,7 @@ describe("TUI inline-image budget", () => {
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 
 			const output = writes.join("");
 			expect(output).toContain("\x1b7\x1b[3A");
@@ -652,13 +650,13 @@ describe("TUI inline-image budget", () => {
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			writes.length = 0;
 
 			// A second image arrives, exceeding the cap of 1.
 			tui.addChild(makeImage(tui.imageBudget, "img-new"));
 			tui.requestRender();
-			await settle(term);
+			await settle(term, tui);
 
 			// The demotion never forces a destructive replay: committed
 			// placements are immutable, so no ED2/ED3 is emitted...
@@ -690,7 +688,7 @@ describe("TUI inline-image budget", () => {
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			// First paint transmits the data (a=t carrying the base64) and places it.
 			const initial = writes.join("");
 			expect(initial).toContain("\x1b_Ga=t");
@@ -699,7 +697,7 @@ describe("TUI inline-image budget", () => {
 
 			// Force a full redraw (clear scrollback + repaint the whole transcript).
 			tui.requestRender(true, { clearScrollback: true });
-			await settle(term);
+			await settle(term, tui);
 
 			// The repaint re-emits the placement but never re-sends the base64.
 			const repaint = writes.join("");

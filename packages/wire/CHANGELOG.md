@@ -4,6 +4,49 @@
 
 ## [Unreleased]
 
+### Added
+
+- `sealFrame`, `openFrame`, `SEAL_IV_BYTES`, `generateRoomKey`, `generateWriteToken` and
+  `importRoomKey`: the AES-256-GCM frame seal (`[12B IV][ciphertext+tag]`), which the host and the
+  browser guest had each implemented in full. The layout is a wire format like everything else here,
+  and its drift failure is the worst kind available: a GCM tag mismatch cannot distinguish a wrong
+  key from a wrong layout, so changing the IV length on one side presents as every frame failing to
+  authenticate with nothing naming the cause. Both sides now bind only their own frame type. Nothing
+  added here reaches for Node, so the browser guest still imports this package directly.
+
+- `importRoomKey` reports a wrong key length as a rejection instead of a synchronous throw. It
+  returned a promise but threw that one error synchronously, and the browser client hands the promise
+  to its socket without awaiting it, so a mangled link threw out of the socket's construction rather
+  than reaching the connection's error path.
+
+- `packEnvelope`, `unpackEnvelope`, and `rewriteEnvelopePeer`: the codec for the plaintext collab
+  envelope (`[4B uint32 BE peerId][sealed payload]`), now beside the `ENVELOPE_HEADER_LENGTH` they read.
+  The TUI host and the browser guest each carried a byte-identical copy, so one wire format had two
+  statements of its byte order and header width. That drift is silent by construction: the payload still
+  decrypts, because the room key is untouched, so the only symptom is a frame arriving at the wrong peer,
+  or broadcast to a room that should not have seen it. Nothing in the package needs Node, so the browser
+  guest imports it directly. No wire-format change.
+- `WELCOME_TIMEOUT_MS`, `SNAPSHOT_PROGRESS_TIMEOUT_MS`, and `TRANSCRIPT_TIMEOUT_MS`: the budgets a collab
+  guest allows the host for each of its three round trips. These describe the protocol, so they now live
+  beside the envelope and link constants instead of being declared separately by each guest. Both guests
+  import them; see the Fixed note below for why that matters.
+- `FallbackContent` is now part of `AssistantContent`. An Anthropic server-side-fallback marker
+  (`{ type: "fallback", from, to }`) was already reaching guests on assistant turns whose request opted
+  into provider fallbacks; the union simply did not admit it, so a client with an exhaustive `switch`
+  had no reason to handle a block it was told could not exist. Renderers should ignore it: it marks a
+  model hand-off and carries no content. No wire-format change.
+
+### Fixed
+
+- Collab guests no longer disagree about when a host has stopped answering. The TUI guest and the web
+  client each kept their own copy of the three join budgets, and `TRANSCRIPT_TIMEOUT_MS` had drifted to
+  10 s in the browser against 20 s in the terminal. A host taking 15 s to read a large transcript
+  answered the terminal fine and looked dead to a web viewer, which resolves the fetch to `null` on
+  timeout. Both now read 20 s from this package.
+- The module header cited a conformance test that did not exist. Conformance is now asserted per entry
+  variant in `packages/coding-agent/test/collab/web-wire-conformance.test.ts`, which fails the
+  typecheck when a host-side session entry stops being assignable to its wire shape.
+
 ## [16.3.0] - 2026-07-02
 
 ### Breaking Changes

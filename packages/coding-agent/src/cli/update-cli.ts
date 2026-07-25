@@ -13,13 +13,16 @@ import {
 	$which,
 	APP_ALIAS,
 	APP_NAME,
+	bareVersion,
 	compareSemver,
 	errorMessage,
 	getAutoUpdateStatePath,
+	getUpdateHistoryPath,
 	isEnoent,
 	isNewerVersion,
 	isValidSemver,
 	logger,
+	readPipeText,
 	tryWithFileLock,
 	VERSION,
 } from "@veyyon/utils";
@@ -133,7 +136,7 @@ function tryRealpath(p: string): string | undefined {
  * launcher. Veyyon ships GitHub-only, so there is no package-manager
  * (bun/npm/Homebrew/mise) install path to detect.
  */
-type UpdateMethod = "binary" | "source";
+export type UpdateMethod = "binary" | "source";
 
 type UpdateTarget = { method: "binary"; path: string } | { method: "source"; path: string };
 
@@ -259,7 +262,7 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 
 	const data = (await response.json()) as { tag_name?: unknown };
 	const tag = typeof data.tag_name === "string" ? data.tag_name : "";
-	const version = tag.replace(/^v/, "");
+	const version = bareVersion(tag);
 	if (!isValidSemver(version)) {
 		throw new Error(`GitHub returned a release with an unusable tag ${JSON.stringify(tag)} from ${url}`);
 	}
@@ -268,6 +271,112 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 		tag: tag.startsWith("v") ? tag : `v${version}`,
 		version,
 	};
+}
+
+/**
+ * One published release, with enough to render a row a person can choose from.
+ *
+ * `publishedAt` is optional because it is presentation, not identity: a release
+ * whose timestamp GitHub omits or returns unparseably is still a version you can
+ * install, and dropping it from the list to keep the shape tidy would hide a
+ * real option (Law 10). The rows render without a date instead.
+ */
+export interface ReleaseListing extends ReleaseInfo {
+	publishedAt?: string;
+}
+
+/**
+ * GitHub's page size for `/releases`. 100 is its documented maximum; asking for
+ * fewer would silently truncate the version list, which for a rollback picker
+ * means older versions simply are not offered and nothing says why.
+ */
+const RELEASES_PAGE_SIZE = 100;
+
+/** How many pages to walk. Bounded so a paging bug cannot loop forever. */
+const RELEASES_MAX_PAGES = 10;
+
+/**
+ * Every published release, newest first.
+ *
+ * Rollback needs the catalog, not just its newest entry, and this is the only
+ * place that asks for it. It reads the same source as {@link getLatestRelease}
+ * so the picker can never offer a version the updater cannot install, and it
+ * applies the same exclusions GitHub's `releases/latest` applies implicitly:
+ * drafts are unpublished and prereleases are not what `veyyon update` installs,
+ * so offering either would let you roll INTO a version the update path would
+ * immediately roll you back out of.
+ *
+ * A release with an unusable tag is SKIPPED rather than fatal — one malformed
+ * tag in a long history should not deny you the other fifty versions — but an
+ * empty result is an ERROR, because "no versions exist" and "the request
+ * failed in a way we did not classify" look identical to a caller, and the
+ * quiet reading of that is an empty picker that looks like a working one.
+ */
+export async function getAllReleases(timeoutMs: number = RELEASE_METADATA_TIMEOUT_MS): Promise<ReleaseListing[]> {
+	const releases: ReleaseListing[] = [];
+	const seen = new Set<string>();
+	for (let page = 1; page <= RELEASES_MAX_PAGES; page++) {
+		const url = `${GITHUB_RELEASES_API}?per_page=${RELEASES_PAGE_SIZE}&page=${page}`;
+		const batch = await fetchReleasePage(url, timeoutMs);
+		if (batch.length === 0) break;
+		for (const entry of batch) {
+			// A tag can legitimately repeat across pages when a release is published
+			// mid-walk and shifts the pagination window; keeping the first sighting
+			// keeps the list a set of versions rather than a list of sightings.
+			if (seen.has(entry.version)) continue;
+			seen.add(entry.version);
+			releases.push(entry);
+		}
+		if (batch.length < RELEASES_PAGE_SIZE) break;
+	}
+
+	if (releases.length === 0) {
+		throw new Error(
+			`No published releases found for ${REPO} — a draft or prerelease does not count, and an empty list here means there is nothing to roll back to`,
+		);
+	}
+
+	releases.sort((a, b) => compareSemver(b.version, a.version));
+	return releases;
+}
+
+/** One page of the releases list, already filtered to installable releases. */
+async function fetchReleasePage(url: string, timeoutMs: number): Promise<ReleaseListing[]> {
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			headers: { "User-Agent": GITHUB_API_USER_AGENT, Accept: "application/vnd.github+json" },
+			signal: withTimeoutSignal(timeoutMs),
+		});
+	} catch (err) {
+		if (isTimeoutError(err)) {
+			throw new Error(`Timed out fetching the release list after ${Math.round(timeoutMs / 1000)}s`, { cause: err });
+		}
+		throw err;
+	}
+	if (!response.ok) {
+		const hint =
+			response.status === 403 || response.status === 429
+				? " — GitHub is rate-limiting this address; retry in a few minutes"
+				: "";
+		throw new Error(
+			`Failed to fetch the release list from ${url}: HTTP ${response.status} ${response.statusText}${hint}`,
+		);
+	}
+
+	const data: unknown = await response.json();
+	if (!Array.isArray(data)) {
+		throw new Error(`Expected a list of releases from ${url}, got ${typeof data}`);
+	}
+	return data.flatMap(entry => {
+		const record = entry as { tag_name?: unknown; draft?: unknown; prerelease?: unknown; published_at?: unknown };
+		if (record.draft === true || record.prerelease === true) return [];
+		const tag = typeof record.tag_name === "string" ? record.tag_name : "";
+		const version = bareVersion(tag);
+		if (!isValidSemver(version)) return [];
+		const publishedAt = typeof record.published_at === "string" ? record.published_at : undefined;
+		return [{ tag: tag.startsWith("v") ? tag : `v${version}`, version, publishedAt }];
+	});
 }
 
 /**
@@ -563,6 +672,34 @@ function formatVerificationFailure(result: InstalledVersionVerification, expecte
 	return `could not verify updated version${result.path ? ` at ${result.path}` : ""}`;
 }
 
+/**
+ * The target of `filePath` if it is a symlink, else null.
+ *
+ * `lstat` rather than `stat`, deliberately: the question is whether this PATH is a
+ * link, not what sits at the end of it. A missing path is not a symlink.
+ */
+async function readLinkIfSymlink(filePath: string): Promise<string | null> {
+	try {
+		const stats = await fs.promises.lstat(filePath);
+		if (!stats.isSymbolicLink()) return null;
+		return await fs.promises.readlink(filePath);
+	} catch (err) {
+		if (isEnoent(err)) return null;
+		throw err;
+	}
+}
+
+/**
+ * Delete a file, tolerating only its absence.
+ *
+ * The THROW is the point, and there is exactly one place that wants it: clearing
+ * the swapped-in binary so the backup can be renamed back. If that delete fails
+ * the rollback cannot proceed, and the caller turns the throw into the
+ * recovery-instructions error. Everywhere else — cleaning a temp download, a
+ * partial file, a backup — use {@link removeFileBestEffort}: those cleanups run
+ * inside a catch, and a failure there REPLACES the failure being reported, which
+ * is how "cannot write into this directory" became "cannot unlink vey.new".
+ */
 async function unlinkIfExists(filePath: string): Promise<void> {
 	try {
 		await fs.promises.unlink(filePath);
@@ -572,7 +709,7 @@ async function unlinkIfExists(filePath: string): Promise<void> {
 }
 
 /**
- * Remove a backup binary without letting the removal abort a completed update.
+ * Remove a file without letting the removal abort or mask what is being reported.
  *
  * On Windows the executable that was just moved aside is still mapped as the
  * running process image, so unlinking it fails with EPERM/EACCES until this
@@ -581,7 +718,7 @@ async function unlinkIfExists(filePath: string): Promise<void> {
  * is reclaimed by {@link sweepStaleBackups} on the next update once it is no
  * longer in use. Returns whether the file is gone.
  */
-async function removeBackupBestEffort(filePath: string): Promise<boolean> {
+async function removeFileBestEffort(filePath: string): Promise<boolean> {
 	try {
 		await fs.promises.unlink(filePath);
 		return true;
@@ -615,7 +752,7 @@ export async function sweepStaleBackups(targetPath: string): Promise<void> {
 		// → dot-separated numeric run. Anything else is an unrelated *.bak file.
 		const middle = entry.slice(base.length + 1, entry.length - ".bak".length);
 		if (middle.length > 0 && !/^\d+(\.\d+)*$/.test(middle)) continue;
-		await removeBackupBestEffort(path.join(dir, entry));
+		await removeFileBestEffort(path.join(dir, entry));
 	}
 }
 
@@ -642,6 +779,22 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 		if (tempSize === 0) {
 			throw new Error("Downloaded update is empty; not replacing the installed binary");
 		}
+		// A symlinked binary is somebody's deliberate setup — `~/.local/bin/vey`
+		// pointing at a checkout's build is how you develop on veyyon — and renaming
+		// over it REPLACES THE LINK with a regular file. The checkout survives, but
+		// nothing points at it any more, and the swap said nothing: you keep editing
+		// a build that no longer runs. Writing through the link instead would be
+		// worse, since it would clobber the build artifact at the other end. So
+		// refuse, and say which link, where it goes, and what to do (Law 10: fail
+		// closed rather than degrade silently).
+		const linkTarget = await readLinkIfSymlink(options.targetPath);
+		if (linkTarget !== null) {
+			throw new Error(
+				`${options.targetPath} is a symlink to ${linkTarget}, so updating would replace your link with a ` +
+					`downloaded binary and leave nothing pointing at ${linkTarget}. Update that install directly, or ` +
+					`replace the symlink with a real binary first (rm ${options.targetPath}) and re-run the update.`,
+			);
+		}
 		// `backupPath` is unique per attempt (see updateViaBinaryAt), so this rename
 		// never has to overwrite — or unlink — a possibly-locked leftover from an
 		// earlier run. Renaming the running executable itself is permitted on
@@ -661,7 +814,7 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 		// Swap done and verified. On Windows the backup is still the running
 		// process image and cannot be unlinked until this process exits, so a
 		// failure here must NOT fail an otherwise-successful update.
-		await removeBackupBestEffort(options.backupPath);
+		await removeFileBestEffort(options.backupPath);
 		return verification;
 	} catch (err) {
 		if (backupReady) {
@@ -675,8 +828,11 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 				// temp would leak, and the user would be staring at a missing binary
 				// with no idea their previous one is intact one path over. Clean the
 				// temp, then fail loud with the exact recovery move and the original
-				// cause preserved.
-				await unlinkIfExists(options.tempPath);
+				// cause preserved. Best-effort: whatever stopped the rollback (a
+				// read-only directory, a locked file) usually stops this unlink too,
+				// and losing the recovery instructions to an unlink error is the worst
+				// possible trade.
+				await removeFileBestEffort(options.tempPath);
 				throw new Error(
 					`${APP_NAME} update failed and the automatic rollback could not restore the previous binary ` +
 						`(${errorMessage(rollbackErr)}). Your previous ${APP_NAME} is intact at ${options.backupPath} — ` +
@@ -685,7 +841,13 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 				);
 			}
 		}
-		await unlinkIfExists(options.tempPath);
+		// Best-effort, deliberately not `unlinkIfExists`: in a read-only or
+		// noexec bin directory the unlink ALSO fails, and that EACCES used to
+		// propagate in place of the real cause, so the operator was told veyyon
+		// could not delete `vey.new` when what actually happened is that it could
+		// not write into the directory at all. A cleanup that cannot run is a
+		// leaked temp file; the failure being reported is the one that matters.
+		await removeFileBestEffort(options.tempPath);
 		throw err;
 	}
 }
@@ -750,7 +912,10 @@ export async function updateViaBinaryAt(
 		// behind: we throw here before reaching replaceBinaryForUpdate, whose catch
 		// would otherwise clean it up. Remove it so a failed update never litters
 		// the install dir, matching install.sh's EXIT/INT/TERM trap on its tmpbin.
-		await unlinkIfExists(tempPath);
+		// Best-effort: a directory this process cannot write is the likeliest reason
+		// the download failed in the first place, and it would fail the cleanup too.
+		// The download error is the one worth reporting.
+		await removeFileBestEffort(tempPath);
 		throw err;
 	}
 
@@ -764,7 +929,10 @@ export async function updateViaBinaryAt(
 	try {
 		await verifyDownloadChecksum(tempPath, `${url}.sha256`);
 	} catch (err) {
-		await unlinkIfExists(tempPath);
+		// Best-effort, for the same reason as above: a checksum mismatch is a
+		// security finding and must reach the operator verbatim, never be displaced
+		// by a failure to delete the file it is about.
+		await removeFileBestEffort(tempPath);
 		throw err;
 	}
 	// Confirm the integrity check passed, matching install.sh's "verified sha256".
@@ -930,7 +1098,7 @@ export type SourceUpdateExec = (step: SourceUpdateStep) => Promise<{ exitCode: n
 
 const defaultSourceUpdateExec: SourceUpdateExec = async step => {
 	const proc = Bun.spawn(step.command, { cwd: step.cwd, stdout: "ignore", stderr: "pipe" });
-	const stderr = await new Response(proc.stderr).text();
+	const stderr = await readPipeText(proc.stderr);
 	const exitCode = await proc.exited;
 	return { exitCode, stderr };
 };
@@ -1059,6 +1227,143 @@ export async function installRelease(
 		return;
 	}
 	await updateViaBinaryAt(target.path, version, report);
+}
+
+/**
+ * Why an install method cannot move to an arbitrary version.
+ *
+ * A binary install downloads the asset for the exact tag you name, so it moves
+ * in both directions. A source install advances a git checkout with
+ * `git merge --ff-only`, which by construction only goes FORWARD to whatever
+ * the branch tracks: there is no ff-only path back to an older release, and
+ * anything that could get there (a checkout of an old tag, a reset) would be
+ * rewriting the user's own working tree, which an updater must never do.
+ *
+ * Returning the reason rather than a bare boolean is deliberate: the picker and
+ * the CLI both have to TELL the user why, and a boolean forces each of them to
+ * invent its own wording for the same fact.
+ */
+export function rollbackUnsupportedReason(method: UpdateMethod): string | undefined {
+	if (method !== "source") return undefined;
+	return (
+		`This is a source install (\`install.sh --source\`), which updates by fast-forwarding its git checkout. ` +
+		`Fast-forward only moves forward, so there is no supported way to roll it back to an older release. ` +
+		`To run an older version, check it out yourself in the checkout, or reinstall the binary build with the ` +
+		`install script and roll back from there.`
+	);
+}
+
+/**
+ * Whether this install can be rolled back at all.
+ *
+ * The `/settings` row exists only when the answer is yes: a row that opens a
+ * picker and then refuses to install anything reads as a feature that is broken
+ * rather than one that does not apply here, which is worse than no row.
+ *
+ * A FAILURE to resolve the install method answers yes, deliberately. The
+ * alternative is hiding a working feature because a lookup went wrong, and a
+ * silently missing row gives the operator nothing to act on; attempting the
+ * rollback instead surfaces the real reason loudly (Law 10).
+ */
+export async function isRollbackSupported(installedMethod?: () => Promise<UpdateMethod>): Promise<boolean> {
+	try {
+		const method = installedMethod ? await installedMethod() : (await resolveUpdateTarget()).method;
+		return rollbackUnsupportedReason(method) === undefined;
+	} catch {
+		return true;
+	}
+}
+
+/** One recorded move between versions. */
+export interface UpdateHistoryEntry {
+	from: string;
+	to: string;
+	/** ISO 8601, so the record is readable without knowing the writer's locale. */
+	at: string;
+}
+
+/**
+ * Append a version move to the history file.
+ *
+ * Best-effort by design and the ONE place that is true of: history is an
+ * annotation on the picker, so failing the whole rollback because a note could
+ * not be filed would trade a working install for a tidy log. The failure is
+ * logged rather than swallowed, so it is visible in `--debug` rather than
+ * silent (Law 10 draws the line at hiding it, not at continuing).
+ */
+export async function recordVersionMove(
+	entry: UpdateHistoryEntry,
+	historyPath: string = getUpdateHistoryPath(),
+): Promise<void> {
+	try {
+		let entries: UpdateHistoryEntry[] = [];
+		try {
+			const parsed: unknown = JSON.parse(await Bun.file(historyPath).text());
+			if (Array.isArray(parsed)) entries = parsed as UpdateHistoryEntry[];
+		} catch (err) {
+			// A missing file is the normal first move. A CORRUPT one is not, and
+			// starting over silently would erase a record somebody may be reading;
+			// say so, then start a fresh list rather than refusing to record forever.
+			if (!isEnoent(err))
+				logger.warn(`update history at ${historyPath} was unreadable, starting a new one: ${errorMessage(err)}`);
+		}
+		entries.push(entry);
+		await fs.promises.mkdir(path.dirname(historyPath), { recursive: true });
+		await Bun.write(historyPath, `${JSON.stringify(entries, null, 2)}\n`);
+	} catch (err) {
+		logger.warn(`could not record the version move to ${historyPath}: ${errorMessage(err)}`);
+	}
+}
+
+/** Every recorded version move, oldest first; empty when nothing is recorded yet. */
+export async function readVersionMoves(historyPath: string = getUpdateHistoryPath()): Promise<UpdateHistoryEntry[]> {
+	try {
+		const parsed: unknown = JSON.parse(await Bun.file(historyPath).text());
+		return Array.isArray(parsed) ? (parsed as UpdateHistoryEntry[]) : [];
+	} catch (err) {
+		if (!isEnoent(err)) logger.warn(`update history at ${historyPath} was unreadable: ${errorMessage(err)}`);
+		return [];
+	}
+}
+
+/**
+ * Move this install to a specific published version, forward or back.
+ *
+ * Rollback is the same install as an update, aimed at a version you name, so it
+ * goes through {@link installRelease} rather than repeating the method dispatch
+ * — one owner for "how does this install change version", whichever direction it
+ * moves.
+ *
+ * Two things are refused rather than performed. A method that cannot pin a
+ * version fails with {@link rollbackUnsupportedReason}, never by installing
+ * latest and reporting success, which is the exact silent-wrong-version outcome
+ * the updater's verification exists to prevent. And rolling back to the version
+ * already running is refused as a no-op instead of re-downloading, because a
+ * reinstall that changes nothing but prints "done" reads as a rollback that
+ * worked when the user asked for the wrong version.
+ */
+export async function rollbackToVersion(
+	version: string,
+	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
+	currentVersion: string = VERSION,
+	historyPath: string = getUpdateHistoryPath(),
+): Promise<void> {
+	if (!isValidSemver(version)) {
+		throw new Error(`${JSON.stringify(version)} is not a version number — expected something like 1.2.3`);
+	}
+	if (version === currentVersion) {
+		throw new Error(
+			`Already running ${currentVersion}. Pick a different version, or run \`${APP_NAME} rollback --list\` to see what is published.`,
+		);
+	}
+	const target = await resolveUpdateTarget();
+	const unsupported = rollbackUnsupportedReason(target.method);
+	if (unsupported) throw new Error(unsupported);
+
+	report(`Moving from ${currentVersion} to ${version}...`);
+	await installRelease(version, true, report);
+	await recordVersionMove({ from: currentVersion, to: version, at: new Date().toISOString() }, historyPath);
+	report(`Now on ${version}. Restart ${APP_NAME} to run it.`);
 }
 
 /**

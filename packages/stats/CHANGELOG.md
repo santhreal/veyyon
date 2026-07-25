@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A sessions directory that cannot be read no longer looks like a user who has never run a session.
+  Both session listers answered every failure with an empty list, so a permissions problem on the
+  sessions directory, or on one project's folder inside it, produced a dashboard reporting zero of
+  everything: `syncAllSessions` sees an empty file list, returns early, and reports success having
+  read nothing. An ABSENT directory still returns empty in silence, because that is what a fresh
+  install is. A directory that is there and unreadable is now reported through the same log the
+  unparseable-line reporter uses and with the same framing, naming the path and the underlying error,
+  and the sync continues with what it could read so one unreadable project cannot blank the whole
+  dashboard. A session file that cannot even be examined is reported the same way instead of being
+  counted as a completed file by the progress bar.
+
+- The dashboard failed to start when the browser blocks storage. It read the saved theme from `localStorage` behind a `typeof localStorage === "undefined"` check, and blocked storage does not make the property undefined: in Safari private browsing and under a blocked-storage policy, touching it THROWS. The read ran while the module was being evaluated, so the throw took the whole bundle down instead of costing a remembered preference. The theme now comes from the shared store below, which treats storage as best effort: your choice applies for the session even when it cannot be saved.
+
+### Changed
+
+- The theme store moved into `@veyyon/utils` as `createThemeStore`, shared with the collab client, which carried a byte-identical copy of the same ~90 lines. Only the storage key and the React binding stay here. See the Fixed note above for the divergence the two copies had.
+
+- `hasBillableCost` now comes from `@veyyon/catalog`, which carried an identical copy in its model generator. The generator uses it to decide whether an OpenAI entry may donate its pricing to the matching Codex entry, and the dashboard uses it to decide whether to trust a bundled price at all, so the two answers had to agree about the same numbers while being written twice.
+
+- The session-transcript walk moved into `@veyyon/utils` as `visitJsonlBytes`, so the dashboard and every other reader share one byte-level JSONL walker. The copy here was a fourth JSONL reader, and it had drifted: it dropped an unparseable line with no report at all, while both string-based readers in utils had one, and every total on the dashboard is a sum over the lines that parsed. A line holding only a carriage return is no longer counted as a lost record, because there is nothing in it to lose. Throughput is unchanged on the path the parser takes: 331 MB/s against the old loop's 311 over a 63 MB corpus (`scripts/bench-jsonl-bytes.ts`).
+
 ## [16.4.7] - 2026-07-12
 
 ### Fixed

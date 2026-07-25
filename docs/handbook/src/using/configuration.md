@@ -36,6 +36,68 @@ $ veyyon config path                     # print the active agent directory
 - **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.
 - **Ephemeral Session Re-root (`set_cwd` tool / `/cwd`)**: Re-roots the active session's working directory temporarily. It never writes `session.workdir`.
 - **What a re-root costs**: the system prompt names the working directory and carries that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project's `AGENTS.md` and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.
+### Your comments and formatting survive a save
+
+`config.yml` is yours to edit by hand, and veyyon writes to the same file when you change a
+setting from `/settings` or `veyyon config set`. A save edits only the lines it needs to, so
+your comments, blank lines, key order, and quoting stay as you wrote them:
+
+```yaml
+# my machine runs hot
+temperature: 0.7
+
+# search
+topK: 40
+```
+
+Change `topK` from the UI and the file becomes:
+
+```yaml
+# my machine runs hot
+temperature: 0.7
+
+# search
+topK: 60
+```
+
+A new setting is appended at the end, and a setting you reset has its line removed. If the
+key you removed had a comment above it, the comment moves to the next key rather than being
+deleted with it.
+
+One exception: a file veyyon could not read at all is rewritten from scratch, because there
+is nothing in it to edit. Your original is preserved first, which is the case the next
+section describes.
+
+The same holds for every other file veyyon writes that you also edit by hand:
+
+| file | when veyyon writes it |
+| --- | --- |
+| `config.yml` | you change a setting from `/settings` or `veyyon config set` |
+| `~/.veyyon/config.yml` | you set a default profile or profile sharing |
+| `keybindings.yml` | a binding you wrote uses a name from an older release |
+| `WATCHDOG.yml` | you edit an advisor from the dashboard |
+
+A `keybindings.yml` using older binding names is the interesting one, because veyyon renames
+those names for you on the next launch. The rename happens where the binding already sits, so
+this:
+
+```yaml
+# hold this one, muscle memory
+interrupt: ctrl+x
+```
+
+becomes this, and not a file with the binding moved to the bottom and the comment left behind:
+
+```yaml
+# hold this one, muscle memory
+app.interrupt: ctrl+x
+```
+
+Copying a profile follows the same rule. `veyyon profile new <new> --from <old>` copies the
+old profile's `config.yml` and removes one key from the copy, `profile.displayName`, so the new
+profile does not claim the old one's name. Everything else in the file, comments included,
+arrives exactly as you wrote it.
+
 ### When a settings file has a syntax error
 
 If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
@@ -67,6 +129,25 @@ statusLine: "time: %H:%M"
 Fix the syntax in the original file, or copy the preserved file back over it and
 edit from there.
 
+### When a setting cannot be saved
+
+If veyyon cannot write your config file, it tells you in the session rather than letting the
+change disappear. This happens when the file or its directory is not writable, when the disk
+is full, or when something has left a directory where `config.yml` should be:
+
+```text
+Could not save your settings after 3 attempts, so this change will not survive a restart:
+  ~/.veyyon/profiles/default/agent/config.yml
+    EACCES: permission denied, open '~/.veyyon/profiles/default/agent/config.yml'
+Check that the file and its directory are writable, then change the setting again.
+```
+
+The setting still applies to the session you are in, which is why the message matters: the UI
+shows the new value, and without it your only clue would be the setting reverting the next
+time you launch. Veyyon retries first and reports only when the retries have not worked, so a
+brief clash with another veyyon writing at the same moment stays quiet. Fix the permissions
+and change the setting again, and nothing further is reported.
+
 ## Pick models and providers
 
 Three explicit model slots, each set on its own:
@@ -74,7 +155,7 @@ Three explicit model slots, each set on its own:
 | Goal | What to set |
 | --- | --- |
 | Choose the model you talk to | `--model` / `/model` (persisted as `modelRoles.default`) |
-| Model for spawned subagents | `subagent.model` |
+| Model for spawned subagents | `subagent.model` (Subagents tab) |
 | Model for context compaction | `compaction.model` |
 | Named model assignments (optional) | `modelRoles`, per profile (settings → Models → Roles) |
 | Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](./models.md)) |
@@ -86,7 +167,7 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat   # optional; overrides modelRoles.task
+  model: deepseek/deepseek-chat   # optional; unset means subagents inherit your model
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 ```
@@ -129,7 +210,7 @@ Compaction compresses older history instead of truncating it. Common keys:
 
 | Goal | What to set |
 | --- | --- |
-| Auto-compaction threshold | `compaction.thresholdPercent` (also `compaction.thresholdTokens`) |
+| Auto-compaction threshold | `compaction.threshold`: `auto`, a percent (`85%`), or a token amount (`170000`) |
 | Compaction type | `compaction.strategy`: `summary` or `handoff` (schema default `summary`) |
 | Compaction model | `compaction.model` (unset = interactive model) |
 | Cross-session memory backend | `memory.backend`: `off` (default), `local`, `hindsight`, `mnemopi` |
@@ -189,6 +270,34 @@ saved transcript, so an entry never has to agree with an older one. Once the
 agent has loaded a project, veyyon lists its handles in the system prompt, and
 the model writes them from then on. A session where the agent never loads
 anything simply writes full strings, exactly as if Argot were off.
+
+### You never see a handle
+
+Shorthand is for the model, not for you. Everywhere veyyon shows you what the
+model wrote, it shows the full text. If the model writes `§conn`, you read
+`packages/server/src/database/connection.ts`.
+
+That holds for every surface, not only the reply text:
+
+- the answer as it streams in, and the finished message
+- the model's reasoning, when you have thinking blocks visible
+- a tool call's arguments, including the file body of a `write` while it is
+  still being typed out
+- the one-line intent shown beside a running tool
+- the transcript after you resize the window, change theme, or resume the
+  session later
+- `--print` output and an exported or shared session
+
+The saving is real all the same, because the short form is what stays in the
+conversation the model rereads. You are reading an expanded copy; the model is
+reading the handles. A handle is only ever expanded for display, so nothing you
+see depends on the dictionary still being loaded.
+
+One detail is worth knowing if you watch closely. While a handle is arriving,
+veyyon holds back the last few characters rather than showing you a partial
+`§co` that is about to become something else. The text catches up on the next
+chunk. You may notice a word appearing a fraction later; you will not see a
+handle.
 
 ### Choose which models write shorthand
 

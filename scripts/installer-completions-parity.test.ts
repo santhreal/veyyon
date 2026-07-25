@@ -82,7 +82,9 @@ describe("the PowerShell profile edit is surgical and reversible", () => {
 		// If the removal guessed at the text the install wrote, it would either
 		// leave the line forever or delete one the user typed themselves.
 		expect(installPs1).toContain("function Get-CompletionSourceLine {");
-		expect(installPs1).toContain("Add-CompletionSourceLine -ProfilePath (Get-ProfilePath) -Line (Get-CompletionSourceLine $scriptPath)");
+		expect(installPs1).toContain(
+			"Add-CompletionSourceLine -ProfilePath (Get-ProfilePath) -Line (Get-CompletionSourceLine $scriptPath)",
+		);
 		expect(installPs1).toContain(
 			"Remove-CompletionSourceLine -ProfilePath (Get-ProfilePath) -Line (Get-CompletionSourceLine $scriptPath)",
 		);
@@ -198,7 +200,7 @@ describe("every sidecar reader agrees on what a digest is", () => {
 
 	it("both read the FIRST line only, so a concatenated sidecar cannot verify the wrong asset", () => {
 		expect(installSh).toContain("NR == 1 {");
-		expect(installPs1).toContain('(($Text -split "`n")[0].Trim() -split \'\\s+\')[0]');
+		expect(installPs1).toContain("(($Text -split \"`n\")[0].Trim() -split '\\s+')[0]");
 	});
 
 	it("both lowercase the digest they return", () => {

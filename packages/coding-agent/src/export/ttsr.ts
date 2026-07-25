@@ -7,7 +7,7 @@
  */
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch } from "@veyyon/natives";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, logger, nearestNames } from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
 import type { TtsrSettings } from "../config/settings";
 
@@ -62,6 +62,21 @@ const DEFAULT_SETTINGS: Required<TtsrSettings> = {
 	disabledRules: [],
 };
 
+/**
+ * Absolute paths inside a matched fragment.
+ *
+ * Deliberately loose about what a path segment may contain and strict about the leading slash, so
+ * a URL (`https://host/a/b`) is not read as a filesystem path. Used only to decide which side of
+ * the working directory a match fell on.
+ */
+const ABSOLUTE_PATH_IN_TEXT = /\/(?:[\w.@+-]+\/)*[\w.@+-]+/g;
+
+/** True when `candidate` resolves inside `root`, compared on paths rather than string prefixes. */
+function isInsideRoot(root: string, candidate: string): boolean {
+	const relative = path.relative(root, path.resolve(candidate));
+	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
 const DEFAULT_SCOPE: TtsrScope = {
 	allowText: true,
 	allowThinking: false,
@@ -80,28 +95,69 @@ export class TtsrManager {
 	#canMatchText = false;
 	#canMatchThinking = false;
 
-	constructor(settings?: TtsrSettings) {
+	/**
+	 * Reads the session's CURRENT working directory, for rules that carry a `pathScope`.
+	 *
+	 * A getter rather than a value: `set_cwd` moves the working directory mid-session, and the
+	 * rule most likely to carry a `pathScope` is the one telling the model to call it. A snapshot
+	 * taken at construction would go stale exactly when the advice was followed.
+	 */
+	readonly #getCwd?: () => string;
+	/**
+	 * The path a `pathScope` rule last matched, keyed by rule name.
+	 *
+	 * Recorded here rather than returned, so the `check*` methods keep handing back `Rule[]` and
+	 * every existing caller is unaffected. The injected body reads it to name the directory it is
+	 * talking about: advice to re-root that does not say WHERE is advice the model has to guess at,
+	 * and it guesses the file's own directory rather than the project root.
+	 */
+	readonly #lastMatchedPath = new Map<string, string>();
+
+	constructor(settings?: TtsrSettings, options?: { getCwd?: () => string }) {
 		this.#settings = { ...DEFAULT_SETTINGS, ...settings };
+		this.#getCwd = options?.getCwd;
 	}
 
-	/** Check if a rule can be triggered based on repeat settings. */
+	/**
+	 * Check if a rule can be triggered, honouring its own repeat policy before the global one.
+	 *
+	 * The global default is `once`: a rule fires at most once per session, and the record survives a
+	 * resume. That is right for a rule stating a coding convention — saying it twice adds nothing —
+	 * and wrong for a NAVIGATIONAL rule, where the same advice applies again to a different
+	 * directory. `cwd-reroot` is the second kind, and under the global default it fired for the first
+	 * foreign project a session touched and then stayed silent for every later one, which reads as
+	 * the rule simply not working.
+	 *
+	 * So a rule may carry its own `repeatMode` / `repeatGap`. Per-rule wins, because the rule author
+	 * knows whether the advice is repeatable and the global setting is a preference about noise.
+	 */
 	#canTrigger(ruleName: string): boolean {
 		const record = this.#injectionRecords.get(ruleName);
 		if (!record) {
 			return true;
 		}
 
-		if (this.#settings.repeatMode === "once") {
+		const rule = this.#rules.get(ruleName)?.rule;
+		const repeatMode = rule?.repeatMode ?? this.#settings.repeatMode;
+		if (repeatMode === "once") {
 			return false;
 		}
 
 		const gap = this.#messageCount - record.lastInjectedAt;
-		return gap >= this.#settings.repeatGap;
+		return gap >= (rule?.repeatGap ?? this.#settings.repeatGap);
 	}
 
 	#compileConditions(rule: Rule): RegExp[] {
 		const compiled: RegExp[] = [];
 		for (const pattern of rule.condition ?? []) {
+			if (pattern.trim().length === 0) {
+				// `new RegExp("")` matches EVERY stream, so a blank condition compiled into a catch-all:
+				// a rule whose frontmatter said `condition: ""` fired on every delta rather than never,
+				// which is the loudest possible reading of the quietest possible mistake. `astCondition`
+				// has always filtered blanks; this is the same rule for the same reason, in one place.
+				logger.warn("TTSR condition is blank, skipping condition", { ruleName: rule.name });
+				continue;
+			}
 			try {
 				compiled.push(new RegExp(pattern));
 			} catch (error) {
@@ -290,14 +346,59 @@ export class TtsrManager {
 		return false;
 	}
 
-	#matchesCondition(entry: TtsrEntry, streamBuffer: string): boolean {
+	/**
+	 * The text a condition matched, or undefined when none did.
+	 *
+	 * The matched text rather than a boolean, because {@link Rule.pathScope} needs to ask where
+	 * the match actually pointed. Matching the buffer and then testing the WHOLE buffer for a
+	 * path outside the working directory would fire on any absolute path anywhere in the stream,
+	 * which is the imprecision this exists to remove.
+	 */
+	#matchedText(entry: TtsrEntry, streamBuffer: string): string | undefined {
 		for (const condition of entry.conditions) {
 			condition.lastIndex = 0;
-			if (condition.test(streamBuffer)) {
+			const match = condition.exec(streamBuffer);
+			if (match) {
+				return match[0];
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * Whether the matched text satisfies the rule's `pathScope`.
+	 *
+	 * Absent scope means every match counts, which is every rule that does not opt in. With a
+	 * scope, at least one absolute path in the matched text has to be on the right side of the
+	 * working directory. Fails CLOSED when the working directory is unknown (no `getCwd` was
+	 * supplied): a rule that asked to be filtered must not fire unfiltered, because firing
+	 * unfiltered is the behaviour it was written to stop.
+	 */
+	#satisfiesPathScope(entry: TtsrEntry, matched: string): boolean {
+		const scope = entry.rule.pathScope;
+		if (!scope) return true;
+		const cwd = this.#getCwd?.();
+		if (!cwd) {
+			logger.debug("TTSR rule has a pathScope but no working directory to compare against", {
+				ruleName: entry.rule.name,
+				pathScope: scope,
+			});
+			return false;
+		}
+		const root = path.resolve(cwd);
+		for (const candidate of matched.match(ABSOLUTE_PATH_IN_TEXT) ?? []) {
+			const inside = isInsideRoot(root, candidate);
+			if (scope === "inside-cwd" ? inside : !inside) {
+				this.#lastMatchedPath.set(entry.rule.name, candidate);
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/** The path this rule last matched, for a body that names the directory it is advising about. */
+	lastMatchedPath(ruleName: string): string | undefined {
+		return this.#lastMatchedPath.get(ruleName);
 	}
 
 	/** Add a TTSR rule to be monitored. */
@@ -312,6 +413,16 @@ export class TtsrManager {
 		const conditions = this.#compileConditions(rule);
 		const astConditions = (rule.astCondition ?? []).map(pattern => pattern.trim()).filter(p => p.length > 0);
 		if (conditions.length === 0 && astConditions.length === 0) {
+			// LOUD, because it is indistinguishable from a rule that simply never matches: a rule with
+			// no trigger is registered by the provider, listed by `/rules`, and silently never monitored.
+			// `argot-load-nudge` shipped in that state, and this is the check that would have said so.
+			// A rule that declares no condition and no astCondition is a mistake in the rule file, not a
+			// rule that opted out of TTSR: an always-apply rule reaches the model through the system
+			// prompt and is never handed to `addRule`.
+			logger.warn("TTSR rule has no condition or astCondition, never monitored", {
+				ruleName: rule.name,
+				path: rule.path,
+			});
 			return false;
 		}
 
@@ -496,7 +607,11 @@ export class TtsrManager {
 			if (!this.#matchesGlobalPaths(entry, context)) {
 				continue;
 			}
-			if (!this.#matchesCondition(entry, buffer)) {
+			const matched = this.#matchedText(entry, buffer);
+			if (matched === undefined) {
+				continue;
+			}
+			if (!this.#satisfiesPathScope(entry, matched)) {
 				continue;
 			}
 
@@ -534,8 +649,66 @@ export class TtsrManager {
 			logger.debug("TTSR rule marked as injected", {
 				ruleName,
 				messageCount: this.#messageCount,
-				repeatMode: this.#settings.repeatMode,
+				// The EFFECTIVE mode, since a rule may override the global one; logging the global
+				// setting here reported a suppression that was not going to happen.
+				repeatMode: this.#rules.get(ruleName)?.rule.repeatMode ?? this.#settings.repeatMode,
 			});
+		}
+	}
+
+	/**
+	 * Give back a claim that was taken but never delivered.
+	 *
+	 * A tool-scoped reminder is claimed the moment it is bucketed, so a sibling tool call in the
+	 * same turn cannot re-match the same rule. Delivery happens later, in `afterToolCall`, and a turn
+	 * that is aborted or errors never gets there — the bucket is dropped. Without this, the claim
+	 * outlived the reminder: under the default `repeatMode: "once"` the rule was marked as injected,
+	 * nothing was ever shown to the model, and it could not fire again for the rest of the session.
+	 * That is the "it just does not fire" failure, and it is invisible, because the state that
+	 * suppresses the rule looks exactly like the state after a successful injection.
+	 *
+	 * Only a claim that has not yet been persisted should be released. A persisted injection did
+	 * reach the model.
+	 */
+	releaseInjectedByNames(ruleNames: string[]): void {
+		for (const rawName of ruleNames) {
+			const ruleName = rawName.trim();
+			if (ruleName.length === 0) continue;
+			if (this.#injectionRecords.delete(ruleName)) {
+				logger.debug("TTSR claim released without delivery", { ruleName });
+			}
+		}
+	}
+
+	/**
+	 * Report every rule whose scope names a tool that does not exist.
+	 *
+	 * A bare scope token is read as a TOOL NAME, so `scope: "tool:raed"` parses cleanly and registers a
+	 * rule that can never match. That is the same invisible failure as a rule with no condition -- the
+	 * rule loads, `/rules` lists it, and nothing ever fires -- and `addRule` cannot catch it, because a
+	 * `TtsrManager` has no idea what tools exist.
+	 *
+	 * So the check lives here and is CALLED from where the fact is known: `sdk.ts`, once the tool
+	 * registry is complete, including MCP and extension tools. It never refuses the rule. A tool can be
+	 * registered later in a session, and refusing would break a rule that is scoped to one deliberately.
+	 * The closest registered name is offered, because the overwhelmingly likely cause is a typo.
+	 */
+	reportUnknownToolScopes(knownToolNames: Iterable<string>): void {
+		const known = new Set<string>();
+		for (const name of knownToolNames) known.add(name.trim().toLowerCase());
+		if (known.size === 0) return;
+
+		for (const [ruleName, entry] of this.#rules) {
+			for (const toolScope of entry.scope.toolScopes) {
+				const toolName = toolScope.toolName;
+				if (toolName === undefined || known.has(toolName)) continue;
+				logger.warn("TTSR rule is scoped to a tool that does not exist, so it can never match", {
+					ruleName,
+					toolName,
+					rulePath: entry.rule.path,
+					closest: nearestNames(toolName, known, 1)[0],
+				});
+			}
 		}
 	}
 

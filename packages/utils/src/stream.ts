@@ -2,6 +2,7 @@ const trailingEvents = new WeakSet<ServerSentEvent>();
 
 import { abortableSource } from "./abortable";
 import { parseStreamingJson } from "./json-parse";
+import type { JsonlSkip } from "./jsonl-incremental";
 
 const LF = 0x0a;
 type JsonlChunkResult = {
@@ -394,13 +395,11 @@ export async function* readSseEvents(
 	}
 }
 
-/** A malformed JSONL record that lenient parsing skipped. */
-export interface JsonlSkip {
-	/** Character offset into the buffer where the bad record began. */
-	offset: number;
-	/** The skipped line, so callers can log or surface what was dropped. */
-	snippet: string;
-}
+// `JsonlSkip` is owned by ./jsonl-incremental.ts, the dependency-free module the
+// incremental (carry-forward) reader lives in, and re-exported here so the
+// long-standing `@veyyon/utils/stream` import path keeps working. One shape for
+// "a record was dropped", whichever reader dropped it.
+export type { JsonlSkip } from "./jsonl-incremental";
 
 export interface ParseJsonlLenientOptions {
 	/**
@@ -465,4 +464,18 @@ export function parseJsonlLenient<T>(buffer: string, options?: ParseJsonlLenient
 		if (done) break;
 	}
 	return entries ?? [];
+}
+
+/**
+ * Drain a spawned process's pipe to a string, treating an absent pipe as empty output.
+ *
+ * `Bun.spawn` gives `null` for a stream that was not piped, and the two runtime installers
+ * that read a failing install's output each wrapped this in a private `readPipe` for exactly
+ * that reason: a missing pipe is not an error, it means the process was configured not to
+ * capture that stream, and the diagnostic that follows should say "no output" rather than
+ * throw while reporting a failure.
+ */
+export async function readPipeText(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+	if (!stream) return "";
+	return await new Response(stream).text();
 }

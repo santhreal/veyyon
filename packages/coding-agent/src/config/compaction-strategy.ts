@@ -8,6 +8,8 @@
  *   - `handoff`  — generate a session transfer and continue in a new session.
  */
 
+import { resolveThresholdTokens } from "@veyyon/agent-core/compaction";
+
 /** Stored compaction strategy after migration / schema validation. */
 export type CompactionStrategySetting = "handoff" | "summary";
 
@@ -53,6 +55,50 @@ export function isCompactionStrategyOff(strategy: string | undefined): boolean {
 /** Whether threshold/overflow auto-compaction is disabled (idle has its own gate). */
 export function isThresholdCompactionDisabled(enabled: boolean, strategy: string | undefined): boolean {
 	return !enabled || strategy === "off";
+}
+
+/** Which number a context gauge is measuring against. */
+export type ContextLimitKind = "window" | "compaction";
+
+export interface ResolvedContextLimit {
+	/** Tokens at which the context runs out. Never above the window. */
+	readonly tokens: number;
+	/** `compaction` when the limit is the auto-compaction fire point. */
+	readonly kind: ContextLimitKind;
+}
+
+/**
+ * When the context runs out: the auto-compaction fire point, or the model window
+ * when nothing will fire. The ONE owner of that question.
+ *
+ * It had three answers. The status line asked
+ * `enabled && !isCompactionStrategyOff(strategy)`, the `/context` panel hand-rolled
+ * `enabled && strategy !== "off"`, and `AgentSession.autoCompactionEnabled` used the
+ * canonical `isThresholdCompactionDisabled` — three spellings of one predicate, so the
+ * two surfaces could disagree about whether a fire point exists at all, and a fourth
+ * caller would have spelled it a fourth way. They agree today only by luck; a change
+ * to what counts as "off" would have had to be made in three places and would have
+ * been made in one.
+ *
+ * `tokens` is always inside the window, which is the invariant callers rely on when
+ * they render `window - tokens` as a buffer. `resolveThresholdTokens` guarantees it
+ * for both threshold origins: a percentage caps at 99% of the window, and an absolute
+ * amount is honored only up to `window - 1` (and reports the clamp separately through
+ * `isThresholdTokensClampedForWindow`, so an operator whose model-independent amount
+ * was capped for a smaller model hears about it).
+ */
+export function resolveContextLimit(
+	contextWindow: number,
+	settings: import("@veyyon/agent-core/compaction").CompactionSettings,
+): ResolvedContextLimit {
+	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return { tokens: 0, kind: "window" };
+	if (isThresholdCompactionDisabled(settings.enabled, settings.strategy)) {
+		return { tokens: contextWindow, kind: "window" };
+	}
+	const threshold = resolveThresholdTokens(contextWindow, settings);
+	// A non-positive threshold means no usable fire point was configured.
+	if (!(threshold > 0)) return { tokens: contextWindow, kind: "window" };
+	return { tokens: Math.min(threshold, contextWindow), kind: "compaction" };
 }
 
 /** Migrate a legacy strategy value to the stored `handoff` | `summary` enum. */

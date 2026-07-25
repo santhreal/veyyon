@@ -18,9 +18,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	type CheckoutVersionReader,
-	SOURCE_VERSION_FILE,
 	probeSearchWorks,
 	type SearchProbe,
+	SOURCE_VERSION_FILE,
 	type SourceUpdateExec,
 	updateViaSourceAt,
 } from "@veyyon/coding-agent/cli/update-cli";
@@ -70,7 +70,14 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 	it("runs fetch, ff-only merge, then bun install — all in the checkout root", async () => {
 		const { calls, exec } = recordingExec();
 		const reported: string[] = [];
-		await updateViaSourceAt(LAUNCHER, "2.0.0", line => reported.push(line), exec, readsVersion("2.0.0"), checkoutRuns);
+		await updateViaSourceAt(
+			LAUNCHER,
+			"2.0.0",
+			line => reported.push(line),
+			exec,
+			readsVersion("2.0.0"),
+			checkoutRuns,
+		);
 
 		expect(calls.map(c => c.command.join(" "))).toEqual([
 			"git fetch --tags origin",
@@ -275,7 +282,14 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 		// A user told only that the checkout is broken has no next move.
 		const { exec } = recordingExec();
 		await expect(
-			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), async () => "broken"),
+			updateViaSourceAt(
+				LAUNCHER,
+				"2.0.0",
+				() => {},
+				exec,
+				readsVersion("2.0.0"),
+				async () => "broken",
+			),
 		).rejects.toThrow(/git pull && bun install/);
 	});
 
@@ -283,7 +297,14 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 		const reported: string[] = [];
 		const { exec } = recordingExec();
 		await expect(
-			updateViaSourceAt(LAUNCHER, "2.0.0", l => reported.push(l), exec, readsVersion("2.0.0"), async () => "broken"),
+			updateViaSourceAt(
+				LAUNCHER,
+				"2.0.0",
+				l => reported.push(l),
+				exec,
+				readsVersion("2.0.0"),
+				async () => "broken",
+			),
 		).rejects.toThrow();
 		expect(reported.some(l => l.includes("Updated source checkout to"))).toBe(false);
 	});
@@ -294,10 +315,17 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 		// for someone with more than one checkout.
 		const { exec } = recordingExec();
 		const seen: { bin: string; label: string }[] = [];
-		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), async (bin, label) => {
-			seen.push({ bin, label });
-			return undefined;
-		});
+		await updateViaSourceAt(
+			LAUNCHER,
+			"2.0.0",
+			() => {},
+			exec,
+			readsVersion("2.0.0"),
+			async (bin, label) => {
+				seen.push({ bin, label });
+				return undefined;
+			},
+		);
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.bin).toBe(LAUNCHER);
 		expect(seen[0]?.label).toContain("/opt/checkout");
@@ -310,10 +338,17 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 		const { exec } = recordingExec();
 		let probes = 0;
 		await expect(
-			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("1.9.3"), async () => {
-				probes += 1;
-				return undefined;
-			}),
+			updateViaSourceAt(
+				LAUNCHER,
+				"2.0.0",
+				() => {},
+				exec,
+				readsVersion("1.9.3"),
+				async () => {
+					probes += 1;
+					return undefined;
+				},
+			),
 		).rejects.toThrow(/is at 1\.9\.3/);
 		expect(probes).toBe(0);
 	});
@@ -324,10 +359,17 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 			order.push(step.label);
 			return { exitCode: 0, stderr: "" };
 		};
-		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), async () => {
-			order.push("probe");
-			return undefined;
-		});
+		await updateViaSourceAt(
+			LAUNCHER,
+			"2.0.0",
+			() => {},
+			exec,
+			readsVersion("2.0.0"),
+			async () => {
+				order.push("probe");
+				return undefined;
+			},
+		);
 		expect(order[order.length - 1]).toBe("probe");
 		expect(order).toContain("Ensuring native addon");
 	});

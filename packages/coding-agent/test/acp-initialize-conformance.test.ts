@@ -3,7 +3,7 @@
  * `clientCapabilities.auth.terminal`, advertises stable agentInfo, and keeps
  * the agentCapabilities contract that downstream clients rely on.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -14,9 +14,10 @@ import { AcpAgent } from "@veyyon/coding-agent/modes/acp/acp-agent";
 import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@veyyon/coding-agent/modes/acp/terminal-auth";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getConfigRootDir, setAgentDir, VERSION } from "@veyyon/utils";
+import { setAgentDir, VERSION } from "@veyyon/utils";
 import { type } from "arktype";
 import { expectAcpStructure } from "./helpers/acp-schema";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 const arkInitializeResponse = type({
 	protocolVersion: "number",
@@ -126,16 +127,21 @@ class FakeAgentSession {
 }
 
 const cleanupRoots: string[] = [];
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+let settingsState: SettingsTestState | undefined;
+
+beforeEach(() => {
+	// `beginSettingsTest` rather than a hand-rolled `setAgentDir(original)` restore,
+	// which is what this suite used to do. `setAgentDir` also CLEARS the active
+	// profile, so the hand-rolled version left the whole process on the default
+	// profile: every file after this one resolved `profiles/default/...` while the
+	// developer was on `work`. `scripts/find-test-leaks.ts` caught it.
+	settingsState = beginSettingsTest();
+});
 
 afterEach(async () => {
-	if (originalAgentDir) {
-		setAgentDir(originalAgentDir);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
+
 	for (const root of cleanupRoots.splice(0)) {
 		await fs.promises.rm(root, { recursive: true, force: true });
 	}

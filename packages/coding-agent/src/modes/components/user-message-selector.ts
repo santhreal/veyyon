@@ -12,8 +12,8 @@ import {
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import {
-	computeModalDims,
 	applyModalReveal,
+	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,

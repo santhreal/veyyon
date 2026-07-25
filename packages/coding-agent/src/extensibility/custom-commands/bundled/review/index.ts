@@ -14,9 +14,7 @@
 import { errorMessage, isRecord, prompt } from "@veyyon/utils";
 import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
-import reviewCustomRequestTemplate from "../../../../prompts/review-custom-request.md" with { type: "text" };
-import reviewHeadlessRequestTemplate from "../../../../prompts/review-headless-request.md" with { type: "text" };
-import reviewRequestTemplate from "../../../../prompts/review-request.md" with { type: "text" };
+import { PROMPTS } from "../../../../prompts/registry";
 import * as gh from "../../../../tools/gh";
 import * as git from "../../../../utils/git";
 import * as jj from "../../../../utils/jj";
@@ -249,7 +247,7 @@ function buildReviewPrompt(
 		hunksPreview: skipDiff ? getDiffPreview(f.hunks, linesPerFile) : "",
 	}));
 
-	return prompt.render(reviewRequestTemplate, {
+	return prompt.render(PROMPTS["requests/review"].text, {
 		mode,
 		files: filesWithExt,
 		excluded: stats.excluded,
@@ -268,11 +266,11 @@ function buildReviewPrompt(
 }
 
 function buildCustomReviewPrompt(instructions: string): string {
-	return prompt.render(reviewCustomRequestTemplate, { instructions });
+	return prompt.render(PROMPTS["requests/review-custom"].text, { instructions });
 }
 
 function buildHeadlessReviewPrompt(focus?: string): string {
-	return prompt.render(reviewHeadlessRequestTemplate, { focus });
+	return prompt.render(PROMPTS["requests/review-headless"].text, { focus });
 }
 
 const REVIEW_CONTEXT_PR_LIMIT = 3;
@@ -299,6 +297,8 @@ function parseGithubPrUrl(text: string): ReviewPrRef | undefined {
 	try {
 		url = new URL(text);
 	} catch {
+		// The throw IS the answer: this function is offered every argument the user typed, so text that is not
+		// a URL at all is the common case and "not a PR URL" is exactly what undefined means to the caller.
 		return undefined;
 	}
 
@@ -525,7 +525,14 @@ export class ReviewCommand implements CustomCommand {
 				return buildPrReviewPrompt(this.api, ctx, selectedChoice.ref, extraInstructions ?? "");
 
 			case "base-branch": {
-				const branches = await getGitBranches(this.api);
+				// A `git branch` that FAILS is not a repository with no branches, and telling the reader "no git
+				// branches found" sends them looking for the wrong thing. Reported the same way this command already
+				// reports a failed diff, so there is one shape for "git would not answer".
+				const branches = await getGitBranches(this.api).catch(err => {
+					ctx.ui.notify(`Failed to list branches: ${errorMessage(err)}`, "error");
+					return undefined;
+				});
+				if (!branches) return undefined;
 				if (branches.length === 0) {
 					ctx.ui.notify("No git branches found", "error");
 					return undefined;
@@ -534,7 +541,7 @@ export class ReviewCommand implements CustomCommand {
 				const baseBranch = await ctx.ui.select("Select base branch to compare against", branches);
 				if (!baseBranch) return undefined;
 
-				const currentBranch = await getCurrentBranch(this.api);
+				const currentBranch = await git.branch.currentOrHead(this.api.cwd);
 				let diffText: string;
 				try {
 					diffText = await git.diff(this.api.cwd, { base: `${baseBranch}...${currentBranch}` });
@@ -570,7 +577,13 @@ export class ReviewCommand implements CustomCommand {
 			}
 
 			case "commit": {
-				const commits = await getRecentCommits(this.api, 20);
+				// Same distinction as the branch list above: a failed `git log` is not an empty history, and an
+				// unborn HEAD in a fresh repository is the one case that genuinely has no commits.
+				const commits = await getRecentCommits(this.api, 20).catch(err => {
+					ctx.ui.notify(`Failed to list commits: ${errorMessage(err)}`, "error");
+					return undefined;
+				});
+				if (!commits) return undefined;
 				if (commits.length === 0) {
 					ctx.ui.notify("No commits found", "error");
 					return undefined;
@@ -608,7 +621,13 @@ export class ReviewCommand implements CustomCommand {
 				);
 				if (!instructions?.trim()) return undefined;
 
-				const reviewDiff = await getUncommittedReviewDiff(this.api).catch(() => undefined);
+				// The diff is optional context here, so a custom review still runs without it -- but it runs on
+				// nothing but the instructions, which is a much weaker review than the reader asked for. Said out
+				// loud rather than quietly downgraded, and the review proceeds either way.
+				const reviewDiff = await getUncommittedReviewDiff(this.api).catch(err => {
+					ctx.ui.notify(`Reviewing without a diff: ${errorMessage(err)}`, "warning");
+					return undefined;
+				});
 
 				if (reviewDiff?.diffText.trim()) {
 					const stats = parseDiff(reviewDiff.diffText);
@@ -629,28 +648,25 @@ export class ReviewCommand implements CustomCommand {
 	}
 }
 
+/**
+ * Branches, newest git first. Failures propagate: the caller tells "git would not answer" apart from
+ * "this repository has no branches", and swallowing them here made those the same answer.
+ */
 async function getGitBranches(api: CustomCommandAPI): Promise<string[]> {
-	try {
-		return await git.branch.list(api.cwd, { all: true });
-	} catch {
-		return [];
-	}
+	return git.branch.list(api.cwd, { all: true });
 }
 
-async function getCurrentBranch(api: CustomCommandAPI): Promise<string> {
-	try {
-		return (await git.branch.current(api.cwd)) ?? "HEAD";
-	} catch {
-		return "HEAD";
-	}
-}
-
+/**
+ * The porcelain status, used only to decide whether there is anything to diff.
+ *
+ * Failures propagate on purpose. Returning `""` here meant an unreadable repository took the
+ * "nothing is uncommitted" branch below and the whole review ran on an empty diff, reporting no
+ * findings: a FALSE clean bill of health rather than an admission that git could not be read. The
+ * caller already turns a throw into `Failed to get diff: <reason>`, and the two `git.diff` calls
+ * three lines below it were never guarded either, so this is also what the surrounding code does.
+ */
 async function getGitStatus(api: CustomCommandAPI): Promise<string> {
-	try {
-		return await git.status(api.cwd);
-	} catch {
-		return "";
-	}
+	return git.status(api.cwd);
 }
 
 async function getUncommittedReviewDiff(api: CustomCommandAPI): Promise<CurrentReviewDiff> {
@@ -683,12 +699,9 @@ async function getUncommittedReviewDiff(api: CustomCommandAPI): Promise<CurrentR
 	};
 }
 
+/** Recent commits as `hash subject` lines. Failures propagate, for the reason on {@link getGitBranches}. */
 async function getRecentCommits(api: CustomCommandAPI, count: number): Promise<string[]> {
-	try {
-		return await git.log.onelines(api.cwd, count);
-	} catch {
-		return [];
-	}
+	return git.log.onelines(api.cwd, count);
 }
 
 export default ReviewCommand;

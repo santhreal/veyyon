@@ -122,6 +122,23 @@ describe("quiet footline segment bounds", () => {
 		expect(statusLine.quietSegmentAt(gapCol)).toBeNull();
 	});
 
+	/**
+	 * The context gauge is a click target: the footline has room for one number,
+	 * and clicking it opens the `/context` breakdown (interactive-mode's
+	 * capabilityLine.onClick). Hover cannot serve here — the main screen arms
+	 * button-event mouse tracking without 1003h motion reporting, so no position
+	 * arrives until a press — which makes an addressable slot the whole mechanism.
+	 */
+	it("makes the context gauge addressable so a click can reach the breakdown", () => {
+		const statusLine = new StatusLineComponent(makeSession());
+		statusLine.renderQuietLine(WIDTH);
+		const gauge = statusLine.getQuietSegmentBounds().find(slot => slot.id === "context_pct");
+		expect(gauge).toBeDefined();
+		expect(statusLine.quietSegmentAt(gauge!.start)).toBe("context_pct");
+		expect(statusLine.quietSegmentAt(Math.floor((gauge!.start + gauge!.end) / 2))).toBe("context_pct");
+		expect(statusLine.quietSegmentAt(gauge!.end - 1)).toBe("context_pct");
+	});
+
 	it("bounds are rewritten per render: a line that vanishes leaves no stale targets", () => {
 		const statusLine = new StatusLineComponent(makeSession());
 		statusLine.renderQuietLine(WIDTH);

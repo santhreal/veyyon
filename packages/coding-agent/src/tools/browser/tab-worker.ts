@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { errorMessage, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
@@ -57,6 +57,7 @@ import type {
 	WorkerInbound,
 	WorkerInitPayload,
 } from "./tab-protocol";
+import { targetIdForPage, targetIdForTarget } from "./target-id";
 
 declare module "puppeteer-core" {
 	interface Frame {
@@ -361,23 +362,6 @@ function replyError(payload: RunErrorPayload): Error {
 	return err;
 }
 
-async function targetIdForTarget(target: Target): Promise<string> {
-	const raw = target as unknown as { _targetId?: unknown };
-	if (typeof raw._targetId === "string") return raw._targetId;
-	const session = await target.createCDPSession();
-	try {
-		const info = (await session.send("Target.getTargetInfo")) as { targetInfo?: { targetId?: string } };
-		if (info.targetInfo?.targetId) return info.targetInfo.targetId;
-		throw new ToolError("Target id unavailable from CDP target info");
-	} finally {
-		await session.detach().catch(() => undefined);
-	}
-}
-
-async function targetIdForPage(page: Page): Promise<string> {
-	return await targetIdForTarget(page.target());
-}
-
 async function collectObservationEntries(
 	core: WorkerCore,
 	node: SerializedAXNode,
@@ -429,12 +413,34 @@ async function collectObservationEntries(
 	}
 }
 
-async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]): Promise<ElementHandle | null> {
+/**
+ * Which of the matched elements to click, and what happened to the ones that were not chosen.
+ *
+ * `probeFailures` is separate from "not visible" on purpose. Probing an element means evaluating in
+ * the page, which throws when the node was detached between the query and the check, which is
+ * routine on a re-rendering page. Both outcomes remove a candidate, but they mean opposite things to
+ * whoever reads the timeout: a genuinely invisible element is a page or selector problem, while a
+ * failed probe says the element was there and the check lost the race. Reporting both as
+ * "no-visible-candidate" sent the reader after CSS for a re-render race.
+ */
+interface ClickTargetResolution {
+	target: ElementHandle | null;
+	/** Elements examined, which is every handle the selector matched. */
+	probed: number;
+	/** Elements dropped because a probe threw rather than because they were unclickable. */
+	probeFailures: number;
+	/** The first probe error's message, so the timeout can name the cause and not just count it. */
+	firstProbeError: string | null;
+}
+
+async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]): Promise<ClickTargetResolution> {
 	const candidates: Array<{
 		handle: ElementHandle;
 		rect: { x: number; y: number; w: number; h: number };
 		ownedProxy?: ElementHandle;
 	}> = [];
+	let probeFailures = 0;
+	let firstProbeError: string | null = null;
 	for (const handle of handles) {
 		let clickable: ElementHandle = handle;
 		let clickableProxy: ElementHandle | null = null;
@@ -448,7 +454,12 @@ async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]
 			});
 			clickableProxy = asElementHandle(proxy.asElement());
 			if (clickableProxy) clickable = clickableProxy;
-		} catch {}
+		} catch {
+			// Looking for the clickable ancestor failed (detached node, or a frame that will not run
+			// script). Clicking the matched element itself is the right degrade and is usually the same
+			// thing: the ancestor lookup only matters when the match is a span inside a button. Not
+			// counted as a probe failure, because the element is still a candidate.
+		}
 		try {
 			const intersecting = await clickable.isIntersectingViewport();
 			if (!intersecting) continue;
@@ -458,21 +469,27 @@ async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]
 			})) as { x: number; y: number; w: number; h: number };
 			if (rect.w < 1 || rect.h < 1) continue;
 			candidates.push({ handle: clickable, rect, ownedProxy: clickableProxy ?? undefined });
-		} catch {
+		} catch (err) {
+			// The visibility probe threw, so this element is dropped without ever being judged. Counted
+			// and reported: dropping it silently is what made a detached-node race read as an invisible
+			// element in the timeout message.
+			probeFailures += 1;
+			firstProbeError ??= errorMessage(err);
 		} finally {
 			if (clickableProxy && clickableProxy !== handle && clickable !== clickableProxy) {
 				await clickableProxy.dispose().catch(() => undefined);
 			}
 		}
 	}
-	if (!candidates.length) return null;
+	const resolution = { probed: handles.length, probeFailures, firstProbeError };
+	if (!candidates.length) return { target: null, ...resolution };
 	candidates.sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
 	const winner = candidates[0]?.handle ?? null;
 	for (let i = 1; i < candidates.length; i++) {
 		const candidate = candidates[i]!;
 		if (candidate.ownedProxy) await candidate.ownedProxy.dispose().catch(() => undefined);
 	}
-	return winner;
+	return { target: winner, ...resolution };
 }
 
 async function isClickActionable(handle: ElementHandle): Promise<ActionabilityResult> {
@@ -519,9 +536,10 @@ async function clickQueryHandlerText(
 		const handles = (await untilAborted(clickSignal, () => page.$$(selector))) as ElementHandle[];
 		try {
 			lastSeen = handles.length;
-			const target = await resolveActionableQueryHandlerClickTarget(handles);
+			const resolved = await resolveActionableQueryHandlerClickTarget(handles);
+			const target = resolved.target;
 			if (!target) {
-				lastReason = handles.length ? "no-visible-candidate" : "no-matches";
+				lastReason = describeMissingClickTarget(resolved);
 				await untilAborted(clickSignal, () => Bun.sleep(100));
 				continue;
 			}
@@ -547,6 +565,27 @@ async function clickQueryHandlerText(
 		`Timed out clicking ${selector} (seen ${lastSeen} matches; last reason: ${lastReason ?? "unknown"}). ` +
 			"If there are multiple matching elements, use observe + tab.id() or a more specific selector.",
 	);
+}
+
+/**
+ * Why no click target was chosen, in the words the timeout message needs.
+ *
+ * A probe that threw is called out separately from an element that was simply not visible, because
+ * the two send the reader in opposite directions: "no-visible-candidate" for a detached-node race
+ * had them inspecting CSS for an element that was on screen the whole time.
+ */
+export function describeMissingClickTarget(resolution: {
+	probed: number;
+	probeFailures: number;
+	firstProbeError: string | null;
+}): string {
+	if (resolution.probed === 0) return "no-matches";
+	if (resolution.probeFailures === 0) return "no-visible-candidate";
+	const detail = resolution.firstProbeError ? `: ${resolution.firstProbeError}` : "";
+	if (resolution.probeFailures === resolution.probed) {
+		return `every candidate probe failed (${resolution.probeFailures} of ${resolution.probed})${detail}`;
+	}
+	return `no-visible-candidate, and ${resolution.probeFailures} of ${resolution.probed} probes failed${detail}`;
 }
 
 /**
@@ -1000,11 +1039,7 @@ export class WorkerCore {
 			// our per-op deadline fired, or puppeteer's own (equal) timeout fired first — having
 			// already torn down the CDP action via the op signal, so no work is left dangling.
 			// Cell-budget aborts and uncapped helpers (goto/evaluate) keep their native errors.
-			if (
-				capped &&
-				!cellSignal.aborted &&
-				(opTimeout?.signal.aborted || (err instanceof Error && err.name === "TimeoutError"))
-			) {
+			if (capped && !cellSignal.aborted && (opTimeout?.signal.aborted || isTimeoutError(err))) {
 				const hint = selector ? await this.#selectorTimeoutHint(selector) : "";
 				throw new ToolError(`${label} timed out after ${perOpTimeoutMs}ms${hint}`);
 			}
@@ -1106,7 +1141,7 @@ export class WorkerCore {
 							page.goto(url, { waitUntil: opts?.waitUntil ?? "load", timeout: budgetBound }),
 						);
 					} catch (err) {
-						if (err instanceof Error && err.name === "TimeoutError") {
+						if (isTimeoutError(err)) {
 							// Abandon the hung navigation NOW — a still-pending load stalls every
 							// later op on this page and cascades into more opaque timeouts.
 							await this.#stopLoading();

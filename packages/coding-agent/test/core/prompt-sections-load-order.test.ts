@@ -1,9 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import {
-	promptSectionNames,
-	templateSectionNames,
-} from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
+import { promptSectionNames, templateSectionNames } from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
 
 /**
  * No module in this pair may read the other's bindings while it is evaluating.
@@ -18,7 +15,7 @@ import {
  * modules in rather than on anything under test.
  *
  * The obvious explanation was ruled out: the import graph inside
- * `src/system-prompt-builder/` is acyclic, and `prompt-blocks.ts` imports nothing
+ * `src/system-prompt-builder/` is acyclic, and `section-registry.ts` imports nothing
  * but a helper from `@veyyon/utils`, so it cannot be re-entered through
  * `prompt-sections.ts`. With nothing to point at, the fix is to remove the
  * hazard rather than the cycle: `prompt-sections.ts` used to derive three values
@@ -79,14 +76,7 @@ describe("the derivation is memoized", () => {
 });
 
 describe("the source keeps no top-level read of the registry", () => {
-	const sourcePath = path.join(
-		import.meta.dir,
-		"..",
-		"..",
-		"src",
-		"system-prompt-builder",
-		"prompt-sections.ts",
-	);
+	const sourcePath = path.join(import.meta.dir, "..", "..", "src", "system-prompt-builder", "prompt-sections.ts");
 
 	/**
 	 * THE LOCK. Everything above still passes if someone reintroduces
@@ -109,14 +99,26 @@ describe("the source keeps no top-level read of the registry", () => {
 	});
 
 	/**
-	 * The import itself must stay a plain named import. A `import * as blocks`
-	 * followed by a top-level `blocks.BANNERED_SECTIONS` would evade the check
+	 * The import itself must stay a plain named import. An `import * as registry`
+	 * followed by a top-level `registry.BANNERED_SECTIONS` would evade the check
 	 * above while reintroducing exactly the same evaluation-order dependency.
+	 *
+	 * Asserted as a PROPERTY of the import rather than as its exact text. This test
+	 * used to pin the whole line, which made it fail for reasons that had nothing to
+	 * do with load order: adding a symbol to the import broke it, and so did moving
+	 * the banner grammar out to its own module. A guard that fires on correct
+	 * refactors teaches the reader to edit the expected string without thinking,
+	 * which is how it stops guarding anything.
 	 */
 	it("imports the registry by name rather than as a namespace", async () => {
 		const source = await Bun.file(sourcePath).text();
 
-		expect(source).toContain('import { BANNERED_SECTIONS, BANNERED_TEMPLATE_SECTIONS } from "./prompt-blocks"');
-		expect(source).not.toMatch(/import\s+\*\s+as\s+\w+\s+from\s+"\.\/prompt-blocks"/);
+		const named = /^import \{[^}]*\} from "\.\/section-registry";$/m.exec(source);
+		expect(named, "the registry import is missing or is no longer a named import").not.toBeNull();
+		// The bindings the load-order checks above are written against must be the
+		// ones actually imported, or those checks scan for a name nothing uses.
+		expect(named?.[0]).toContain("BANNERED_SECTIONS");
+		expect(named?.[0]).toContain("BANNERED_TEMPLATE_SECTIONS");
+		expect(source).not.toMatch(/import\s+\*\s+as\s+\w+\s+from\s+"\.\/section-registry"/);
 	});
 });

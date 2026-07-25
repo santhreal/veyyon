@@ -8,6 +8,7 @@
 import { readSseEvents, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
+import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import type {
 	CredentialBlockRequest,
 	CredentialBlockResponse,
@@ -71,18 +72,6 @@ export type FetchSnapshotResult =
 	| { status: 200; snapshot: SnapshotResponse; generation: number }
 	| { status: 304; generation: number };
 
-function parseGenerationTag(header: string | null): number | undefined {
-	if (!header) return undefined;
-	let value = header.trim();
-	if (value.startsWith("W/")) value = value.slice(2).trim();
-	if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-		value = value.slice(1, -1);
-	}
-	const generation = Number(value);
-	if (!Number.isInteger(generation) || generation < 0) return undefined;
-	return generation;
-}
-
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RETRIES = 1;
 
@@ -117,7 +106,7 @@ export class AuthBrokerClient {
 		if (opts.waitMs !== undefined) query.set("wait", String(opts.waitMs));
 		const path = `/v1/snapshot${query.size > 0 ? `?${query.toString()}` : ""}`;
 		const headers: Record<string, string> = {};
-		if (opts.ifGenerationGt !== undefined) headers["If-None-Match"] = `"${opts.ifGenerationGt}"`;
+		if (opts.ifGenerationGt !== undefined) headers["If-None-Match"] = formatGenerationTag(opts.ifGenerationGt);
 		const timeoutMs =
 			opts.waitMs !== undefined && opts.waitMs > 0 ? Math.max(this.#timeoutMs, opts.waitMs + 1000) : undefined;
 		const response = await this.#fetchRaw("GET", path, {

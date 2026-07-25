@@ -9,7 +9,8 @@ import {
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getTerminalId } from "@veyyon/tui";
-import { getAgentDir, getTerminalSessionsDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { getTerminalSessionsDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 interface JsonlMessageEntry {
 	type: "message";
@@ -26,7 +27,9 @@ interface JsonlMessageEntry {
 describe("SessionManager.forkFrom", () => {
 	it("suppresses terminal breadcrumbs while preserving source history under a new parented session", async () => {
 		using tempDir = TempDir.createSync("@veyyon-session-fork-");
-		const previousAgentDir = getAgentDir();
+		// `setAgentDir(previousAgentDir)` is not an inverse: it exports the variable even
+		// when it was absent and clears the active profile, which is what leaked here.
+		const dirOverrides = captureDirOverrides();
 		const previousTermSessionId = process.env.TERM_SESSION_ID;
 		setAgentDir(path.join(tempDir.path(), "agent"));
 		process.env.TERM_SESSION_ID = "veyyon-fork-test";
@@ -84,7 +87,7 @@ describe("SessionManager.forkFrom", () => {
 			} else {
 				process.env.TERM_SESSION_ID = previousTermSessionId;
 			}
-			setAgentDir(previousAgentDir);
+			restoreDirOverrides(dirOverrides);
 		}
 	});
 });

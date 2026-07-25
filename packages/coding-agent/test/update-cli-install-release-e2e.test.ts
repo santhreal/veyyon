@@ -50,9 +50,30 @@ async function makeTempDir(): Promise<string> {
 	return dir;
 }
 
-/** An executable stand-in for a veyyon binary reporting `veyyon/<version>`. */
+/**
+ * An executable stand-in for a veyyon binary reporting `veyyon/<version>`.
+ *
+ * It answers `grep` too, because post-swap verification no longer trusts
+ * `--version` alone: `probeSearchWorks` runs the installed binary against a file
+ * it wrote itself, since a release built for the wrong platform loads no native
+ * addon and reports its version perfectly while being unable to search. A stub
+ * that only echoed a version therefore failed that check and rolled itself back.
+ * Answering both keeps this suite about the pipeline's WIRING rather than about
+ * the self-test, which has its own coverage.
+ */
 function fakeBinaryScript(version: string): string {
-	return `#!/bin/sh\necho "veyyon/${version}"\n`;
+	return [
+		"#!/bin/sh",
+		'if [ "$1" = "grep" ]; then',
+		"  shift",
+		'  [ "$1" = "--help" ] && exit 0',
+		'  pattern="$1"',
+		"  shift",
+		'  exec grep -rl "$pattern" "$@"',
+		"fi",
+		`echo "veyyon/${version}"`,
+		"",
+	].join("\n");
 }
 
 function sha256Hex(text: string): string {
@@ -136,6 +157,35 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		expect(leftovers).toEqual([]);
 		// The binary and its sidecar were fetched from the pinned release tag.
 		expect(harness.fetched.some(u => u.includes("/releases/download/v9.9.9/"))).toBe(true);
+	});
+
+	/**
+	 * The wrong-platform release: it reports the version it is supposed to and
+	 * cannot actually work, because its native addon does not load on this host.
+	 * `--version` alone accepts it, so the swap runs a real search through the
+	 * installed file, and a release that answers `grep` with nothing must be
+	 * rolled back rather than left in place looking installed. Nothing else drives
+	 * that through the BINARY pipeline: `probeSearchWorks` has unit coverage and
+	 * the source path has its own, but the swap-and-restore wiring around it is
+	 * only observable here.
+	 */
+	it("rolls back a release that reports the right version but cannot search", async () => {
+		const asset = binaryName();
+		// Answers `grep --help` (so it is not excused as a build without the
+		// subcommand) and then finds nothing, which is exactly what a missing
+		// native addon looks like: exit 0, no matches, ever.
+		const newBinary = `#!/bin/sh\n[ "$1" = "grep" ] && exit 0\necho "veyyon/9.9.9"\n`;
+		const harness = await makeHarness({
+			[`${asset}.sha256`]: new Response(`${sha256Hex(newBinary)}  ${asset}\n`),
+			[asset]: new Response(newBinary),
+		});
+
+		await expect(harness.run("9.9.9")).rejects.toThrow(/did not find a file it was pointed at/i);
+
+		expect(await fs.readFile(harness.targetPath, "utf8")).toBe(fakeBinaryScript("1.0.0"));
+		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(f => f !== "veyyon");
+		expect(leftovers).toEqual([]);
+		expect(harness.reported.some(line => line.includes("Updated to 9.9.9"))).toBe(false);
 	});
 
 	/** Sidecar 404 = fail closed BEFORE the swap: install.sh refuses without a

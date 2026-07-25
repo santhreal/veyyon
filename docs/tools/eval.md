@@ -82,6 +82,39 @@ Side-channel artifacts:
 - `session.allocateOutputArtifact?.("eval")` may allocate an `artifact://...` backing store for spilled output.
 - Truncated output metadata points at that artifact when available.
 
+### Runner and build bookkeeping is folded out
+
+Output from a test runner is condensed before it goes into the conversation. Lines that only say a
+test ran, passed, or was skipped are replaced by one line stating how many went and what they were:
+
+```
+[folded 21 === RUN/CONT/PAUSE lines; failures are never folded]
+[folded 20 --- PASS/SKIP lines; failures are never folded]
+    thing_test.go:42: expected 3, got 4
+--- FAIL: TestBroken (0.01s)
+FAIL	example.com/pkg	0.312s
+```
+
+Failures, panics, assertion diffs, and anything a test printed itself are never folded. The fold
+recognises `go test`, pytest, `python -m unittest -v`, cargo, vitest, jest, `bun test`, and TAP
+output, and it applies whether the run passed or failed: a failing suite's bulk is usually
+bookkeeping for the tests that passed.
+
+Build progress folds the same way. A cold `cargo build` prints one indented `Compiling <crate>
+<version>` line per crate, hundreds on a real workspace, and none of them survive; every `error:`,
+`warning:`, and diagnostic does. cmake and make progress, gradle tasks that did no work, docker layer
+ids, and maven's artifact fetches fold on the same terms. See
+[the bash tool's description of the fold](bash.md) for the full list and what is deliberately kept.
+Nothing happens at all below twelve foldable lines, where the summary line would cost more than it
+saves.
+
+This exists because tool output is re-read on every later turn. On a measured 66-turn session, three
+verbose test results were 67% of all tool-result bytes, and one of them cost 4.7% of the whole bill
+on its own.
+
+In `eval` the fold applies only to what the model reads. The cell's rendered output keeps the run in
+full, so the transcript still shows you every line.
+
 ## Flow
 
 1. `EvalTool.execute()` in `packages/coding-agent/src/tools/eval.ts` receives `params.cells` already validated by the Zod schema: no string parsing step.
@@ -153,6 +186,7 @@ Implemented in `packages/coding-agent/src/eval/py/executor.ts`, `packages/coding
 
 - Default mode is retained `session` kernels keyed by `python:${sessionId}` plus normalized cwd and interpreter
 - Optional `python.kernelMode = "per-call"` creates a fresh kernel for each cell and shuts it down afterward
+- Ruby and Julia have the same setting, `ruby.kernelMode` and `julia.kernelMode`, with the same values and the same `session` default. In `per-call` mode the cell gets a kernel of its own and that kernel is shut down when the cell finishes, including when it fails, so nothing the cell defined survives it. A fresh Julia kernel recompiles, so `per-call` costs more there than anywhere else
 - `reset: true` disposes the retained kernel for that session before the cell runs; later Python cells in the same tool call reuse the fresh kernel
 - Startup path:
   - availability check
@@ -199,7 +233,7 @@ Both runtimes expose `agent()`, a single subagent invocation routed through `pac
 - `schema` passes a JSON Schema to the subagent structured-output path. When present, the helper parses the final JSON text and returns an object.
 - `handle` (default off) returns a DAG node dict, `{ text, output, handle: "agent://<id>", id, agent }`, plus a parsed `data` field when `schema` is set, instead of the bare output, so a downstream stage can reference the transcript by handle.
 - Spawn restrictions use `session.getSessionSpawns()` exactly like the `task` tool. Eval-driven subagent recursion is capped at depth 3.
-- JS and Python both expose `parallel(thunks)` and `pipeline(items, ...stages)`; both use a bounded async/threaded pool whose width tracks the `task.maxConcurrency` setting (the same ceiling the `task` tool uses; `0` = run every item at once), preserve item order, and propagate rejections. The width is fetched live from the host via the `__concurrency__` bridge, so the helpers no longer take a `concurrency` argument.
+- JS and Python both expose `parallel(thunks)` and `pipeline(items, ...stages)`; both use a bounded async/threaded pool whose width tracks the `subagent.maxConcurrency` setting (the same ceiling the `task` tool uses; `0` = run every item at once), preserve item order, and propagate rejections. The width is fetched live from the host via the `__concurrency__` bridge, so the helpers no longer take a `concurrency` argument.
 - Errors surface as exceptions: unknown or disabled agent, disallowed spawn, recursion cap, subagent failure, or invalid structured output all fail the eval cell.
 
 ### Multi-language call behavior
@@ -245,7 +279,7 @@ A single tool call can mix Python and JS cells. Persistence is per language runt
 - Output truncation window: 50KB default (`DEFAULT_MAX_BYTES` in `packages/coding-agent/src/session/streaming-output.ts`)
 - Output line cap inside truncation helpers: 3000 lines (`DEFAULT_MAX_LINES` in `packages/coding-agent/src/session/streaming-output.ts`)
 - Streaming tail buffer for live updates: `DEFAULT_MAX_BYTES * 2` = 100KB (`packages/coding-agent/src/tools/eval.ts`)
-- JS/Python `parallel()` / `pipeline()` helper pool width: the `task.maxConcurrency` setting (default 32; `0` = unbounded), resolved live via the `__concurrency__` bridge (`packages/coding-agent/src/eval/concurrency-bridge.ts`)
+- JS/Python `parallel()` / `pipeline()` helper pool width: the `subagent.maxConcurrency` setting (default 32; `0` = unbounded), resolved live via the `__concurrency__` bridge (`packages/coding-agent/src/eval/concurrency-bridge.ts`)
 - Eval-driven `agent()` recursion cap: task depth 3 (`EVAL_AGENT_MAX_DEPTH`)
 - Python kernel startup wait: 10s (`STARTUP_TIMEOUT_MS` in `packages/coding-agent/src/eval/py/kernel.ts`)
 - Python kernel shutdown grace per escalation step (`exit` request → `SIGTERM` → `SIGKILL`): 1000ms (`SHUTDOWN_GRACE_MS` in `packages/coding-agent/src/eval/py/kernel.ts`)

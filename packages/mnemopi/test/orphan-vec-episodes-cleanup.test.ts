@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import "./setup";
 import { BeamMemory } from "@veyyon/mnemopi/core/beam";
+import { useMnemopiTestEnv } from "./setup";
+
+useMnemopiTestEnv();
 
 function createVecEpisodes(beam: BeamMemory): void {
 	beam.db.run("CREATE TABLE vec_episodes (rowid INTEGER PRIMARY KEY, embedding TEXT NOT NULL)");

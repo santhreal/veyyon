@@ -259,10 +259,11 @@ describe("official OpenAI leaked thinking healing exemption", () => {
 	// api, while `buildModel` infers `TApi` from the `api` property and asks for
 	// that api's sparse compat alone (TS2345, `bun run check:ts` red on
 	// `@veyyon/ai`). A spec that carries no compat has nothing to conflict.
-	const { compat: _resolvedForResponses, compatConfig: _sparseForResponses, ...officialOpenAI } = getBundledModel(
-		"openai",
-		"gpt-5.5",
-	);
+	const {
+		compat: _resolvedForResponses,
+		compatConfig: _sparseForResponses,
+		...officialOpenAI
+	} = getBundledModel("openai", "gpt-5.5");
 	const completionsModel = buildModel({
 		...officialOpenAI,
 		api: "openai-completions",

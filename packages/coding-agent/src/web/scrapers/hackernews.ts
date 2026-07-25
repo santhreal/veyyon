@@ -1,4 +1,4 @@
-import { errorMessage, tryParseJson } from "@veyyon/utils";
+import { errorMessage, isCancellation, tryParseJson } from "@veyyon/utils";
 import { markdownLink } from "../../utils/markdown-link";
 import type { SpecialHandler } from "./types";
 import { buildResult, decodeHtmlEntities, formatIsoDate, loadPage, tryParseUrl } from "./types";
@@ -186,6 +186,10 @@ export const handleHackerNews: SpecialHandler = async (url, timeout, signal) => 
 
 		return buildResult(content, { url, method: "hackernews", fetchedAt, notes });
 	} catch (err) {
+		// A cancellation is not a Hacker News failure. Rendering it as a page whose body is
+		// "Error fetching Hacker News content" would hand the model an error document to
+		// reason about instead of letting the abort reach the caller.
+		if (isCancellation(err)) throw err;
 		const errorMsg = errorMessage(err);
 		notes.push(`Error: ${errorMsg}`);
 		return buildResult(`# Error fetching Hacker News content\n\n${errorMsg}`, {

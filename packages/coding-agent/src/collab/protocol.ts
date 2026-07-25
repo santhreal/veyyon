@@ -110,25 +110,14 @@ export type CollabFrame =
 // Wire envelope: [4B uint32 BE peerId][sealed payload]
 // Host→relay: peerId 0 broadcasts to all guests; peerId N targets guest N.
 // Guest→relay: always 0; the relay rewrites it to the sender's id.
+//
+// The codec itself belongs to `@veyyon/wire`, alongside the header length, so
+// the host and the browser guest cannot disagree about the byte order. It is
+// re-exported here because `protocol.ts` is what the collab host and guest
+// import.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array {
-	const out = new Uint8Array(ENVELOPE_HEADER_LENGTH + sealed.byteLength);
-	new DataView(out.buffer).setUint32(0, peerId, false);
-	out.set(sealed, ENVELOPE_HEADER_LENGTH);
-	return out;
-}
-
-export function unpackEnvelope(data: Uint8Array): { peerId: number; payload: Uint8Array } | null {
-	if (data.byteLength < ENVELOPE_HEADER_LENGTH) return null;
-	const peerId = new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).getUint32(0, false);
-	return { peerId, payload: data.subarray(ENVELOPE_HEADER_LENGTH) };
-}
-
-/** Rewrite the peerId in place without copying the payload. */
-export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
-	new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).setUint32(0, peerId, false);
-}
+export { packEnvelope, rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/wire";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Link format: wss://<host[:port]>/r/<roomId>.<base64url-32-byte-key>

@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { buildArgotGate } from "@veyyon/coding-agent/lexpack-wire";
+import { buildArgotGate } from "@veyyon/coding-agent/argot-wire";
 import { EMPTY_GATE, shouldEncode } from "argot";
 
 const MODEL = "anthropic/claude-opus-4";

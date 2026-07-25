@@ -1,11 +1,28 @@
 import type { Usage } from "@veyyon/ai";
 import { Container, Spacer, Text } from "@veyyon/tui";
-import { formatNumber } from "@veyyon/utils";
+import { formatDuration, formatNumber } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 
 /** Below this the rate is nonsense (cached/instant responses yield absurd tok/s). */
 const MIN_DURATION_MS = 100;
 
+/**
+ * The per-turn receipt shown under a completed assistant message when
+ * `display.showTokenUsage` is on: what the turn spent and how long it took.
+ *
+ * The wall clock is the number you want when comparing two models or two edit
+ * formats on the same prompt, and it was the one number missing: the total
+ * duration was read only to divide the output tokens by it, so the row published a
+ * rate and never the time behind it. Time to first token wore the clock icon on its
+ * own, which made the single time value on the row ambiguous — a reader could not
+ * tell whether they were looking at the turn's length or its latency. The clock now
+ * means the turn's length, matching the status line's `time_spent` segment, and TTFT
+ * carries its own label.
+ *
+ * Every value is derived from the usage and timings the turn already reported. No
+ * second estimator: a receipt that disagreed with the status line would be worse
+ * than no receipt.
+ */
 export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: number): Container {
 	const totalInput = usage.input + usage.cacheWrite;
 	const parts: string[] = [];
@@ -14,8 +31,11 @@ export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: 
 	if (usage.cacheRead > 0) {
 		parts.push(`${theme.icon.cache} ${formatNumber(usage.cacheRead)}`);
 	}
+	if (durationMs !== undefined && durationMs > 0) {
+		parts.push(`${theme.icon.time} ${formatDuration(durationMs)}`);
+	}
 	if (ttftMs && ttftMs > 0) {
-		parts.push(`${theme.icon.time} ${(ttftMs / 1000).toFixed(1)}s`);
+		parts.push(`ttft ${(ttftMs / 1000).toFixed(1)}s`);
 	}
 	if (durationMs && durationMs > MIN_DURATION_MS && usage.output > 0) {
 		// TPS over the total request duration — the post-TTFT window undercounts

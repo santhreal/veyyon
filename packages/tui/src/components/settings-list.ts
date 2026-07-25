@@ -1,4 +1,3 @@
-import { fuzzyFilter } from "../fuzzy";
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
@@ -14,6 +13,7 @@ import {
 	wrapTextWithAnsi,
 } from "../utils";
 import { ScrollView } from "./scroll-view";
+import { filterSettingItems } from "./settings-search";
 
 export interface SettingItem {
 	/** Unique identifier for this setting */
@@ -32,6 +32,13 @@ export interface SettingItem {
 	changed?: boolean;
 	/** Render as a non-interactive section heading. Skipped by navigation and search. */
 	heading?: boolean;
+	/** The group this setting sits under, searchable at low weight so "thinking"
+	 *  finds the group's rows even when no label carries the word. */
+	group?: string;
+	/** Words a user would call this setting that its label does not contain
+	 *  ("reasoning" for effort, "clipboard" for copy). Searched at label weight,
+	 *  because it IS the name as far as the person typing is concerned. */
+	keywords?: readonly string[];
 }
 
 export interface SettingsListTheme {
@@ -89,15 +96,20 @@ export interface SettingsListOptions {
 	expandedIds?: ReadonlySet<string>;
 }
 
-/** Searchable text for a setting item: label, id, value, description, and cycle values. */
+/**
+ * Searchable text for a setting item, as ONE string.
+ *
+ * Retired from ranking: scoring a blob made a description hit indistinguishable
+ * from a label hit, and it put the CURRENT VALUE and every enum value in the
+ * haystack, so `high` matched whatever happened to be set to high. `settings-search.ts`
+ * scores the fields separately. Kept for callers that need a single line of
+ * searchable text (logging, snapshots) and deliberately excludes the value.
+ */
 export function getSettingItemFilterText(item: SettingItem): string {
-	let text = `${item.label} ${item.id} ${item.currentValue}`;
-	if (item.description) {
-		text += ` ${item.description}`;
-	}
-	if (item.values) {
-		text += ` ${item.values.join(" ")}`;
-	}
+	let text = `${item.label} ${item.id}`;
+	if (item.group) text += ` ${item.group}`;
+	if (item.keywords?.length) text += ` ${item.keywords.join(" ")}`;
+	if (item.description) text += ` ${item.description}`;
 	return sanitizeSingleLine(text);
 }
 
@@ -335,13 +347,9 @@ export class SettingsList implements Component {
 	}
 
 	#applyFilter(): void {
-		this.#filteredItems = this.#filterQuery.trim()
-			? fuzzyFilter(
-					this.#items.filter(item => !item.heading),
-					this.#filterQuery,
-					getSettingItemFilterText,
-				)
-			: this.#items;
+		// Field-weighted, through the same owner the settings overlay's own search
+		// uses, so the two cannot rank the same query differently.
+		this.#filteredItems = this.#filterQuery.trim() ? filterSettingItems(this.#items, this.#filterQuery) : this.#items;
 	}
 
 	#firstSelectableIndex(): number {

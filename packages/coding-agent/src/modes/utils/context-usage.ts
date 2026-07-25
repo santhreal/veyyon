@@ -1,9 +1,10 @@
 import { type AgentMessage, countTokens } from "@veyyon/agent-core";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
-import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/agent-core/compaction";
+import { estimateTokens } from "@veyyon/agent-core/compaction";
 import type { Tool as AiTool, Model } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
-import { errorMessage, formatNumber, logger } from "@veyyon/utils";
+import { errorMessage, formatBytes, formatNumber, logger } from "@veyyon/utils";
+import { resolveContextLimit } from "../../config/compaction-strategy";
 import type { Skill } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
 import type { Tool } from "../../tools";
@@ -36,6 +37,17 @@ export interface ContextBreakdown {
 	usedTokens: number;
 	autoCompactBufferTokens: number;
 	freeTokens: number;
+	/**
+	 * Bytes this session has kept OUT of the request, cumulative across every
+	 * turn so far.
+	 *
+	 * The panel above it answers "what is in my context". This answers "what is
+	 * not, and why", which is the other half and was previously invisible: two
+	 * mechanisms were quietly shrinking every request and the only way to know
+	 * either was working was to read the source. A saving nobody can see is a
+	 * saving nobody notices break.
+	 */
+	elidedBytes: { wirePaths: number; thoughtSignatures: number };
 }
 
 const EMPTY_STRING_PARTS: readonly string[] = [];
@@ -301,19 +313,23 @@ export function computeContextBreakdown(session: AgentSession): ContextBreakdown
 		},
 	];
 
+	// The buffer is the room between the fire point and the window: the part of the
+	// window auto-compaction will not let you use. `resolveContextLimit` is the one
+	// owner of where that point is, shared with the status-line gauge, so the panel
+	// and the gauge cannot disagree about whether compaction will fire.
+	//
+	// There is no invented buffer when it will not fire. This used to substitute
+	// `effectiveReserveTokens` whenever the computed buffer came out zero and
+	// `compaction.enabled` was set — so a session with `strategy: "off"` was shown a
+	// labelled "Autocompact buffer" that nothing would ever enforce, and the panel
+	// disagreed with the status line, which correctly denominates against the whole
+	// window in that configuration. A displayed reserve no mechanism honours is the
+	// same class of bug as printing the fire point where the window belongs.
 	let autoCompactBufferTokens = 0;
 	if (contextWindow > 0) {
 		const compactionSettings = session.settings.getGroup("compaction") as CompactionSettings;
-		if (compactionSettings.enabled && compactionSettings.strategy !== "off") {
-			const threshold = resolveThresholdTokens(contextWindow, compactionSettings);
-			autoCompactBufferTokens = Math.max(0, contextWindow - threshold);
-		} else {
-			autoCompactBufferTokens = 0;
-		}
-		// Even when fully disabled, fall back to a sensible reserve floor for display.
-		if (autoCompactBufferTokens === 0 && compactionSettings.enabled) {
-			autoCompactBufferTokens = effectiveReserveTokens(contextWindow, compactionSettings);
-		}
+		const limit = resolveContextLimit(contextWindow, compactionSettings);
+		autoCompactBufferTokens = limit.kind === "compaction" ? Math.max(0, contextWindow - limit.tokens) : 0;
 	}
 	autoCompactBufferTokens = Math.min(autoCompactBufferTokens, Math.max(0, contextWindow - usedTokens));
 
@@ -326,6 +342,10 @@ export function computeContextBreakdown(session: AgentSession): ContextBreakdown
 		usedTokens,
 		autoCompactBufferTokens,
 		freeTokens,
+		elidedBytes: {
+			wirePaths: session.wirePathBytesSaved ?? 0,
+			thoughtSignatures: session.thoughtSignatureBytesSaved ?? 0,
+		},
 	};
 }
 
@@ -410,7 +430,7 @@ function percentString(part: number, whole: number, fractionDigits = 1): string 
 
 function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): string[] {
 	const lines: string[] = [];
-	const { model, contextWindow, categories, usedTokens, autoCompactBufferTokens, freeTokens } = breakdown;
+	const { model, contextWindow, categories, usedTokens, autoCompactBufferTokens, freeTokens, elidedBytes } = breakdown;
 
 	const modelName = model?.name ?? model?.id ?? "no model";
 	const modelId = model?.id ?? "unknown";
@@ -437,6 +457,17 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 	lines.push(
 		`${freeDot} Free space: ${theme.bold(formatNumber(freeTokens))} ${theme.fg("dim", `(${percentString(freeTokens, contextWindow)})`)}`,
 	);
+
+	// Bytes kept out of the request, which the grid above cannot show because they
+	// are not in the context. Rendered only when a mechanism actually elided
+	// something, so a session with both turned off reads exactly as it did before.
+	const { wirePaths, thoughtSignatures } = elidedBytes;
+	if (wirePaths > 0 || thoughtSignatures > 0) {
+		const parts: string[] = [];
+		if (thoughtSignatures > 0) parts.push(`${formatBytes(thoughtSignatures)} of thought signatures`);
+		if (wirePaths > 0) parts.push(`${formatBytes(wirePaths)} of absolute paths`);
+		lines.push(`${theme.fg("dim", "·")} Kept out of context: ${theme.fg("dim", parts.join(", "))}`);
+	}
 
 	if (autoCompactBufferTokens > 0) {
 		const bufferDot = theme.fg("warning", CELL_BUFFER);

@@ -1,7 +1,18 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, APP_NAME, errorMessage, getToolsDir, logger, ptree, TempDir } from "@veyyon/utils";
+import {
+	$which,
+	APP_NAME,
+	bareVersion,
+	errorMessage,
+	getToolsDir,
+	isCancellation,
+	logger,
+	ptree,
+	TempDir,
+} from "@veyyon/utils";
+import { throwIfAborted } from "../tools/tool-errors";
 import { scopedTimeoutSignal } from "./fetch-timeout";
 import { extractArchive } from "./zip";
 
@@ -16,7 +27,7 @@ type BodyReader = {
 };
 
 function isAbortLikeError(error: unknown): boolean {
-	return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+	return isCancellation(error);
 }
 
 function abortReason(signal: AbortSignal): unknown {
@@ -201,7 +212,13 @@ async function getLatestVersion(repo: string, signal?: AbortSignal): Promise<str
 				signal: requestTimeout.signal,
 			});
 		} catch (err) {
-			if (err instanceof Error && err.name === "AbortError") {
+			// The scoped signal composes the caller's signal with the deadline, so
+			// "the fetch stopped" had two possible causes and only one of them is a
+			// timeout. An operator interrupt used to be reported as "GitHub API
+			// request timed out", which names the wrong cause and invites a retry
+			// of work the operator just stopped.
+			if (isCancellation(err)) {
+				throwIfAborted(signal, "tool metadata");
 				throw new Error("GitHub API request timed out");
 			}
 			throw err;
@@ -212,7 +229,7 @@ async function getLatestVersion(repo: string, signal?: AbortSignal): Promise<str
 		}
 
 		const data = (await response.json()) as { tag_name: string };
-		return data.tag_name.replace(/^v/, "");
+		return bareVersion(data.tag_name);
 	} finally {
 		requestTimeout.cancel();
 	}

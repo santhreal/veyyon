@@ -168,6 +168,41 @@ export class AgentRegistry {
 	}
 
 	/**
+	 * Every agent below `id` in the spawn tree, nearest first, excluding `id`.
+	 *
+	 * The registry owns `parentId`, so it owns the walk: a caller that needs "this
+	 * agent and everything it spawned" — tearing a session down without leaving a
+	 * grandchild running work nobody will ever collect — must not re-derive the
+	 * relationship from the flat list.
+	 *
+	 * Cycle-safe. A parent id is only ever written at registration, so a cycle
+	 * should be impossible, but a visited set costs nothing and a teardown path is
+	 * the worst place to hang.
+	 */
+	descendantsOf(id: string): string[] {
+		const byParent = new Map<string, string[]>();
+		for (const ref of this.#refs.values()) {
+			if (!ref.parentId) continue;
+			const siblings = byParent.get(ref.parentId);
+			if (siblings) siblings.push(ref.id);
+			else byParent.set(ref.parentId, [ref.id]);
+		}
+		const found: string[] = [];
+		const seen = new Set<string>([id]);
+		const queue = [id];
+		while (queue.length > 0) {
+			const current = queue.shift() as string;
+			for (const child of byParent.get(current) ?? []) {
+				if (seen.has(child)) continue;
+				seen.add(child);
+				found.push(child);
+				queue.push(child);
+			}
+		}
+		return found;
+	}
+
+	/**
 	 * Returns every alive agent (running | idle) except the caller. Advisor refs
 	 * are observability-only transcripts, never peers, so they are excluded.
 	 * Flat namespace: every other agent is visible.

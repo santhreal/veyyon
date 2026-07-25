@@ -4,12 +4,15 @@ import { runConfigCommand, suggestSettingPaths } from "@veyyon/coding-agent/cli/
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { getConfigRootDir, setAgentDir, TempDir } from "@veyyon/utils";
+import { setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 let testAgentDir: TempDir | undefined;
-const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+// which leaked into every file that ran after this one.
+const dirOverrides = captureDirOverrides();
 const cliEntry = path.join(import.meta.dir, "..", "src", "cli.ts");
 
 beforeEach(() => {
@@ -22,12 +25,7 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 	AgentStorage.resetInstance();
 	resetSettingsForTest();
-	if (originalAgentDir) {
-		setAgentDir(originalAgentDir);
-	} else {
-		setAgentDir(fallbackAgentDir);
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-	}
+	restoreDirOverrides(dirOverrides);
 	if (testAgentDir) {
 		try {
 			await testAgentDir.remove();

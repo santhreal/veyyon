@@ -21,11 +21,13 @@ Every evaluation comparison MUST vary **EXACTLY ONE independent variable** betwe
 
 **NEVER replace the whole system prompt to test a prompt change.** A whole-prompt override (a custom `SYSTEM.md` / `--system-prompt` snapshot) freezes a point-in-time copy that no longer responds to settings, and it silently drops every settings-gated section it forgets to copy — the delegation block renders only when the delegation setting is on, so a hand-compressed snapshot that omits it inverts that setting invisibly. That is two hidden variables, not one. Override one named section instead; the engine renders all the others.
 
-The runner enforces three mechanical floors of this rule:
+The runner enforces five mechanical floors of this rule:
 
 1. **Zero-IV collision.** If any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module and same/no rule), it fails loudly with the colliding arm names. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
 2. **Treatment-not-applied (pre-run).** If an arm turns argot encoding on with a non-empty `argot.models` allowlist that does not include the `--model` under test, it fails loudly before running. argot only encodes for a model on its allowlist, so such an arm would SILENTLY degrade to decode-only while still being labelled the encode condition — a silent fallback living inside the eval set. The check uses argot's own `modelAllowed` predicate (exported from the SDK), so it can never drift from the gate the runtime actually applies. A deliberately decode-only arm (`enabled: true`, empty allowlist, as in `arms/decode.yml`) is fine and passes.
 3. **Treatment-not-applied (post-run, authoritative).** The pre-run check matches the model string you *requested*, but the runtime resolves that id through the catalog (provider aliases, effort-tier collapsing) to a different logical id before the encode gate sees it. This really happened: `google-antigravity/gemini-3.6-flash` was aliased onto logical `gemini-3.5-flash`, so the request passed the pre-run check (3.6 was on the list) yet failed the gate (the resolved 3.5 was not) and the arm ran decode-only. After the run, the bench reads whether the encode preamble actually reached the model (from each session's system prompt) and **fails closed** if an encode arm never taught it in any OK trial. The alias has since been removed from the catalog, so 3.6 resolves to 3.6 or fails loudly. The default `--model` and every encode arm's allowlist name **`gemini-3.5-flash`**. That is a choice of a model with a known-good recent run, NOT a claim that any other id is unservable: a `Model "<id>" not found` is usually an auth failure wearing a model id's name (see that section below), so check for a registry-error line and re-seed the auth DB before you suspect the id. The rule still stands whatever the model: requested and resolved must agree, or the run is inert. Watch the `preamble taught` column in the report (below).
+4. **The arm names a setting that does not exist.** An arm is a config overlay, so a key veyyon does not recognise raises nothing: it merges, it is never read, and the arm runs as the control under a treatment's name. The report then compares the control against a second copy of the control, which is the most expensive way to be wrong because it reads as a real measurement. Every key in every arm is checked against the settings schema before the run starts, and an unknown one fails loudly with the path to fix. This catches a typo (`tools.discoverymode`) and, later, a setting that upstream renamed while `arms/` kept the old spelling. Both YAML spellings are accepted, nested and flat, and a record-valued setting such as `tools.approval` keeps its arbitrary keys.
+5. **The arm gives a real setting an unusable value.** Naming a real key is only half of it. `tools.discoveryMode: yes` passes the key check, and then YAML reads the bare word as the boolean `true` while the schema wants one of four strings, so the value is merged and ignored and the arm runs as the control again. Every value is checked against its setting's declared type before the run starts. YAML is what makes this easy rather than exotic: bare `yes`/`no`/`on`/`off` are booleans, `.inf` and `.nan` are numbers, and a quoted `"0.1"` is a string that reads identically to a real one in a diff.
 
 ## Canonical single-IV comparisons
 
@@ -37,9 +39,73 @@ These are the sound pairings the shipped arms are built for. Each varies exactly
 | The nudge rule | `argot-setting-only` ↔ `candidate-argot-nudge` | adds `arms/candidate-argot-nudge.rule.md` (an always-apply rule), same config |
 | Teaching (encode) | `decode` ↔ `full` | the model is allowlisted to encode and taught the preamble; codec/loadability held equal |
 | Dictionary budget | `full` ↔ `full-budget16k` | `argot.tokenBudget` alone, 1000 → 16000 |
+| Tool discovery | `baseline` ↔ `discovery-all` | `tools.discoveryMode` alone, so non-essential tool docs leave the prompt |
+| Early-output spill | `spill-control` ↔ `baseline` ↔ `spill-tight` | `tools.inlineOutputFloor` alone, 1 → 0.25 → 0.1 |
+| Signature size limit | `baseline` ↔ `sig-max4000` | `context.thoughtSignatureMaxLength` alone, none → 4000 |
+| Artifact spill threshold | `baseline` ↔ `spill2kb` | `tools.artifactSpillThreshold` alone, 50 KB → 2 KB |
+| Signature recency | `baseline` ↔ `sig-last8` ↔ `sig-last1` | `context.thoughtSignatureRetention` alone, all → 8 → 1 |
+| Thinking replay | `baseline` ↔ `think-last1` | `context.thinkingRetention` alone, all → 1 |
 | Model | any single arm, two `--model` values | only `--model` differs |
 
 Do not compare across two of these at once (e.g. `baseline` ↔ `full` mixes the feature flag AND teaching). Pick the pair whose single variable is the effect you want to measure.
+
+The last four rows are the context-size levers. Measure the prefix first (see "Where
+the money goes" below), then run them one at a time, because a combined arm
+produces a delta attributable to nothing.
+
+Run them in this order, which is by expected saving per unit of risk rather than by
+saving alone:
+
+1. `sig-max4000`. Predicted 22.8% of the bill, and only about 15% of signatures
+   lose their content. Signature sizes are lopsided enough that a length cap
+   sheds most of the weight while leaving most of the reasoning chain intact.
+2. `sig-last1`. Predicted 30.5% net, the largest single lever, but it drops every
+   historical signature rather than the large ones (99% of them, against the cap's
+   15%). Worth running second so its result can be read against the gentler cap: if
+   both hold reward, take the larger saving; if only the cap holds, the difference
+   tells you replaying older reasoning matters.
+3. `think-last1`. Predicted 7.7%. Cannot reach the target alone, and is worth
+   measuring for what it says about whether the model needs its own thought
+   summaries replayed. Note that the tool cannot yet predict this one from its
+   config: `context.thinkingRetention` has no simulator, so a run reports it as
+   unsimulated rather than guessing.
+4. `spill2kb`. Predicted 26.1% of the Claude bill and 9.2% of the Gemini one, by
+   spilling 23% of all tool results. The shipped 50 KB threshold predicts 0.5%:
+   see "A category total is not a lever's reach" below for why the tool-result
+   category being 26.3% of the prefix does not make the lever worth 26.3%.
+
+`sig-last8` is not on this list. A deeper retention window saves LESS gross than a
+shallow one and hands back MORE as cache misses, so it nets 22.0% while discarding
+93% of signatures, which the size cap matches at 15%. The whole retention family
+gets worse in both directions as it gets safer.
+
+You do not type any of these numbers to check a run. After the run writes its
+report it prints each treatment arm's predicted saving beside the measured one,
+deriving the prediction from that arm's own staged settings against the baseline
+transcripts of the same run. The gap between them is what tells you whether the
+simulator can be trusted for the next lever without buying the answer.
+
+It prints the treatment arm's prefix composition against the baseline's first, so a
+gap can be attributed. A category that did not shrink is a wiring problem: the
+setting never took effect. A category that shrank as predicted while the bill did
+not move is a pricing problem: the simulation is charging for bytes the provider
+was not charging for. Those need opposite responses, and the two numbers together
+tell you which one you have.
+
+Three of its outputs are refusals rather than measurements, and none of them is a
+result:
+
+- `NO PREDICTION` or `PARTIAL PREDICTION` means the arm sets a lever with no
+  simulator, so any total shown covers only part of the treatment.
+- `no paired trials with usage` means the treatment arm billed nothing. That is
+  what a quota kill looks like, and it is not a 100% saving.
+- `sessions carry almost no conversation` means the arm's trials died before doing
+  work. Its composition would otherwise read as a lever that removed every category
+  at once, which is the most impressive table this report can print and describes an
+  arm that never ran.
+
+Tool-call arguments have no arm. They are nine tenths `eval.code`, which is code
+the model wrote, and cannot shrink without changing what it writes.
 
 ## Why the default dictionary budget cannot measure argot
 
@@ -107,6 +173,226 @@ reference per-token prices for the model, because the provider does not. A run
 against a genuinely per-token-priced model (one whose `usage.cost.total` is
 nonzero) shows real dollars and needs none of this.
 
+## Where the money goes: measuring the prompt prefix
+
+Before you build a lever, measure what the bill is actually spent on. Run:
+
+```bash
+bun prefix-composition.ts runs/<run-id>/jobs           # defaults to the baseline arm
+bun prefix-composition.ts runs/<run-id>/jobs sig-last1__
+```
+
+It reads every session transcript under that arm and prints two things: what the
+prompt prefix is made of, and an upper bound on what eliding each part would
+save.
+
+The prefix is measured in **character-turns**, not bytes. One character sitting in
+the prompt for one billed turn is one character-turn. This matters because the
+provider re-reads the whole prefix on every turn, so a 50KB tool result produced
+on the last turn is read once, while the same 50KB produced on turn three is read
+on every turn after it. A flat byte census cannot see that difference and points
+optimization effort at the wrong thing.
+
+On the twenty-task baseline run of 2026-07-25, that decomposition is:
+
+| part of the prefix | share |
+|---|---|
+| thought signatures | 37.5% |
+| tool results | 26.3% |
+| system prompt and tool schemas | 17.4% |
+| thinking | 9.0% |
+| tool-call arguments | 8.3% |
+| assistant text | 0.9% |
+| user text | 0.6% |
+
+The single largest thing in the context is an opaque provider blob, not anything
+the model wrote for itself.
+
+### Prefix share is not bill share
+
+A part's share of the prefix is not what removing it saves. Only the prompt-priced
+lines shrink when the prefix shrinks: output tokens are generated, not re-read, so
+no amount of context elision touches them. On the same run, 23.7M fresh input
+tokens and 265.5M cache reads against 1.83M output tokens price as 85.5% prompt
+and 14.5% output, so a lever that removes the entire signature category buys
+
+    37.5% x 85.5% = 32.0% of the bill
+
+not 37.5%. Quoting the unscaled number overstates every lever by about a sixth,
+which is the difference between clearing a 20% target and only appearing to.
+
+### Why you can trust a character census of a token bill
+
+Everything above counts characters in a session transcript, while the provider
+bills tokens on a prompt the transcript does not fully record: tool schemas go
+over the wire as a structured array and the log stores only tool names. If that
+hidden mass were large, every share would be inflated and every predicted saving
+overstated.
+
+So the tool measures it. It fits what the provider charged against what the
+transcript shows, across every billed turn, and prints both numbers:
+
+```
+calibration against billed tokens: 3.88 chars/token, 5,888 chars of prefix not in
+the transcript (1.2% of the total above)
+```
+
+Read the rate first. A figure in the normal band for prose and code, roughly 3.5
+to 4.5, means the census is capturing the prompt. A much lower figure means real
+prefix mass is missing from the fit and the shares above are inflated. Then read
+the unseen block: at about 6,000 characters it adds 1.3% to the prefix total and
+moves the signature lever's prediction from 22.7% to 22.5% of the bill, which is
+small enough to ignore and now measured rather than hoped for.
+
+### The one lever that removes nothing
+
+Every other measurement here sizes something you would take OUT of the context,
+and taking context out risks the model's behaviour. One line does not:
+
+```
+prompt cache, the lever that removes nothing from the context:
+  hit rate            91.8%
+  billed fresh        23,667,983 tokens, of which 19,723,233 was content already sent
+  paying the fresh rate on re-reads costs 14.0% of the bill, for nothing
+```
+
+The same bytes reach the model either way. Only the rate they are billed at
+changes, so a saving here cannot cost reward, which makes it the cheapest win
+available. Read it before any lever that trades context for money.
+
+On the twenty-session baseline the median turn is charged 6.5 times more uncached
+input than the content it actually added, and 83% of all fresh-input tokens are
+re-reads. The estimate is conservative in the direction that matters: a turn that
+genuinely added a large tool result is credited for it in full, and only the
+excess counts as waste, so a workload that simply produces a lot of output cannot
+inflate the number.
+
+Two explanations are ruled out by the same data. It is not idle-time cache expiry:
+gaps before a missing turn were no longer than before a hit, 1.5 against 2.1
+seconds at the median. It is not a changing system prompt: every session has one
+`session_init` with one prompt. The cause is still open, so treat the figure as a
+measured cost rather than a fix that exists.
+
+### A category total is not a lever's reach
+
+Tool results are 26.3% of the prefix, which reads like a lever worth 22.5% of the
+bill. A size cap cannot get near that, because the mass is spread across many
+mid-sized results rather than concentrated in a few giants. The tool simulates the
+cap directly and prints what it would actually remove:
+
+| inline cap | share of prefix | share of bill | tool results spilled |
+|---|---|---|---|
+| 50,000 chars (the shipped default) | 0.6% | 0.5% | 0% |
+| 20,000 | 2.4% | 2.1% | 1% |
+| 10,000 | 3.9% | 3.3% | 2% |
+| 5,000 | 5.7% | 4.9% | 5% |
+| 2,000 | 10.8% | 9.2% | 17% |
+| 1,000 | 14.6% | 12.5% | 29% |
+
+Even a 1,000-character cap, tight enough to spill most `eval` output, reaches 12.5%
+of the bill. Deciding to build a spill lever from the 26.3% category total alone
+would have spent the effort and landed at a twentieth of the expected saving at
+the shipped threshold. Always simulate the specific lever, never quote its
+category.
+
+Simulate the lever the code actually implements, too. `read` is exempt from
+artifact spill on purpose: it is bounded by lines rather than bytes, so a byte
+spill would hand back fewer lines than you asked for and break the tool's one
+contract. An earlier version of this simulation capped `read` output along with
+everything else, which put a 5 KB threshold at 24.9% of the Claude bill when the
+shipped lever really reaches 13.5%. An arm was sized on that number before the
+error was caught. `simulateToolResultCap` now takes the exempt set as a parameter
+and defaults it to what the code exempts.
+
+The numbers also differ sharply by provider, so quote them with the model attached.
+Tool results are 26.3% of the Gemini prefix and 74.0% of the Claude prefix:
+
+| spill threshold | share of bill (gemini) | share of bill (claude) | results spilled (claude) |
+|---|---|---|---|
+| 50 KB (shipped) | 0.5% | 0.0% | 0% |
+| 10 KB | 3.3% | 8.5% | 3% |
+| 5 KB | 4.9% | 13.5% | 6% |
+| 2 KB | 9.2% | 26.1% | 23% |
+| 1 KB | 12.5% | 33.9% | 35% |
+
+The last column is the risk half of the trade and belongs beside the saving. A
+threshold that spills a quarter of all tool results is asking the model to spend a
+turn recovering content it already asked for, and that is a different kind of
+exposure from a signature cap, which touches state the model never reads back.
+
+Both simulations already subtract what the substitution costs, so these are not
+naive byte counts. A capped signature is replaced by Gemini's 33-character
+`skip_thought_signature_validator`; a spilled result is replaced by a
+`[…NNNln elided…]` marker and a `[raw output: artifact://<id>]` footer, about 45
+characters, measured from the shipped functions rather than assumed. Read the
+printed numbers as **upper bounds** all the same: a lever may cost extra turns if
+the model has to recover what was removed. None of it says the model still solves the task. Only the paired
+reward comparison answers that, and it is the gate: a cheaper arm that loses
+reward is not a win.
+
+### What a signature length cap reaches
+
+Thought signatures are 37.5% of the Gemini prefix, and their sizes are extremely
+lopsided: 2,297 signatures averaged 2,606 characters against a median of 660, with
+a maximum of 91,960, and the largest tenth held 62.1% of all signature bytes. So a
+length cap removes most of the mass while leaving the great majority of tool calls
+untouched, which a recency window cannot do:
+
+| cap | share of prefix | share of bill | tool calls that lose their signature |
+|---|---|---|---|
+| 8,000 chars | 20.9% | 17.9% | 8% |
+| 4,000 | 26.6% | 22.8% | 15% |
+| 2,000 | 30.4% | 26.0% | 24% |
+| 1,000 | 33.1% | 28.3% | 38% |
+
+Savings are turn-weighted and already net of the 33-character
+`skip_thought_signature_validator` sentinel that replaces each dropped signature.
+Counting the full length instead would overstate the lever by 33 characters per
+signature per turn.
+
+Compare the last column against a one-message recency window, which reaches 32% of
+the bill by dropping 100% of historical signatures. The cap reaches 22.8% by
+touching 15% of tool calls, so if replaying older reasoning matters at all, the cap
+degrades gently where the window does not.
+
+### A lever that rewrites history hands its saving back
+
+Every number above assumes the elided bytes simply stop being sent. That is true
+only if the rest of the prefix still renders byte-identically to the previous turn.
+A prefix cache matches a leading run of bytes, so one rewritten character in the
+middle of the history costs you everything after it at the fresh rate, which is
+four times the cached rate here. A lever can remove a fifth of the prefix and still
+lose money.
+
+Two levers that sound similar differ exactly on this point:
+
+- A **size cap** asks whether one signature is longer than the cap. A signature's
+  length never changes, so the answer is fixed for the whole session and the prefix
+  stays byte-stable.
+- A **recency window** asks whether a signature is among the last few assistant
+  messages. That boundary moves forward every turn, so a signature you keep now is
+  history next turn and gets replaced by the sentinel, rewriting bytes you already
+  sent.
+
+The tool measures this and prints it per lever:
+
+| lever | turns keeping the prefix intact | tail invalidated | what that costs |
+|---|---|---|---|
+| stock | 100.0% | 0.0% | 0.0% of bill |
+| sig-max4000 | 100.0% | 0.0% | 0.0% of bill |
+| sig-last1 | 1.9% | 1.1% of prefix | 0.7% of bill |
+| sig-last5 | 5.4% | 5.9% of prefix | 3.8% of bill |
+
+Note what the measurement charges for. A rewrite costs the whole tail behind it,
+not the bytes that changed. `sig-last1` rewrites something on 98% of turns, which
+sounds fatal, but the rewrite lands right at the conversation tail so only 1.1% of
+the prefix sits behind it. Counting only the changed bytes would understate a
+genuinely bad lever by more than twentyfold, so the figure to read is the
+invalidated tail.
+
+Check any new context lever here before spending quota on it. One that rewrites
+deep into history is disqualified on arithmetic alone.
+
 ## Prerequisites (once per machine)
 
 0. Clone the tasks into this package: `git clone --depth 1
@@ -115,7 +401,10 @@ nonzero) shows real dollars and needs none of this.
 1. `uv tool install datacurve-pier` (>= 0.3.0) and Docker running.
 3. Binary build and auth DB seeding are fully automated by `run.ts`:
    - `run.ts` automatically detects if `dist/vey` is out-of-date and recompiles it.
-   - `run.ts` automatically seeds `assets/auth-agent.db` from your host login.
+   - `run.ts` automatically seeds `assets/auth-agent.db` from your host login. It
+     re-seeds when your live store is newer, so a rotated token reaches the
+     containers, and also when the staged copy no longer opens as a database, so
+     one bad write cannot wedge every later run.
    - All runs execute inside isolated Pier/Docker containers using a throwaway agent profile (zero impact on host user profiles `work` or `default`).
 
 ## Running
@@ -221,6 +510,68 @@ silently loses the trial's logs. Upload-at-run-time avoids both.
 A run directory (default `<repo>/runs/deepswe/<timestamp>/`, or `--out`) collects `jobs/` (raw Pier output, trajectories,
 verifier reports), `results.json` (every metric, machine-readable), and
 `report.md` (the table).
+
+## Pooling several days into one comparison
+
+A paired sign test cannot reach significance below six decisive tasks, and one day
+of provider quota funds roughly fifteen tasks across two arms. So a reward
+comparison strong enough to detect a regression usually does not fit in a single
+day. Accumulate it instead:
+
+```bash
+bun run.ts --merge runs/2026-07-25T19-51-41-474Z,runs/2026-07-26T08-11-02-330Z \
+  --out runs/pooled-sig-max4000
+```
+
+That writes `merged-report.md` and `merged-results.json` into `--out` (or into the
+last run directory if you omit it). Each input directory needs a `results.json`;
+run `--reaggregate` on it first if the run died before writing one.
+
+Pooling across days is sound here only because every run carries **both** arms, so
+each task's pair is measured under the same provider conditions, the same binary
+and the same hour. Day-to-day variation shifts both arms of a pair together and a
+paired test differences it away.
+
+The merge refuses anything that breaks that argument, rather than warning about it:
+
+- **Runs with different arms.** Pooling a baseline-only run with a treatment-only
+  run puts the whole day effect on one arm, where it cannot be told apart from the
+  treatment. This is the tempting thing to do when a run dies on quota partway
+  through, and it is the one that fabricates a result rather than degrading one.
+- **Different models.** Two providers averaged into one number describe neither.
+- **Different binaries.** The delta would include whatever else changed in the
+  build, so the arm gets credit for an unrelated commit.
+
+  This is the refusal you will actually hit, and it needs planning rather than
+  luck. The runner rebuilds `vey` whenever any file under `packages/coding-agent/src`
+  is newer than the binary, and in a tree several people are working in that is
+  every day: three runs on 2026-07-25 staged three different binaries. Pin the
+  binary on every run after the first, pointing at the first run's staged copy:
+
+  ```bash
+  bun run.ts --arms baseline,sig-max4000 --model <model> --limit 15 \
+    --binary runs/2026-07-25T19-51-41-474Z/assets/vey
+  ```
+
+  `--binary` skips the rebuild entirely and stages those exact bytes, so the
+  recorded sha matches and the days pool. It announces itself loudly, because the
+  run then measures that binary's code and not the working tree's. That is the
+  trade: you give up testing today's code to buy a comparison with enough decisive
+  tasks to mean anything. Every run stages its binary at `<runDir>/assets/vey`, so
+  the first run of a comparison is the pin for all the rest and no separate
+  artifact has to be kept anywhere.
+- **An arm whose config changed between runs.** Every row still carries the same
+  arm name, the report renders cleanly, and the number is the average of two
+  different treatments. Nothing downstream can catch this, so it is caught here.
+
+A missing arm fingerprint is not treated as a mismatch, so runs predating that
+field still pool.
+
+Plan for the binary before you start. The runner records the `vey` binary's sha,
+and any change under `packages/coding-agent` or `packages/ai` rebuilds it, so a day
+of ordinary development between two runs is enough to make them unmergeable. Land
+the code you want measured, gather every day you need, and resume editing after.
+Changes confined to `packages/deepswe-bench` do not rebuild the binary.
 
 ## Reading the table
 

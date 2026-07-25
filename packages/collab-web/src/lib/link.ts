@@ -44,6 +44,8 @@ export function decodeBase64Url(text: string): Uint8Array | null {
 	try {
 		binary = atob(padded);
 	} catch {
+		// Null means "this is not a share link payload", the same answer the charset check above gives. The
+		// caller shows the invalid-link message either way, so there is nothing extra to surface here.
 		return null;
 	}
 	const out = new Uint8Array(binary.length);
@@ -53,25 +55,15 @@ export function decodeBase64Url(text: string): Uint8Array | null {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Wire envelope
+//
+// The codec is `@veyyon/wire`'s, next to the header length it reads, because the
+// host writes the envelopes this client reads: two copies of the byte order is
+// two chances to disagree, and a disagreement here delivers frames to the wrong
+// peer rather than failing. Re-exported so the rest of the client keeps
+// importing its link helpers from one module.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function packEnvelope(peerId: number, sealed: Uint8Array): Uint8Array<ArrayBuffer> {
-	const out = new Uint8Array(ENVELOPE_HEADER_LENGTH + sealed.byteLength);
-	new DataView(out.buffer).setUint32(0, peerId, false);
-	out.set(sealed, ENVELOPE_HEADER_LENGTH);
-	return out;
-}
-
-export function unpackEnvelope(data: Uint8Array): { peerId: number; payload: Uint8Array } | null {
-	if (data.byteLength < ENVELOPE_HEADER_LENGTH) return null;
-	const peerId = new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).getUint32(0, false);
-	return { peerId, payload: data.subarray(ENVELOPE_HEADER_LENGTH) };
-}
-
-/** Rewrite the peerId in place without copying the payload. */
-export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
-	new DataView(data.buffer, data.byteOffset, ENVELOPE_HEADER_LENGTH).setUint32(0, peerId, false);
-}
+export { packEnvelope, rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/wire";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Link format

@@ -7,10 +7,11 @@ import type { SessionHeader } from "@veyyon/coding-agent/session/session-entries
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { stripOuterDoubleQuotes } from "@veyyon/coding-agent/tools/path-utils";
-import { getConfigRootDir, setAgentDir } from "@veyyon/utils";
+import { setAgentDir } from "@veyyon/utils";
 
 // -- helpers ----------------------------------------------------------------
 
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { makeAssistantMessage } from "./helpers";
 
 function getHeader(entries: unknown[]): SessionHeader | undefined {
@@ -63,8 +64,10 @@ describe("SessionManager.moveTo", () => {
 	let testAgentDir: string;
 	let cwdA: string;
 	let cwdB: string;
-	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
-	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
+	// One owner for "undo a setAgentDir call": the hand-rolled version below could not
+	// restore an ABSENT VEYYON_CODING_AGENT_DIR and left the active profile cleared,
+	// which leaked into every file that ran after this one.
+	const dirOverrides = captureDirOverrides();
 
 	beforeEach(async () => {
 		testAgentDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-move-test-"));
@@ -76,12 +79,7 @@ describe("SessionManager.moveTo", () => {
 	});
 
 	afterEach(async () => {
-		if (originalAgentDir) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setAgentDir(fallbackAgentDir);
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		}
+		restoreDirOverrides(dirOverrides);
 		await fsp.rm(testAgentDir, { recursive: true, force: true });
 	});
 

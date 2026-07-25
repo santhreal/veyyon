@@ -393,7 +393,7 @@ describe("veyyon completions argument handling", () => {
 
 	it("refuses a stray extra argument instead of ignoring it", async () => {
 		// Dropping it would run a command the user did not write, at exit 0.
-        const { stderr, exitCode } = await run("bash", "zsh");
+		const { stderr, exitCode } = await run("bash", "zsh");
 		expect(exitCode).toBe(1);
 		expect(stderr).toContain('Unexpected argument: "zsh"');
 	}, 30000);
@@ -1177,7 +1177,7 @@ describe("buildSpec value classification", () => {
 	});
 
 	it("resolves model positionals against the catalog too", () => {
-		expect(argKind("bench", "models", { description: "Model selectors" })).toBe("models");
+		expect(argKind("bench/throughput", "models", { description: "Model selectors" })).toBe("models");
 		expect(argKind("dry-balance", "model", { description: "Model selector" })).toBe("models");
 		expect(argKind("tiny-models", "model", { description: "Model key" })).toBe("models");
 	});
@@ -1397,14 +1397,19 @@ describe("the @file launch positional", () => {
 		binAliases: [],
 		root: {
 			flags: [{ name: "print", char: "p", description: "Print", value: { kind: "flag" }, repeatable: false }],
-			args: [{ name: "messages", description: "Messages to send (prefix files with @)", value: { kind: "at-file" } }],
+			args: [
+				{ name: "messages", description: "Messages to send (prefix files with @)", value: { kind: "at-file" } },
+			],
 		},
 		commands: [{ name: "commit", aliases: [], description: "Commit", flags: [], args: [] }],
 	};
 
 	it("buildSpec classifies the launch messages positional as @file", () => {
 		const commands = new Map<string, CommandCtor>([
-			["launch", { flags: {}, args: { messages: { description: "Messages", multiple: true } } } as unknown as CommandCtor],
+			[
+				"launch",
+				{ flags: {}, args: { messages: { description: "Messages", multiple: true } } } as unknown as CommandCtor,
+			],
 		]);
 		const built = buildSpec({ bin: "veyyon", version: "0", commands } as CliConfig, "launch", new Map(), {});
 		expect(built.root.args[0].value.kind).toBe("at-file");

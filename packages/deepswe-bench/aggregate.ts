@@ -16,7 +16,7 @@
  */
 
 import { ARGOT_PREAMBLE, DEFAULT_SIGIL } from "argot";
-import { type CostBreakdown, costShares, priceTokens, REFERENCE_RATE_CARD } from "./cost-model";
+import { type CostBreakdown, costShares, priceTokens, type RateCard, REFERENCE_RATE_CARD, type TokenMix } from "./cost-model";
 
 /**
  * Heading line of argot's teaching preamble, taken from argot's OWN rendered
@@ -184,6 +184,62 @@ export function providerFinishReason(text: string): string | null {
 	return m ? (m[1] as string) : null;
 }
 
+/** What a provider quota stop tells us, once one is found. Both fields are best-effort. */
+export interface ProviderQuotaStop {
+	/** ISO timestamp the provider says the quota resets at, or null if it did not say. */
+	resetAt: string | null;
+	/** The model whose quota ran out, as the provider named it, or null. */
+	model: string | null;
+}
+
+/**
+ * Whether captured output shows the PROVIDER refusing on quota, and what it said
+ * about recovery.
+ *
+ * This is the one failure the bench must abort on IMMEDIATELY, and neither canary
+ * catches it. `shouldTripCanary` needs every completed trial to be a hard error,
+ * so one early success disarms it for the whole run. `armCanaryFailure` needs a
+ * full wave per arm. Quota exhaustion respects neither shape: it strikes
+ * mid-run, kills every trial from that moment on regardless of arm, and cannot
+ * recover until a timestamp the provider names out loud.
+ *
+ * Seen live in `runs/2026-07-25T20-46-08-607Z`, which is why this exists. Ten
+ * baseline trials scored normally, then quota ran out and the next 26 trials
+ * produced zero output tokens each. Neither canary fired. Left alone the run
+ * would have written a report comparing a 10-sample baseline against an arm with
+ * no samples at all, and the arm's absence would have looked like data.
+ *
+ * One occurrence is proof, unlike a statistical canary, because the provider is
+ * declaring a global state rather than failing a task. So the caller should stop
+ * on the first hit rather than wait for a wave. The reset timestamp is extracted
+ * because "come back in three hours" is the only useful next action, and an
+ * operator who does not know when to retry will just rerun into the same wall.
+ *
+ * Matches both the raw provider payload and the compact marker the runner folds
+ * into an error string, so a live trial and a re-read `results.json` classify
+ * identically. Returns null when no quota stop is present.
+ */
+export function providerQuotaStop(text: string | null | undefined): ProviderQuotaStop | null {
+	if (!text) return null;
+	if (!/RESOURCE_EXHAUSTED|QUOTA_EXHAUSTED/.test(text)) return null;
+	const resetAt = text.match(/"quotaResetTimeStamp":\s*"([^"]+)"/)?.[1] ?? text.match(/resets_at=(\S+)/)?.[1] ?? null;
+	const model = text.match(/"model":\s*"([^"]+)"/)?.[1] ?? text.match(/quota_model=(\S+)/)?.[1] ?? null;
+	return { resetAt, model };
+}
+
+/**
+ * The compact, re-parseable form of a quota stop, folded into a trial's error
+ * string by the runner. The provider's own payload is a multi-kilobyte JSON blob
+ * that the error field truncates, so the two facts worth keeping are restated in
+ * a shape {@link providerQuotaStop} can read back out of `results.json`.
+ */
+export function quotaStopMarker(stop: ProviderQuotaStop): string {
+	const parts = ["QUOTA_EXHAUSTED"];
+	if (stop.resetAt) parts.push(`resets_at=${stop.resetAt}`);
+	if (stop.model) parts.push(`quota_model=${stop.model}`);
+	return parts.join(" ");
+}
+
 /**
  * Group an errored sample under a short, comparable failure label.
  *
@@ -239,6 +295,65 @@ export function noRewardError(reward: number | null): boolean {
 export function isAgentTimeout(error: string | null): boolean {
 	if (error === null) return false;
 	return /trial timed out after \d+s/i.test(error) || error.includes("AgentTimeoutError");
+}
+
+/**
+ * The docker daemon's answer when the harness asks a container for a patch the
+ * agent never wrote. Pier grades by copying `/logs/artifacts/model.patch` out of
+ * the environment, so this exact line is the only place "there is no patch"
+ * becomes observable, and it is matched as a phrase rather than reconstructed
+ * from the path so a change to either half breaks the test rather than the run.
+ */
+const NO_PATCH_IN_CONTAINER = "Could not find the file /logs/artifacts/model.patch in container";
+
+/**
+ * Markers that mean the trial was STOPPED rather than finished: pier's SIGTERM
+ * handler (`pier/cli/jobs.py` raises `KeyboardInterrupt`), asyncio cancellation
+ * propagating out of `_execute_agent`, and the agent-side wall-clock timeout.
+ * Any of these appearing above a failed artifact download changes its meaning
+ * completely, which is the whole point of {@link finishedWithoutPatch}.
+ */
+const CANCELLATION_MARKERS = ["KeyboardInterrupt", "CancelledError", "AgentTimeoutError"] as const;
+
+/**
+ * Whether a trial's traceback means "the agent ran to completion and produced no
+ * patch", as opposed to "the agent was killed before it could".
+ *
+ * Both look identical at the surface: pier tries `docker compose cp
+ * main:/logs/artifacts/model.patch` during teardown, the file is not there, and
+ * the `RuntimeError` cancels the trial into `n_errored_trials`. But they are
+ * opposite facts. An agent that finished with nothing to show has FAILED THE
+ * TASK, and its honest score is reward 0. An agent killed mid-turn never got a
+ * fair run, and scoring it 0 would charge an arm for the operator's Ctrl-C.
+ *
+ * WHY THIS MATTERS BEYOND TIDINESS. An errored sample is EXCLUDED from every
+ * rate and mean in the report, so an arm that errors more is silently measured
+ * on fewer, easier trials. Every context-shrinking lever in this bench (thought
+ * signature retention, thinking retention, the inline spill floor) risks exactly
+ * one failure mode: the agent loses something it needed and never lands a patch.
+ * If that failure deletes itself from the measurement, a lever that causes it
+ * reads as neutral or better, and a cost win looks clean while the arm is
+ * quietly failing more tasks.
+ *
+ * Detection is deliberately TWO-PART. Matching the download failure alone is the
+ * wrong fix and would have mis-scored the one real instance in hand
+ * (`runs/2026-07-25T19-51-41-474Z/jobs/baseline__scriggo-method-declarations`),
+ * where a SIGTERM sits above the same cp failure and the agent's own log tail is
+ * still `Working...`. So: the artifact must be the missing patch AND no
+ * cancellation marker may appear anywhere in the log. Fail closed, in the sense
+ * that an ambiguous log stays an excluded error rather than becoming a scored
+ * zero. Returns false on empty input.
+ *
+ * Give it the JOB log. The trial's own `exception.txt` is not enough: on that
+ * same instance it records the cancellation and nothing else, because the failed
+ * artifact download happens afterwards during teardown. A caller that passes the
+ * narrower file would see no patch signature at all and silently never fire,
+ * which is the quiet half of the same bias.
+ */
+export function finishedWithoutPatch(traceback: string | null | undefined): boolean {
+	if (!traceback) return false;
+	if (!traceback.includes(NO_PATCH_IN_CONTAINER)) return false;
+	return !CANCELLATION_MARKERS.some(marker => traceback.includes(marker));
 }
 
 /**
@@ -457,6 +572,38 @@ export function parseTaskListProvenance(content: string): TaskSetProvenance {
 		if (headline) return { marked: true, biased: false, note: (headline[1] as string).trim() || null };
 	}
 	return { marked: false, biased: false, note: null };
+}
+
+/**
+ * The banner a report prints when the run it describes was cut short by the
+ * provider running out of quota, or null when no sample carries a quota stop.
+ *
+ * The live runner aborts on the first quota refusal and writes no report at all,
+ * which is the right answer for that path. `--reaggregate` is the hole: it reads
+ * whatever jobs are on disk, and a truncated run's surviving jobs aggregate into
+ * a report that looks exactly like a complete one. In the run that motivated this,
+ * ten baseline trials survived and every trial of the arm under test did not, so
+ * the honest reading is "no comparison" while the arithmetic would happily print
+ * a per-arm table with one arm missing.
+ *
+ * So the banner names the count and the arms that lost samples, since which arm
+ * was truncated decides whether anything in the report can be believed. It is
+ * loud and blockquoted for the same reason as the provenance banner: a caveat a
+ * reader can skim past is a caveat that does not exist.
+ */
+export function renderQuotaTruncationBanner(results: readonly ArmResult[]): string | null {
+	const stopped = results.filter(r => providerQuotaStop(r.error) !== null);
+	if (stopped.length === 0) return null;
+	const armsHit = [...new Set(stopped.map(r => r.arm))].sort();
+	const resetAt = stopped.map(r => providerQuotaStop(r.error)?.resetAt).find(Boolean);
+	const when = resetAt ? ` Quota reset was ${resetAt}.` : "";
+	return (
+		`> ⚠️ **This run was CUT SHORT by provider quota — it is incomplete, not a result.** ` +
+		`${stopped.length} trial(s) produced nothing because the provider refused on quota, ` +
+		`affecting arm(s): ${armsHit.join(", ")}.${when} ` +
+		`An arm that lost samples is UNDER-MEASURED, and its absence must not be read as data. ` +
+		`Rerun after the reset before comparing anything below.`
+	);
 }
 
 /**
@@ -1193,8 +1340,26 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 	}
 	lines.push(`Counterfactual, not billed. Rates: ${REFERENCE_RATE_CARD.source}.`);
 	lines.push("");
-	lines.push("| arm | input | cache read | cache write | output | total | output share |");
-	lines.push("|---|---|---|---|---|---|---|");
+	// THE PERCENTAGES BELOW ARE SUMS OVER WHATEVER EACH ARM COMPLETED, so they are
+	// only a cost comparison when the arms completed the same amount of work. When a
+	// run is cut short by quota the arms end up with very different sample counts and
+	// the delta becomes a sample-count artifact wearing a result's clothes. Run
+	// 2026-07-25T19-51-41 reported `discovery-all` at "-97.8%" purely because it
+	// finished 1 task against baseline's 18, and nothing in the table said so.
+	const counted = cells.filter(c => c.s.refCostMeasurable && c.s.n > 0);
+	const sampleCounts = [...new Set(counted.map(c => c.s.n))];
+	if (counted.length > 1 && sampleCounts.length > 1) {
+		lines.push(
+			`> **These percentages are NOT a cost comparison: the arms completed different numbers of trials** (` +
+				counted.map(c => `${c.arm} ${c.s.n}`).join(", ") +
+				`). Each figure is a SUM over whatever that arm finished, so an arm that ran fewer trials looks ` +
+				`cheaper by exactly the work it never did. Re-run so both arms cover the same tasks, or compare ` +
+				`only the tasks both completed. Read the per-task columns above instead.`,
+		);
+		lines.push("");
+	}
+	lines.push("| arm | samples | input | cache read | cache write | output | total | output share |");
+	lines.push("|---|---|---|---|---|---|---|---|");
 	const baseline = cells.find(c => c.s.refCostMeasurable);
 	for (const { arm, s } of cells) {
 		if (!s.refCostMeasurable) continue;
@@ -1208,7 +1373,7 @@ export function renderReferenceCostSection(results: readonly ArmResult[], arms: 
 		};
 		const b = baseline?.s.refCost;
 		lines.push(
-			`| ${arm} | ${withDelta(c.input, b?.input ?? 0)} | ${withDelta(c.cacheRead, b?.cacheRead ?? 0)} | ` +
+			`| ${arm} | ${s.n} | ${withDelta(c.input, b?.input ?? 0)} | ${withDelta(c.cacheRead, b?.cacheRead ?? 0)} | ` +
 				`${withDelta(c.cacheWrite, b?.cacheWrite ?? 0)} | ${withDelta(c.output, b?.output ?? 0)} | ` +
 				`**${withDelta(c.total, b?.total ?? 0)}** | ${(shares.output * 100).toFixed(1)}% |`,
 		);
@@ -1774,6 +1939,14 @@ export function renderReport(
 	lines.push("");
 	lines.push(`Model: \`${model}\`. Tasks: ${tasks.length}. Repeats/cell: ${repeats}. Arms: ${arms.join(", ")}.`);
 	lines.push("");
+	// Above the provenance banner on purpose. A selection-biased task set makes the
+	// numbers an upper bound; a quota-truncated run makes them not numbers at all,
+	// so it is the first thing a reader must see.
+	const quotaBanner = renderQuotaTruncationBanner(results);
+	if (quotaBanner) {
+		lines.push(quotaBanner);
+		lines.push("");
+	}
 	if (taskSet) {
 		lines.push(renderTaskSetProvenanceBanner(taskSet));
 		lines.push("");
@@ -1868,16 +2041,33 @@ export function renderReport(
 		const armTested = armDeltas.filter(d => d.wins + d.losses > 0);
 		const armAdj = holmBonferroni(armTested.map(d => d.signTestP));
 		const armAdjByPair = new Map(armTested.map((d, i) => [`${d.armA}→${d.armB}`, armAdj[i] as number]));
-		// Continuous-reward comparison, computed here so BOTH its own table below and the
-		// efficiency guardrail read the same tested family. Binary pass rate above
-		// (reward===1) cannot see a partial-credit regression: the DeepSWE verifier returns
-		// a fractional reward, so an arm can lower the mean reward on hard tasks without
-		// flipping any task's pass/fail. This is its own Holm family (a reward drop is a
-		// different hypothesis than a resolved-rate drop).
+		// Correctness is compared on THREE metrics, not one, because they answer
+		// different questions and a reader has to be able to see them disagree.
+		//
+		// `reward` is BINARY on the DeepSWE verifier, whatever a reading of the name
+		// suggests: it is 1 exactly when every fail-to-pass test passes and 0
+		// otherwise. Measured over a full baseline run it took only those two values
+		// on all 17 scored tasks. So a reward comparison cannot see a partial-credit
+		// regression either, and this block used to claim it could.
+		//
+		// `partial` is the continuous one. On the same 17 tasks it spread across
+		// 0.855, 0.963, 0.974, 0.978, 0.979, 0.981, 0.985, 0.985 and 1.0, and several
+		// tasks scoring reward=0 sat one or two failing tests from a full pass. That
+		// is where the signal is at twenty tasks: a lever that quietly costs a few
+		// percent of correctness moves `partial` long before it flips a single task's
+		// pass/fail, and every cost claim here is gated on "no worse".
+		//
+		// Each is its own Holm family, since a partial-credit drop and a
+		// resolved-rate drop are different hypotheses. All three are computed here so
+		// the tables below and the efficiency guardrail read the same tested families.
 		const rewardDeltas = pairwiseMetricDeltas(results, c => c.meanReward);
 		const rewardTested = rewardDeltas.filter(d => d.pos + d.neg > 0);
 		const rewardAdj = holmBonferroni(rewardTested.map(d => d.signTestP));
 		const rewardAdjByPair = new Map(rewardTested.map((d, i) => [`${d.armA}→${d.armB}`, rewardAdj[i] as number]));
+		const partialDeltas = pairwiseMetricDeltas(results, c => c.meanPartial);
+		const partialTested = partialDeltas.filter(d => d.pos + d.neg > 0);
+		const partialAdj = holmBonferroni(partialTested.map(d => d.signTestP));
+		const partialAdjByPair = new Map(partialTested.map((d, i) => [`${d.armA}→${d.armB}`, partialAdj[i] as number]));
 		lines.push("| A → B | paired tasks | Δ pass rate | Δ 95% CI | W-L-T | sign-test p | adj p (Holm) | verdict |");
 		lines.push("|---|---|---|---|---|---|---|---|");
 		for (const d of armDeltas) {
@@ -1909,21 +2099,22 @@ export function renderReport(
 			);
 		}
 
-		// Continuous-reward table. The binary pass rate above is the headline SWE-bench
-		// "resolved" metric; this catches the partial-credit regression it is blind to and
-		// makes the efficiency guardrail's reward input operator-visible instead of hidden.
+		// Reward table. Both this and the pass rate above are binary on this verifier;
+		// they are reported because reward is the headline number. The partial-credit
+		// table that follows is the continuous one, and it is what actually catches a
+		// regression too small to flip a task.
 		const rewardHasSignal = results.some(r => !r.error && r.reward !== null);
 		if (rewardHasSignal) {
 			lines.push("");
 			lines.push("## Reward comparison — continuous partial credit (paired by task)");
 			lines.push("");
 			lines.push(
-				"The pass-rate table binarizes at reward=1 (SWE-bench 'resolved'). The DeepSWE " +
-					"verifier returns a fractional reward, so an arm can lower the mean reward on hard " +
-					"tasks without flipping any task's pass/fail — invisible above, caught here. Δ is B " +
+				"Reward on the DeepSWE verifier is BINARY: 1 when every fail-to-pass test passes, 0 " +
+					"otherwise. It is reported here because it is the headline number, not because it " +
+					"adds resolution over the pass-rate table above. For a regression too small to flip " +
+					"a task, read the partial-credit table below, which is the continuous one. Δ is B " +
 					"minus A on each task's mean reward; a negative Δ the sign test confirms is B doing " +
-					"WORSE. The efficiency guardrail reads this: 'reward held' requires BOTH this and the " +
-					"binary pass rate to not significantly drop.",
+					"WORSE.",
 			);
 			lines.push("");
 			lines.push(
@@ -1950,6 +2141,57 @@ export function renderReport(
 						: sig && d.meanDelta !== null && d.meanDelta < 0
 							? `${d.armB} lower reward`
 							: rUnderpowered
+								? "not distinguishable (underpowered)"
+								: "not distinguishable";
+				lines.push(
+					`| ${d.armA} → ${d.armB} | ${d.nTasks} | ${delta} | ${ci} | ${d.pos}/${d.neg}/${d.ties} | ${d.signTestP.toFixed(3)} | ${adjP === undefined ? "—" : adjP.toFixed(3)} | ${verdict} |`,
+				);
+			}
+		}
+
+		// Partial-credit table. This is the only correctness metric on this verifier
+		// that is actually continuous, so it is where a small regression shows up first
+		// and it is the one the efficiency guardrail most needs.
+		const partialHasSignal = results.some(r => !r.error && r.partial !== null);
+		if (partialHasSignal) {
+			lines.push("");
+			lines.push("## Partial-credit comparison — the continuous metric (paired by task)");
+			lines.push("");
+			lines.push(
+				"Both tables above are binary on this verifier, so neither can see a task go from " +
+					"98% of its tests passing to 95%. `partial` can: across a full baseline run it " +
+					"spread over 0.855, 0.963, 0.974, 0.978, 0.979, 0.981, 0.985, 0.985 and 1.0, and " +
+					"several tasks scoring reward=0 were one or two failing tests from a full pass. At " +
+					"twenty tasks that is where the resolution is. Δ is B minus A on each task's mean " +
+					"partial credit; a negative Δ the sign test confirms is B doing WORSE. The " +
+					"efficiency guardrail reads this: 'reward held' requires the pass rate, the reward, " +
+					"AND this to not significantly drop.",
+			);
+			lines.push("");
+			lines.push(
+				"| A → B | paired tasks | Δ mean partial | Δ 95% CI | up-B / down-B / tie | sign-test p | adj p (Holm) | verdict |",
+			);
+			lines.push("|---|---|---|---|---|---|---|---|");
+			for (const d of partialDeltas) {
+				const delta = d.meanDelta === null ? "—" : (d.meanDelta >= 0 ? "+" : "") + d.meanDelta.toFixed(3);
+				const ci =
+					d.ciLow === null || d.ciHigh === null
+						? "—"
+						: `[${(d.ciLow >= 0 ? "+" : "") + d.ciLow.toFixed(3)}, ${(d.ciHigh >= 0 ? "+" : "") + d.ciHigh.toFixed(3)}]`;
+				const adjP = partialAdjByPair.get(`${d.armA}→${d.armB}`);
+				const sig = adjP !== undefined && adjP < 0.05;
+				const pUnderpowered = !sig && !sweepCanReachSignificance(d.pos + d.neg, partialTested.length);
+				// A timed-out trial scores no partial credit at all and is dropped from
+				// the mean rather than entering it as a zero, so an uneven timeout count
+				// censors the two arms differently and no p-value repairs that.
+				const pAttribution = rewardDeltaAttribution(cellOf(d.armA), cellOf(d.armB), d.meanDelta);
+				const verdict = pAttribution.unattributable
+					? TIMEOUT_UNATTRIBUTABLE_VERDICT
+					: sig && d.meanDelta !== null && d.meanDelta > 0
+						? `${d.armB} higher partial credit`
+						: sig && d.meanDelta !== null && d.meanDelta < 0
+							? `${d.armB} lower partial credit`
+							: pUnderpowered
 								? "not distinguishable (underpowered)"
 								: "not distinguishable";
 				lines.push(
@@ -2073,7 +2315,19 @@ export function renderReport(
 					rewardDelta !== null &&
 					rewardDelta < 0
 				);
-				const passHeld = binaryHeld && rewardHeld;
+				// And on partial credit, which is the only one of the three that is
+				// actually continuous on this verifier. Without this the guardrail is two
+				// spellings of the same binary question and a small correctness loss ships
+				// as "cheaper, reward held".
+				const partialAdjP = partialAdjByPair.get(`${d.armA}→${d.armB}`);
+				const partialDelta = partialDeltas.find(a => a.armA === d.armA && a.armB === d.armB)?.meanDelta ?? null;
+				const partialHeld = !(
+					partialAdjP !== undefined &&
+					partialAdjP < 0.05 &&
+					partialDelta !== null &&
+					partialDelta < 0
+				);
+				const passHeld = binaryHeld && rewardHeld && partialHeld;
 				// Same honesty guard as the pass-rate table: a non-significant efficiency
 				// delta is only a real null if a clean sweep at this decisive-task count could
 				// have cleared the Holm bar for this metric's family. Otherwise flag it.
@@ -2289,4 +2543,262 @@ export function renderReport(
 	}
 	lines.push("");
 	return `${lines.join("\n")}\n`;
+}
+
+// =============================================================================
+// Pooling several runs into one comparison
+// =============================================================================
+
+/** One run's contribution to a pooled comparison, read from its `results.json`. */
+export interface RunToMerge {
+	/** Where it came from, used only to name the offending run in a refusal. */
+	readonly label: string;
+	readonly model: string;
+	readonly binarySha: string | null;
+	/** Arm name to config fingerprint, so an arm that changed meaning is caught. */
+	readonly armFingerprints: Record<string, string> | null;
+	readonly results: readonly ArmResult[];
+}
+
+/**
+ * Why a set of runs cannot be pooled. Refusing is the point: every rule below
+ * describes a way that pooling would produce a confident number about nothing.
+ */
+export class MergeRefused extends Error {}
+
+/**
+ * Pool several runs into one set of paired results.
+ *
+ * WHY THIS EXISTS. The reward gate needs enough decisive tasks to detect a
+ * regression: a paired sign test cannot reach significance below six of them, so a
+ * comparison run on ten tasks can only ever report "not distinguishable
+ * (underpowered)". Provider quota here is a hard daily pool that funds roughly
+ * fifteen tasks across two arms, so a properly powered reward comparison does not
+ * fit in one day and has to accumulate across several.
+ *
+ * WHY POOLING ACROSS DAYS IS SOUND HERE, and it is only sound because of how these
+ * runs are built. Every run contains BOTH arms, so each task's pair is measured
+ * under the same provider conditions, the same binary and the same hour. Day to day
+ * the provider may be faster, slower or differently loaded, and that shifts both
+ * arms of a pair together, which a paired test differences away. What would NOT be
+ * sound is pooling a baseline-only run with a treatment-only run: there the day
+ * effect lands entirely on one arm and is indistinguishable from the treatment.
+ * That case is refused rather than warned about.
+ *
+ * Repeats are renumbered per (arm, task) across the whole pool, so the same task
+ * measured on two days becomes two samples of one cell rather than a collision.
+ */
+export function mergeRuns(runs: readonly RunToMerge[]): { results: ArmResult[]; model: string } {
+	if (runs.length === 0) throw new MergeRefused("no runs to merge");
+
+	const models = [...new Set(runs.map(r => r.model))];
+	if (models.length > 1) {
+		throw new MergeRefused(
+			`runs use different models (${models.join(", ")}). Pooling them would average two ` +
+				`providers into one number that describes neither.`,
+		);
+	}
+
+	// Every run must carry the same arms. A run missing an arm contributes unpaired
+	// tasks, and the day effect then lands on whichever arm is present.
+	const armsOf = (run: RunToMerge) => [...new Set(run.results.map(r => r.arm))].sort();
+	const reference = armsOf(runs[0]!);
+	for (const run of runs.slice(1)) {
+		const arms = armsOf(run);
+		if (arms.join(" ") !== reference.join(" ")) {
+			throw new MergeRefused(
+				`run "${run.label}" has arms [${arms.join(", ")}] but "${runs[0]!.label}" has ` +
+					`[${reference.join(", ")}]. Pooling runs with different arms compares a day ` +
+					`against an arm: every task from the odd run out is unpaired, so the provider's ` +
+					`condition that day is attributed to whichever arm happened to run.`,
+			);
+		}
+	}
+
+	const shas = [...new Set(runs.map(r => r.binarySha).filter(sha => sha !== null))];
+	if (shas.length > 1) {
+		throw new MergeRefused(
+			`runs were produced by different binaries (${shas.join(", ")}). The delta would ` +
+				`include whatever else changed in the build, not just the arm.`,
+		);
+	}
+
+	// The most dangerous case, and one a reader would never spot: the same arm NAME
+	// pointing at a different config in two runs. The pooled report would then label
+	// two different treatments with one name and average them.
+	for (const arm of reference) {
+		const fingerprints = [...new Set(runs.map(r => r.armFingerprints?.[arm]).filter(f => f !== undefined))];
+		if (fingerprints.length > 1) {
+			throw new MergeRefused(
+				`arm "${arm}" has different configs across runs (${fingerprints.join(", ")}). ` +
+					`The name means two different treatments, and pooling would average them ` +
+					`under one label.`,
+			);
+		}
+	}
+
+	// Renumber repeats per cell so the same task on two days is two samples, not a collision.
+	const seen = new Map<string, number>();
+	const results: ArmResult[] = [];
+	for (const run of runs) {
+		for (const result of [...run.results].sort(
+			(a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat,
+		)) {
+			const cell = `${result.arm} ${result.task}`;
+			const next = seen.get(cell) ?? 0;
+			seen.set(cell, next + 1);
+			results.push({ ...result, repeat: next });
+		}
+	}
+	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
+	return { results, model: models[0]! };
+}
+
+/** One queued trial: a single (arm, task, repeat) cell to run. */
+export interface QueuedTrial {
+	readonly arm: string;
+	readonly task: string;
+	readonly repeat: number;
+}
+
+/**
+ * The order trials are run in, which decides what survives when a run is cut short.
+ *
+ * TASK-MAJOR, DELIBERATELY, and this ordering is the whole point of the function.
+ * The obvious arm-major order (every task of arm A, then every task of arm B) is
+ * catastrophic under truncation, and a run here is truncated often: provider quota
+ * is a hard daily pool and a run that exceeds it stops partway. Arm-major means the
+ * pool drains during the FIRST arm, so the second arm gets zero samples and the run
+ * yields nothing comparable despite having spent the entire day's quota.
+ *
+ * That is not hypothetical. Run 2026-07-25T20-46-08 spent its whole Gemini pool and
+ * came back with 10 scored baseline trials against 0 for `sig-last1`, so the paired
+ * comparison had zero paired tasks and reported "not distinguishable (underpowered)"
+ * on a full day of quota.
+ *
+ * Task-major turns that failure into a smaller but VALID run. Truncation then cuts
+ * the task list rather than an arm, so every task that ran carries all arms and the
+ * surviving samples are paired. Ten tasks x two arms beats twenty tasks of one arm
+ * and none of the other, every time.
+ *
+ * Repeats sit between task and arm so a cut leaves whole (task, repeat) rows across
+ * all arms rather than a partial one. Running the arms of one cell adjacently has a
+ * second benefit worth stating: they meet the provider within seconds of each other,
+ * under the same load and the same cache state, which is exactly the condition a
+ * paired test assumes.
+ */
+export function trialQueue(
+	arms: readonly string[],
+	tasks: readonly string[],
+	repeats: number,
+): QueuedTrial[] {
+	const queue: QueuedTrial[] = [];
+	for (const task of tasks) {
+		for (let repeat = 0; repeat < repeats; repeat++) {
+			for (const arm of arms) queue.push({ arm, task, repeat });
+		}
+	}
+	return queue;
+}
+
+/**
+ * A lever's predicted saving set against what the run actually billed.
+ *
+ * WHY THE COMPARISON IS THE POINT, not the prediction on its own. Every figure this
+ * module produces is a simulation over transcripts, and a simulation can be wrong in
+ * ways no test catches: it can model a lever the shipped code does not implement
+ * (the tool-result cap counted `read`, which is exempt from spill, and overstated a
+ * 5 KB threshold as 24.9% when it reaches 13.6%), or it can be right about bytes and
+ * wrong about money because the elided bytes were not being billed the way the model
+ * assumed. Only a run that spends real quota can settle it, and only if somebody
+ * actually sets the two numbers next to each other afterwards.
+ *
+ * `gap` is actual minus predicted, in points of the bill. Near zero means the
+ * instrument can be trusted for the NEXT lever, which is worth more than any single
+ * arm: it is the difference between predicting savings and having to buy every
+ * answer. A large negative gap means the simulation is optimistic and every other
+ * prediction in this module should be re-read with that in mind.
+ *
+ * A caveat this cannot see, and which the caller must not forget: cost is not the
+ * gate. An arm can deliver its predicted saving exactly and still be rejected for
+ * losing reward.
+ */
+export interface PredictedVsActual {
+	readonly predicted: number;
+	readonly actual: number;
+	readonly gap: number;
+	readonly baselineCost: number;
+	readonly treatmentCost: number;
+}
+
+/**
+ * Price both arms of a run at reference rates and compare the measured saving
+ * against what was predicted.
+ *
+ * Trials with no usage are skipped rather than counted as zero: an errored trial
+ * billed nothing because it never ran, and folding it in as a free sample would
+ * make whichever arm errored more look cheaper. That is the same selection effect
+ * the report warns about for reward, and it bites harder here because cost is a
+ * sum rather than a mean.
+ */
+/**
+ * Whether a trial actually put tokens on the wire.
+ *
+ * WHY THIS IS NOT `inputTokens !== null`, which is what it used to be and what
+ * produced a wrong answer the first time the check ran on real data. A trial killed
+ * by a provider quota records ZERO prompt tokens rather than null, so it passed the
+ * old test, contributed nothing to the sum, and read as a free sample. On a run
+ * where every treatment trial died that way the arm's total cost was zero and the
+ * comparison reported a 100% saving against a 31% prediction. A 68-point gap in the
+ * arm's favour is not a subtle error, but it is exactly the shape of a spectacular
+ * result, and the arm's own cost table showed nothing wrong.
+ *
+ * Prompt tokens are the test rather than output tokens: a trial can produce no
+ * output and still have been billed for the prefix it sent, and it is the prefix
+ * every lever here acts on.
+ */
+function wasBilled(result: ArmResult): boolean {
+	const prompt = (result.inputTokens ?? 0) + (result.cacheReadTokens ?? 0) + (result.cacheWriteTokens ?? 0);
+	return result.inputTokens !== null && prompt > 0;
+}
+
+export function predictedVsActual(
+	results: readonly ArmResult[],
+	baselineArm: string,
+	treatmentArm: string,
+	predicted: number,
+	rates: RateCard = REFERENCE_RATE_CARD,
+): PredictedVsActual | null {
+	const costOf = (arm: string): number | null => {
+		const rows = results.filter(r => r.arm === arm && wasBilled(r));
+		if (rows.length === 0) return null;
+		const mix: TokenMix = {
+			inputTokens: rows.reduce((s, r) => s + (r.inputTokens ?? 0), 0),
+			cacheReadTokens: rows.reduce((s, r) => s + (r.cacheReadTokens ?? 0), 0),
+			cacheWriteTokens: rows.reduce((s, r) => s + (r.cacheWriteTokens ?? 0), 0),
+			outputTokens: rows.reduce((s, r) => s + (r.outputTokens ?? 0), 0),
+		};
+		return priceTokens(mix, rates).total;
+	};
+	const baselineCost = costOf(baselineArm);
+	const treatmentCost = costOf(treatmentArm);
+	if (baselineCost === null || treatmentCost === null || baselineCost <= 0) return null;
+	const actual = (baselineCost - treatmentCost) / baselineCost;
+	return { predicted, actual, gap: actual - predicted, baselineCost, treatmentCost };
+}
+
+/**
+ * Only compare arms over the tasks BOTH of them completed.
+ *
+ * Cost is a sum, so an arm that ran more tasks looks more expensive for a reason
+ * that has nothing to do with the lever. With quota truncation this is the normal
+ * case rather than an edge one, and the resulting error points whichever way the
+ * truncation happened to fall.
+ */
+export function onPairedTasks(results: readonly ArmResult[], armA: string, armB: string): ArmResult[] {
+	const tasksOf = (arm: string) => new Set(results.filter(r => r.arm === arm && wasBilled(r)).map(r => r.task));
+	const a = tasksOf(armA);
+	const b = tasksOf(armB);
+	const shared = new Set([...a].filter(task => b.has(task)));
+	return results.filter(r => shared.has(r.task) && (r.arm === armA || r.arm === armB));
 }

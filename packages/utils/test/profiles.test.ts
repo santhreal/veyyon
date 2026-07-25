@@ -8,7 +8,9 @@ import {
 	__resetProfileSnapshotForTests,
 	APP_NAME,
 	assertRemovableProfileDir,
+	captureDirOverrides,
 	DEFAULT_PROFILE_DIR_NAME,
+	type DirOverridesSnapshot,
 	getActiveProfile,
 	getActiveProfileOrDefault,
 	getAgentDbPath,
@@ -23,10 +25,12 @@ import {
 	normalizeProfileName,
 	profileExists,
 	resolveProfileEnv,
+	restoreDirOverrides,
 	setAgentDir,
 	setProfile,
 } from "@veyyon/utils/dirs";
 import { Snowflake } from "@veyyon/utils/snowflake";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "./helpers/isolated-config-root";
 
 async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
 	const reader = stream.getReader();
@@ -46,27 +50,34 @@ async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
 
 describe("profile directories", () => {
 	let tempRoot = "";
-	let configDir = "";
-	let originalAgentDir = "";
-	let originalProfile: string | undefined;
-	let originalVeyyonAgentDirEnv: string | undefined;
-	let originalConfigDir: string | undefined;
+	let isolated: IsolatedConfigRoot | undefined;
+	/** The absolute config root for the current test, and the relative value the resolver
+	 * was given. Both are asserted: one names paths on disk, the other is what
+	 * `getConfigAgentDirName()` returns. */
+	let configRoot = "";
+	let configDirName = "";
+	let dirOverrides: DirOverridesSnapshot | undefined;
 	let originalXdgDataHome: string | undefined;
 	let originalXdgStateHome: string | undefined;
 	let originalXdgCacheHome: string | undefined;
 
 	beforeEach(async () => {
-		originalAgentDir = getAgentDir();
-		originalProfile = getActiveProfile();
-		originalVeyyonAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
-		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		// One snapshot of everything the dirs module keys off, including the invisible
+		// pre-profile baseline. Hand-rolled restores of the agent dir and the profile
+		// name cannot put that baseline back, and this file leaked its active profile
+		// into every suite that ran after it as a result.
+		dirOverrides = captureDirOverrides();
 		originalXdgDataHome = process.env.XDG_DATA_HOME;
 		originalXdgStateHome = process.env.XDG_STATE_HOME;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 		tempRoot = path.join(os.tmpdir(), "veyyon-utils-profiles", Snowflake.next());
-		configDir = `.veyyon-profile-test-${Snowflake.next()}`;
+		// A temp root, not a dot-directory NAME under the real home: the name form writes
+		// profile trees into the developer's actual home whenever this runs outside the
+		// test runner's sandboxed HOME, which is how most suites are run while working.
+		isolated = enterIsolatedConfigRoot("profiles");
+		configRoot = isolated.root;
+		configDirName = isolated.envValue;
 		await fs.mkdir(tempRoot, { recursive: true });
-		process.env.VEYYON_CONFIG_DIR = configDir;
 		// Other suites that run before this one (e.g. dirs-python-gateway) may have
 		// called `setAgentDir`, which permanently mutates the module-level
 		// pre-profile snapshot. Reset it here so each test starts from a clean
@@ -80,11 +91,6 @@ describe("profile directories", () => {
 
 	afterEach(async () => {
 		setProfile(undefined);
-		if (originalConfigDir === undefined) {
-			delete process.env.VEYYON_CONFIG_DIR;
-		} else {
-			process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-		}
 		if (originalXdgDataHome === undefined) {
 			delete process.env.XDG_DATA_HOME;
 		} else {
@@ -100,30 +106,24 @@ describe("profile directories", () => {
 		} else {
 			process.env.XDG_CACHE_HOME = originalXdgCacheHome;
 		}
-		if (originalProfile) {
-			setProfile(originalProfile);
-		} else if (originalVeyyonAgentDirEnv !== undefined) {
-			setAgentDir(originalAgentDir);
-		} else {
-			setProfile(undefined);
-		}
-		if (originalVeyyonAgentDirEnv === undefined) {
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		} else {
-			process.env.VEYYON_CODING_AGENT_DIR = originalVeyyonAgentDirEnv;
-		}
 		await fs.rm(tempRoot, { recursive: true, force: true });
-		await fs.rm(path.join(os.homedir(), configDir), { recursive: true, force: true });
+		// The config root comes back FIRST, then the overrides: `restore()` re-derives
+		// the profile and every path from the environment, so undoing the overrides
+		// before it would hand it the wrong baseline to re-derive from.
+		isolated?.restore();
+		isolated = undefined;
+		if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 	});
 
 	it("moves agent and root data under the named profile root", () => {
 		setProfile("work");
 
-		const root = path.join(os.homedir(), configDir, "profiles", "work");
+		const root = path.join(configRoot, "profiles", "work");
 		const agent = path.join(root, "agent");
 		expect(getActiveProfile()).toBe("work");
 		expect(getConfigRootDir()).toBe(root);
-		expect(getConfigAgentDirName()).toBe(path.join(configDir, "profiles", "work", "agent"));
+		expect(getConfigAgentDirName()).toBe(path.join(configDirName, "profiles", "work", "agent"));
 		expect(getAgentDir()).toBe(agent);
 		expect(getAgentDbPath()).toBe(path.join(agent, "agent.db"));
 		expect(getSessionsDir()).toBe(path.join(agent, "sessions"));
@@ -133,14 +133,14 @@ describe("profile directories", () => {
 	it("treats the default profile as regular mode", () => {
 		setProfile("default");
 
-		const root = path.join(os.homedir(), configDir, "profiles", "default");
+		const root = path.join(configRoot, "profiles", "default");
 		expect(getActiveProfile()).toBeUndefined();
 		expect(getConfigRootDir()).toBe(root);
 		expect(getAgentDir()).toBe(path.join(root, "agent"));
 	});
 
 	it("lists default and named profiles", async () => {
-		const root = path.join(os.homedir(), configDir);
+		const root = configRoot;
 		await fs.mkdir(path.join(root, "profiles", "work", "agent"), { recursive: true });
 		const listed = listProfiles();
 		expect(listed.map(profile => profile.name)).toEqual(["default", "work"]);
@@ -149,7 +149,7 @@ describe("profile directories", () => {
 
 	it("reports profile existence", async () => {
 		expect(profileExists("default")).toBe(false);
-		const root = path.join(os.homedir(), configDir);
+		const root = configRoot;
 		await fs.mkdir(path.join(root, "profiles", "work"), { recursive: true });
 		expect(profileExists("work")).toBe(true);
 	});
@@ -187,7 +187,7 @@ describe("profile directories", () => {
 		// the profile-specific XDG path does not exist.
 		setProfile("work");
 		const firstAgentDir = getAgentDir();
-		expect(firstAgentDir).toBe(path.join(os.homedir(), configDir, "profiles", "work", "agent"));
+		expect(firstAgentDir).toBe(path.join(configRoot, "profiles", "work", "agent"));
 
 		// Later, the base XDG app dir materializes (e.g. via `veyyon config init-xdg`
 		// migrating only the default-profile data). The named profile must stay
@@ -291,7 +291,7 @@ describe("profile directories", () => {
 		// the default baseline, or setProfile(undefined) would resolve default
 		// mode into the work profile's agent dir.
 		setProfile("work");
-		const workAgentDir = path.join(os.homedir(), configDir, "profiles", "work", "agent");
+		const workAgentDir = path.join(configRoot, "profiles", "work", "agent");
 		expect(getAgentDir()).toBe(workAgentDir);
 		expect(process.env.VEYYON_CODING_AGENT_DIR).toBe(workAgentDir);
 
@@ -302,7 +302,7 @@ describe("profile directories", () => {
 		setProfile(undefined);
 		expect(getActiveProfile()).toBeUndefined();
 		expect(process.env.VEYYON_CODING_AGENT_DIR).toBeUndefined();
-		expect(getAgentDir()).toBe(path.join(os.homedir(), configDir, "profiles", "default", "agent"));
+		expect(getAgentDir()).toBe(path.join(configRoot, "profiles", "default", "agent"));
 	});
 });
 
@@ -418,10 +418,16 @@ describe("dirs module import behavior", () => {
 
 	it("resolves the default profile in a subprocess when VEYYON_PROFILE is empty or 'default'", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-utils-dirs-default-profile-"));
-		const probeConfigDir = `.veyyon-default-profile-${Snowflake.next()}`;
+		// The CHILD needs the isolation, and it inherits this process's environment, so the
+		// value has to work there: the child's own `os.homedir()` is the real home too, and a
+		// relative config-dir value reaches the temp root from it. A bare
+		// `.veyyon-default-profile-<id>` name (what this used to pass) made the CHILD create
+		// that directory in the real home, and the parent then removed it — real-home writes
+		// dressed up as isolation.
+		const probe = enterIsolatedConfigRoot("default-profile-probe");
 		try {
 			const dirsUrl = url.pathToFileURL(path.join(import.meta.dir, "..", "src", "dirs.ts")).href;
-			const defaultAgentDir = path.join(os.homedir(), probeConfigDir, "profiles", "default", "agent");
+			const defaultAgentDir = path.join(probe.root, "profiles", "default", "agent");
 
 			// An explicitly-empty or literal "default" VEYYON_PROFILE both select the
 			// default profile; neither activates a named profile.
@@ -440,7 +446,7 @@ describe("dirs module import behavior", () => {
 
 				const childEnv: Record<string, string | undefined> = {
 					...process.env,
-					VEYYON_CONFIG_DIR: probeConfigDir,
+					VEYYON_CONFIG_DIR: probe.envValue,
 					VEYYON_PROFILE: veyyonProfile,
 				};
 				delete childEnv.VEYYON_CODING_AGENT_DIR;
@@ -463,7 +469,7 @@ describe("dirs module import behavior", () => {
 			}
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
-			await fs.rm(path.join(os.homedir(), probeConfigDir), { recursive: true, force: true });
+			probe.restore();
 		}
 	});
 
@@ -472,6 +478,11 @@ describe("dirs module import behavior", () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-utils-profile-env-xdg-"));
 		const homeDir = path.join(root, "home");
 		const xdgStateRoot = path.join(root, "xdg-state");
+		// A bare NAME is correct here, unlike everywhere else in this file: the child below
+		// gets `HOME: homeDir`, and a child process resolves `os.homedir()` from the HOME it
+		// is given, so the name is joined onto the temp home. Do NOT route this through
+		// `enterIsolatedConfigRoot` — that computes a value relative to the PARENT's real
+		// home, which is not where this child's home is.
 		const profileConfigDir = `.veyyon-env-xdg-${Snowflake.next()}`;
 		try {
 			const envUrl = url.pathToFileURL(path.join(import.meta.dir, "..", "src", "env.ts")).href;
@@ -538,8 +549,19 @@ describe("dirs module import behavior", () => {
 });
 
 describe("profile path segment ownership", () => {
+	// `setProfile(undefined)` is NOT the inverse of activating a profile: it drops the
+	// caller's own profile too. This block used to end with it, so a run that started
+	// under a named profile (`VEYYON_PROFILE=work`) had that profile silently switched
+	// off for every suite that ran afterwards.
+	let dirOverrides: DirOverridesSnapshot | undefined;
+
+	beforeEach(() => {
+		dirOverrides = captureDirOverrides();
+	});
+
 	afterEach(() => {
-		setProfile(undefined);
+		if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 	});
 
 	it("getActiveProfileOrDefault returns the active profile, or the default name when none is active", () => {

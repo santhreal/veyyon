@@ -59,9 +59,9 @@ export function createAbortSourceTracker(callerSignal?: AbortSignal): AbortSourc
  */
 export function raceWithSignal<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
 	if (!signal) return promise;
-	if (signal.aborted) return Promise.reject(signal.reason ?? new AIError.AbortError());
+	if (signal.aborted) return Promise.reject(signal.reason ?? new AIError.RequestAbortError());
 	const { promise: aborted, reject } = Promise.withResolvers<never>();
-	const onAbort = () => reject(signal.reason ?? new AIError.AbortError());
+	const onAbort = () => reject(signal.reason ?? new AIError.RequestAbortError());
 	signal.addEventListener("abort", onAbort, { once: true });
 	return Promise.race([promise, aborted]).finally(() => signal.removeEventListener("abort", onAbort));
 }

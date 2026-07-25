@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { SessionKernel } from "@veyyon/coding-agent/eval/kernel-base";
 import { disposeAllKernelSessions, executePython } from "@veyyon/coding-agent/eval/py/executor";
 import type {
 	KernelExecuteOptions,
@@ -14,7 +15,7 @@ import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 // real `~/.veyyon/profiles/<profile>/agent`.
 useIsolatedAgentDir();
 
-class FakeKernel {
+class FakeKernel implements SessionKernel {
 	executeCalls = 0;
 	shutdownCalls = 0;
 	alive = true;
@@ -39,19 +40,18 @@ class FakeKernel {
 	isAlive(): boolean {
 		return this.alive;
 	}
-
-	async ping(): Promise<boolean> {
-		return this.alive;
-	}
 }
 
+// No `VEYYON_PYTHON_SKIP_CHECK` here on purpose: `checkPythonKernelAvailability`
+// already returns ok without probing an interpreter under `bun test`, so setting the
+// flag bought nothing and leaked a process-global into every file that ran later.
+// Pinned by `core/python-availability-preflight-skip.test.ts`.
 describe("executePython kernel reuse", () => {
 	const originalStart = PythonKernel.start;
 	let startCalls = 0;
 	let kernels: FakeKernel[] = [];
 
 	beforeEach(() => {
-		Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 		startCalls = 0;
 		kernels = [];
 		PythonKernel.start = (async () => {

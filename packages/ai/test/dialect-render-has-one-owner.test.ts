@@ -1,0 +1,263 @@
+/**
+ * The `<invoke>` wire syntax, and the guards over the values a request may carry.
+ *
+ * WHY THIS SUITE EXISTS. Three dialects speak Anthropic's tool-call syntax: `anthropic`
+ * itself, the generic `xml` one, and `minimax`, which wraps the same invokes in a tag of its
+ * own. Each of the three carried a byte-identical private copy of the invoke renderer, the
+ * invoke-list renderer, the single-call renderer and the transcript wrapper, and two of them
+ * also had the same `<function_results>` block. That is a wire format restated three times,
+ * and a change to the escaping or to the string-argument rule in one copy leaves the other
+ * two emitting a shape the model was never prompted for. The failure is not an exception: the
+ * model simply starts calling tools badly, or stops.
+ *
+ * The same pattern held for two value lists. Both OpenAI-compatible servers spelled out the
+ * six reasoning-effort levels and the five service tiers in comparison chains, next to the
+ * canonical `THINKING_EFFORTS` list and `ServiceTier` type that already owned them, so a new
+ * level was accepted by the type system and silently dropped from an incoming request.
+ *
+ * The renderers are asserted as exact bytes on the shared owner, then each dialect is checked
+ * to render the same bytes through it, since "they all import it" is only worth as much as the
+ * output being identical.
+ */
+
+import { describe, expect, it } from "bun:test";
+import { isEffort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
+import anthropicDialect from "../src/dialect/anthropic";
+import minimaxDialect from "../src/dialect/minimax";
+import { renderFunctionResults, renderInvoke, renderInvokes, renderInvokeToolCall } from "../src/dialect/rendering";
+import xmlDialect from "../src/dialect/xml";
+import type { Tool, ToolCall } from "../src/types";
+import { isServiceTier, SERVICE_TIERS } from "../src/types";
+
+const READ_TOOL: Tool = {
+	name: "read",
+	description: "Read a file",
+	parameters: {
+		type: "object",
+		properties: { path: { type: "string" }, limit: { type: "number" } },
+	},
+};
+
+const CALL: ToolCall = { type: "toolCall", id: "call_1", name: "read", arguments: { path: "src/a.ts", limit: 20 } };
+
+describe("one tool call as an invoke element", () => {
+	/**
+	 * The exact bytes, because this IS the wire format. A prompt tells the model to emit this
+	 * shape and a scanner parses it back, so a stray newline or a changed attribute order is a
+	 * protocol change even when it still round-trips locally.
+	 */
+	it("renders the name and every argument as attributes and parameter elements", () => {
+		expect(renderInvoke(CALL, undefined)).toBe(
+			'<invoke name="read"><parameter name="path">"src/a.ts"</parameter><parameter name="limit">20</parameter></invoke>',
+		);
+	});
+
+	/**
+	 * An argument the tool declares as a string is emitted verbatim, so a code snippet keeps
+	 * its newlines and quotes instead of arriving JSON-escaped. This is the rule that would
+	 * drift silently between copies.
+	 */
+	it("emits a declared string argument verbatim and everything else as JSON", () => {
+		const rendered = renderInvokeToolCall(CALL, { tools: [READ_TOOL] });
+
+		expect(rendered).toBe(
+			'<invoke name="read"><parameter name="path">src/a.ts</parameter><parameter name="limit">20</parameter></invoke>',
+		);
+	});
+
+	/** A name or a key with XML syntax in it must not break out of the attribute. */
+	it("escapes the tool name and the argument names", () => {
+		const hostile: ToolCall = { type: "toolCall", id: "c", name: 'a"b<c', arguments: { 'k"<': 1 } };
+
+		expect(renderInvoke(hostile, undefined)).toBe(
+			'<invoke name="a&quot;b&lt;c"><parameter name="k&quot;&lt;">1</parameter></invoke>',
+		);
+	});
+
+	it("renders a call with no arguments as an empty invoke", () => {
+		expect(renderInvoke({ type: "toolCall", id: "c", name: "ls", arguments: {} }, undefined)).toBe(
+			'<invoke name="ls"></invoke>',
+		);
+	});
+
+	it("puts one invoke per line when a turn holds several", () => {
+		const second: ToolCall = { type: "toolCall", id: "c2", name: "ls", arguments: {} };
+
+		expect(renderInvokes([CALL, second], [])).toBe(
+			`${renderInvoke(CALL, undefined)}\n${renderInvoke(second, undefined)}`,
+		);
+	});
+
+	it("renders no invokes for an empty turn", () => {
+		expect(renderInvokes([], [])).toBe("");
+	});
+});
+
+describe("the three dialects that speak it", () => {
+	/**
+	 * The point of one owner: identical output, not merely a shared import. Each dialect adds
+	 * its own wrapper around the invokes, and that wrapper is the ONLY thing that may differ.
+	 */
+	it("render a single tool call byte-identically", () => {
+		const expected = renderInvokeToolCall(CALL, { tools: [READ_TOOL] });
+
+		for (const dialect of [anthropicDialect, xmlDialect, minimaxDialect]) {
+			expect(dialect.renderToolCall(CALL, { tools: [READ_TOOL] })).toBe(expected);
+		}
+	});
+
+	it("wrap a turn's invokes in their own tag, and only that differs", () => {
+		const invokes = renderInvokes([CALL], []);
+
+		expect(xmlDialect.renderAssistantToolCalls([CALL], {})).toBe(invokes);
+		expect(anthropicDialect.renderAssistantToolCalls([CALL], {})).toBe(
+			`<function_calls>\n${invokes}\n</function_calls>`,
+		);
+		expect(minimaxDialect.renderAssistantToolCalls([CALL], {})).toBe(
+			`<minimax:tool_call>\n${invokes}\n</minimax:tool_call>`,
+		);
+	});
+
+	/** Both wrapping dialects answer an empty turn with nothing, not with an empty wrapper. */
+	it("render an empty turn as nothing at all", () => {
+		for (const dialect of [anthropicDialect, xmlDialect, minimaxDialect]) {
+			expect(dialect.renderAssistantToolCalls([], {})).toBe("");
+		}
+	});
+
+	it("share the thinking-tag renderer", () => {
+		const thinking = anthropicDialect.renderThinking("weighing it up");
+
+		expect(xmlDialect.renderThinking("weighing it up")).toBe(thinking);
+		expect(minimaxDialect.renderThinking("weighing it up")).toBe(thinking);
+	});
+});
+
+describe("tool results as a function-results block", () => {
+	/**
+	 * A failed call is reported as `<error>` with its text on `<stderr>`. Collapsing that into
+	 * the success shape is how a model ends up retrying a call that worked, or reading an error
+	 * message as data, so both tags are asserted literally.
+	 */
+	it("marks a success and a failure with different tags", () => {
+		expect(renderFunctionResults([{ id: "1", index: 0, name: "read", text: "ok", isError: false }])).toBe(
+			"<function_results>\n<result>\n<tool_name>read</tool_name>\n<stdout>ok</stdout>\n</result>\n</function_results>",
+		);
+		expect(renderFunctionResults([{ id: "1", index: 0, name: "read", text: "boom", isError: true }])).toBe(
+			"<function_results>\n<error>\n<tool_name>read</tool_name>\n<stderr>boom</stderr>\n</error>\n</function_results>",
+		);
+	});
+
+	it("escapes the tool name, which arrives from the model", () => {
+		const rendered = renderFunctionResults([{ id: "1", index: 0, name: "a<b&c", text: "ok", isError: false }]);
+
+		expect(rendered).toContain("<tool_name>a&lt;b&amp;c</tool_name>");
+	});
+
+	it("is what both dialects that use it produce", () => {
+		const results = [{ id: "1", index: 0, name: "read", text: "ok", isError: false }];
+
+		expect(anthropicDialect.renderToolResults(results, {})).toBe(renderFunctionResults(results));
+		expect(minimaxDialect.renderToolResults(results, {})).toBe(renderFunctionResults(results));
+	});
+});
+
+describe("the reasoning-effort guard", () => {
+	/** Derived from the canonical ladder, so it cannot fall behind it. */
+	it("accepts every effort on the ladder", () => {
+		for (const effort of THINKING_EFFORTS) expect(isEffort(effort)).toBe(true);
+	});
+
+	it("rejects a level that is not on the ladder, and every non-string", () => {
+		for (const value of ["", "MEDIUM", "highest", "none", 1, null, undefined, {}, ["high"]]) {
+			expect(isEffort(value)).toBe(false);
+		}
+	});
+
+	/**
+	 * The lock. Both servers hand-wrote the six comparisons, so adding a level to the ladder
+	 * left them silently rejecting it: a request naming the new effort was answered as if it
+	 * had named none.
+	 */
+	it("is the only spelling of the levels in the two servers", async () => {
+		for (const name of ["openai-responses-server.ts", "openai-chat-server.ts"]) {
+			const source = await Bun.file(new URL(`../src/providers/${name}`, import.meta.url)).text();
+
+			expect(source).not.toContain("function isReasoningEffort(");
+			expect(source).not.toContain('value === "xhigh"');
+			expect(source).toContain("isEffort(");
+		}
+	});
+});
+
+describe("the service-tier guard", () => {
+	it("accepts every tier and rejects anything else", () => {
+		for (const tier of SERVICE_TIERS) expect(isServiceTier(tier)).toBe(true);
+		for (const value of ["", "Auto", "fast", 0, null, undefined, {}]) expect(isServiceTier(value)).toBe(false);
+	});
+
+	/** The type is derived from the list, so there is one place to add a tier. */
+	it("covers exactly the five tiers the wire accepts", () => {
+		expect([...SERVICE_TIERS]).toEqual(["auto", "default", "flex", "scale", "priority"]);
+	});
+
+	it("is the only spelling of the tiers in the two servers", async () => {
+		for (const name of ["openai-responses-server.ts", "openai-chat-server.ts"]) {
+			const source = await Bun.file(new URL(`../src/providers/${name}`, import.meta.url)).text();
+
+			expect(source).not.toContain("function isServiceTier(");
+			expect(source).not.toContain('value === "priority"');
+			expect(source).toContain("isServiceTier(");
+		}
+	});
+});
+
+describe("the dialect modules", () => {
+	/**
+	 * The lock for the renderers. A reintroduced private copy would pass every test above,
+	 * because it would render the same bytes on the day it was written. That is exactly the
+	 * state the three dialects were already in.
+	 */
+	it("define no private copy of the shared renderers", async () => {
+		for (const name of ["anthropic.ts", "minimax.ts", "xml.ts"]) {
+			const source = await Bun.file(new URL(`../src/dialect/${name}`, import.meta.url)).text();
+
+			expect(source).not.toContain("function renderInvoke(");
+			expect(source).not.toContain("function renderInvokes(");
+			expect(source).not.toContain("function renderToolCall(");
+			expect(source).not.toContain("function renderThinking(");
+			expect(source).not.toContain("function renderTranscript(");
+			expect(source).toContain('from "./rendering"');
+		}
+		// And `<function_results>` is built in one place, not in the two dialects that emit it.
+		for (const name of ["anthropic.ts", "minimax.ts"]) {
+			const source = await Bun.file(new URL(`../src/dialect/${name}`, import.meta.url)).text();
+
+			expect(source).not.toContain("<function_results>");
+		}
+	});
+
+	/** Every one of the pass-through `renderThinking` wrappers is gone, in all nine dialects. */
+	it("reference the shared thinking renderer directly", async () => {
+		for (const name of ["qwen3", "kimi", "pi-native", "hermes", "glm", "deepseek"]) {
+			const source = await Bun.file(new URL(`../src/dialect/${name}.ts`, import.meta.url)).text();
+
+			expect(source).not.toContain("function renderThinking(");
+			expect(source).toContain("renderThinking: renderThinkTags,");
+		}
+	});
+
+	/** And the three per-model turn delimiters live only in `rendering.ts`. */
+	it("take their turn delimiters from the shared module", async () => {
+		for (const [name, symbol] of [
+			["kimi", "kimiTurn"],
+			["gemma", "gemmaTurn"],
+			["gemini", "geminiTurn"],
+		]) {
+			const source = await Bun.file(new URL(`../src/dialect/${name}.ts`, import.meta.url)).text();
+
+			expect(source).not.toContain(`function ${symbol}(`);
+			expect(source).toContain(symbol);
+		}
+	});
+});

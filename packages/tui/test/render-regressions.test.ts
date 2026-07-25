@@ -1,7 +1,12 @@
+// The TUI reads this at construction, so it is set before the import that pulls
+// the class in. Restored in `afterAll` below: left set, it decides the behaviour of
+// every suite that runs after this one in the same process, which is what
+// `scripts/find-test-leaks.ts` caught.
+const scrollbackRebuildBefore = process.env.VEYYON_TUI_SCROLLBACK_REBUILD;
 process.env.VEYYON_TUI_SCROLLBACK_REBUILD = "true";
 
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -10,7 +15,17 @@ import {
 	TERMINAL,
 	TUI,
 } from "@veyyon/tui";
+import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
+
+// Ends this file's effect with this file: the flag is process-global and is read at
+// TUI construction, so leaving it set hands the rebuild path to every suite after
+// this one. Two other suites (`scroll-isolation`, `scroll-isolation-history`) had
+// to state the shipped default explicitly to defend against exactly that.
+afterAll(() => {
+	if (scrollbackRebuildBefore === undefined) delete process.env.VEYYON_TUI_SCROLLBACK_REBUILD;
+	else process.env.VEYYON_TUI_SCROLLBACK_REBUILD = scrollbackRebuildBefore;
+});
 
 class MutableLinesComponent implements Component {
 	#lines: string[];
@@ -134,15 +149,13 @@ function rows(prefix: string, count: number): string[] {
 	return Array.from({ length: count }, (_v, i) => `${prefix}${i}`);
 }
 
-async function settle(term: VirtualTerminal): Promise<void> {
+async function settle(term: VirtualTerminal, tui: TUI): Promise<void> {
 	// The render scheduler defers its immediate hop with setImmediate (so queued
-	// stdin such as Esc is read before an ordinary render). Drain that hop so the
-	// throttled setTimeout(0) render is scheduled, let it fire, then flush.
-	const immediate = Promise.withResolvers<void>();
-	setImmediate(immediate.resolve);
-	await immediate.promise;
-	await Bun.sleep(1);
-	await term.flush();
+	// stdin such as Esc is read before an ordinary render), and the throttled
+	// render that follows lands whenever the machine gets round to it. The shared
+	// helper waits on the engine's own "a frame is owed" signal rather than on the
+	// 1ms sleep this used to take, which was a bet under load.
+	await settleFrames(term, tui);
 }
 
 // Outside a multiplexer a resize paints the viewport immediately and defers the
@@ -150,9 +163,9 @@ async function settle(term: VirtualTerminal): Promise<void> {
 // been quiet for the resize settle window (120 ms). Tests asserting the settled
 // end state wait past that window. These are integration tests against the real
 // render scheduler, so the window is driven with a real delay, not fake timers.
-async function settleResize(term: VirtualTerminal): Promise<void> {
+async function settleResize(term: VirtualTerminal, tui: TUI): Promise<void> {
 	await Bun.sleep(160);
-	await settle(term);
+	await settle(term, tui);
 }
 
 function captureWrites(term: VirtualTerminal): string[] {
@@ -260,12 +273,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const before = visible(term);
 
 				for (let i = 0; i < 8; i++) {
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				expect(visible(term)).toEqual(before);
@@ -282,12 +295,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const before = visible(term);
 
 				component.setLines(["AAA", "BBB", "XXX", "DDD", "EEE"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const after = visible(term);
 				expect(after[0]).toBe(before[0]);
@@ -311,12 +324,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const writes = captureWrites(term);
 
 				component.setLines(["assistant output already rendered", "tool", "todos/status already rendered"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const paint = writes.at(-1) ?? "";
 				expect(paint).toContain("tool\x1b[0m\x1b[K");
@@ -335,11 +348,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				component.setLines(["A", "B"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term);
 				expect(viewport[0]?.trim()).toBe("A");
@@ -360,11 +373,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				component.setLines([]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term);
 				expect(viewport[0]?.trim()).toBe("");
@@ -381,11 +394,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				component.setLines(["A", "B", "C", "D", "E"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(["A", "B", "C", "D", "E"]);
 				expect(visible(term)).toEqual(["C", "D", "E"]);
@@ -402,14 +415,14 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Two forced renders queued before the render flush must still be
 				// treated as a single drop of the already-committed transcript;
 				// otherwise the second one re-emits the whole frame into scrollback.
 				tui.requestRender(true);
 				tui.requestRender(true);
-				await settle(term);
+				await settle(term, tui);
 
 				const occurrences = term
 					.getScrollBuffer()
@@ -429,11 +442,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const writes = captureWrites(term);
 
 				tui.resetDisplay();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(writes.some(write => write.includes("\x1b[H\x1b[3J") && !write.includes("\x1b[2J"))).toBe(true);
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(rows("L", 8));
@@ -451,7 +464,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term)).toEqual(["L5", "L6", "L7"]);
 
 				// The component's content changes, but its render stays cached (a
@@ -460,7 +473,7 @@ describe("TUI terminal-state regressions", () => {
 				// the Ctrl+O expansion path depends on this.
 				component.setLines(rows("M", 8));
 				tui.resetDisplay();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(rows("M", 8));
 				expect(visible(term)).toEqual(["M5", "M6", "M7"]);
@@ -477,12 +490,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				tui.requestRender(true);
 				component.setLines(rows("L", 6));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(rows("L", 6));
 				expect(visible(term)).toEqual(["L3", "L4", "L5"]);
@@ -502,7 +515,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-1);
 
 				const beforeViewportY = term.getBufferPosition().viewportY;
@@ -511,7 +524,7 @@ describe("TUI terminal-state regressions", () => {
 
 				component.setLines(rows("L", 9));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				// No yank bytes: ordinary updates never home the cursor or clear.
 				const paint = writes.join("");
@@ -538,7 +551,9 @@ describe("TUI terminal-state regressions", () => {
 			// preexisting shell scrollback above the UI does not survive.
 			const term = new VirtualTerminal(50, 5);
 			term.write("shell-0\r\nshell-1\r\nshell-2\r\nshell-3\r\nshell-4\r\n");
-			await settle(term);
+			// Shell output written before any TUI exists: nothing owes a frame yet, so
+			// there is only the write to flush.
+			await term.flush();
 
 			const tui = new TUI(term);
 			const component = new MutableLinesComponent(rows("ui-", 8));
@@ -546,10 +561,10 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				term.resize(49, 5);
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				const buffer = term.getScrollBuffer().join("\n");
 				expect(buffer.includes("shell-")).toBeFalsy();
@@ -581,7 +596,7 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 
 					// One frame budget: shrink, stream a row, grow back. The renderer
 					// sees height 6 -> 6 (no net change) plus one appended row.
@@ -589,7 +604,7 @@ describe("TUI terminal-state regressions", () => {
 					lines.push("line-30 streamed");
 					component.setLines(lines);
 					term.resize(16, 6);
-					await settle(term);
+					await settle(term, tui);
 
 					expect(visible(term)).toEqual([
 						"line-25",
@@ -623,13 +638,13 @@ describe("TUI terminal-state regressions", () => {
 
 					try {
 						tui.start();
-						await settle(term);
+						await settle(term, tui);
 						const narrow = term.getScrollBuffer().map(line => line.trimEnd());
 						// Precondition: history is wrapped narrow (L0 split into a 20-col fragment).
 						expect(narrow).toContain(`L0:${"x".repeat(17)}`);
 
 						term.resize(40, 4);
-						await settleResize(term);
+						await settleResize(term, tui);
 
 						const wide = term.getScrollBuffer().map(line => line.trimEnd());
 						// The resize rewraps history at the new width; the narrow fragment is gone.
@@ -655,10 +670,10 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				term.resize(16, 6);
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term);
 				expect(viewport[0]!.length).toBeLessThanOrEqual(16);
@@ -677,17 +692,17 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Root cause: shrinking the width can turn a frame that fit on screen
 				// into overflowing wrapped rows. A viewport repaint leaves the old
 				// terminal-reflowed fragments in native history; the next append then
 				// grows scrollback by fewer rows than the logical frame grew.
 				term.resize(10, 3);
-				await settle(term);
+				await settle(term, tui);
 				component.setLines(["A".repeat(20), "B".repeat(20), "C".repeat(20)]);
 				tui.requestRender();
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual([
 					"AAAAAAAAAA",
@@ -753,13 +768,13 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term)).toEqual(expectedViewport(80, 18));
 
 				const widths = [72, 64, 56, 68, 52, 80];
 				for (const width of widths) {
 					term.resize(width, 18);
-					await settle(term);
+					await settle(term, tui);
 					expect(visible(term)).toEqual(expectedViewport(width, 18));
 				}
 			} finally {
@@ -785,11 +800,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term)).toEqual(expectedViewport(40, 10));
 
 				term.resize(20, 10);
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term)).toEqual(expectedViewport(20, 10));
 			} finally {
@@ -853,7 +868,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const sizes: Array<[number, number]> = [];
 				for (let i = 0; i < 240; i++) {
@@ -863,7 +878,7 @@ describe("TUI terminal-state regressions", () => {
 				for (const [w, h] of sizes) {
 					term.resize(w, h);
 				}
-				await settle(term);
+				await settle(term, tui);
 
 				const [finalWidth, finalHeight] = sizes[sizes.length - 1]!;
 				expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
@@ -938,15 +953,15 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Simulate terminal-managed cursor relocation during aggressive UI changes/resizes.
 				// TUI's internal cursor row bookkeeping does not observe this external movement.
 				term.write("\x1b[18;1H");
-				await settle(term);
+				await settle(term, tui);
 
 				term.resize(80, 17);
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term)).toEqual(expectedViewport(80, 17));
 			} finally {
@@ -1017,7 +1032,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				let nextLine = 0;
 				let finalWidth = term.columns;
@@ -1032,7 +1047,7 @@ describe("TUI terminal-state regressions", () => {
 					finalHeight = i % 4 < 2 ? 17 : 18;
 					term.resize(finalWidth, finalHeight);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
@@ -1063,7 +1078,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				let finalWidth = term.columns;
 				let finalHeight = term.rows;
@@ -1073,7 +1088,7 @@ describe("TUI terminal-state regressions", () => {
 					term.resize(finalWidth, finalHeight);
 					term.write("\x1b[18;1H");
 					tui.requestRender(true);
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
@@ -1090,15 +1105,15 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				component.setLines(rows("row-", 16));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				component.setLines(rows("row-", 24));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term).filter(line => line.trim().length > 0);
 				expect(viewport).toHaveLength(6);
@@ -1112,6 +1127,16 @@ describe("TUI terminal-state regressions", () => {
 		// on CI at 15063ms against the 5s default. Same class as the two above,
 		// and it is the third and last case in the set that was turning every
 		// unrelated PR red.
+		//
+		// The 15s it was first given was still the SMALLEST budget of the three
+		// storms while doing the MOST work (220 rounds against 240 short ones and
+		// 80 settle rounds), and it duly timed out again at 15018ms inside a
+		// 2494-file sweep. Measured alone it is 5.3s wall clock including process
+		// startup, essentially all of it real rewrap work rather than waiting: each
+		// round is one scheduler hop plus a 1ms sleep, so the 220 sleeps account for
+		// about a fifth of a second. Under a full parallel sweep that 5s stretches
+		// past 3x. 30s is that measured cost with room for the contention, and a
+		// genuine hang (no progress at all) still fails inside it.
 		it("mixed width/height resize storm keeps scrollback bounded for static content", async () => {
 			const term = new VirtualTerminal(80, 18);
 			const tui = new TUI(term);
@@ -1166,12 +1191,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const before = term.getScrollBuffer().length;
 
 				for (let i = 0; i < 220; i++) {
 					term.resize(i % 2 === 0 ? 79 : 80, i % 3 === 0 ? 17 : 18);
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				const after = term.getScrollBuffer().length;
@@ -1179,7 +1204,7 @@ describe("TUI terminal-state regressions", () => {
 			} finally {
 				tui.stop();
 			}
-		}, 15_000);
+		}, 30_000);
 
 		it("keeps appended rows contiguous when a height grow coincides with new content", async () => {
 			// A terminal resize fires requestRender(), and streamed content fires
@@ -1195,12 +1220,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				term.resize(40, 24);
 				component.setLines(rows("line-", 19));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				// 19 lines fit inside the 24-row viewport: rows 0..18 hold content,
 				// 19..23 stay blank — with no 4-row (height delta) displacement.
@@ -1230,19 +1255,19 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Coalesce: height shrink 8→4 + streamed append in one frame.
 				term.resize(40, 4);
 				component.setLines([...lines, "stream-0"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				// Follow-up plain appends must land contiguously after the streamed row.
 				const final = [...lines, "stream-0", "tail-0", "tail-1", "tail-2"];
 				component.setLines(final);
 				tui.requestRender();
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				// Scrolling back must show exactly the transcript: no phantom blank
 				// row, no offset rows, no duplicates.
@@ -1270,7 +1295,7 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 
 					// Resize (rotation: 120×12 → 80×24) coalesced with a 3-row append.
 					// 17 rows fit the 24-row viewport, so they must be contiguous from
@@ -1279,7 +1304,7 @@ describe("TUI terminal-state regressions", () => {
 					const final = [...lines, "app-0", "app-1", "app-2"];
 					component.setLines(final);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 
 					expect(visible(term)).toEqual([...final, ...Array<string>(24 - final.length).fill("")]);
 				} finally {
@@ -1304,16 +1329,16 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 
 					term.resize(16, 6);
-					await settle(term);
+					await settle(term, tui);
 					expect(visible(term)).toEqual(lines.slice(6));
 
 					const final = [...lines, "row-12"];
 					component.setLines(final);
 					tui.requestRender();
-					await settleResize(term);
+					await settleResize(term, tui);
 
 					expect(visible(term)).toEqual(final.slice(7));
 					expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(final);
@@ -1335,7 +1360,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const out = writes.join("");
 				const screenToScrollback = out.indexOf("\x1b[22J");
 				const viewportClear = out.indexOf("\x1b[2J\x1b[H");
@@ -1362,7 +1387,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const viewport = term.getViewport().join("\n");
 				expect(viewport).not.toContain("STALE-ROW");
 				expect(viewport).toContain("veyyon line 1");
@@ -1382,7 +1407,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const out = writes.join("");
 				expect(out).toContain("\x1b[2J\x1b[H");
 				expect(out).not.toContain("\x1b[22J");
@@ -1404,12 +1429,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				writes.length = 0;
 				component.setLines(["new"]);
 
 				tui.requestRender(true, { clearScrollback: true });
-				await settle(term);
+				await settle(term, tui);
 				const out = writes.join("");
 				expect(out).toContain("\x1b[H\x1b[3J");
 				expect(out).not.toContain("\x1b[2J");
@@ -1432,13 +1457,13 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let i = 3; i < 5; i++) {
 					lines.push(`line-${i}`);
 					component.setLines(lines);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				expect(term.viewportProbeCount).toBe(0);
@@ -1455,7 +1480,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const all = term.getScrollBuffer();
 				for (let i = 0; i < 10; i++) {
@@ -1483,7 +1508,7 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 					const baseYAfterStart = term.getBufferPosition().baseY;
 
 					// An offscreen edit in tmux defers: viewport repaint + scrollback
@@ -1491,7 +1516,7 @@ describe("TUI terminal-state regressions", () => {
 					lines[2] = "line-2 edited";
 					component.setLines(lines);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 
 					// The next frame (a pure tail append) must NOT flush the dirty flag
 					// through a full transcript replay: pane history would gain a
@@ -1499,7 +1524,7 @@ describe("TUI terminal-state regressions", () => {
 					lines.push("line-30");
 					component.setLines(lines);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 
 					const baseYGrowth = term.getBufferPosition().baseY - baseYAfterStart;
 					expect(baseYGrowth).toBeLessThanOrEqual(1);
@@ -1536,7 +1561,7 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 					expect(visible(term)).toEqual(["tail-0", "tail-1", "tail-2", "tail-3"]);
 
 					const writes = captureWrites(term);
@@ -1548,7 +1573,7 @@ describe("TUI terminal-state regressions", () => {
 					// tail instead of pinning a blank row.
 					component.setLines(["old-0", "old-2", "old-3", "tail-0", "tail-1", "tail-2", "tail-3"]);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 
 					expect(visible(term)).toEqual(["tail-0", "tail-1", "tail-2", "tail-3"]);
 					expect(writes.join("")).not.toContain("\x1b[3J");
@@ -1588,7 +1613,7 @@ describe("TUI terminal-state regressions", () => {
 
 					try {
 						tui.start();
-						await settle(term);
+						await settle(term, tui);
 
 						// SIGWINCH (height shrink) and a streamed token arrive inside the
 						// same multiplexer-resize debounce window. The TUI coalesces every
@@ -1599,7 +1624,7 @@ describe("TUI terminal-state regressions", () => {
 						component.setLines(lines);
 						term.resize(40, 6);
 						await Bun.sleep(80);
-						await settle(term);
+						await settle(term, tui);
 
 						// The visible pane must show the frame tail at the new geometry —
 						// no phantom rows, no stale-anchor splices.
@@ -1624,13 +1649,13 @@ describe("TUI terminal-state regressions", () => {
 
 					try {
 						tui.start();
-						await settle(term);
+						await settle(term, tui);
 						const baseYAfterStart = term.getBufferPosition().baseY;
 
 						// Embedder force-redraws while a resize is still unprocessed.
 						term.resize(40, 6);
 						tui.requestRender(true);
-						await settle(term);
+						await settle(term, tui);
 
 						// xterm/tmux reflow on a 12 -> 6 height shrink moves at most 6 rows
 						// into pane history; a transcript replay would add ~40 more.
@@ -1661,18 +1686,18 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let i = 0; i < 140; i++) {
 					lines.push(`line-${i}`);
 					component.setLines(lines);
 					term.resize(i % 2 === 0 ? 79 : 80, i % 3 === 0 ? 17 : 18);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 				// The aggressive drag only ever painted the viewport; let the settle
 				// window elapse so the authoritative rebuild commits the full history.
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				const scrollback = term.getScrollBuffer();
 				const duplicated: number[] = [];
@@ -1707,11 +1732,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// User sits at the bottom (not scrolled) and narrows the terminal.
 				term.resize(28, 5);
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				const scrollback = term.getScrollBuffer();
 				for (let i = 0; i < 12; i++) {
@@ -1731,13 +1756,13 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-2);
 				expect(term.getBufferPosition().viewportY).toBeGreaterThan(0);
 
 				component.setLines(rows("line-", 8));
 				term.resize(28, 5);
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				// A resize is a clean reset: history is rebuilt in place at the new
 				// geometry instead of deferring to keep the reader scrolled. Each line
@@ -1762,14 +1787,14 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let i = 6; i < 70; i++) {
 					tick += 1;
 					logLines.push(`line-${i}`);
 					component.setLines([`status-${tick}`, ...logLines]);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 				const viewport = visible(term).map(line => line.trim());
 				expect(viewport.at(-1)).toBe("line-69");
@@ -1790,7 +1815,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"line-5",
 					"line-6",
@@ -1807,7 +1832,7 @@ describe("TUI terminal-state regressions", () => {
 				// replays — history holds the expanded frame exactly once.
 				component.setLines(["status-1", "expanded-details", ...rows("line-", 12)]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"line-6",
@@ -1839,7 +1864,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(term.isNativeViewportAtBottom()).toBe(true);
 				expect(visible(term).map(line => line.trim())).toEqual(["a", "b", "c", "d"]);
 
@@ -1849,7 +1874,7 @@ describe("TUI terminal-state regressions", () => {
 				// committing one row — without duplicating the viewport-top row "b".
 				component.setLines(["E0x", "E1", "a", "b", "d", "e", "f"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual(["b", "d", "e", "f"]);
 				const buffer = term.getScrollBuffer().map(line => line.trimEnd());
@@ -1885,7 +1910,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(term.getScrollBuffer().join("\n")).toContain("ctrl+o");
 
 				component.setLines([
@@ -1899,7 +1924,7 @@ describe("TUI terminal-state regressions", () => {
 					"editor",
 				]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"json-6",
@@ -1949,7 +1974,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(term.isNativeViewportAtBottom()).toBeUndefined();
 				expect(term.getScrollBuffer().join("\n")).toContain("ctrl+o");
 
@@ -1965,7 +1990,7 @@ describe("TUI terminal-state regressions", () => {
 					"editor",
 				]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
 				expect(visible(term).map(line => line.trim())).toEqual([
@@ -1991,14 +2016,14 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let tick = 1; tick <= 30; tick++) {
 					lines[lines.length - 1] = `tail-${tick}`;
 					lines.push(`new-${tick}`);
 					component.setLines(lines);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 
 					const viewport = visible(term).map(line => line.trim());
 					const expectedViewport = lines.slice(Math.max(0, lines.length - term.rows)).map(line => line.trim());
@@ -2016,11 +2041,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let i = 0; i < 5; i++) {
 					tui.requestRender(true);
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				const allText = term.getScrollBuffer().join("\n");
@@ -2046,14 +2071,14 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(highWaterFrame);
 				expect(term.getBufferPosition().viewportY).toBe(term.getBufferPosition().baseY);
 
 				const writes = captureWrites(term);
 				component.setLines(finalFrame);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
 				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(finalFrame);
@@ -2069,7 +2094,7 @@ describe("TUI terminal-state regressions", () => {
 				// tail commits normally on the update path — exactly once.
 				component.setLines([...finalFrame, ...rows("tail-", 5)]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual(rows("tail-", 5));
 				const grownHistory = term
@@ -2090,7 +2115,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-2);
 				const before = term.getBufferPosition();
 				expect(before.viewportY).toBeGreaterThan(0);
@@ -2098,7 +2123,7 @@ describe("TUI terminal-state regressions", () => {
 
 				component.setLines(rows("line-", 8));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const after = term.getBufferPosition();
 				expect(after.viewportY).toBe(before.viewportY);
@@ -2120,7 +2145,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-5);
 				const before = term.getBufferPosition();
 				expect(before.viewportY).toBe(2);
@@ -2129,7 +2154,7 @@ describe("TUI terminal-state regressions", () => {
 				const writes = captureWrites(term);
 				component.setLines(["line-0", "line-1", "expanded-0", "expanded-1", ...rows("line-", 12).slice(2)]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
 				const buffer = term.getScrollBuffer().map(line => line.trimEnd());
@@ -2137,7 +2162,7 @@ describe("TUI terminal-state regressions", () => {
 
 				term.scrollLines(999);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"line-7",
 					"line-8",
@@ -2162,7 +2187,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-5);
 				const before = term.getBufferPosition();
 				expect(before.viewportY).toBe(2);
@@ -2171,7 +2196,7 @@ describe("TUI terminal-state regressions", () => {
 				const writes = captureWrites(term);
 				component.setLines([...rows("line-", 9), "preview-appeared", ...rows("line-", 12).slice(9)]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const paint = writes.join("");
 				expect(paint).not.toContain("\x1b[3J");
@@ -2206,14 +2231,14 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-2);
 				const before = term.getBufferPosition();
 				expect(before.viewportY).toBeGreaterThan(0);
 
 				component.setLines(rows("line-", 8));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const after = term.getBufferPosition();
 				expect(after.viewportY).toBe(before.viewportY);
@@ -2240,11 +2265,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				component.setLines([...body, "prompt-row"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const scrollback = term.getScrollBuffer();
 				for (let i = 0; i < body.length; i++) {
@@ -2255,7 +2280,7 @@ describe("TUI terminal-state regressions", () => {
 					).toBeLessThanOrEqual(1);
 				}
 
-				await settle(term);
+				await settle(term, tui);
 				const stillDeferred = term.getScrollBuffer();
 				for (let i = 0; i < body.length; i++) {
 					const pattern = new RegExp(`\\bline-${i}\\b`);
@@ -2280,12 +2305,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const writes = captureWrites(term);
 
 				component.setLines(updated);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term).map(line => line.trim());
 				expect(viewport.at(-1)).toBe("spinner-b");
@@ -2305,7 +2330,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				scrolledTui.start();
-				await settle(scrolledTerm);
+				await settle(scrolledTerm, scrolledTui);
 				scrolledTerm.scrollLines(-1);
 				const before = scrolledTerm.getBufferPosition();
 				const beforeViewport = visible(scrolledTerm).map(line => line.trim());
@@ -2313,7 +2338,7 @@ describe("TUI terminal-state regressions", () => {
 
 				scrolledComponent.setLines(updated);
 				scrolledTui.requestRender();
-				await settle(scrolledTerm);
+				await settle(scrolledTerm, scrolledTui);
 
 				expect(scrolledTerm.getBufferPosition()).toEqual(before);
 				expect(visible(scrolledTerm).map(line => line.trim())).toEqual(beforeViewport);
@@ -2340,12 +2365,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const short = rows("short-", 19);
 				component.setLines([...short, "prompt-row"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term).map(line => line.trim());
 				expect(viewport).toEqual([
@@ -2382,7 +2407,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(-10);
 				expect(term.getBufferPosition().viewportY).toBeGreaterThan(0);
 
@@ -2390,12 +2415,12 @@ describe("TUI terminal-state regressions", () => {
 				const short = rows("short-", 19);
 				component.setLines([...short, "prompt-row"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
 
 				term.scrollLines(999);
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"short-10",
@@ -2429,7 +2454,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Offscreen edit (row 0) + 100-row growth in one frame: the edit is
 				// an insertion above the commit boundary, so the audit re-anchors
@@ -2438,7 +2463,7 @@ describe("TUI terminal-state regressions", () => {
 				const expanded = ["edited-line", ...rows("line-", 118), "prompt-row"];
 				component.setLines(expanded);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"line-109",
 					"line-110",
@@ -2462,7 +2487,7 @@ describe("TUI terminal-state regressions", () => {
 				const short = [...rows("short-", 14), "prompt-row"];
 				component.setLines(short);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"short-5",
@@ -2507,7 +2532,7 @@ describe("TUI terminal-state regressions", () => {
 
 						try {
 							tui.start();
-							await settle(term);
+							await settle(term, tui);
 							expect(visible(term).map(line => line.trim())).toEqual([
 								"seed-0",
 								"seed-1",
@@ -2521,7 +2546,7 @@ describe("TUI terminal-state regressions", () => {
 							for (let i = 0; i < 4; i++) {
 								transcript.setLines([...rows("seed-", 4), ...rows("token-", i + 1)]);
 								tui.requestRender();
-								await settle(term);
+								await settle(term, tui);
 
 								const viewport = visible(term).map(line => line.trim());
 								// The most recently streamed token MUST land in the viewport without the
@@ -2559,7 +2584,7 @@ describe("TUI terminal-state regressions", () => {
 
 					try {
 						tui.start();
-						await settle(term);
+						await settle(term, tui);
 
 						// Reader scrolls up into history.
 						term.scrollLines(-4);
@@ -2573,7 +2598,7 @@ describe("TUI terminal-state regressions", () => {
 						for (let i = 0; i < 4; i++) {
 							transcript.setLines([...rows("seed-", 12), ...rows("token-", i + 1)]);
 							tui.requestRender();
-							await settle(term);
+							await settle(term, tui);
 
 							const pos = term.getBufferPosition();
 							// Still scrolled up (not snapped to the tail) and reading the same rows.
@@ -2591,13 +2616,13 @@ describe("TUI terminal-state regressions", () => {
 						// so the reader is still not yanked; the deferred rewrite is marked dirty.
 						transcript.setLines(["seed-EDIT", ...rows("seed-", 12).slice(1), ...rows("token-", 4)]);
 						tui.requestRender();
-						await settle(term);
+						await settle(term, tui);
 						const offscreenPos = term.getBufferPosition();
 						expect(offscreenPos.viewportY).toBeLessThan(offscreenPos.baseY);
 						expect(visible(term).map(line => line.trim())).toEqual(anchored);
 
 						term.scrollLines(999);
-						await settle(term);
+						await settle(term, tui);
 						expect(term.getScrollBuffer().join("\n")).not.toContain("seed-EDIT");
 					} finally {
 						tui.stop();
@@ -2622,7 +2647,7 @@ describe("TUI terminal-state regressions", () => {
 
 						try {
 							tui.start();
-							await settle(term);
+							await settle(term, tui);
 							expect(term.isNativeViewportAtBottom()).toBe(true);
 
 							term.scrollLines(-4);
@@ -2632,7 +2657,7 @@ describe("TUI terminal-state regressions", () => {
 
 							component.setLines(["seed-EDIT", ...rows("seed-", 12).slice(1), ...rows("tail-", 4)]);
 							tui.requestRender();
-							await settle(term);
+							await settle(term, tui);
 
 							const after = term.getBufferPosition();
 							expect(after.viewportY).toBe(before.viewportY);
@@ -2672,7 +2697,7 @@ describe("TUI terminal-state regressions", () => {
 
 					try {
 						tui.start();
-						await settle(term);
+						await settle(term, tui);
 
 						// prevLen = 1 + 18 + 2 = 21, height = 8 -> prevViewportTop = 13.
 						// Append 6 rows (newLen = 27 -> overflowRows = 19) and, in the SAME
@@ -2682,7 +2707,7 @@ describe("TUI terminal-state regressions", () => {
 						const grown = ["intro", ...reflowed, ...rows("row-", 24).slice(18)];
 						transcript.setLines(grown);
 						tui.requestRender();
-						await settle(term);
+						await settle(term, tui);
 
 						// Bottom-anchored on the live tail.
 						expect(visible(term).map(line => line.trim())).toEqual([
@@ -2750,14 +2775,14 @@ describe("TUI terminal-state regressions", () => {
 
 						try {
 							tui.start();
-							await settle(term);
+							await settle(term, tui);
 							const writes = captureWrites(term);
 
 							// A streaming tool result re-laying out: an offscreen header changes and the
 							// block grows past the fold in the same frame.
 							component.setLines(["HEADER-EDITED", ...rows("row-", 16).slice(1), ...rows("tail-", 4)]);
 							tui.requestRender();
-							await settle(term);
+							await settle(term, tui);
 
 							const output = writes.join("");
 							expect(output).not.toContain("\x1b[2J");
@@ -2800,7 +2825,7 @@ describe("TUI terminal-state regressions", () => {
 
 						try {
 							tui.start();
-							await settle(term);
+							await settle(term, tui);
 
 							const writes: string[] = [];
 							const realWrite = term.write.bind(term);
@@ -2814,7 +2839,7 @@ describe("TUI terminal-state regressions", () => {
 							// a viewport already at capacity — exactly the branch that used to defer.
 							editor.setLines(["prompt> a", "wrap-row"]);
 							tui.requestRender();
-							await settle(term);
+							await settle(term, tui);
 
 							// The #1635 anti-yank guarantee must survive: no destructive scrollback erase.
 							expect(writes.join("")).not.toContain("\x1b[3J");
@@ -2855,7 +2880,7 @@ describe("TUI terminal-state regressions", () => {
 
 						try {
 							tui.start();
-							await settle(term);
+							await settle(term, tui);
 
 							const writes: string[] = [];
 							const realWrite = term.write.bind(term);
@@ -2869,7 +2894,7 @@ describe("TUI terminal-state regressions", () => {
 							// length grew by one — a structural mutation, not a pure append.
 							status.setLines(["STATUS-NEW", "EXTRA"]);
 							tui.requestRender();
-							await settle(term);
+							await settle(term, tui);
 
 							expect(writes.join("")).not.toContain("\x1b[3J");
 							const view = visible(term).map(line => line.trim());
@@ -2897,20 +2922,20 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				chat.setLines(rows("line-", 8));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				term.scrollLines(999);
 
 				status.setLines(["LOADER"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				status.setLines([]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(term.getScrollBuffer().join("\n")).not.toContain("LOADER");
 			} finally {
@@ -2932,7 +2957,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Stream output until the transcript exceeds the viewport and the
 				// header rows are committed.
@@ -2941,7 +2966,7 @@ describe("TUI terminal-state regressions", () => {
 					out.push(`cell-${i}`);
 					tail.setLines([...out, "[footer]"]);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				// Collapse the streamed preview into a summary. The collapse stays
@@ -2949,7 +2974,7 @@ describe("TUI terminal-state regressions", () => {
 				// frame: shorter tail plus trailing blanks (law 5).
 				tail.setLines([...out.slice(0, 8), "[summary]", "[footer]"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"cell-6",
 					"cell-7",
@@ -2968,7 +2993,7 @@ describe("TUI terminal-state regressions", () => {
 				out.push("cell-15", "cell-16");
 				tail.setLines([...out, "[footer]"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
 					"cell-8",
@@ -3012,21 +3037,21 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const thinkingLines = ["THINKING-0"];
 				for (let i = 0; i < 25; i++) {
 					thinkingLines.push(`THINKING-${i + 1}`);
 					chat.setLines(thinkingLines);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				// Collapse below the previous scrollback boundary, forcing the
 				// stale-history reset path.
 				chat.setLines(thinkingLines.slice(0, 5));
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				const afterResetLength = term.getScrollBuffer().length;
 
 				// Subsequent growth must be allowed to scroll normally. A
@@ -3036,7 +3061,7 @@ describe("TUI terminal-state regressions", () => {
 					thinkingLines.push(`LATER-${i}`);
 					chat.setLines(thinkingLines);
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				expect(term.getScrollBuffer().length).toBeGreaterThan(afterResetLength);
@@ -3067,13 +3092,13 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				// Sanity check: content fills the viewport exactly.
 				expect(term.getCursor().row).toBe(cursorAnchorRow);
 
 				// Grow the terminal so it has more rows than the rendered content.
 				term.resize(40, 20);
-				await settleResize(term);
+				await settleResize(term, tui);
 
 				// Regression: the cursor must follow the marker, not the bottom
 				// of the now-taller viewport.
@@ -3091,7 +3116,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				tui.stop();
 				stopped = true;
 				await term.flush();
@@ -3114,20 +3139,20 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const handle = tui.showOverlay(new MutableLinesComponent(["OVERLAY-0", "OVERLAY-1"]), {
 					anchor: "top-left",
 					row: 2,
 					col: 4,
 				});
-				await settle(term);
+				await settle(term, tui);
 
 				expect(visible(term)[2]?.includes("OVERLAY-0")).toBeTruthy();
 				expect(visible(term)[3]?.includes("OVERLAY-1")).toBeTruthy();
 
 				handle.hide();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term);
 				expect(viewport[2]?.trim()).toBe("base-2");
@@ -3144,22 +3169,22 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const handle = tui.showOverlay(
 					new MutableLinesComponent(["OV_SENTINEL_4_ov4-0-0-0-0-0-0", "ov4-1-0-0-0-0"]),
 					{ row: 2, col: 18 },
 				);
-				await settle(term);
+				await settle(term, tui);
 				term.resize(20, 4);
-				await settle(term);
+				await settle(term, tui);
 
 				expect(term.getScrollBuffer().some(line => line.includes("OV_SENTINEL_4_"))).toBeTrue();
 
 				term.scrollLines(-1);
-				await settle(term);
+				await settle(term, tui);
 				handle.hide();
-				await settle(term);
+				await settle(term, tui);
 
 				expect(term.getScrollBuffer().some(line => line.includes("OV_SENTINEL_4_"))).toBeFalse();
 				expect(visible(term).some(line => line.includes("OV_SENTINEL_4_"))).toBeFalse();
@@ -3176,20 +3201,20 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 
 					const handle = tui.showOverlay(new MutableLinesComponent(["OV-0", "OV-1", "OV-2"]), {
 						row: 2,
 						col: 0,
 					});
-					await settle(term);
+					await settle(term, tui);
 					expect(visible(term)).toEqual(["OV-0", "OV-1", "OV-2"]);
 
 					// Root cause: tmux disables destructive history rebuilds, so overlay
 					// removal that shrinks the composite frame must repaint the viewport;
 					// diffing from the old viewport top clears only the overlay suffix.
 					handle.hide();
-					await settle(term);
+					await settle(term, tui);
 
 					expect(visible(term)).toEqual(["base-0", "base-1", "base-2"]);
 				} finally {
@@ -3208,7 +3233,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const showFrom = writes.length;
 				const handle = tui.showOverlay(new MutableLinesComponent(["MODAL-0", "MODAL-1"]), {
@@ -3218,7 +3243,7 @@ describe("TUI terminal-state regressions", () => {
 					margin: 0,
 					fullscreen: true,
 				});
-				await settle(term);
+				await settle(term, tui);
 
 				const modalWrites = writes.slice(showFrom).join("");
 				// Borrowed the alternate screen buffer …
@@ -3237,7 +3262,7 @@ describe("TUI terminal-state regressions", () => {
 
 				const hideFrom = writes.length;
 				handle.hide();
-				await settle(term);
+				await settle(term, tui);
 
 				const hideWrites = writes.slice(hideFrom).join("");
 				expect(hideWrites).toContain("\x1b[?1049l");
@@ -3263,7 +3288,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const showFrom = writes.length;
 				tui.showOverlay(new MutableLinesComponent(["MODAL-0"]), {
@@ -3272,7 +3297,7 @@ describe("TUI terminal-state regressions", () => {
 					margin: 0,
 					fullscreen: true,
 				});
-				await settle(term);
+				await settle(term, tui);
 
 				const modalWrites = writes.slice(showFrom).join("");
 				expect(modalWrites).toContain("\x1b[?1049h\x1b[>1u");
@@ -3289,7 +3314,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				const scrollbackBefore = term.getScrollBuffer().map(line => line.trimEnd());
 
 				const handle = tui.showOverlay(new MutableLinesComponent(["MODAL"]), {
@@ -3299,9 +3324,9 @@ describe("TUI terminal-state regressions", () => {
 					margin: 0,
 					fullscreen: true,
 				});
-				await settle(term);
+				await settle(term, tui);
 				handle.hide();
-				await settle(term);
+				await settle(term, tui);
 
 				// The modal borrowed/returned the alt buffer without rewriting the
 				// normal screen's scrollback — the transcript a reader scrolled up to
@@ -3322,13 +3347,13 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				for (let i = 0; i < 80; i++) {
 					const n = (i % 7) + 1;
 					component.setLines(Array.from({ length: n }, (_v, j) => `iter-${i}-line-${j}`));
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 
 				const expected = Array.from({ length: 3 }, (_v, j) => `iter-79-line-${j}`);
@@ -3385,7 +3410,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// One terminal row per logical line — the boundary row did not wrap.
 				expect(term.getScrollBuffer().length).toBe(height);
@@ -3400,7 +3425,7 @@ describe("TUI terminal-state regressions", () => {
 				const appended = [...lines, ...rows("after-", 10)];
 				component.setLines(appended);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const buffer = term.getScrollBuffer().map(line => line.trimEnd());
 				expect(buffer.length).toBe(appended.length);
@@ -3426,14 +3451,14 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Diff-edit the row below the clipped row. If clipping had desynced the
 				// renderer's hardware-cursor row tracking, this write would land on the
 				// wrong terminal row.
 				component.setLines(["row-0", zwjRow, "EDITED", "row-3", "row-4"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = visible(term);
 				expect(viewport[0]).toBe("row-0");
@@ -3484,7 +3509,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = term.getViewport();
 				// Cell-exact: the full line survives the round trip on one row.
@@ -3532,7 +3557,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const viewport = term.getViewport();
 				const rendered = viewport[0] ?? "";
@@ -3607,7 +3632,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				// Initial paint: only the styled row carries background cells.
 				expect(backgroundRows(term, height)).toEqual([1]);
 
@@ -3615,7 +3640,7 @@ describe("TUI terminal-state regressions", () => {
 				// with leaked background, BCE would otherwise paint that row red.
 				component.setLines(["plain-0", UNRESET_BG_ROW, "EDITED-2"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(backgroundRows(term, height)).toEqual([1]);
 				expect(visible(term)[2]).toBe("EDITED-2");
 
@@ -3623,7 +3648,7 @@ describe("TUI terminal-state regressions", () => {
 				// default-background blank, not a red bar.
 				component.setLines(["plain-0", UNRESET_BG_ROW]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(backgroundRows(term, height)).toEqual([1]);
 				expect(visible(term)[2]).toBe("");
 			} finally {
@@ -3640,7 +3665,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(foregroundRows(term, height)).toEqual([1]);
 				expect(underlineRows(term, height)).toEqual([1]);
 
@@ -3648,7 +3673,7 @@ describe("TUI terminal-state regressions", () => {
 				// would make the edited row green/underlined despite containing plain text.
 				component.setLines(["plain-0", UNRESET_FG_UNDERLINE_ROW, "EDITED-2"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(foregroundRows(term, height)).toEqual([1]);
 				expect(underlineRows(term, height)).toEqual([1]);
 				expect(term.getViewportRowForegroundColumns(2)).toEqual([]);
@@ -3656,7 +3681,7 @@ describe("TUI terminal-state regressions", () => {
 
 				component.setLines(["plain-0", UNRESET_FG_UNDERLINE_ROW]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(foregroundRows(term, height)).toEqual([1]);
 				expect(underlineRows(term, height)).toEqual([1]);
 				expect(term.getViewportRowForegroundColumns(2)).toEqual([]);
@@ -3678,11 +3703,11 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Force a full repaint (viewport rewrite path suffix-clears each text row).
 				tui.requestRender(true);
-				await settle(term);
+				await settle(term, tui);
 
 				// The styled row is offscreen (frame rows 2-5 visible); no visible row
 				// may carry background cells.
@@ -3734,7 +3759,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				// Each logical row occupies exactly one terminal row — no wrap.
 				// Content (4 rows) fits the 6-row viewport, so the buffer is the
@@ -3746,7 +3771,7 @@ describe("TUI terminal-state regressions", () => {
 				// had latched, the relative cursor move would land a row off.
 				component.setLines(["top", exactAscii, exactWide, "EDIT"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				expect(term.getViewport().map(line => line.trimEnd())).toEqual([
 					"top",
 					exactAscii,
@@ -3761,7 +3786,7 @@ describe("TUI terminal-state regressions", () => {
 				// wrap.
 				component.setLines(["top", exactAscii, exactWide, "EDIT", ...rows("a-", 6)]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				const after = term.getScrollBuffer().map(line => line.trimEnd());
 				expect(after).toEqual(["top", exactAscii, exactWide, "EDIT", ...rows("a-", 6)]);
 			} finally {
@@ -3848,7 +3873,7 @@ describe("TUI terminal-state regressions", () => {
 
 				try {
 					tui.start();
-					await settle(term);
+					await settle(term, tui);
 					// Disabled keeps the caret hidden (\x1b[?25l only); enabled re-shows
 					// it at the marker after positioning inside the synchronized paint.
 					expect(writes.join("").includes(SHOW_CURSOR)).toBe(enabled);
@@ -3900,7 +3925,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				expect(term.visibilityWrites).not.toContain(SHOW_CURSOR);
 			} finally {
 				tui.stop();
@@ -3965,7 +3990,7 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 				assertCursorSequencesInsideSyncBlocks(writes);
 			} finally {
 				tui.stop();
@@ -3981,12 +4006,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const writes = getWrites(term);
 				component.setLines(["AAA", "XXX", "CCC"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				assertCursorSequencesInsideSyncBlocks(writes);
 			} finally {
 				tui.stop();
@@ -4001,12 +4026,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const writes = getWrites(term);
 				component.setLines(["XXXXEFGHIJKL", "tail"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 
 				const paintWrites = writes.filter(write => write.includes(BSU));
 				expect(paintWrites.length).toBeGreaterThan(0);
@@ -4035,12 +4060,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const writes = getWrites(term);
 				component.setLines(["A", "B"]);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 				assertCursorSequencesInsideSyncBlocks(writes);
 			} finally {
 				tui.stop();
@@ -4056,12 +4081,12 @@ describe("TUI terminal-state regressions", () => {
 
 			try {
 				tui.start();
-				await settle(term);
+				await settle(term, tui);
 
 				const writes = getWrites(term);
 				for (let i = 0; i < 4; i++) {
 					tui.requestRender();
-					await settle(term);
+					await settle(term, tui);
 				}
 				assertCursorSequencesInsideSyncBlocks(writes);
 			} finally {
@@ -4165,7 +4190,7 @@ describe("foreground-tool streaming on ED3-risk terminals", () => {
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			// The header has scrolled above the viewport top (offscreen).
 			expect(visible(term)).toEqual(["code-148", "code-149", "code-150", "loader", "todos", "editor"]);
 
@@ -4237,7 +4262,7 @@ describe("foreground-tool streaming on ED3-risk terminals", () => {
 		try {
 			tui.start();
 			tui.requestRender(true, { clearScrollback: true });
-			await settle(term);
+			await settle(term, tui);
 
 			expect(writes.join("")).toContain("\x1b[3J");
 		} finally {
@@ -4261,13 +4286,13 @@ describe("foreground-tool streaming on ED3-risk terminals", () => {
 		tui.addChild(component);
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			// A drag-resize: a stream of height shrinks while the 4-line block
 			// keeps fitting the (still larger) viewport.
 			for (const height of [22, 20, 18, 16, 14, 12, 10, 8, 6]) {
 				term.resize(40, height);
 				tui.requestRender();
-				await settle(term);
+				await settle(term, tui);
 			}
 			// The drag itself must not have accreted duplicate copies into
 			// scrollback. Assert this BEFORE the settle: the authoritative rebuild
@@ -4284,7 +4309,7 @@ describe("foreground-tool streaming on ED3-risk terminals", () => {
 			}
 			// Then let the settle window elapse so the authoritative rebuild
 			// collapses history to one copy, and confirm the end state holds too.
-			await settleResize(term);
+			await settleResize(term, tui);
 			const scrollback = term.getScrollBuffer();
 			for (let i = 0; i < body.length; i++) {
 				expect(

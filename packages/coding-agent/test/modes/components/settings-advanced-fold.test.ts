@@ -22,10 +22,15 @@ import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 type MutableTerminalInfo = { imageProtocol: ImageProtocol | null };
 const terminal = TERMINAL as unknown as MutableTerminalInfo;
 
-// The 13 keys SPEC-SETTINGS-SIMPLIFICATION demoted from appearance's flat list
-// into the collapsed fold. These are the ORIGINAL appearance keys, tracked
-// separately from later additions so the "26 original keys / placement-only"
-// spec below stays exact.
+// The keys SPEC-SETTINGS-SIMPLIFICATION demoted from appearance's flat list into
+// the collapsed fold. These are the ORIGINAL appearance keys, tracked separately
+// from later additions so the "26 original keys / placement-only" spec below stays
+// exact.
+//
+// `subagent.showResolvedModelBadge` was one of them and is not any more: it moved
+// to the Subagents tab, beside the models and per-agent rows whose resolution it
+// displays. A subagent question answered on the Appearance tab is a second place to
+// look, which is the whole reason that area exists.
 const DEMOTED_APPEARANCE_PATHS = [
 	"statusLine.sessionAccent",
 	"statusLine.transparent",
@@ -39,18 +44,26 @@ const DEMOTED_APPEARANCE_PATHS = [
 	"tui.scrollbackRebuild",
 	"display.cacheMissMarker",
 	"showHardwareCursor",
-	"task.showResolvedModelBadge",
 ] as const;
 
-// Keys added to the Advanced fold AFTER the spec: new experimental toggles that
-// default into Advanced (advanced: true) so the simplified 13-row appearance
-// view stays stable as the product grows. `display.subagentInbox` is the
-// experimental opencode-style agent split, off by default. `tui.scrollIsolation`
-// pins the prompt while the wheel scrolls the transcript, on by default.
-const EXTRA_ADVANCED_APPEARANCE_PATHS = ["display.subagentInbox", "tui.scrollIsolation"] as const;
+// Keys added to the Advanced fold AFTER the spec: new toggles that default
+// into Advanced (advanced: true) so the simplified 13-row appearance view
+// stays stable as the product grows. `tui.scrollIsolation` pins the prompt
+// while the wheel scrolls the transcript, on by default.
+// `display.toolOutputExpanded` remembers the in-session expand-tool-output
+// toggle across sessions; it lands here rather than in the visible set because
+// the toggle is already how people reach it, and this row only persists the
+// choice they made with it.
+//
+// `display.subagentInbox` was one of them and is not any more: experimental
+// features now live on the Experimental tab, which says "experimental" with
+// its name instead of a label suffix, so this key needed neither the fold nor
+// the "(experimental)" prefix.
+const EXTRA_ADVANCED_APPEARANCE_PATHS = ["tui.scrollIsolation", "display.toolOutputExpanded"] as const;
 
-// Everything the collapsed Advanced fold holds today: the 13 spec-demoted
-// originals plus any post-spec experimental additions. Drives the heading count.
+// Everything the collapsed Advanced fold holds today: the spec-demoted originals
+// still on this tab, plus any post-spec experimental additions. Drives the heading
+// count, so it is derived rather than written out as a number.
 const ALL_ADVANCED_APPEARANCE_PATHS = [...DEMOTED_APPEARANCE_PATHS, ...EXTRA_ADVANCED_APPEARANCE_PATHS] as const;
 const ADVANCED_COUNT = ALL_ADVANCED_APPEARANCE_PATHS.length;
 
@@ -88,7 +101,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly 13 non-advanced rows and 15 advanced rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly the 13 curated non-advanced rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);

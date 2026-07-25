@@ -2,6 +2,7 @@ import "./warm-natives"; // load the native addon under the real platform before
 import { describe, expect, it } from "bun:test";
 import { Container, Editor, TUI } from "@veyyon/tui";
 import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/tui/autocomplete";
+import { settleFrames } from "./helpers/settle-frames";
 import { defaultEditorTheme } from "./test-themes";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -29,17 +30,15 @@ class SlashProvider implements AutocompleteProvider {
 	}
 }
 
-async function settle(term: VirtualTerminal): Promise<void> {
-	await new Promise<void>(resolve => process.nextTick(resolve));
+async function settle(term: VirtualTerminal, tui: TUI): Promise<void> {
 	// Each keystroke arms Editor's autocomplete debounce (100ms) before the
-	// provider is re-queried, and the resulting onAutocompleteUpdate render is
-	// throttled by the TUI's MIN_RENDER_INTERVAL_MS (~33ms). 120ms no longer
-	// covers debounce plus render jitter, so capture could still see the stale
-	// (unfiltered) menu and push the live editor row out of a 6-row viewport
-	// (issue #1979). Stay well above 100+33ms so the post-debounce render lands
-	// before getViewport() runs.
-	await Bun.sleep(250);
-	await term.flush();
+	// provider is re-queried. That debounce is NOT a pending frame — the engine
+	// owes nothing until it fires — so it is a real wall-clock wait and has to be
+	// slept through. Only the render it triggers is settled on, which removes the
+	// second half of the old fixed 250ms guess (debounce + throttle + jitter).
+	await new Promise<void>(resolve => process.nextTick(resolve));
+	await Bun.sleep(120);
+	await settleFrames(term, tui);
 }
 
 describe("slash command autocomplete with unknown native viewport state", () => {
@@ -61,10 +60,10 @@ describe("slash command autocomplete with unknown native viewport state", () => 
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			for (const char of "/model") {
 				term.sendInput(char);
-				await settle(term);
+				await settle(term, tui);
 				const viewport = term.getViewport().join("\n");
 				expect(viewport).toContain(editor.getText());
 			}
@@ -103,10 +102,10 @@ describe("slash command autocomplete with unknown native viewport state", () => 
 			tui.setFocus(editor);
 
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			for (const char of "/st") {
 				term.sendInput(char);
-				await settle(term);
+				await settle(term, tui);
 			}
 			let viewport = term.getViewport().join("\n");
 			expect(editor.getText()).toBe("/st");
@@ -130,7 +129,7 @@ describe("slash command autocomplete with unknown native viewport state", () => 
 			]);
 
 			term.sendInput("\r");
-			await settle(term);
+			await settle(term, tui);
 			viewport = term.getViewport().join("\n");
 			expect(submitted).toBe("/status");
 			expect(editor.getText()).toBe("");
@@ -186,14 +185,14 @@ describe("slash command autocomplete with unknown native viewport state", () => 
 
 		try {
 			tui.start();
-			await settle(term);
+			await settle(term, tui);
 			for (const char of "/mo") {
 				// Bump a background row above the viewport in the same render tick as the
 				// autocomplete prefix change. `diff.firstChanged` will point at the
 				// background row, so the bypass MUST still kick in for the live UI rows.
 				transcriptCounter += 1;
 				term.sendInput(char);
-				await settle(term);
+				await settle(term, tui);
 				const viewport = term.getViewport().join("\n");
 				expect(viewport).toContain(editor.getText());
 			}

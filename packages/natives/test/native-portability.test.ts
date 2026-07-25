@@ -10,8 +10,9 @@
  * readelf floor parsing the post-build check runs on real ELF output, and that
  * ci.yml's GLIBC_FLOOR mirror cannot drift from the single owner.
  */
-import * as path from "node:path";
+
 import { describe, expect, it } from "bun:test";
+import * as path from "node:path";
 import {
 	exceedsGlibcFloor,
 	GLIBC_FLOOR,
@@ -35,7 +36,10 @@ describe("planLinuxNativeRoute — how a native build chooses its glibc story", 
 	it("pins the release glibc floor via zigbuild when the toolchain is present", () => {
 		// The core fix: a plain local `gen:native` with zig installed must build
 		// the SAME portable artifact CI ships, not a host-glibc one.
-		expect(planLinuxNativeRoute(base)).toEqual({ kind: "zigbuild", target: `x86_64-unknown-linux-gnu.${GLIBC_FLOOR}` });
+		expect(planLinuxNativeRoute(base)).toEqual({
+			kind: "zigbuild",
+			target: `x86_64-unknown-linux-gnu.${GLIBC_FLOOR}`,
+		});
 		expect(planLinuxNativeRoute({ ...base, arch: "arm64" })).toEqual({
 			kind: "zigbuild",
 			target: `aarch64-unknown-linux-gnu.${GLIBC_FLOOR}`,

@@ -5,7 +5,8 @@ import * as path from "node:path";
 import { generateThemeVars } from "@veyyon/coding-agent/export/html";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { getResolvedThemeColors, getThemeByName, isLightTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getAgentDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 describe("Theme.isLight", () => {
 	it("classifies built-in themes by their status-line surface", async () => {
@@ -68,24 +69,20 @@ describe("getResolvedThemeColors HTML export defaults", () => {
 		expect(colors.userMessageText).toBe("#C6CBD4");
 	});
 	let tempAgentDir: string | undefined;
-	let originalAgentDir = "";
-	let originalAgentDirEnv: string | undefined;
+	let dirOverrides: DirOverridesSnapshot | undefined;
 
 	afterEach(async () => {
 		if (tempAgentDir === undefined) return;
-		setAgentDir(originalAgentDir);
-		if (originalAgentDirEnv === undefined) {
-			delete process.env.VEYYON_CODING_AGENT_DIR;
-		} else {
-			process.env.VEYYON_CODING_AGENT_DIR = originalAgentDirEnv;
-		}
+		// The snapshot restores the variable AND the active profile that `setAgentDir`
+		// clears; the hand-rolled pair this replaces only put the variable back.
+		if (dirOverrides) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 		await removeWithRetries(tempAgentDir);
 		tempAgentDir = undefined;
 	});
 
 	it("uses light text when a light-status custom theme derives dark export surfaces from userMessageBg", async () => {
-		originalAgentDir = getAgentDir();
-		originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+		dirOverrides = captureDirOverrides();
 		tempAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-theme-export-"));
 		setAgentDir(tempAgentDir);
 

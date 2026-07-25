@@ -8,7 +8,7 @@
  * login opens plan management so users copy the regional `tp-...` key.
  */
 
-import { scopedTimeoutSignal } from "@veyyon/utils";
+import { isAbortError, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import type { OAuthController } from "./types";
@@ -133,7 +133,7 @@ async function validateXiaomiApiKey(
 			// Only re-throw AbortError when the caller explicitly cancelled.
 			// Timeout aborts (from AbortSignal.timeout) should fall through to
 			// the next endpoint so SGP→AMS fallback works during regional outages.
-			if (e instanceof DOMException && e.name === "AbortError" && signal?.aborted) {
+			if (isAbortError(e) && signal?.aborted) {
 				throw e;
 			}
 			lastError = e instanceof Error ? e : new Error(String(e));

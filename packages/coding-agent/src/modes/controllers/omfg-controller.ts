@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { CONFIG_DIR_NAME, errorMessage, prompt } from "@veyyon/utils";
 import type { Rule } from "../../capability/rule";
-import omfgUserPrompt from "../../prompts/system/omfg-user.md" with { type: "text" };
+import { PROMPTS } from "../../prompts/registry";
 import { shortenPath } from "../../tools/render-utils";
 import { OmfgPanelComponent } from "../components/omfg-panel";
 import type { InteractiveModeContext } from "../types";
@@ -161,7 +161,7 @@ export class OmfgController {
 			if (this.#shouldStop(request)) return undefined;
 			request.component.setRule("");
 			request.component.setStatus("generating", `Attempt ${attempt}/${MAX_ATTEMPTS} · generating…`);
-			const promptText = prompt.render(omfgUserPrompt, {
+			const promptText = prompt.render(PROMPTS["side-channel/omfg-user"].text, {
 				complaint: request.complaint,
 				feedback: failedAttempts.length > 0 ? failedAttempts.join("\n\n") : undefined,
 				previousRule,

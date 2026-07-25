@@ -236,12 +236,16 @@ export function deobfuscateAgentMessages(obfuscator: SecretObfuscator, messages:
  * Shared by the secret codec (deobfuscation for display) and the argot expander
  * so both walk the transcript shape exactly one way.
  */
-export function mapAgentMessageStrings(messages: AgentMessage[], fn: (s: string) => string): AgentMessage[] {
+export function mapAgentMessageStrings(
+	messages: AgentMessage[],
+	fn: (s: string) => string,
+	options?: ContentWalkOptions,
+): AgentMessage[] {
 	let changed = false;
 	const result = messages.map((message): AgentMessage => {
 		switch (message.role) {
 			case "assistant": {
-				const content = mapAssistantContentStrings(message.content, fn);
+				const content = mapAssistantContentStrings(message.content, fn, options);
 				if (content === message.content) return message;
 				changed = true;
 				return { ...message, content };
@@ -283,15 +287,35 @@ export function deobfuscateAssistantContent(
 }
 
 /**
+ * Whether a walk may rewrite thinking text.
+ *
+ * Off by default, and the default is the safe one. A thinking block is replayed
+ * to the provider with its `thinkingSignature`, which is bound to the exact
+ * bytes, so a walk whose output can find its way back into a request must leave
+ * thinking untouched or the next call is rejected. Resume does exactly that: it
+ * deobfuscates the persisted transcript and feeds it back as the starting
+ * messages.
+ *
+ * Turn it on only for a copy that is rendered and then discarded. The argot
+ * display seams do, because a person reading a model's reasoning has to see
+ * `src/db.ts` where the model wrote `§db`, the same as in its prose.
+ */
+export interface ContentWalkOptions {
+	readonly includeThinking?: boolean;
+}
+
+/**
  * Map every model-authored string in assistant content through `fn`: visible
- * text and tool-call arguments/intent/rawBlock. Thinking and signatures are
- * opaque provider-replay/hidden-reasoning data and pass through byte-identical.
- * Shared by the secret codec (deobfuscation) and the argot expander so both walk
- * the assistant-content shape exactly one way.
+ * text and tool-call arguments/intent/rawBlock, plus thinking when
+ * {@link ContentWalkOptions.includeThinking} is set. Signatures are opaque
+ * provider-replay data and always pass through byte-identical. Shared by the
+ * secret codec (deobfuscation) and the argot expander so both walk the
+ * assistant-content shape exactly one way.
  */
 export function mapAssistantContentStrings(
 	content: AssistantMessage["content"],
 	fn: (s: string) => string,
+	options?: ContentWalkOptions,
 ): AssistantMessage["content"] {
 	let changed = false;
 	const result = content.map((block): AssistantMessage["content"][number] => {
@@ -300,6 +324,12 @@ export function mapAssistantContentStrings(
 			if (text === block.text) return block;
 			changed = true;
 			return { ...block, text };
+		}
+		if (block.type === "thinking" && options?.includeThinking) {
+			const thinking = fn(block.thinking);
+			if (thinking === block.thinking) return block;
+			changed = true;
+			return { ...block, thinking };
 		}
 		if (block.type === "toolCall") {
 			const args = mapJsonStrings(block.arguments as JsonValue, fn) as Record<string, unknown>;

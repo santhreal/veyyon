@@ -180,7 +180,11 @@ describe("staleAddonMessage", () => {
 	});
 
 	it("says 'no version sentinel' when the binary carried none", () => {
-		const stale = { filename: "veyyon_natives.darwin-arm64.node", expected: versionSentinelExportFor("1.0.18"), builtFor: [] };
+		const stale = {
+			filename: "veyyon_natives.darwin-arm64.node",
+			expected: versionSentinelExportFor("1.0.18"),
+			builtFor: [],
+		};
 		expect(staleAddonMessage(stale, "1.0.18")).toContain("no version sentinel");
 	});
 });

@@ -3,6 +3,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget, UsageReport } from "@veyyon/ai";
+// One owner for how `/fast` names the state it changes, so this suite cannot drift
+// from the command the way it did when the wording became "priority tier".
+import { PRIORITY_TIER_COMMAND_LABEL } from "@veyyon/coding-agent/config/service-tier";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -231,7 +234,7 @@ describe("ACP builtin slash commands", () => {
 		const result = await executeAcpBuiltinSlashCommand("/fast status", runtime);
 
 		expect(result).toEqual({ consumed: true });
-		expect(output).toEqual(["Fast mode is off."]);
+		expect(output).toEqual([`${PRIORITY_TIER_COMMAND_LABEL} is off.`]);
 	});
 
 	it("forces a tool and returns remaining prompt text", async () => {
@@ -789,25 +792,25 @@ describe("wave 3 commands", () => {
 	// /browser
 	it("/browser visible: sets headless=false; second call is idempotent", async () => {
 		const { runtime } = createRuntime();
-		runtime.settings.set("browser.enabled" as never, true as never);
-		runtime.settings.set("browser.headless" as never, true as never);
+		runtime.settings.set("browser.enabled", true);
+		runtime.settings.set("browser.headless", true);
 		const r1 = await executeAcpBuiltinSlashCommand("/browser visible", runtime);
 		expect(r1).toEqual({ consumed: true });
-		expect(runtime.settings.get("browser.headless" as never)).toBe(false);
+		expect(runtime.settings.get("browser.headless")).toBe(false);
 		const r2 = await executeAcpBuiltinSlashCommand("/browser visible", runtime);
 		expect(r2).toEqual({ consumed: true });
-		expect(runtime.settings.get("browser.headless" as never)).toBe(false);
+		expect(runtime.settings.get("browser.headless")).toBe(false);
 	});
 
 	it("/browser no-arg after /browser visible toggles to headless", async () => {
 		const { output, runtime } = createRuntime();
-		runtime.settings.set("browser.enabled" as never, true as never);
-		runtime.settings.set("browser.headless" as never, true as never);
+		runtime.settings.set("browser.enabled", true);
+		runtime.settings.set("browser.headless", true);
 		await executeAcpBuiltinSlashCommand("/browser visible", runtime);
 		const r = await executeAcpBuiltinSlashCommand("/browser", runtime);
 		expect(r).toEqual({ consumed: true });
 		expect(output[output.length - 1]).toContain("headless");
-		expect(runtime.settings.get("browser.headless" as never)).toBe(true);
+		expect(runtime.settings.get("browser.headless")).toBe(true);
 	});
 
 	// /compact

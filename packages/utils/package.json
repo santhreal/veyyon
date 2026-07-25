@@ -34,11 +34,12 @@
     "@veyyon/natives": "catalog:",
     "handlebars": "catalog:",
     "winston": "catalog:",
-    "winston-daily-rotate-file": "catalog:"
+    "winston-daily-rotate-file": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "fast-check": "4.9.0"
+    "fast-check": "catalog:"
   },
   "engines": {
     "bun": ">=1.3.14"

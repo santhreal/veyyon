@@ -2,6 +2,8 @@
  * SwiftLint CLI-based linter client.
  * Parses SwiftLint's JSON reporter output into LSP Diagnostic format.
  */
+
+import { readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 
 /** Shape of a single violation from `swiftlint lint --reporter json`. */
@@ -41,7 +43,7 @@ async function runSwiftLint(
 			windowsHide: true,
 		});
 
-		const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+		const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 		await proc.exited;
 
 		// swiftlint exits non-zero when violations found — that's not a failure

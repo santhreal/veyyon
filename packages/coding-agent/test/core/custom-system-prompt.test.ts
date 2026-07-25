@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { prompt } from "@veyyon/utils";
 import "../../src/config/prompt-templates";
-import customSystemPromptTemplate from "../../src/prompts/system/custom-system-prompt.md" with { type: "text" };
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 
 /**
  * Gate-parity for the custom system prompt template.
@@ -21,7 +21,10 @@ import customSystemPromptTemplate from "../../src/prompts/system/custom-system-p
 
 /** Render the custom template with the always-present `customPrompt` plus overrides. */
 function renderCustom(overrides: Record<string, unknown> = {}): string {
-	return prompt.render(customSystemPromptTemplate, { customPrompt: "USER SUPPLIED PROMPT", ...overrides });
+	return prompt.render(PROMPTS["session/custom-system-prompt"].text, {
+		customPrompt: "USER SUPPLIED PROMPT",
+		...overrides,
+	});
 }
 
 describe("custom system prompt: always-rendered core", () => {
@@ -104,7 +107,7 @@ describe("custom system prompt: gate parity", () => {
 			"secretsEnabled",
 		]);
 		const found = new Set<string>();
-		for (const m of customSystemPromptTemplate.matchAll(/\{\{#if\s+([A-Za-z_][\w.]*)\}\}/g)) {
+		for (const m of PROMPTS["session/custom-system-prompt"].text.matchAll(/\{\{#if\s+([A-Za-z_][\w.]*)\}\}/g)) {
 			found.add(m[1].replace(/\.length$/, ""));
 		}
 		expect(found.size).toBeGreaterThanOrEqual(8);

@@ -3,14 +3,7 @@ import { formatCount, sanitizeText } from "@veyyon/utils";
 import type { OAuthAccountIdentity } from "../../session/auth-storage";
 import type { SlashCommandRuntime } from "../types";
 import { reportMatchesActiveAccount } from "./active-oauth-account";
-import { formatDurationCoarse, renderAsciiBar } from "./format";
-
-function formatProviderName(provider: string): string {
-	return provider
-		.split(/[-_]/g)
-		.map(part => (part ? part[0].toUpperCase() + part.slice(1) : ""))
-		.join(" ");
-}
+import { formatDurationCoarse, formatProviderName, renderAsciiBar } from "./format";
 
 function formatUsageAmount(limit: UsageLimit): string {
 	const amount = limit.amount;

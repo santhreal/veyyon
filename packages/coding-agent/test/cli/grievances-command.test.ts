@@ -45,6 +45,16 @@ function seedDb(home: string): void {
 	db.close();
 }
 
+/**
+ * Put a DIRECTORY where `autoqa.db` belongs, so opening it fails while the path plainly exists.
+ * This is the state the CLI used to describe as "no grievances database found".
+ */
+function blockDbPath(home: string): string {
+	const dbPath = path.join(home, ".veyyon", "profiles", "default", "autoqa.db");
+	mkdirSync(dbPath, { recursive: true });
+	return dbPath;
+}
+
 async function runGrievances(
 	env: Record<string, string | undefined>,
 	args: string[],
@@ -72,6 +82,69 @@ describe("veyyon grievances", () => {
 		const json = await runGrievances(env, ["--json"]);
 		expect(json.exitCode).toBe(0);
 		expect(JSON.parse(json.stdout)).toEqual([]);
+	}, 30_000);
+
+	/**
+	 * The database exists and cannot be opened, which is not the same as never having enabled auto-QA.
+	 * Telling the user to enable a feature they already enabled sends them the wrong way and hides the
+	 * fact that their reported tool issues are being dropped, so the message names the path instead.
+	 */
+	it("with an unopenable database says so, and does not tell you to enable auto-QA", async () => {
+		const home = makeHome();
+		const dbPath = blockDbPath(home);
+		const env = makeEnv(home);
+
+		const human = await runGrievances(env, []);
+
+		expect(human.exitCode).toBe(0);
+		expect(human.stdout).toContain("could not be opened");
+		expect(human.stdout).toContain(dbPath);
+		expect(human.stdout).not.toContain("No grievances database found");
+		expect(human.stdout).not.toContain("VEYYON_AUTO_QA=1");
+	}, 30_000);
+
+	/**
+	 * `--json` output stays machine-parseable: the payload is unchanged and the explanation goes to
+	 * stderr, so a script piping stdout into a JSON parser keeps working while a human still sees why
+	 * the list is empty.
+	 */
+	it("keeps --json stdout parseable and explains on stderr", async () => {
+		const home = makeHome();
+		blockDbPath(home);
+		const env = makeEnv(home);
+
+		const json = await runGrievances(env, ["--json"]);
+
+		expect(json.exitCode).toBe(0);
+		expect(JSON.parse(json.stdout)).toEqual([]);
+		expect(json.stderr).toContain("could not be opened");
+		expect(json.stdout).not.toContain("could not be opened");
+	}, 30_000);
+
+	/**
+	 * `push --json` carries a machine-readable reason, and it must distinguish the two cases too: a
+	 * caller retrying on `no_db` after enabling auto-QA would loop forever against a database that is
+	 * there and unreadable.
+	 */
+	it("reports unreadable_db rather than no_db when pushing", async () => {
+		const home = makeHome();
+		blockDbPath(home);
+		const env = makeEnv(home);
+
+		const pushed = await runGrievances(env, ["push", "--json"]);
+
+		expect(pushed.exitCode).toBe(0);
+		expect(JSON.parse(pushed.stdout)).toEqual({ pushed: 0, ok: false, skipped: true, reason: "unreadable_db" });
+	}, 30_000);
+
+	/** And the absent case still reports `no_db`, so the distinction is a split and not a rename. */
+	it("still reports no_db when there is no database at all", async () => {
+		const env = makeEnv(makeHome());
+
+		const pushed = await runGrievances(env, ["push", "--json"]);
+
+		expect(pushed.exitCode).toBe(0);
+		expect(JSON.parse(pushed.stdout).reason).toBe("no_db");
 	}, 30_000);
 
 	it("lists seeded rows newest-first with the full JSON shape, honoring --tool and --limit", async () => {

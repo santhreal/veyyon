@@ -1,6 +1,12 @@
 import { afterAll, beforeAll } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./settings-test-state";
+import {
+	beginSettingsTest,
+	claimFileLevelIsolation,
+	releaseFileLevelIsolation,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "./settings-test-state";
 
 /**
  * Isolate the GLOBAL `Settings` singleton for a test file, in one line.
@@ -18,12 +24,16 @@ import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } f
  * `beginSettingsTest`/`restoreSettingsTestState` pair keeps the singleton, the
  * dir resolver, and the env from leaking into whichever file runs next.
  *
- * Call it once at the top level of a suite file, outside any `describe`.
+ * Call it once at the top level of a suite file, outside any `describe`. A file that
+ * also needs the agent dir isolated calls `useIsolatedAgentDir({ globalSettings: true })`
+ * rather than both helpers: stacking two file-level helpers reinstates the inner one's
+ * temp state on the way out, and {@link claimFileLevelIsolation} refuses it.
  */
 export function useIsolatedGlobalSettings(): void {
 	let state: SettingsTestState | undefined;
 
 	beforeAll(async () => {
+		claimFileLevelIsolation("useIsolatedGlobalSettings()");
 		state = beginSettingsTest();
 		await Settings.init({ inMemory: true });
 	});
@@ -31,5 +41,6 @@ export function useIsolatedGlobalSettings(): void {
 	afterAll(() => {
 		restoreSettingsTestState(state);
 		state = undefined;
+		releaseFileLevelIsolation();
 	});
 }

@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { errorMessage, isCancellation, logger, tryParseJson } from "@veyyon/utils";
 import { markdownLink } from "../../utils/markdown-link";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
@@ -276,8 +276,22 @@ async function resolveEntityLabels(
 					const label = entity.labels?.en?.value;
 					if (label) labels[id] = label;
 				}
+			} else {
+				logger.warn("Wikidata label lookup failed; those entities render as raw Q-ids", {
+					ids: batch.join("|"),
+					reason: loadFailure(result),
+				});
 			}
-		} catch {}
+		} catch (error) {
+			if (isCancellation(error)) throw error;
+			// Every claim whose value is an entity falls back to the bare `Q42`, so the page the
+			// model reads names nothing. The scrape still succeeds, which is exactly why this
+			// has to be said out loud.
+			logger.warn("Wikidata label lookup failed; those entities render as raw Q-ids", {
+				ids: batch.join("|"),
+				error: errorMessage(error),
+			});
+		}
 	}
 
 	return labels;

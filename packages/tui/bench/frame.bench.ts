@@ -17,8 +17,9 @@
  * never come from frames silently not rendering.
  */
 import { Text } from "../src/components/text";
-import { TUI, type RenderScheduler } from "../src/tui";
 import type { Terminal, TerminalAppearance } from "../src/terminal";
+import { type RenderScheduler, TUI } from "../src/tui";
+import { benchFail, benchStats } from "./_harness";
 
 // ─── Sink terminal ──────────────────────────────────────────────────────────
 
@@ -95,8 +96,9 @@ class ManualScheduler implements RenderScheduler {
 
 // ─── Deterministic transcript ───────────────────────────────────────────────
 
-const WORDS =
-	"the quick brown fox jumps over the lazy dog while the agent streams tokens into a long transcript".split(" ");
+const WORDS = "the quick brown fox jumps over the lazy dog while the agent streams tokens into a long transcript".split(
+	" ",
+);
 
 function paragraph(seed: number, sentences: number): string {
 	const parts: string[] = [];
@@ -127,25 +129,13 @@ function makeTui(blocks: number): { tui: TUI; terminal: SinkTerminal; scheduler:
 	return { tui, terminal, scheduler };
 }
 
-function stats(samplesMs: number[]): { p50: number; p95: number; mean: number } {
-	const sorted = [...samplesMs].sort((a, b) => a - b);
-	const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
-	const mean = sorted.reduce((a, b) => a + b, 0) / Math.max(1, sorted.length);
-	return { p50: at(0.5), p95: at(0.95), mean };
-}
-
 function report(label: string, samples: number[], extra = ""): void {
-	const { p50, p95, mean } = stats(samples);
+	const { p50, p95, mean } = benchStats(samples);
 	console.log(
 		`${label.padEnd(34)} n=${String(samples.length).padStart(5)}  ` +
 			`p50=${p50.toFixed(3)}ms  p95=${p95.toFixed(3)}ms  mean=${mean.toFixed(3)}ms  ` +
 			`(${(1000 / Math.max(mean, 0.0001)).toFixed(0)} fps)${extra ? `  ${extra}` : ""}`,
 	);
-}
-
-function fail(message: string): never {
-	console.error(`GUARD FAILED: ${message}`);
-	process.exit(1);
 }
 
 // ─── Phase 1: token streaming into the last block ───────────────────────────
@@ -182,10 +172,14 @@ function benchStreaming(blocks: number, tokens: number, newlineEvery: number, le
 		scheduler.flush();
 		samples.push(performance.now() - start);
 	}
-	if (terminal.bytes === bytesBefore) fail("streaming phase wrote no bytes");
-	if (!terminal.lastChunk.includes("FINAL_SENTINEL")) fail("last streamed token never reached the terminal");
+	if (terminal.bytes === bytesBefore) benchFail("streaming phase wrote no bytes");
+	if (!terminal.lastChunk.includes("FINAL_SENTINEL")) benchFail("last streamed token never reached the terminal");
 	const shape = newlineEvery > 0 ? "prose" : "one-line";
-	report(`streaming ${shape}${legacy ? " legacy" : ""} (${blocks} blocks)`, samples, `bytes=${terminal.bytes - bytesBefore}`);
+	report(
+		`streaming ${shape}${legacy ? " legacy" : ""} (${blocks} blocks)`,
+		samples,
+		`bytes=${terminal.bytes - bytesBefore}`,
+	);
 	tui.stop();
 }
 
@@ -212,7 +206,7 @@ function benchSpinner(blocks: number, ticks: number): void {
 		scheduler.flush();
 		samples.push(performance.now() - start);
 	}
-	if (terminal.bytes === bytesBefore) fail("spinner phase wrote no bytes");
+	if (terminal.bytes === bytesBefore) benchFail("spinner phase wrote no bytes");
 	report(`spinner ticks (${blocks} blocks)`, samples, `bytes=${terminal.bytes - bytesBefore}`);
 	tui.stop();
 }
@@ -233,7 +227,7 @@ function benchColdPaint(blocks: number, repeats: number): void {
 		scheduler.flush();
 		samples.push(performance.now() - start);
 		bytes = terminal.bytes;
-		if (terminal.bytes === 0) fail("cold paint wrote no bytes");
+		if (terminal.bytes === 0) benchFail("cold paint wrote no bytes");
 		tui.stop();
 	}
 	report(`cold paint (${blocks} blocks)`, samples, `bytes/frame=${bytes}`);

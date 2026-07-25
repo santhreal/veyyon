@@ -145,6 +145,8 @@ function firstSelectorLine(selector: string | undefined): number | undefined {
 	try {
 		return selectorLineRanges(selector)?.[0].startLine;
 	} catch {
+		// A selector this renderer cannot parse has no first line to link to, so the row links to the file
+		// instead. The read itself parses the same selector and reports it; a renderer must not raise.
 		return undefined;
 	}
 }
@@ -172,6 +174,8 @@ function selectorChunkIsLineRangeList(chunk: string): boolean {
 	try {
 		return parseLineRanges(trimmed) !== null;
 	} catch {
+		// This asks whether a chunk IS a line-range list. A parse failure answers the question with no:
+		// unparseable is not a line-range list, and the caller treats the chunk as something else.
 		return false;
 	}
 }

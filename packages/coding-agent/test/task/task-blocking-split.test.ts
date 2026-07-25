@@ -54,7 +54,7 @@ function createSession(options: { manager?: AsyncJobManager; settings?: Record<s
 	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
-		settings: Settings.isolated(options.settings ?? { "async.enabled": true, "task.batch": true }),
+		settings: Settings.isolated(options.settings ?? { "async.enabled": true, "subagent.batch": true }),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		getAgentId: () => null,

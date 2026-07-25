@@ -17,6 +17,7 @@ import {
 	isEnoent,
 	logger,
 	quarantineUnparseableFileSync,
+	syncYamlTextToSettings,
 } from "@veyyon/utils";
 import { JSONC, YAML } from "bun";
 
@@ -454,11 +455,28 @@ function loadRawConfig(filePath: string): unknown {
 
 function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
 	try {
+		// The file's own bytes, so the write EDITS it instead of re-serializing it.
+		// `keybindings.yml` is a file people write by hand — the docs tell them to — and a
+		// re-serialization discards the comments they used to explain their bindings, their
+		// blank-line grouping and their key order. Missing is fine (first write).
+		let existingText = "";
+		try {
+			existingText = fs.readFileSync(filePath, "utf8");
+		} catch (error) {
+			if (!isEnoent(error)) throw error;
+		}
 		// Atomic write (temp + fsync + rename) so a crash or power loss mid-write
 		// never tears keybindings.yml. A torn file would fail YAML.parse in
 		// loadRawConfig, which silently falls back to default bindings and drops
 		// the user's whole custom map — exactly the corruption we prevent here.
-		atomicWriteFileSync(filePath, YAML.stringify(config, null, 2));
+		atomicWriteFileSync(
+			filePath,
+			// The rename map goes with the write, so a migrated binding is relabelled where
+			// the user put it instead of being deleted and re-appended at the end of the file.
+			syncYamlTextToSettings(existingText, config as Record<string, unknown>, {
+				renamedKeys: KEYBINDING_NAME_MIGRATIONS,
+			}),
+		);
 		logger.debug("Migrated keybindings config", { path: filePath });
 		return true;
 	} catch (error) {

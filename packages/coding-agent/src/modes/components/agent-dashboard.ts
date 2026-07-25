@@ -38,17 +38,23 @@ import { clampLow, errorMessage, isEnoent, prompt } from "@veyyon/utils";
 import { YAML } from "bun";
 import { getConfigDirs } from "../../config";
 import type { ModelRegistry } from "../../config/model-registry";
-import {
-	formatModelString,
-	resolveAgentModelPatterns,
-	resolveConfiguredModelPatterns,
-	resolveModelOverride,
-} from "../../config/model-resolver";
+import { formatModelString, resolveConfiguredModelPatterns, resolveModelOverride } from "../../config/model-resolver";
+import { DEFAULT_MODEL_SLOT } from "../../config/model-roles";
 import { Settings } from "../../config/settings";
-import agentCreationArchitectPrompt from "../../prompts/system/agent-creation-architect.md" with { type: "text" };
-import agentCreationUserPrompt from "../../prompts/system/agent-creation-user.md" with { type: "text" };
+import type { SubagentAgentSettings } from "../../config/settings-domains/subagents";
+import { PROMPTS } from "../../prompts/registry";
 import { createAgentSession } from "../../sdk";
 import { discoverAgents } from "../../task/discovery";
+import {
+	nextSubagentEnableValue,
+	type ResolvedSubagentModel,
+	resolveSubagentModel,
+	SUBAGENT_ENABLE_STATE_LABEL,
+	type SubagentEnableState,
+	subagentEnableState,
+	subagentModelSourceLabel,
+	subagentSettingsFor,
+} from "../../task/subagent-settings";
 import type { AgentDefinition, AgentSource } from "../../task/types";
 import { shortenPath } from "../../tools/render-utils";
 import { getEditorTheme, theme } from "../theme/theme";
@@ -63,11 +69,12 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	planModalChrome,
 	renderModalShell,
 	withCompact,
-	ModalRevealDriver,
 } from "./modal-shell";
 import { clampSelection, handleTabSwitchKey, searchableChar } from "./selector-helpers";
 
@@ -81,8 +88,42 @@ interface SourceTab {
 }
 
 interface DashboardAgent extends AgentDefinition {
-	disabled: boolean;
+	/**
+	 * The agent's `subagent.agents.<name>.enabled` value VERBATIM, including
+	 * `undefined` for "no row".
+	 *
+	 * Three states, not two: an absent row means the shipped default, and for a
+	 * bundled specialist that default is "not offered to the model, but still runs
+	 * when a command or you name it outright" — which is what keeps `/review`
+	 * working with the specialists off. Collapsing that to a boolean is what made
+	 * the old dashboard claim an agent was disabled while a second setting still
+	 * held a model for it.
+	 */
+	enabled?: boolean;
 	overrideModel?: string;
+}
+
+/** This agent's enable state from the row value it carries. */
+function enableStateOf(agent: DashboardAgent): SubagentEnableState {
+	return subagentEnableState(agent, agent.enabled);
+}
+
+/**
+ * Row prefix and label for each enable state. The wording comes from
+ * {@link SUBAGENT_ENABLE_STATE_LABEL} so the settings tab says the same thing;
+ * only the colour is chosen here.
+ */
+function enableStateDisplay(state: SubagentEnableState): { symbol: string; label: string; dim: boolean } {
+	const label = SUBAGENT_ENABLE_STATE_LABEL[state];
+	switch (state) {
+		case "on":
+		case "default-on":
+			return { symbol: theme.fg("success", theme.status.enabled), label: theme.fg("success", label), dim: false };
+		case "default-off":
+			return { symbol: theme.fg("warning", theme.status.disabled), label: theme.fg("warning", label), dim: true };
+		case "off":
+			return { symbol: theme.fg("dim", theme.status.disabled), label: theme.fg("dim", label), dim: true };
+	}
 }
 
 interface ModelResolution {
@@ -242,16 +283,14 @@ class AgentListPane implements Component {
 		for (let i = start; i < end; i++) {
 			const agent = this.agents[i];
 			const selected = i === this.selectedIndex;
-			const status = agent.disabled
-				? theme.fg("dim", theme.status.disabled)
-				: theme.fg("success", theme.status.enabled);
+			const display = enableStateDisplay(enableStateOf(agent));
 			const source = theme.fg("dim", `[${SOURCE_LABEL[agent.source]}]`);
 			const override = agent.overrideModel ? ` ${theme.fg("warning", "(override)")}` : "";
-			let line = ` ${status} ${replaceTabs(agent.name)} ${source}${override}`;
+			let line = ` ${display.symbol} ${replaceTabs(agent.name)} ${source}${override}`;
 
 			if (selected) {
 				line = theme.bg("selectedBg", theme.bold(theme.fg("accent", line)));
-			} else if (agent.disabled) {
+			} else if (display.dim) {
 				line = theme.fg("dim", line);
 			}
 
@@ -280,6 +319,7 @@ class AgentInspectorPane implements Component {
 		private readonly defaultResolution: ModelResolution | undefined,
 		private readonly effectivePatterns: string[],
 		private readonly effectiveResolution: ModelResolution | undefined,
+		private readonly effectiveModel: ResolvedSubagentModel | undefined,
 	) {}
 
 	render(width: number): readonly string[] {
@@ -288,9 +328,8 @@ class AgentInspectorPane implements Component {
 		}
 
 		const lines: string[] = [];
-		const state = this.agent.disabled
-			? theme.fg("dim", `${theme.status.disabled} Disabled`)
-			: theme.fg("success", `${theme.status.enabled} Enabled`);
+		const display = enableStateDisplay(enableStateOf(this.agent));
+		const state = `${display.symbol} ${display.label}`;
 
 		lines.push(theme.bold(theme.fg("accent", replaceTabs(this.agent.name))));
 		lines.push("");
@@ -309,6 +348,24 @@ class AgentInspectorPane implements Component {
 		lines.push(
 			`${theme.fg("muted", "Effective:")} ${this.effectiveResolution ? this.#formatResolution(this.effectiveResolution) : theme.fg("dim", "(unresolved)")}`,
 		);
+		// WHICH setting decided, always shown. Four layers can name a subagent's
+		// model, and an operator who cannot see which one answered has no way to
+		// tell an override that took effect from one that was outranked — the exact
+		// confusion this settings area exists to end.
+		if (this.effectiveModel) {
+			lines.push(
+				`${theme.fg("muted", "Decided by:")} ${theme.fg("dim", subagentModelSourceLabel(this.effectiveModel.source, this.agent.name))}`,
+			);
+		}
+		if (this.effectiveModel?.unresolved) {
+			const { source, value } = this.effectiveModel.unresolved;
+			lines.push(
+				theme.fg(
+					"error",
+					`${subagentModelSourceLabel(source, this.agent.name)} is set to "${value}", which matches no available model. Spawns will refuse until this is fixed.`,
+				),
+			);
+		}
 
 		if (this.agent.filePath) {
 			lines.push("");
@@ -384,6 +441,13 @@ export class AgentDashboard extends Container {
 	#contentWidth = 80;
 	/** Card height budget inside the ModalShell card, refreshed every render. */
 	#modalHeight = 20;
+	/**
+	 * Body rows the card will actually show, from the shell's own plan and
+	 * refreshed every render. `#computeBodyHeight` sizes the panes against this
+	 * rather than restating the chrome arithmetic, which is how the last row got
+	 * dropped: a body longer than the budget is truncated with no error.
+	 */
+	#bodyBudget = 11;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 
@@ -442,8 +506,7 @@ export class AgentDashboard extends Container {
 			const selectedName = this.#selectedAgent()?.name;
 			const activeTabId = this.#tabs[this.#activeTabIndex]?.id ?? "all";
 			const { agents } = await discoverAgents(this.cwd);
-			const disabled = new Set((this.#settingsManager?.get("task.disabledAgents") as string[] | undefined) ?? []);
-			const overrides = this.#settingsManager?.get("task.agentModelOverrides") ?? {};
+			const settings = this.#settingsManager;
 
 			this.#allAgents = agents
 				.slice()
@@ -452,11 +515,16 @@ export class AgentDashboard extends Container {
 					if (sourceCmp !== 0) return sourceCmp;
 					return a.name.localeCompare(b.name);
 				})
-				.map(agent => ({
-					...agent,
-					disabled: disabled.has(agent.name),
-					overrideModel: overrides[agent.name]?.trim() || undefined,
-				}));
+				.map(agent => {
+					const row = settings ? subagentSettingsFor(settings, agent.name) : {};
+					return {
+						...agent,
+						// Carried through verbatim, `undefined` included: an absent row is a
+						// third state (the shipped default), not a synonym for off.
+						enabled: row.enabled,
+						overrideModel: row.model?.trim() || undefined,
+					};
+				});
 
 			this.#tabs = this.#buildTabs(this.#allAgents);
 			const nextTabIndex = this.#tabs.findIndex(tab => tab.id === activeTabId);
@@ -532,9 +600,14 @@ export class AgentDashboard extends Container {
 	/** Height budget for the two-column body, sized to the ModalShell card. */
 	#computeBodyHeight(): number {
 		// Chrome inside the card: tab bar + spacer (2), plus an optional notice
-		// block. ModalShell itself owns the border, title, and footer chips.
+		// block. ModalShell owns everything outside the body, and how much that
+		// is comes from {@link #bodyBudget}, which render() takes from the shell.
+		// The `- 8` here was one row short of the truth (the card reserves NINE at
+		// this sizing: top border, vPad above AND below the body, footer divider,
+		// two footer lines, bottom border), so the dashboard handed the shell a
+		// body one row too long and the shell silently dropped the last one.
 		const preRows = 2 + this.#noticeBlockLines();
-		return Math.max(5, this.#modalHeight - 8 - preRows);
+		return Math.max(1, this.#bodyBudget - preRows);
 	}
 
 	#getMaxVisibleItems(): number {
@@ -568,6 +641,14 @@ export class AgentDashboard extends Container {
 
 		this.#contentWidth = dims.contentWidth;
 		this.#modalHeight = dims.modalHeight;
+		const shortcuts = this.#currentShortcuts();
+		this.#bodyBudget = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		}).maxBodyRows;
 		// Rebuild when terminal geometry changes so the card re-fits on resize.
 		if (height !== this.#builtRows || dims.contentWidth !== this.#builtCols) {
 			this.#buildLayout();
@@ -580,7 +661,7 @@ export class AgentDashboard extends Container {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			shortcuts: this.#currentShortcuts(),
+			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});
@@ -600,32 +681,49 @@ export class AgentDashboard extends Container {
 		this.#scrollOffset = next.scrollOffset;
 	}
 
-	#persistDisabledAgents(): void {
-		if (!this.#settingsManager) return;
-		const disabled = this.#allAgents
-			.filter(agent => agent.disabled)
-			.map(agent => agent.name)
-			.sort((a, b) => a.localeCompare(b));
-		this.#settingsManager.set("task.disabledAgents", disabled);
-	}
-
-	#persistModelOverrides(): void {
-		if (!this.#settingsManager) return;
-		const overrides: Record<string, string> = {};
+	/**
+	 * Write the whole Agents table back: one row per agent, holding only what
+	 * differs from the shipped default.
+	 *
+	 * Both the enable flag and the per-agent model live in the SAME row
+	 * (`subagent.agents.<name>`), so this is the one writer. Splitting them across
+	 * two settings — a disabled-name list and a name→model map — is what let an
+	 * agent's model survive invisibly while the agent looked off, and made the
+	 * dashboard and the spawn path read different sources.
+	 */
+	#persistAgentRows(): void {
+		const settings = this.#settingsManager;
+		if (!settings) return;
+		const rows: Record<string, SubagentAgentSettings> = {};
 		for (const agent of this.#allAgents) {
-			const value = agent.overrideModel?.trim();
-			if (value) {
-				overrides[agent.name] = value;
-			}
+			const row: SubagentAgentSettings = {};
+			// An agent left at its shipped default writes no `enabled` key at all, so
+			// a later change to that default reaches every install that never chose.
+			if (agent.enabled !== undefined) row.enabled = agent.enabled;
+			const model = agent.overrideModel?.trim();
+			if (model) row.model = model;
+			const existing = settings ? subagentSettingsFor(settings, agent.name) : {};
+			if (existing.thinkingLevel) row.thinkingLevel = existing.thinkingLevel;
+			if (Object.keys(row).length > 0) rows[agent.name] = row;
 		}
-		this.#settingsManager.set("task.agentModelOverrides", overrides);
+		settings.set("subagent.agents", rows);
 	}
 
+	/**
+	 * Cycle this agent through the three states `space` can express: the shipped
+	 * default, offered to the model, blocked outright.
+	 *
+	 * A two-state toggle cannot say all three, and the middle one matters: a bundled
+	 * specialist at its default is kept out of the tool description (that is the
+	 * token saving) yet still runs when `/review` or you name it. Blocking is a
+	 * separate, stronger choice, and it must be reachable from here rather than only
+	 * by hand-editing `config.yml`.
+	 */
 	#toggleSelectedAgent(): void {
 		const selected = this.#selectedAgent();
 		if (!selected) return;
-		selected.disabled = !selected.disabled;
-		this.#persistDisabledAgents();
+		selected.enabled = nextSubagentEnableValue(selected.enabled);
+		this.#persistAgentRows();
 		this.#buildLayout();
 	}
 
@@ -650,7 +748,7 @@ export class AgentDashboard extends Container {
 		if (!selected) return;
 		const value = rawValue.trim();
 		selected.overrideModel = value || undefined;
-		this.#persistModelOverrides();
+		this.#persistAgentRows();
 		this.#editingAgentName = null;
 		this.#editInput = null;
 		this.#applyFilters();
@@ -672,7 +770,7 @@ export class AgentDashboard extends Container {
 		const editor = new Editor(getEditorTheme());
 		editor.setBorderVisible(false);
 		editor.setPromptGutter("> ");
-		editor.setMaxHeight(clampLow(this.#modalHeight - 12, 3, 8));
+		editor.setMaxHeight(clampLow(this.#bodyBudget - 3, 3, 8));
 		editor.disableSubmit = true;
 		editor.onChange = value => {
 			this.#createDescription = value;
@@ -747,7 +845,7 @@ export class AgentDashboard extends Container {
 		const modelPatterns = resolveConfiguredModelPatterns(
 			this.modelContext.activeModelPattern ??
 				this.modelContext.defaultModelPattern ??
-				settings?.getModelRole("default"),
+				settings?.getModelRole(DEFAULT_MODEL_SLOT),
 			settings,
 		);
 		const { model } = resolveModelOverride(modelPatterns, modelRegistry, settings);
@@ -757,8 +855,8 @@ export class AgentDashboard extends Container {
 			throw new Error("No available model to generate agent specification.");
 		}
 
-		const systemPrompt = prompt.render(agentCreationArchitectPrompt, {});
-		const userPrompt = prompt.render(agentCreationUserPrompt, { request: description });
+		const systemPrompt = prompt.render(PROMPTS["subagent/agent-creation-architect"].text, {});
+		const userPrompt = prompt.render(PROMPTS["subagent/agent-creation-user"].text, { request: description });
 
 		const { session } = await createAgentSession({
 			cwd: this.cwd,
@@ -876,20 +974,29 @@ export class AgentDashboard extends Container {
 		this.#buildLayout();
 	}
 
-	#defaultPatternsFor(agent: DashboardAgent): string[] {
-		return resolveAgentModelPatterns({
+	/** What this agent would run with no row of its own — the "default" shown beside an override. */
+	#defaultModelFor(agent: DashboardAgent): ResolvedSubagentModel | undefined {
+		const settings = this.#settingsManager;
+		if (!settings) return undefined;
+		return resolveSubagentModel({
+			settings,
+			agentName: agent.name,
 			agentModel: agent.model,
-			settings: this.#settingsManager ?? undefined,
 			activeModelPattern: this.modelContext.activeModelPattern,
 			fallbackModelPattern: this.modelContext.defaultModelPattern,
+			ignoreAgentRow: true,
 		});
 	}
 
-	#effectivePatternsFor(agent: DashboardAgent, draftOverride: string | undefined): string[] {
-		return resolveAgentModelPatterns({
-			settingsOverride: draftOverride,
+	/** What this agent runs right now, honoring an in-progress edit before it is saved. */
+	#effectiveModelFor(agent: DashboardAgent, draftOverride: string | undefined): ResolvedSubagentModel | undefined {
+		const settings = this.#settingsManager;
+		if (!settings) return undefined;
+		return resolveSubagentModel({
+			settings,
+			agentName: agent.name,
 			agentModel: agent.model,
-			settings: this.#settingsManager ?? undefined,
+			draftModel: draftOverride,
 			activeModelPattern: this.modelContext.activeModelPattern,
 			fallbackModelPattern: this.modelContext.defaultModelPattern,
 		});
@@ -930,7 +1037,7 @@ export class AgentDashboard extends Container {
 		this.addChild(new Text(theme.fg("muted", "Describe what the new agent should do:"), 0, 0));
 		this.addChild(new Spacer(1));
 		if (this.#createInput) {
-			this.#createInput.setMaxHeight(clampLow(this.#modalHeight - 12, 3, 8));
+			this.#createInput.setMaxHeight(clampLow(this.#bodyBudget - 3, 3, 8));
 			this.addChild(this.#createInput);
 		}
 		this.addChild(new Spacer(1));
@@ -940,7 +1047,7 @@ export class AgentDashboard extends Container {
 			this.addChild(new Text(theme.fg("accent", "Generating agent specification..."), 0, 0));
 			if (this.#createStreamingText) {
 				this.addChild(new Spacer(1));
-				const maxPreview = Math.max(3, this.#modalHeight - 18);
+				const maxPreview = Math.max(3, this.#bodyBudget - 9);
 				const contentWidth = Math.max(20, this.#contentWidth - 4);
 				const wrappedLines: string[] = [];
 				for (const raw of this.#createStreamingText.split("\n")) {
@@ -1038,10 +1145,11 @@ export class AgentDashboard extends Container {
 		} else if (this.#editInput && this.#editingAgentName) {
 			const editingAgent = this.#allAgents.find(agent => agent.name === this.#editingAgentName) ?? null;
 			const draft = this.#editInput.getValue();
-			const defaultPatterns = editingAgent ? this.#defaultPatternsFor(editingAgent) : [];
-			const defaultResolution = editingAgent ? this.#resolvePatterns(defaultPatterns) : undefined;
-			const previewPatterns = editingAgent ? this.#effectivePatternsFor(editingAgent, draft) : [];
-			const previewResolution = editingAgent ? this.#resolvePatterns(previewPatterns) : undefined;
+			const defaultPatterns = editingAgent ? (this.#defaultModelFor(editingAgent)?.patterns ?? []) : [];
+			const defaultResolution = this.#resolvePatterns(defaultPatterns);
+			const previewModel = editingAgent ? this.#effectiveModelFor(editingAgent, draft) : undefined;
+			const previewPatterns = previewModel?.patterns ?? [];
+			const previewResolution = this.#resolvePatterns(previewPatterns);
 			const suggestions = this.#getModelSuggestions(draft);
 
 			this.addChild(
@@ -1070,6 +1178,29 @@ export class AgentDashboard extends Container {
 					0,
 				),
 			);
+			// Name the setting the preview came from. A pattern that looks wrong is
+			// only actionable once you know which of the four layers produced it.
+			if (previewModel && editingAgent) {
+				this.addChild(
+					new Text(
+						`${theme.fg("muted", "Decided by:")} ${theme.fg("dim", subagentModelSourceLabel(previewModel.source, editingAgent.name))}`,
+						0,
+						0,
+					),
+				);
+			}
+			if (previewModel?.unresolved) {
+				this.addChild(
+					new Text(
+						theme.fg(
+							"error",
+							`${subagentModelSourceLabel(previewModel.unresolved.source, this.#editingAgentName)} is set to "${previewModel.unresolved.value}", which matches no available model. Spawns will refuse until this is fixed.`,
+						),
+						0,
+						0,
+					),
+				);
+			}
 
 			if (suggestions.length > 0) {
 				this.addChild(new Spacer(1));
@@ -1083,10 +1214,12 @@ export class AgentDashboard extends Container {
 			this.addChild(new Text(theme.fg("dim", " Enter: save  Esc: cancel"), 0, 0));
 		} else {
 			const selected = this.#selectedAgent();
-			const defaultPatterns = selected ? this.#defaultPatternsFor(selected) : [];
-			const defaultResolution = selected ? this.#resolvePatterns(defaultPatterns) : undefined;
-			const effectivePatterns = selected ? this.#effectivePatternsFor(selected, selected.overrideModel) : [];
-			const effectiveResolution = selected ? this.#resolvePatterns(effectivePatterns) : undefined;
+			const defaultModel = selected ? this.#defaultModelFor(selected) : undefined;
+			const defaultPatterns = defaultModel?.patterns ?? [];
+			const defaultResolution = this.#resolvePatterns(defaultPatterns);
+			const effectiveModel = selected ? this.#effectiveModelFor(selected, selected.overrideModel) : undefined;
+			const effectivePatterns = effectiveModel?.patterns ?? [];
+			const effectiveResolution = this.#resolvePatterns(effectivePatterns);
 
 			const listPane = new AgentListPane(
 				this.#filteredAgents,
@@ -1101,6 +1234,7 @@ export class AgentDashboard extends Container {
 				defaultResolution,
 				effectivePatterns,
 				effectiveResolution,
+				effectiveModel,
 			);
 			const bodyHeight = this.#computeBodyHeight();
 			this.addChild(new TwoColumnBody(listPane, inspector, bodyHeight));

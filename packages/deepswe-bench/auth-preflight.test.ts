@@ -15,7 +15,15 @@
  * original failure hide.
  */
 import { describe, expect, it } from "bun:test";
-import { type CredentialProbe, decideAuthPreflight, describeAuthPreflightFailure } from "./auth-preflight";
+import {
+	type CredentialProbe,
+	decideAuthPreflight,
+	describeAuthPreflightFailure,
+	describeExhaustedPool,
+	exhaustedPoolFor,
+	modelVendor,
+	spentQuotaShouldAbort,
+} from "./auth-preflight";
 
 const STAGED = "/bench/assets/auth-agent.db";
 
@@ -156,5 +164,264 @@ describe("describeAuthPreflightFailure", () => {
 	it("produces nothing for verdicts that proceed", () => {
 		expect(describeAuthPreflightFailure({ kind: "ok", usable: 1 }, STAGED)).toBe("");
 		expect(describeAuthPreflightFailure({ kind: "unverifiable", providers: ["x"] }, STAGED)).toBe("");
+	});
+});
+
+/**
+ * The second question the preflight has to ask, and used not to.
+ *
+ * "Can a credential serve a token" stays TRUE after a quota pool empties, because
+ * authentication and metering are different systems. Run
+ * `2026-07-25T20-46-08-607Z` passed this preflight cleanly, scored ten trials,
+ * then hit `RESOURCE_EXHAUSTED` and produced twenty-six consecutive zero-token
+ * trials. The run.ts abort catches that mid-flight now; catching it here costs
+ * nothing instead of an hour of container setup, and prevents a half-finished run
+ * whose missing samples read as data.
+ *
+ * The subtlety worth testing is that a gateway meters each upstream vendor
+ * SEPARATELY. On google-antigravity the `:google:` pool was at 100% used while
+ * `:openai:` and `:anthropic:` sat untouched, so "this account has quota" is not a
+ * question with one answer.
+ */
+describe("modelVendor — which upstream pool a model draws from", () => {
+	/** The three vendors a gateway meters separately, in the spellings that actually appear. */
+	it("maps each vendor's model families", () => {
+		expect(modelVendor("google-antigravity/gemini-3.5-flash")).toBe("google");
+		expect(modelVendor("google-antigravity/claude-sonnet-5")).toBe("anthropic");
+		expect(modelVendor("google-antigravity/gpt-5.3-codex")).toBe("openai");
+		expect(modelVendor("openai/o3-mini")).toBe("openai");
+	});
+
+	/** Case is not meaningful in a model id, and an id that arrives capitalised must still match. */
+	it("ignores case", () => {
+		expect(modelVendor("Google-Antigravity/Gemini-3.5-Flash")).toBe("google");
+	});
+
+	/**
+	 * AN UNKNOWN MODEL RETURNS NULL RATHER THAN A GUESS. A wrong guess here refuses
+	 * a run that would have succeeded, which is worse than not checking at all, so
+	 * the caller treats null as "could not check" and says so out loud instead of
+	 * proceeding quietly.
+	 */
+	it("returns null for a model it cannot place, rather than guessing", () => {
+		expect(modelVendor("some-vendor/mystery-model-v2")).toBeNull();
+		expect(modelVendor("")).toBeNull();
+	});
+});
+
+describe("exhaustedPoolFor — refusing a run whose pool is already spent", () => {
+	/** Built in the provider's own nesting: `report.limits[].window.resetsAt`, not a flattened convenience shape. */
+	const antigravity = (
+		...pools: { id: string; status: string; window?: { resetsAt: number } }[]
+	): CredentialProbe[] => [
+		{ provider: "google-antigravity", ok: true, email: "someone@example.com", report: { limits: pools } },
+	];
+
+	/**
+	 * THE REAL SHAPE that motivated this: three daily pools on one credential, one
+	 * spent and two full. The spent one must be found for a Gemini model and the
+	 * full ones must not mask it.
+	 */
+	it("finds the spent pool for the vendor the model draws from", () => {
+		const probes = antigravity(
+			{ id: "google-antigravity:google:default:daily", status: "exhausted", window: { resetsAt: 1785023411000 } },
+			{ id: "google-antigravity:openai:default:daily", status: "ok" },
+			{ id: "google-antigravity:anthropic:default:daily", status: "ok" },
+		);
+		expect(exhaustedPoolFor(probes, "google-antigravity/gemini-3.5-flash")).toEqual({
+			pool: "google-antigravity:google:default:daily",
+			resetsAt: 1785023411000,
+		});
+	});
+
+	/**
+	 * THE TWIN, and the reason a per-vendor check is worth the trouble. The same
+	 * credential with the same spent Gemini pool must let a Claude or GPT run
+	 * proceed, because those pools are untouched. A check that answered "this
+	 * account is out of quota" would block two runs that can succeed.
+	 */
+	it("lets another vendor's model through on the same credential", () => {
+		const probes = antigravity(
+			{ id: "google-antigravity:google:default:daily", status: "exhausted", window: { resetsAt: 1785023411000 } },
+			{ id: "google-antigravity:openai:default:daily", status: "ok" },
+			{ id: "google-antigravity:anthropic:default:daily", status: "ok" },
+		);
+		expect(exhaustedPoolFor(probes, "google-antigravity/claude-sonnet-5")).toBeNull();
+		expect(exhaustedPoolFor(probes, "google-antigravity/gpt-5.3-codex")).toBeNull();
+	});
+
+	/**
+	 * A spent pool on a DIFFERENT provider is not this run's problem. An operator
+	 * routinely has several credentials, and refusing on an unrelated one would
+	 * block runs for a provider that is fine.
+	 */
+	it("ignores a spent pool belonging to another provider", () => {
+		const probes: CredentialProbe[] = [
+			{
+				provider: "openai-codex",
+				ok: true,
+				report: { limits: [{ id: "openai-codex:primary", status: "exhausted" }] },
+			},
+			...antigravity({ id: "google-antigravity:google:default:daily", status: "ok" }),
+		];
+		expect(exhaustedPoolFor(probes, "google-antigravity/gemini-3.5-flash")).toBeNull();
+	});
+
+	/**
+	 * NOT CHECKED IS NOT FINE, and both are reported as null here on purpose: the
+	 * caller distinguishes them by asking `modelVendor` and says out loud when the
+	 * pool could not be checked. Silently treating an unprobeable provider as
+	 * healthy is the exact silence this preflight exists to remove.
+	 */
+	it("returns null when there is nothing to check", () => {
+		expect(exhaustedPoolFor([], "google-antigravity/gemini-3.5-flash")).toBeNull();
+		expect(exhaustedPoolFor(antigravity(), "google-antigravity/gemini-3.5-flash")).toBeNull();
+		expect(
+			exhaustedPoolFor(antigravity({ id: "google-antigravity:google:default:daily", status: "ok" }), "x/mystery"),
+		).toBeNull();
+	});
+
+	/** A pool with no reported reset time still refuses; the operator just loses the "come back at" hint. */
+	it("refuses without a reset time when the provider named none", () => {
+		const probes = antigravity({ id: "google-antigravity:google:default:daily", status: "exhausted" });
+		expect(exhaustedPoolFor(probes, "google-antigravity/gemini-3.5-flash")).toEqual({
+			pool: "google-antigravity:google:default:daily",
+		});
+	});
+});
+
+describe("describeExhaustedPool — the message names the way out", () => {
+	/**
+	 * The reset time is the only actionable part. An operator told merely that
+	 * quota ran out reruns straight into the same wall; one told when it refills
+	 * either waits or switches vendor, and both routes are named.
+	 */
+	it("names the pool, the refill time, and the other-vendor escape", () => {
+		const text = describeExhaustedPool(
+			{ pool: "google-antigravity:google:default:daily", resetsAt: 1785023411000 },
+			"google-antigravity/gemini-3.5-flash",
+		);
+		expect(text).toContain("google-antigravity:google:default:daily");
+		expect(text).toContain("2026-07-25T23:50:11.000Z");
+		expect(text).toContain("--model");
+		expect(text).toContain("meters each upstream vendor separately");
+	});
+
+	/**
+	 * It must NOT blame the model id, for the same reason `describeAuthPreflightFailure`
+	 * does not: the previous generation of this failure sent a real investigation
+	 * after an "unservable model" that worked fine, and produced an allowlist gate
+	 * that had to be reverted.
+	 */
+	it("says plainly that the model id is not at fault", () => {
+		const text = describeExhaustedPool({ pool: "p" }, "google-antigravity/gemini-3.5-flash");
+		expect(text).toContain("The model id and the arm allowlists are not at fault");
+		expect(text).not.toContain("It refills at");
+	});
+});
+
+/**
+ * The shape lock, and the reason it exists as its own suite.
+ *
+ * The first version of the quota check read `probe.limits[].resetsAt`. That
+ * type-checked, every hand-written fixture agreed with it, all its tests passed,
+ * and it matched NOTHING on real data: the provider nests them as
+ * `probe.report.limits[].window.resetsAt`. So the check silently never fired, on
+ * exactly the credential state it was written for, and the only way it surfaced
+ * was running it against a live store and noticing it said "has quota" about a
+ * pool reported as exhausted.
+ *
+ * This suite is the guard against that whole class. It asserts the payload
+ * literally as `checkCredentials()` emits it, so a fixture can no longer drift
+ * into a convenient shape that only the tests believe in.
+ */
+describe("exhaustedPoolFor reads the shape checkCredentials actually returns", () => {
+	/**
+	 * Verbatim from a live probe of the staged auth DB on 2026-07-25, trimmed to the
+	 * fields this module reads. Copied rather than constructed, because the point is
+	 * to be told when reality moves.
+	 */
+	const LIVE_PROBE = {
+		id: 2,
+		provider: "google-antigravity",
+		type: "oauth",
+		ok: true,
+		email: "contactmukundthiru@gmail.com",
+		report: {
+			provider: "google-antigravity",
+			limits: [
+				{
+					id: "google-antigravity:google:default:daily",
+					label: "Usage (Google)",
+					window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: 1785023411000 },
+					amount: { unit: "percent", remaining: 0, used: 100, limit: 100 },
+					status: "exhausted",
+				},
+				{
+					id: "google-antigravity:anthropic:default:daily",
+					label: "Usage (Anthropic)",
+					window: { id: "daily", label: "Daily", durationMs: 86_400_000, resetsAt: 1785034721000 },
+					amount: { unit: "percent", remaining: 100, used: 0, limit: 100 },
+					status: "ok",
+				},
+			],
+		},
+	} as unknown as CredentialProbe;
+
+	/**
+	 * THE REGRESSION. Against the real payload the spent Gemini pool must be found.
+	 * The broken version returned null here while passing every other test in this
+	 * file, which is why this assertion is the one that matters.
+	 */
+	it("finds the spent pool in a verbatim live probe", () => {
+		expect(exhaustedPoolFor([LIVE_PROBE], "google-antigravity/gemini-3.5-flash")).toEqual({
+			pool: "google-antigravity:google:default:daily",
+			resetsAt: 1785023411000,
+		});
+	});
+
+	/** And still lets the untouched Anthropic pool through, on the same live payload. */
+	it("lets the healthy vendor through on the same live probe", () => {
+		expect(exhaustedPoolFor([LIVE_PROBE], "google-antigravity/claude-sonnet-4-6")).toBeNull();
+	});
+
+	/**
+	 * A provider with no usage probe reports no `report` at all, which must classify
+	 * as "not checked" rather than throwing. Two of the six live credentials are in
+	 * exactly that state.
+	 */
+	it("treats a credential with no usage report as unchecked, not as a failure", () => {
+		const noReport = { provider: "opencode-zen", ok: null, reason: "no usage probe configured" } as CredentialProbe;
+		expect(exhaustedPoolFor([noReport], "opencode-zen/whatever-gemini")).toBeNull();
+	});
+});
+
+/**
+ * When a spent quota pool stops the run and when it merely warns.
+ *
+ * This branch exists because the guard, as first written, exited on a spent pool
+ * before `--dry-run` was handled. That made config validation impossible during the
+ * one period it is most useful: waiting for a refill with a run queued up and
+ * wanting to know the arm is wired right before the pool returns. The fix must not
+ * drift back, and must not overshoot into letting a real run start against a pool
+ * that would fail every trial.
+ */
+describe("spentQuotaShouldAbort — a dry run reports quota, a real run dies on it", () => {
+	const spent = { pool: "google-antigravity:google:default:daily" };
+
+	/** A real run against a spent pool would produce a comparison with missing samples. */
+	it("aborts a real run when the pool is spent", () => {
+		expect(spentQuotaShouldAbort(spent, false)).toBe(true);
+	});
+
+	/** A dry run starts no container, so a spent pool cannot cost anything. */
+	it("does not abort a dry run when the pool is spent", () => {
+		expect(spentQuotaShouldAbort(spent, true)).toBe(false);
+	});
+
+	/** With quota available there is nothing to abort on, in either mode. */
+	it("never aborts when the pool has quota left", () => {
+		expect(spentQuotaShouldAbort(null, false)).toBe(false);
+		expect(spentQuotaShouldAbort(null, true)).toBe(false);
 	});
 });

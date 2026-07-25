@@ -32,6 +32,12 @@ export interface RuleFrontmatter {
 	scope?: string | string[];
 	/** Per-rule TTSR interrupt mode override. */
 	interruptMode?: "never" | "prose-only" | "tool-only" | "always";
+	/** Restrict matching to paths outside / inside the session working directory. */
+	pathScope?: "outside-cwd" | "inside-cwd";
+	/** Per-rule repeat policy, overriding `ttsr.repeatMode`. */
+	repeatMode?: "once" | "after-gap";
+	/** Messages before this rule may fire again, overriding `ttsr.repeatGap`. */
+	repeatGap?: number;
 	[key: string]: unknown;
 }
 
@@ -59,6 +65,26 @@ export interface Rule {
 	scope?: string[];
 	/** Per-rule TTSR interrupt mode override (falls back to global ttsr.interruptMode). */
 	interruptMode?: "never" | "prose-only" | "tool-only" | "always";
+	/**
+	 * Require the text the condition matched to name a path outside (or inside) the session
+	 * working directory.
+	 *
+	 * A regex cannot know the working directory, so a rule whose whole point is "this path is
+	 * somewhere else" fires just as happily on a path inside the project — which is what made
+	 * `cwd-reroot` advise re-rooting to the directory the session was already in. The check runs
+	 * against the live working directory at match time, so it stays right after a `set_cwd`.
+	 */
+	pathScope?: "outside-cwd" | "inside-cwd";
+	/**
+	 * Per-rule repeat policy, overriding the global `ttsr.repeatMode`.
+	 *
+	 * The global default retires a rule after one injection per session, which suits a rule stating
+	 * a convention and not one whose advice applies again to a different directory or file. A rule
+	 * author knows which kind theirs is; the global setting is a preference about noise.
+	 */
+	repeatMode?: "once" | "after-gap";
+	/** Messages before this rule may fire again, overriding the global `ttsr.repeatGap`. */
+	repeatGap?: number;
 	/** Source metadata */
 	_source: SourceMeta;
 }

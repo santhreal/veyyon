@@ -1,10 +1,14 @@
-import { logger } from "@veyyon/utils";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { isCancellation, isTimeoutError, logger } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
 import type { ToolSession } from "../tools";
+import { inlineBudgetFor } from "../tools/output-artifact";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP, isEvalTimeoutControlEvent } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
+import type { KernelEnvPatch, KernelExecutor } from "./kernel-base";
 import { registerKernelToolBridge } from "./kernel-tool-bridge";
 import type { KernelDisplayOutput } from "./py/display";
 
@@ -15,13 +19,29 @@ import type { KernelDisplayOutput } from "./py/display";
  */
 export type CancelledErrorClass = new (timedOut: boolean) => Error & { timedOut: boolean };
 
-/** Managed-env values a kernel patch may carry (`null` clears, `undefined` skips). */
-export type KernelEnvPatch = Record<string, string | null | undefined>;
+// Managed-env patch values (`null` clears, `undefined` skips) are owned by kernel-base,
+// beside the execute options that carry them. Re-exported here because the language
+// executors import it alongside the rest of this module's surface.
+export type { KernelEnvPatch } from "./kernel-base";
 
 /**
  * Options every kernel-backed language executor shares. Per-language option
  * interfaces structurally extend this; the base executor only reads these.
  */
+/**
+ * Whether a language's kernel outlives one eval call.
+ *
+ * `session` keeps one kernel per session, so a later cell sees variables an earlier one defined, which
+ * is what makes eval feel like a notebook. `per-call` starts a kernel, runs the cell and shuts it down,
+ * so nothing carries over: the choice a user makes when they want a run to be reproducible rather than
+ * cumulative, or when leftover state from an earlier cell is what is confusing them.
+ *
+ * One type for every language, because it is one user-facing concept. Python owned a
+ * `PythonKernelMode` alias of exactly this shape while Ruby and Julia had no concept at all, so the
+ * setting existed for one language out of three.
+ */
+export type KernelMode = "session" | "per-call";
+
 export interface KernelExecutorBaseOptions {
 	cwd?: string;
 	timeoutMs?: number;
@@ -52,31 +72,65 @@ export interface KernelExecutionResult {
 	stdinRequested: boolean;
 }
 
-/** Minimal kernel surface the base executor drives, satisfied by every backend kernel. */
-export interface GenericKernel<TEnv> {
-	execute(
-		code: string,
-		options: {
-			cwd?: string;
-			env?: TEnv;
-			id: string;
-			signal?: AbortSignal;
-			timeoutMs?: number;
-			onChunk: (text: string) => Promise<void> | void;
-			onDisplay: (output: KernelDisplayOutput) => Promise<void> | void;
-		},
-	): Promise<{
-		status: "ok" | "error";
-		cancelled: boolean;
-		timedOut: boolean;
-		kernelKilled?: boolean;
-		stdinRequested?: boolean;
-	}>;
-}
-
 // ---------------------------------------------------------------------------
 // Cancellation helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The cwd a retained kernel session is keyed by.
+ *
+ * One owner for all three managed runtimes. Two callers that disagree about
+ * whether `./foo` and `/abs/foo` are the same directory would keep two kernels
+ * for one project, which is a doubled interpreter and a cell that cannot see
+ * the variable the previous cell defined.
+ */
+export function normalizeSessionCwd(cwd: string): string {
+	return path.resolve(cwd);
+}
+
+/**
+ * The key a retained kernel session is stored under: session id, cwd, and the
+ * explicit interpreter, if the caller named one.
+ *
+ * Python, Ruby and Julia each had their own copy of this, and the copies had
+ * drifted in two ways that both cost a kernel:
+ *
+ *  - Python and Ruby canonicalised the interpreter with `realpath`, so
+ *    `/usr/bin/python3` and the versioned binary it links to keyed the same
+ *    session. Julia only called `path.resolve`, which does not follow a
+ *    symlink, so reaching the same Julia through a link started a SECOND kernel
+ *    that shared no state with the first.
+ *  - Julia joined the parts with `::`, which can occur inside a session id or a
+ *    path, so two different sessions could in principle produce one key. The NUL
+ *    byte the other two used cannot appear in either.
+ *
+ * The unified version canonicalises and uses NUL, so all three behave the way
+ * the two that were checked did.
+ */
+export function buildEvalSessionKey(options: {
+	sessionId: string;
+	cwd: string;
+	/** The interpreter the caller asked for, or undefined to let the runtime choose. */
+	interpreter: string | undefined;
+	/** The language's own explicit-runtime resolution, e.g. `resolveExplicitPythonRuntime`. */
+	resolveInterpreterPath: (interpreter: string, cwd: string) => string;
+}): string {
+	const cwd = normalizeSessionCwd(options.cwd);
+	let interpreter = "";
+	if (options.interpreter !== undefined) {
+		const resolved = options.resolveInterpreterPath(options.interpreter, cwd);
+		// A path that cannot be canonicalised is keyed as written. This is not a
+		// fallback to a different mechanism: the string is only ever a map key, and
+		// an interpreter that does not exist yet gets its own key either way. The
+		// failure surfaces where it matters, when the kernel is started.
+		try {
+			interpreter = fs.realpathSync.native(resolved);
+		} catch {
+			interpreter = resolved;
+		}
+	}
+	return `${options.sessionId}\0${cwd}\0${interpreter}`;
+}
 
 export function getExecutionDeadlineMs(options?: { deadlineMs?: number; timeoutMs?: number }): number | undefined {
 	if (options?.deadlineMs !== undefined) return options.deadlineMs;
@@ -89,14 +143,15 @@ export function getRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	return deadlineMs - Date.now();
 }
 
+/**
+ * True when an error means the execution was cancelled or timed out, either through
+ * the kernel's own error class or through a standard abort/timeout.
+ *
+ * The standard half is {@link isCancellation} from `@veyyon/utils`, the repo-wide
+ * owner: this function adds only the kernel-specific class the caller passes in.
+ */
 export function isCancellationError(error: unknown, cancelledErrorClass: CancelledErrorClass): boolean {
-	return (
-		error instanceof cancelledErrorClass ||
-		(typeof DOMException !== "undefined" &&
-			error instanceof DOMException &&
-			(error.name === "AbortError" || error.name === "TimeoutError")) ||
-		(error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
-	);
+	return error instanceof cancelledErrorClass || isCancellation(error);
 }
 
 export function isTimedOutCancellation(
@@ -105,11 +160,9 @@ export function isTimedOutCancellation(
 	signal?: AbortSignal,
 ): boolean {
 	if (error instanceof cancelledErrorClass) return error.timedOut;
-	if (typeof DOMException !== "undefined" && error instanceof DOMException) return error.name === "TimeoutError";
-	if (error instanceof Error && error.name === "TimeoutError") return true;
-	const reason = signal?.reason;
-	if (typeof DOMException !== "undefined" && reason instanceof DOMException) return reason.name === "TimeoutError";
-	return reason instanceof Error ? reason.name === "TimeoutError" : false;
+	// The error itself, or the reason the signal carries: `AbortSignal.timeout()` fires an
+	// abort whose reason is the TimeoutError, so the deadline is only visible there.
+	return isTimeoutError(error) || isTimeoutError(signal?.reason);
 }
 
 export async function waitForPromiseWithCancellation<T>(
@@ -181,11 +234,7 @@ function createBridgeAbortShield(source: AbortSignal | undefined): BridgeAbortSh
 
 	const requestAbort = (reason: unknown): void => {
 		shield.abortRequested = true;
-		shield.timedOut =
-			shield.timedOut ||
-			(typeof DOMException !== "undefined" && reason instanceof DOMException
-				? reason.name === "TimeoutError"
-				: reason instanceof Error && reason.name === "TimeoutError");
+		shield.timedOut = shield.timedOut || isTimeoutError(reason);
 		abortReason = reason;
 		if (pauseDepth > 0 || controller.signal.aborted) return;
 		controller.abort(reason);
@@ -352,7 +401,7 @@ export interface ExecuteWithKernelBaseParams<
 	TOptions extends KernelExecutorBaseOptions,
 	TEnv extends KernelEnvPatch = Record<string, string | null>,
 > {
-	kernel: GenericKernel<TEnv>;
+	kernel: KernelExecutor;
 	code: string;
 	options: TOptions | undefined;
 	/** Prefix for the per-execution run id (e.g. `"py"`, `"rb"`, `"jl"`). */
@@ -399,6 +448,11 @@ export async function executeWithKernelBase<
 		onChunk: options?.onChunk,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
+		// Priced by how long the result will sit in context, through the same
+		// owner every other tool uses. Without this the sink keeps a flat 50KB
+		// tail, which is why eval results reached 71KB and then cost a re-read on
+		// every subsequent turn. A session-less caller gets the flat budget.
+		...(options?.toolSession ? { spillThreshold: inlineBudgetFor(options.toolSession) } : {}),
 		headBytes: resolveOutputSinkHeadBytes(settings),
 		maxColumns: resolveOutputMaxColumns(settings),
 	});

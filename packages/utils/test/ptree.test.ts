@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { AbortError, combineSignals, type Exception, exec, NonZeroExitError, spawn, TimeoutError } from "../src/ptree";
+import {
+	combineSignals,
+	type Exception,
+	exec,
+	NonZeroExitError,
+	ProcessAbortError,
+	spawn,
+	TimeoutError,
+} from "../src/ptree";
 
 // ptree wraps Bun.spawn with captured stderr, a normalized exit model, and
 // abort/timeout integration. Tests drive real short-lived POSIX commands
@@ -55,25 +63,25 @@ describe("exec — nonzero exit", () => {
 });
 
 describe("exec — cancellation", () => {
-	it("returns an AbortError result when an already-aborted signal is passed and allowAbort is set", async () => {
+	it("returns a ProcessAbortError result when an already-aborted signal is passed and allowAbort is set", async () => {
 		// No test-side pre-attach: wait() itself must close the unhandled-rejection
 		// window (regression guard for PTREE-WAIT-LATE-REJECT-WINDOW).
 		const r = await exec(["sh", "-c", "sleep 2"], { signal: AbortSignal.abort(), allowAbort: true });
 		expect(r.ok).toBe(false);
 		expect(r.exitCode).toBeNull();
-		expect(r.exitError).toBeInstanceOf(AbortError);
+		expect(r.exitError).toBeInstanceOf(ProcessAbortError);
 		expect(r.exitError?.aborted).toBe(true);
 	});
 
-	it("throws the AbortError when allowAbort is not set", async () => {
+	it("throws the ProcessAbortError when allowAbort is not set", async () => {
 		let caught: unknown;
 		try {
 			await exec(["sh", "-c", "sleep 2"], { signal: AbortSignal.abort() });
 		} catch (err) {
 			caught = err;
 		}
-		expect(caught).toBeInstanceOf(AbortError);
-		expect((caught as AbortError).aborted).toBe(true);
+		expect(caught).toBeInstanceOf(ProcessAbortError);
+		expect((caught as ProcessAbortError).aborted).toBe(true);
 	});
 
 	it("times out with a TimeoutError while stdout is still flooding (no unhandled rejection)", async () => {
@@ -95,7 +103,7 @@ describe("exec — cancellation", () => {
 		const promise = exec(["sh", "-c", "sleep 2"], { signal: controller.signal, allowAbort: true });
 		controller.abort();
 		const r = await promise;
-		expect(r.exitError).toBeInstanceOf(AbortError);
+		expect(r.exitError).toBeInstanceOf(ProcessAbortError);
 		expect(r.exitError?.aborted).toBe(true);
 	});
 });
@@ -179,16 +187,16 @@ describe("exception classes", () => {
 		expect(e.message).toContain("code 3");
 	});
 
-	it("AbortError is aborted with exit code -1", () => {
-		const e = new AbortError(new Error("cancel"), "tail");
+	it("ProcessAbortError is aborted with exit code -1", () => {
+		const e = new ProcessAbortError(new Error("cancel"), "tail");
 		expect(e.aborted).toBe(true);
 		expect(e.exitCode).toBe(-1);
 		expect(e.message).toContain("cancel");
 	});
 
-	it("TimeoutError is an AbortError whose message reports the elapsed seconds", () => {
+	it("TimeoutError is a ProcessAbortError whose message reports the elapsed seconds", () => {
 		const e = new TimeoutError(2000, "tail");
-		expect(e).toBeInstanceOf(AbortError);
+		expect(e).toBeInstanceOf(ProcessAbortError);
 		expect(e.aborted).toBe(true);
 		expect(e.message).toContain("Timed out after 2s");
 	});
