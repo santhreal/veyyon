@@ -168,3 +168,83 @@ describe("the npm/tarball topology stays deleted", () => {
 		}
 	});
 });
+
+/**
+ * The two smokes above run the ARTIFACTS each channel produces. Neither runs
+ * install.sh, so everything the installer does around the binary — the alias,
+ * the completions, the shell rc edit, the doctor self-check, and reclaiming all
+ * of it on uninstall — was covered only by unit tests of the individual
+ * functions. A user does not run those functions; they run the script.
+ *
+ * This is the dogfood half of the gate: the real script, driven end to end
+ * against a sandboxed HOME with no network. These tests keep it from being
+ * quietly weakened back into an exit-code check.
+ */
+describe("the gate runs the installer itself, not only what it installs", () => {
+	it("drives install.sh end to end against a sandboxed HOME", () => {
+		expect(runCi).toContain('section "Installer end-to-end (--local install, then --uninstall)"');
+		expect(runCi).toContain('installer_env sh "$ROOT_DIR/scripts/install.sh" --local');
+		expect(runCi).toContain('installer_env sh "$ROOT_DIR/scripts/install.sh" --uninstall');
+	});
+
+	it("isolates every directory the installer writes to", () => {
+		// Without all four, the gate edits the developer's or the runner's real
+		// dotfiles and completion directories.
+		for (const variable of ["HOME=", "XDG_DATA_HOME=", "XDG_CONFIG_HOME=", "VEYYON_INSTALL_DIR="]) {
+			expect(runCi, `installer_env must set ${variable}`).toContain(variable);
+		}
+	});
+
+	it("runs with a minimal PATH so the host's own veyyon cannot change the result", () => {
+		// An installed veyyon earlier on the runner's PATH shadows the sandbox
+		// copy, which makes doctor's output depend on the machine.
+		expect(runCi).toContain('env PATH="/usr/bin:/bin"');
+	});
+
+	it("asserts the real files, not the installer's exit code", () => {
+		// An install that exits 0 having placed nothing would pass an exit-code
+		// check. Each of these is a file a user would go looking for.
+		expect(runCi).toContain('expect_exists "$INSTALLER_BIN/veyyon"');
+		expect(runCi).toContain('expect_exists "$INSTALLER_BIN/vey"');
+		expect(runCi).toContain('expect_exists "$INSTALLER_HOME/.local/share/bash-completion/completions/veyyon"');
+		expect(runCi).toContain('expect_exists "$INSTALLER_HOME/.local/share/zsh/site-functions/_veyyon"');
+		expect(runCi).toContain('expect_exists "$INSTALLER_HOME/.config/fish/completions/veyyon.fish"');
+	});
+
+	it("checks the alias is a symlink and the binary is executable", () => {
+		expect(runCi).toContain('[ -x "$INSTALLER_BIN/veyyon" ]');
+		expect(runCi).toContain('[ -L "$INSTALLER_BIN/vey" ]');
+	});
+
+	it("checks the PATH line and its marker landed in the rc", () => {
+		expect(runCi).toContain('grep -Fqx "export PATH=\\"$INSTALLER_BIN:\\$PATH\\"" "$INSTALLER_HOME/.bashrc"');
+		expect(runCi).toContain('grep -Fqx "# added by the veyyon installer" "$INSTALLER_HOME/.bashrc"');
+	});
+
+	it("reinstalls once more and proves the rc line is not duplicated", () => {
+		// Re-running the installer is the single most common user action after
+		// the first install, and appending the line again on every run is the
+		// obvious way to get it wrong.
+		expect(runCi).toContain('path_lines="$(grep -Fxc');
+		expect(runCi).toContain('[ "$path_lines" = "1" ]');
+	});
+
+	it("proves uninstall reclaims every file it wrote", () => {
+		expect(runCi).toContain('expect_absent "$INSTALLER_BIN/veyyon"');
+		expect(runCi).toContain('expect_absent "$INSTALLER_HOME/.local/share/bash-completion/completions/vey"');
+		expect(runCi).toContain('expect_absent "$INSTALLER_HOME/.config/fish/completions/vey.fish"');
+		expect(runCi).toContain('uninstall left the PATH line in .bashrc');
+	});
+
+	it("proves uninstall leaves the user's own rc content alone", () => {
+		// "Removes everything it added, and only what it added" is the documented
+		// contract; the second half is the one that costs a user their config.
+		expect(runCi).toContain("echo \"alias ll='ls -la'\" >> \"$INSTALLER_HOME/.bashrc\"");
+		expect(runCi).toContain("uninstall removed the user's own .bashrc content");
+	});
+
+	it("proves the install directory is empty afterwards, staging files included", () => {
+		expect(runCi).toContain('leftovers="$(ls -A "$INSTALLER_BIN" 2>/dev/null || true)"');
+		expect(runCi).toContain("uninstall left files behind");
+	});
+});
