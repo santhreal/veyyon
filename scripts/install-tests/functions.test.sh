@@ -511,6 +511,71 @@ check "an unloaded completions dir never fails the install" "$?" "0"
 unset XDG_DATA_HOME XDG_CONFIG_HOME
 export HOME="$SANDBOX/home"
 
+# --- print_next_steps: never tell the user to run a command that is not ours ---
+# The closing block was pasted into all three install modes and hardcoded the
+# alias, so an install that had just said "left 'vey' alone, launch with
+# 'veyyon'" immediately told the user to run `vey` — which runs THEIR tool.
+check "the closing advice uses the alias when it is ours" \
+    "$( ( ALIAS_IS_OURS=1; print_next_steps | grep -c 'Launch in any repository: vey$' ) )" "1"
+check "the closing advice uses the binary name when the alias is not ours" \
+    "$( ( ALIAS_IS_OURS=0; print_next_steps | grep -c 'Launch in any repository: veyyon$' ) )" "1"
+check "no line tells the user to run a foreign vey" \
+    "$( ( ALIAS_IS_OURS=0; print_next_steps | grep -c '\bvey\b' ) )" "0"
+# Every line of the block moves together, so the setup and doctor hints cannot
+# name a different command than the launch line.
+check "setup and doctor hints follow the same command" \
+    "$( ( ALIAS_IS_OURS=0; print_next_steps | grep -c '^  [23]\..* veyyon ' ) )" "2"
+check "launch_command is the single owner of that choice" \
+    "$( ( ALIAS_IS_OURS=1; launch_command ) )" "vey"
+
+# --- do_uninstall: a `vey` the installer never created is not ours to delete ---
+# link_alias refuses to overwrite a `vey` the user owns, and install_completions
+# refuses to write its completion file. Uninstall deleted the command itself
+# anyway, so removing veyyon destroyed the user's own tool. Same identity gate,
+# applied where it was missing.
+check "uninstall removes our binary but keeps a foreign vey" \
+    "$( ( _h="$SANDBOX/uninst-foreign-alias2"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR"
+  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
+  printf '#!/bin/sh\necho their tool\n' > "$INSTALL_DIR/vey"
+  do_uninstall >/dev/null 2>&1
+  echo "$( [ -e "$INSTALL_DIR/veyyon" ] && echo bin-present || echo bin-gone ) $(tail -1 "$INSTALL_DIR/vey" 2>/dev/null)" ) )" \
+    "bin-gone echo their tool"
+
+# It says so rather than removing it silently: the user needs to know a `vey`
+# still on their PATH is theirs, not a leftover of ours.
+check "uninstall says it left a foreign vey alone" \
+    "$( ( _h="$SANDBOX/uninst-foreign-alias3"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR"
+  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
+  printf '#!/bin/sh\necho their tool\n' > "$INSTALL_DIR/vey"
+  do_uninstall 2>&1 | grep -c "left $INSTALL_DIR/vey alone" ) )" "1"
+
+# A symlink pointing somewhere ELSE is not ours either: link_alias only ever
+# writes one pointing at the binary beside it.
+check "uninstall keeps a vey symlinked to another tool" \
+    "$( ( _h="$SANDBOX/uninst-foreign-link"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR"
+  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
+  printf '#!/bin/sh\necho other\n' > "$_h/their-tool"
+  ln -s "$_h/their-tool" "$INSTALL_DIR/vey"
+  do_uninstall >/dev/null 2>&1
+  [ -L "$INSTALL_DIR/vey" ] && echo kept || echo removed ) )" "kept"
+
+# The positive twin: an alias we DID create is still reclaimed, or uninstall
+# leaves a dangling `vey` on the user's PATH forever.
+check "uninstall removes an alias it created" \
+    "$( ( _h="$SANDBOX/uninst-own-alias"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR"
+  printf '#!/bin/sh\necho veyyon\n' > "$INSTALL_DIR/veyyon"
+  ln -s "$INSTALL_DIR/veyyon" "$INSTALL_DIR/vey"
+  do_uninstall >/dev/null 2>&1
+  [ -e "$INSTALL_DIR/vey" ] || [ -L "$INSTALL_DIR/vey" ] && echo present || echo gone ) )" "gone"
+
 # --- do_uninstall: removes veyyon + vey from the sandboxed install dir only ---
 do_uninstall >/dev/null 2>&1
 check "uninstall removed veyyon" "$( [ -e "$VEYYON_INSTALL_DIR/veyyon" ] && echo present || echo gone )" "gone"

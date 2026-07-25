@@ -187,3 +187,70 @@ describe("an alias the installer does not own is not completed either", () => {
 		}
 	});
 });
+
+/**
+ * The other half, found by driving the real installer: both uninstallers
+ * deleted `vey` unconditionally, so uninstalling veyyon destroyed a `vey` the
+ * user already had — the very command the install had just refused to touch and
+ * told them to keep using.
+ */
+describe("uninstall does not delete an alias the install refused to create", () => {
+	it("install.sh removes the alias only when it points at our binary", () => {
+		expect(installSh).toContain("alias_in_dir_is_ours() {");
+		expect(installSh).toContain('[ "$(readlink "$_d/$ALIAS_NAME" 2>/dev/null)" = "$_d/$BIN_NAME" ]');
+		expect(installSh).toContain('ok "left $d/$ALIAS_NAME alone (not created by this installer)"');
+	});
+
+	it("install.sh still removes the binary unconditionally", () => {
+		// Only the alias is ambiguous. `veyyon` is our name, and leaving it would
+		// be a failed uninstall.
+		expect(installSh).toContain('rm -f "$d/$BIN_NAME" && { ok "removed $d/$BIN_NAME"; removed=1; }');
+	});
+
+	it("install.ps1 applies the same gate to the vey.cmd shim", () => {
+		expect(installPs1).toContain("function Test-AliasShimIsOurs {");
+		expect(installPs1).toContain("if (Test-AliasShimIsOurs -ShimPath $aliasShim -BinDir $InstallDir) {");
+		expect(installPs1).toContain("left $aliasShim alone (not created by this installer)");
+	});
+
+	it("install.ps1 recognizes both shapes of shim it writes", () => {
+		// A binary install forwards to veyyon.exe, a source install to
+		// veyyon.cmd. Matching only one would orphan the other on PATH forever.
+		const fn = installPs1.slice(installPs1.indexOf("function Test-AliasShimIsOurs {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain('"$BinName.exe"');
+		expect(body).toContain('"$BinName.cmd"');
+	});
+
+	it("install.ps1 matches the forwarded path, not the whole file", () => {
+		// A shim written by an older installer version has a different header and
+		// the same target; a whole-file comparison would refuse to reclaim it.
+		const fn = installPs1.slice(installPs1.indexOf("function Test-AliasShimIsOurs {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain("$body.Contains($target)");
+	});
+});
+
+/**
+ * The closing "Next steps" block was pasted into all three install modes and
+ * hardcoded the alias, so an install that had just printed "left 'vey' alone,
+ * launch with 'veyyon'" immediately told the user to run `vey` — which runs
+ * their tool, not veyyon. Contradicting your own warning two lines later is how
+ * a user concludes the warning did not matter.
+ */
+describe("the closing advice names a command that is actually ours", () => {
+	it("one owner decides the launch command", () => {
+		expect(installSh).toContain("launch_command() {");
+		expect(installSh).toContain(
+			`if [ "$ALIAS_IS_OURS" = 1 ]; then printf '%s' "$ALIAS_NAME"; else printf '%s' "$BIN_NAME"; fi`,
+		);
+	});
+
+	it("every install mode prints the same block, from one place", () => {
+		// Three pasted copies meant a change to the advice had to be made three
+		// times or the modes disagreed about what to tell the user.
+		expect(installSh).toContain("print_next_steps() {");
+		expect((installSh.match(/^ {4}print_next_steps$/gm) ?? []).length).toBe(3);
+		expect(installSh).not.toContain('say "  1. Launch in any repository: $ALIAS_NAME"');
+	});
+});
