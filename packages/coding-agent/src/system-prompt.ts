@@ -22,6 +22,7 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
+import { APPENDED_BLOCKS } from "./prompt-blocks";
 import { applyPromptSectionOrder } from "./prompt-sections";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
@@ -949,30 +950,36 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			rendered = applyPromptSectionOrder(rendered, sectionOrder);
 		}
 	}
-	const systemPrompt = [rendered];
 	// Custom prompt templates already render context files and append text; the
 	// project footer still carries environment, cwd, workspace, and dir-context.
 	const projectPrompt = prompt
 		.render(projectPromptTemplate, resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data)
 		.trim();
-	if (projectPrompt) {
-		systemPrompt.push(projectPrompt);
-	}
-	if (activeRepoContextPrompt) {
-		systemPrompt.push(activeRepoContextPrompt);
-	}
-	// Argot: teach the notation (and the load-yourself instruction) whenever the
-	// encode gate is on, plus the concrete handle table once the model has loaded
-	// a project. Dictionaries live in a local cache outside the repository, so
-	// the model learns handles from these blocks, not by reading a file. The
-	// caller decides per turn whether to teach (model allowlist + context cutoff,
-	// via the argot SDK's shouldEncode); decoding is unconditional and runs at
-	// the seams.
-	if (argotPreamble) {
-		systemPrompt.push(argotPreamble);
-	}
-	if (argotHandles) {
-		systemPrompt.push(argotHandles);
+
+	// The appended tier is assembled from the ONE registry (prompt-blocks.ts), by
+	// block id, rather than from a sequence of ad-hoc pushes. Order is the
+	// registry's order, so it is declared data instead of an artifact of the order
+	// statements happen to appear in this function, and a block cannot reach the
+	// model without being registered. That is what makes the tier addressable: a
+	// controlled eval can name a block, and the settings-parity coverage contract
+	// can see one that is gated.
+	//
+	// The shorthand blocks teach the notation (and the load-yourself instruction)
+	// whenever the encode gate is open, plus the concrete handle table once a
+	// project is loaded. Dictionaries live in a local cache outside the repository,
+	// so the model learns handles from these blocks, not by reading a file. The
+	// caller decides per turn whether to teach (model allowlist + context cutoff);
+	// decoding is unconditional and runs at the seams.
+	const appendedText: Record<string, string | undefined> = {
+		"project-footer": projectPrompt,
+		"repo-context": activeRepoContextPrompt,
+		"shorthand-preamble": argotPreamble,
+		"shorthand-handles": argotHandles,
+	};
+	const systemPrompt = [rendered];
+	for (const block of APPENDED_BLOCKS) {
+		const text = appendedText[block.id];
+		if (text) systemPrompt.push(text);
 	}
 
 	return { systemPrompt };

@@ -1,4 +1,5 @@
 import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
+import { BANNERED_SECTION_BLOCKS, camelSectionKey, TEMPLATE_SECTION_CAMEL_KEYS } from "../prompt-blocks";
 import { isRecord } from "@veyyon/utils";
 
 /**
@@ -39,28 +40,27 @@ export interface DefaultTemplateSections {
 	deliveryContract: string;
 }
 
-/** Canonical section order. Concatenation reproduces the original template. */
-export const DEFAULT_TEMPLATE_SECTION_ORDER = [
-	"conventions",
-	"role",
-	"runtime",
-	"toolPolicy",
-	"executionWorkflow",
-	"deliveryContract",
-] as const satisfies readonly (keyof DefaultTemplateSections)[];
+/**
+ * Canonical section order. Concatenation reproduces the original template.
+ *
+ * DERIVED from the one registry in `prompt-blocks.ts`, not written out here.
+ * This list and the banner table below used to be hand-maintained alongside a
+ * second, independent copy in `prompt-sections.ts`; renaming a section meant
+ * editing both, and nothing caught it when only one was updated.
+ */
+export const DEFAULT_TEMPLATE_SECTION_ORDER = TEMPLATE_SECTION_CAMEL_KEYS as readonly (keyof DefaultTemplateSections)[];
 
 /**
  * The banner line that opens each non-preamble section, matched verbatim at the
  * start of a line. `conventions` has no banner: it is whatever precedes ROLE.
- * Order matters — the banners must appear in the template in this sequence.
+ * Order matters — the banners must appear in the template in this sequence, and
+ * that order is the registry's document order.
  */
-const SECTION_BANNERS: readonly { key: keyof DefaultTemplateSections; banner: string }[] = [
-	{ key: "role", banner: "ROLE\n==" },
-	{ key: "runtime", banner: "RUNTIME\n==" },
-	{ key: "toolPolicy", banner: "TOOL POLICY\n==" },
-	{ key: "executionWorkflow", banner: "EXECUTION WORKFLOW\n==" },
-	{ key: "deliveryContract", banner: "DELIVERY CONTRACT\n==" },
-];
+const SECTION_BANNERS: readonly { key: keyof DefaultTemplateSections; banner: string }[] =
+	BANNERED_SECTION_BLOCKS.map(b => ({
+		key: camelSectionKey(b.id) as keyof DefaultTemplateSections,
+		banner: b.banner,
+	}));
 
 /**
  * Split the single template file into its named sections at banner offsets.
