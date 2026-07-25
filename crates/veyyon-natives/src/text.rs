@@ -48,6 +48,27 @@ fn build_utf16_string(mut data: Vec<u16>) -> Utf16String {
 	unsafe { std::mem::transmute(data) }
 }
 
+/// The content of a napi UTF-16 buffer, with its NUL terminator removed.
+///
+/// `JsString::into_utf16` hands back a buffer that ends in a NUL, and to every
+/// scan in this module that NUL is content. It is a zero-width grapheme
+/// arriving after the last real one, which is enough to trip a "does not fit"
+/// break: wrapping the two characters "漢漢" to width 1 returned three rows, the
+/// last one empty, because the terminator was pushed onto a line of its own.
+///
+/// Call this on every buffer that comes in from JavaScript. `truncate_to_width`
+/// used to strip the terminator with a loop written inline, which left one entry
+/// point that knew about the NUL and four that did not, and the four were the
+/// ones with the bug. `build_utf16_string` performs the mirror step on the way
+/// back out.
+fn utf16_content(buffer: &[u16]) -> &[u16] {
+	let mut end = buffer.len();
+	while end > 0 && buffer[end - 1] == 0 {
+		end -= 1;
+	}
+	&buffer[..end]
+}
+
 // ============================================================================
 // Results
 // ============================================================================
@@ -973,6 +994,26 @@ fn split_into_tokens_with_ansi(line: &[u16]) -> SmallVec<[Vec<u16>; 4]> {
 	tokens
 }
 
+/// Break a single token that is wider than the target width across lines.
+///
+/// Every break site is gated on `current_width > 0`, meaning the line already
+/// holds visible content. Without that guard a grapheme wider than the target
+/// (any double-width character at width 1, and everything at width 0) makes
+/// `current_width + gw > width` true on a line that is still empty, so the
+/// empty line is emitted and the grapheme is then placed anyway. Wrapping the
+/// two characters "漢漢" to width 1 produced four lines, two of them blank.
+///
+/// A grapheme that cannot fit has to overflow: it is indivisible, so the only
+/// choice is which line it overflows on. Putting it alone on its own line is
+/// the least surprising answer, and it keeps the line count equal to the number
+/// of graphemes. Emitting a blank line first does not reduce the overflow by a
+/// single cell, and it shifts every row below it. `wrap_single_line` already
+/// gates its own break the same way; this function was the one that did not.
+///
+/// Every break site also requires `gw > 0`. A grapheme that occupies no cells
+/// cannot make a line too long, so breaking before one only moves it away from
+/// the text it belongs to: a combining mark, a zero-width joiner, or a variation
+/// selector would land alone on the next row, detached from its base.
 fn break_long_word(
 	word: &[u16],
 	width: usize,
@@ -991,7 +1032,7 @@ fn break_long_word(
 		{
 			let seq = &word[i..i + seq_len];
 			if let Some(seq_width) = osc66_visible_width_u16(seq, tab_width) {
-				if current_width.saturating_add(seq_width) > width {
+				if seq_width > 0 && current_width > 0 && current_width.saturating_add(seq_width) > width {
 					write_line_end_reset(state, &mut current_line);
 					lines.push(current_line);
 					current_line = Vec::new();
@@ -1032,7 +1073,7 @@ fn break_long_word(
 		if is_ascii {
 			for &u in seg {
 				let gw = ascii_cell_width_u16(u, tab_width);
-				if current_width + gw > width {
+				if gw > 0 && current_width > 0 && current_width + gw > width {
 					write_line_end_reset(state, &mut current_line);
 					lines.push(current_line);
 					current_line = Vec::new();
@@ -1044,7 +1085,7 @@ fn break_long_word(
 			}
 		} else {
 			let _ = for_each_grapheme_u16_slow(seg, tab_width, |gu16, gw| {
-				if current_width + gw > width {
+				if gw > 0 && current_width > 0 && current_width + gw > width {
 					write_line_end_reset(state, &mut current_line);
 					lines.push(std::mem::take(&mut current_line));
 					write_active_codes(state, &mut current_line);
@@ -1101,7 +1142,7 @@ fn wrap_single_line(line: &[u16], width: usize, tab_width: usize) -> SmallVec<[V
 		}
 
 		let total_needed = current_width + token_width;
-		if total_needed > width && current_width > 0 {
+		if token_width > 0 && total_needed > width && current_width > 0 {
 			let mut line_to_wrap = current_line;
 			trim_end_spaces_in_place(&mut line_to_wrap);
 			write_line_end_reset(&state, &mut line_to_wrap);
@@ -1182,7 +1223,7 @@ fn wrap_text_with_ansi_impl(
 pub fn wrap_text_with_ansi(text: JsString, width: u32, tab_width: u32) -> Result<Vec<Utf16String>> {
 	let text_u16 = text.into_utf16()?;
 	let tab_width = clamp_tab_width_for_ops(tab_width);
-	let lines = wrap_text_with_ansi_impl(text_u16.as_slice(), width as usize, tab_width);
+	let lines = wrap_text_with_ansi_impl(utf16_content(text_u16.as_slice()), width as usize, tab_width);
 	Ok(lines.into_iter().map(build_utf16_string).collect())
 }
 
@@ -1210,13 +1251,10 @@ pub fn truncate_to_width(
 	let original = text;
 
 	let text_u16 = text.into_utf16()?;
-	let mut text = text_u16.as_slice();
-	// The napi UTF-16 buffer carries a NUL terminator; the pad branch below
-	// appends spaces after it, which would bury the NUL mid-string where
-	// build_utf16_string's trailing-NUL pop cannot remove it.
-	while text.last() == Some(&0) {
-		text = &text[..text.len() - 1];
-	}
+	// The pad branch below appends spaces, which would bury the napi buffer's
+	// NUL terminator mid-string where build_utf16_string's trailing-NUL pop
+	// cannot reach it.
+	let text = utf16_content(text_u16.as_slice());
 
 	// Fast path: early-exit width check
 	let (text_w, exceeded) = visible_width_u16_up_to(text, max_width, tab_width);
@@ -1522,7 +1560,7 @@ pub fn slice_with_width(
 	tab_width: u32,
 ) -> Result<SliceResult> {
 	let line_u16 = line.into_utf16()?;
-	let line = line_u16.as_slice();
+	let line = utf16_content(line_u16.as_slice());
 	let strict = strict.unwrap_or(false);
 
 	if length == 0 {
@@ -1744,7 +1782,7 @@ pub fn extract_segments(
 	tab_width: u32,
 ) -> Result<ExtractSegmentsResult> {
 	let line_u16 = line.into_utf16()?;
-	let line = line_u16.as_slice();
+	let line = utf16_content(line_u16.as_slice());
 
 	let tab_width = clamp_tab_width_for_ops(tab_width);
 	let (before, bw, after, aw) = extract_segments_impl(
@@ -1775,7 +1813,7 @@ pub fn extract_segments(
 pub fn visible_width(text: JsString, tab_width: u32) -> Result<u32> {
 	let text_u16 = text.into_utf16()?;
 	let tab_width = clamp_tab_width_for_ops(tab_width);
-	Ok(crate::utils::clamp_u32(visible_width_u16(text_u16.as_slice(), tab_width) as u64))
+	Ok(crate::utils::clamp_u32(visible_width_u16(utf16_content(text_u16.as_slice()), tab_width) as u64))
 }
 
 #[cfg(test)]
@@ -1932,6 +1970,151 @@ mod tests {
 		let (w, exceeded) = visible_width_u16_up_to(&data, 10, DEFAULT_TAB_WIDTH);
 		assert!(exceeded);
 		assert!(w > 10);
+	}
+
+	/// Collect a wrap as owned `String`s so assertions read as the rendered rows.
+	fn wrap_to_strings(text: &str, width: usize) -> Vec<String> {
+		wrap_text_with_ansi_impl(&to_u16(text), width, DEFAULT_TAB_WIDTH)
+			.into_iter()
+			.map(|line| String::from_utf16_lossy(&line))
+			.collect()
+	}
+
+	/// THE REGRESSION. A grapheme wider than the target used to emit a blank
+	/// line before itself, because `current_width + gw > width` is true on an
+	/// empty line when `gw > width`. Two characters wrapped to four rows.
+	#[test]
+	fn test_wrap_oversized_grapheme_does_not_emit_a_leading_blank_line() {
+		assert_eq!(wrap_to_strings("漢漢", 1), vec!["漢", "漢"]);
+	}
+
+	/// The line count must equal the grapheme count. A caller sizing a viewport
+	/// from `lines.len()` reserved rows for content that does not exist, and
+	/// every row below the blank shifted down by one.
+	#[test]
+	fn test_wrap_oversized_graphemes_produce_one_line_each() {
+		assert_eq!(wrap_to_strings("漢漢漢", 1), vec!["漢", "漢", "漢"]);
+	}
+
+	/// Width 0 is a real state, not a contract violation: a pane collapsed to
+	/// nothing still gets asked to render. Every grapheme is oversized there, so
+	/// this is the case that used to blank-line between all of them.
+	#[test]
+	fn test_wrap_at_width_zero_still_emits_one_line_per_grapheme() {
+		assert_eq!(wrap_to_strings("ab", 0), vec!["a", "b"]);
+	}
+
+	/// A ZWJ emoji sequence is one indivisible grapheme of width 2. It must
+	/// overflow a width-1 column whole, never be split at a joiner and never be
+	/// preceded by a blank row.
+	#[test]
+	fn test_wrap_keeps_a_zwj_sequence_intact_when_it_cannot_fit() {
+		let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
+		assert_eq!(wrap_to_strings(family, 1), vec![family]);
+	}
+
+	/// A regional-indicator pair is likewise one grapheme. Splitting it turns a
+	/// flag into two letter boxes, which is a visible corruption rather than a
+	/// layout nit.
+	#[test]
+	fn test_wrap_keeps_a_flag_sequence_intact_when_it_cannot_fit() {
+		let flag = "\u{1F1EF}\u{1F1F5}";
+		assert_eq!(wrap_to_strings(flag, 1), vec![flag]);
+	}
+
+	/// The overflow is confined to the oversized grapheme. A narrow character
+	/// that follows it must start a new line rather than ride along on the row
+	/// that is already over budget.
+	#[test]
+	fn test_wrap_does_not_pack_a_narrow_char_onto_an_overflowed_line() {
+		assert_eq!(wrap_to_strings("漢a", 1), vec!["漢", "a"]);
+	}
+
+	/// The mirror case: a narrow character first, then one that cannot fit. The
+	/// break belongs between them, and nothing blank belongs anywhere.
+	#[test]
+	fn test_wrap_breaks_between_a_narrow_char_and_an_oversized_one() {
+		assert_eq!(wrap_to_strings("a漢", 1), vec!["a", "漢"]);
+	}
+
+	/// THE NECESSARY TWIN. The guard must not suppress a legitimate break. When
+	/// the grapheme does fit, the wrap still happens exactly where it did, so a
+	/// fix that simply stopped breaking would fail here.
+	#[test]
+	fn test_wrap_still_breaks_when_the_grapheme_fits_the_width() {
+		assert_eq!(wrap_to_strings("漢漢漢", 2), vec!["漢", "漢", "漢"]);
+		assert_eq!(wrap_to_strings("漢漢漢", 4), vec!["漢漢", "漢"]);
+	}
+
+	/// ASCII takes a separate branch in `break_long_word` from the grapheme
+	/// path, so it gets its own proof that ordinary long-word breaking is
+	/// unchanged.
+	#[test]
+	fn test_wrap_ascii_long_word_breaking_is_unchanged() {
+		assert_eq!(wrap_to_strings("abcdefgh", 3), vec!["abc", "def", "gh"]);
+	}
+
+	/// Empty input still yields one empty line. That is what a renderer expects
+	/// for a blank row, and the guard must not turn it into zero lines.
+	#[test]
+	fn test_wrap_empty_text_still_yields_a_single_empty_line() {
+		assert_eq!(wrap_to_strings("", 4), vec![""]);
+	}
+
+	/// THE SECOND HALF OF THE REGRESSION. The napi buffer that arrives from
+	/// JavaScript ends in a NUL, and that NUL is a zero-width grapheme sitting
+	/// after the last real one. On a line already at or over the width it tripped
+	/// the "does not fit" break and was pushed onto a row of its own, which came
+	/// back to JavaScript as a phantom empty row: `wrapTextWithAnsi("漢漢", 1)`
+	/// returned three rows. The slice is built with the terminator here so the
+	/// guard is proved on its own, independent of the strip at the boundary.
+	#[test]
+	fn test_wrap_zero_width_grapheme_does_not_open_a_new_line() {
+		let mut data = to_u16("漢漢");
+		data.push(0);
+		let lines = wrap_text_with_ansi_impl(&data, 1, DEFAULT_TAB_WIDTH);
+
+		assert_eq!(lines.len(), 2);
+		assert_eq!(String::from_utf16_lossy(&lines[0]), "漢");
+	}
+
+	/// The same guard on the ASCII branch, which is a separate loop.
+	#[test]
+	fn test_wrap_zero_width_grapheme_after_ascii_does_not_open_a_new_line() {
+		let mut data = to_u16("abc");
+		data.push(0);
+		let lines = wrap_text_with_ansi_impl(&data, 2, DEFAULT_TAB_WIDTH);
+
+		assert_eq!(lines.len(), 2);
+		assert_eq!(String::from_utf16_lossy(&lines[0]), "ab");
+	}
+
+	/// `utf16_content` is the one owner of "where does the napi buffer end".
+	/// Before it existed, `truncate_to_width` stripped the terminator with an
+	/// inline loop and the other four entry points did not strip it at all.
+	#[test]
+	fn test_utf16_content_removes_the_napi_terminator() {
+		let mut data = to_u16("hello");
+		data.push(0);
+
+		assert_eq!(utf16_content(&data), to_u16("hello").as_slice());
+	}
+
+	/// A buffer that is already clean must come back unchanged, so the helper is
+	/// safe to apply at every entry point rather than only the ones known to
+	/// carry a terminator.
+	#[test]
+	fn test_utf16_content_leaves_a_clean_buffer_alone() {
+		let data = to_u16("hello");
+
+		assert_eq!(utf16_content(&data), data.as_slice());
+	}
+
+	/// An all-NUL buffer reduces to nothing rather than underflowing the index.
+	#[test]
+	fn test_utf16_content_handles_an_all_nul_buffer() {
+		assert_eq!(utf16_content(&[0, 0, 0]), &[] as &[u16]);
+		assert_eq!(utf16_content(&[]), &[] as &[u16]);
 	}
 
 	#[test]
