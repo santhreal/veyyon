@@ -260,6 +260,23 @@ export function getSegmenter(): Intl.Segmenter {
 const OSC66_SPAN_REGEX = /\x1b\]66;([^;]*);([\s\S]*?)(?:\x07|\x1b\\)/g;
 const OSC66_PREFIX = "\x1b]66;";
 const ESC = "\x1b";
+const OSC_INTRODUCER = "\x1b]";
+
+/**
+ * One OSC sequence: `ESC ] <ps> ; <payload>` up to its terminator, which is
+ * either BEL or ST (`ESC \`). Both spellings are in use and OSC 8 hyperlinks in
+ * Markdown tables arrive ST-terminated, which is what upstream #6282 fixed.
+ *
+ * `visibleWidth` strips these before measuring because the sequence itself
+ * draws no cells, and a link counted at its escape length rather than its label
+ * length pushes every column boundary after it out of place. The payload class
+ * excludes both terminators so a sequence can never swallow the text that
+ * follows it, and defining the pattern once keeps the escape spelling from
+ * drifting between call sites. It is written with `\x07`/`\x1b` escapes rather
+ * than the literal control bytes so it survives being read, copied, and
+ * reviewed.
+ */
+const OSC_SEQUENCE_REGEX = /\x1b\][0-9]+;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const TAB = "\t";
 const LONG_WIDTH_FAST_PATH_MIN = 128;
 
@@ -335,11 +352,7 @@ export function visibleWidth(str: string): number {
 	// a JS printable-ASCII prepass. Escape-bearing strings stay on the scanner
 	// below so CSI/OSC-heavy render output can still bail out at the first ESC.
 	if (str.length >= LONG_WIDTH_FAST_PATH_MIN && !str.includes(ESC)) {
-		let strippedStr = str;
-		if (strippedStr.includes("\x1b]")) {
-			strippedStr = strippedStr.replace(/\x1b\][0-9]+;[^]*(?:|\x1b\\)/g, "");
-		}
-		let width = Bun.stringWidth(strippedStr, STRING_WIDTH_OPTS);
+		let width = Bun.stringWidth(str, STRING_WIDTH_OPTS);
 
 		let tabCount = 0;
 		for (let tabIndex = str.indexOf(TAB); tabIndex !== -1; tabIndex = str.indexOf(TAB, tabIndex + 1)) {
@@ -383,10 +396,10 @@ export function visibleWidth(str: string): number {
 	// the native scanner that traps under Bun 1.3.x GC/N-API load). It strips
 	// CSI/OSC to zero cells and shares the native engine's UAX#11 width tables.
 
-	let strippedStr = str;
-	if (strippedStr.includes("\x1b]")) {
-		strippedStr = strippedStr.replace(/\x1b\][0-9]+;[^]*(?:|\x1b\\)/g, "");
-	}
+	// Strip OSC sequences before measuring: they draw nothing, and an OSC 8
+	// hyperlink measured at its escape length rather than its label length is
+	// what pushed Markdown table columns out of place (upstream #6282).
+	const strippedStr = str.includes(OSC_INTRODUCER) ? str.replace(OSC_SEQUENCE_REGEX, "") : str;
 	let width = Bun.stringWidth(strippedStr, STRING_WIDTH_OPTS);
 
 	if (tabCount > 0) width += tabCount * DEFAULT_TAB_WIDTH;
