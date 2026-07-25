@@ -31,6 +31,7 @@ import {
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,
+	getAgentDir,
 	getArgotCacheDir,
 	removeSyncWithRetries,
 	setProfile,
@@ -65,6 +66,8 @@ describe("loadArgotFolder", () => {
 	let plainDir = "";
 	let cacheRoot = "";
 	let originalXdgCache: string | undefined;
+	let originalConfigDir: string | undefined;
+	let configRoot = "";
 
 	beforeEach(() => {
 		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-xdg-"));
@@ -76,11 +79,26 @@ describe("loadArgotFolder", () => {
 		originalXdgCache = process.env.XDG_CACHE_HOME;
 		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
 		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
-		setProfile(TEST_PROFILE);
+		// The cache lever alone is NOT enough, and that gap put
+		// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
+		// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
+		// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
+		// `VEYYON_CONFIG_DIR` moves the root itself. See docs/internal/testing.md.
+		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-root-"));
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		__resetDirsFromEnvForTests();
+		setProfile(TEST_PROFILE);		setProfile(TEST_PROFILE);
 		// Prove the redirect actually took, so a silent fallback to the real cache
 		// cannot let these tests pass while polluting the developer's machine.
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
 			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
+		}
+		// Proof on BOTH roots: the cache assertion alone passed for months while the
+		// config root stayed real.
+		const resolvedAgentDir = path.resolve(getAgentDir());
+		if (path.relative(configRoot, resolvedAgentDir).startsWith("..")) {
+			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${configRoot}`);
 		}
 
 		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
@@ -95,8 +113,11 @@ describe("loadArgotFolder", () => {
 	afterEach(() => {
 		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = originalXdgCache;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		__resetDirsFromEnvForTests();
-		for (const dir of [repoDir, plainDir, cacheRoot]) if (dir) removeSyncWithRetries(dir);
+		for (const dir of [repoDir, plainDir, cacheRoot, configRoot]) if (dir) removeSyncWithRetries(dir);
+		configRoot = "";
 	});
 
 	it("generates a cache from the repo and loads the session with handles for repo paths", async () => {
@@ -422,6 +443,8 @@ describe("rearmArgotForDecode", () => {
 	let repoDir = "";
 	let cacheRoot = "";
 	let originalXdgCache: string | undefined;
+	let originalConfigDir: string | undefined;
+	let configRoot = "";
 
 	beforeEach(() => {
 		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-rearm-xdg-"));
@@ -429,9 +452,24 @@ describe("rearmArgotForDecode", () => {
 		originalXdgCache = process.env.XDG_CACHE_HOME;
 		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
 		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
-		setProfile(TEST_PROFILE);
+		// The cache lever alone is NOT enough, and that gap put
+		// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
+		// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
+		// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
+		// `VEYYON_CONFIG_DIR` moves the root itself. See docs/internal/testing.md.
+		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-root-"));
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		__resetDirsFromEnvForTests();
+		setProfile(TEST_PROFILE);		setProfile(TEST_PROFILE);
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
 			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
+		}
+		// Proof on BOTH roots: the cache assertion alone passed for months while the
+		// config root stayed real.
+		const resolvedAgentDir = path.resolve(getAgentDir());
+		if (path.relative(configRoot, resolvedAgentDir).startsWith("..")) {
+			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${configRoot}`);
 		}
 		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
 		writeFile(repoDir, ROUTES, `import '../database/connection.ts';\n// see ${CONNECTION}\n`);
@@ -445,8 +483,11 @@ describe("rearmArgotForDecode", () => {
 	afterEach(() => {
 		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = originalXdgCache;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		__resetDirsFromEnvForTests();
-		for (const dir of [repoDir, cacheRoot]) if (dir) removeSyncWithRetries(dir);
+		for (const dir of [repoDir, cacheRoot, configRoot]) if (dir) removeSyncWithRetries(dir);
+		configRoot = "";
 	});
 
 	it("re-arms decode without teaching: expand works, promptFragment stays empty", async () => {
@@ -604,6 +645,8 @@ describe("armArgotAfterStartup", () => {
 	let plainDir = "";
 	let cacheRoot = "";
 	let originalXdgCache: string | undefined;
+	let originalConfigDir: string | undefined;
+	let configRoot = "";
 
 	beforeEach(() => {
 		cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-arm-xdg-"));
@@ -612,9 +655,24 @@ describe("armArgotAfterStartup", () => {
 		originalXdgCache = process.env.XDG_CACHE_HOME;
 		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
 		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
-		setProfile(TEST_PROFILE);
+		// The cache lever alone is NOT enough, and that gap put
+		// `~/.veyyon/profiles/argot-cache-test/` in the developer's REAL config root.
+		// `XDG_CACHE_HOME` moves the CACHE; agent storage and gpu_cache.json resolve
+		// from the CONFIG ROOT, which `setProfile` only names a subdirectory of.
+		// `VEYYON_CONFIG_DIR` moves the root itself. See docs/internal/testing.md.
+		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-cache-root-"));
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
+		__resetDirsFromEnvForTests();
+		setProfile(TEST_PROFILE);		setProfile(TEST_PROFILE);
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
 			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
+		}
+		// Proof on BOTH roots: the cache assertion alone passed for months while the
+		// config root stayed real.
+		const resolvedAgentDir = path.resolve(getAgentDir());
+		if (path.relative(configRoot, resolvedAgentDir).startsWith("..")) {
+			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${configRoot}`);
 		}
 		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
 		writeFile(repoDir, ROUTES, `import '../database/connection.ts';\n// see ${CONNECTION}\n`);
@@ -628,8 +686,11 @@ describe("armArgotAfterStartup", () => {
 	afterEach(() => {
 		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = originalXdgCache;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		__resetDirsFromEnvForTests();
-		for (const dir of [repoDir, plainDir, cacheRoot]) if (dir) removeSyncWithRetries(dir);
+		for (const dir of [repoDir, plainDir, cacheRoot, configRoot]) if (dir) removeSyncWithRetries(dir);
+		configRoot = "";
 	});
 
 	it("arms in the background and fires onArmed once the dictionary is loaded", async () => {

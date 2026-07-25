@@ -182,7 +182,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		expect(hex(SUN_EMBER_RAMP[5]!)).toBe(websiteToken(css, "sun-hi"));
 	});
 
-	// website/sun-field.js is the web-side single source: both the hero journey
+	// website/sun-field.js is the web-side single source: both the hero disc
 	// (website/sun.js) and the structural marks (website/sunmark.js) read their
 	// material from it. Pin it to the terminal sun so the web hero and the
 	// terminal splash render one sun, not two copies that silently drift.

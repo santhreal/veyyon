@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import * as os from "node:os";
+import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
@@ -6,6 +8,7 @@ import {
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "@veyyon/coding-agent/web/search/provider";
+import { __resetDirsFromEnvForTests, getActiveAuthDbPath } from "@veyyon/utils/dirs";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { runSearchCommand } from "../../../src/cli/web-search-cli";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../helpers/settings-test-state";
@@ -29,6 +32,7 @@ const WEB_SEARCH_ENV_KEYS = [
 ] as const;
 
 let tempAgentDir: TempDir | undefined;
+let originalConfigDir: string | undefined;
 let settingsState: SettingsTestState | undefined;
 let originalEnv: Partial<Record<(typeof WEB_SEARCH_ENV_KEYS)[number], string | undefined>> = {};
 let originalExitCode: typeof process.exitCode;
@@ -77,7 +81,25 @@ beforeEach(async () => {
 	setPreferredSearchProvider("auto");
 	setExcludedSearchProviders([]);
 	tempAgentDir = TempDir.createSync("@veyyon-search-cli-");
+	// `setAgentDir` alone is NOT enough isolation here. Resolving a search
+	// provider reaches the credential store, and the SHARED credential store lives
+	// at the CONFIG ROOT (`<root>/shared-auth/agent.db`), not under the agent dir,
+	// so redirecting only the agent dir left this suite opening the developer's
+	// real credential database. `VEYYON_CONFIG_DIR` is the lever that moves the
+	// root: the resolver joins it onto the home directory, so a relative path back
+	// out lands the whole root in the temp directory. See docs/internal/testing.md.
+	originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+	process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempAgentDir.path());
+	__resetDirsFromEnvForTests();
 	setAgentDir(tempAgentDir.path());
+
+	// Proof, not intention: the previous setup looked isolated and silently
+	// resolved to the real store. Assert the resolver's own answer before anything
+	// can open it.
+	const authDbPath = path.resolve(getActiveAuthDbPath());
+	if (path.relative(tempAgentDir.path(), authDbPath).startsWith("..")) {
+		throw new Error(`credential store not isolated: ${authDbPath} is outside ${tempAgentDir.path()}`);
+	}
 	await Settings.init({
 		inMemory: true,
 		cwd: tempAgentDir.path(),
@@ -96,6 +118,9 @@ afterEach(async () => {
 	// reassignment, so a captured-undefined original must coerce to 0 or a
 	// mid-test failure code would leak into the runner's exit status.
 	process.exitCode = originalExitCode ?? 0;
+	if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+	else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
+	__resetDirsFromEnvForTests();
 	if (tempAgentDir) {
 		await tempAgentDir.remove();
 		tempAgentDir = undefined;

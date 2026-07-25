@@ -5,7 +5,14 @@ import * as path from "node:path";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type AuthBrokerServerHandle, startAuthBroker } from "@veyyon/ai/auth-broker";
 import { runAuthBrokerCommand } from "@veyyon/coding-agent/cli/auth-broker-cli";
-import { getAgentDbPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import {
+	__resetDirsFromEnvForTests,
+	getActiveAuthDbPath,
+	getAgentDbPath,
+	getSharedAuthDir,
+	removeWithRetries,
+	setAgentDir,
+} from "@veyyon/utils";
 
 const ORIGINAL_STDOUT_WRITE = process.stdout.write.bind(process.stdout);
 
@@ -21,26 +28,53 @@ function silenceStdout(): () => string {
 describe("auth-broker import (CLIProxyAPI)", () => {
 	let agentDir = "";
 	let cliproxyDir = "";
-	// `setAgentDir` writes VEYYON_CODING_AGENT_DIR and VEYYON_CODING_AGENT_DIR in
-	// lockstep — snapshot/restore both so the tempdir override cannot leak into
+	let configRoot = "";
+	// `setAgentDir` writes VEYYON_CODING_AGENT_DIR; VEYYON_CONFIG_DIR moves the
+	// separate CONFIG root. Snapshot both so a tempdir override cannot leak into
 	// tests that run after this file in the same process.
-	let originalAgentDirEnv: Array<[string, string | undefined]> = [];
+	let originalEnv: Array<[string, string | undefined]> = [];
 
 	beforeEach(async () => {
-		originalAgentDirEnv = ["VEYYON_CODING_AGENT_DIR", "VEYYON_CODING_AGENT_DIR"].map(key => [key, process.env[key]]);
+		originalEnv = ["VEYYON_CODING_AGENT_DIR", "VEYYON_CONFIG_DIR"].map(key => [key, process.env[key]]);
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-agent-"));
 		cliproxyDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-cliproxy-"));
+		configRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-config-"));
+		// THE ROOT THIS SUITE ORIGINALLY MISSED. `import` writes to the machine-wide
+		// SHARED credential store, which lives under the CONFIG root
+		// (`getSharedAuthDir()` -> `<config root>/shared-auth`) — a root `setAgentDir`
+		// does not touch. Moving only the agent dir left the import writing real
+		// credentials to the user's own `~/.veyyon/shared-auth/agent.db` while the
+		// assertions read an empty temp db, which is why they saw zero rows.
+		//
+		// VEYYON_CONFIG_DIR is resolved RELATIVE TO os.homedir(), and in Bun
+		// os.homedir() is fixed at process start, so assigning HOME here would do
+		// nothing. A relative path from the real home to the temp root is the way to
+		// move it.
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		setAgentDir(agentDir);
+		__resetDirsFromEnvForTests();
 	});
 
 	afterEach(async () => {
 		process.stdout.write = ORIGINAL_STDOUT_WRITE;
-		for (const [key, value] of originalAgentDirEnv) {
+		for (const [key, value] of originalEnv) {
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
 		}
+		__resetDirsFromEnvForTests();
 		await removeWithRetries(agentDir);
 		await removeWithRetries(cliproxyDir);
+		await removeWithRetries(configRoot);
+	});
+
+	test("every credential root this suite touches resolves inside a temp dir", () => {
+		// The assertion that would have caught the original defect immediately, and
+		// the reason it is stated per ROOT rather than once: an isolation check only
+		// proves the one path it names, and this suite passed for a long time while
+		// naming only the agent db.
+		expect(getAgentDbPath().startsWith(os.tmpdir())).toBe(true);
+		expect(getSharedAuthDir().startsWith(os.tmpdir())).toBe(true);
+		expect(getActiveAuthDbPath().startsWith(os.tmpdir())).toBe(true);
 	});
 
 	async function writeCliProxyJson(name: string, body: Record<string, unknown>): Promise<string> {
@@ -84,7 +118,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		});
 		restore();
 
-		const store = await SqliteAuthCredentialStore.open(getAgentDbPath());
+		const store = await SqliteAuthCredentialStore.open(getActiveAuthDbPath());
 		try {
 			const claude = store.listAuthCredentials("anthropic");
 			expect(claude).toHaveLength(1);
@@ -129,7 +163,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		});
 		const output = restore();
 
-		const store = await SqliteAuthCredentialStore.open(getAgentDbPath());
+		const store = await SqliteAuthCredentialStore.open(getActiveAuthDbPath());
 		try {
 			expect(store.listAuthCredentials()).toHaveLength(0);
 		} finally {
@@ -157,7 +191,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		});
 		restore();
 
-		const store = await SqliteAuthCredentialStore.open(getAgentDbPath());
+		const store = await SqliteAuthCredentialStore.open(getActiveAuthDbPath());
 		try {
 			const rows = store.listAuthCredentials("anthropic");
 			expect(rows).toHaveLength(1);
@@ -183,7 +217,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		});
 		restore();
 
-		const store = await SqliteAuthCredentialStore.open(getAgentDbPath());
+		const store = await SqliteAuthCredentialStore.open(getActiveAuthDbPath());
 		try {
 			expect(store.listAuthCredentials("anthropic")).toHaveLength(1);
 		} finally {
@@ -196,6 +230,7 @@ describe("auth-broker import (broker-routed)", () => {
 	let agentDir = "";
 	let brokerAgentDir = "";
 	let cliproxyDir = "";
+	let configRoot = "";
 	let brokerStore: SqliteAuthCredentialStore | undefined;
 	let brokerStorage: AuthStorage | undefined;
 	let handle: AuthBrokerServerHandle | undefined;
@@ -205,10 +240,18 @@ describe("auth-broker import (broker-routed)", () => {
 	beforeEach(async () => {
 		savedEnv.VEYYON_AUTH_BROKER_URL = process.env.VEYYON_AUTH_BROKER_URL;
 		savedEnv.VEYYON_AUTH_BROKER_TOKEN = process.env.VEYYON_AUTH_BROKER_TOKEN;
+		savedEnv.VEYYON_CONFIG_DIR = process.env.VEYYON_CONFIG_DIR;
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-client-"));
 		brokerAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-broker-"));
 		cliproxyDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-cliproxy-broker-"));
+		configRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-broker-config-"));
+		// Same missed root as the block above. This block's own assertion — that the
+		// LOCAL store was not touched — reads the shared store under the CONFIG root,
+		// so without moving it the test would open the user's real credential db to
+		// prove a negative about it.
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		setAgentDir(agentDir);
+		__resetDirsFromEnvForTests();
 
 		brokerStore = await SqliteAuthCredentialStore.open(path.join(brokerAgentDir, "agent.db"));
 		brokerStorage = new AuthStorage(brokerStore);
@@ -227,13 +270,24 @@ describe("auth-broker import (broker-routed)", () => {
 		await handle?.close();
 		brokerStorage?.close();
 		brokerStore?.close();
-		await removeWithRetries(agentDir);
-		await removeWithRetries(brokerAgentDir);
-		await removeWithRetries(cliproxyDir);
-		for (const key of ["VEYYON_AUTH_BROKER_URL", "VEYYON_AUTH_BROKER_TOKEN"] as const) {
+		for (const key of ["VEYYON_AUTH_BROKER_URL", "VEYYON_AUTH_BROKER_TOKEN", "VEYYON_CONFIG_DIR"] as const) {
 			if (savedEnv[key] === undefined) delete process.env[key];
 			else process.env[key] = savedEnv[key];
 		}
+		__resetDirsFromEnvForTests();
+		await removeWithRetries(agentDir);
+		await removeWithRetries(brokerAgentDir);
+		await removeWithRetries(cliproxyDir);
+		await removeWithRetries(configRoot);
+	});
+
+	test("every credential root this block touches resolves inside a temp dir", () => {
+		// Stated per root here too. This block asserts a NEGATIVE about the local
+		// store, and a negative assertion against the wrong database is the easiest
+		// way to be reassured by nothing at all.
+		expect(getAgentDbPath().startsWith(os.tmpdir())).toBe(true);
+		expect(getSharedAuthDir().startsWith(os.tmpdir())).toBe(true);
+		expect(getActiveAuthDbPath().startsWith(os.tmpdir())).toBe(true);
 	});
 
 	test("uploads CLIProxyAPI JSONs to the broker when configured, not the local store", async () => {
@@ -270,7 +324,7 @@ describe("auth-broker import (broker-routed)", () => {
 		expect(persisted?.email).toBe("foo@bar.com");
 
 		// The local client SQLite store was NOT touched.
-		const localStore = await SqliteAuthCredentialStore.open(getAgentDbPath());
+		const localStore = await SqliteAuthCredentialStore.open(getActiveAuthDbPath());
 		try {
 			expect(localStore.listAuthCredentials()).toHaveLength(0);
 		} finally {
