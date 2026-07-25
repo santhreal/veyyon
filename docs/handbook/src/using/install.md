@@ -154,6 +154,26 @@ Running several sessions at once is safe. Only the first one to start installs;
 the others see that an install is under way and skip it rather than writing over
 the same binary at the same time.
 
+## Tab completion
+
+The installer sets up tab completion for you. On macOS and Linux it writes one
+file per shell into the directory bash, zsh, and fish each autoload from. If a
+shell will not load that directory (zsh's `$fpath` often does not include it,
+and bash needs the `bash-completion` package), the installer says so and prints
+the exact line to add, rather than leaving you a file nothing reads.
+
+Windows works differently, because PowerShell has no directory it autoloads
+completions from. The installer writes `veyyon-completions.ps1` next to your
+profile and adds one line to the profile that loads it:
+
+```powershell
+# added by the veyyon installer
+. "C:\Users\you\Documents\PowerShell\veyyon-completions.ps1"
+```
+
+Uninstall removes that line and the script, and leaves the rest of your profile
+exactly as it was.
+
 ## Uninstall
 
 The installer removes everything it added, and only what it added: the binary, the `vey` alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.
