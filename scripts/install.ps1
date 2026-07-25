@@ -930,15 +930,22 @@ function Install-FromSource {
     }
 }
 
-# Parse a `.sha256` sidecar body ("<hex>  <filename>") into the lowercased hash.
-# Returns $null when the body is empty or has no leading token, so the caller can
-# fail closed rather than compare against an empty expected value. Splits on any
-# whitespace (matches the POSIX installer's `awk '{print $1}'`).
+# Parse a `.sha256` sidecar body ("<64-hex>  <filename>") into the lowercased hash.
+# Returns $null when the body holds no digest, so the caller fails closed rather
+# than comparing against something that is not a checksum.
+#
+# Strict on purpose, and deliberately identical to the TypeScript owner in
+# packages/natives/src/sha256-sidecar.ts and to install.sh's
+# parse_sha256_sidecar: a token that is not exactly 64 hex characters means the
+# response is not a checksum at all (an HTML error page, a rate-limit body, a
+# sidecar truncated by a dropped connection). Passing that token through would
+# report a checksum mismatch, which tells the user their download is corrupt
+# when the download was fine and the sidecar was not.
 function ConvertFrom-Sha256Sidecar {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
-    $token = ($Text.Trim() -split '\s+')[0]
-    if ([string]::IsNullOrWhiteSpace($token)) { return $null }
+    $token = (($Text -split "`n")[0].Trim() -split '\s+')[0]
+    if ($token -notmatch '^[0-9a-fA-F]{64}$') { return $null }
     return $token.ToLower()
 }
 

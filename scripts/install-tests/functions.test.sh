@@ -69,6 +69,57 @@ check "verify_release_binary fails closed on empty sidecar" "$?" "1"
   VERIFY=0 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" >/dev/null 2>&1 )
 check "verify_release_binary honors --no-verify override" "$?" "0"
 
+# --- parse_sha256_sidecar: what counts as a published checksum ---
+# The sidecar is the only thing standing between a user and a binary someone
+# else served. A reader that accepts any first token compares the real digest
+# against whatever the body happened to start with, and reports "checksum
+# mismatch" — telling the user their download is corrupt when the download was
+# fine and the sidecar was an error page. Held to the same contract as the
+# TypeScript owner in packages/natives/src/sha256-sidecar.ts.
+sixty_four="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+check "parse_sha256_sidecar reads real sha256sum output" \
+    "$(parse_sha256_sidecar "$sixty_four  veyyon-linux-x64")" "$sixty_four"
+check "parse_sha256_sidecar reads a bare digest with no filename" \
+    "$(parse_sha256_sidecar "$sixty_four")" "$sixty_four"
+# Lowercasing is what lets an uppercase sidecar verify a byte-identical file;
+# a raw string comparison against sha256sum's lowercase output called it tampering.
+check "parse_sha256_sidecar lowercases an uppercase digest" \
+    "$(parse_sha256_sidecar "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  veyyon")" "$sixty_four"
+check "parse_sha256_sidecar tolerates leading whitespace and a * filename marker" \
+    "$(parse_sha256_sidecar "   $sixty_four *veyyon.exe")" "$sixty_four"
+check "parse_sha256_sidecar rejects an HTML error page" \
+    "$(parse_sha256_sidecar "<!DOCTYPE html>
+<html>Not Found</html>")" ""
+check "parse_sha256_sidecar rejects a rate-limit JSON body" \
+    "$(parse_sha256_sidecar '{"message":"API rate limit exceeded"}')" ""
+check "parse_sha256_sidecar rejects a truncated digest" \
+    "$(parse_sha256_sidecar "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  veyyon")" ""
+check "parse_sha256_sidecar rejects an over-long digest" \
+    "$(parse_sha256_sidecar "${sixty_four}a  veyyon")" ""
+check "parse_sha256_sidecar rejects 64 non-hex characters" \
+    "$(parse_sha256_sidecar "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg  veyyon")" ""
+check "parse_sha256_sidecar rejects an empty body" "$(parse_sha256_sidecar "")" ""
+check "parse_sha256_sidecar rejects a whitespace-only body" "$(parse_sha256_sidecar "   ")" ""
+# sha256sum never emits the filename first. Scanning the whole body for anything
+# digest-shaped is how a field elsewhere in a response gets promoted to the
+# expected hash.
+check "parse_sha256_sidecar rejects a digest that is not the first token" \
+    "$(parse_sha256_sidecar "veyyon-linux-x64  $sixty_four")" ""
+# A concatenated sidecar must never verify against the wrong asset's digest.
+check "parse_sha256_sidecar takes only the first line" \
+    "$(parse_sha256_sidecar "$sixty_four  veyyon-linux-x64
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  veyyon-darwin-arm64")" "$sixty_four"
+
+# An HTML sidecar must be refused as unparseable, NOT reported as a mismatch.
+( curl() { printf '<!DOCTYPE html>\n<html>Not Found</html>\n'; }
+  VERIFY=1 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" 2>&1 | grep -q "empty/unparseable" )
+check "verify_release_binary calls an HTML sidecar unparseable, not a mismatch" "$?" "0"
+
+# --- verify_sha256: an uppercase expected digest is not tampering ---
+( verify_sha256 "$payload" "$(printf '%s' "$real" | tr 'a-f' 'A-F')" >/dev/null 2>&1 )
+check "verify_sha256 compares case-insensitively" "$?" "0"
+
 # --- link_alias: creates `vey` -> veyyon in the given dir ---
 printf '#!/bin/sh\necho veyyon/0.0.0-test\n' > "$VEYYON_INSTALL_DIR/veyyon"
 chmod +x "$VEYYON_INSTALL_DIR/veyyon"

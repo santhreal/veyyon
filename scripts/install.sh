@@ -577,11 +577,35 @@ parse_release_tag() {
 }
 
 # ---- checksum verification (fail closed on mismatch) ----
+# Read a `.sha256` sidecar body ("<64-hex>  <filename>") to its lowercased
+# digest, printing nothing when the body holds no digest.
+#
+# Strict on purpose, and deliberately identical to the TypeScript owner in
+# packages/natives/src/sha256-sidecar.ts: a token that is not exactly 64 hex
+# characters means the response is not a checksum at all (an HTML error page, a
+# rate-limit body, a sidecar truncated by a dropped connection). Passing that
+# token through would compare the real digest against "<!doctype" and report a
+# checksum mismatch, which tells the user their download is corrupt when the
+# download was fine and the sidecar was not. Lowercasing is what lets a sidecar
+# written in uppercase hex verify a byte-identical file, which a raw string
+# comparison would call tampering.
+parse_sha256_sidecar() {
+    printf '%s' "$1" | awk '
+        NR == 1 {
+            if ($1 ~ /^[0-9a-fA-F]{64}$/) print tolower($1)
+            exit
+        }'
+}
+
 verify_sha256() {
     file="$1"; expected="$2"
     if has sha256sum; then actual=$(sha256sum "$file" | awk '{print $1}')
     elif has shasum; then actual=$(shasum -a 256 "$file" | awk '{print $1}')
     else die "no sha256 tool (sha256sum/shasum) available — cannot verify download integrity (use --no-verify to override)"; fi
+    # Both sides lowercased: hex case carries no meaning, and a case-sensitive
+    # comparison reports a byte-identical file as a tampered binary.
+    actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')
+    expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')
     [ "$actual" = "$expected" ] || die "checksum mismatch (expected $expected, got $actual) — refusing to install a tampered binary"
     ok "verified sha256"
 }
@@ -597,7 +621,7 @@ verify_release_binary() {
         return 0
     fi
     if sum=$(curl -fsSL $CURL_RETRY --connect-timeout 10 --max-time 30 "${url}.sha256" 2>/dev/null); then
-        expected=$(printf '%s' "$sum" | awk '{print $1}')
+        expected=$(parse_sha256_sidecar "$sum")
         [ -n "$expected" ] || die "published checksum for $asset is empty/unparseable — refusing to install (pass --no-verify to override)"
         verify_sha256 "$file" "$expected"
     else

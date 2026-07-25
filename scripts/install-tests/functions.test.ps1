@@ -85,12 +85,37 @@ Check "empty entries are cleaned out" (Get-PathWithDir "C:\x;;C:\y" "C:\a\bin") 
 # The binary install fails closed on a missing/empty/unparseable sidecar and on a
 # hash mismatch. These lock the extracted pure parsers/comparators so a refactor
 # cannot silently weaken the security-critical checksum path on Windows.
-Check "sidecar parse takes the leading hash token" (ConvertFrom-Sha256Sidecar "abc123def  veyyon-windows-x64.exe") "abc123def"
-Check "sidecar parse lowercases the hash" (ConvertFrom-Sha256Sidecar "ABC123DEF  veyyon.exe") "abc123def"
-Check "sidecar parse tolerates leading/trailing whitespace" (ConvertFrom-Sha256Sidecar "   deadbeef  file`n") "deadbeef"
-Check "sidecar parse splits on a tab too" (ConvertFrom-Sha256Sidecar "cafef00d`tfile") "cafef00d"
+# A digest is exactly 64 hex characters. Anything else means the response was
+# not a checksum (an HTML error page, a rate-limit body, a sidecar truncated by
+# a dropped connection), and passing it through reports "checksum mismatch" —
+# telling the user their download is corrupt when the sidecar was the problem.
+# Same contract as install.sh's parse_sha256_sidecar and the TypeScript owner in
+# packages/natives/src/sha256-sidecar.ts.
+$sixtyFour = "a" * 64
+Check "sidecar parse takes the leading hash token" (ConvertFrom-Sha256Sidecar "$sixtyFour  veyyon-windows-x64.exe") $sixtyFour
+Check "sidecar parse reads a bare digest with no filename" (ConvertFrom-Sha256Sidecar $sixtyFour) $sixtyFour
+Check "sidecar parse lowercases the hash" (ConvertFrom-Sha256Sidecar ("A" * 64 + "  veyyon.exe")) $sixtyFour
+Check "sidecar parse tolerates leading/trailing whitespace" (ConvertFrom-Sha256Sidecar "   $sixtyFour  file`n") $sixtyFour
+Check "sidecar parse splits on a tab too" (ConvertFrom-Sha256Sidecar "$sixtyFour`tfile") $sixtyFour
 Check "sidecar parse of empty text is null" ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar ""))) "True"
 Check "sidecar parse of whitespace-only text is null" ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar "   `n  "))) "True"
+Check "sidecar parse rejects an HTML error page" `
+    ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar "<!DOCTYPE html>`n<html>Not Found</html>"))) "True"
+Check "sidecar parse rejects a rate-limit JSON body" `
+    ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar '{"message":"API rate limit exceeded"}'))) "True"
+Check "sidecar parse rejects a truncated digest" `
+    ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar ("a" * 63 + "  veyyon.exe")))) "True"
+Check "sidecar parse rejects an over-long digest" `
+    ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar ("a" * 65 + "  veyyon.exe")))) "True"
+Check "sidecar parse rejects 64 non-hex characters" `
+    ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar ("g" * 64 + "  veyyon.exe")))) "True"
+# sha256sum never emits the filename first; scanning the body for anything
+# digest-shaped is how another field in a response gets promoted to the hash.
+Check "sidecar parse rejects a digest that is not the first token" `
+    ([string]::IsNullOrEmpty((ConvertFrom-Sha256Sidecar "veyyon.exe  $sixtyFour"))) "True"
+# A concatenated sidecar must never verify against the wrong asset's digest.
+Check "sidecar parse takes only the first line" `
+    (ConvertFrom-Sha256Sidecar "$sixtyFour  veyyon-windows-x64.exe`n$("b" * 64)  veyyon-linux-x64") $sixtyFour
 
 $hashFile = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-sha-$PID.bin"
 "veyyon-integrity-fixture" | Set-Content -NoNewline -Path $hashFile
