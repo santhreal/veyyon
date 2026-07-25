@@ -684,6 +684,77 @@ echo veyyon/9.9.9
     Remove-Item -Recurse -Force $nativeSandbox -ErrorAction SilentlyContinue
 }
 
+# --- the user PATH is read and written raw, so %VAR% entries survive ---
+#
+# WHY THESE EXIST. `[Environment]::GetEnvironmentVariable("Path","User")` EXPANDS
+# the value and `SetEnvironmentVariable` writes a plain REG_SZ, so the pair froze
+# every `%JAVA_HOME%\bin`-style entry in the user's PATH to whatever it expanded
+# to at install time. The damage was permanent, silent, and to an environment
+# veyyon does not own. The installer now reads the raw value and writes it back
+# under the kind it already had.
+#
+# These use a scratch registry key rather than the real HKCU\Environment: the
+# point is to prove the read/modify/write round trip preserves the token, and
+# doing that against the real PATH would risk the machine running the tests.
+$envKeyPath = "Software\veyyon-install-tests\$PID"
+$scratch = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($envKeyPath)
+try {
+    # Resolve-PathValueKind is pure: preserve what is there, and default to
+    # ExpandString when creating the value, which is what Windows itself does.
+    Check "Resolve-PathValueKind preserves an existing ExpandString" `
+        (Resolve-PathValueKind -ExistingKind ([Microsoft.Win32.RegistryValueKind]::ExpandString) -Value "C:\a") `
+        "ExpandString"
+    Check "Resolve-PathValueKind preserves an existing String" `
+        (Resolve-PathValueKind -ExistingKind ([Microsoft.Win32.RegistryValueKind]::String) -Value "%FOO%\a") `
+        "String"
+    Check "Resolve-PathValueKind creates a missing value as ExpandString" `
+        (Resolve-PathValueKind -ExistingKind $null -Value "C:\a") `
+        "ExpandString"
+    # A REG_SZ holding a literal %FOO% is not a mistake to correct: Windows will
+    # not expand it, and promoting it would change how that entry resolves.
+    Check "Resolve-PathValueKind does not promote a String that contains a token" `
+        (Resolve-PathValueKind -ExistingKind ([Microsoft.Win32.RegistryValueKind]::String) -Value "%FOO%") `
+        "String"
+
+    # THE REGRESSION, driven through the registry: a REG_EXPAND_SZ value read
+    # with DoNotExpandEnvironmentNames comes back with its token intact.
+    $scratch.SetValue("Path", "%USERPROFILE%\tools;C:\fixed", [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    $raw = $scratch.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    Check "a raw read keeps the %USERPROFILE% token" ($raw -like "*%USERPROFILE%\tools*") "True"
+    # And the .NET accessor is what would have destroyed it: the expanded read
+    # no longer contains the token at all.
+    $expanded = $scratch.GetValue("Path")
+    Check "an expanding read loses the token (this is the bug)" ($expanded -like "*%USERPROFILE%*") "False"
+
+    # The full round trip the installer performs: read raw, add our entry, write
+    # back under the original kind. The token and the kind both survive.
+    $updated = Get-PathWithDir $raw "C:\veyyon\bin"
+    $kind = Resolve-PathValueKind -ExistingKind ($scratch.GetValueKind("Path")) -Value $updated
+    $scratch.SetValue("Path", $updated, $kind)
+    $after = $scratch.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    Check "the round trip keeps the %USERPROFILE% token" ($after -like "*%USERPROFILE%\tools*") "True"
+    Check "the round trip keeps the value REG_EXPAND_SZ" ($scratch.GetValueKind("Path")) "ExpandString"
+    Check "the round trip added our entry" ($after -like "*C:\veyyon\bin*") "True"
+
+    # Uninstall takes only our entry back out, leaving the token and the kind.
+    $removed = Get-PathWithoutDir $after "C:\veyyon\bin"
+    $scratch.SetValue("Path", $removed, (Resolve-PathValueKind -ExistingKind ($scratch.GetValueKind("Path")) -Value $removed))
+    $final = $scratch.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    Check "removal keeps the %USERPROFILE% token" ($final -like "*%USERPROFILE%\tools*") "True"
+    Check "removal keeps the value REG_EXPAND_SZ" ($scratch.GetValueKind("Path")) "ExpandString"
+    Check "removal took our entry out" ($final -like "*C:\veyyon\bin*") "False"
+    Check "removal left the user's fixed entry" ($final -like "*C:\fixed*") "True"
+} finally {
+    $scratch.Dispose()
+    [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree("Software\veyyon-install-tests", $false)
+}
+
+# --- Get-RawUserPath tolerates a profile with no Path value yet ---
+# A fresh user has no Path under HKCU\Environment at all. Returning $null there
+# would make the first install throw on a machine that had never had one.
+$fresh = Get-RawUserPath
+Check "Get-RawUserPath returns a string, never null" ($null -ne $fresh.Value) "True"
+
 Write-Host ""
 # A run that recorded nothing is a broken harness, not a pass: fail closed rather
 # than report "0 passed, 0 failed" and exit 0 (mirrors functions.test.sh).
