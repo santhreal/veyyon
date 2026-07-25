@@ -115,3 +115,65 @@ describe("uninstall clears addons staged beside the binary", () => {
 		expect(ps1Uninstall).toContain('-Filter "veyyon_natives.*.node"');
 	});
 });
+
+/**
+ * The Windows binary install used to download STRAIGHT ONTO the installed
+ * `veyyon.exe`, which made every failure destructive: a dropped connection, a
+ * missing checksum sidecar, or a mismatch each ran `Remove-Item $OutPath` and
+ * left the user with no veyyon at all, having started from a working one. It
+ * also cannot work at all while a session is open, because Windows locks a
+ * running image.
+ *
+ * install.sh has staged its download since the concurrent-install fix; this is
+ * the Windows half of that contract, plus the leftovers it introduces.
+ */
+describe("the Windows binary install stages its download", () => {
+	it("downloads to a per-process staging path, not onto the installed binary", () => {
+		expect(installPs1).toContain('$StagingPath = Join-Path $InstallDir ".$BinName.$PID.download"');
+		expect(installPs1).toContain("-OutFile $StagingPath");
+		expect(installPs1).not.toContain("-OutFile $OutPath");
+	});
+
+	it("discards the staged file on every verification failure, never the install", () => {
+		// The whole point: a failed install must not be an uninstall.
+		const fn = installPs1.slice(installPs1.indexOf("function Install-Binary {"));
+		// Comments explaining the old destructive form are not that form.
+		const body = fn
+			.slice(0, fn.indexOf("\nfunction "))
+			.split("\n")
+			.filter(line => !line.trimStart().startsWith("#"))
+			.join("\n");
+		expect(body).not.toContain("Remove-Item $OutPath");
+		expect((body.match(/Remove-Item \$StagingPath -ErrorAction SilentlyContinue/g) ?? []).length).toBeGreaterThanOrEqual(
+			4,
+		);
+	});
+
+	it("moves the previous binary aside rather than overwriting a locked image", () => {
+		expect(installPs1).toContain("function Move-StagedBinaryIntoPlace {");
+		expect(installPs1).toContain(".$PID.old");
+	});
+
+	it("restores the previous binary when the swap itself fails", () => {
+		const fn = installPs1.slice(installPs1.indexOf("function Move-StagedBinaryIntoPlace {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain("Move-Item -Path $aside -Destination $TargetPath -Force");
+		expect(body).toContain("your previous $BinName is untouched");
+	});
+
+	it("sweeps moved-aside binaries on the next run instead of failing this one", () => {
+		// A `.old` still mapped by a running process cannot be deleted, and
+		// failing an otherwise-good install over it would be absurd.
+		expect(installPs1).toContain("function Clear-StaleBinaryBackups {");
+		expect(installPs1).toContain('Clear-StaleBinaryBackups -Dir $InstallDir -BaseName "$BinName.exe"');
+	});
+
+	it("uninstall reclaims the staging and moved-aside files too", () => {
+		// They are the installer's own litter; leaving ~150MB of them behind
+		// while reporting a clean uninstall is the same bug as the natives cache.
+		const fn = installPs1.slice(installPs1.indexOf("function Uninstall-Veyyon {"));
+		const body = fn.slice(0, fn.indexOf("\nfunction "));
+		expect(body).toContain('-Filter "*.old"');
+		expect(body).toContain('-Filter ".$BinName.*.download"');
+	});
+});
