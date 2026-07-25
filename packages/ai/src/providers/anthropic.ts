@@ -2466,16 +2466,48 @@ const streamAnthropicOnce = (
 					if (!sawMessageStop) {
 						reportAnthropicEnvelopeAnomaly("stream ended before message_stop");
 					}
-					if (openBlocks.size > 0) {
-						for (const [openIndex, openBlock] of openBlocks) {
-							reportAnthropicEnvelopeAnomaly(
-								`stream ended with an unterminated ${openBlock.kind} block at index ${openIndex}`,
-							);
-							if (openBlock.kind === "ignored" || openBlock.contentIndex < 0) continue;
-							const danglingBlock = blocks[openBlock.contentIndex];
-							if (danglingBlock) finalizeStreamBlock(danglingBlock, openBlock.contentIndex);
-						}
-						openBlocks.clear();
+					// An unterminated block means the connection died mid-delta: a socket
+					// close, a proxy drop, an upstream that stopped writing. The blocks
+					// are still finalized so nothing is lost from the transcript, but
+					// the turn CANNOT be committed as complete.
+					//
+					// It used to be. The anomaly was warned about, the dangling block
+					// was closed, and the loop broke out with `stopReason` left at
+					// whatever it was, so a half-written sentence or a truncated tool
+					// call was persisted looking exactly like a finished turn. The model
+					// then read its own truncated output back as history on the next
+					// turn, which is how a cut sentence becomes a permanent part of the
+					// conversation.
+					//
+					// Two shapes are deliberately NOT treated as truncation:
+					//
+					//   • A missing trailing `message_stop` while every block closed
+					//     cleanly. Only the terminator was omitted, which some
+					//     endpoints do, so that stays a warning.
+					//   • An open block on a stream that DID carry a terminal envelope
+					//     (`message_stop`, or a `message_delta` with a stop_reason).
+					//     A transparent reconnect splices a fresh envelope onto the
+					//     same stream and orphans the block it interrupted; upstream
+					//     still said the message is finished, so the block is an
+					//     envelope artifact rather than a cut connection and is
+					//     finalized as before.
+					//
+					// Truncation is the case where the bytes simply stopped: a block
+					// still open and nothing ever declared the message done.
+					const truncatedMidDelta = openBlocks.size > 0 && !sawTerminalEnvelope;
+					for (const [openIndex, openBlock] of openBlocks) {
+						reportAnthropicEnvelopeAnomaly(
+							`stream ended with an unterminated ${openBlock.kind} block at index ${openIndex}`,
+						);
+						if (openBlock.kind === "ignored" || openBlock.contentIndex < 0) continue;
+						const danglingBlock = blocks[openBlock.contentIndex];
+						if (danglingBlock) finalizeStreamBlock(danglingBlock, openBlock.contentIndex);
+					}
+					openBlocks.clear();
+					if (truncatedMidDelta) {
+						throw new AIError.AnthropicStreamEnvelopeError(
+							"Anthropic stream ended mid-message with an unterminated content block, so the turn is truncated",
+						);
 					}
 
 					if (output.stopReason === "aborted" || output.stopReason === "error") {
