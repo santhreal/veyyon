@@ -450,6 +450,71 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "SKIP: git not available; Get-LfsAssets tests skipped"
 }
 
+# --- PowerShell completions: the profile edit is surgical and reversible ---
+# Windows had no tab completion at all. PowerShell registers completion at
+# runtime instead of autoloading a file, so the installer writes a script and
+# adds one dot-source line to the profile. That line is an edit to a file the
+# user also owns, so it has to go in exactly once and come back out exactly.
+$completionSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-completions-$PID"
+New-Item -ItemType Directory -Force -Path $completionSandbox | Out-Null
+try {
+    $profilePath = Join-Path $completionSandbox "profile.ps1"
+    $line = Get-CompletionSourceLine "C:\veyyon\veyyon-completions.ps1"
+
+    Check "the dot-source line is a real dot-source of the quoted path" $line ". `"C:\veyyon\veyyon-completions.ps1`""
+
+    # Adding to a profile that does not exist yet must create it, not fail.
+    Check "the line is added to a missing profile" (Add-CompletionSourceLine -ProfilePath $profilePath -Line $line) "True"
+    Check "the profile now holds the line" ([bool]((Get-Content $profilePath) -contains $line)) "True"
+    Check "the line is written under the marker comment" ([bool]((Get-Content $profilePath) -contains $CompletionMarker)) "True"
+
+    # Re-running the installer must not stack duplicate lines in the profile.
+    Check "a second install does not add the line again" (Add-CompletionSourceLine -ProfilePath $profilePath -Line $line) "False"
+    Check "the line still appears exactly once" (@(Get-Content $profilePath | Where-Object { $_ -eq $line }).Count) "1"
+
+    # The user's own profile content has to survive the removal untouched.
+    Add-Content -LiteralPath $profilePath -Value @("Set-Alias ll Get-ChildItem", "# my own note")
+    Check "removal reports it changed the profile" (Remove-CompletionSourceLine -ProfilePath $profilePath -Line $line) "True"
+    Check "the dot-source line is gone" ([bool]((Get-Content $profilePath) -contains $line)) "False"
+    Check "the marker comment went with it" ([bool]((Get-Content $profilePath) -contains $CompletionMarker)) "False"
+    Check "the user's own alias survived" ([bool]((Get-Content $profilePath) -contains "Set-Alias ll Get-ChildItem")) "True"
+    Check "the user's own comment survived" ([bool]((Get-Content $profilePath) -contains "# my own note")) "True"
+
+    # Removing again is a no-op, and says so: uninstall must not claim work it
+    # did not do.
+    Check "a second removal reports no change" (Remove-CompletionSourceLine -ProfilePath $profilePath -Line $line) "False"
+
+    # A marker comment the user happens to have, with no veyyon line under it,
+    # is not ours to delete.
+    $foreignProfile = Join-Path $completionSandbox "foreign.ps1"
+    Set-Content -LiteralPath $foreignProfile -Value @($CompletionMarker, "Write-Host hi", $line)
+    Check "an unrelated marker stays when it is not above our line" (Remove-CompletionSourceLine -ProfilePath $foreignProfile -Line $line) "True"
+    Check "the marker not adjacent to our line survived" ([bool]((Get-Content $foreignProfile) -contains $CompletionMarker)) "True"
+    Check "the user's line between them survived" ([bool]((Get-Content $foreignProfile) -contains "Write-Host hi")) "True"
+
+    # A profile that never held the line must not be rewritten at all.
+    $untouched = Join-Path $completionSandbox "untouched.ps1"
+    Set-Content -LiteralPath $untouched -Value @("Write-Host mine")
+    $before = Get-Content -Raw $untouched
+    Check "an unrelated profile reports no change" (Remove-CompletionSourceLine -ProfilePath $untouched -Line $line) "False"
+    Check "an unrelated profile is byte-identical afterwards" (Get-Content -Raw $untouched) $before
+
+    # A prefix-sharing path is a different install: its line is not ours.
+    $otherLine = Get-CompletionSourceLine "C:\veyyon-other\veyyon-completions.ps1"
+    $prefixProfile = Join-Path $completionSandbox "prefix.ps1"
+    Set-Content -LiteralPath $prefixProfile -Value @($CompletionMarker, $otherLine)
+    Check "a prefix-sharing dot-source line is left alone" (Remove-CompletionSourceLine -ProfilePath $prefixProfile -Line $line) "False"
+    Check "that line is still in the profile" ([bool]((Get-Content $prefixProfile) -contains $otherLine)) "True"
+
+    # The generated script must go where the profile can dot-source it.
+    Check "the completion script sits beside the profile" `
+        (Split-Path -Parent (Get-CompletionScriptPath)) (Split-Path -Parent (Get-ProfilePath))
+    Check "the completion script is named for the binary" `
+        (Split-Path -Leaf (Get-CompletionScriptPath)) "veyyon-completions.ps1"
+} finally {
+    Remove-Item -Recurse -Force $completionSandbox -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 # A run that recorded nothing is a broken harness, not a pass: fail closed rather
 # than report "0 passed, 0 failed" and exit 0 (mirrors functions.test.sh).

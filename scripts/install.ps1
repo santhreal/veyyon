@@ -237,6 +237,116 @@ function Remove-FromPath {
     return $true
 }
 
+# ---- PowerShell completions ----
+#
+# The POSIX installer writes a file each shell autoloads by command name.
+# PowerShell has no such directory: completion is registered at runtime by
+# Register-ArgumentCompleter, so the generated script has to be dot-sourced from
+# the user's profile. Windows users therefore had no tab completion at all until
+# this was added.
+#
+# The dot-source line is written under a marker comment and matched exactly on
+# removal, the same contract install.sh uses for its PATH line.
+$CompletionMarker = "# added by the veyyon installer"
+
+# The profile that loads in every host (console, ISE, the VS Code terminal),
+# rather than the current host's profile alone.
+function Get-ProfilePath {
+    return $PROFILE.CurrentUserAllHosts
+}
+
+function Get-CompletionScriptPath {
+    return (Join-Path (Split-Path -Parent (Get-ProfilePath)) "$BinName-completions.ps1")
+}
+
+# The exact line the profile must contain. One owner, read by both the install
+# and the removal, so the two can never disagree about what to match.
+function Get-CompletionSourceLine {
+    param([string]$ScriptPath)
+    return ". `"$ScriptPath`""
+}
+
+# Add the dot-source line to the profile unless it is already there.
+function Add-CompletionSourceLine {
+    param([string]$ProfilePath, [string]$Line)
+    if (Test-Path $ProfilePath) {
+        $existing = @(Get-Content -LiteralPath $ProfilePath -ErrorAction SilentlyContinue)
+        if ($existing -contains $Line) { return $false }
+    } else {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ProfilePath) | Out-Null
+    }
+    Add-Content -LiteralPath $ProfilePath -Value @("", $CompletionMarker, $Line)
+    return $true
+}
+
+# Drop the exact dot-source line, plus the marker comment directly above it.
+# Only that pair is touched: a profile is a file the user also edits by hand.
+function Remove-CompletionSourceLine {
+    param([string]$ProfilePath, [string]$Line)
+    if (-not (Test-Path $ProfilePath)) { return $false }
+    $lines = @(Get-Content -LiteralPath $ProfilePath -ErrorAction SilentlyContinue)
+    if (-not ($lines -contains $Line)) { return $false }
+    $kept = New-Object System.Collections.Generic.List[string]
+    $pending = $null
+    foreach ($l in $lines) {
+        if ($l -eq $Line) { $pending = $null; continue }
+        if ($null -ne $pending) { $kept.Add($pending) }
+        $pending = if ($l -eq $CompletionMarker) { $l } else { $null }
+        if ($null -eq $pending) { $kept.Add($l) }
+    }
+    if ($null -ne $pending) { $kept.Add($pending) }
+    Set-Content -LiteralPath $ProfilePath -Value $kept.ToArray()
+    return $true
+}
+
+# Generate the completion script from the binary just installed and wire it into
+# the profile. Best effort and loud: a build without the `completions` command,
+# or a profile that cannot be written, is reported rather than silently skipped.
+function Install-Completions {
+    param([string]$BinPath)
+    $scriptPath = Get-CompletionScriptPath
+    $generated = & $BinPath completions powershell 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $generated) {
+        Write-Host "!!  could not generate PowerShell completions (tab completion unavailable)" -ForegroundColor Yellow
+        return
+    }
+    try {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $scriptPath) | Out-Null
+        # Write through a temp file: the profile dot-sources this at every shell
+        # start, and a half-written script would break every new session.
+        $staging = "$scriptPath.$PID.new"
+        Set-Content -LiteralPath $staging -Value $generated
+        Move-Item -LiteralPath $staging -Destination $scriptPath -Force
+    } catch {
+        Write-Host "!!  could not write $scriptPath ($($_.Exception.Message)); tab completion unavailable" -ForegroundColor Yellow
+        return
+    }
+    Write-Host "OK  installed PowerShell completions to $scriptPath" -ForegroundColor Green
+    try {
+        if (Add-CompletionSourceLine -ProfilePath (Get-ProfilePath) -Line (Get-CompletionSourceLine $scriptPath)) {
+            Write-Host "OK  added the completion line to $(Get-ProfilePath)" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "!!  could not update $(Get-ProfilePath) ($($_.Exception.Message)); add  . `"$scriptPath`"  yourself" -ForegroundColor Yellow
+    }
+}
+
+# Take back exactly what Install-Completions wrote.
+function Remove-Completions {
+    $removed = $false
+    $scriptPath = Get-CompletionScriptPath
+    if (Remove-CompletionSourceLine -ProfilePath (Get-ProfilePath) -Line (Get-CompletionSourceLine $scriptPath)) {
+        Write-Host "OK  removed the completion line from $(Get-ProfilePath)" -ForegroundColor Green
+        $removed = $true
+    }
+    if (Test-Path $scriptPath) {
+        Remove-Item -Force $scriptPath
+        Write-Host "OK  removed $scriptPath" -ForegroundColor Green
+        $removed = $true
+    }
+    return $removed
+}
+
 function Find-BashShell {
     # Check Git Bash first (most common on Windows)
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
@@ -703,6 +813,7 @@ function Install-FromSource {
     Install-Alias -Target $shim
     $needsRestart = Add-ToPath
     Configure-BashShell
+    Install-Completions -BinPath $shim
     Invoke-Doctor -Command $shim
 
     Write-Host ""
@@ -811,6 +922,7 @@ function Install-Binary {
 
     $needsRestart = Add-ToPath
     Configure-BashShell
+    Install-Completions -BinPath $OutPath
     Invoke-Doctor -Command $OutPath -ExpectedTag $Latest
 
     Write-Host ""
@@ -827,6 +939,7 @@ function Uninstall-Veyyon {
         Write-Host "OK  removed $InstallDir from your PATH" -ForegroundColor Green
         $removed = $true
     }
+    if (Remove-Completions) { $removed = $true }
     foreach ($f in @("$BinName.exe", "$BinName.cmd", "$AliasName.cmd")) {
         $p = Join-Path $InstallDir $f
         if (Test-Path $p) {
