@@ -885,6 +885,10 @@ export async function updateViaSourceAt(
 				sourceInstallUpdateGuidance(launcherPath),
 		);
 	}
+	// Same reason as the binary path: the completion scripts on disk describe the
+	// version the checkout just left. The launcher is what the installer put on
+	// PATH, so it is what regenerates them.
+	await refreshCompletionsForInstalledBinary(launcherPath, report);
 	report(`Updated source checkout to ${version}. Restart ${APP_NAME} to run it.`);
 }
 
