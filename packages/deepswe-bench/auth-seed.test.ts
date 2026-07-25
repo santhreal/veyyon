@@ -10,7 +10,8 @@
  * Mode 1, a pre-move store winning over the live one: logins moved from
  * `profiles/<name>/shared-auth` to the machine-wide `~/.veyyon/shared-auth`, and
  * the abandoned files stay on disk indefinitely. The old candidate order tried
- * them FIRST, so a machine with both staged credentials that had expired.
+ * them FIRST, so on any machine that has both, the expired leftover was staged
+ * and the live store went unread.
  *
  * Mode 2, a frozen snapshot: the staged copy was kept whenever the file merely
  * existed. OAuth access tokens rotate, so once the live store refreshed, every

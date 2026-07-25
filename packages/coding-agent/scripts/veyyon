@@ -15,20 +15,66 @@
 # preload shim alongside this file.
 set -e
 
+# Parent directory of $1, by parameter expansion rather than a `dirname` fork.
+# This script resolves its own location before anything has checked PATH, and a
+# `dirname` that is not on PATH used to yield an empty string that `cd ""`
+# accepted without complaint, silently leaving scripts_dir pointing at the
+# user's current directory and every path below it wrong.
+dir_of() {
+	case $1 in
+	*/*)
+		_d=${1%/*}
+		[ -n "$_d" ] || _d=/
+		printf '%s' "$_d"
+		;;
+	*) printf '.' ;;
+	esac
+}
+
 # Resolve this script's real location even when invoked through a symlink
 # (`$HOME/.bun/bin/veyyon` -> this file).
 self=$0
 while [ -L "$self" ]; do
-	link=$(readlink "$self")
+	# `set -e` aborts on a failed assignment, so a missing `readlink` killed the
+	# script here with a bare 127 and no message at all. Let it fail, then decide.
+	link=""
+	if link=$(readlink "$self" 2>/dev/null); then :; fi
+	# An unreadable link means the resolution FAILED; continuing would build a
+	# path out of an empty string and then report some unrelated file as missing.
+	if [ -z "$link" ]; then
+		echo "veyyon: cannot resolve the symlink at $self (is readlink on PATH?)" >&2
+		exit 1
+	fi
 	case $link in
 	/*) self=$link ;;
-	*) self=$(dirname "$self")/$link ;;
+	*) self=$(dir_of "$self")/$link ;;
 	esac
 done
-scripts_dir=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd -P)
+scripts_dir=$(CDPATH= cd -- "$(dir_of "$self")" && pwd -P)
 cli=$scripts_dir/../src/cli.ts
 preload=$scripts_dir/veyyon.ts
 timing_preload=$scripts_dir/../../utils/src/module-timer.ts
+
+# Everything below this point runs bun: the two self-heal steps and the exec
+# itself. A source install is the one shape where bun has to be on PATH at RUN
+# time, not just at install time, and it drops off routinely — a non-login shell
+# that never sources the rc holding `~/.bun/bin`, a PATH edit, a bun uninstall.
+# Without this check the user gets `exec: bun: not found` from a command they
+# installed successfully, with nothing naming the cause or the fix.
+if ! command -v bun >/dev/null 2>&1; then
+	echo "veyyon: bun is not on PATH, and this is a source install that runs veyyon through bun." >&2
+	echo "veyyon: install bun (https://bun.sh) and make sure ~/.bun/bin is on PATH, or reinstall the standalone binary: curl -fsSL https://get.veyyon.dev | sh" >&2
+	exit 1
+fi
+
+# The checkout itself has to still be there. A source install puts a symlink on
+# PATH pointing into ~/.veyyon/src; if that tree is moved or partly deleted the
+# symlink still resolves to this script, which then hands bun a path to nothing.
+if [ ! -f "$cli" ]; then
+	echo "veyyon: the source checkout this command points at is incomplete ($cli is missing)." >&2
+	echo "veyyon: reinstall it with: curl -fsSL https://get.veyyon.dev | sh -s -- --source" >&2
+	exit 1
+fi
 
 # Self-heal gitignored build artifacts a bare `git pull` leaves missing.
 # tool-views.generated.js is resolved at module PARSE time (a `with

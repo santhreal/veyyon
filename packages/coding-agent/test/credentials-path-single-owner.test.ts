@@ -35,14 +35,16 @@ const CREDENTIAL_PATH_MESSAGE = /(Credentials saved to|Credential removed from|c
 const NAMES_PROFILE_STORE = /\$\{getAgentDbPath\(\)\}/;
 
 /**
- * `auth-broker-cli.ts` is exempt BY DESIGN, not by oversight: `runLocalLogin`
- * OPENS `getAgentDbPath()` and then names that same path, so the two agree. It
- * would become a lie, not a fix, if the message alone were switched to the
- * active store while the login still wrote to the per-profile one. That the
- * broker CLI writes to a store the agent may not read under sharing is a real
- * but separate defect, tracked in BACKLOG as AUTH-BROKER-CLI-STORE-SPLIT.
+ * No file is exempt.
+ *
+ * `auth-broker-cli.ts` used to be, and not by oversight: it OPENED
+ * `getAgentDbPath()` and then named that same path, so switching the message
+ * alone would have made it name a file it did not write to. The underlying split
+ * is now fixed (the CLI opens the active store everywhere, so a `vey auth login`
+ * can no longer land credentials the agent will not read), which is what lets
+ * the lock cover it.
  */
-const EXEMPT = new Set(["cli/auth-broker-cli.ts"]);
+const EXEMPT = new Set<string>();
 
 function collectSourceFiles(dir: string): string[] {
 	const out: string[] = [];
@@ -81,13 +83,58 @@ describe("user-facing credential-store messages name the active store", () => {
 	 * scan above and leave the user with no path at all.
 	 */
 	it("keeps the login and logout screens resolving through getActiveAuthDbPath", () => {
-		for (const rel of [
-			"modes/setup-wizard/scenes/sign-in.ts",
-			"modes/controllers/selector-controller.ts",
-		]) {
+		for (const rel of ["modes/setup-wizard/scenes/sign-in.ts", "modes/controllers/selector-controller.ts"]) {
 			const src = readFileSync(join(SRC_ROOT, rel), "utf8");
 			expect(src, `${rel} must import the active-store resolver`).toContain("getActiveAuthDbPath");
 			expect(src.match(/Credentials saved to \$\{getActiveAuthDbPath\(\)\}/)).not.toBeNull();
 		}
+	});
+});
+
+/** Opening the per-profile store by path, which is what wrote logins to the
+ * wrong file. Matches the operation, not one call site's spelling. */
+const OPENS_PROFILE_STORE = /SqliteAuthCredentialStore\.open\(\s*getAgentDbPath\(\)/;
+
+describe("credential stores are OPENED through the active-store owner too", () => {
+	/**
+	 * The message lock above is only half the contract, and on its own it invites
+	 * the wrong fix. `auth-broker-cli.ts` opened the per-profile `agent.db` at six
+	 * sites while the agent, under profile sharing, reads the machine-wide store.
+	 * So `vey auth login` could persist a credential the running agent would never
+	 * see, and `vey auth list` could report "No credentials stored" against a fully
+	 * authenticated agent. Because the CLI named the same file it opened, it was
+	 * self-consistent and the message scan passed throughout.
+	 *
+	 * Locking the OPEN is what makes the message lock meaningful: a future call
+	 * site cannot restore agreement by writing to the wrong store and honestly
+	 * saying so.
+	 */
+	it("opens no per-profile agent.db anywhere in coding-agent src", () => {
+		const offenders: string[] = [];
+		for (const file of collectSourceFiles(SRC_ROOT)) {
+			readFileSync(file, "utf8")
+				.split("\n")
+				.forEach((line, index) => {
+					if (OPENS_PROFILE_STORE.test(line)) {
+						offenders.push(`${file.slice(SRC_ROOT.length + 1)}:${index + 1}`);
+					}
+				});
+		}
+		expect(
+			offenders,
+			"these open this profile's own agent.db, which the agent does NOT read under profile sharing; " +
+				"open getActiveAuthDbPath() so a login lands in the store the agent actually uses",
+		).toEqual([]);
+	});
+
+	/**
+	 * The positive half. An empty offender list is also what you get by deleting
+	 * every store open, so pin that the broker CLI still opens one, through the
+	 * owner.
+	 */
+	it("keeps the auth CLI opening the active store", () => {
+		const src = readFileSync(join(SRC_ROOT, "cli/auth-broker-cli.ts"), "utf8");
+		expect(src).toContain("getActiveAuthDbPath");
+		expect(src.match(/SqliteAuthCredentialStore\.open\(getActiveAuthDbPath\(\)\)/g)?.length ?? 0).toBeGreaterThan(0);
 	});
 });
