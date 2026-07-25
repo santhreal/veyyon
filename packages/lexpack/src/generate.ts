@@ -507,55 +507,54 @@ export function extractCandidates(text: string): string[] {
 /**
  * The longest handle name the generator will mint.
  *
- * Chosen from the real 551-handle ytt dictionary rather than by taste. A handle
- * only pays for itself by being shorter than what it replaces, and the mean
- * expansion there is 56.8 characters, so the cap trades per-use saving against
- * how often a name survives intact enough to be guessable. Measured across the
- * whole dictionary: cap 10 names 74% of handles by the pure path rule below at a
- * mean length of 9.5; cap 12 reaches 77% at 11.0; cap 16 reaches 80% at 13.7.
- * Twelve buys nearly all of the derivability for about 7% of the saving, and the
- * curve is flat past it, so paying more length buys almost nothing.
- */
-const MAX_NAME_LENGTH = 12;
-
-/** Strip an expansion segment down to the `[a-z0-9_]` shape a handle name allows. */
-function cleanSegment(segment: string): string {
-	return segment.toLowerCase().replace(/[^a-z0-9_]+/g, "");
-}
-
-/** Split an expansion into path segments, ignoring separators and trailing slashes. */
-function pathSegments(expansion: string): string[] {
-	const parts = expansion
-		.replace(/[/\\]+$/, "")
-		.split(/[/\\]/)
-		.filter(Boolean);
-	return parts.length > 0 ? parts : [expansion];
-}
-
-/**
- * A readable handle name built from the LAST `depth` path segments of an
- * expansion, joined with `_` and capped at {@link MAX_NAME_LENGTH}.
+ * SIX IS AN ECONOMIC LIMIT, NOT A STYLE CHOICE, and it is the single most
+ * load-bearing number in this file. A handle costs `len(name) + 1` characters
+ * every time it is written and `len(name) + len(expansion) + overhead` once in
+ * the prompt, so the net saving collapses as names grow. Measured by replaying
+ * the 87,492 characters a real agent actually emitted on the ytt task
+ * (`deepswe-bench/runs/argot-smoke-0724`) against a dictionary fitted to that
+ * output:
  *
- * `depth` is what disambiguation grows: `core`, then `template_core`, then
- * `pkg_template_core`. Every one of those is something a reader can derive from
- * the expansion by eye, which is the entire point (see {@link buildMnemonicNames}).
+ *   name length   handles   net saving
+ *        2          437       +39.4%
+ *        4          315       +25.1%
+ *        6          175       +13.7%
+ *        8           89        +6.9%
+ *       11           37        +1.8%
+ *
+ * Run-to-run output-token noise on this workload is about 8%, so a cap above six
+ * puts the BEST possible outcome under the noise floor and no number of repeats
+ * can measure the feature. A cap of twelve was tried, to make names derivable by
+ * eye from their expansion, and it is not affordable: it buys readability at the
+ * cost of the entire effect.
+ *
+ * MEASURE NAMES IN TOKENS, NOT CHARACTERS, and do not optimise them for human
+ * readability. A model retrieves `§st1k` from the handle table exactly as easily
+ * as `§starlark`: the table is in context and attention is content-addressed, so
+ * an opaque name is not harder for it to use. What a name costs is tokens, and
+ * there the intuition inverts, because a short random string tokenises WORSE than
+ * a longer common word. With the sigil included: `§ret` is 2 tokens, `§r2` is 3,
+ * `§stlk` is 3, `§st1k` is 4. So prefer a name that lands on common subwords over
+ * a shorter arbitrary one; the character cap above is a cheap proxy for that, not
+ * the real objective. A handle's realistic floor is 2 tokens (sigil + one
+ * subword), which is why `perUse` in the scorer must be computed on tokens.
  */
-function nameAtDepth(expansion: string, depth: number): string {
-	const segments = pathSegments(expansion);
-	const name = segments
-		.slice(-depth)
-		.map(cleanSegment)
-		.filter(part => part.length > 0)
-		.join("_")
-		.slice(0, MAX_NAME_LENGTH);
-	if (name.length > 0) return name;
-	const flattened = cleanSegment(expansion).slice(0, MAX_NAME_LENGTH);
-	return flattened.length > 0 ? flattened : "h";
-}
+const MAX_NAME_LENGTH = 6;
 
-/** A readable stem from an expansion's last path segment, for handle names. */
+/** A short readable stem from an expansion's last path segment, for handle names. */
 function nameStem(expansion: string): string {
-	return nameAtDepth(expansion, 1);
+	const segment = expansion.split(/[/\\]/).filter(Boolean).pop() ?? expansion;
+	let base = segment
+		.toLowerCase()
+		.replace(/[^a-z0-9_]+/g, "")
+		.slice(0, MAX_NAME_LENGTH);
+	if (base.length === 0) {
+		base = expansion
+			.toLowerCase()
+			.replace(/[^a-z0-9_]+/g, "")
+			.slice(0, MAX_NAME_LENGTH);
+	}
+	return base.length === 0 ? "h" : base;
 }
 
 /** A 32-bit FNV-1a hash of a string, seedable so two rounds give an independent value. */
@@ -585,41 +584,35 @@ function contentName(expansion: string): string {
  *
  * Two goals the runtime cache needs at once:
  *
- *  - DERIVABILITY. A model only writes a handle it can PRODUCE while typing. If
- *    the name cannot be derived from the expansion by eye, using shorthand means
- *    scanning a table of hundreds of rows for the one matching what you were
- *    about to write, and no model pays that cost mid-task. So a name is built
- *    from the expansion's own path segments and nothing else: the last segment
- *    (`core`), and where that collides, one more segment of context
- *    (`template_core`), never a hash. The rule is simple enough to state in the
- *    notation block, which is what lets a model write a handle without a lookup.
- *
- *    This is the property the previous scheme destroyed, and it is why organic
- *    adoption was zero. Stems were truncated to six characters and collisions
- *    resolved with a hash, so on the real 551-handle ytt dictionary 86% of names
- *    were opaque: `github.com/k14s/starlark-go/starlark` became `§starla17` and
- *    `.../starlarkstruct` became `§starla18`. Beyond being unguessable, those two
- *    are a correctness hazard, because misremembering one digit silently expands
- *    to a DIFFERENT real path rather than failing. Under this scheme they are
- *    `§starlark` and `§starlarkstruct`.
- *
  *  - BREVITY. The token win only exists when a handle is shorter than the string
- *    it replaces, so names stay capped at {@link MAX_NAME_LENGTH} and an
- *    expansion whose stem is unique gets the bare stem, the shortest name
- *    available. Derivability is not free and is not meant to be: on that same
- *    dictionary it costs about 7% of the per-handle saving (45.7 characters
- *    against 49.3). That is the right trade at any adoption rate above a few
- *    percent, and adoption was zero. It remains far cheaper than the ORIGINAL
- *    content scheme's fixed 8-character hash on every handle, which made handles
- *    nearly as long as short expansions.
+ *    it replaces, and it collapses fast as names grow (see {@link MAX_NAME_LENGTH}
+ *    for the measured curve). An expansion whose stem is unique among the set gets
+ *    the bare stem (`connec` for `.../connection-pool`) — the shortest possible
+ *    name. Only expansions that COLLIDE on a stem pay a disambiguator, and only
+ *    the shortest hash prefix that separates them, grown one character at a time.
+ *    This is why the cache no longer uses the content scheme's fixed 8-char hash
+ *    on every handle, which made handles nearly as long as short expansions.
  *
  *  - DETERMINISM. A name is a pure function of the expansion plus the set of
- *    other expansions it collides with, never of iteration order: expansions are
- *    grouped by stem, groups and their members are processed in sorted order, and
- *    disambiguation walks up the path in a fixed direction. So two independent
+ *    other expansions that share its stem, never of iteration order: expansions
+ *    are grouped by stem, groups and their members are processed in sorted order,
+ *    and disambiguators come from a hash of the expansion. So two independent
  *    generators over the same expansion set mint byte-identical names, which is
  *    exactly what lets the immutable content-signature cache adopt short names
  *    with no cross-generator coordination (the property the content scheme had).
+ *
+ * Opaque names are FINE and are not why adoption was zero. A model reads the
+ * handle table out of its context rather than recalling it from memory, so
+ * `§starla17` costs it nothing that `§starlark` would not (see
+ * {@link MAX_NAME_LENGTH} for what a name does cost, which is tokens). Do not
+ * trade tokens for human readability here.
+ *
+ * The one naming risk worth tracking is SIMILARITY, not opacity: `§starla17` and
+ * `§starla18` differ by a single character and expand to different real paths, so
+ * a slip produces wrong text rather than an error. That argues for names that are
+ * far apart, not for names that are guessable. The dictionary being 551 entries
+ * of strings no agent ever types is a separate and much larger defect; see
+ * ARGOT-DICT-FITS-THE-WRONG-CORPUS in BACKLOG.md.
  *
  * `reserved` holds names already bound to a frozen (pinned) handle; a new name is
  * never allowed to equal one, so a pin's expansion can never be silently reused.
