@@ -347,6 +347,8 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.inputTokens = usage.inputTokens ?? null;
 		result.outputTokens = usage.outputTokens ?? null;
 		result.cacheTokens = usage.cacheTokens ?? null;
+		result.cacheReadTokens = usage.cacheReadTokens ?? null;
+		result.cacheWriteTokens = usage.cacheWriteTokens ?? null;
 		result.costUsd = usage.costUsd ?? null;
 		result.argotLoadCalls = usage.argotLoadCalls ?? null;
 		result.assistantMsgsWithSigil = usage.assistantMsgsWithSigil ?? null;

@@ -1134,12 +1134,51 @@ describe("tallyUsage — a tool invocation is counted once, not once per call an
 		expect(tallyUsage(messages).assistantMsgsWithSigil).toBe(1);
 	});
 
+	/**
+	 * Cache reads and cache writes must survive the tally as separate numbers.
+	 *
+	 * They were summed into one `cacheTokens` field, and that single field cannot
+	 * be priced: a read costs 0.075/M and a write 0.3833/M, a factor of five, so
+	 * an arm that turns reads into writes gets five times more expensive while
+	 * the summed column does not move at all. That is the exact regression the
+	 * cost table exists to catch, and it can only be caught if the split survives
+	 * from the session file to the row. `cacheTokens` is still their sum, for the
+	 * older records and callers that read it.
+	 */
+	test("keeps cache reads and cache writes separate, and their sum", () => {
+		const messages = [
+			{ role: "assistant", usage: { input: 10, output: 5, cacheRead: 1000, cacheWrite: 200 }, content: [] },
+			{ role: "assistant", usage: { input: 20, output: 7, cacheRead: 3000, cacheWrite: 0 }, content: [] },
+		];
+		const u = tallyUsage(messages);
+		expect(u.cacheReadTokens).toBe(4000);
+		expect(u.cacheWriteTokens).toBe(200);
+		expect(u.cacheTokens).toBe(4200);
+		expect(u.inputTokens).toBe(30);
+		expect(u.outputTokens).toBe(12);
+	});
+
+	/**
+	 * A session whose messages report reads but no `cacheWrite` field at all must
+	 * tally a write of zero, not `NaN`. Providers omit the field when nothing was
+	 * written, and a `NaN` here would propagate into the priced total and render
+	 * the whole cost table unusable from one malformed line.
+	 */
+	test("treats an absent cacheWrite field as zero, not NaN", () => {
+		const u = tallyUsage([{ role: "assistant", usage: { input: 5, output: 1, cacheRead: 99 }, content: [] }]);
+		expect(u.cacheWriteTokens).toBe(0);
+		expect(u.cacheReadTokens).toBe(99);
+		expect(Number.isNaN(u.cacheTokens)).toBe(false);
+	});
+
 	test("an empty session tallies to all-zero, never throws", () => {
 		const u = tallyUsage([]);
 		expect(u).toEqual({
 			inputTokens: 0,
 			outputTokens: 0,
 			cacheTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
 			costUsd: 0,
 			argotLoadCalls: 0,
 			assistantMsgsWithSigil: 0,
