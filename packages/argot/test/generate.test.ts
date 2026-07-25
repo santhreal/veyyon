@@ -112,7 +112,7 @@ describe("extractCandidates", () => {
 	// `parts.push(theme.fg('dim`, a regex literal) as if they were paths. No agent
 	// retypes those; they were the dominant dictionary noise on a code corpus. The
 	// cleanliness gate (isReusableToken) rejects any candidate bearing code
-	// punctuation while still keeping genuine paths, imports, and URLs.
+	// punctuation while still keeping genuine paths and scheme-less import specifiers.
 	describe("cleanliness gate rejects code-expression fragment tokens", () => {
 		test("a template-interpolation fragment is not captured as a token", () => {
 			// biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${...}` is the codec test fixture — extractCandidates must reject a template-interpolation fragment.
@@ -142,14 +142,58 @@ describe("extractCandidates", () => {
 			expect(extractCandidates("resolve @oh-my-pi/pi-coding-agent now")).toContain("@oh-my-pi/pi-coding-agent");
 		});
 
-		test("a URL IS still captured", () => {
-			expect(extractCandidates("fetch https://rubygems.org/api/v1/gems then")).toContain(
-				"https://rubygems.org/api/v1/gems",
-			);
-		});
-
 		test("a home-relative path IS still captured", () => {
 			expect(extractCandidates("look in ~/.omp/agent/extensions/ folder")).toContain("~/.omp/agent/extensions/");
+		});
+	});
+
+	// Regression: a dictionary handle only pays for itself when the agent RETYPES the
+	// string. A scheme-bearing URL (`https://…`), a markdown badge, and a hexdump line
+	// are all read-but-never-retyped reference noise. On a real budget-16000 dictionary
+	// built from the ytt corpus they were 117 of 524 handles (22%): 97 scheme URLs, 19
+	// README badges, 1 hexdump — pure teach-cost that rode the system prompt every turn
+	// with zero adoption. These lock out each junk class while proving the legitimate
+	// scheme-LESS module paths an agent DOES retype survive. (EVAL-ARGOT-DICT-CAPTURES-URLS-BADGES)
+	describe("reference-noise handles are rejected but retyped module paths survive", () => {
+		test("a bare scheme URL is dropped (hyperlink, never retyped)", () => {
+			const found = extractCandidates("fetch https://rubygems.org/api/v1/gems then");
+			expect(found).not.toContain("https://rubygems.org/api/v1/gems");
+		});
+
+		test("an http scheme URL is dropped", () => {
+			const found = extractCandidates("license at http://www.apache.org/licenses/LICENSE-2.0 here");
+			expect(found).not.toContain("http://www.apache.org/licenses/LICENSE-2.0");
+		});
+
+		test("a scheme-less Go module path IS kept (genuine import)", () => {
+			const found = extractCandidates("import github.com/aws/aws-lambda-go/events now");
+			expect(found).toContain("github.com/aws/aws-lambda-go/events");
+		});
+
+		test("a scheme-less vanity module path IS kept", () => {
+			const found = extractCandidates("import carvel.dev/ytt/pkg/yamlmeta here");
+			expect(found).toContain("carvel.dev/ytt/pkg/yamlmeta");
+		});
+
+		test("a markdown badge line is not captured whole", () => {
+			const line =
+				"[![Go Reference](https://pkg.go.dev/badge/github.com/aws/aws-lambda-go.svg)](https://pkg.go.dev/github.com/aws/aws-lambda-go)";
+			expect(extractCandidates(line)).not.toContain(line);
+		});
+
+		test("a markdown link line is not captured whole", () => {
+			const line = "See the [contributing guide](https://github.com/spf13/cobra/blob/main/CONTRIBUTING.md) first";
+			expect(extractCandidates(line)).not.toContain(line);
+		});
+
+		test("a hexdump line is not captured whole", () => {
+			const line = "00000010  21 22 23 24 25 26 27 28  29 2a 2b 2c 2d 2e 2f 30  |!\"#$%&'()*+,-./0|";
+			expect(extractCandidates(line)).not.toContain(line);
+		});
+
+		test("a real ytt data-values annotation IS still captured", () => {
+			const found = extractCandidates("set #@data/values-schema in the template");
+			expect(found).toContain("#@data/values-schema");
 		});
 	});
 
@@ -508,7 +552,11 @@ describe("document-frequency scoring (centrality, not raw repetition)", () => {
 	// Under the old term-frequency scoring the lockfile line won the budget; under
 	// document-frequency scoring the central path wins.
 	test("a 400x-repeated lockfile line does not outrank a widely-referenced path", () => {
-		const LOCK_LINE = "registry+https://github.com/rust-lang/crates.io-index";
+		// A scheme-less pnpm-style resolution path — the kind that repeats verbatim
+		// hundreds of times in a lockfile. Kept deliberately scheme-less so the
+		// fixture exercises document-frequency scoring, not URL rejection (a scheme
+		// URL is dropped upstream by isReusableToken).
+		const LOCK_LINE = "/@babel/core/7.20.12/node_modules/@babel/core/lib/index.js";
 		const CENTRAL = "packages/app/core/src/database/connection/pool.ts";
 		const files: { path: string; content: string }[] = [
 			// One lockfile whose single registry line repeats 400 times.
@@ -612,11 +660,12 @@ describe("does not capture prose sentences (budget-waste regression)", () => {
 	});
 
 	test("prose tokens that ARE structured still earn handles on their own", () => {
-		// Rejecting the sentence must not discard the URL inside it: the reusable
-		// token is exactly what a handle should stand for.
-		const line = "Please read https://example.com/docs/guide.html for details today";
+		// Rejecting the sentence must not discard the reusable path inside it: the
+		// module path is exactly what a handle should stand for. (A scheme URL would
+		// be dropped as reference noise, so the fixture uses a scheme-less import.)
+		const line = "Please read packages/app/src/docs/guide.html for details today";
 		const found = extractCandidates(line);
 		expect(found).not.toContain(line);
-		expect(found).toContain("https://example.com/docs/guide.html");
+		expect(found).toContain("packages/app/src/docs/guide.html");
 	});
 });
