@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed a configured `modelRoles.default` on a discovery provider being replaced at startup by an unrelated authenticated provider's default, when a cold catalog cache meant the role could not yet resolve ([#6233](https://github.com/can1357/oh-my-pi/issues/6233)).
 - Fixed `session_stop` extension hooks running when a prompt was aborted or the session was disposed, so an abort could still trigger stop-hook work and its continuation state ([#6226](https://github.com/can1357/oh-my-pi/issues/6226)).
 - Fixed a provider error being pinned behind the plan review overlay, which left the error invisible and the input unusable until the plan was answered ([#6217](https://github.com/can1357/oh-my-pi/issues/6217)).
 - Fixed the `tools.maxTimeout` ceiling being ignored whenever a tool call omitted `timeout`, so a configured global cap did not bound a tool running on its default budget ([#6296](https://github.com/can1357/oh-my-pi/issues/6296)).
