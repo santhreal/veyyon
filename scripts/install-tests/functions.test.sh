@@ -914,6 +914,38 @@ write_stub_binary() {
   printf 'c' > "$(completions_dir_for fish)/veyyon.fish"
   printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$_sp/bin:\$PATH\"" > "$_sp/.bashrc"
 
+  # The INSTALL half first, against the same spaced home: these are the units
+  # that write, so a word-split here puts files somewhere the uninstall will
+  # never look and reports success either way.
+  rm -f "$_sp/bin/vey"
+  link_alias "$_sp/bin" >/dev/null 2>&1
+  check "link_alias creates the alias under a spaced HOME" \
+      "$( [ -L "$_sp/bin/vey" ] && echo yes || echo no )" "yes"
+  check "the alias points at the binary in the spaced directory" \
+      "$(readlink "$_sp/bin/vey")" "$_sp/bin/veyyon"
+
+  printf '%s\n' '#!/bin/sh' 'case "$1" in' '  completions) echo "# generated for $2" ;;' \
+      '  *) echo veyyon/1.2.3 ;;' 'esac' > "$_sp/bin/gen"; chmod +x "$_sp/bin/gen"
+  install_completions "$_sp/bin/gen" >/dev/null 2>&1
+  check "completions land in the spaced HOME's bash directory" \
+      "$(cat "$(completions_dir_for bash)/veyyon" 2>/dev/null)" "# generated for bash"
+  check "completions land in the spaced HOME's fish directory" \
+      "$(cat "$(completions_dir_for fish)/veyyon.fish" 2>/dev/null)" "# generated for fish"
+  check "the alias completion is written under a spaced HOME too" \
+      "$(cat "$(completions_dir_for fish)/vey.fish" 2>/dev/null)" "# generated for fish"
+
+  printf '%s\n' "alias ll=ls" > "$_sp/.bashrc"
+  ensure_on_path "$_sp/bin" >/dev/null 2>&1
+  check "the PATH line names the spaced directory intact" \
+      "$(grep -c "\"$_sp/bin:\$PATH\"" "$_sp/.bashrc")" "1"
+  check "ensure_on_path keeps the user's own rc content" \
+      "$(grep -c 'alias ll=ls' "$_sp/.bashrc")" "1"
+  # Running it twice must not append a second line for the same directory.
+  ensure_on_path "$_sp/bin" >/dev/null 2>&1
+  check "ensure_on_path is idempotent under a spaced HOME" \
+      "$(grep -c "$_sp/bin" "$_sp/.bashrc")" "1"
+
+  rm -f "$_sp/bin/gen"
   out=$( do_uninstall 2>&1 )
   check "a spaced HOME still reports a completed uninstall" \
       "$(printf '%s' "$out" | grep -c 'veyyon uninstalled.')" "1"
