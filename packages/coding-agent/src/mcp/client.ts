@@ -7,6 +7,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { errorMessage, getProjectDir, logger, withTimeout } from "@veyyon/utils";
 import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "./timeout";
+import { MAX_TOOL_LIST_PAGES, validateToolListPage } from "./tool-list-validation";
 import { createHttpTransport } from "./transports/http";
 import { createSseTransport } from "./transports/sse";
 import { createStdioTransport } from "./transports/stdio";
@@ -34,7 +35,6 @@ import type {
 	MCPToolCallParams,
 	MCPToolCallResult,
 	MCPToolDefinition,
-	MCPToolsListResult,
 	MCPTransport,
 } from "./types";
 
@@ -218,7 +218,9 @@ export async function listTools(
 	}
 
 	const allTools: MCPToolDefinition[] = [];
+	const seenCursors = new Set<string>();
 	let cursor: string | undefined;
+	let pages = 0;
 
 	do {
 		const params: Record<string, unknown> = {};
@@ -226,9 +228,37 @@ export async function listTools(
 			params.cursor = cursor;
 		}
 
-		const result = await connection.transport.request<MCPToolsListResult>("tools/list", params, options);
-		allTools.push(...result.tools);
-		cursor = result.nextCursor;
+		// Deliberately NOT cast to the result type and spread. That cast is erased
+		// at runtime, so the old code trusted a third-party server's payload
+		// completely: a missing `tools` threw a bare TypeError, and a `tools` that
+		// was a string got spread into one nameless tool per character.
+		const raw = await connection.transport.request<unknown>("tools/list", params, options);
+		const page = validateToolListPage(raw, connection.name);
+		allTools.push(...page.tools);
+		cursor = page.nextCursor;
+		pages++;
+
+		// A server that answers every page with the same cursor otherwise loops
+		// forever, growing `allTools` until the process dies. No request timeout
+		// catches this, because each individual request answers promptly.
+		if (cursor && seenCursors.has(cursor)) {
+			logger.warn("MCP server repeated a pagination cursor; stopped listing its tools", {
+				path: `mcp:${connection.name}`,
+				server: connection.name,
+				tools: allTools.length,
+			});
+			break;
+		}
+		if (cursor) seenCursors.add(cursor);
+		if (pages >= MAX_TOOL_LIST_PAGES) {
+			logger.warn("MCP server exceeded the tool-list page limit; stopped listing its tools", {
+				pages,
+				path: `mcp:${connection.name}`,
+				server: connection.name,
+				tools: allTools.length,
+			});
+			break;
+		}
 	} while (cursor);
 
 	// Cache tools
