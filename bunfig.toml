@@ -2,7 +2,13 @@ telemetry = false
 
 [install]
 minimumReleaseAge = 259200 # 3 days in seconds
-minimumReleaseAgeExcludes = ["@types/bun", "bun-types"]
+# A pinned `overrides` entry in package.json is a REVIEWED decision, usually a
+# security bump, so the age heuristic must not veto it: brace-expansion was
+# pinned to ^5.0.8 for GHSA-mh99-v99m-4gvg while 5.0.8 was ~40 hours old, and
+# any install resolving from scratch died with "No version matching". Every
+# override key belongs here, which `scripts/dependency-overrides.test.ts`
+# enforces so the two lists cannot drift.
+minimumReleaseAgeExcludes = ["@types/bun", "bun-types", "@ark/schema", "tar", "adm-zip", "sharp", "brace-expansion"]
 linker = "hoisted"
 exact = true
 saveTextLockfile = true

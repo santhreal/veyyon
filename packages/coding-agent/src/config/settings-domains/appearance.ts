@@ -435,7 +435,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Display",
 			label: "Scroll Isolation",
 			description:
-				"Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the position on the right edge. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so plain drag-select becomes Shift+drag.",
+				"Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the position on the right edge. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so selecting with the mouse becomes shift+drag; veyyon says so the first time a drag comes back empty, and `/copy` picks text or code from the conversation without the mouse.",
 			advanced: true,
 		},
 	},

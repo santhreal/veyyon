@@ -226,6 +226,7 @@ import type {
 	TodoItem,
 	TodoPhase,
 } from "./types";
+import { createSelectionAttemptNotice } from "./utils/selection-notice";
 import { UiHelpers } from "./utils/ui-helpers";
 
 const HINT_SHIMMER_PALETTE: ShimmerPalette = {
@@ -741,6 +742,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.setMaxInlineImages(settings.get("tui.maxInlineImages"));
 		this.ui.setScrollbackRebuild(settings.get("tui.scrollbackRebuild"));
 		this.ui.setScrollIsolation(settings.get("tui.scrollIsolation"));
+		// Holding the mouse is what lets the wheel scroll the transcript with the
+		// prompt pinned, and it takes plain drag-select away from the terminal. Say
+		// so the first time a drag comes back empty, rather than leaving the
+		// operator to conclude copy is broken ("i cant copy and paste from the
+		// terminal", 2026-07-24). The wording and the once-only policy belong to
+		// `selection-notice`.
+		this.ui.onSelectionAttempt = createSelectionAttemptNotice(message => this.showStatus(message));
 		// OSC 66 text-sizing is Kitty-only; resolve the setting against the terminal's
 		// capability (`TERMINAL.textSizing` defaults on for Kitty) so it stays off
 		// unless the user opts in, and never emits raw escapes on other terminals.
