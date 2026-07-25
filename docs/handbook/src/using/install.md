@@ -118,7 +118,12 @@ Veyyon is distributed only two ways, and it updates the way it was installed. A
 binary install (the `curl` installer from veyyon.dev) replaces its own binary
 with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
-place a binary ever comes from. A source checkout updates in its own terms:
+place a binary ever comes from. Before it keeps the new binary it runs the same
+two checks the installer runs: the binary reports the version the release
+claims, and a real search confirms the native addon loads. If either fails the
+previous binary goes back in place and the update reports why, so a release with
+no build for your platform cannot leave you with a binary that starts and then
+fails on your first command. A source checkout updates in its own terms:
 `veyyon update` fast-forwards the checkout, reinstalls dependencies, and
 regenerates build artifacts, and refreshes the native addon, all in one command.
 It then reads the checkout's own version back and refuses to report success
