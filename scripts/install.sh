@@ -246,6 +246,76 @@ completion_file_for() {
     esac
 }
 
+# The file whose presence means bash's user completions directory is autoloaded
+# at all. Without the bash-completion package there is no dynamic loader, so a
+# file written under it is never read.
+BASH_COMPLETION_LOADERS="/usr/share/bash-completion/bash_completion
+/etc/bash_completion
+/usr/local/share/bash-completion/bash_completion
+/opt/homebrew/etc/profile.d/bash_completion.sh"
+
+# Whether the shell will actually LOAD the directory we just wrote into.
+# 0 = yes, 1 = no, 2 = cannot tell (that shell is not installed here).
+#
+# Writing the file is only half the job. zsh's site-functions directory under
+# $XDG_DATA_HOME is NOT on the default $fpath on most systems, and bash's user
+# completions directory does nothing without the bash-completion loader. The
+# installer printed "installed zsh completions" in both cases and the user got
+# no tab completion at all, with nothing on screen suggesting why.
+completions_dir_is_loaded() {
+    _shell="$1"
+    _dir="$2"
+    case "$_shell" in
+        fish)
+            # ~/.config/fish/completions is on fish's complete path by
+            # construction, so there is nothing to verify.
+            return 0
+            ;;
+        zsh)
+            has zsh || return 2
+            # A non-interactive zsh reports the compiled-in $fpath plus whatever
+            # .zshenv adds. fpath edits conventionally live in .zshrc, which only
+            # interactive shells read, and running an interactive shell from an
+            # installer can hang, so the rc text is checked as well.
+            if zsh -c 'print -rl -- $fpath' 2>/dev/null | grep -Fqx "$_dir"; then
+                return 0
+            fi
+            for _rc in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile"; do
+                # Whole-token match, not substring: an rc mentioning
+                # "$_dir-other" is a DIFFERENT directory, and treating it as
+                # ours would suppress the warning for a dir zsh never loads.
+                # `fpath=(/a/b $fpath)` splits on parens, quotes and whitespace.
+                if [ -f "$_rc" ] && tr "()=\"' \t" '\n\n\n\n\n\n\n' < "$_rc" | grep -Fqx "$_dir"; then
+                    return 0
+                fi
+            done
+            return 1
+            ;;
+        bash)
+            has bash || return 2
+            if [ -n "${BASH_COMPLETION_USER_DIR:-}" ]; then
+                return 0
+            fi
+            for _loader in $BASH_COMPLETION_LOADERS; do
+                if [ -r "$_loader" ]; then
+                    return 0
+                fi
+            done
+            return 1
+            ;;
+    esac
+    return 2
+}
+
+# What the user has to do to make an unloaded completions directory load.
+completions_enable_hint() {
+    case "$1" in
+        zsh)  printf 'add  fpath=(%s $fpath)  to ~/.zshrc, above the compinit line' "$2" ;;
+        bash) printf 'install your distro'\''s bash-completion package, then open a new shell' ;;
+        *)    printf 'open a new shell' ;;
+    esac
+}
+
 install_completions() {
     bin="$1"
     "$bin" completions --help >/dev/null 2>&1 || {
@@ -264,6 +334,15 @@ install_completions() {
         tmp="$out/.$name.$$"
         if "$bin" completions "$sh" > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$out/$name"; then
             ok "installed $sh completions"
+            # A written file that the shell never reads is not a working
+            # completion, so say so here rather than letting the user discover
+            # it by pressing Tab and getting nothing.
+            loaded=0
+            completions_dir_is_loaded "$sh" "$out" || loaded=$?
+            if [ "$loaded" = 1 ]; then
+                warn "$sh does not load $out, so those completions do nothing yet"
+                warn "    fix: $(completions_enable_hint "$sh" "$out")"
+            fi
             # bash and fish autoload a completion file by the command name being
             # completed, so the `vey` alias needs its own file or it gets nothing
             # (zsh needs none: the generated script's `#compdef` line names both).

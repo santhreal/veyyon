@@ -283,6 +283,147 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   check "uninstall removed the fish completion" "$( [ -e "$fishdir/veyyon.fish" ] && echo present || echo absent )" "absent"
   check "uninstall removed the fish alias completion" "$( [ -e "$fishdir/vey.fish" ] && echo present || echo absent )" "absent" )
 
+# --- completions_dir_is_loaded: a written file the shell never reads is not a completion ---
+# The installer printed "installed zsh completions" for a file dropped into
+# $XDG_DATA_HOME/zsh/site-functions, which is NOT on the default $fpath on most
+# systems. Same for bash's user directory without the bash-completion loader.
+# Both cases looked like success and gave the user nothing when they pressed Tab.
+# 0 = the shell loads it, 1 = it does not, 2 = that shell is not installed here.
+
+# fish needs no check: ~/.config/fish/completions is on its complete path by
+# construction, so claiming otherwise would produce a warning nobody can act on.
+( completions_dir_is_loaded fish "/anywhere" ); check "fish completions dir is always loaded" "$?" "0"
+
+# zsh, shadowed so the test never depends on the host having zsh or on which
+# fpath that host's zsh was compiled with.
+( _z="$SANDBOX/zsh-loaded"; mkdir -p "$_z"
+  has() { [ "$1" = zsh ]; }
+  zsh() { printf '/usr/share/zsh/functions\n%s\n' "$_z"; }
+  completions_dir_is_loaded zsh "$_z" )
+check "zsh dir already on \$fpath reports loaded" "$?" "0"
+
+( _z="$SANDBOX/zsh-unloaded"; mkdir -p "$_z"
+  has() { [ "$1" = zsh ]; }
+  zsh() { printf '/usr/share/zsh/functions\n'; }
+  export HOME="$SANDBOX/zsh-home-empty"; mkdir -p "$HOME"
+  completions_dir_is_loaded zsh "$_z" )
+check "zsh dir absent from \$fpath and every rc reports NOT loaded" "$?" "1"
+
+# fpath edits conventionally live in .zshrc, which a non-interactive `zsh -c`
+# never reads. Missing that would warn at every install on a correctly
+# configured machine, which trains the user to ignore the warning.
+( _z="$SANDBOX/zsh-rc"; mkdir -p "$_z"
+  has() { [ "$1" = zsh ]; }
+  zsh() { printf '/usr/share/zsh/functions\n'; }
+  export HOME="$SANDBOX/zsh-home-rc"; mkdir -p "$HOME"
+  printf 'fpath=(%s $fpath)\nautoload -Uz compinit\n' "$_z" > "$HOME/.zshrc"
+  completions_dir_is_loaded zsh "$_z" )
+check "a .zshrc fpath line counts as loaded" "$?" "0"
+
+( _z="$SANDBOX/zsh-env"; mkdir -p "$_z"
+  has() { [ "$1" = zsh ]; }
+  zsh() { printf '/usr/share/zsh/functions\n'; }
+  export HOME="$SANDBOX/zsh-home-env"; mkdir -p "$HOME"
+  printf 'fpath=(%s $fpath)\n' "$_z" > "$HOME/.zshenv"
+  completions_dir_is_loaded zsh "$_z" )
+check "a .zshenv fpath line counts as loaded" "$?" "0"
+
+# A prefix-sharing directory in an rc must not be mistaken for ours, or the
+# check silently passes for a directory the shell never loads.
+( _z="$SANDBOX/zsh-prefix"; mkdir -p "$_z"
+  has() { [ "$1" = zsh ]; }
+  zsh() { printf '/usr/share/zsh/functions\n'; }
+  export HOME="$SANDBOX/zsh-home-prefix"; mkdir -p "$HOME"
+  printf 'fpath=(%s-other $fpath)\n' "$_z" > "$HOME/.zshrc"
+  completions_dir_is_loaded zsh "$_z" )
+check "an unrelated fpath entry does not count as ours" "$?" "1"
+
+# The $fpath comparison is whole-line: a compiled-in entry that merely CONTAINS
+# our path as a prefix is a different directory.
+( _z="$SANDBOX/zsh-fpath-prefix"; mkdir -p "$_z"
+  has() { [ "$1" = zsh ]; }
+  zsh() { printf '%s-other\n' "$_z"; }
+  export HOME="$SANDBOX/zsh-home-fp"; mkdir -p "$HOME"
+  completions_dir_is_loaded zsh "$_z" )
+check "a prefix-sharing \$fpath entry does not count as ours" "$?" "1"
+
+# No zsh on the host means the answer is UNKNOWN, not "not loaded": warning
+# about a shell the user does not have is noise.
+( has() { return 1; }
+  completions_dir_is_loaded zsh "/anywhere" )
+check "no zsh installed reports unknown, not a failure" "$?" "2"
+
+# bash: the user directory is dead without the bash-completion dynamic loader.
+( _loader="$SANDBOX/bash-loader/bash_completion"; mkdir -p "$SANDBOX/bash-loader"; : > "$_loader"
+  has() { [ "$1" = bash ]; }
+  BASH_COMPLETION_LOADERS="$_loader"
+  completions_dir_is_loaded bash "/anywhere" )
+check "bash with the completion loader present reports loaded" "$?" "0"
+
+( has() { [ "$1" = bash ]; }
+  BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
+  unset BASH_COMPLETION_USER_DIR
+  completions_dir_is_loaded bash "/anywhere" )
+check "bash without any completion loader reports NOT loaded" "$?" "1"
+
+( has() { [ "$1" = bash ]; }
+  BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
+  export BASH_COMPLETION_USER_DIR="$SANDBOX/whatever"
+  completions_dir_is_loaded bash "/anywhere" )
+check "an explicit BASH_COMPLETION_USER_DIR counts as loaded" "$?" "0"
+
+( has() { return 1; }
+  completions_dir_is_loaded bash "/anywhere" )
+check "no bash installed reports unknown, not a failure" "$?" "2"
+
+# The hint has to name the actual directory and the actual file to edit, or the
+# warning is a dead end.
+check "the zsh hint names the dir and the rc file" "$( ( _hint=$(completions_enable_hint zsh "/some/site-functions"); case "$_hint" in *"/some/site-functions"*"~/.zshrc"*) echo yes ;; *) echo "$_hint" ;; esac ) )" "yes"
+check "the bash hint names the package to install" "$( completions_enable_hint bash "/x" | grep -c 'bash-completion package' )" "1"
+
+# End to end: the warning reaches the user's screen, and does not appear when
+# the directory is loaded.
+check "an unloaded zsh dir produces a visible warning" "$( ( _h="$SANDBOX/comp-warn2"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  mkdir -p "$_h/bin"
+  fakebin="$_h/bin/veyyon"
+  printf '#!/bin/sh\ncase "$1" in\n  completions) [ "$2" = "--help" ] && exit 0; echo "# completions for $2"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  chmod +x "$fakebin"
+  has() { case "$1" in zsh|bash) return 0 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  zsh() { printf '/usr/share/zsh/functions\n'; }
+  BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
+  unset BASH_COMPLETION_USER_DIR
+  out=$(install_completions "$fakebin" 2>&1)
+  case "$out" in *"zsh does not load"*) echo warned ;; *) echo missing ;; esac ) )" "warned"
+
+check "a loaded zsh dir produces no such warning" "$( ( _h="$SANDBOX/comp-quiet"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  mkdir -p "$_h/bin"
+  fakebin="$_h/bin/veyyon"
+  printf '#!/bin/sh\ncase "$1" in\n  completions) [ "$2" = "--help" ] && exit 0; echo "# completions for $2"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  chmod +x "$fakebin"
+  has() { case "$1" in zsh|bash) return 0 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  zsh() { printf '%s\n' "$(completions_dir_for zsh)"; }
+  BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
+  export BASH_COMPLETION_USER_DIR="$_h/share/bash-completion"
+  out=$(install_completions "$fakebin" 2>&1)
+  case "$out" in *"does not load"*) echo warned ;; *) echo quiet ;; esac ) )" "quiet"
+
+# The check is advisory: an unloaded directory must not fail the install, since
+# the binary itself is fine and the user can fix their rc afterwards.
+( _h="$SANDBOX/comp-nonfatal"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  mkdir -p "$_h/bin"
+  fakebin="$_h/bin/veyyon"
+  printf '#!/bin/sh\ncase "$1" in\n  completions) [ "$2" = "--help" ] && exit 0; echo "# c"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  chmod +x "$fakebin"
+  has() { case "$1" in zsh|bash) return 0 ;; *) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  zsh() { printf '/usr/share/zsh/functions\n'; }
+  BASH_COMPLETION_LOADERS="$SANDBOX/definitely-absent-loader"
+  unset BASH_COMPLETION_USER_DIR
+  install_completions "$fakebin" >/dev/null 2>&1 )
+check "an unloaded completions dir never fails the install" "$?" "0"
+
 # --- ALIAS_IS_OURS: the completion half of the no-clobber rule ---
 # link_alias refuses to overwrite a `vey` the user owns. install_completions ran
 # afterwards regardless, writing completions/vey — a file that both describes the
