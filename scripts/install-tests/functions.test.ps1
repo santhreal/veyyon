@@ -450,6 +450,39 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "SKIP: git not available; Get-LfsAssets tests skipped"
 }
 
+# --- Uninstall keeps a `vey.cmd` the installer never created ---
+# Install-Alias refuses to overwrite a vey.cmd the user already has, and says so.
+# Uninstall deleted it anyway, so removing veyyon destroyed the user's own
+# command. This is the identity gate that was missing.
+$aliasSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-alias-$PID"
+New-Item -ItemType Directory -Force -Path $aliasSandbox | Out-Null
+try {
+    $shim = Join-Path $aliasSandbox "vey.cmd"
+
+    Set-Content -LiteralPath $shim -Value "@echo off`r`n`"$(Join-Path $aliasSandbox 'veyyon.exe')`" %*"
+    Check "a shim forwarding to our exe is ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "True"
+
+    # A source install shims to veyyon.cmd instead; both are ours.
+    Set-Content -LiteralPath $shim -Value "@echo off`r`n`"$(Join-Path $aliasSandbox 'veyyon.cmd')`" %*"
+    Check "a shim forwarding to our cmd launcher is ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "True"
+
+    Set-Content -LiteralPath $shim -Value "@echo off`r`necho their tool"
+    Check "an unrelated vey.cmd is NOT ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
+
+    # A shim forwarding to a DIFFERENT veyyon (another install dir) is not this
+    # installation's to remove.
+    Set-Content -LiteralPath $shim -Value "@echo off`r`n`"C:\elsewhere\veyyon.exe`" %*"
+    Check "a shim pointing at another install is not ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
+
+    Remove-Item -Force $shim
+    Check "a missing shim is not ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
+
+    Set-Content -LiteralPath $shim -Value ""
+    Check "an empty shim is not ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
+} finally {
+    Remove-Item -Recurse -Force $aliasSandbox -ErrorAction SilentlyContinue
+}
+
 # --- Move-StagedBinaryIntoPlace: an empty download never becomes the binary ---
 # install.sh has refused a zero-byte staged file since finalize_binary existed;
 # the Windows side had no such guard. Invoke-WebRequest writes the file before it

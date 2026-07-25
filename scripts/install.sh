@@ -225,6 +225,29 @@ ensure_on_path() {
     fi
 }
 
+# The command the user should actually type.
+#
+# `vey` is the short launch alias, but the installer refuses to create it when
+# the user already owns that name — and then every closing message told them to
+# run `vey` anyway, which runs their tool, not veyyon. One owner, read by every
+# closing message, so the advice can never contradict what link_alias decided.
+launch_command() {
+    if [ "$ALIAS_IS_OURS" = 1 ]; then printf '%s' "$ALIAS_NAME"; else printf '%s' "$BIN_NAME"; fi
+}
+
+# The closing block, identical for every install mode. It was pasted three times,
+# so a change to the advice had to be made three times or the modes disagreed.
+print_next_steps() {
+    _cmd=$(launch_command)
+    say ""
+    say "✓ Installation complete."
+    say ""
+    say "Next steps:"
+    say "  1. Launch in any repository: $_cmd"
+    say "  2. Connect API providers:    $_cmd setup"
+    say "  3. Run system diagnostics:  $_cmd plugin doctor"
+}
+
 # ---- shell completions (best-effort, loud if unavailable — never silent) ----
 completions_dir_for() {
     case "$1" in
@@ -584,12 +607,32 @@ remove_path_line_from_rc() {
     return 1
 }
 
+# Whether `$1/$ALIAS_NAME` is an alias THIS installer created: a symlink whose
+# target is the binary beside it. link_alias writes exactly that and refuses to
+# create anything else, so anything else is a `vey` the user owns.
+alias_in_dir_is_ours() {
+    _d="$1"
+    [ -L "$_d/$ALIAS_NAME" ] || return 1
+    [ "$(readlink "$_d/$ALIAS_NAME" 2>/dev/null)" = "$_d/$BIN_NAME" ]
+}
+
 do_uninstall() {
     removed=0
     for d in "$INSTALL_DIR" "$HOME/.bun/bin"; do
-        for f in "$BIN_NAME" "$ALIAS_NAME"; do
-            if [ -e "$d/$f" ] || [ -L "$d/$f" ]; then rm -f "$d/$f" && { ok "removed $d/$f"; removed=1; }; fi
-        done
+        # The alias is checked BEFORE the binary is removed, and it is checked at
+        # all because install refuses to overwrite a `vey` the user already has.
+        # Uninstall deleted it anyway, so removing veyyon destroyed the user's own
+        # command — the same identity gate the completion files already had.
+        if [ -e "$d/$ALIAS_NAME" ] || [ -L "$d/$ALIAS_NAME" ]; then
+            if alias_in_dir_is_ours "$d"; then
+                rm -f "$d/$ALIAS_NAME" && { ok "removed $d/$ALIAS_NAME"; removed=1; }
+            else
+                ok "left $d/$ALIAS_NAME alone (not created by this installer)"
+            fi
+        fi
+        if [ -e "$d/$BIN_NAME" ] || [ -L "$d/$BIN_NAME" ]; then
+            rm -f "$d/$BIN_NAME" && { ok "removed $d/$BIN_NAME"; removed=1; }
+        fi
         # A compiled binary probes for a staged addon next to itself; clear any
         # `veyyon_natives.*.node` left beside the removed binary so uninstall does
         # not leave orphaned native artifacts behind.
@@ -905,8 +948,7 @@ install_via_bun() {
     install_completions "$INSTALL_DIR/$BIN_NAME"
     ensure_on_path "$INSTALL_DIR"
     doctor "$INSTALL_DIR/$BIN_NAME"
-    say ""
-    say "done. run '$ALIAS_NAME' in any repo to launch."
+    print_next_steps
 }
 
 # ---- local binary install (from local checkout build) ----
@@ -933,13 +975,7 @@ install_local() {
     install_completions "$INSTALL_DIR/$BIN_NAME"
     ensure_on_path "$INSTALL_DIR"
     doctor "$INSTALL_DIR/$BIN_NAME"
-    say ""
-    say "✓ Installation complete."
-    say ""
-    say "Next steps:"
-    say "  1. Launch in any repository: $ALIAS_NAME"
-    say "  2. Connect API providers:    $ALIAS_NAME setup"
-    say "  3. Run system diagnostics:  $ALIAS_NAME plugin doctor"
+    print_next_steps
 }
 
 # Which C library this userland uses: "musl", "glibc", or "unknown".
@@ -1030,13 +1066,7 @@ install_binary() {
     install_completions "$INSTALL_DIR/$BIN_NAME"
     ensure_on_path "$INSTALL_DIR"
     doctor "$INSTALL_DIR/$BIN_NAME" "$LATEST"
-    say ""
-    say "✓ Installation complete."
-    say ""
-    say "Next steps:"
-    say "  1. Launch in any repository: $ALIAS_NAME"
-    say "  2. Connect API providers:    $ALIAS_NAME setup"
-    say "  3. Run system diagnostics:  $ALIAS_NAME plugin doctor"
+    print_next_steps
 }
 
 # ---- main ----

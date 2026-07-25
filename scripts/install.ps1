@@ -458,6 +458,23 @@ function Configure-BashShell {
 
 # Write a `vey.cmd` shim next to the binary so `vey` launches Veyyon, mirroring
 # the `vey` symlink the Unix installer creates.
+# Whether a `vey.cmd` is a shim THIS installer wrote: one that forwards to the
+# binary beside it. Install-Alias only ever writes that form and refuses to
+# overwrite anything else, so anything else is the user's own command.
+#
+# Matched on the forwarded path rather than on the whole file, so a shim written
+# by an older installer version (different header, same target) is still
+# recognized as ours instead of being orphaned on the user's PATH forever.
+function Test-AliasShimIsOurs {
+    param([string]$ShimPath, [string]$BinDir)
+    $body = Get-Content -Raw -LiteralPath $ShimPath -ErrorAction SilentlyContinue
+    if (-not $body) { return $false }
+    foreach ($target in @((Join-Path $BinDir "$BinName.exe"), (Join-Path $BinDir "$BinName.cmd"))) {
+        if ($body.Contains($target)) { return $true }
+    }
+    return $false
+}
+
 function Install-Alias {
     param([string]$Target)
     $Script:AliasIsOurs = $false
@@ -968,7 +985,20 @@ function Uninstall-Veyyon {
         $removed = $true
     }
     if (Remove-Completions) { $removed = $true }
-    foreach ($f in @("$BinName.exe", "$BinName.cmd", "$AliasName.cmd")) {
+    # The alias is checked, and the binary is not, because Install-Alias refuses
+    # to overwrite a `vey.cmd` the user already has. Uninstall deleted it anyway,
+    # so removing veyyon destroyed the user's own command.
+    $aliasShim = Join-Path $InstallDir "$AliasName.cmd"
+    if (Test-Path $aliasShim) {
+        if (Test-AliasShimIsOurs -ShimPath $aliasShim -BinDir $InstallDir) {
+            Remove-Item -Force $aliasShim
+            Write-Host "OK  removed $aliasShim" -ForegroundColor Green
+            $removed = $true
+        } else {
+            Write-Host "OK  left $aliasShim alone (not created by this installer)" -ForegroundColor Green
+        }
+    }
+    foreach ($f in @("$BinName.exe", "$BinName.cmd")) {
         $p = Join-Path $InstallDir $f
         if (Test-Path $p) {
             Remove-Item -Force $p

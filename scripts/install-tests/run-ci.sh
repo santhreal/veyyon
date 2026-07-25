@@ -157,6 +157,70 @@ leftovers="$(ls -A "$INSTALLER_BIN" 2>/dev/null || true)"
    exit 1
 }
 
+section "Installer end-to-end (a 'vey' the user already owns)"
+# The no-clobber rule, driven for real. A user who already has a `vey` command
+# must keep it, keep its completions, AND not have our completions bound to it:
+# every generated script normally completes both names, so declining to write
+# the alias FILE was never enough on its own.
+FOREIGN_HOME="$WORK_DIR/foreign-home"
+FOREIGN_BIN="$FOREIGN_HOME/bin"
+mkdir -p "$FOREIGN_BIN" "$FOREIGN_HOME/.local/share/bash-completion/completions"
+
+foreign_env() {
+   env PATH="/usr/bin:/bin" \
+       HOME="$FOREIGN_HOME" \
+       XDG_DATA_HOME="$FOREIGN_HOME/.local/share" \
+       XDG_CONFIG_HOME="$FOREIGN_HOME/.config" \
+       VEYYON_INSTALL_DIR="$FOREIGN_BIN" \
+       VEYYON_SRC_DIR="$FOREIGN_HOME/.veyyon/src" \
+       SHELL=/bin/bash \
+       "$@"
+}
+
+printf '#!/bin/sh\necho their tool\n' > "$FOREIGN_BIN/vey"
+chmod +x "$FOREIGN_BIN/vey"
+printf 'complete -F _their_tool vey\n' > "$FOREIGN_HOME/.local/share/bash-completion/completions/vey"
+
+foreign_env sh "$ROOT_DIR/scripts/install.sh" --local
+
+grep -Fqx "echo their tool" "$FOREIGN_BIN/vey" || {
+   echo "installer end-to-end: the user's own vey was overwritten"
+   exit 1
+}
+grep -Fqx "complete -F _their_tool vey" "$FOREIGN_HOME/.local/share/bash-completion/completions/vey" || {
+   echo "installer end-to-end: the user's own vey completion was overwritten"
+   exit 1
+}
+# The decisive one: our own completion script must not bind their name.
+if grep -Eq '^complete -F _veyyon veyyon vey$' "$FOREIGN_HOME/.local/share/bash-completion/completions/veyyon"; then
+   echo "installer end-to-end: our bash completion still binds a vey we do not own"
+   exit 1
+fi
+if grep -Eq '^#compdef veyyon vey$' "$FOREIGN_HOME/.local/share/zsh/site-functions/_veyyon"; then
+   echo "installer end-to-end: our zsh completion still binds a vey we do not own"
+   exit 1
+fi
+if grep -q 'complete -c vey -w veyyon' "$FOREIGN_HOME/.config/fish/completions/veyyon.fish"; then
+   echo "installer end-to-end: our fish completion still binds a vey we do not own"
+   exit 1
+fi
+# Our own name must still complete fully; the alias is the only thing dropped.
+grep -Fq "complete -F _veyyon veyyon" "$FOREIGN_HOME/.local/share/bash-completion/completions/veyyon" || {
+   echo "installer end-to-end: our own bash completion is missing"
+   exit 1
+}
+
+foreign_env sh "$ROOT_DIR/scripts/install.sh" --uninstall
+
+grep -Fqx "echo their tool" "$FOREIGN_BIN/vey" || {
+   echo "installer end-to-end: uninstall removed the user's own vey"
+   exit 1
+}
+grep -Fqx "complete -F _their_tool vey" "$FOREIGN_HOME/.local/share/bash-completion/completions/vey" || {
+   echo "installer end-to-end: uninstall removed the user's own vey completion"
+   exit 1
+}
+
 section "Source install smoke (bun link)"
 SOURCE_BUN_HOME="$WORK_DIR/bun-source"
 (
