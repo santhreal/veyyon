@@ -8,7 +8,7 @@ Veyyon installs as a single self-contained binary. The installer downloads it, l
 $ curl -fsSL https://get.veyyon.dev | sh
 ```
 
-That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and prints a `doctor:` line confirming the binary runs. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile and tells you to restart your shell.
+That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and runs a `doctor:` self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because `veyyon --version` answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command. If the search fails, the installer stops and tells you to install from source. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile and tells you to restart your shell.
 
 ## Install on Windows
 
