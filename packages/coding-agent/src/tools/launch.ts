@@ -35,6 +35,7 @@ import {
 	truncateToWidth,
 } from "./render-utils";
 import { styleTerminalRow } from "./terminal-output";
+import { foldPassingTestOutput } from "./test-output-fold";
 import { ToolError } from "./tool-errors";
 
 const launchSchema = type({
@@ -415,7 +416,11 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		const client = await daemonClientForProject(this.session.cwd);
 		const result = await client.request(operationFor(params, this.session), signal);
 		return {
-			content: [{ type: "text", text: replaceTabs(toolContent(result, params)) }],
+			// Folded for the same reason bash and eval are: a test suite streamed
+			// through a launched process lands in context identically, and its
+			// per-test bookkeeping is re-read on every later turn. A no-op unless
+			// the output carries a real run's worth of pass/skip lines.
+			content: [{ type: "text", text: replaceTabs(foldPassingTestOutput(toolContent(result, params)).text) }],
 			details: await toolDetails(result, params),
 		};
 	}
