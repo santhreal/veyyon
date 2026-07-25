@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
+	auditPortFiles,
 	buildPortPrompt,
 	classifyHarvest,
 	classifyPrOpen,
@@ -13,7 +15,9 @@ import {
 	latestSessionMarker,
 	nudgeMarker,
 	parseEnvKeys,
+	parseNeverPorted,
 	sessionMarker,
+	testFilesShrunk,
 	upstreamNumberFromIssue,
 } from "./jules-port-manager.ts";
 
@@ -136,8 +140,49 @@ describe("buildPortPrompt", () => {
 		expect(p).not.toContain("Previous attempt failed");
 	});
 
-	it("bans scratch artifacts in the PR (live finding: a session committed the downloaded 6227.diff to the repo root)", () => {
-		expect(buildPortPrompt(40, "body", null)).toContain("Never commit scratch artifacts");
+	/**
+	 * Each clause below answers one PR the pipeline actually produced on
+	 * 2026-07-24. The prompt is the only lever that stops these at the source;
+	 * `land`'s audit is the backstop for when it fails. If a clause is ever
+	 * dropped from the prompt, the matching failure mode returns silently.
+	 */
+	it("forbids merging main into the port branch, the move that made #184/#186/#187 revert 183+ files each", () => {
+		const p = buildPortPrompt(40, "body", null);
+		expect(p).toContain("NEVER merge `main` into your branch");
+		expect(p).toContain("rebase");
+	});
+
+	it("names every path class a port must not commit, including the lockfile every session's older bun rewrites", () => {
+		const p = buildPortPrompt(40, "body", null);
+		for (const path of ["bun.lock", "Cargo.lock", ".gitignore", ".github/", "docs/handbook/book/", "docs/internal/"])
+			expect(p).toContain(path);
+	});
+
+	it("bans scratch artifacts by the names sessions actually leave behind (#201 committed 14 patch_*/test_* helpers; an earlier session committed a downloaded 6227.diff)", () => {
+		const p = buildPortPrompt(40, "body", null);
+		expect(p).toContain("patch_*.ts");
+		expect(p).toContain("test_*.ts");
+		expect(p).toContain("*.diff");
+	});
+
+	it("stops telling sessions to rebuild and commit the handbook, which is what dragged 180 generated pages into #184's diff", () => {
+		const p = buildPortPrompt(40, "body", null);
+		expect(p).toContain("Do NOT edit `docs/handbook/src/`");
+		expect(p).not.toContain("mdbook build");
+	});
+
+	it("keeps the changelog pair instruction, which is a real CI gate and only ever touches two files", () => {
+		expect(buildPortPrompt(40, "body", null)).toContain("bun scripts/sync-root-changelog.ts");
+	});
+
+	it("requires appending to the existing test file rather than rewriting it (#203 shrank a 296-line suite to 24 around a correct fix)", () => {
+		const p = buildPortPrompt(40, "body", null);
+		expect(p).toContain("never rewrite or shrink that file");
+		expect(p).toContain("removes more test lines than it adds");
+	});
+
+	it("tells the session to read its own diff stat before committing, so a stale branch is caught by the author not the reviewer", () => {
+		expect(buildPortPrompt(40, "body", null)).toContain("git diff --stat");
 	});
 
 	it("folds the prior failure context into a retry so the next session sees the dead end", () => {
@@ -146,9 +191,14 @@ describe("buildPortPrompt", () => {
 		expect(p).toContain("bun test exploded");
 	});
 
-	it("bounds a huge failure context instead of blowing up the prompt", () => {
+	it("truncates a huge failure context to its 2000-char budget instead of blowing up the prompt", () => {
+		// Asserted against the fixed instructions rather than a magic total, so
+		// adding a rule to the prompt never silently loosens the truncation bound.
+		const fixed = buildPortPrompt(1, "body", null).length;
 		const p = buildPortPrompt(1, "body", "x".repeat(10_000));
-		expect(p.length).toBeLessThan(4_000);
+		expect(p).toContain("x".repeat(2_000));
+		expect(p).not.toContain("x".repeat(2_001));
+		expect(p.length - fixed).toBeLessThan(2_300); // 2000 of context plus its short heading
 	});
 });
 
@@ -338,5 +388,252 @@ describe("classifyHarvest", () => {
 		// Out of nudges but inside the window: wait for the stale clock, a late
 		// auto-advance is still possible.
 		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 3, 3).kind).toBe("wait");
+	});
+});
+
+/**
+ * The landing audit is the only thing standing between a stale Jules clone and
+ * a silent revert of main. These cases are the real diffs from the first
+ * landing pass (2026-07-24), kept verbatim so a loosened policy fails here
+ * instead of on main: PR #184 called itself a one-file IME composition fix and
+ * its diff reverted the port manager, the radar, four workflows and 180
+ * rendered handbook pages; #199 additionally left its own scratch patch
+ * scripts at the repo root. Every path asserted below is one that a port of a
+ * single upstream bug fix has no reason to touch.
+ */
+describe("parseNeverPorted", () => {
+	const block = (over: Record<string, unknown> = {}) =>
+		JSON.stringify({
+			neverPorted: {
+				refuseThreshold: 3,
+				owned: { prefixes: ["docs/internal/"], exact: [".gitignore"], regexes: [] },
+				quarantine: { prefixes: [], exact: ["bun.lock"], regexes: ["^patch_.*\\.cjs$"] },
+				...over,
+			},
+		});
+
+	it("reads the threshold and both path tiers out of the policy file's neverPorted block", () => {
+		const policy = parseNeverPorted(block());
+		expect(policy.refuseThreshold).toBe(3);
+		expect(policy.owned).toEqual({ prefixes: ["docs/internal/"], exact: [".gitignore"], regexes: [] });
+		expect(policy.quarantine).toEqual({ prefixes: [], exact: ["bun.lock"], regexes: ["^patch_.*\\.cjs$"] });
+	});
+
+	it("fails closed when the block is missing, so a truncated policy cannot silently approve every PR", () => {
+		expect(() => parseNeverPorted(JSON.stringify({ allowedTypes: ["fix"] }))).toThrow(/neverPorted/);
+	});
+
+	it("fails closed when a whole tier is missing rather than defaulting it to an empty allowlist", () => {
+		expect(() => parseNeverPorted(JSON.stringify({ neverPorted: { refuseThreshold: 3 } }))).toThrow(/owned/);
+	});
+
+	it("fails closed on a threshold that would disable the revert detector or make it meaningless", () => {
+		expect(() => parseNeverPorted(block({ refuseThreshold: 0 }))).toThrow(/refuseThreshold/);
+		expect(() => parseNeverPorted(block({ refuseThreshold: 2.5 }))).toThrow(/refuseThreshold/);
+		expect(() => parseNeverPorted(block({ refuseThreshold: "3" }))).toThrow(/refuseThreshold/);
+	});
+
+	it("fails closed when a rule list is the wrong shape rather than coercing it", () => {
+		expect(() => parseNeverPorted(block({ owned: { prefixes: "docs/", exact: [], regexes: [] } }))).toThrow(
+			/owned\.prefixes/,
+		);
+		expect(() => parseNeverPorted(block({ owned: { prefixes: [], exact: [7], regexes: [] } }))).toThrow(
+			/owned\.exact/,
+		);
+	});
+});
+
+describe("auditPortFiles", () => {
+	const policy = parseNeverPorted(readFileSync(new URL("./upstream-port-policy.json", import.meta.url), "utf8"));
+	const audit = (files: string[]) => auditPortFiles(files, policy);
+
+	it("passes a real port untouched: the source carrying the bug, its test, and the changelog pair", () => {
+		expect(
+			audit([
+				"packages/coding-agent/src/session/agent-session.ts",
+				"packages/coding-agent/test/agent-session-concurrent.test.ts",
+				"packages/coding-agent/CHANGELOG.md",
+				"CHANGELOG.md",
+			]),
+		).toEqual({ refuse: [], quarantine: [] });
+	});
+
+	it("refuses a whole-tree revert: PR #184 was titled a one-file IME fix and rewrote the pipeline, the workflows and the rendered handbook", () => {
+		const result = audit([
+			"packages/coding-agent/src/modes/components/composer-chrome.ts",
+			"scripts/jules-port-manager.ts",
+			"scripts/upstream-radar.ts",
+			".github/workflows/ci.yml",
+			"docs/handbook/book/features/index.html",
+		]);
+		expect(result.refuse).toEqual([
+			"scripts/jules-port-manager.ts",
+			"scripts/upstream-radar.ts",
+			".github/workflows/ci.yml",
+			"docs/handbook/book/features/index.html",
+		]);
+		// Refusal is all-or-nothing: a diff this stale also reverts ordinary
+		// source files no path list can spot, so nothing from it is landed.
+		expect(result.quarantine).toEqual([]);
+	});
+
+	it("refuses the docs/internal bulk reverts that #195, #199 and #200 each carried around a two-file fix", () => {
+		const reverted = Array.from({ length: 66 }, (_, i) => `docs/internal/doc-${i}.md`);
+		const result = audit(["packages/coding-agent/src/sdk.ts", ...reverted]);
+		expect(result.refuse).toHaveLength(66);
+		expect(result.quarantine).toEqual([]);
+	});
+
+	it("lands a port that only grazes an owned path, because one hit is drift not a revert (#196 refreshed a Verified-against stamp in docs/internal/releasing.md)", () => {
+		expect(
+			audit([
+				"packages/coding-agent/src/extensibility/typebox.ts",
+				"packages/coding-agent/test/extensibility/typebox-shim.test.ts",
+				"docs/internal/releasing.md",
+				"CHANGELOG.md",
+			]),
+		).toEqual({ refuse: [], quarantine: ["docs/internal/releasing.md"] });
+	});
+
+	it("quarantines lockfiles at any count: every Jules session runs an older bun that strips configVersion, which says nothing about the fix", () => {
+		expect(audit(["packages/tui/src/render.ts", "bun.lock", "Cargo.lock"])).toEqual({
+			refuse: [],
+			quarantine: ["bun.lock", "Cargo.lock"],
+		});
+	});
+
+	it("quarantines agent scratch helpers however many there are (PR #201 shipped 14 patch_*/test_* files beside a one-file OSC 8 fix)", () => {
+		const scratch = [
+			"patch_utils.ts",
+			"patch_utils_osc66.ts",
+			"test_script.ts",
+			"test_visible_width_manual3.ts",
+			"debug-run.sh",
+			"scratch_probe.py",
+		];
+		const result = audit(["packages/tui/src/osc8.ts", "bun.lock", ...scratch]);
+		expect(result.refuse).toEqual([]);
+		expect(result.quarantine).toEqual(["bun.lock", ...scratch]);
+	});
+
+	it("never quarantines crates/vendor: veyyon carries uu-rm as vendored source, so the real fix in PR #185 lives there", () => {
+		expect(audit(["crates/vendor/uu-rm/src/rm.rs", "packages/natives/CHANGELOG.md"])).toEqual({
+			refuse: [],
+			quarantine: [],
+		});
+	});
+
+	it("quarantines only root-level scratch names, never a real source file that happens to start with test_ or patch_", () => {
+		expect(
+			audit([
+				"packages/coding-agent/test/patch_apply.test.ts",
+				"packages/tui/src/test_helpers.ts",
+				"crates/pi-grep/src/patch_utils.rs",
+			]),
+		).toEqual({ refuse: [], quarantine: [] });
+	});
+
+	it("matches prefixes at the path root only, so a legitimately ported source file is never mistaken for an owned tree", () => {
+		expect(
+			audit([
+				"packages/coding-agent/src/docs/internal/renderer.ts",
+				"packages/tui/src/gitignore-parser.ts",
+				"packages/coding-agent/test/fixtures/bun.lock.fixture",
+			]),
+		).toEqual({ refuse: [], quarantine: [] });
+	});
+
+	it("preserves input order in both tiers, so the log and the refusal comment read in diff order", () => {
+		expect(audit(["a.ts", "bun.lock", ".gitignore", "b.ts", "Cargo.lock"])).toEqual({
+			refuse: [],
+			quarantine: ["bun.lock", ".gitignore", "Cargo.lock"],
+		});
+	});
+
+	it("passes an empty diff without throwing; land treats emptiness as its own refusal, not an audit failure", () => {
+		expect(audit([])).toEqual({ refuse: [], quarantine: [] });
+	});
+});
+
+/**
+ * The coverage guard exists because the path audit is blind to it. PR #203
+ * (2026-07-24) carried a correct six-line fix capping tool timeouts with the
+ * global ceiling, touched no forbidden path, kept every source export, and
+ * still rewrote its 296-line suite down to 24 lines: every exact-value
+ * assertion gone, plus all coverage of formatTimeoutClampNotice and
+ * describeTimeoutParam. CI was green, because a smaller suite passes. Only a
+ * net line count catches that shape, so these cases pin exactly when it fires.
+ */
+describe("testFilesShrunk", () => {
+	it("flags the PR #203 shape: a suite rewritten from 296 lines down to 24 while the fix itself is fine", () => {
+		expect(
+			testFilesShrunk([
+				{ path: "packages/coding-agent/src/tools/tool-timeouts.ts", added: 12, removed: 5 },
+				{ path: "packages/coding-agent/test/tools/tool-timeouts.test.ts", added: 24, removed: 296 },
+			]),
+		).toEqual([{ path: "packages/coding-agent/test/tools/tool-timeouts.test.ts", added: 24, removed: 296 }]);
+	});
+
+	it("passes a port that adds coverage, which is what every port is supposed to do", () => {
+		expect(
+			testFilesShrunk([
+				{ path: "packages/ai/src/auth-gateway/server.ts", added: 19, removed: 3 },
+				{ path: "packages/ai/test/auth-gateway-model-list.test.ts", added: 54, removed: 0 },
+			]),
+		).toEqual([]);
+	});
+
+	it("passes a test file that shrinks a little while growing more, so tightening an assertion is never mistaken for deleting one", () => {
+		expect(
+			testFilesShrunk([{ path: "packages/coding-agent/test/tools/lsp-regressions.test.ts", added: 30, removed: 6 }]),
+		).toEqual([]);
+	});
+
+	it("ignores source files that shrink: deleting production lines is what a fix often does, and is not a coverage loss", () => {
+		expect(
+			testFilesShrunk([
+				{ path: "packages/tui/src/utils.ts", added: 4, removed: 11 },
+				{ path: "crates/vendor/uu-rm/src/rm.rs", added: 0, removed: 40 },
+			]),
+		).toEqual([]);
+	});
+
+	it("recognises a test by its directory or its suffix, across both layouts the repo uses", () => {
+		const shrunk = testFilesShrunk([
+			{ path: "packages/coding-agent/test/task/worktree.test.ts", added: 0, removed: 9 },
+			{ path: "packages/catalog/src/discovery/codex.spec.ts", added: 1, removed: 20 },
+			{ path: "crates/pi-grep/tests/scan.rs", added: 0, removed: 5 },
+			{ path: "packages/ai/__tests__/gateway.ts", added: 2, removed: 8 },
+		]);
+		expect(shrunk.map(d => d.path)).toEqual([
+			"packages/catalog/src/discovery/codex.spec.ts",
+			"packages/coding-agent/test/task/worktree.test.ts",
+			"packages/ai/__tests__/gateway.ts",
+			"crates/pi-grep/tests/scan.rs",
+		]);
+	});
+
+	it("never treats a source path that merely contains the word test as a test file", () => {
+		expect(
+			testFilesShrunk([
+				{ path: "packages/coding-agent/src/testing/harness.ts", added: 0, removed: 40 },
+				{ path: "packages/tui/src/latest-release.ts", added: 0, removed: 12 },
+			]),
+		).toEqual([]);
+	});
+
+	it("orders by how much coverage was lost, so the refusal names the worst casualty first", () => {
+		expect(
+			testFilesShrunk([
+				{ path: "a.test.ts", added: 0, removed: 10 },
+				{ path: "b.test.ts", added: 5, removed: 100 },
+				{ path: "c.test.ts", added: 0, removed: 50 },
+			]).map(d => d.path),
+		).toEqual(["b.test.ts", "c.test.ts", "a.test.ts"]);
+	});
+
+	it("passes an untouched diff and a pure test addition alike", () => {
+		expect(testFilesShrunk([])).toEqual([]);
+		expect(testFilesShrunk([{ path: "x.test.ts", added: 40, removed: 0 }])).toEqual([]);
 	});
 });

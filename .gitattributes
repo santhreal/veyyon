@@ -52,6 +52,10 @@ poetry.lock -text
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
-# Changelogs are append-mostly; auto-merge by unioning both sides.
+# Changelogs are append-mostly; auto-merge by unioning both sides. The root
+# file needs this as much as the per-package ones: every upstream port adds a
+# line to both, so two ports landing in one pass conflict on the root changelog
+# and nothing else (PR #188 and #196 did exactly that on 2026-07-24).
+CHANGELOG.md merge=union
 packages/*/CHANGELOG.md merge=union
 
