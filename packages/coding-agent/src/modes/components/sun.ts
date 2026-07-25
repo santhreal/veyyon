@@ -151,8 +151,16 @@ export function renderSunField(o: SunFieldOptions): string[] {
 			const dy = (y - cy) * CELL_ASPECT;
 			const d = Math.hypot(dx, dy) / R;
 
-			// Core disc falls off between 0.72R and 1.02R; a faint corona lives just outside.
-			const base = 1 - smoothstep(0.72, 1.02, d);
+			// Core disc falls off between 0.72R and 1.02R; a faint corona lives just
+			// outside. The second term is limb darkening, and it is what makes the
+			// ember ramp visible: the smoothstep alone falls off only across the outer
+			// rim, so every cell inside 0.72R sat at exactly 1.0 and selected the top
+			// band. At the 26-column mark that was 46 of 92 lit cells in band 7 while
+			// bands 3 and 4 got 5 and 4, and the disc read as a cream blob rather than
+			// as the stepped ramp the brand is built on. Falling off across the WHOLE
+			// radius spreads the cells over every band, the way a real photosphere dims
+			// toward the limb.
+			const base = (1 - smoothstep(0.72, 1.02, d)) * (1 - 0.34 * d ** 1.5);
 			const corona = d > 1.0 && d < 1.26 ? smoothstep(1.26, 1.0, d) * 0.5 : 0;
 
 			// Ripples: damped ring wavelets, like a struck pond, cell-space distance.
