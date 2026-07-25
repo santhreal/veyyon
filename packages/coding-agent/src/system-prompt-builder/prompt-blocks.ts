@@ -99,11 +99,31 @@ export interface TemplateSection extends PromptSectionBase {
 	readonly source: "template";
 }
 
+/**
+ * Where a runtime section's text comes from.
+ *
+ * `option` means the text is handed to `buildSystemPrompt` by its caller, which
+ * is how every settings-gated section works: the caller reads the setting and
+ * passes rendered text, or passes nothing. Declaring the option key here is what
+ * lets the assembler read it THROUGH the registry instead of a hand-written map,
+ * and lets a wiring test check that a production caller actually populates it.
+ *
+ * Without that declaration the chain setting -> option -> caller -> prompt was
+ * enforced only at its last link: a section whose option was declared and
+ * threaded into the assembly map but never populated from its setting compiled,
+ * shipped, and rendered nothing forever.
+ *
+ * `computed` means the builder produces the text itself, so there is no option
+ * to wire and nothing for a caller to forget.
+ */
+export type RuntimeSectionInput = { readonly kind: "computed" } | { readonly kind: "option"; readonly key: string };
+
 export interface RuntimeSection extends PromptSectionBase {
 	readonly id: RuntimeSectionId;
 	readonly source: "runtime";
 	/** Runtime sections always carry a registry-owned banner. */
 	readonly banner: string;
+	readonly input: RuntimeSectionInput;
 }
 
 export type PromptSection = TemplateSection | RuntimeSection;
@@ -149,18 +169,21 @@ export const RUNTIME_SECTIONS: readonly RuntimeSection[] = [
 		id: "project",
 		source: "runtime",
 		banner: "PROJECT\n==",
+		input: { kind: "computed" },
 		purpose: "environment, cwd, context files, workspace tree, active repo context",
 	},
 	{
 		id: "shorthand",
 		source: "runtime",
 		banner: "SHORTHAND\n==",
+		input: { kind: "option", key: "argotPreamble" },
 		purpose: "the shorthand notation block, taught when the encode gate is open",
 	},
 	{
 		id: "shorthand-handles",
 		source: "runtime",
 		banner: "SHORTHAND HANDLES\n==",
+		input: { kind: "option", key: "argotHandles" },
 		purpose: "the handle table for loaded projects, so the model can learn the handles at all",
 	},
 ];
@@ -212,3 +235,16 @@ export function withSectionBanner(section: RuntimeSection, text: string | undefi
 	if (!body) return "";
 	return `${section.banner}${"=".repeat(33)}\n\n${body}`;
 }
+
+/**
+ * Runtime sections whose text arrives as a `buildSystemPrompt` option.
+ *
+ * The wiring contract keys off this list: every entry names an option a
+ * production caller must populate, and `system-prompt-wiring.test.ts` fails if
+ * one is declared but never set at the real call site.
+ */
+export const OPTION_BACKED_RUNTIME_SECTIONS: readonly (RuntimeSection & {
+	input: { kind: "option"; key: string };
+})[] = RUNTIME_SECTIONS.filter(
+	(s): s is RuntimeSection & { input: { kind: "option"; key: string } } => s.input.kind === "option",
+);
