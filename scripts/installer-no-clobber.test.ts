@@ -87,3 +87,31 @@ describe("the alias is never written over a file the installer did not create", 
 		}
 	});
 });
+
+describe("declining the alias also declines its completion file", () => {
+	// The no-clobber rule has a second half. link_alias refusing to create `vey`
+	// did nothing to stop install_completions, which wrote `completions/vey`
+	// regardless — a file describing OUR subcommands under THEIR command name,
+	// written straight over the completion script their tool shipped. install.ps1
+	// has no counterpart only because Windows installs no completions.
+	it("install.sh gates the alias completion on the alias being ours", () => {
+		expect(installSh).toContain("alias_points_at_us() {");
+		expect(installSh).toContain('&& alias_points_at_us "$bin"; then');
+	});
+
+	it("the gate compares the link target against our binary, not just the name", () => {
+		// A `vey` symlink can point anywhere, and a plain file is not a link at all.
+		// Existence proves nothing; only the resolved target does.
+		const fn = fnBody(installSh, "alias_points_at_us() {", "\n}\n");
+		expect(fn).toContain('[ -L "$l" ] || return 1');
+		expect(fn).toContain('[ "$(readlink "$l" 2>/dev/null)" = "$d/$BIN_NAME" ]');
+	});
+
+	it("uninstall removes the alias completion only when it is a copy of ours", () => {
+		// install writes the alias file as a byte copy, so identical content is the
+		// signature. Without this check an uninstall deletes the completion file of
+		// a `vey` the installer was careful never to touch on the way in.
+		expect(installSh).toContain('cmp -s "$out/$name" "$out/$alias_name"');
+		expect(installSh).toContain("left $sh completion for '$ALIAS_NAME' alone");
+	});
+});
