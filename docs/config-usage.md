@@ -173,7 +173,7 @@ On startup, if `config.yml` is missing:
 Field-level migrations in `#migrateRawSettings`:
 
 - `queueMode` -> `steeringMode`
-- `ask.timeout` milliseconds -> seconds when old value looks like ms (`> 1000`)
+- `ask.timeout` milliseconds -> seconds when the old value looks like ms (`> 1000`). The threshold is a guess, because nothing on disk says which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why `packages/coding-agent/test/settings-migration-idempotence.test.ts` pins the property.
 - Legacy flat `theme: "..."` -> `theme.dark/theme.light` structure
 
 ---

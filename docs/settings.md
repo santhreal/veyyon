@@ -43,7 +43,7 @@ veyyon config list --json          # same, machine-readable
 veyyon config get theme.dark       # one value
 veyyon config get theme.dark --json
 veyyon config set compaction.enabled false
-veyyon config set defaultThinkingLevel medium
+veyyon config set compaction.model anthropic/claude-haiku-4-5
 veyyon config reset steeringMode   # restore a key to its schema default
 veyyon config path                 # print the active agent directory
 ```
@@ -346,8 +346,25 @@ See [Advisor and WATCHDOG.md](./advisor-watchdog.md) for runtime behavior, `WATC
 
 ### Thinking
 
+Effort has one persisted home: the `defaultEffort` list, per profile. A row keyed
+by a model selector applies to that model; the `*` row applies to every model
+without its own. `/thinking` (and its `/effort` alias) changes only the current
+session and prints where the saved default lives, so trying an effort never
+rewrites your default.
+
+Effort is resolved in this order, highest first:
+
+1. the current session's choice, from `/thinking`, `/effort`, or the cycle keybinding
+2. an explicit `:level` on the selector a role resolved through, e.g. `modelRoles.plan: anthropic/claude-opus-5:xhigh`
+3. the `defaultEffort` row for the model about to run
+4. the `defaultEffort` `*` row
+5. the model's own default, when nothing above is set
+
+
 ```yaml
-defaultThinkingLevel: high
+defaultEffort:
+  "*": high
+  anthropic/claude-haiku-4-5: low
 hideThinkingBlock: false
 thinkingBudgets:
   minimal: 1024
@@ -360,7 +377,8 @@ thinkingBudgets:
 
 | Key | Type | Default | Values |
 |---|---|---|---|
-| `defaultThinkingLevel` | enum | `high` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `auto`. Override per run with `--thinking`. |
+| `defaultEffort` | record | `{}` | Effort per model, applied when a run does not ask for one. Keys are model selectors (`anthropic/claude-opus-5`) or `*` for any model; values are `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `auto`, or `off`. Edit it in `/settings` → Model → Default Effort. |
+| `defaultThinkingLevel` | enum | `high` | Retired in favour of `defaultEffort`'s `*` row, and still read so an existing config keeps working: if you have no `*` row, this value becomes it. No settings row of its own. |
 | `hideThinkingBlock` | boolean | `false` | Hide thinking blocks in output. `--hide-thinking` sets it for the run (display only). |
 | `thinkingBudgets.minimal` | number | `1024` | Token budget for the `minimal` level. |
 | `thinkingBudgets.low` | number | `2048` | Token budget for `low`. |
@@ -635,7 +653,7 @@ One segment is worth calling out: `profile` shows the active profile name (`work
 | `interruptMode` | enum | `immediate` | `immediate`, `wait`. |
 | `doubleEscapeAction` | enum | `tree` | `branch`, `tree`, `none`. |
 | `autoResume` | boolean | `false` | Auto-resume the most recent session in the cwd. |
-| `ask.timeout` | number | `0` | Seconds before an `ask` prompt times out; `0` = no timeout. (Legacy ms values are migrated to seconds.) |
+| `ask.timeout` | number | `0` | Seconds before an `ask` prompt times out; `0` = no timeout. Values above `1000` are read as milliseconds from an older config and divided by 1000, so `1000` seconds is the longest timeout you can set. A rewrite is reported in the log with both values. |
 | `ask.notify` | enum | `on` | `on`, `off`. |
 | `session.workdir` | string | unset | Per-profile default working directory. When you launch without an explicit `--cwd`, the session starts here. Precedence: an explicit `--cwd` wins, then this setting, then the directory you launched from. Use an absolute or `~`-relative path; a relative path or a missing directory makes launch fail loudly (no silent fallback). Set it in `/settings` (**Interaction** tab, **Profile** group, "Default Working Directory") or with `veyyon config set session.workdir /path/to/project`; clear it with `veyyon config set session.workdir ""`. This is a per-profile default that persists across sessions. It is distinct from `/cwd set` (and the agent's `set_cwd` tool), which re-root the live working directory for the current session only and write nothing to your profile. Note: if you launch from your bare home directory with no `--cwd`, no `--allow-home`, and this setting unset, veyyon relocates the session to a scratch directory (`~/tmp`, then `/tmp`) and prints a one-line notice saying so; set `session.workdir` to a real project directory to land there instead. |
 
@@ -727,7 +745,7 @@ Applied whenever raw settings are loaded (global, project, overlays, and runtime
 | Old | New |
 |---|---|
 | `queueMode` | `steeringMode` |
-| `ask.timeout` in milliseconds (value `> 1000`) | seconds (divided by 1000) |
+| `ask.timeout` in milliseconds (value `> 1000`) | seconds (divided by 1000), and the rewrite is logged with both values |
 | flat `theme: "<name>"` string | `theme.dark` / `theme.light` (slot chosen by luminance; built-in `light`/`dark` are dropped to use defaults) |
 | `task.isolation.enabled: true/false` | `task.isolation.mode: auto/none` |
 | `task.simple` | removed |

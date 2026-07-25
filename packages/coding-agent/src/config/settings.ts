@@ -166,6 +166,19 @@ export function validateProviderMaxInFlightRequests(value: unknown): Record<stri
 }
 
 const PATH_SCOPED_ARRAY_SETTINGS = new Set<SettingPath>(["enabledModels", "disabledProviders"]);
+
+/**
+ * Largest `ask.timeout` read as seconds. Anything above it is taken to be a
+ * millisecond value from the config format that predates the switch to seconds.
+ *
+ * There is no marker on disk saying which format a file uses, so the magnitude
+ * is the only signal available. 1000 seconds is a bit under 17 minutes: far
+ * longer than any timeout the settings UI offers, and far shorter than the
+ * 15000-120000 that a millisecond-era file actually contained. The cost of the
+ * guess falls on a user who wanted a longer wait than that, which is why the
+ * rewrite is reported rather than applied quietly.
+ */
+export const MAX_ASK_TIMEOUT_SECONDS = 1000;
 type PathScopedStringArrayEntry = {
 	path?: unknown;
 	paths?: unknown;
@@ -277,6 +290,8 @@ export class Settings {
 
 	/** Legacy `lastChangelogVersion` captured from config.yml during migration (now a marker file). */
 	#legacyLastChangelogVersion?: string;
+	/** Set once `ask.timeout` has been reported as rewritten, so the warning does not repeat on every read. */
+	#reportedAskTimeoutRewrite = false;
 
 	/** Pending save (debounced) */
 	#saveTimer?: NodeJS.Timeout;
@@ -1117,6 +1132,25 @@ export class Settings {
 		}
 	}
 
+	/**
+	 * Say once that `ask.timeout` was rewritten from milliseconds to seconds.
+	 *
+	 * The conversion is a guess (see the call site), so the one case it gets
+	 * wrong is a user who genuinely wanted a timeout longer than
+	 * {@link MAX_ASK_TIMEOUT_SECONDS}. Without this they would only find out by
+	 * watching an ask auto-select in two seconds and having no idea why. Once per
+	 * process, because the migration runs on every read of the file.
+	 */
+	#reportAskTimeoutRewrite(from: number, to: number): void {
+		if (this.#reportedAskTimeoutRewrite) return;
+		this.#reportedAskTimeoutRewrite = true;
+		logger.warn(
+			`Settings: ask.timeout was ${from}, which is read as milliseconds from an older config and rewritten to ${to} seconds. ` +
+				`If you meant ${from} seconds, set ask.timeout again; it is in seconds now.`,
+			{ from, to, maxSeconds: MAX_ASK_TIMEOUT_SECONDS },
+		);
+	}
+
 	/** Apply schema migrations to raw settings */
 	#migrateRawSettings(raw: RawSettings): RawSettings {
 		// queueMode -> steeringMode
@@ -1142,11 +1176,27 @@ export class Settings {
 		// nothing; `startup.updateNotice` governs the line that replaced it.
 		delete raw.collapseChangelog;
 
-		// ask.timeout: ms -> seconds (if value > 1000, it's old ms format)
+		// ask.timeout: ms -> seconds, guessed from the magnitude of the value.
+		//
+		// Every other migration here is a fixed point: re-running it on its own
+		// output changes nothing, which is what lets this function run on every
+		// read. This one is not. It cannot be, because 2000 in the file is either
+		// 2000 milliseconds from the old format or 2000 seconds from the new one
+		// and nothing on disk says which. So a user who legitimately wants a
+		// 33-minute timeout gets 2 seconds instead, and an ask they expected to
+		// wait for them auto-selects almost immediately.
+		//
+		// The conversion stays, because silently keeping an old ms value would
+		// make the same setting wrong in the other direction for far more users.
+		// What changes is that it is no longer silent: a rewrite the user did not
+		// ask for is reported with both values so they can see what happened and
+		// set it in seconds if the guess was wrong.
 		if (raw.ask && typeof (raw.ask as Record<string, unknown>).timeout === "number") {
 			const oldValue = (raw.ask as Record<string, unknown>).timeout as number;
-			if (oldValue > 1000) {
-				(raw.ask as Record<string, unknown>).timeout = Math.round(oldValue / 1000);
+			if (oldValue > MAX_ASK_TIMEOUT_SECONDS) {
+				const converted = Math.round(oldValue / 1000);
+				(raw.ask as Record<string, unknown>).timeout = converted;
+				this.#reportAskTimeoutRewrite(oldValue, converted);
 			}
 		}
 

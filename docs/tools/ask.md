@@ -68,7 +68,7 @@
 
 ## Limits & Caps
 - `questions` must contain at least 1 item (`askSchema` in `packages/coding-agent/src/tools/ask.ts`).
-- `ask.timeout` default is `0` seconds, which disables timeout (`packages/coding-agent/src/config/settings-schema.ts`). Configured non-zero values are seconds.
+- `ask.timeout` default is `0` seconds, which disables timeout (`packages/coding-agent/src/config/settings-schema.ts`). Configured non-zero values are seconds. A value above `1000` is read as milliseconds left over from an older config and divided by 1000, with the rewrite logged, so `1000` seconds is the longest timeout you can configure.
 - Prompt guidance says provide 2-5 options, but code only requires the `options` array field and does not enforce a minimum or maximum length (`packages/coding-agent/src/prompts/tools/ask.md`).
 - Timeout only applies to the option picker; once the user chooses `Other`, the editor has no timeout (`promptForCustomInput()` in `packages/coding-agent/src/tools/ask.ts`).
 - `AskTool.concurrency = "exclusive"`: the tool runs alone in its tool batch because the selector/editor UI surface is shared and concurrent `ask` calls would clobber each other.
