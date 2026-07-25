@@ -127,13 +127,19 @@ describe("settings layout", () => {
 		});
 	});
 
-	it("exposes core model thinking controls in the model tab", () => {
-		const def = getSettingsForTab("model").find(item => item.path === "defaultThinkingLevel");
-		expect(def).toMatchObject({
-			path: "defaultThinkingLevel",
+	it("exposes Default Effort in the model tab as the one effort control", () => {
+		// The profile's effort surface is the `defaultEffort` list. Its predecessor
+		// `defaultThinkingLevel` stays in the schema for migration only and must NOT
+		// come back as a second UI row: two settings writing one axis, neither
+		// stating which wins, is what made effort unreadable (report 2026-07-24).
+		const rows = getSettingsForTab("model");
+		expect(rows.find(item => item.path === "defaultEffort")).toMatchObject({
+			path: "defaultEffort",
 			tab: "model",
 			group: "Thinking",
+			label: "Default Effort",
 		});
+		expect(rows.find(item => item.path === "defaultThinkingLevel")).toBeUndefined();
 	});
 
 	it("exposes completion notifications on the interaction Notifications group", () => {

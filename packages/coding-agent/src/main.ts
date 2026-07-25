@@ -35,6 +35,7 @@ import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/s
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
 import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
+import { resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
 	expandRoleAlias,
@@ -1025,18 +1026,25 @@ export async function buildSessionOptions(
 		options.thinkingLevel = scopedModels[0].thinkingLevel;
 	}
 
-	// Scoped models for Ctrl+P cycling - fill in default thinking levels when not explicit
+	// Scoped models for Ctrl+P cycling: each gets the effort the ONE resolver says
+	// applies to THAT model, so `--model a,b` can carry per-model efforts from the
+	// Default Effort list instead of one profile-wide value for every slot.
 	if (scopedModels.length > 0) {
-		// `auto` is a session-level concept only; per-scoped-model (Ctrl+P) thinking
-		// overrides stay concrete, so coerce the auto default to "unset" here.
-		const defaultThinkingLevel = concreteThinkingLevel(
-			parseConfiguredThinkingLevel(activeSettings.get("defaultThinkingLevel")),
+		const rows = withLegacyDefaultEffort(
+			activeSettings.get("defaultEffort"),
+			activeSettings.get("defaultThinkingLevel"),
 		);
 		options.scopedModels = scopedModels.map(scopedModel => ({
 			model: scopedModel.model,
-			thinkingLevel: scopedModel.explicitThinkingLevel
-				? (scopedModel.thinkingLevel ?? defaultThinkingLevel)
-				: defaultThinkingLevel,
+			// `auto` is a session-level concept only; per-scoped-model (Ctrl+P)
+			// overrides stay concrete, so coerce it to "unset" here.
+			thinkingLevel: concreteThinkingLevel(
+				resolveEffort({
+					selectorLevel: scopedModel.explicitThinkingLevel ? scopedModel.thinkingLevel : undefined,
+					modelSelector: `${scopedModel.model.provider}/${scopedModel.model.id}`,
+					defaultEffort: rows,
+				}).level,
+			),
 		}));
 	}
 

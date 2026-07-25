@@ -1402,15 +1402,77 @@ describe("interpretEncodeArm — making a 0-encoded argot result interpretable",
 		expect(note).toContain("NOT a measure of argot");
 	});
 
-	test("handles available but nothing encoded is charged to the MODEL, not the corpus", () => {
+	test("handles loaded AND taught but nothing encoded is charged to the MODEL, not the corpus", () => {
 		// The genuinely interesting negative result: shorthand was in front of the
 		// model and it wrote none. That is a model-adoption finding and must be
 		// worded as such, never conflated with the empty-dictionary case above.
-		const note = interpretEncodeArm({ arm: "full", okRuns: 4, taught: 4, handlesLoaded: 37, encoded: 0 });
-		expect(note).toContain("37 handles WERE loaded");
-		expect(note).toContain("ignored");
+		// Note the precondition: it is only a model result once the table is proven
+		// to have been TAUGHT. Loading alone never licensed this verdict.
+		const note = interpretEncodeArm({
+			arm: "full",
+			okRuns: 4,
+			taught: 4,
+			handlesLoaded: 37,
+			encoded: 0,
+			handlesTaught: 4,
+			handlesTaughtKnown: 4,
+		});
+		expect(note).toContain("37 handles were loaded AND taught in 4/4 runs");
+		expect(note).toContain("ignored shorthand it could see");
 		expect(note).toContain("model-adoption result");
 		expect(note).not.toContain("IMPOSSIBLE");
+		expect(note).not.toContain("HARNESS failure");
+	});
+
+	test("a loaded vocabulary the model was never SHOWN is a harness failure, never a model result", () => {
+		// The misread this whole field exists to prevent. The first interpretable
+		// encode run loaded 551 handles and encoded none, and the report charged
+		// that to the model. But the handle table is injected on an asynchronous
+		// prompt refresh, and if that refresh does not carry it the model sees the
+		// notation, sees no handles, and is told never to invent one. Zero output
+		// is then the ONLY compliant behavior, so blaming the model is unsound.
+		const note = interpretEncodeArm({
+			arm: "full",
+			okRuns: 4,
+			taught: 4,
+			handlesLoaded: 551,
+			encoded: 0,
+			handlesTaught: 0,
+			handlesTaughtKnown: 4,
+		});
+		expect(note).toContain("reached the model in only 0/4 runs");
+		expect(note).toContain("HARNESS failure");
+		expect(note).not.toContain("model-adoption result");
+		expect(note).not.toContain("ignored");
+	});
+
+	test("a partially taught arm is still a harness failure, not a diluted model result", () => {
+		// Boundary: some runs taught the table and some did not. The arm is not a
+		// clean measurement either way, so it must read as broken rather than be
+		// averaged into a model verdict that silently rests on the taught subset.
+		const note = interpretEncodeArm({
+			arm: "full",
+			okRuns: 4,
+			taught: 4,
+			handlesLoaded: 551,
+			encoded: 0,
+			handlesTaught: 3,
+			handlesTaughtKnown: 4,
+		});
+		expect(note).toContain("3/4 runs");
+		expect(note).toContain("HARNESS failure");
+	});
+
+	test("without the taught record the 0-encoded result is declared UNATTRIBUTABLE", () => {
+		// A run predating `argot_taught` cannot say whether the table reached the
+		// model, so the report must refuse to assign blame instead of defaulting to
+		// the model. Defaulting is what produced the original wrong verdict, so the
+		// absent-evidence path is pinned separately from the taught and untaught ones.
+		const note = interpretEncodeArm({ arm: "full", okRuns: 4, taught: 4, handlesLoaded: 37, encoded: 0 });
+		expect(note).toContain("no `argot_taught` record");
+		expect(note).toContain("unattributable");
+		expect(note).not.toContain("model-adoption result");
+		expect(note).not.toContain("HARNESS failure");
 	});
 
 	test("actual encoding is declared a real measurement, with the vocabulary size", () => {
@@ -1472,20 +1534,58 @@ describe("renderReport — the vocab handles column and its interpretation", () 
 		expect(md).toContain("NOT a measure of argot");
 	});
 
-	test("a loaded-but-unused vocabulary renders the size and the model-adoption reading", () => {
-		// The other real state: the table shows 37, and the prose charges the null
-		// to the model rather than to the corpus.
+	test("a loaded, TAUGHT, unused vocabulary renders the size and the model-adoption reading", () => {
+		// The other real state: the table shows 37, the handles are proven to have
+		// reached the model, and only then does the prose charge the null to the
+		// model rather than to the corpus or the harness.
 		const md = renderReport(
 			[
-				res({ arm: "full", task: "t1", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: 37 }),
-				res({ arm: "full", task: "t2", reward: 1, argotPreamblePresent: true, argotHandlesLoaded: 37 }),
+				res({
+					arm: "full",
+					task: "t1",
+					reward: 1,
+					argotPreamblePresent: true,
+					argotHandlesLoaded: 37,
+					argotHandlesTaught: true,
+				}),
+				res({
+					arm: "full",
+					task: "t2",
+					reward: 1,
+					argotPreamblePresent: true,
+					argotHandlesLoaded: 37,
+					argotHandlesTaught: true,
+				}),
 			],
 			"m",
 			"now",
 		);
-		expect(md).toContain("| full | 2 | 2/2 | 37 |");
-		expect(md).toContain("37 handles WERE loaded");
+		expect(md).toContain("| full | 2 | 2/2 | 37 | 2/2 |");
+		expect(md).toContain("37 handles were loaded AND taught in 2/2 runs");
 		expect(md).toContain("model-adoption result");
+	});
+
+	test("a loaded vocabulary the model was never shown renders as a HARNESS failure", () => {
+		// The regression that produced the original misreading of runs/argot-smoke-0724.
+		// The size column alone looked identical to the model-adoption case above, so
+		// the report blamed the model for output it was structurally forbidden to write.
+		const md = renderReport(
+			[
+				res({
+					arm: "full",
+					task: "t1",
+					reward: 1,
+					argotPreamblePresent: true,
+					argotHandlesLoaded: 551,
+					argotHandlesTaught: false,
+				}),
+			],
+			"m",
+			"now",
+		);
+		expect(md).toContain("| full | 1 | 1/1 | 551 | 0/1 |");
+		expect(md).toContain("HARNESS failure");
+		expect(md).not.toContain("model-adoption result");
 	});
 
 	test("a pre-telemetry run renders an em-dash size, never a fabricated zero", () => {
@@ -1514,7 +1614,7 @@ describe("renderReport — the vocab handles column and its interpretation", () 
 			"now",
 		);
 		expect(md).toContain("| full | 2 | 2/2 | 12 |");
-		expect(md).toContain("12 handles WERE loaded");
+		expect(md).toContain("12 handles were loaded");
 	});
 });
 

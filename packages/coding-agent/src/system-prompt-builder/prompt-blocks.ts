@@ -184,6 +184,21 @@ export const RUNTIME_SECTIONS: readonly RuntimeSection[] = [
 	},
 ];
 
+/**
+ * The banner that introduces the argot handle table, read off the section that
+ * owns it rather than restated.
+ *
+ * Callers that need to ask "did the handle table actually reach this prompt?"
+ * (the arm's post-refresh probe in `sdk.ts`, and the bench that reads its record)
+ * must test for the same bytes the assembler emits. Spelling the banner out a
+ * second time would let the two drift apart silently, and the failure mode of
+ * that drift is a probe that reports "no handles taught" on a perfectly armed
+ * session.
+ */
+export const ARGOT_HANDLES_BANNER: string = RUNTIME_SECTIONS.find(
+	section => section.id === "shorthand-handles",
+)?.banner as string;
+
 /** Every section, in the order it reaches the model. */
 export const PROMPT_SECTIONS: readonly PromptSection[] = [...TEMPLATE_SECTIONS, ...RUNTIME_SECTIONS];
 

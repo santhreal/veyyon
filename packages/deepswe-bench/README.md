@@ -25,7 +25,7 @@ The runner enforces three mechanical floors of this rule:
 
 1. **Zero-IV collision.** If any two arms in a run stage byte-identical inputs (same `.yml` and same/no prompt module and same/no rule), it fails loudly with the colliding arm names. A comparison between identical arms varies zero variables, so its "delta" is pure noise — the exact defect behind earlier `candidate-vN` arms that were copied from `baseline` with nothing changed.
 2. **Treatment-not-applied (pre-run).** If an arm turns argot encoding on with a non-empty `argot.models` allowlist that does not include the `--model` under test, it fails loudly before running. argot only encodes for a model on its allowlist, so such an arm would SILENTLY degrade to decode-only while still being labelled the encode condition — a silent fallback living inside the eval set. The check uses argot's own `modelAllowed` predicate (exported from the SDK), so it can never drift from the gate the runtime actually applies. A deliberately decode-only arm (`enabled: true`, empty allowlist, as in `arms/decode.yml`) is fine and passes.
-3. **Treatment-not-applied (post-run, authoritative).** The pre-run check matches the model string you *requested*, but the runtime resolves that id through the catalog (provider aliases, effort-tier collapsing) to a different logical id before the encode gate sees it. This really happened: `google-antigravity/gemini-3.6-flash` was aliased onto logical `gemini-3.5-flash`, so the request passed the pre-run check (3.6 was on the list) yet failed the gate (the resolved 3.5 was not) and the arm ran decode-only. After the run, the bench reads whether the encode preamble actually reached the model (from each session's system prompt) and **fails closed** if an encode arm never taught it in any OK trial. The alias has since been removed from the catalog, so 3.6 resolves to 3.6 or fails loudly, and the default `--model` and the `full` arm's allowlist both name `gemini-3.6-flash`. The rule still stands whatever the model: requested and resolved must agree, or the run is inert. Watch the `preamble taught` column in the report (below).
+3. **Treatment-not-applied (post-run, authoritative).** The pre-run check matches the model string you *requested*, but the runtime resolves that id through the catalog (provider aliases, effort-tier collapsing) to a different logical id before the encode gate sees it. This really happened: `google-antigravity/gemini-3.6-flash` was aliased onto logical `gemini-3.5-flash`, so the request passed the pre-run check (3.6 was on the list) yet failed the gate (the resolved 3.5 was not) and the arm ran decode-only. After the run, the bench reads whether the encode preamble actually reached the model (from each session's system prompt) and **fails closed** if an encode arm never taught it in any OK trial. The alias has since been removed from the catalog, so 3.6 resolves to 3.6 or fails loudly. The default `--model` and every encode arm's allowlist name **`gemini-3.5-flash`**. That is a choice of a model with a known-good recent run, NOT a claim that any other id is unservable: a `Model "<id>" not found` is usually an auth failure wearing a model id's name (see that section below), so check for a registry-error line and re-seed the auth DB before you suspect the id. The rule still stands whatever the model: requested and resolved must agree, or the run is inert. Watch the `preamble taught` column in the report (below).
 
 ## Canonical single-IV comparisons
 
@@ -48,7 +48,7 @@ testable on DeepSWE tasks. This is a property of the workload, not a null result
 and reporting it as "the feature does not help" would be wrong. Measured on the
 ytt task repository:
 
-| budget | handles | agent-typeable mass | ceiling at the measured emission rate |
+| budget | handles | agent-typeable mass | **projected** ceiling |
 |---|---|---|---|
 | 1000 | 44 | 652 ch | 1.01% |
 | 4000 | 139 | 1,654 ch | 2.56% |
@@ -57,12 +57,22 @@ ytt task repository:
 Run-to-run output-token noise on the same task and arm is about 8.15%, so at the
 default budget the best possible outcome sits nearly an order of magnitude below
 the noise. Repeats cannot fix that, because the effect being sought is smaller
-than the effect that already exists. Across the whole corpus, even assuming every
-typeable handle is emitted five times, only 2 of 110 tasks could clear the noise
-at the default budget.
+than the effect that already exists.
 
-Use `full ↔ full-budget16k` to test the claim where it is measurable, and read
-both token rows. A larger dictionary rides in the prompt every turn, so it buys
+> **That table is a projection, and the first run to test it came back about
+> fifty times lower.** `runs/argot-smoke-0724` (2026-07-24) ran the 16000 budget
+> on the same ytt task, loaded 551 handles, and measured a ceiling of **0.24%**
+> (0.38% for its decode control), verdict `CANNOT MEASURE` for both arms. The
+> error is in "agent-typeable mass", which counts every handle an agent COULD
+> type; that run emitted 8 of 551. The real ceiling depends on which handles a
+> task makes the agent RETYPE, so raising the budget inflates the projection much
+> faster than it moves the truth. Until the projection is re-derived from
+> observed emission rates, do not size a run on this table and do not read a
+> token delta from `full ↔ full-budget16k`. Measure argot by `runs that encoded`
+> instead. Tracked as `ARGOT-HEADROOM-PROJECTION-OFF-BY-50X`.
+
+`full ↔ full-budget16k` was built to test the claim where it is projected to be
+measurable. Read both token rows when you do. A larger dictionary rides in the prompt every turn, so it buys
 shorter output by spending input. The efficiency comparison scores `input tok`
 alongside `output tok` for this reason. A win means output fell by more than the
 prompt grew, not merely that output fell.
@@ -157,6 +167,30 @@ Flags:
   an estimate over that subset, not the full suite. The exact tasks sampled, `N`,
   and the full task count are recorded in `results.json` (`tasks`, `limit`,
   `totalTasksAvailable`) so a limited run is never mistaken for a full one.
+- `--dry-run` — run every pre-run guard, then stop before the first container.
+  **Use this before any real run.** It parses and validates each arm, stages the
+  sections file, pins temperature, computes the arm fingerprints and checks them
+  for a zero-IV collision, matches every encode arm's allowlist against
+  `--model`, confirms the task files and the agent binary exist, and performs the
+  auth preflight against the staged DB. Then it prints the queue, each arm's
+  resolved inputs, the task set's `@headline`/`@biased` provenance, and how many
+  trials of real quota the run would cost, and exits 0 writing no report.
+
+  It answers every question that does not need the model itself, in seconds
+  rather than the hours a real run takes: one DeepSWE task can occupy a container
+  for 90 minutes, so discovering a one-line YAML typo after the fact is the single
+  most expensive mistake available here.
+
+  ```bash
+  bun run.ts --arms decode-budget16k,full-budget16k --tasks tasks/argot-10.txt \
+    --model google-antigravity/gemini-3.5-flash --jobs 2 --dry-run
+  ```
+- `--trial-timeout S` — wall-clock ceiling for a single trial, in seconds
+  (default `900`, i.e. 15 minutes). A trial that exceeds it is failed with
+  `trial timed out after Ns` rather than being allowed to hold a container
+  indefinitely. Raise it for genuinely long tasks; a run where many trials report
+  that error is measuring the timeout rather than the arm, so check this before
+  reading such a result as a difference between arms.
 - `--jobs N` — concurrent Pier runs. Each task container takes 2 cpu / 8 GB;
   2 is safe on a 16-core/64 GB machine, 4 is the practical ceiling.
 - `--model <provider/id>` — the model under test. When the arm gates behavior
@@ -260,17 +294,29 @@ verifier reports), `results.json` (every metric, machine-readable), and
 
   Teaching is necessary but not sufficient, so the table also reports `vocab
   handles`: the number of handles the launch project's dictionary actually loaded,
-  read from the agent's `argot_armed` session record. You need this number because
-  a `0 encoded` result has three different meanings and the counts alone cannot
-  tell them apart:
+  read from the agent's `argot_armed` session record. Loading is still not the same
+  as showing, so a third column, `handles taught`, reports whether the handle TABLE
+  reached the model, read from the agent's `argot_taught` record. That record exists
+  because the table is injected on an asynchronous prompt refresh that happens after
+  `session_init`, which is the only prompt a transcript stores. No recorded prompt
+  can therefore show the table, and without `handles taught` you cannot tell a model
+  that declined to encode from one that was never shown a handle.
+
+  You need all three numbers because a `0 encoded` result has four different
+  meanings and the counts alone cannot tell them apart:
 
   - `vocab handles` is `0`. The repository has no repeated-token mass, so the
     dictionary came out empty and the model had nothing to write. Encoding was
     impossible here, and the token delta against this arm says nothing about
     argot. Choose tasks whose repos repeat long paths and commands.
-  - `vocab handles` is positive and `runs that encoded` is `0/N`. Shorthand was in
-    front of the model and it wrote none. That is a real result about model
-    adoption, not about the corpus.
+  - `vocab handles` is positive but `handles taught` is below `N/N`. The dictionary
+    loaded and the model was never shown it. This is a harness failure, not a
+    result: the model is taught the notation, shown no handles, and told never to
+    invent one, so writing none is the only compliant thing it can do. Fix the arm
+    and rerun before reading anything into the row.
+  - `vocab handles` is positive, `handles taught` is `N/N`, and `runs that encoded`
+    is `0/N`. Shorthand was genuinely in front of the model and it wrote none. That
+    is a real result about model adoption, not about the corpus or the harness.
   - `runs that encoded` is above zero. The delta is a genuine argot measurement.
 
   A `—` in the column means the run predates this telemetry, so the loaded size is
@@ -373,6 +419,21 @@ settled result.
 
 ## Prompt section arms
 
+**Start from the worked example, not from this prose:**
+`arms/candidate-delivery-terse.sections.yml` (the experiment) plus
+`arms/candidate-delivery-terse.yml` (its config half, deliberately identical to
+`baseline.yml` so the only variable is the prompt section). Copy both, rename
+them, and edit the section text. Run it with:
+
+```bash
+bun run.ts --arms baseline,candidate-delivery-terse \
+  --tasks tasks/pilot-10.txt --model google-antigravity/gemini-3.5-flash \
+  --jobs 2 --repeats 3 --out runs/prompt-delivery-terse
+```
+
+`docs-coherence.test.ts` checks every shipped `.sections.yml` through the prompt
+builder's own validator, so the example is known to load rather than assumed to.
+
 The system prompt is benched one section at a time. The default prompt is built
 from named banner sections — `conventions`, `role`, `runtime`, `toolPolicy`,
 `executionWorkflow`, `deliveryContract` — and a per-section override swaps
@@ -428,7 +489,7 @@ behavioral nudge rather than a section rewrite (this is what
 - `decode` — enabled and loadable, but the model allowlist is empty, so nothing
   is ever taught (isolates the cost of the feature being armed).
 - `full` — enabled, with an `argot.models` allowlist that names the resolved
-  logical id of the model under test (the default is `gemini-3.6-flash`), allowed
+  logical id of the model under test (the default is `gemini-3.5-flash`), allowed
   to encode; the agent loads the project itself with `argot_load` and writes
   handles. The allowlist must match the model *after* catalog resolution, not the
   display alias you typed: if you bench a `--model` whose resolved id the allowlist

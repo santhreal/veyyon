@@ -1,0 +1,120 @@
+/**
+ * The one place that answers "what effort applies right now".
+ *
+ * Effort used to live in three stores with the precedence written inline at the
+ * call site, so nothing could tell you which one was in effect: a profile-wide
+ * `defaultThinkingLevel` enum, a `:level` suffix on a model selector, and the
+ * session's own level. The operator's verdict was "effort level is very muddled"
+ * (2026-07-24).
+ *
+ * There is now one persisted, user-visible store — the `defaultEffort` list of
+ * model to effort rows, per profile — and one ordered rule, below. A `*` row
+ * carries what the old global enum meant, so the global default is a member of
+ * the same list instead of a separate setting, and because the list is
+ * structured rather than a selector string, `auto` is a legal row value. That is
+ * what let the third store go away: `auto` never fit in a `model:high` suffix,
+ * which is the only reason the enum existed.
+ */
+
+import { AUTO_THINKING, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
+
+/** The row key matching every model, i.e. the profile-wide default. */
+export const ANY_MODEL_EFFORT_KEY = "*";
+
+/**
+ * Where the saved default lives, appended by `/thinking` and `/effort`.
+ *
+ * The command changes THIS session only. Saying so, and saying where the durable
+ * setting is, is what keeps one axis from feeling like two: before this, typing
+ * the command silently rewrote the profile default while the cycle keybinding did
+ * not, so the same change stuck or evaporated depending on how you made it.
+ */
+export const DEFAULT_EFFORT_POINTER = "To change the saved default, use /settings → Model → Default Effort.";
+
+/** The stored shape of `defaultEffort`: selector (or `*`) to configured effort. */
+export type DefaultEffortList = Record<string, string>;
+
+/** Where a resolved effort came from. Rendered by the status line, which marks a
+ *  session override so a temporary choice never looks like a saved default. */
+export type EffortSource = "session" | "selector" | "model-row" | "any-row" | "model-default";
+
+export interface ResolvedEffort {
+	level: ConfiguredThinkingLevel | undefined;
+	source: EffortSource;
+}
+
+export interface EffortInputs {
+	/** This session's override: `/thinking`, `/effort`, or the cycle keybinding. */
+	sessionOverride?: ConfiguredThinkingLevel | undefined;
+	/** An explicit `:level` on the selector the active role resolved through. */
+	selectorLevel?: ConfiguredThinkingLevel | undefined;
+	/** `provider/id` of the model about to run. */
+	modelSelector?: string | undefined;
+	/** The profile's `defaultEffort` rows, as stored. */
+	defaultEffort?: DefaultEffortList | undefined;
+}
+
+/**
+ * Normalize a stored row value. Rows are hand-editable in `settings.json`, so a
+ * junk value is dropped rather than trusted: an unparseable effort must not
+ * silently become `off` (which would quietly disable thinking) nor throw at
+ * request time.
+ */
+function rowLevel(raw: string | undefined): ConfiguredThinkingLevel | undefined {
+	return raw === undefined ? undefined : parseConfiguredThinkingLevel(raw.trim());
+}
+
+/**
+ * Resolve the effort for a run, with its origin.
+ *
+ * Order, highest first:
+ *  1. the session override — you asked for it just now, in this session
+ *  2. an explicit `:level` on the role's selector — a deliberate per-role pin
+ *  3. the `defaultEffort` row for this model
+ *  4. the `*` row (the profile-wide default)
+ *  5. nothing set: the model's own default
+ *
+ * `auto` is legal at every level; callers map it to a concrete effort per turn.
+ */
+export function resolveEffort(inputs: EffortInputs): ResolvedEffort {
+	if (inputs.sessionOverride !== undefined) {
+		return { level: inputs.sessionOverride, source: "session" };
+	}
+	if (inputs.selectorLevel !== undefined) {
+		return { level: inputs.selectorLevel, source: "selector" };
+	}
+	const rows = inputs.defaultEffort ?? {};
+	if (inputs.modelSelector) {
+		const own = rowLevel(rows[inputs.modelSelector]);
+		if (own !== undefined) return { level: own, source: "model-row" };
+	}
+	const any = rowLevel(rows[ANY_MODEL_EFFORT_KEY]);
+	if (any !== undefined) return { level: any, source: "any-row" };
+	return { level: undefined, source: "model-default" };
+}
+
+/**
+ * Migrate a legacy profile-wide `defaultThinkingLevel` into a `*` row.
+ *
+ * Returns the rows unchanged when the list already carries a `*` row: the list
+ * is the newer, user-edited surface, so it wins over the enum it replaced.
+ * Called on read rather than as a one-shot rewrite so a settings file shared
+ * with an older veyyon keeps working in both directions.
+ */
+export function withLegacyDefaultEffort(
+	rows: DefaultEffortList | undefined,
+	legacyLevel: string | null | undefined,
+): DefaultEffortList {
+	const list = { ...(rows ?? {}) };
+	if (list[ANY_MODEL_EFFORT_KEY] !== undefined) return list;
+	const parsed = rowLevel(legacyLevel ?? undefined);
+	if (parsed !== undefined) list[ANY_MODEL_EFFORT_KEY] = parsed;
+	return list;
+}
+
+/** Human summary of a row's value for a settings list, e.g. `high` or `auto`. */
+export function formatEffortRow(selector: string, raw: string): string {
+	const level = rowLevel(raw) ?? raw;
+	const label = selector === ANY_MODEL_EFFORT_KEY ? "any model" : selector;
+	return `${label} · ${level === AUTO_THINKING ? "auto" : level}`;
+}

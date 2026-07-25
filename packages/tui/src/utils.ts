@@ -102,6 +102,22 @@ export function encodeTextSized(text: string, options: TextSizingOptions = {}): 
 	return `\x1b]66;${metadata.join(":")};${safeText}\x1b\\`;
 }
 
+/**
+ * Take the run of `line` covering columns `[startCol, startCol + length)`.
+ *
+ * Always cuts on grapheme boundaries, so no caller can emit half a cluster.
+ * That means the result's width does not always equal `length`, and the
+ * difference is what `strict` selects:
+ *
+ * - `strict` false (the DEFAULT): a grapheme straddling either edge is kept
+ *   whole, so `width` may EXCEED `length` by up to one grapheme's width. A
+ *   caller sizing a viewport by `length` alone can overflow it by a cell.
+ * - `strict` true: such a grapheme is dropped instead, so `width <= length`
+ *   always, at the cost of leaving a blank column.
+ *
+ * Starting inside a wide grapheme drops that grapheme rather than emitting its
+ * second half. Locked by `packages/tui/test/grapheme-boundary-integrity.test.ts`.
+ */
 export function sliceWithWidth(line: string, startCol: number, length: number, strict?: boolean | null): SliceResult {
 	return nativeSliceWithWidth(line, startCol, length, strict ?? null, DEFAULT_TAB_WIDTH);
 }

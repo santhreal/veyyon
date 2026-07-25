@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Thinking effort now has one persisted home: `defaultEffort`, a per-profile list of model to effort rows edited at `/settings` → Model → Default Effort. A row keyed by a model selector applies to that model, and a `*` row applies to every model without one. It replaces the profile-wide `defaultThinkingLevel` enum, which is still read so an existing config keeps working: with no `*` row, that value becomes it. Effort resolves in one documented order (session choice, then an explicit `:level` on the role's selector, then the model's row, then the `*` row, then the model's default) owned by `config/effort-resolver.ts` rather than written inline at each call site.
+- `/thinking` and its `/effort` alias now change the current session only and print where the saved default lives. They used to rewrite the profile-wide default while the cycle keybinding did not, so the same change stuck or evaporated depending on how you made it, and there was no way to try an effort without keeping it.
+
 ### Fixed
 
 - Fixed a mouse drag over the transcript doing nothing without a word of explanation. Scroll isolation holds the mouse so the wheel scrolls the transcript with the prompt pinned, which means selecting is shift+drag, and that tradeoff was stated only in a settings description. The first swallowed drag now names shift+drag, `/copy`, and `tui.scrollIsolation=false`, and a gated tip says the same before you hit it.

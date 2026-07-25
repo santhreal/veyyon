@@ -1,9 +1,9 @@
 import { DAY_MS, decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { OAuthCallbackFlow } from "./callback-server";
+import { credentialExpiryFromJwtExp } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
-import { credentialExpiryFromJwtExp } from "./expiry";
 
 type FetchFunction = NonNullable<OAuthController["fetch"]>;
 

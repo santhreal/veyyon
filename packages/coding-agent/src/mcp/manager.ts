@@ -36,7 +36,7 @@ import {
 import { type MCPStoredOAuthCredential, refreshMCPOAuthToken } from "./oauth-flow";
 import type { McpConnectionStatusEvent } from "./startup-events";
 import type { MCPToolDetails } from "./tool-bridge";
-import { DeferredMCPTool, MCPTool } from "./tool-bridge";
+import { DeferredMCPTool, MCPTool, mcpToolNamePrefix } from "./tool-bridge";
 import type { MCPToolCache } from "./tool-cache";
 import type {
 	MCPGetPromptResult,
@@ -577,7 +577,11 @@ export class MCPManager {
 	}
 
 	#replaceServerTools(name: string, tools: CustomTool<TSchema, MCPToolDetails>[]): void {
-		this.#tools = this.#tools.filter(t => !t.name.startsWith(`mcp__${name}_`));
+		// The prefix must be derived the same way the tool names were, or a server
+		// whose name needed sanitizing keeps its stale tools AND gains a second
+		// copy on every reconnect. See `mcpToolNamePrefix`.
+		const prefix = mcpToolNamePrefix(name);
+		this.#tools = this.#tools.filter(t => !t.name.startsWith(prefix));
 		this.#tools.push(...tools);
 		// Stable sort by name so reconnect order does not perturb the array.
 		// See `sortMCPToolsByName` for the cache-stability rationale.
@@ -783,7 +787,11 @@ export class MCPManager {
 
 		// Remove tools from this server and notify consumers
 		const hadTools = this.#tools.some(t => t.name.startsWith(`mcp__${name}_`));
-		this.#tools = this.#tools.filter(t => !t.name.startsWith(`mcp__${name}_`));
+		// The prefix must be derived the same way the tool names were, or a server
+		// whose name needed sanitizing keeps its stale tools AND gains a second
+		// copy on every reconnect. See `mcpToolNamePrefix`.
+		const prefix = mcpToolNamePrefix(name);
+		this.#tools = this.#tools.filter(t => !t.name.startsWith(prefix));
 		if (hadTools) this.#onToolsChanged?.(this.#tools);
 
 		// Notify prompt consumers so stale commands are cleared

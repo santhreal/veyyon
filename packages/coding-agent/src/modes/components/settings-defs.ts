@@ -83,6 +83,15 @@ export interface ModelRolesSettingDef extends BaseSettingDef {
 }
 
 /**
+ * The profile's default effort per model: rows of `provider/id` (or `*` for any
+ * model) to an effort, edited as a list. The one persisted effort surface, so a
+ * second row writing the same axis cannot reappear.
+ */
+export interface DefaultEffortSettingDef extends BaseSettingDef {
+	type: "defaultEffort";
+}
+
+/**
  * The profile's DEFAULT model — the model each new session starts on. Rendered
  * with the same searchable model+effort picker as the role/subagent slots, but
  * backed by the `default` model-role slot (the slot the interactive `/model`
@@ -101,6 +110,7 @@ export type SettingDef =
 	| ProviderLimitsSettingDef
 	| ModelSelectorSettingDef
 	| ModelRolesSettingDef
+	| DefaultEffortSettingDef
 	| DefaultModelSettingDef;
 
 /**
@@ -237,6 +247,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	if (schemaType === "record") {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
+		if (path === "defaultEffort") return { ...base, type: "defaultEffort" };
 		return { ...base, type: "text" };
 	}
 

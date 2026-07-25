@@ -24,6 +24,7 @@ import {
 import { clampLow, formatNumber } from "@veyyon/utils";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
+import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { Settings } from "../../config/settings";
 import type { ModelPerfStats } from "../../session/agent-storage";
 import { AUTO_THINKING, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../../thinking";
@@ -80,7 +81,16 @@ export function resolveRoleAssignments(
 			return resolved.thinkingLevel;
 		}
 		if (role === "default") {
-			return parseConfiguredThinkingLevel(settings.get("defaultThinkingLevel")) ?? ThinkingLevel.Inherit;
+			// Shown as the default role's effort: the Default Effort list through the
+			// ONE resolver, not the retired profile-wide enum.
+			return (
+				resolveEffort({
+					defaultEffort: withLegacyDefaultEffort(
+						settings.get("defaultEffort"),
+						settings.get("defaultThinkingLevel"),
+					),
+				}).level ?? ThinkingLevel.Inherit
+			);
 		}
 		return ThinkingLevel.Inherit;
 	};

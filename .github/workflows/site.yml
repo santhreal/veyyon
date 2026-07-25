@@ -1,0 +1,81 @@
+# Website sync: the site rebuilds and redeploys from `main`, so what is in the
+# repository is what veyyon.dev serves.
+#
+# This is how a technical report becomes a blog post. You write it as Markdown in
+# `website/blog/<slug>.md` (readable on GitHub as-is), open a pull request, and
+# this workflow builds the site on the PR so a malformed report fails review
+# instead of production. On merge it builds again and deploys the Cloudflare Pages
+# project, so the post is live at `veyyon.dev/blog/<slug>` with no manual step and
+# no second copy of the text anywhere.
+#
+# ci.yml's `release_site` job still deploys on every published release (that is
+# what keeps the changelog reconciled against GitHub Releases). The two overlap
+# harmlessly: both run the same `website/build.mjs` and both deploy the same tree,
+# whichever runs last serves the same bytes. This one exists because reports and
+# site edits must not wait for a release to go out.
+name: Site
+
+on:
+   push:
+      branches: [main]
+      paths:
+         - "website/**"
+         - "docs/handbook/book/**"
+         - "packages/coding-agent/CHANGELOG.md"
+         - "scripts/install.sh"
+         - "scripts/install.ps1"
+         - ".github/workflows/site.yml"
+   pull_request:
+      branches: [main]
+      paths:
+         - "website/**"
+         - "docs/handbook/book/**"
+         - "packages/coding-agent/CHANGELOG.md"
+         - "scripts/install.sh"
+         - "scripts/install.ps1"
+         - ".github/workflows/site.yml"
+   workflow_dispatch:
+
+# Site deploys are last-write-wins, so superseding an in-flight run is correct:
+# only the newest `main` should reach production. PR runs cancel per branch.
+concurrency:
+   group: "site-${{ github.ref }}"
+   cancel-in-progress: true
+
+permissions:
+   contents: read
+
+jobs:
+   build_and_deploy:
+      name: Build site (deploy on main)
+      runs-on: ubuntu-22.04
+      env:
+         # secrets can't be used in step-level `if:`; hoist presence to a job env.
+         HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+         IS_MAIN: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      steps:
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+           with:
+              bun-version: "1.3"
+         # The blog generator throws on a report with a duplicate slug, a
+         # non-URL-safe slug, or a published post missing its date or summary, and
+         # the brand check throws on a leaked old product name. Running it here is
+         # the gate: a broken report can never reach the deploy step below.
+         - name: Build site (blog + changelog + brand check)
+           run: node website/build.mjs
+         - name: Assert every published post rendered and is in the sitemap
+           run: bun website/tools/check-blog-publish.ts
+         - name: Deploy to Cloudflare Pages (project veyyon → veyyon.dev)
+           if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN == 'true' }}
+           env:
+              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+           run: bunx wrangler@latest pages deploy website --project-name veyyon --branch main --commit-dirty=true
+         # A missing token must never look like a successful publish: say so loudly
+         # so the fix is "add the secret", not "wonder why the post never appeared".
+         - name: Warn when the deploy was skipped for a missing token
+           if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN != 'true' }}
+           run: |
+              echo "::warning::CLOUDFLARE_API_TOKEN is not set — the site built but was NOT deployed. Blog posts merged to main will not appear on veyyon.dev until the secret is added or someone runs 'bun run site:deploy'."
+              exit 1

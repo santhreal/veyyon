@@ -5,9 +5,9 @@
 import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
 import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../../error";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 import { runGoogleOAuthLogin } from "./google-oauth-shared";
 import type { OAuthController, OAuthCredentials } from "./types";
-import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const decode = (s: string) => atob(s);
 const CLIENT_ID = decode(

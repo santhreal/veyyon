@@ -465,14 +465,34 @@ export interface ArmResult {
 	 * The handle count the launch project's argot dictionary actually loaded for
 	 * this trial, read from the SDK's `argot_armed` telemetry record. This is what
 	 * makes a `0 encoded` result interpretable — the number the report cannot infer
-	 * from the prompt (the handle table is injected asynchronously AFTER the
-	 * `session_init` snapshot, so it never appears in any recorded prompt). `0` is a
+	 * from the prompt, because the handle table is injected asynchronously AFTER the
+	 * `session_init` snapshot and so never appears in any RECORDED prompt (whether it
+	 * reached the model is a separate fact, carried by {@link argotHandlesTaught}).
+	 * `0` is a
 	 * real, informative value: the repo had no repeated-token mass, so encode was
 	 * impossible for a CORPUS reason, not a model choice. `null` = no `argot_armed`
 	 * record was seen (argot off, or an older run predating the telemetry), so the
 	 * loaded vocabulary size is unknown and the report says so rather than guessing.
 	 */
 	argotHandlesLoaded: number | null;
+	/**
+	 * Whether the handle table actually reached the model, read from the SDK's
+	 * `argot_taught` record (written after the arm refreshes the system prompt).
+	 *
+	 * This closes the gap that made the first interpretable encode run
+	 * uninterpretable. `argotHandlesLoaded` says a dictionary LOADED;
+	 * {@link argotPreamblePresent} says the NOTATION was taught at startup. Neither
+	 * says the table itself was ever put in front of the model, because the refresh
+	 * that adds it happens after the only prompt the transcript records. Without
+	 * this field, `551 handles loaded, 0 encoded` was charged to the model, when the
+	 * same evidence equally supports the table never arriving.
+	 *
+	 * `true` = the refreshed prompt carried the table, so `0 encoded` is a genuine
+	 * model choice. `false` = the session armed but taught nothing, which is a
+	 * HARNESS bug and invalidates the trial as an encode measurement. `null` = no
+	 * record (argot off, or a run predating this telemetry).
+	 */
+	argotHandlesTaught: boolean | null;
 	/**
 	 * The effect-size ceiling for this trial: how much shorthand could have saved at
 	 * perfect adoption (see {@link encodeHeadroom}). `null` when the trial carried no
@@ -521,6 +541,7 @@ export function emptyArmResult(arm: string, task: string, repeat: number): ArmRe
 		assistantMsgsWithSigil: null,
 		argotPreamblePresent: null,
 		argotHandlesLoaded: null,
+		argotHandlesTaught: null,
 		encodeHeadroom: null,
 		toolCalls: null,
 		error: null,
@@ -1242,9 +1263,18 @@ export function ceilingBelowNoise(maxSavedPct: number, noisePct: number | null):
  *   corpus has no repeated-token mass, so encoding was structurally impossible.
  *   The token delta measures nothing about argot — do NOT read it as "argot does
  *   not help". This is the trap the whole helper exists to catch.
- * - Handles WERE available (a positive load) yet the model wrote none: a genuine
+ * - Handles were loaded but the TABLE never reached the model: a harness failure.
+ *   The model was taught the notation, shown no handles, and told never to invent
+ *   one, so writing none was the only compliant move. This must never be charged
+ *   to the model, and it is the case that produced the first misread of this
+ *   report (`551 handles loaded, 0 encoded` read as "the model ignored it").
+ * - Handles WERE available AND taught, yet the model wrote none: a genuine
  *   model-adoption result, chargeable to the model, not the corpus.
  * - The model did encode (`encoded > 0`): the delta is a real argot measurement.
+ *
+ * `handlesTaught` is `null` for a run predating the `argot_taught` telemetry, in
+ * which case a 0-encoded verdict stays agnostic about whose result it is rather
+ * than blaming the model on evidence that cannot support it.
  *
  * `handlesLoaded` is `null` for a run that predates the `argot_armed` telemetry;
  * then the loaded size is unknown and the verdict says so rather than guessing.
@@ -1257,8 +1287,14 @@ export function interpretEncodeArm(opts: {
 	taught: number;
 	handlesLoaded: number | null;
 	encoded: number;
+	/** Runs whose refreshed prompt actually carried the handle table; `null` when unrecorded. */
+	handlesTaught?: number | null;
+	/** Runs that carried an `argot_taught` record at all, the denominator for the above. */
+	handlesTaughtKnown?: number;
 }): string | null {
 	const { arm, okRuns, taught, handlesLoaded, encoded } = opts;
+	const handlesTaught = opts.handlesTaught ?? null;
+	const handlesTaughtKnown = opts.handlesTaughtKnown ?? 0;
 	if (okRuns === 0 || taught === 0) return null;
 	if (encoded > 0) {
 		const size = handlesLoaded === null ? "an unknown number of" : `${handlesLoaded}`;
@@ -1281,10 +1317,27 @@ export function interpretEncodeArm(opts: {
 			"is NOT a measure of argot; pick tasks whose repos carry repeated paths/commands to measure encode."
 		);
 	}
+	if (handlesTaughtKnown > 0 && handlesTaught !== null && handlesTaught < handlesTaughtKnown) {
+		return (
+			`**${arm}**: ${handlesLoaded} handles loaded, but the handle TABLE reached the model in only ` +
+			`${handlesTaught}/${handlesTaughtKnown} runs. This is a HARNESS failure, not a model result: a model ` +
+			"taught the notation, shown no handles, and instructed never to invent one has no compliant way to " +
+			"encode. Fix the arm before reading anything into the 0-encoded rows or the token delta."
+		);
+	}
+	if (handlesTaughtKnown === 0) {
+		return (
+			`**${arm}**: ${handlesLoaded} handles were loaded and the model encoded in 0/${okRuns} runs, but this ` +
+			"run has no `argot_taught` record, so whether the handle table ever REACHED the model is unknown. " +
+			"That makes the result unattributable — it is equally consistent with the model declining to encode " +
+			"and with the table never being shown. Rerun on a build that records it before drawing a conclusion."
+		);
+	}
 	return (
-		`**${arm}**: ${handlesLoaded} handles WERE loaded but the model encoded in 0/${okRuns} runs — it ignored ` +
-		"the available shorthand. This is a model-adoption result (chargeable to the model), not a corpus limit; " +
-		"the token delta reflects the model declining to encode, not argot being ineffective."
+		`**${arm}**: ${handlesLoaded} handles were loaded AND taught in ${handlesTaught}/${handlesTaughtKnown} runs, ` +
+		`yet the model encoded in 0/${okRuns} — it ignored shorthand it could see. This is a model-adoption ` +
+		"result (chargeable to the model), not a corpus limit or a harness gap; the token delta reflects the " +
+		"model declining to encode, not argot being ineffective."
 	);
 }
 
@@ -1612,7 +1665,8 @@ export function renderReport(
 				r.argotLoadCalls !== null ||
 				r.assistantMsgsWithSigil !== null ||
 				r.argotPreamblePresent !== null ||
-				r.argotHandlesLoaded !== null,
+				r.argotHandlesLoaded !== null ||
+				r.argotHandlesTaught !== null,
 		),
 	);
 	if (argotArms.length > 0) {
@@ -1630,9 +1684,19 @@ export function renderReport(
 		);
 		lines.push("");
 		lines.push(
-			"| arm | OK runs | preamble taught | vocab handles | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |",
+			"`handles taught` is the column that decides who a `0 encoded` result belongs to. Loading a " +
+				"dictionary and teaching the notation both happen at startup; putting the actual handle TABLE in " +
+				"front of the model happens later, on an asynchronous prompt refresh that no recorded prompt " +
+				"captures. So `handles taught` reads the SDK's own post-refresh record. `N/N` means the model " +
+				"genuinely saw the handles and a `0 encoded` row is its own choice. Anything less is a HARNESS " +
+				"failure: the model was taught notation, shown no handles, and told never to invent one, so zero " +
+				"was the only compliant output and the trial measures nothing about adoption.",
 		);
-		lines.push("|---|---|---|---|---|---|---|");
+		lines.push("");
+		lines.push(
+			"| arm | OK runs | preamble taught | vocab handles | handles taught | mean argot_load calls | mean msgs with § | runs that encoded (§>0) |",
+		);
+		lines.push("|---|---|---|---|---|---|---|---|");
 		const interpretations: string[] = [];
 		for (const a of argotArms) {
 			const rows = okByArm(a);
@@ -1646,11 +1710,22 @@ export function renderReport(
 			const handleVals = rows.map(r => r.argotHandlesLoaded).filter((h): h is number => h !== null);
 			const handlesLoaded = handleVals.length === 0 ? null : Math.max(...handleVals);
 			const handlesCell = handlesLoaded === null ? "—" : `${handlesLoaded}`;
+			const tableTaught = rows.filter(r => r.argotHandlesTaught === true).length;
+			const tableKnown = rows.filter(r => r.argotHandlesTaught !== null).length;
+			const tableCell = tableKnown === 0 ? "—" : `${tableTaught}/${tableKnown}`;
 			lines.push(
-				`| ${a} | ${rows.length} | ${taughtCell} | ${handlesCell} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
+				`| ${a} | ${rows.length} | ${taughtCell} | ${handlesCell} | ${tableCell} | ${fmt(mean(rows.map(r => r.argotLoadCalls)), 2)} | ` +
 					`${fmt(mean(rows.map(r => r.assistantMsgsWithSigil)), 2)} | ${encoded}/${rows.length} |`,
 			);
-			const note = interpretEncodeArm({ arm: a, okRuns: rows.length, taught, handlesLoaded, encoded });
+			const note = interpretEncodeArm({
+				arm: a,
+				okRuns: rows.length,
+				taught,
+				handlesLoaded,
+				encoded,
+				handlesTaught: tableKnown === 0 ? null : tableTaught,
+				handlesTaughtKnown: tableKnown,
+			});
 			if (note !== null) interpretations.push(note);
 		}
 		if (interpretations.length > 0) {

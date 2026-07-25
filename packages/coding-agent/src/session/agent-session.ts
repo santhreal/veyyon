@@ -7320,9 +7320,21 @@ export class AgentSession {
 			persistMCPSelection: false,
 		});
 	}
-	/** Rebuild the base system prompt using the current active tool set. */
-	async refreshBaseSystemPrompt(): Promise<void> {
-		if (!this.#rebuildSystemPrompt) return;
+	/**
+	 * Rebuild the base system prompt using the current active tool set, and return
+	 * the prompt now in force.
+	 *
+	 * The return value exists so a caller can VERIFY what the rebuild produced.
+	 * The argot arm is the motivating case: it refreshes the prompt to teach the
+	 * handle table, and until this returned something there was no way for the
+	 * caller, a test, or an eval to confirm the table actually landed. The
+	 * transcript could not answer it either, because `session_init` snapshots the
+	 * prompt before the background arm ever completes.
+	 *
+	 * Returns the unchanged current prompt when no rebuild hook is installed.
+	 */
+	async refreshBaseSystemPrompt(): Promise<string[]> {
+		if (!this.#rebuildSystemPrompt) return this.#baseSystemPrompt;
 		const activeToolNames = this.getActiveToolNames();
 		this.#setActiveToolNames?.(activeToolNames);
 		const previousBaseSystemPrompt = this.#baseSystemPrompt;
@@ -7344,6 +7356,7 @@ export class AgentSession {
 			.map(name => this.#toolRegistry.get(name))
 			.filter((tool): tool is AgentTool => tool != null);
 		this.#lastAppliedToolSignature = this.#computeAppliedToolSignature(activeToolNames, activeTools);
+		return this.#baseSystemPrompt;
 	}
 
 	async #buildSystemPromptForAgentStart(promptText: string): Promise<string[]> {

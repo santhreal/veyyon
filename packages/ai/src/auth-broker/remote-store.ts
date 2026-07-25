@@ -18,6 +18,7 @@ import {
 	type StoredAuthCredential,
 	type StoredCredentialBlock,
 } from "../auth-storage";
+import { isRecordFromFutureClock } from "../credential-clock";
 import * as AIError from "../error";
 import type { OAuthCredentials } from "../registry/oauth/types";
 import type { Provider } from "../types";
@@ -439,6 +440,11 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			candidate => candidate.providerKey === providerKey && candidate.blockScope === blockScope,
 		);
 		if (!block || block.blockedUntilMs <= nowMs) return undefined;
+		// The snapshot was produced by the broker host, which may be a different
+		// machine or a process that started before the clock synced. A block
+		// stamped ahead of this reader cannot be measured against this clock, so
+		// it is dropped rather than held; see credential-clock.
+		if (isRecordFromFutureClock(block.updatedAtMs, nowMs)) return undefined;
 		return block.blockedUntilMs;
 	}
 
@@ -456,6 +462,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			if (!ids.has(entry.id) || !entry.blocks) continue;
 			for (const block of entry.blocks) {
 				if (block.blockedUntilMs <= nowMs) continue;
+				if (isRecordFromFutureClock(block.updatedAtMs, nowMs)) continue;
 				blocks.push({
 					credentialId: entry.id,
 					providerKey: block.providerKey,

@@ -11,9 +11,9 @@ import { decodeJwtPayload, errorMessage, isRecord, scopedTimeoutSignal } from "@
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
-import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const XAI_OAUTH_ISSUER = "https://auth.x.ai";
 const XAI_OAUTH_DISCOVERY_URL = `${XAI_OAUTH_ISSUER}/.well-known/openid-configuration`;

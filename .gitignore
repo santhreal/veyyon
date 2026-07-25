@@ -100,3 +100,6 @@ packages/natives/native/embedded-addons.*.tar.gz
 
 # get.veyyon.dev deploy tree (build artifact from website/build.mjs)
 /website-get/
+
+# Bun install cache, written into the repo root by some tool invocations.
+relative-cache/

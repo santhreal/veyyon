@@ -2,9 +2,9 @@ import * as AIError from "../../error";
 import { clearGitLabDuoDirectAccessCache } from "../../providers/gitlab-duo";
 import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
-import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const GITLAB_COM_URL = "https://gitlab.com";
 /**
