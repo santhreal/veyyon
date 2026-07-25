@@ -333,6 +333,72 @@ describe("InteractiveMode plan review rendering", () => {
 		}
 	});
 
+	it("dismisses Plan Review and restores input when a provider error is pinned", async () => {
+		mode.ui.setFocus(mode.editor);
+		const choice = mode.showPlanReview("# Plan\n\nReady for approval.", "Plan mode - next step", ["Approve"]);
+
+		expect(mode.ui.hasOverlay()).toBe(true);
+
+		mode.showPinnedError("Codex rate limit reached");
+
+		expect(mode.ui.hasOverlay()).toBe(false);
+		expect(mode.ui.getFocused()).toBe(mode.editor);
+		expect(mode.errorBannerContainer.render(80).join("\n")).toContain("Codex rate limit reached");
+		await expect(choice).resolves.toBeUndefined();
+	});
+
+	/**
+	 * A provider error can arrive more than once. The second call runs the
+	 * dismissal against an overlay that is already gone, so this pins that it
+	 * stays inert instead of throwing on a cleared handle or a hidden overlay
+	 * handle, and that the newer banner still reaches the screen.
+	 */
+	it("tolerates a second pinned error after the overlay is already dismissed", async () => {
+		const choice = mode.showPlanReview("# Plan\n\nReady.", "Plan mode - next step", ["Approve"]);
+		mode.showPinnedError("first error");
+		await expect(choice).resolves.toBeUndefined();
+
+		expect(() => mode.showPinnedError("second error")).not.toThrow();
+		expect(mode.ui.hasOverlay()).toBe(false);
+		expect(mode.errorBannerContainer.render(80).join("\n")).toContain("second error");
+	});
+
+	/**
+	 * The dismissal must not fire for an error pinned when no plan review is up,
+	 * which is the ordinary case. Pinning an error on its own should leave the
+	 * banner and nothing else, with no overlay invented or torn down.
+	 */
+	it("pins an error normally when no plan review is open", () => {
+		expect(mode.ui.hasOverlay()).toBe(false);
+		mode.showPinnedError("standalone error");
+		expect(mode.ui.hasOverlay()).toBe(false);
+		expect(mode.errorBannerContainer.render(80).join("\n")).toContain("standalone error");
+	});
+
+	/**
+	 * A pinned error arriving after the review was answered must not disturb the
+	 * answer. Promise resolution is idempotent, so a stale cancel handle could
+	 * not corrupt the value even if one survived; what this pins is the
+	 * observable contract callers depend on, that the awaited choice is still
+	 * "Approve" and pinning an error afterwards neither throws nor reopens the
+	 * overlay.
+	 */
+	it("keeps a resolved choice intact when an error is pinned afterwards", async () => {
+		let capturedOverlay: PlanReviewOverlay | undefined;
+		vi.spyOn(mode.ui, "showOverlay").mockImplementation(component => {
+			capturedOverlay = component as PlanReviewOverlay;
+			return { hide: vi.fn() } as never;
+		});
+		const choice = mode.showPlanReview("# Plan\n\nReady.", "Plan mode - next step", ["Approve"]);
+		expect(capturedOverlay).toBeDefined();
+		capturedOverlay!.handleInput("\x1b[B");
+		capturedOverlay!.handleInput("\r");
+		await expect(choice).resolves.toBe("Approve");
+
+		mode.showPinnedError("late error");
+		await expect(choice).resolves.toBe("Approve");
+	});
+
 	it("copies the overlay's current edited plan markdown from the real plan review overlay", async () => {
 		let capturedOverlay: PlanReviewOverlay | undefined;
 		const overlayHandle = { hide: vi.fn() };

@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed a provider error being pinned behind the plan review overlay, which left the error invisible and the input unusable until the plan was answered ([#6217](https://github.com/can1357/oh-my-pi/issues/6217)).
 - Fixed the `tools.maxTimeout` ceiling being ignored whenever a tool call omitted `timeout`, so a configured global cap did not bound a tool running on its default budget ([#6296](https://github.com/can1357/oh-my-pi/issues/6296)).
 - Fixed isolated branch merge-back rejecting committed agent edits when the parent had unrelated uncommitted changes in the same file; dirty-baseline blobs are now seeded into the parent object database and replayed with a 3-way synthetic-tree apply ([#40](https://github.com/santhreal/veyyon/issues/40)).
 - Fixed Esc aborting an ongoing agent turn instead of overlapping TTS playback, leaving speech uninterruptible ([#6118](https://github.com/can1357/oh-my-pi/issues/6118)).

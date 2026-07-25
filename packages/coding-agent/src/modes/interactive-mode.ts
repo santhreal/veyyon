@@ -602,6 +602,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#planModeHasEntered = false;
 	#planReviewOverlay: PlanReviewOverlay | undefined;
 	#planReviewOverlayHandle: OverlayHandle | undefined;
+	#planReviewCancel: (() => void) | undefined;
 	readonly lspServers: LspStartupServerInfo[] | undefined = undefined;
 	mcpManager?: MCPManager;
 	readonly #toolUiContextSetter: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
@@ -1418,6 +1419,20 @@ export class InteractiveMode implements InteractiveModeContext {
 		resetCapabilities();
 		await this.refreshSlashCommandState(newCwd);
 		await this.session.refreshSshTool({ activateIfAvailable: true });
+		// Rebuild the base system prompt LAST, once settings, capabilities, plugin
+		// roots and slash commands have all been re-scoped, so it is assembled from
+		// the destination project's state.
+		//
+		// Everything above re-scoped the machinery while leaving the prompt itself
+		// describing the OLD directory. The prompt states the cwd verbatim ("the
+		// current working directory is '<path>'") and carries the workspace tree, the
+		// discovered context files, and the active-repo-context block, so after a
+		// `/cd` the model was told it was working in the previous project: it read the
+		// wrong AGENTS.md instructions and resolved relative paths against a directory
+		// it had already left. `refreshBaseSystemPrompt` also invalidates the provider
+		// prompt-cache key when the content changes, so the stale prefix is not
+		// re-served either.
+		await this.session.refreshBaseSystemPrompt();
 		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
 		this.statusLine.invalidate();
 		this.ui.requestRender();
@@ -2664,6 +2679,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 			resolve(choice);
 		};
+		this.#planReviewCancel = () => finish(undefined);
 		const overlay = new PlanReviewOverlay(
 			planContent,
 			{
@@ -2701,9 +2717,17 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#hidePlanReview(): void {
+		this.#planReviewCancel = undefined;
 		this.#planReviewOverlayHandle?.hide();
 		this.#planReviewOverlayHandle = undefined;
 		this.#planReviewOverlay = undefined;
+	}
+
+	#dismissPlanReview(): void {
+		const cancel = this.#planReviewCancel;
+		this.#planReviewCancel = undefined;
+		cancel?.();
+		this.#hidePlanReview();
 	}
 
 	#getEditorTerminalPath(): string | null {
@@ -3953,6 +3977,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	showPinnedError(message: string): void {
+		this.#dismissPlanReview();
 		this.errorBannerContainer.clear();
 		this.errorBannerContainer.addChild(new ErrorBannerComponent(message));
 		this.ui.requestRender();
