@@ -198,3 +198,75 @@ describe("doctor proves the native addon loads", () => {
 		expect(installPs1).toContain("Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue");
 	});
 });
+
+/**
+ * A checksum proves the bytes are the ones that were published. It cannot tell
+ * you the release has no build for this platform.
+ *
+ * That gap is the musl case and every architecture-mismatch case: the download
+ * verifies, installs, starts, answers `--version` from the JS entry point, and
+ * dies on the user's first real command. The post-install doctor catches it,
+ * but only after the binary is in place, the `vey` alias is linked, the shell
+ * profile is edited and the completion files are written. Probing the STAGED
+ * download instead costs a temp file the trap already removes and leaves the
+ * system untouched.
+ */
+describe("a release that cannot run is refused before it touches the system", () => {
+	/** The body of one shell function, so ordering is asserted inside the caller
+	 * that matters rather than against the first match anywhere in the file. */
+	function shFn(name: string): string {
+		const from = installSh.indexOf(`${name}() {`);
+		expect(from, `missing function ${name}`).toBeGreaterThan(-1);
+		const to = installSh.indexOf("\n}\n", from);
+		return installSh.slice(from, to === -1 ? undefined : to);
+	}
+
+	it("install.sh probes the staged download, not just the installed binary", () => {
+		expect(installSh).toContain('doctor_natives "$tmpbin" "downloaded"');
+	});
+
+	it("the probe runs after the checksum and before the binary is moved into place", () => {
+		// Order is the whole point. After finalize_binary this is a report; before
+		// it, it is a gate.
+		const body = shFn("install_binary");
+		const checksum = body.indexOf('verify_release_binary "$tmpbin"');
+		const preflight = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
+		const finalize = body.indexOf('finalize_binary "$tmpbin"');
+		expect(checksum).toBeGreaterThan(-1);
+		expect(preflight).toBeGreaterThan(checksum);
+		expect(finalize).toBeGreaterThan(preflight);
+	});
+
+	it("nothing the user can see is written before the probe", () => {
+		// The alias, the PATH edit and the completions all follow finalize_binary,
+		// so pinning the probe ahead of finalize pins it ahead of all three.
+		const body = shFn("install_binary");
+		const preflight = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
+		expect(preflight).toBeGreaterThan(-1);
+		for (const mutation of [
+			'link_alias "$(install_dir)"',
+			'install_completions "$(install_dir)/$BIN_NAME"',
+			'ensure_on_path "$(install_dir)"',
+		]) {
+			expect(body.indexOf(mutation), mutation).toBeGreaterThan(preflight);
+		}
+	});
+
+	it("the staged file is made executable before it is probed", () => {
+		// curl writes it 0644; running it without this fails on permissions and
+		// reads as a broken addon.
+		const body = shFn("install_binary");
+		const chmod = body.indexOf('chmod +x "$tmpbin"');
+		const preflight = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
+		expect(chmod).toBeGreaterThan(-1);
+		expect(chmod).toBeLessThan(preflight);
+	});
+
+	it("the two runs are the same function, told which phase they are in", () => {
+		// One implementation of "does the addon load", not a preflight copy that
+		// drifts from the post-install check.
+		expect(installSh).toContain('_dn_bin="$1"; _dn_phase="${2:-installed}"');
+		expect(installSh).toContain('doctor_natives "$bin"');
+		expect(installSh).toContain('ok "native addon loads ($_dn_phase)');
+	});
+});

@@ -120,6 +120,69 @@ check "verify_release_binary calls an HTML sidecar unparseable, not a mismatch" 
 ( verify_sha256 "$payload" "$(printf '%s' "$real" | tr 'a-f' 'A-F')" >/dev/null 2>&1 )
 check "verify_sha256 compares case-insensitively" "$?" "0"
 
+# --- doctor_natives: the phase label, and what it refuses ---
+# The preflight run probes the STAGED download so a release with no build for
+# this platform never reaches the install dir, the alias, the shell profile or
+# the completion files. Both runs are the same function; only the wording moves.
+nat_dir="$SANDBOX/natives"
+mkdir -p "$nat_dir"
+
+# A staged download that runs a search correctly.
+cat > "$nat_dir/good" <<'STUB'
+#!/bin/sh
+[ "$1" = "grep" ] && [ "$2" = "--help" ] && exit 0
+[ "$1" = "grep" ] && { printf '%s/probe.txt:1: %s\n' "$3" "$2"; exit 0; }
+echo "veyyon/9.9.9"
+STUB
+chmod +x "$nat_dir/good"
+
+# A staged download whose addon did not load: the musl / wrong-arch shape.
+cat > "$nat_dir/noaddon" <<'STUB'
+#!/bin/sh
+[ "$1" = "grep" ] && [ "$2" = "--help" ] && exit 0
+[ "$1" = "grep" ] && { echo "dlopen: libc.musl-x86_64.so.1: not found" >&2; exit 127; }
+echo "veyyon/9.9.9"
+STUB
+chmod +x "$nat_dir/noaddon"
+
+# A build that ran a search, exited 0, and found nothing.
+cat > "$nat_dir/empty" <<'STUB'
+#!/bin/sh
+[ "$1" = "grep" ] && [ "$2" = "--help" ] && exit 0
+[ "$1" = "grep" ] && { echo "Total matches: 0"; exit 0; }
+echo "veyyon/9.9.9"
+STUB
+chmod +x "$nat_dir/empty"
+
+( doctor_natives "$nat_dir/good" >/dev/null 2>&1 ); check "doctor_natives accepts a binary whose search works" "$?" "0"
+( doctor_natives "$nat_dir/noaddon" >/dev/null 2>&1 ); check "doctor_natives fails closed when the addon did not load" "$?" "1"
+( doctor_natives "$nat_dir/empty" >/dev/null 2>&1 ); check "doctor_natives fails closed on a search that finds nothing" "$?" "1"
+
+# The phase word is what tells the user WHEN it broke: a rejected download left
+# their system untouched, a rejected install did not.
+check "doctor_natives says 'downloaded' when probing the staged file" \
+    "$(doctor_natives "$nat_dir/noaddon" "downloaded" 2>&1 | grep -c 'the downloaded veyyon starts but cannot run a search')" "1"
+check "doctor_natives defaults to 'installed' for the post-install run" \
+    "$(doctor_natives "$nat_dir/noaddon" 2>&1 | grep -c 'the installed veyyon starts but cannot run a search')" "1"
+check "doctor_natives labels the success line with its phase" \
+    "$(doctor_natives "$nat_dir/good" "downloaded" 2>&1 | grep -c 'native addon loads (downloaded)')" "1"
+
+# An older release with no grep subcommand is not a broken install.
+cat > "$nat_dir/nogrep" <<'STUB'
+#!/bin/sh
+[ "$1" = "grep" ] && exit 1
+echo "veyyon/0.0.1"
+STUB
+chmod +x "$nat_dir/nogrep"
+( doctor_natives "$nat_dir/nogrep" >/dev/null 2>&1 ); check "doctor_natives skips a build with no grep command" "$?" "0"
+
+# The probe must not leave its scratch directory behind on either path.
+before_probe_dirs=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'veyyon-doctor.*' 2>/dev/null | wc -l)
+( doctor_natives "$nat_dir/good" >/dev/null 2>&1 )
+( doctor_natives "$nat_dir/noaddon" >/dev/null 2>&1 )
+after_probe_dirs=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'veyyon-doctor.*' 2>/dev/null | wc -l)
+check "doctor_natives removes its probe directory on success and failure" "$after_probe_dirs" "$before_probe_dirs"
+
 # --- link_alias: creates `vey` -> veyyon in the given dir ---
 printf '#!/bin/sh\necho veyyon/0.0.0-test\n' > "$VEYYON_INSTALL_DIR/veyyon"
 chmod +x "$VEYYON_INSTALL_DIR/veyyon"
