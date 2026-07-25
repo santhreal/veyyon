@@ -40,6 +40,7 @@ import taskSummaryTemplate from "../prompts/tools/task-summary.md" with { type: 
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";
+import { anySubagentFailed, classifySubagentOutcome } from "./outcome";
 import { resolveSpawnPolicy } from "./spawn-policy";
 import {
 	type AgentDefinition,
@@ -213,6 +214,9 @@ function renderDescription(
 function createTaskModeError(text: string): AgentToolResult<TaskToolDetails> {
 	return {
 		content: [{ type: "text", text }],
+		// This helper exists only for refusals (wrong mode, bad params, unknown
+		// agent). Every one of them is a failure and must reach the wire as one.
+		isError: true,
 		details: { projectAgentsDir: null, results: [], totalDurationMs: 0 },
 	};
 }
@@ -831,6 +835,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						text: `Failed to start background task ${pluralize("job", failedSchedules.length)}: ${failedSchedules.join("; ")}`,
 					},
 				],
+				// Nothing started at all. Reporting this as a successful spawn
+				// leaves the parent waiting for results that will never arrive.
+				isError: true,
 				details: { projectAgentsDir: null, results: [], totalDurationMs: 0 },
 			};
 		}
@@ -877,6 +884,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						text: `Spawned ${started.length} background agents using ${agentLabel}.${scheduleFailureSummary} Each result will be delivered when that agent yields.\n${startedListing}\n${coordinationHint}`,
 					},
 				],
+				// Some started, some did not. A partial spawn is a failure of the
+				// call the parent made, even though the survivors will still run.
+				isError: failedSchedules.length > 0,
 				details: buildAsyncDetails(),
 			});
 		}
@@ -925,11 +935,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			const spawn = syncSpawns[position];
 			const result = merged.results.find(r => r.id === spawn.agentId);
 			if (result) {
-				spawn.progress.status = result.aborted
-					? "aborted"
-					: result.exitCode === 0 && !result.error
-						? "completed"
-						: "failed";
+				const outcome = classifySubagentOutcome(result);
+				spawn.progress.status = outcome.kind === "aborted" ? "aborted" : outcome.isError ? "failed" : "completed";
 				spawn.progress.durationMs = result.durationMs;
 			} else {
 				spawn.progress.status = payloads[position] ? "failed" : "aborted";
@@ -945,6 +952,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			.join("\n\n");
 		return withAdvisory({
 			content: [{ type: "text", text: text.length > 0 ? text : "No results." }],
+			// A mixed call fails if any spawn could not be scheduled or any of the
+			// inline children failed. The detached ones report themselves later.
+			isError: failedSchedules.length > 0 || anySubagentFailed(syncResults),
 			details: buildAsyncDetails(),
 		});
 	}
@@ -1031,9 +1041,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					const finalText = result.content.find(part => part.type === "text")?.text ?? "(no output)";
 					const singleResult = result.details?.results[0];
 					// A missing result means the sync path failed at the tool level
-					// (results: []) — treat it as a failure, not success.
-					const resultFailed = !singleResult || (singleResult.aborted ?? false) || singleResult.exitCode !== 0;
-					progress.status = singleResult?.aborted ? "aborted" : resultFailed ? "failed" : "completed";
+					// (results: []) and there is nothing to classify, so it is a
+					// failure by construction.
+					const outcome = singleResult ? classifySubagentOutcome(singleResult) : undefined;
+					const resultFailed = outcome ? outcome.isError : true;
+					progress.status = !outcome ? "failed" : outcome.kind === "aborted" ? "aborted" : resultFailed ? "failed" : "completed";
 					progress.durationMs = singleResult?.durationMs ?? Math.max(0, Date.now() - startedAt);
 					progress.tokens = singleResult?.tokens ?? 0;
 					progress.requests = singleResult?.requests ?? 0;
@@ -1153,6 +1165,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		);
 		return {
 			content: [{ type: "text", text: merged.contentParts.join("\n\n") }],
+			// A batch is an error if ANY child failed. Reporting success because
+			// most of them worked buries the failures in a wall of successful
+			// output, which is where a parent stops reading.
+			isError: anySubagentFailed(merged.results),
 			details: {
 				projectAgentsDir: merged.projectAgentsDir,
 				results: merged.results,
@@ -1629,13 +1645,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		totalDurationMs: number,
 		mergeSummary: string,
 	): AgentToolResult<TaskToolDetails> {
-		const status = result.aborted
-			? "cancelled"
-			: result.exitCode === 0 && result.error
-				? "merge failed"
-				: result.exitCode === 0
-					? "completed"
-					: `failed (exit ${result.exitCode})`;
+		const outcome = classifySubagentOutcome(result);
+		const status = outcome.label;
 		const output = formatResultOutputFallback(result);
 		const outputCharCount = result.outputMeta?.charCount ?? output.length;
 		const fullOutputThreshold = 5000;
@@ -1671,6 +1682,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		return {
 			content: [{ type: "text", text: summary }],
+			// Without this the parent model receives a structurally successful
+			// tool result whose text merely says "failed", and `agent-loop` has
+			// nothing to surface as an error on the wire.
+			isError: outcome.isError,
 			details: {
 				projectAgentsDir,
 				results: [result],

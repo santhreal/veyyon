@@ -10,6 +10,7 @@ import type { Component } from "@veyyon/tui";
 import { Container, Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 import { settings } from "../config/settings";
+import { classifySubagentOutcome } from "./outcome";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
@@ -1227,9 +1228,12 @@ function renderAgentResult(
 	const lines: string[] = [];
 
 	const { warning: missingCompleteWarning, rest: outputWithoutWarning } = extractMissingYieldWarning(result.output);
-	const aborted = result.aborted ?? false;
-	const mergeFailed = !aborted && result.exitCode === 0 && !!result.error;
-	const success = !aborted && result.exitCode === 0 && !result.error;
+	// Same classification the wire uses, so a row cannot render green while the
+	// tool result is marked an error (or the reverse).
+	const outcome = classifySubagentOutcome(result);
+	const aborted = outcome.kind === "aborted";
+	const mergeFailed = outcome.kind === "merge-failed";
+	const success = outcome.kind === "completed";
 	const needsWarning = Boolean(missingCompleteWarning) && success;
 	const icon = aborted
 		? theme.status.aborted
@@ -1550,10 +1554,19 @@ export function renderResult(
 	if (hasResults) {
 		for (const r of details.results) {
 			requestTotal += r.requests ?? 0;
-			if (r.aborted) abortedCount++;
-			else if (r.exitCode !== 0) failCount++;
-			else if (r.error) mergeFailedCount++;
-			else successCount++;
+			switch (classifySubagentOutcome(r).kind) {
+				case "aborted":
+					abortedCount++;
+					break;
+				case "failed":
+					failCount++;
+					break;
+				case "merge-failed":
+					mergeFailedCount++;
+					break;
+				default:
+					successCount++;
+			}
 		}
 	}
 	const aborted = abortedCount > 0;
