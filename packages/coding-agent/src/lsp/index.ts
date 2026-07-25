@@ -1052,7 +1052,19 @@ export type WritethroughCallback = (
  *    durability, which the previous `Bun.write` never provided either. Keeping it
  *    off preserves the prior latency while adding crash-atomicity.
  */
-async function commitFileContentAtomic(dst: string, content: string): Promise<void> {
+async function commitFileContentAtomic(dst: string, content: string, signal?: AbortSignal): Promise<void> {
+	// The abort check belongs HERE, immediately before the rename, rather than at
+	// the top of each caller. A tool that was interrupted while computing its
+	// content used to commit anyway: the operator saw "aborted" and believed the
+	// file was untouched while it had in fact been replaced. Reporting a
+	// cancellation that did not cancel is worse than either outcome on its own,
+	// because it is the state nobody goes back to check.
+	//
+	// The write is atomic, so failing here leaves the original file exactly as it
+	// was. There is still a window of a few microseconds between this check and
+	// the rename; a signal that arrives inside it commits, which is correct.
+	// Atomicity is the guarantee, not instantaneous cancellation.
+	throwIfAborted(signal);
 	try {
 		await atomicWriteFilePreservingMode(dst, content, { fsync: false });
 	} catch (error) {
@@ -1068,12 +1080,12 @@ async function commitFileContentAtomic(dst: string, content: string): Promise<vo
 export async function writethroughNoop(
 	dst: string,
 	content: string,
-	_signal?: AbortSignal,
+	signal?: AbortSignal,
 	_file?: BunFile,
 	_batch?: LspWritethroughBatchRequest,
 	_getDeferred?: (dst: string) => WritethroughDeferredHandle | undefined,
 ): Promise<FileDiagnosticsResult | undefined> {
-	await commitFileContentAtomic(dst, content);
+	await commitFileContentAtomic(dst, content, signal);
 	return undefined;
 }
 
@@ -1287,7 +1299,7 @@ async function runLspWritethrough(
 	const { enableFormat, enableDiagnostics } = options;
 
 	let finalContent = content;
-	const writeContent = (value: string) => commitFileContentAtomic(dst, value);
+	const writeContent = (value: string) => commitFileContentAtomic(dst, value, signal);
 	const getWritePromise = once(() => writeContent(finalContent));
 	let writeNotified = false;
 	const notifyWriteCommitted = async (notifySignal: AbortSignal | undefined = signal) => {
