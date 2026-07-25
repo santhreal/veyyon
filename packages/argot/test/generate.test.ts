@@ -743,3 +743,165 @@ describe("line-structure candidates (ARGOT-DICT-FITS-THE-WRONG-CORPUS)", () => {
 		expect(seen).toContain(JSON.stringify("\n\t\treturn").slice(1, -1));
 	});
 });
+
+describe("structure outranks repo paths, and the table stays bounded (ARGOT-DICT-FITS-THE-WRONG-CORPUS)", () => {
+	// WHY THIS SUITE EXISTS, and why it is separate from the extraction suite
+	// above. Making line structure REACHABLE was only half the fix. The other half
+	// was that the two scoring terms actively pointed away from it even once it
+	// could be proposed: `documentFrequency` rewards strings spread thinly across
+	// many files, which is exactly what an import path is and exactly what an agent
+	// never retypes, and the `log2(1 + within)` damping exists to stop one fixture
+	// file dominating, which is exactly what crushes code structure that repeats
+	// many times WITHIN every file. Extraction tests cannot see either of those:
+	// they assert a candidate was proposed, and both defects live in what happens
+	// to it afterwards. These drive the whole generator and assert on the chosen
+	// table, which is the only place the ranking is observable.
+	//
+	// The numbers behind it, from replaying the 30,151 tokens a real agent emitted
+	// on the ytt bench task against the 551-handle dictionary it was given: 6 of
+	// 551 handles were ever emitted, worth 0.33% of output, while the top 25
+	// strings it genuinely retyped were 12.1% of output and the dictionary held 0
+	// of them.
+
+	/**
+	 * A corpus shaped like real source: one import path repeated across many
+	 * files, and code structure repeated many times inside each. This is the exact
+	 * distribution the old scoring got backwards.
+	 */
+	function goFiles(count: number): { path: string; content: string }[] {
+		const IMPORT = "github.com/aws/aws-lambda-go/events";
+		return Array.from({ length: count }, (_, i) => ({
+			path: `handler${i}.go`,
+			content: [
+				`package main`,
+				``,
+				`import "${IMPORT}"`,
+				``,
+				`func handle${i}(e events.Request) error {`,
+				`\t\treturn nil`,
+				`\t\treturn errNotFound`,
+				`\t\treturn errTimeout`,
+				`\t\treturn errClosed`,
+				`}`,
+			].join("\n"),
+		}));
+	}
+
+	test("line structure outranks an import path that appears in every file", () => {
+		// THE HEADLINE INVERSION. The import is in all eight files (maximal document
+		// frequency) and is typed by an agent never; `\n\t\treturn` is in the same
+		// eight files and typed four times in each. The old ranking put the import
+		// first, which is how a 551-handle dictionary came to hold zero of the
+		// strings its agent actually repeated.
+		const { handles } = generateDictFromRepo(goFiles(8), { tokenBudget: 4000 });
+		const expansions = handles.map(h => h.expansion);
+		const structureRank = expansions.indexOf("\n\t\treturn");
+		const importRank = expansions.findIndex(e => e.includes("aws-lambda-go"));
+
+		expect(structureRank).toBeGreaterThanOrEqual(0);
+		if (importRank >= 0) expect(structureRank).toBeLessThan(importRank);
+	});
+
+	test("within-file repetition is not damped away for structure", () => {
+		// The damping is right for an asset file and wrong for source. Four returns
+		// per file across eight files is 32 real emissions; under `log2(1 + within)`
+		// that scored as 8 + 4 = 12, which is what let a thinly-spread import win.
+		// Asserted by comparison rather than on an absolute score, since the score
+		// is internal: more repetition inside the same number of files must move the
+		// handle UP the table, and under damping it barely could.
+		const dense = generateDictFromRepo(goFiles(4), { tokenBudget: 4000 });
+		const sparse = generateDictFromRepo(
+			goFiles(4).map(f => ({ ...f, content: f.content.replace(/\n\t\treturn err\w+/g, "") })),
+			{ tokenBudget: 4000 },
+		);
+		const rankOf = (d: { handles: { expansion: string }[] }) => d.handles.map(h => h.expansion).indexOf("\n\t\treturn");
+
+		expect(rankOf(dense)).toBeGreaterThanOrEqual(0);
+		expect(rankOf(dense)).toBeLessThanOrEqual(rankOf(sparse) < 0 ? Number.MAX_SAFE_INTEGER : rankOf(sparse));
+	});
+
+	test("a candidate whose handle is not cheaper than its expansion is rejected", () => {
+		// `perUse = tokens(expansion) - tokens(handle)`, and a handle costs at least
+		// two tokens, so a one-token string can never pay. Locked because the whole
+		// argument for the table rests on every row being a net win: one row that
+		// costs more than it saves makes the dictionary a tax on every turn, and
+		// nothing else in the pipeline would notice.
+		const { handles } = generateDictFromRepo(
+			Array.from({ length: 6 }, (_, i) => ({ path: `f${i}.go`, content: "interface\ninterface\ninterface\n" })),
+			{ tokenBudget: 4000 },
+		);
+
+		expect(handles.map(h => h.expansion)).not.toContain("interface");
+	});
+
+	test("the table is capped by the token budget, keeping the highest-value rows", () => {
+		// A dictionary rides in the system prompt every turn, so an unbounded table
+		// is a per-turn input cost with no ceiling. The cap has to bind on VALUE, not
+		// on insertion order: a budget that truncated arbitrarily would drop exactly
+		// the structure handles this suite exists to protect, since they are minted
+		// after the paths.
+		const big = generateDictFromRepo(goFiles(8), { tokenBudget: 4000 });
+		const small = generateDictFromRepo(goFiles(8), { tokenBudget: 40 });
+
+		expect(small.handles.length).toBeLessThan(big.handles.length);
+		expect(small.dictTokens).toBeLessThanOrEqual(40);
+		// Whatever survives the cut must be a prefix of the larger table's ranking,
+		// which is what "kept the highest-value rows" means operationally.
+		const bigOrder = big.handles.map(h => h.expansion);
+		for (const kept of small.handles.map(h => h.expansion)) {
+			expect(bigOrder.indexOf(kept)).toBeLessThan(bigOrder.length);
+		}
+	});
+});
+
+describe("a newline-bearing expansion survives the dict round trip", () => {
+	// WHY THIS SUITE EXISTS. Line structure was worth admitting only if it can
+	// actually reach the model and come back: the handle is written into a TOML
+	// dictionary, parsed on load, and matched by the expander. Every one of those
+	// three steps has to preserve a literal newline and tab exactly, and none of
+	// them was covered, because until structure candidates existed no expansion
+	// had ever contained a control character. A round trip that silently turned
+	// `\n\t\treturn` into `n\t\treturn` or `\\n\t\treturn` would produce a
+	// dictionary that looks right in every extraction and scoring test above and
+	// expands to garbage in the agent's output.
+
+	test("the generated TOML parses back to the exact bytes", () => {
+		const { toml, handles } = generateDictFromRepo(
+			Array.from({ length: 6 }, (_, i) => ({
+				path: `f${i}.go`,
+				content: "func a() {\n\t\treturn nil\n\t\treturn err\n}",
+			})),
+			{ tokenBudget: 4000 },
+		);
+		const structure = handles.find(h => h.expansion === "\n\t\treturn");
+		expect(structure, "the fixture must mint a structure handle for this to test anything").toBeDefined();
+
+		const parsed = parseDict(toml, "AGENTS.dict");
+
+		expect(parsed.handles.get(structure?.name as string)).toBe("\n\t\treturn");
+	});
+
+	test("the expander substitutes the handle back to the literal newline and tabs", () => {
+		// The end of the round trip, and the only step the agent sees. Asserted on
+		// exact bytes: a check that the output merely contains "return" would pass
+		// on an expansion that lost its indentation, which is the failure that
+		// produces syntactically broken code.
+		const vocab = parseDict('version = 1\nsigil = "§"\n\n[handles]\nret = "\\n\\t\\treturn"\n', "AGENTS.dict");
+		const expand = makeExpander(vocab);
+
+		expect(expand("func f() {§ret nil\n}")).toBe("func f() {\n\t\treturn nil\n}");
+	});
+
+	test("a bare indentation run round-trips too, tabs intact", () => {
+		// `\n\t\t` is word-agnostic and was among the highest-value handles measured,
+		// so it must survive the same path. It is also the one most likely to be
+		// mangled by a naive trim somewhere in parse or render. The closing brace
+		// after the handle is deliberate: it is the boundary character the guard
+		// `(?![a-z0-9_])` needs, and it is what the handle is actually followed by
+		// in the code this expands into.
+		const vocab = parseDict('version = 1\nsigil = "§"\n\n[handles]\ni2 = "\\n\\t\\t"\n', "AGENTS.dict");
+		const expand = makeExpander(vocab);
+
+		expect(expand("{§i2}")).toBe("{\n\t\t}");
+	});
+});
