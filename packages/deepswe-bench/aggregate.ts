@@ -216,6 +216,27 @@ export function isHardError(result: { error: string | null; outputTokens: number
  * empty input returns a generic message rather than throwing, since the caller
  * only reaches it when at least one hard error exists.
  */
+/**
+ * The fail-fast canary's abort decision, as a pure predicate so it can be tested
+ * without running a whole bench (run.ts's entrypoint is un-importable). Trip when
+ * the first `canarySize` completed trials have arrived AND every one of them is a
+ * {@link isHardError} — i.e. one full concurrent wave produced nothing but "the
+ * agent never ran" failures. That is the signature of a systematic config failure
+ * (an unservable model, a bad auth DB) that would fail every remaining trial
+ * identically, so aborting now saves the rest of the run.
+ *
+ * It does NOT trip on a partial mix (some runs produced output): a real workload
+ * has flaky tasks, and one scored fail among successes is data, not a config bug.
+ * `canarySize` is the wave width (min of the worker-pool size and the queue), so
+ * on a tiny queue the whole queue is the window. An empty result set never trips.
+ */
+export function shouldTripCanary(
+	results: ReadonlyArray<{ error: string | null; outputTokens: number | null }>,
+	canarySize: number,
+): boolean {
+	return results.length >= canarySize && results.length > 0 && results.every(isHardError);
+}
+
 export function mostCommonAgentReason(reasons: readonly string[]): string {
 	const counts = new Map<string, number>();
 	for (const raw of reasons) {

@@ -58,6 +58,7 @@ import {
 	renderReport,
 	type SessionUsage,
 	selectTasks,
+	shouldTripCanary,
 	systemPromptTeachesArgot,
 	type TaskSetProvenance,
 	tallyUsage,
@@ -661,7 +662,6 @@ async function main(): Promise<void> {
 	// all hard-errored, not after the whole queue drains.
 	const totalQueued = queue.length;
 	const canarySize = Math.max(1, Math.min(Math.max(1, jobParallel), totalQueued));
-	const hardErrors: string[] = [];
 	let canaryTripped = false;
 
 	console.log(
@@ -785,15 +785,13 @@ async function main(): Promise<void> {
 		);
 		// Fail-fast canary: a config that makes EVERY run error (an unservable model,
 		// a bad auth DB, a missing binary) otherwise burns the whole run — 120 jobs ×
-		// ~1min of container setup — to prove one typo. A "hard error" is a trial the
-		// agent never produced output for (error set AND no session parsed, so
-		// outputTokens is null); a scored fail or a partial run is NOT hard. If the
-		// first wave (`canarySize` completed jobs) are ALL hard errors, abort the rest
-		// and surface the single most common agent-side reason, so the operator sees
-		// `Model "..." not found` in seconds instead of after an hour of red.
-		if (isHardError(result)) hardErrors.push(result.error ?? "");
-		if (!canaryTripped && results.length >= canarySize && hardErrors.length === results.length) {
+		// ~1min of container setup — to prove one typo. The trip DECISION is the pure,
+		// tested `shouldTripCanary` (a full wave of hard errors); the reason string is
+		// the mode of those errors, so the operator sees `Model "..." not found` in
+		// seconds instead of after an hour of red.
+		if (!canaryTripped && shouldTripCanary(results, canarySize)) {
 			canaryTripped = true;
+			const hardErrors = results.filter(isHardError).map(r => r.error ?? "");
 			console.error(
 				`\nABORTING: the first ${results.length} trials ALL failed before the agent produced any output ` +
 					`(0 successful runs). This is a systematic config failure, not task flakiness — the remaining ` +

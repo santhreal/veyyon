@@ -39,6 +39,7 @@ import {
 	renderReport,
 	renderTaskSetProvenanceBanner,
 	selectTasks,
+	shouldTripCanary,
 	signTestPValue,
 	summarizeCell,
 	sweepCanReachSignificance,
@@ -2017,6 +2018,49 @@ describe("isHardError — the fail-fast canary's definition of a systematic (not
 		// definition, even if usage parsing yielded null — the canary keys on a
 		// LOUD error, not on missing usage, so it never trips on a quiet gap.
 		expect(isHardError({ error: null, outputTokens: null })).toBe(false);
+	});
+});
+
+describe("shouldTripCanary — abort only when a full wave is all hard errors", () => {
+	// WHY THIS SUITE EXISTS. The abort decision used to be an inline boolean in
+	// run.ts, verifiable only by running a whole ~110-min bench. Extracting it here
+	// makes the exact trip contract testable: a FULL wave (>= canarySize completed)
+	// where EVERY trial is a hard error, and never on a partial mix. Getting this
+	// wrong either aborts a valid run (one flaky task among successes) or fails to
+	// abort a doomed one (burning the whole queue on a config typo).
+	const hard = { error: 'Model "x" not found', outputTokens: null };
+	const good = { error: null, outputTokens: 800 };
+
+	test("a full wave of hard errors trips", () => {
+		expect(shouldTripCanary([hard, hard, hard, hard], 4)).toBe(true);
+	});
+
+	test("does NOT trip before the wave is complete", () => {
+		// 3 hard errors but the wave is 4: too early to conclude the config is dead.
+		expect(shouldTripCanary([hard, hard, hard], 4)).toBe(false);
+	});
+
+	test("one good run in the wave prevents a trip", () => {
+		// The critical false-positive guard: a single successful trial proves the
+		// config works, so the failures are task flakiness, not a systematic bug.
+		expect(shouldTripCanary([hard, good, hard, hard], 4)).toBe(false);
+	});
+
+	test("an empty result set never trips", () => {
+		// Nothing has run yet; there is nothing to conclude.
+		expect(shouldTripCanary([], 4)).toBe(false);
+	});
+
+	test("with a canary window of 1, the very first hard error trips", () => {
+		// On a single-item queue the wave is 1, so one hard error is a full wave.
+		expect(shouldTripCanary([hard], 1)).toBe(true);
+		expect(shouldTripCanary([good], 1)).toBe(false);
+	});
+
+	test("extra hard errors past the window still trip (stays tripped)", () => {
+		// The window is a floor, not a ceiling: more than canarySize all-hard results
+		// is still a trip, so a late check after several waves behaves the same.
+		expect(shouldTripCanary([hard, hard, hard, hard, hard, hard], 4)).toBe(true);
 	});
 });
 
