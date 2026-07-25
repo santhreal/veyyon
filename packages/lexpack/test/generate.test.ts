@@ -394,11 +394,13 @@ describe("deterministic short mnemonic naming (ARG-NAME-BREVITY)", () => {
 	// (`§connec_pk4xfv18`), nearly as long as a short expansion, which made the live
 	// content-repro bench emit MORE tokens with argot on than off.
 
-	test("a uniquely-stemmed path gets the bare 6-char stem, no hash", () => {
+	test("a uniquely-stemmed path gets the bare stem, no hash", () => {
 		const result = generateDictFromRepo([{ path: "lib/database/connection-pool.ts" }]);
 		const handle = result.handles.find(h => h.expansion === "lib/database/connection-pool.ts");
-		// last segment `connection-pool.ts` → strip non-alnum → truncate 6 → `connec`.
-		expect(handle?.name).toBe("connec");
+		// last segment `connection-pool.ts` → strip non-alnum → truncate to the
+		// 4-character name budget → `conn`. The budget is what keeps a handle at 2
+		// tokens with the sigil; see MAX_NAME_LENGTH.
+		expect(handle?.name).toBe("conn");
 	});
 
 	test("colliding stems get distinct, minimal, deterministic suffixes", () => {
@@ -413,8 +415,11 @@ describe("deterministic short mnemonic naming (ARG-NAME-BREVITY)", () => {
 		expect(names.length).toBe(2);
 		expect(new Set(names).size).toBe(2);
 		for (const name of names) {
-			expect(name.startsWith("connec")).toBe(true);
-			expect(name.length).toBeLessThanOrEqual("connec".length + 4);
+			// The stem is truncated to pay for the suffix, so the whole name stays
+			// inside the 4-character budget rather than growing past it. That budget
+			// is the difference between a 2-token and a 3-token handle.
+			expect(name.startsWith("con")).toBe(true);
+			expect(name.length).toBeLessThanOrEqual(4);
 		}
 	});
 
@@ -440,14 +445,16 @@ describe("deterministic short mnemonic naming (ARG-NAME-BREVITY)", () => {
 		const pinned = {
 			version: 1 as const,
 			sigil: "§",
-			handles: new Map([["connec", "totally/unrelated/frozen/target.ts"]]),
+			// Must be the name the generator WOULD mint for the candidate below, or
+			// there is no collision to test. That is the 4-character stem `conn`.
+			handles: new Map([["conn", "totally/unrelated/frozen/target.ts"]]),
 			meta: new Map(),
 		};
 		const result = generateDictFromRepo([{ path: "lib/database/connection-pool.ts" }], { pinned });
 		const handle = result.handles.find(h => h.expansion === "lib/database/connection-pool.ts");
 		expect(handle).toBeDefined();
-		expect(handle?.name).not.toBe("connec");
-		expect(handle?.name?.startsWith("connec")).toBe(true);
+		expect(handle?.name).not.toBe("conn");
+		expect(handle?.name?.startsWith("con")).toBe(true);
 	});
 });
 
@@ -667,5 +674,72 @@ describe("does not capture prose sentences (budget-waste regression)", () => {
 		const found = extractCandidates(line);
 		expect(found).not.toContain(line);
 		expect(found).toContain("packages/app/src/docs/guide.html");
+	});
+});
+
+describe("line-structure candidates (ARGOT-DICT-FITS-THE-WRONG-CORPUS)", () => {
+	// WHY THIS SUITE EXISTS. The generator mined only whitespace-delimited tokens,
+	// so the strings a coding agent actually retypes most were not merely ranked
+	// low, they were IMPOSSIBLE to propose: every candidate came from
+	// `line.split(/\s+/)` and so could never contain a space or newline. Measured
+	// against what a real agent emitted on the ytt bench task, the top handles by
+	// net token saving were all line structure (`\n\t\treturn` 414 uses, `\n\tif`
+	// 393, `\n\t\t` 211), and the dictionary contained none of them. Fitting them
+	// took the realized net saving on that workload from about 0.3% to 8.1%,
+	// against an oracle ceiling of 10.1%.
+
+	test("an indented line contributes its newline + indent + first word", () => {
+		// The shape that was unreachable before. The leading newline is load
+		// bearing: bare `return` is one token already and would save nothing, so it
+		// is the break plus a specific depth that makes the string worth a handle.
+		const found = extractCandidates("func f() {\n\t\treturn nil\n}");
+		expect(found).toContain("\n\t\treturn");
+	});
+
+	test("an indented line also contributes the BARE indentation run", () => {
+		// Word-agnostic, so it covers every line at that depth rather than one
+		// keyword's share. `\n\t\t` alone was worth 211 uses on the measured run.
+		const found = extractCandidates("func f() {\n\t\treturn nil\n}");
+		expect(found).toContain("\n\t\t");
+	});
+
+	test("a declaration after a blank line contributes its blank-line prefix", () => {
+		const found = extractCandidates("package main\n\nfunc main() {}");
+		expect(found).toContain("\n\nfunc");
+	});
+
+	test("the FIRST line never yields a blank-line declaration candidate", () => {
+		// The regression this locks out: passing "" as the predecessor of line one
+		// reads as a blank line, which minted a bogus candidate from the opening
+		// line of every file, including one-line prose.
+		expect(extractCandidates("just some ordinary words here")).toEqual([]);
+		expect(extractCandidates("console.log(x);")).toEqual([]);
+	});
+
+	test("a punctuation-led line yields no structure candidate", () => {
+		// Requiring an identifier keeps `}`, `//` and `- name:` out, so closing
+		// braces and comment markers cannot buy budget.
+		const found = extractCandidates("if (x) {\n\t}\n\t// note\n");
+		expect(found.some(c => c.startsWith("\n") && /[}/]/.test(c))).toBe(false);
+	});
+
+	test("structure is priced by the ESCAPED form, because that is what goes over the wire", () => {
+		// An agent writes code inside tool-call arguments, which are JSON, so its
+		// tabs travel as the two characters `\` and `t`. A tokenizer collapses a run
+		// of real tabs but charges for each escaped one, so `\n\t\t\t\t` is 2 tokens
+		// raw and 5 escaped. Pricing the raw form scored every bare indentation run
+		// as worthless and kept the best handles out. This drives the generator with
+		// a counter that makes the two forms differ, and asserts the escaped one won.
+		const seen: string[] = [];
+		const countTokens = (text: string) => {
+			seen.push(text);
+			return text.length;
+		};
+		generateDictFromRepo([{ path: "a.go", content: "func f() {\n\t\treturn nil\n\t\treturn err\n}" }], {
+			countTokens,
+		});
+		// The raw expansion is 9 characters; its escaped form is 12. Seeing the
+		// escaped form proves the scorer asked about the wire bytes.
+		expect(seen).toContain(JSON.stringify("\n\t\treturn").slice(1, -1));
 	});
 });

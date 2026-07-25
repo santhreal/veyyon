@@ -140,8 +140,8 @@ describe("a corrupt dictionary cache entry fails loudly instead of being rebuilt
 			// produced a DIFFERENT handle set would be the silent unmapping this whole
 			// design refuses, and only naming them can tell the two apart.
 			expect([...recovered.vocab.handles.entries()].sort()).toEqual([
-				["connec", "src/database/connection.ts"],
-				["indext", "src/routes/index.ts"],
+				["conn", "src/database/connection.ts"],
+				["inde", "src/routes/index.ts"],
 			]);
 
 			// And the rebuilt entry is readable as a hit, so service is genuinely back

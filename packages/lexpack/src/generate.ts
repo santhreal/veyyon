@@ -199,6 +199,98 @@ export function estimateTokens(text: string): number {
 	return Math.max(1, tokens);
 }
 
+/**
+ * A candidate is LINE STRUCTURE when it begins with a newline: the line break, the
+ * indentation that follows it, and the first word of the line.
+ *
+ * This is the one shape a whitespace-delimited extractor structurally cannot
+ * produce, and it is where the measured saving actually lives. Replaying what a
+ * real agent emitted on the ytt bench task, the highest-value strings by net
+ * tokens were `\n\t\treturn` (414 uses), `\n\tif` (393), `\n\nfunc` (188) and
+ * `\n\t\tif` (180) — together about 13.8% of its output tokens, and none of them
+ * were proposable before, because {@link extractCandidates} split every line on
+ * whitespace and so could never emit a candidate containing any.
+ *
+ * The leading newline is load-bearing rather than decoration. Encoding bare
+ * `return` would collide with every other use of the word and save nothing (it is
+ * one token already); it is the line break plus a specific indentation depth that
+ * both makes the string long enough to be worth a handle and pins it to a real
+ * structural position an agent retypes.
+ */
+function isLineStructure(expansion: string): boolean {
+	return expansion.startsWith("\n");
+}
+
+/**
+ * The line-structure candidates for one line: its indentation prefix, and (when it
+ * opens a top-level declaration after a blank line) its blank-line prefix.
+ *
+ * Deliberately narrow. Only the FIRST word is taken, so this proposes a bounded
+ * number of candidates per line instead of every n-gram, and the word must be an
+ * identifier so punctuation-led lines (`}`, `//`, `- name:`) never enter. Data
+ * files are the failure mode to avoid here: a YAML fixture with a thousand
+ * identically-indented rows would otherwise mint a handle nothing types, which is
+ * exactly the defect this whole change exists to fix. That is guarded at scoring
+ * time by requiring the candidate to appear in at least two distinct files.
+ */
+function lineStructureCandidates(rawLine: string, trimmed: string, previousLine: string | undefined): string[] {
+	const firstWord = /^[A-Za-z_][A-Za-z0-9_]{0,15}/.exec(trimmed)?.[0];
+	if (firstWord === undefined) {
+		return [];
+	}
+	const out: string[] = [];
+	const indent = /^[\t ]+/.exec(rawLine)?.[0];
+	if (indent !== undefined) {
+		out.push(`\n${indent}${firstWord}`);
+		// The BARE indentation run, with no word at all. Counter-intuitive but among
+		// the highest-value handles there is: measured against what a real agent
+		// emitted, `\n\t\t` occurred 211 times, `\n\t\t\t` 110 and `\n\t\t\t\t` 95,
+		// together worth about 716 output tokens from three handles. They are
+		// valuable precisely because they are word-agnostic, so they cover every
+		// line at that depth rather than one keyword's share of them. Requiring a
+		// word here (as the first candidate above does) excluded all of them.
+		//
+		// Overlap with the word-bearing candidates is not double counting: the
+		// expander matches longest-first, so `\n\t\treturn` wins wherever it applies
+		// and the bare run only collects what is left.
+		out.push(`\n${indent}`);
+	} else if (previousLine !== undefined && previousLine.trim().length === 0) {
+		// A declaration opening after a blank line: `\n\nfunc`, `\n\ntype`. Only
+		// valid at column zero, which is what makes it a declaration rather than a
+		// continuation.
+		out.push(`\n\n${firstWord}`);
+	}
+	return out;
+}
+
+/**
+ * What one use of `expansion` actually costs the model in output tokens.
+ *
+ * A handle only pays if it is cheaper than the text the model would otherwise
+ * emit, so the comparison has to be against the form the model REALLY writes. For
+ * ordinary tokens (a path, an identifier) that is the string itself. For line
+ * structure it is not: an agent writes code inside tool-call arguments, which are
+ * JSON, so its newlines and tabs go over the wire ESCAPED, as the two characters
+ * `\` and `n` rather than one control character.
+ *
+ * The gap is large and it runs one way. A tokenizer collapses a run of real tabs
+ * into very few tokens but charges for each escaped `\t` separately, so `\n\t\t\t\t`
+ * is 2 tokens raw and 5 escaped, and `\n\t\t` is 2 against 3. Pricing the raw form
+ * therefore undervalued exactly the candidates that pay best, by up to two and a
+ * half times, and scored every bare indentation run as worthless (2 tokens raw
+ * against a 2-token handle is no saving at all) when in practice each use saves up
+ * to three.
+ */
+function emittedTokenCost(expansion: string, countTokens: (text: string) => number): number {
+	if (!isLineStructure(expansion)) {
+		return countTokens(expansion);
+	}
+	// `JSON.stringify` then strip the quotes: the exact bytes this string becomes
+	// inside a tool-call argument, produced by the same encoder the wire uses
+	// rather than by a hand-rolled escape table that could drift from it.
+	return countTokens(JSON.stringify(expansion).slice(1, -1));
+}
+
 /** Trim wrapping punctuation a candidate is likely surrounded by in prose or code. */
 function trimWrapping(token: string): string {
 	return token.replace(/^[["'`(<{]+/, "").replace(/[\]"'`)>},;]+$/, "");
@@ -475,10 +567,19 @@ function isCommentLine(line: string): boolean {
  */
 export function extractCandidates(text: string): string[] {
 	const out: string[] = [];
-	for (const rawLine of text.split(/\r?\n/)) {
+	const lines = text.split(/\r?\n/);
+	for (let index = 0; index < lines.length; index++) {
+		const rawLine = lines[index] as string;
 		const line = rawLine.trim();
 		if (line.length === 0) {
 			continue;
+		}
+		// `undefined` for the first line: it has no predecessor, so it can never be
+		// the "declaration after a blank line" shape. Passing `""` there would read
+		// as a blank predecessor and mint a bogus candidate from the opening line of
+		// every file, including one-line prose.
+		for (const structure of lineStructureCandidates(rawLine, line, index === 0 ? undefined : lines[index - 1])) {
+			out.push(structure);
 		}
 		const rawTokens = line.split(/\s+/);
 		// A whole command-like line: multiple words that reference something
@@ -539,20 +640,26 @@ export function extractCandidates(text: string): string[] {
  * the real objective. A handle's realistic floor is 2 tokens (sigil + one
  * subword), which is why `perUse` in the scorer must be computed on tokens.
  */
-const MAX_NAME_LENGTH = 6;
+const MAX_NAME_LENGTH = 4;
+
+/**
+ * Stem length for {@link contentName}, which is not bound by the 2-token budget.
+ * See the note there.
+ */
+const CONTENT_NAME_STEM_LENGTH = 6;
 
 /** A short readable stem from an expansion's last path segment, for handle names. */
-function nameStem(expansion: string): string {
+function nameStem(expansion: string, maxLength: number = MAX_NAME_LENGTH): string {
 	const segment = expansion.split(/[/\\]/).filter(Boolean).pop() ?? expansion;
 	let base = segment
 		.toLowerCase()
 		.replace(/[^a-z0-9_]+/g, "")
-		.slice(0, MAX_NAME_LENGTH);
+		.slice(0, maxLength);
 	if (base.length === 0) {
 		base = expansion
 			.toLowerCase()
 			.replace(/[^a-z0-9_]+/g, "")
-			.slice(0, MAX_NAME_LENGTH);
+			.slice(0, maxLength);
 	}
 	return base.length === 0 ? "h" : base;
 }
@@ -576,7 +683,12 @@ function fnv1a(text: string, seed: number): number {
  */
 function contentName(expansion: string): string {
 	const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
-	return `${nameStem(expansion)}_${hash.slice(0, 8)}`;
+	// Its own stem length, deliberately not {@link MAX_NAME_LENGTH}. That budget
+	// exists to keep a name inside 2 tokens, which this scheme cannot achieve at any
+	// stem length because it always appends `_` plus eight hash characters. Shrinking
+	// the stem here would only cost readability and buy nothing, so the readable
+	// stem stays as long as it was.
+	return `${nameStem(expansion, CONTENT_NAME_STEM_LENGTH)}_${hash.slice(0, 8)}`;
 }
 
 /**
@@ -644,19 +756,42 @@ function buildMnemonicNames(allExpansions: Iterable<string>, reserved: Iterable<
 			for (const expansion of group) deferred.push(expansion);
 		}
 	}
-	// Pass 2: every remaining expansion gets `stem` + the shortest hash prefix that
-	// is not yet used. `used` already holds all bare stems and reserved names, so a
-	// disambiguated name can never equal one of those.
+	// Pass 2: every remaining expansion gets `stem` + a short hash suffix, with the
+	// stem TRUNCATED to keep the whole name inside {@link MAX_NAME_LENGTH}.
+	//
+	// Staying inside that budget is the point, not a nicety. A name of four
+	// characters or fewer costs 2 tokens with the sigil; eight costs 3. The old
+	// scheme appended the suffix on top of a full-length stem, so a colliding
+	// handle came out at eight characters and cost 3 tokens against expansions that
+	// are themselves only 3 or 4 tokens, which is how a "saving" became a loss. On
+	// a real Go repository nearly every line-structure candidate collides (every
+	// indentation depth of `return` shares one stem), so this was the common path,
+	// not the rare one.
 	for (const expansion of deferred.sort()) {
-		const stem = nameStem(expansion);
 		const hash = fnv1a(expansion, 0x811c9dc5).toString(36) + fnv1a(expansion, 0x9e3779b1).toString(36);
-		let name = `${stem}${hash}`; // full-hash fallback; only if every prefix is taken
-		for (let len = 2; len <= hash.length; len++) {
-			const candidate = `${stem}${hash.slice(0, len)}`;
-			if (!used.has(candidate)) {
-				name = candidate;
-				break;
+		let name: string | undefined;
+		// Grow the suffix, shrinking the stem to pay for it, so the total never
+		// exceeds the budget. Longer suffixes are tried before giving up the stem
+		// entirely, which keeps names as readable as the budget allows.
+		for (let suffixLength = 1; suffixLength < MAX_NAME_LENGTH && name === undefined; suffixLength++) {
+			const stem = nameStem(expansion).slice(0, MAX_NAME_LENGTH - suffixLength);
+			for (let start = 0; start + suffixLength <= hash.length; start++) {
+				const candidate = `${stem}${hash.slice(start, start + suffixLength)}`;
+				if (!used.has(candidate)) {
+					name = candidate;
+					break;
+				}
 			}
+		}
+		// Exhausting every in-budget candidate means the short space is genuinely
+		// full. Spending a longer name is still better than minting a duplicate,
+		// which would bind one name to two expansions and corrupt every decode.
+		if (name === undefined) {
+			let overflow = 0;
+			do {
+				overflow++;
+				name = `${nameStem(expansion).slice(0, 1)}${overflow.toString(36)}`;
+			} while (used.has(name));
 		}
 		names.set(expansion, name);
 		used.add(name);
@@ -778,7 +913,12 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		const seenInSample = new Set<string>();
 		for (const rawExpansion of extract(sample)) {
 			const expansion = rawExpansion;
-			if (expansion.length < minExpansionLength) {
+			// The character floor is a proxy for "long enough to be worth a handle",
+			// and it is the wrong proxy for line structure: `\n\tif` is four
+			// characters and three tokens, so it clears the only test that matters
+			// (the `perUse` token comparison below) while failing this one. Structure
+			// is therefore admitted here and judged on tokens alone.
+			if (!isLineStructure(expansion) && expansion.length < minExpansionLength) {
 				continue;
 			}
 			if (expansion.includes(sigil)) {
@@ -826,7 +966,7 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 					? contentName(candidate.expansion)
 					: "abcd";
 		const handleTokens = countTokens(sigil + probeName);
-		const expansionTokens = countTokens(candidate.expansion);
+		const expansionTokens = emittedTokenCost(candidate.expansion, countTokens);
 		const perUse = expansionTokens - handleTokens;
 		if (perUse <= 0) {
 			continue; // the handle is not shorter than what it replaces
@@ -834,7 +974,24 @@ export function generateDict(corpus: string | string[], options: GenerateOptions
 		// Value is driven by centrality (document frequency), not raw occurrences,
 		// so a string repeated inside one asset file cannot buy budget a model would
 		// never spend on it. See scoringFrequency.
-		const value = scoringFrequency(candidate.frequency, candidate.documentFrequency);
+		//
+		// Line structure is scored on RAW occurrences instead, because for it the
+		// within-file repetition is the entire signal rather than noise. The damping
+		// above exists to stop one asset file dominating, but code structure
+		// legitimately repeats many times inside every source file, and damping it
+		// logarithmically is what kept the highest-value handles out of the
+		// dictionary. The asset-file risk that damping guards against is met here by
+		// requiring the pattern in at least two distinct files, so a single
+		// thousand-row fixture still cannot buy a handle nothing types.
+		let value: number;
+		if (isLineStructure(candidate.expansion)) {
+			if (candidate.documentFrequency < 2) {
+				continue;
+			}
+			value = candidate.frequency;
+		} else {
+			value = scoringFrequency(candidate.frequency, candidate.documentFrequency);
+		}
 		scored.push({ candidate, savedTokens: perUse * value, handleTokens });
 	}
 
