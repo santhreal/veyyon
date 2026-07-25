@@ -818,10 +818,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor);
 		this.composerShortcuts = new ComposerShortcutsBar();
-		this.composerShortcuts.setScrollState(() => ({
-			active: this.ui.virtualScrollActive,
-			newRows: this.ui.virtualScrollNewRows,
-		}));
 		this.#refreshComposerShortcuts();
 		this.statusLine = new StatusLineComponent(session);
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);

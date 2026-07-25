@@ -57,6 +57,10 @@ async function setup(transcriptRows: number, height = 10): Promise<Rig> {
 	const term = new VirtualTerminal(40, height, 1_000);
 	const scheduler = new StressRenderScheduler();
 	const tui = new TUI(term, true, { renderScheduler: scheduler });
+	// Shipped default, stated rather than inherited: the constructor reads
+	// VEYYON_TUI_SCROLLBACK_REBUILD, and another suite in this process sets it at
+	// module scope, which would otherwise decide this suite's behaviour.
+	tui.setScrollbackRebuild(false);
 	const transcript = new Transcript();
 	const editor = new Editor();
 	tui.addChild(transcript);
@@ -74,6 +78,18 @@ function viewportText(term: VirtualTerminal): string[] {
 	return term.getViewport().map(row => Bun.stripANSI(row).trimEnd());
 }
 
+/**
+ * Viewport rows with the last column dropped. A frozen transcript region draws
+ * the scroll position in that column, so a case about CONTENT reads it here and
+ * the track's own bytes are asserted in "draws the scroll position on the right
+ * edge of the frozen region" below. Dropping the column by width (never by
+ * matching the glyph) keeps content that legitimately ends in a box character
+ * from being trimmed as if it were chrome.
+ */
+function contentText(term: VirtualTerminal, width = 40): string[] {
+	return term.getViewport().map(row => Bun.stripANSI(row).padEnd(width, " ").slice(0, width - 1).trimEnd());
+}
+
 describe("scroll isolation", () => {
 	it("freezes the transcript region on wheel up while the footer stays pinned at the bottom", async () => {
 		// The core contract: wheel-up moves the transcript slice up by the
@@ -86,10 +102,10 @@ describe("scroll isolation", () => {
 			await scheduler.drain(term);
 
 			expect(tui.virtualScrollActive).toBe(true);
-			const view = viewportText(term);
+			const view = contentText(term);
 			expect(view[0]).toBe("hist-18"); // 21 - 3 (one wheel step)
 			expect(view[8]).toBe("hist-26");
-			expect(view[9]).toBe(">"); // footer never moved
+			expect(viewportText(term)[9]).toBe(">"); // footer never moved, track-free
 		} finally {
 			tui.stop();
 			await term.flush();
@@ -107,9 +123,8 @@ describe("scroll isolation", () => {
 			tui.requestRender();
 			await scheduler.drain(term);
 
-			const view = viewportText(term);
-			expect(view[0]).toBe("hist-18"); // transcript still frozen
-			expect(view[9]).toBe("> draft"); // footer live
+			expect(contentText(term)[0]).toBe("hist-18"); // transcript still frozen
+			expect(viewportText(term)[9]).toBe("> draft"); // footer live and track-free
 		} finally {
 			tui.stop();
 			await term.flush();
@@ -131,8 +146,7 @@ describe("scroll isolation", () => {
 			tui.requestRender();
 			await scheduler.drain(term);
 
-			let view = viewportText(term);
-			expect(view[0]).toBe("hist-18"); // view untouched by the stream
+			expect(contentText(term)[0]).toBe("hist-18"); // view untouched by the stream
 			expect(tui.virtualScrollNewRows).toBe(8); // 3 scrolled + 5 streamed
 			expect(term.getScrollBuffer().join("\n")).not.toContain("hist-34");
 
@@ -142,7 +156,7 @@ describe("scroll isolation", () => {
 				await scheduler.drain(term);
 			}
 			expect(tui.virtualScrollActive).toBe(false);
-			view = viewportText(term);
+			const view = viewportText(term);
 			expect(view[0]).toBe("hist-26"); // live tail of the 36-row frame
 			expect(view[9]).toBe(">");
 
@@ -208,13 +222,13 @@ describe("scroll isolation", () => {
 			await scheduler.drain(term);
 			term.sendInput(WHEEL_UP); // streak 2: 42 -> 33
 			await scheduler.drain(term);
-			expect(viewportText(term)[0]).toBe("hist-33");
+			expect(contentText(term)[0]).toBe("hist-33");
 
 			// After the accel window lapses, the next tick is the base step again.
 			scheduler.advance(400);
 			term.sendInput(WHEEL_UP); // 33 -> 30
 			await scheduler.drain(term);
-			expect(viewportText(term)[0]).toBe("hist-30");
+			expect(contentText(term)[0]).toBe("hist-30");
 		} finally {
 			tui.stop();
 			await term.flush();
@@ -262,11 +276,14 @@ describe("scroll isolation", () => {
 		}
 	});
 
-	it("writes wheel tracking modes only while the frame overflows, and tears them down on stop", async () => {
-		// The mode contract: 1000h+1006h while a scrollable frame runs (never
-		// 1003h, which would flood input with motion events), released when the
-		// frame fits the viewport so short screens keep native drag-select,
-		// and fully reset on stop.
+	it("keeps wheel tracking armed once rows have scrolled off, and tears it down on stop", async () => {
+		// The mode contract: 1000h+1006h while anything sits above the window
+		// (never 1003h, which would flood input with motion events), and fully
+		// reset on stop. Gating on the composed frame overflowing the viewport
+		// was the bug: the frame shrinking back does NOT mean the session has
+		// nothing to scroll, because the rows that left the frame are on the
+		// tape, and releasing the mouse there handed the wheel to the terminal,
+		// which scrolled the pinned composer off screen.
 		const term = new VirtualTerminal(40, 10, 1_000);
 		const originalWrite = term.write.bind(term);
 		let written = "";
@@ -276,6 +293,7 @@ describe("scroll isolation", () => {
 		};
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		tui.setScrollbackRebuild(false); // see setup(): the default is env-derived
 		const transcript = new Transcript();
 		transcript.lines = rows("hist-", 30);
 		tui.addChild(transcript);
@@ -284,30 +302,31 @@ describe("scroll isolation", () => {
 		await scheduler.drain(term);
 		expect(written).toContain("\x1b[?1000h\x1b[?1006h");
 		expect(written).not.toContain("\x1b[?1003h");
+		expect(tui.scrollTapeRows).toBeGreaterThan(0);
 
-		// Shrink below the viewport: tracking releases mid-session.
+		// Shrink below the viewport. History is on the tape, so there is still
+		// something above the window and the mouse is NOT released.
 		written = "";
 		transcript.lines = rows("hist-", 5);
 		tui.requestRender();
 		await scheduler.drain(term);
-		expect(written).toContain("\x1b[?1006l\x1b[?1000l");
+		expect(written).not.toContain("\x1b[?1006l\x1b[?1000l");
 
-		// Grow back: tracking re-arms.
-		written = "";
-		transcript.lines = rows("hist-", 30);
-		tui.requestRender();
+		// And the wheel still reaches the engine rather than the terminal.
+		term.sendInput(WHEEL_UP);
 		await scheduler.drain(term);
-		expect(written).toContain("\x1b[?1000h\x1b[?1006h");
+		expect(tui.virtualScrollActive).toBe(true);
 
 		tui.stop();
 		expect(written).toContain("\x1b[?1006l\x1b[?1000l");
 		await term.flush();
 	});
 
-	it("never captures the mouse on a frame that fits the viewport", async () => {
-		// The selection-preservation contract: with nothing to scroll there is
-		// no reason to hold the mouse, so a short frame emits no tracking
-		// bytes at all and plain drag-select keeps working.
+	it("never captures the mouse before anything has scrolled off", async () => {
+		// The selection-preservation contract: with nothing above the window at
+		// all — a short frame in a fresh session, nothing on the tape — there is
+		// no reason to hold the mouse, so no tracking bytes are emitted and
+		// plain drag-select keeps working.
 		const term = new VirtualTerminal(40, 10, 1_000);
 		const originalWrite = term.write.bind(term);
 		let written = "";
@@ -317,6 +336,7 @@ describe("scroll isolation", () => {
 		};
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		tui.setScrollbackRebuild(false); // see setup(): the default is env-derived
 		const transcript = new Transcript();
 		transcript.lines = rows("hist-", 5);
 		tui.addChild(transcript);

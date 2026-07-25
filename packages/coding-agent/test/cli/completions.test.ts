@@ -401,6 +401,21 @@ describe("veyyon completions argument handling", () => {
 		expect(stderr).toContain("--nope");
 	}, 30000);
 
+	it("answers --help with exit 0, which is how the installer probes for it", async () => {
+		// install.sh runs `veyyon completions --help >/dev/null 2>&1` to decide
+		// whether the build it just installed can generate completions at all. A
+		// non-zero exit here reads as "no completions command" and the installer
+		// skips completions entirely, silently, on a build that supports them.
+		const { stdout, exitCode } = await run("--help");
+		expect(exitCode).toBe(0);
+		expect(stdout).toContain("bash|zsh|fish|powershell");
+		expect(stdout).toContain("--no-alias");
+	}, 30000);
+
+	it("answers -h the same way", async () => {
+		expect((await run("-h")).exitCode).toBe(0);
+	}, 30000);
+
 	it("names the missing shell rather than printing an empty error", async () => {
 		const { stderr, exitCode } = await run();
 		expect(exitCode).toBe(1);

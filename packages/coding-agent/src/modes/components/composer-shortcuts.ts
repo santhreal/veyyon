@@ -45,30 +45,26 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
  * band changes the composer zone's height on every busy flip, jerking the
  * whole footer up and down mid-conversation (user report 2026-07-22); the
  * zone reserves this row whether or not there is a live action to surface.
+ *
+ * It carries the composer's own actions and NOTHING else. This row used to be
+ * taken over by the scroll indicator while the transcript was frozen, which
+ * meant scrolling up mid-run silently removed the `esc interrupt` chip — the one
+ * action you are most likely to want while reading a run back. Scroll position
+ * is the scrolled region's business and the engine draws it there, on the right
+ * edge (`TUI` scroll track), so the composer zone renders byte-identically
+ * whether the view is frozen or following.
  */
 export class ComposerShortcutsBar implements Component {
 	#shortcuts: readonly ModalShortcut[] = [];
-	// Live scroll-isolation state, read at render time so the indicator never
-	// needs a rebuild trigger from the engine's wheel handling.
-	#scrollState: (() => { active: boolean; newRows: number }) | null = null;
 
 	setShortcuts(shortcuts: readonly ModalShortcut[]): void {
 		this.#shortcuts = shortcuts;
 	}
 
-	setScrollState(source: (() => { active: boolean; newRows: number }) | null): void {
-		this.#scrollState = source;
-	}
-
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		const scroll = this.#scrollState?.();
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
-		if (scroll?.active) {
-			const label = theme.fg("dim", `\u2193 ${scroll.newRows} rows up`) + theme.fg("muted", "  ·  click to go to the bottom");
-			return [inset + label];
-		}
 		if (this.#shortcuts.length === 0 || width < 20) return [""];
 		// renderModalShortcuts centers within the given width; the band aligns
 		// at the rail instead, so use the raw layout rows.

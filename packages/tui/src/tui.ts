@@ -95,6 +95,11 @@ const MOUSE_TRACKING_OFF = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
 // queue. Tradeoff against native scroll: drag-select becomes Shift+drag,
 // the standard convention in mouse-capturing TUIs.
 const MOUSE_WHEEL_TRACKING_ON = "\x1b[?1000h\x1b[?1006h";
+// Scroll position, drawn on the right edge of a frozen transcript region. The
+// groove is dimmed rather than coloured: the engine owns no palette (themes
+// live in the host), and dim reads as chrome against every ground.
+const SCROLL_TRACK_GROOVE = "\x1b[2m│\x1b[22m";
+const SCROLL_TRACK_THUMB = "█";
 const MOUSE_WHEEL_TRACKING_OFF = "\x1b[?1006l\x1b[?1000l";
 const ALT_SCREEN_ENTER = "\x1b[?1049h";
 const ALT_SCREEN_EXIT = "\x1b[?1049l";
@@ -997,6 +1002,31 @@ export class TUI extends Container {
 	// references to component-cached strings, so the audit is a pointer walk
 	// in the common case.
 	#committedPrefix: string[] = [];
+	// The scroll tape: every PREPARED row the engine has painted and let scroll
+	// off the window, oldest first — the engine's own mirror of what the
+	// terminal's scrollback holds. Scroll isolation reads history from here and
+	// not from the composed frame, because virtualized roots (the coding
+	// agent's TranscriptContainer) DROP committed rows from their render output
+	// once the engine reports them committed. That keeps the frame near the
+	// viewport height however long the session runs, so a frame-sourced frozen
+	// view could only ever scroll back by the commit lag — a few rows — and the
+	// wheel then did nothing at all (operator report 2026-07-24).
+	//
+	// It mirrors the terminal, it is not a court record: a tail re-anchor
+	// re-shows rows that are already on the tape (the "duplication, never loss"
+	// contract), and those duplicates are not appended a second time, so the
+	// tape can hold each row once where the terminal holds it twice.
+	#scrollTape: string[] = [];
+	// Rows kept on the tape. A long session's history is bounded so the engine
+	// cannot grow without limit; older rows stay reachable through the
+	// terminal's own scrollback, which is what the tape mirrors.
+	#scrollTapeCap = 20_000;
+	// Immutable scroll space the frozen view reads: the tape followed by the
+	// composed frame's uncommitted rows, snapshotted when the view freezes.
+	// Built once per gesture so nothing under the frozen region can move it —
+	// a virtualized root drops rows on quiet frames, which would otherwise
+	// shift every row of a live-frame-sourced view out from under the reader.
+	#scrollSnapshot: string[] | null = null;
 	// Rows of the committed prefix that were HARD-VERIFIED as exact-final
 	// bytes (committed below the exactness boundary, or frozen snapshots that
 	// passed the one-time strict scan when the boundary rose past them). Rows
@@ -1021,17 +1051,23 @@ export class TUI extends Container {
 	// region while the pinned footer (the composer zone) stays live at the
 	// viewport bottom — the opencode/grok-build model, against the engine's
 	// native-scrollback default where the whole window scrolls and the
-	// composer goes with it. #virtualScrollTop is the absolute frame row at
+	// composer goes with it. #virtualScrollTop is the row of the SCROLL SPACE
+	// (the tape followed by the frame's uncommitted rows, see #scrollTape) at
 	// the top of the frozen transcript region; null means following the live
 	// tail. Commits freeze while set (a chunk would scroll the terminal and
 	// destroy the frozen view); the accumulated rows backfill through the
 	// ordinary seam rewrite on resume.
 	#scrollIsolation = false;
 	#wheelTrackingActive = false;
-	// True while the composed frame overflows the viewport — the only state
-	// where the wheel has something to scroll. Tracking toggles with it, so
-	// short screens keep full native drag-select; long screens trade it for
-	// Shift+drag.
+	// True while anything sits above the window: the composed frame overflows
+	// the viewport, OR rows have already scrolled off onto the tape. Gating on
+	// frame overflow ALONE is what broke the pinned composer — a virtualized
+	// transcript trims the frame back to about the viewport on every quiet
+	// frame, so the gate closed, the mouse was released, and the wheel scrolled
+	// the terminal and took the prompt with it. Tracking still releases while
+	// the screen has no history at all, so a fresh session keeps full native
+	// drag-select; once there is history it is Shift+drag (documented in
+	// `tui.scrollIsolation`, which turns the whole model off).
 	#frameScrollable = false;
 	// Pinned footer = the last #pinnedFooterChildCount root children (the
 	// composer zone). The row count is derived from the segment ledger after
@@ -1347,6 +1383,62 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * Rows on the scroll tape — the engine's mirror of terminal scrollback,
+	 * which is what scroll isolation scrolls back through. Read-only.
+	 */
+	get scrollTapeRows(): number {
+		return this.#scrollTape.length;
+	}
+
+	/**
+	 * Cap the scroll tape (rows). Below the current length the oldest rows are
+	 * dropped immediately; they stay reachable through the terminal's own
+	 * scrollback. Must be at least one screen or scrolling back has nothing to
+	 * show, so the floor is enforced rather than silently accepted.
+	 */
+	setScrollTapeCap(rows: number): void {
+		this.#scrollTapeCap = Math.max(this.terminal.rows, Math.trunc(rows));
+		this.#trimScrollTape();
+	}
+
+	#trimScrollTape(): void {
+		const excess = this.#scrollTape.length - this.#scrollTapeCap;
+		if (excess > 0) this.#scrollTape.splice(0, excess);
+	}
+
+	/**
+	 * Append the rows this frame let scroll off the window to the tape.
+	 * `rows` are PREPARED lines (exactly the bytes painted), so a frozen view
+	 * re-shows history byte-for-byte instead of re-deriving it from components
+	 * that may have dropped it.
+	 */
+	#appendScrollTape(rows: readonly string[], from: number, to: number): void {
+		for (let i = from; i < to; i++) this.#scrollTape.push(rows[i] ?? "");
+		this.#trimScrollTape();
+	}
+
+	/**
+	 * Rows in the scroll space: the tape, then the part of the composed frame
+	 * that is not already on it. The frame's first #committedRows rows are the
+	 * tape's last #committedRows rows (both came from the same paint), so only
+	 * the remainder is new.
+	 */
+	#scrollSpaceRows(frameRows = this.#previousFrameLength): number {
+		return this.#scrollTape.length + Math.max(0, frameRows - this.#committedRows);
+	}
+
+	/**
+	 * Scroll-space row the live tail's view starts at — the bottom-most view,
+	 * which is what "following" shows. Derived from the space's own length and
+	 * never from `#windowTopRow`: that counter is a frame coordinate, and a
+	 * virtualized root dropping rows leaves it describing a frame that no longer
+	 * exists (it read 41 against a 12-row frame in the case this fixes).
+	 */
+	#scrollSpaceLiveTop(frameRows = this.#previousFrameLength): number {
+		return Math.max(0, this.#scrollSpaceRows(frameRows) - this.terminal.rows);
+	}
+
+	/**
 	 * Total row count of the last composed frame (all root children). 0 before the
 	 * first render. Read-only; lets callers that need to bottom-anchor content
 	 * measure the exact composed height without re-rendering.
@@ -1412,9 +1504,10 @@ export class TUI extends Container {
 	/**
 	 * Enable or disable scroll isolation (default off). While enabled the TUI
 	 * captures wheel/button mouse reports: wheel up freezes the transcript
-	 * region on an older frame slice and wheel down walks it back, with the
-	 * pinned footer (see {@link setPinnedFooterRows}) live at the bottom. A
-	 * frozen view resumes following on wheel-down to the tail, on
+	 * region on an older slice of the scroll space (the tape plus the live
+	 * frame, see {@link scrollTapeRows}) and wheel down walks it back, with the
+	 * pinned footer (see {@link setPinnedFooterChildCount}) live at the bottom.
+	 * A frozen view resumes following on wheel-down to the tail, on
 	 * {@link scrollToLiveTail} (the host calls it on submit), on resize/full
 	 * paints, and while an overlay is visible. Enabling mid-session writes
 	 * the wheel-tracking mode; disabling restores native terminal scrollback.
@@ -1422,9 +1515,17 @@ export class TUI extends Container {
 	setScrollIsolation(enabled: boolean): void {
 		if (this.#scrollIsolation === enabled) return;
 		this.#scrollIsolation = enabled;
-		this.#virtualScrollTop = null;
+		this.#resumeLiveTail();
 		this.#syncWheelTracking();
 		this.requestRender();
+	}
+
+	/** Drop the frozen view and its snapshot. One owner: a frozen view that
+	 * survives its snapshot would read rows from the live frame at scroll-space
+	 * indices, which address different content. */
+	#resumeLiveTail(): void {
+		this.#virtualScrollTop = null;
+		this.#scrollSnapshot = null;
 	}
 
 	get scrollIsolation(): boolean {
@@ -1444,16 +1545,21 @@ export class TUI extends Container {
 		return this.#virtualScrollTop !== null;
 	}
 
-	/** New live rows below the frozen view, for the host's scroll indicator. */
+	/**
+	 * Rows between the frozen view's top and the live tail — how far back the
+	 * reader currently is. Read-only diagnostic surface, like {@link committedRows}:
+	 * nothing in the host renders it, because a scroll readout in the composer is
+	 * exactly what this change removed. Tests and the stress harness assert it.
+	 */
 	get virtualScrollNewRows(): number {
 		if (this.#virtualScrollTop === null) return 0;
-		return Math.max(0, this.#windowTopRow - this.#virtualScrollTop);
+		return Math.max(0, this.#scrollSpaceLiveTop() - this.#virtualScrollTop);
 	}
 
 	/** Resume following the live tail (host calls this on message submit). */
 	scrollToLiveTail(): void {
 		if (this.#virtualScrollTop === null) return;
-		this.#virtualScrollTop = null;
+		this.#resumeLiveTail();
 		this.requestRender();
 	}
 
@@ -2463,14 +2569,26 @@ export class TUI extends Container {
 		this.#lastWheelDirection = direction;
 		this.#lastWheelAtMs = now;
 		const step = TUI.#WHEEL_SCROLL_ROWS * (1 + this.#wheelStreak);
+		// Scroll-space coordinates: the tape's rows, then the frame's uncommitted
+		// rows. The live tail's view starts at #scrollSpaceLiveTop() and 0 is the
+		// oldest row the tape still holds.
+		const liveTop = this.#scrollSpaceLiveTop();
 		if (direction === -1) {
-			// Nothing above the live window to scroll to (short frame): stay
-			// following instead of entering a frozen state with zero new rows.
-			if (this.#windowTopRow === 0 && this.#virtualScrollTop === null) return;
-			this.#virtualScrollTop = Math.max(0, (this.#virtualScrollTop ?? this.#windowTopRow) - step);
+			// Nothing above the live window at all (fresh session, short frame):
+			// stay following instead of freezing a view with nothing behind it.
+			if (liveTop === 0 && this.#virtualScrollTop === null) return;
+			const next = Math.max(0, (this.#virtualScrollTop ?? liveTop) - step);
+			if (next === this.#virtualScrollTop) return; // already at the oldest row
+			this.#virtualScrollTop = next;
 		} else if (this.#virtualScrollTop !== null) {
 			const next = this.#virtualScrollTop + step;
-			this.#virtualScrollTop = next >= this.#windowTopRow ? null : next;
+			if (next >= liveTop) {
+				this.#resumeLiveTail();
+			} else {
+				this.#virtualScrollTop = next;
+			}
+		} else {
+			return; // wheel-down while following: nothing to do, no repaint
 		}
 		this.requestRender();
 	}
@@ -2752,6 +2870,30 @@ export class TUI extends Container {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * Draw the scroll position on the right edge of the frozen transcript
+	 * region: a dim one-column track with a bright thumb, the placement
+	 * opencode uses. It lives in the region that actually moved, so the pinned
+	 * footer renders byte-identically whether the view is frozen or following —
+	 * the composer's own rows never become a scroll readout.
+	 *
+	 * Mutates `window` in place through the same cell-accurate compositor
+	 * overlays use, so a row's styling and any wide glyphs survive.
+	 */
+	#drawScrollTrack(window: string[], regionRows: number, viewTop: number, spaceRows: number, width: number): void {
+		if (width < 4 || regionRows < 2 || spaceRows <= regionRows) return;
+		const col = width - 1;
+		const thumbRows = clampLow(Math.round((regionRows * regionRows) / spaceRows), 1, regionRows);
+		const travel = regionRows - thumbRows;
+		const scrollable = spaceRows - regionRows;
+		const thumbTop = travel <= 0 ? 0 : clampLow(Math.round((viewTop / scrollable) * travel), 0, travel);
+		for (let r = 0; r < regionRows; r++) {
+			const inThumb = r >= thumbTop && r < thumbTop + thumbRows;
+			const cell = inThumb ? SCROLL_TRACK_THUMB : SCROLL_TRACK_GROOVE;
+			window[r] = this.#compositeLineAt(window[r] ?? "", cell, col, 1, width);
+		}
 	}
 
 	/** Splice overlay content into a base line at a specific column. Single-pass optimized. */
@@ -3037,10 +3179,13 @@ export class TUI extends Container {
 		// #committedPrefixAuditRows). The whole frame is final when the root
 		// reports no seam (shell semantics).
 		const frameLength = rawFrame.length;
-		// Wheel tracking follows scrollability: a frame that fits the viewport
-		// has nothing to scroll, so release the mouse and restore native
-		// drag-select for short screens. Synced after the emit below.
-		this.#frameScrollable = frameLength > height;
+		// Wheel tracking follows scrollability, and "scrollable" means anything
+		// sits above the window — the frame overflows the viewport, or rows have
+		// already scrolled off onto the tape. A frame test alone released the
+		// mouse on every quiet frame of a virtualized transcript, which is what
+		// let the terminal scroll the composer off screen. Synced after the emit
+		// below.
+		this.#frameScrollable = frameLength > height || this.#scrollTape.length > 0;
 		const finalBoundary = clampLow(liveRegionStart ?? frameLength, 0, frameLength);
 
 		// 2. Transition state captured before any emitter runs.
@@ -3216,11 +3361,11 @@ export class TUI extends Container {
 		// tracking the live tail, so resume needs no reconciliation.
 		let virtualScrollSlice = false;
 		if (this.#virtualScrollTop !== null) {
-			const tailTop = Math.max(0, frameLength - height);
-			if (fullPaint || geometryChanged || hasVisibleOverlay || this.#virtualScrollTop >= tailTop) {
+			const liveTop = this.#scrollSpaceLiveTop(frameLength);
+			if (fullPaint || geometryChanged || hasVisibleOverlay || this.#virtualScrollTop >= liveTop) {
 				// Resume: gestures and full paints invalidate the slice, overlays
 				// take over the window, and walking down to the tail is following.
-				this.#virtualScrollTop = null;
+				this.#resumeLiveTail();
 			} else {
 				virtualScrollSlice = true;
 				chunkTo = this.#committedRows;
@@ -3240,15 +3385,21 @@ export class TUI extends Container {
 		const frame = this.#prepareFrame(rawFrame, width);
 		let window: string[] = new Array(height);
 		if (virtualScrollSlice) {
-			// Frozen transcript rows above, live footer rows below; the two
-			// slices never overlap because viewTop < frameLength - height.
+			// Frozen transcript rows above, live footer rows below. The region
+			// reads the scroll-space snapshot (tape + this frame's uncommitted
+			// rows), built once when the view froze so nothing that happens
+			// under it can shift a row the reader is looking at. The footer is
+			// always the live frame's last rows, so the composer keeps typing,
+			// spinning, and updating while the history above it holds still.
+			const snapshot = (this.#scrollSnapshot ??= [...this.#scrollTape, ...frame.slice(this.#committedRows)]);
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
 				window[r] =
-					r < regionRows ? (frame[viewTop + r] ?? "") : (frame[frameLength - footerRows + (r - regionRows)] ?? "");
+					r < regionRows ? (snapshot[viewTop + r] ?? "") : (frame[frameLength - footerRows + (r - regionRows)] ?? "");
 			}
+			this.#drawScrollTrack(window, regionRows, viewTop, snapshot.length, width);
 		} else {
 			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
 		}
@@ -3297,6 +3448,12 @@ export class TUI extends Container {
 				cursorTrackingLineCount,
 			});
 			this.#committedPrefix = rawFrame.slice(0, chunkTo);
+			// A full paint that erased scrollback rewrote history, so the tape is
+			// rewritten with it; one that did not (a multiplexer pane, which
+			// cannot ED3 safely) appended below what is already there, and so
+			// does the tape.
+			if (intent.clearScrollback) this.#scrollTape.length = 0;
+			this.#appendScrollTape(frame, 0, chunkTo);
 			this.#committedPrefixAuditRows = Math.min(chunkTo, finalBoundary);
 			this.#clearScrollbackOnNextRender = false;
 			this.#hasEverRendered = true;
@@ -3318,6 +3475,10 @@ export class TUI extends Container {
 			cursorTrackingLineCount,
 		});
 		this.#syncWheelTracking();
+		// Rows [preCommitRows, chunkTo) scrolled off on this frame: they go on
+		// the tape as the prepared bytes that were painted. Rows the tail
+		// re-anchor re-showed (chunkTo below preCommitRows) are already on it.
+		this.#appendScrollTape(frame, Math.min(preCommitRows, chunkTo), chunkTo);
 		for (let i = this.#committedPrefix.length; i < chunkTo; i++) {
 			this.#committedPrefix.push(rawFrame[i] ?? "");
 		}

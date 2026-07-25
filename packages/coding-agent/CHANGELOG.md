@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Fixed the composer being replaced by a scroll readout while reading history: the contextual chip row under the prompt was overwritten with "N rows up / click to go to the bottom" whenever the transcript was frozen, so scrolling up during a run silently removed the `esc interrupt` chip. Scroll position is now drawn on the right edge of the transcript by the renderer, and the composer zone renders the same bytes whether the view is frozen or following.
+
 - Fixed Task subagents calling MCP tools through a rebuilt raw request, which bypassed the source tool's harness-intent stripping, local-URL resolution and reconnect retry, and marked MCP-backed tools non-strict so the server owns validation ([#6242](https://github.com/can1357/oh-my-pi/issues/6242)).
 - Fixed a configured `modelRoles.default` on a discovery provider being replaced at startup by an unrelated authenticated provider's default, when a cold catalog cache meant the role could not yet resolve ([#6233](https://github.com/can1357/oh-my-pi/issues/6233)).
 - Fixed `session_stop` extension hooks running when a prompt was aborted or the session was disposed, so an abort could still trigger stop-hook work and its continuation state ([#6226](https://github.com/can1357/oh-my-pi/issues/6226)).

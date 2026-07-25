@@ -401,6 +401,22 @@ export class VirtualTerminal implements Terminal {
 		return columns;
 	}
 
+	/**
+	 * Columns in a viewport row whose cells carry the faint (dim) attribute.
+	 * Lets a test assert what the terminal actually PRESENTS rather than what the
+	 * engine emitted: dim is the scroll track's groove, and a byte assertion alone
+	 * would still pass if a later reset in the same row cancelled it.
+	 */
+	getViewportRowFaintColumns(row: number): number[] {
+		const cells = this.#presentedRowCells(row);
+		if (!cells) return [];
+		const columns: number[] = [];
+		for (let col = 0; col < cells.length; col++) {
+			if ((cells[col]?.flags ?? 0) & CellFlags.FAINT) columns.push(col);
+		}
+		return columns;
+	}
+
 	/** Whether the cell at a viewport position carries the italic attribute. */
 	getCellItalic(row: number, col: number): boolean {
 		const cells = this.#presentedRowCells(row);
