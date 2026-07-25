@@ -30,6 +30,73 @@ function startupMarker(text: string): void {
 }
 
 /**
+ * A token that is a negative number rather than an option: `-1`, `-0.5`, `-1e-3`.
+ * A short flag is a letter, so anything whose first character after the dash is a
+ * digit or a decimal point cannot be one.
+ */
+const NEGATIVE_NUMBER = /^-(?:\d|\.\d)/;
+
+/** Sentinel prefix for a masked negative number. Never valid user input. */
+// Written as escapes, not literal NULs. A raw control byte in the source makes
+// git classify this whole file as binary, which costs every reviewer the diff
+// and makes a merge conflict here unresolvable by hand. The runtime value is
+// identical.
+const NEGATIVE_MASK = "\u0000neg\u0000";
+
+interface ParsedArgs {
+	values: Record<string, string | boolean | Array<string | boolean> | undefined>;
+	positionals: string[];
+}
+
+/**
+ * Replace negative-number tokens with sentinels so `node:util`'s parseArgs treats
+ * them as ordinary words, and hand back the function that puts them where they
+ * belong. Both halves of the result are restored: a negative number can arrive as
+ * a positional (`config set presencePenalty -1`) or as a flag's value
+ * (`--temperature -1`), and masking would otherwise leak the sentinel into one of
+ * them.
+ */
+function maskNegativeNumbers(argv: readonly string[]): {
+	args: string[];
+	restore: (parsed: ParsedArgs) => ParsedArgs;
+} {
+	const masked: string[] = [];
+	const originals: string[] = [];
+	let afterDoubleDash = false;
+	for (const token of argv) {
+		if (afterDoubleDash || !NEGATIVE_NUMBER.test(token)) {
+			masked.push(token);
+			if (token === "--") afterDoubleDash = true;
+			continue;
+		}
+		masked.push(`${NEGATIVE_MASK}${originals.length}`);
+		originals.push(token);
+	}
+
+	if (originals.length === 0) return { args: masked, restore: parsed => parsed };
+
+	const unmask = (value: string): string => {
+		if (!value.startsWith(NEGATIVE_MASK)) return value;
+		const index = Number(value.slice(NEGATIVE_MASK.length));
+		return originals[index] ?? value;
+	};
+
+	return {
+		args: masked,
+		restore: parsed => {
+			const values: ParsedArgs["values"] = {};
+			for (const [name, value] of Object.entries(parsed.values)) {
+				if (typeof value === "string") values[name] = unmask(value);
+				else if (Array.isArray(value))
+					values[name] = value.map(item => (typeof item === "string" ? unmask(item) : item));
+				else values[name] = value;
+			}
+			return { values, positionals: parsed.positionals.map(unmask) };
+		},
+	};
+}
+
+/**
  * A user-facing argument/flag validation failure. Thrown by {@link Command.parse}
  * for missing/invalid positionals and flags. The top-level {@link run} handler
  * prints its message plus the command usage line to stderr and exits 1, instead
@@ -55,6 +122,17 @@ export interface FlagDescriptor<K extends "string" | "boolean" | "integer" = "st
 	multiple?: boolean;
 	options?: readonly string[];
 	required?: boolean;
+	/**
+	 * Extra long names that mean the same flag. `--<alias>` parses into the
+	 * canonical name and the help entry lists it beside that name.
+	 *
+	 * Declare an alias rather than a second flag whenever two spellings are one
+	 * behaviour: two descriptors print two entries and imply they differ. This
+	 * field used to be accepted and silently ignored, so `--yolo` was declared as
+	 * an alias of `--auto-approve` with a comment claiming help would list it, and
+	 * help never did.
+	 */
+	aliases?: readonly string[];
 }
 
 export interface ArgDescriptor {
@@ -72,6 +150,7 @@ interface FlagInput {
 	multiple?: boolean;
 	options?: readonly string[];
 	required?: boolean;
+	aliases?: readonly string[];
 }
 
 interface ArgInput {
@@ -193,6 +272,11 @@ export abstract class Command {
 			string,
 			{ type: "string" | "boolean"; short?: string; multiple?: boolean; default?: string | boolean }
 		> = {};
+		// Alias long name -> canonical long name. Registered as its own parseArgs
+		// option (node:util has no alias concept) and folded back onto the
+		// canonical name below, so a command reads one field no matter which
+		// spelling the user typed.
+		const aliasToCanonical = new Map<string, string>();
 		for (const [name, desc] of Object.entries(flagDefs)) {
 			const opt: (typeof options)[string] = {
 				type: desc.kind === "boolean" ? "boolean" : "string",
@@ -204,21 +288,62 @@ export abstract class Command {
 			}
 			options[name] = opt;
 		}
+		// Aliases register in a SECOND pass, after every canonical name exists.
+		// Doing it inline would make the collision check depend on declaration
+		// order: an alias declared before the flag it shadows would find nothing to
+		// collide with and then be silently overwritten.
+		for (const [name, desc] of Object.entries(flagDefs)) {
+			for (const alias of desc.aliases ?? []) {
+				if (options[alias]) {
+					throw new Error(
+						`Flag alias --${alias} on --${name} collides with an existing flag. ` +
+							"Rename the alias or drop the duplicate declaration.",
+					);
+				}
+				aliasToCanonical.set(alias, name);
+				// The alias never carries the default: it would then look "provided"
+				// on every run and win over the canonical name in the fold below.
+				options[alias] = {
+					type: options[name].type,
+					...(options[name].multiple ? { multiple: true } : {}),
+				};
+			}
+		}
 
 		// strict=false when command declares args (positionals must pass through)
 		// or when the command itself opts out
 		const { values: rawValues, positionals } = (() => {
+			// `node:util` parseArgs reads any leading `-` as an option, so a negative
+			// number is rejected as an unknown short flag: `veyyon config set
+			// presencePenalty -1` failed on a value the setting accepts, and the only
+			// way through was the `-- "-1"` escape. Negative numbers are hidden behind
+			// a sentinel for the parse and restored after, so they arrive as the value
+			// they are while unknown-flag detection stays strict for everything else.
+			const { args: maskedArgs, restore } = maskNegativeNumbers(this.argv);
 			try {
-				return nodeParseArgs({
-					args: this.argv,
+				const parsed = nodeParseArgs({
+					args: maskedArgs,
 					options,
 					allowPositionals: true,
 					strict,
 				});
+				return restore(parsed);
 			} catch (error) {
 				throw new CliUsageError(errorMessage(error));
 			}
 		})();
+
+		// Fold an alias onto its canonical name before typing and validation, so
+		// every check below (options constraint, required, integer parse) applies
+		// to the alias exactly as it would to the canonical spelling. The canonical
+		// name wins when both were given: a user who wrote both meant the one the
+		// command actually reads, and picking the alias would be surprising.
+		for (const [alias, canonical] of aliasToCanonical) {
+			const aliasValue = rawValues[alias];
+			if (aliasValue !== undefined && rawValues[canonical] === undefined) {
+				rawValues[canonical] = aliasValue;
+			}
+		}
 
 		// Convert raw values to proper types and validate
 		const flags: Record<string, unknown> = {};
@@ -428,7 +553,10 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		const formatted: [string, string][] = [];
 		for (const [name, desc] of flagEntries) {
 			const charPart = desc.char ? `-${desc.char}, ` : "    ";
-			const namePart = `--${name}`;
+			// Aliases share the canonical entry rather than getting one of their own:
+			// two entries for one behaviour reads as two behaviours.
+			const aliasPart = (desc.aliases ?? []).map(alias => `, --${alias}`).join("");
+			const namePart = `--${name}${aliasPart}`;
 			// Enum-constrained flags render their accepted values like args do —
 			// values that only surface as a parse error are invisible until guessed.
 			const typePart =

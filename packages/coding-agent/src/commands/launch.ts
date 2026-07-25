@@ -34,6 +34,12 @@ export default class Index extends Command {
 		plan: Flags.string({
 			description: "Plan model for architectural planning (or VEYYON_PLAN_MODEL env)",
 		}),
+		"subagent-model": Flags.string({
+			description: "Model subagents run on for this session (overrides subagent.model)",
+		}),
+		"compaction-model": Flags.string({
+			description: "Model that summarizes the conversation when it is compacted (overrides compaction.model)",
+		}),
 		prewalk: Flags.boolean({
 			description:
 				"Switch from the active model to a fast/cheap model at the first edit/write after the plan's todo list exists (default off; see prewalk.enabled)",
@@ -93,10 +99,20 @@ export default class Index extends Command {
 		}),
 		resume: Flags.string({
 			char: "r",
+			aliases: ["session"],
 			description: "Resume a session (by ID prefix, path, or picker if omitted)",
+		}),
+		fork: Flags.string({
+			description: "Branch a copy of a session (by ID prefix or path) and leave the original untouched",
 		}),
 		"session-dir": Flags.string({
 			description: "Directory for session storage and lookup",
+		}),
+		"provider-session-id": Flags.string({
+			description: "Reuse an existing provider-side session id instead of starting a new one",
+		}),
+		"prompt-cache-key": Flags.string({
+			description: "Explicit provider prompt-cache key (defaults to one derived from the session)",
 		}),
 		"no-session": Flags.boolean({
 			description: "Don't save session (ephemeral)",
@@ -138,6 +154,10 @@ export default class Index extends Command {
 		"no-extensions": Flags.boolean({
 			description: "Disable extension discovery (explicit -e paths still work)",
 		}),
+		"plugin-dir": Flags.string({
+			description: "Additional directory to discover plugins in (can be used multiple times)",
+			multiple: true,
+		}),
 		"no-skills": Flags.boolean({
 			description: "Disable skills discovery and loading",
 		}),
@@ -159,22 +179,22 @@ export default class Index extends Command {
 		"max-time": Flags.string({
 			description: "Stop the session after this duration (e.g., 600, 10m, 1h)",
 		}),
-		// `--auto-approve` / `--yolo`: declared here so oclif's auto-generated `--help` lists it.
-		// Runtime parsing happens in `cli/args.ts parseArgs` (line 176 in that file) — `runRootCommand`
-		// consumes the manual-parser output, not these oclif flag values. If you rename or remove
-		// either form, update both call sites in lockstep.
+		// `--auto-approve` / `--yolo`: declared here so the generated `--help` lists both spellings.
+		// Runtime parsing happens in `cli/args.ts parseArgs` — `runRootCommand` consumes the manual
+		// parser's output, not these descriptors. If you rename or remove either form, update both
+		// call sites in lockstep; `test/cli/launch-help-documents-every-flag.test.ts` fails if you don't.
 		"auto-approve": Flags.boolean({
 			aliases: ["yolo"],
 			description: "Auto-approve all tool calls (skip approval prompts)",
 		}),
 		// `--dangerously-skip-permissions`: start with the full /yolo bypass on.
-		// Declared here so oclif's `--help` lists it; runtime parsing is in
+		// Declared here so `--help` lists it; runtime parsing is in
 		// `cli/args.ts parseArgs`, applied via `bypassAllApprovals` on the session.
 		"dangerously-skip-permissions": Flags.boolean({
 			description:
 				"Remove ALL permission prompts for the session, including per-tool prompt overrides (explicit deny and plan mode still block). Toggle at runtime with /yolo.",
 		}),
-		// `--approval-mode`: declared here so oclif's auto-generated `--help` lists it; runtime parsing
+		// `--approval-mode`: declared here so the generated `--help` lists it; runtime parsing
 		// happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
 		// in `main.ts` after the `Settings` instance is constructed, so every `settings.get("tools.approvalMode")`
 		// site (wrapper, `/settings` UI) observes the same value.
