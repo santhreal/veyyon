@@ -175,3 +175,54 @@ describe("a failed profile or rc rewrite leaves the user a way back", () => {
 		expect(installPs1).toContain('"$ProfilePath.veyyon-uninstall.$PID"');
 	});
 });
+
+/**
+ * The `.sha256` sidecar is the only thing standing between a user and a binary
+ * someone else served, and four separate readers of it exist: install.sh,
+ * install.ps1, the self-updater, and the native-addon provisioning. The two
+ * TypeScript ones share a single owner (packages/natives/src/sha256-sidecar.ts);
+ * the two shell ones cannot import it, so they are held to the same contract
+ * here and behaviorally in each installer's own suite.
+ *
+ * They were not equal before. Both shell readers took the first whitespace
+ * token whatever it was, so an HTML error page or a sidecar truncated by a
+ * dropped connection was compared against the real digest and reported as
+ * "checksum mismatch" — a corrupt-download story for a download that was fine.
+ */
+describe("every sidecar reader agrees on what a digest is", () => {
+	it("both installers require exactly 64 hex characters", () => {
+		expect(installSh).toContain("parse_sha256_sidecar() {");
+		expect(installSh).toContain("$1 ~ /^[0-9a-fA-F]{64}$/");
+		expect(installPs1).toContain("if ($token -notmatch '^[0-9a-fA-F]{64}$') { return $null }");
+	});
+
+	it("both read the FIRST line only, so a concatenated sidecar cannot verify the wrong asset", () => {
+		expect(installSh).toContain("NR == 1 {");
+		expect(installPs1).toContain('(($Text -split "`n")[0].Trim() -split \'\\s+\')[0]');
+	});
+
+	it("both lowercase the digest they return", () => {
+		expect(installSh).toContain("print tolower($1)");
+		expect(installPs1).toContain("return $token.ToLower()");
+	});
+
+	it("install.sh compares both sides lowercased, so hex case is never tampering", () => {
+		// sha256sum emits lowercase; a sidecar written in uppercase hex described
+		// the same bytes and was refused as a tampered binary.
+		expect(installSh).toContain(`actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')`);
+		expect(installSh).toContain(`expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')`);
+	});
+
+	it("both point at the one TypeScript owner rather than describing their own rule", () => {
+		// A reader that explains the contract in its own words is a reader that
+		// drifts from it.
+		expect(installSh).toContain("packages/natives/src/sha256-sidecar.ts");
+		expect(installPs1).toContain("packages/natives/src/sha256-sidecar.ts");
+	});
+
+	it("neither installer still parses a sidecar with a bare first-token grab", () => {
+		// The exact shape that was wrong, so it cannot come back by copy-paste.
+		expect(installSh).not.toContain(`expected=$(printf '%s' "$sum" | awk '{print $1}')`);
+		expect(installPs1).not.toContain("$token = ($Text.Trim() -split '\\s+')[0]");
+	});
+});
