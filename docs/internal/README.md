@@ -15,7 +15,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
   page describes a planned mechanism, label it and say what ships today.
 - **Keep it navigable.** Every new internal doc gets a row in the relevant table below.
 - **Verification stamps.** A doc whose claims have been checked against the code ends with
-  `*Verified against \`<commit-sha>\` on YYYY-MM-DD.*` as its last line. `scripts/check-doc-freshness.ts`
+  `*Verified against `436ced8a` on 2026-07-24.*
   (a `docs.yml` gate) fails a stamped doc edited after its stamp date, re-verify and re-stamp in the
   same change. Stamping is earned by actually verifying, never backfilled blind; unstamped docs are
   reported loudly but do not fail.
@@ -143,4 +143,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `436ced8a` on 2026-07-24.*

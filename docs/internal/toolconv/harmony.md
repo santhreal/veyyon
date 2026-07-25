@@ -223,4 +223,4 @@ When a server (vLLM/SGLang/Ollama) bridges Harmony to Chat Completions JSON:
 - vLLM tool calling / gpt-oss parser flags: https://docs.vllm.ai/en/latest/features/tool_calling/
 - SGLang gpt-oss usage (`--tool-call-parser gpt-oss`): https://docs.sglang.io/basic_usage/gpt_oss.html
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `436ced8a` on 2026-07-24.*
