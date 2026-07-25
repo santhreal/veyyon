@@ -6,8 +6,8 @@ import { clamp, errorMessage } from "@veyyon/utils";
 import type TurndownService from "turndown";
 
 import type { AgentStorage } from "../../session/agent-storage";
-import { ToolAbortError } from "../../tools/tool-errors";
-import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
+import { ToolAbortError, throwIfAborted } from "../../tools/tool-errors";
+import { isTimeoutError, scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
 export { formatNumber } from "@veyyon/utils";
 
@@ -170,7 +170,17 @@ function decodeBody(bytes: Buffer, contentTypeHeader: string): string {
 }
 
 /**
- * Fetch a page with timeout and size limit
+ * Fetch a page with a timeout and a size limit.
+ *
+ * `timeout` is a per-attempt budget AND the whole call's ceiling: an attempt that
+ * exhausts it ends the call, so `loadPage(url, { timeout: 20 })` cannot take a
+ * minute. Attempts exist for one reason, a site that answers differently to a
+ * different `User-Agent`, so the loop advances only on a bot block or an ordinary
+ * transport error, never on a deadline.
+ *
+ * Failures come back as `{ ok: false, error }` because a site being unreachable is
+ * an answer the caller reports. Cancellation is the exception and throws: the
+ * caller's signal aborting means nobody is waiting for the answer.
  */
 export async function loadPage(url: string, options: LoadPageOptions = {}): Promise<LoadPageResult> {
 	const { timeout = 20, headers = {}, maxBytes = MAX_BYTES, signal, method = "GET", body } = options;
@@ -178,9 +188,7 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 	let lastError: string | undefined;
 	let retried429 = false;
 	for (let attempt = 0; attempt < USER_AGENTS.length; attempt++) {
-		if (signal?.aborted) {
-			throw new ToolAbortError();
-		}
+		throwIfAborted(signal, "loadPage");
 
 		const userAgent = USER_AGENTS[attempt];
 		// Scoped per attempt so the deadline timer is cleared on settle instead
@@ -221,8 +229,14 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 				void response.body?.cancel().catch(() => {});
 				try {
 					await scheduler.wait(delayMs, { signal });
-				} catch {
-					throw new ToolAbortError();
+				} catch (error) {
+					// `scheduler.wait` rejects when the caller's signal aborts, which is
+					// the case worth naming: `throwIfAborted` keeps `signal.reason` as the
+					// cause so the user learns WHY the wait ended. Minting a bare
+					// `ToolAbortError` here threw that reason away, and it also relabelled
+					// any other rejection as a user abort.
+					throwIfAborted(signal, "loadPage");
+					throw error;
 				}
 				attempt--; // Reuse the same user agent for the retry.
 				continue;
@@ -267,13 +281,20 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 
 			return { content, contentType, finalUrl, ok: true, status: response.status, truncated };
 		} catch (error) {
-			if (signal?.aborted) {
-				throw new ToolAbortError();
-			}
+			// The caller stopping us ends everything, and `signal.reason` travels with
+			// the throw so the layer that reports it can say why.
+			throwIfAborted(signal, "loadPage");
 			lastError = errorMessage(error);
-			if (attempt === USER_AGENTS.length - 1) {
-				return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
-			}
+			// A DEADLINE also ends the loop. Rotating the user agent is the answer to a
+			// BOT BLOCK, which `isBotBlocked` handles above on its own branch, and it is
+			// no answer at all to an origin that could not respond inside the budget.
+			// Retrying anyway made `timeout` mean `timeout * USER_AGENTS.length` of wall
+			// clock, so a caller asking for 20 seconds waited 60 on every slow origin.
+			// That is the option not meaning what it says, not a tuning choice: the
+			// deadline is the caller's budget, and one budget buys one attempt at it.
+			// The parent's own deadline arrives here too, already handled above, because
+			// `scopedTimeoutSignal` composes it with this attempt's timer.
+			if (isTimeoutError(error) || attempt === USER_AGENTS.length - 1) break;
 		} finally {
 			requestTimeout.cancel();
 		}
