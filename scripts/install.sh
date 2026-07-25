@@ -129,13 +129,20 @@ ensure_on_path() {
         fish) rc="$HOME/.config/fish/config.fish"; line="fish_add_path $dir" ;;
         *) rc="$HOME/.profile" ;;
     esac
-    if [ -n "$rc" ] && ! ( [ -f "$rc" ] && grep -Fq "$dir" "$rc" ); then
-        mkdir -p "$(dirname "$rc")" 2>/dev/null || true
+    # Three distinct outcomes, three distinct messages. Collapsing them (as this
+    # did) meant a REINSTALL — where the rc already carries the line — told the
+    # user to "add $dir to your PATH" even though it was already configured and
+    # all they needed was a new shell. The manual-action warning is now reserved
+    # for the case where the installer genuinely could not do it.
+    if [ -z "$rc" ]; then
+        warn "add $dir to your PATH, then run '$ALIAS_NAME'"
+    elif [ -f "$rc" ] && grep -Fq "$dir" "$rc"; then
+        ok "$dir is already on PATH in $rc (restart your shell or: source $rc)"
+    else
+        mkdir -p "$(dir_of "$rc")" 2>/dev/null || true
         printf '\n# added by the veyyon installer\n%s\n' "$line" >> "$rc" \
             && ok "added $dir to PATH in $rc (restart your shell or: source $rc)" \
-            || warn "add $dir to your PATH, then run '$ALIAS_NAME'"
-    else
-        warn "add $dir to your PATH, then run '$ALIAS_NAME'"
+            || warn "could not write $rc — add $dir to your PATH, then run '$ALIAS_NAME'"
     fi
 }
 
