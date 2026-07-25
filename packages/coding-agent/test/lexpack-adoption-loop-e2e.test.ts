@@ -50,6 +50,7 @@ import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,
+	getAgentDir,
 	getArgotCacheDir,
 	removeSyncWithRetries,
 	setProfile,
@@ -95,6 +96,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 	let cacheRoot = "";
 	let tempDir = "";
 	let originalXdgCache: string | undefined;
+	let originalConfigDir: string | undefined;
 	let session: AgentSession | undefined;
 	let authStorage: AuthStorage | undefined;
 	let argot: ArgotSession;
@@ -106,13 +108,29 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-loop-repo-"));
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-loop-home-"));
 
-		// XDG cache isolation, proven before any test runs (see argot-cache.test.ts).
+		// TWO levers are needed, and using only the first is what let this suite
+		// create `~/.veyyon/profiles/argot-loop-test/` in the developer's REAL config
+		// root. `XDG_CACHE_HOME` moves the CACHE; everything else the session touches
+		// (agent storage, gpu_cache.json) resolves from the CONFIG ROOT, which
+		// `setProfile` only names a subdirectory of. `VEYYON_CONFIG_DIR` is what moves
+		// the root itself: the resolver joins it onto the home directory, so a
+		// relative path back out lands the whole root in temp. See
+		// docs/internal/testing.md.
 		originalXdgCache = process.env.XDG_CACHE_HOME;
 		process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
 		fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempDir);
+		__resetDirsFromEnvForTests();
 		setProfile(TEST_PROFILE);
+		// Proof, not intention: BOTH roots are checked, because the cache assertion
+		// alone passed for months while the config root stayed real.
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
 			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
+		}
+		const resolvedAgentDir = path.resolve(getAgentDir());
+		if (path.relative(tempDir, resolvedAgentDir).startsWith("..")) {
+			throw new Error(`config root not isolated: ${resolvedAgentDir} is outside ${tempDir}`);
 		}
 
 		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
@@ -206,6 +224,8 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		authStorage = undefined;
 		if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = originalXdgCache;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		__resetDirsFromEnvForTests();
 		for (const dir of [repoDir, cacheRoot, tempDir]) if (dir) removeSyncWithRetries(dir);
 		resetSettingsForTest();

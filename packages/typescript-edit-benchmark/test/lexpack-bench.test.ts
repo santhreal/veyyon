@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __resetDirsFromEnvForTests, APP_NAME, getArgotCacheDir, setProfile } from "@veyyon/utils";
+import { __resetDirsFromEnvForTests, APP_NAME, getAgentDir, getArgotCacheDir, setProfile } from "@veyyon/utils";
 import {
 	type ArgotBenchOutcome,
 	applyArgotPhaseSettings,
@@ -45,21 +45,40 @@ const TEST_PROFILE = "argot-bench-test";
 
 let cacheRoot = "";
 let originalXdgCache: string | undefined;
+let originalConfigDir: string | undefined;
 
 beforeAll(() => {
 	cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "argot-bench-xdg-"));
 	originalXdgCache = process.env.XDG_CACHE_HOME;
 	process.env.XDG_CACHE_HOME = path.join(cacheRoot, "cache");
 	fs.mkdirSync(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", TEST_PROFILE), { recursive: true });
+
+	// XDG redirects the CACHE only. Settings and agent storage resolve from the
+	// config root, which is built on os.homedir(), so without this the suite created
+	// `~/.veyyon/profiles/argot-bench-test/agent` in the developer's real home on
+	// every run. VEYYON_CONFIG_DIR is joined onto the home directory, so a relative
+	// path back out of it moves the whole config root into the temp dir.
+	originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+	process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), cacheRoot);
+
 	setProfile(TEST_PROFILE);
+
+	// Both roots are verified against the resolver's own output, because the earlier
+	// version of this setup asserted only the cache and silently wrote agent state
+	// into the real profile tree.
 	if (!getArgotCacheDir().startsWith(cacheRoot)) {
 		throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
+	}
+	if (!path.resolve(getAgentDir()).startsWith(path.resolve(cacheRoot))) {
+		throw new Error(`agent dir not isolated: ${getAgentDir()}`);
 	}
 });
 
 afterAll(() => {
 	if (originalXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 	else process.env.XDG_CACHE_HOME = originalXdgCache;
+	if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+	else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 	__resetDirsFromEnvForTests();
 	if (cacheRoot) fs.rmSync(cacheRoot, { recursive: true, force: true });
 });

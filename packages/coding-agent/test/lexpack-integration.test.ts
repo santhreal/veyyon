@@ -23,6 +23,7 @@ import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
 import { expandAssistantContent, expandSessionContext, expandToolArguments } from "@veyyon/coding-agent/lexpack-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
+import { RUNTIME_SECTIONS, withSectionBanner } from "@veyyon/coding-agent/system-prompt-builder/prompt-blocks";
 import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
 import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict, renderPreamble } from "argot";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
@@ -291,14 +292,37 @@ describe("argot preamble and handle-table injection into the system prompt", () 
 		workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
 	});
 
+	// The prompt is an ordered list of banner-delimited blocks, and a runtime
+	// section's banner is prepended by the assembler rather than carried in its
+	// text (see prompt-blocks.ts). So the block that ships is never byte-equal to
+	// the raw text passed in, and asserting `toContain(rawText)` on the array —
+	// which is element EQUALITY, not substring — could only ever fail.
+	//
+	// These build the expected block through `withSectionBanner`, the same owner
+	// the assembler uses, so the assertion stays exact without restating the
+	// banner in a second place where it could drift.
+	const shorthandSection = RUNTIME_SECTIONS.find(section => section.id === "shorthand");
+	const handlesSection = RUNTIME_SECTIONS.find(section => section.id === "shorthand-handles");
+
+	it("the registry still declares both shorthand sections", () => {
+		// Guards the two lookups above: if a section were renamed, every assertion
+		// built on it would silently compare against `undefined` instead of failing
+		// for the right reason.
+		expect(shorthandSection?.banner).toBe("SHORTHAND\n==");
+		expect(handlesSection?.banner).toBe("SHORTHAND HANDLES\n==");
+	});
+
 	it("injects the handle table when argotHandles is passed", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
 			...baseOptions(),
 			argotPreamble: NOTATION_PREAMBLE,
 			argotHandles: HANDLE_TABLE,
 		});
-		expect(systemPrompt).toContain(HANDLE_TABLE);
-		expect(systemPrompt).toContain(NOTATION_PREAMBLE);
+
+		// Byte-exact blocks, banner included: this proves the table reaches the model
+		// under its own heading, not merely that the string appears somewhere.
+		expect(systemPrompt).toContain(withSectionBanner(handlesSection as never, HANDLE_TABLE));
+		expect(systemPrompt).toContain(withSectionBanner(shorthandSection as never, NOTATION_PREAMBLE));
 	});
 
 	it("injects handles independently of the preamble (handles without preamble)", async () => {
@@ -310,7 +334,7 @@ describe("argot preamble and handle-table injection into the system prompt", () 
 			argotHandles: HANDLE_TABLE,
 		});
 		// Handles alone still appear — they are independent of the preamble flag.
-		expect(systemPrompt).toContain(HANDLE_TABLE);
+		expect(systemPrompt).toContain(withSectionBanner(handlesSection as never, HANDLE_TABLE));
 		expect(systemPrompt.join("\n\n")).not.toContain("argot_load(folder_path)");
 	});
 
@@ -324,9 +348,11 @@ describe("argot preamble and handle-table injection into the system prompt", () 
 			argotHandles: undefined,
 		});
 		const joined = systemPrompt.join("\n\n");
-		expect(systemPrompt).toContain(NOTATION_PREAMBLE);
+		expect(systemPrompt).toContain(withSectionBanner(shorthandSection as never, NOTATION_PREAMBLE));
 		expect(joined).toContain("argot_load(folder_path)");
-		expect(systemPrompt).not.toContain(HANDLE_TABLE);
+		// No handles block at all, not merely a block whose text differs: an empty
+		// section must stay absent rather than ship as a bare heading.
+		expect(joined).not.toContain("SHORTHAND HANDLES");
 		expect(joined).not.toContain("postgres://prod-primary.internal:5432/orders");
 	});
 

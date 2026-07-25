@@ -5,7 +5,14 @@ import * as path from "node:path";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type AuthBrokerServerHandle, startAuthBroker } from "@veyyon/ai/auth-broker";
 import { runAuthBrokerCommand } from "@veyyon/coding-agent/cli/auth-broker-cli";
-import { getAgentDbPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import {
+	__resetDirsFromEnvForTests,
+	getActiveAuthDbPath,
+	getAgentDbPath,
+	getSharedAuthDir,
+	removeWithRetries,
+	setAgentDir,
+} from "@veyyon/utils";
 
 const TEAM_ORG = "org-team-1111";
 
@@ -30,6 +37,7 @@ async function runMigrateCapturingStdout(): Promise<string> {
 describe("auth-broker migrate (org-only dedupe)", () => {
 	let agentDir = "";
 	let brokerAgentDir = "";
+	let configRoot = "";
 	let brokerStore: SqliteAuthCredentialStore | undefined;
 	let brokerStorage: AuthStorage | undefined;
 	let handle: AuthBrokerServerHandle | undefined;
@@ -39,9 +47,17 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 	beforeEach(async () => {
 		savedEnv.VEYYON_AUTH_BROKER_URL = process.env.VEYYON_AUTH_BROKER_URL;
 		savedEnv.VEYYON_AUTH_BROKER_TOKEN = process.env.VEYYON_AUTH_BROKER_TOKEN;
+		savedEnv.VEYYON_CONFIG_DIR = process.env.VEYYON_CONFIG_DIR;
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-migrate-client-"));
 		brokerAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-migrate-broker-"));
+		configRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-migrate-config-"));
+		// `migrate --from-local` reads the LOCAL side through the shared credential
+		// store, which lives under the CONFIG root, not the agent dir. Moving only
+		// the agent dir left it reading the user's real credentials and uploading
+		// them to a test broker — the same missed root as the import suite.
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		setAgentDir(agentDir);
+		__resetDirsFromEnvForTests();
 
 		brokerStore = await SqliteAuthCredentialStore.open(path.join(brokerAgentDir, "agent.db"));
 		brokerStorage = new AuthStorage(brokerStore);
@@ -60,18 +76,30 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 		await handle?.close();
 		brokerStorage?.close();
 		brokerStore?.close();
-		await removeWithRetries(agentDir);
-		await removeWithRetries(brokerAgentDir);
-		for (const key of ["VEYYON_AUTH_BROKER_URL", "VEYYON_AUTH_BROKER_TOKEN"] as const) {
+		for (const key of ["VEYYON_AUTH_BROKER_URL", "VEYYON_AUTH_BROKER_TOKEN", "VEYYON_CONFIG_DIR"] as const) {
 			if (savedEnv[key] === undefined) delete process.env[key];
 			else process.env[key] = savedEnv[key];
 		}
+		__resetDirsFromEnvForTests();
+		await removeWithRetries(agentDir);
+		await removeWithRetries(brokerAgentDir);
+		await removeWithRetries(configRoot);
+	});
+
+	test("every credential root this suite touches resolves inside a temp dir", () => {
+		// Per root, for the reason the import suite learned the hard way: an
+		// isolation assertion only proves the one path it names, and this suite
+		// migrates CREDENTIALS, so a missed root uploads the user's real logins to a
+		// throwaway broker.
+		expect(getAgentDbPath().startsWith(os.tmpdir())).toBe(true);
+		expect(getSharedAuthDir().startsWith(os.tmpdir())).toBe(true);
+		expect(getActiveAuthDbPath().startsWith(os.tmpdir())).toBe(true);
 	});
 
 	test("rerun skips an already-migrated org-only row instead of re-uploading a stale refresh token", async () => {
 		// Local row where login recovered neither email nor account: the org id
 		// is the only identity the broker snapshot can echo back.
-		const localStore = await SqliteAuthCredentialStore.open(getAgentDbPath());
+		const localStore = await SqliteAuthCredentialStore.open(getActiveAuthDbPath());
 		try {
 			localStore.upsertAuthCredentialForProvider("anthropic", {
 				type: "oauth",

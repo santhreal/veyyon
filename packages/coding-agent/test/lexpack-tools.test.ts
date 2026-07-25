@@ -2,7 +2,17 @@
  * The argot_load / argot_unload agent tools: load a folder's shorthand into the
  * live session, and stop teaching it again. These build a real temporary git repo
  * with recurring content (so the generator earns handles) and redirect the config
- * root to a temp HOME, so nothing touches the real cache.
+ * root into a temp directory, so nothing touches the real cache.
+ *
+ * Isolation note: this suite used to "redirect" by assigning `process.env.HOME`,
+ * which does nothing. Bun resolves `os.homedir()` once at process start, so the
+ * config root stayed under the developer's real home and every run wrote argot
+ * cache entries into their ACTIVE profile. The working lever is
+ * `VEYYON_CONFIG_DIR`, which the resolver joins onto the home directory: a
+ * relative path back out of it lands the whole config root in the temp
+ * directory. The redirect is then VERIFIED against the resolver's own output, so
+ * a future change that breaks it fails here instead of silently polluting real
+ * user data again. See docs/internal/testing.md.
  *
  * The tools exist to make the boundary model usable in a monorepo: an agent loads
  * the narrow crate it is working on, not the enclosing tree. The contract the tests
@@ -19,7 +29,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
-import { refreshDirsFromEnv, removeSyncWithRetries } from "@veyyon/utils";
+import { getArgotCacheDir, refreshDirsFromEnv, removeSyncWithRetries } from "@veyyon/utils";
 import { ArgotSession, DEFAULT_TOKEN_BUDGET } from "argot";
 import { makeToolSession } from "./helpers/tool-session";
 
@@ -58,15 +68,23 @@ describe("argot_load / argot_unload tools", () => {
 	let repoDir = "";
 	let plainDir = "";
 	let tempHomeDir = "";
-	let originalHome: string | undefined;
+	let originalConfigDir: string | undefined;
 
 	beforeEach(() => {
 		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-tools-home-"));
 		repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-tools-repo-"));
 		plainDir = fs.mkdtempSync(path.join(os.tmpdir(), "argot-tools-plain-"));
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempHomeDir);
 		refreshDirsFromEnv();
+
+		// Proof, not intention: assert the resolver actually points into the temp
+		// directory before a single cache entry is written. The previous version of this
+		// setup looked correct and silently resolved to the real profile.
+		const cacheDir = path.resolve(getArgotCacheDir());
+		if (path.relative(tempHomeDir, cacheDir).startsWith("..")) {
+			throw new Error(`argot cache not isolated: ${cacheDir} is outside ${tempHomeDir}`);
+		}
 
 		writeFile(repoDir, CONNECTION, "export const url = 'x';\n");
 		writeFile(repoDir, ROUTES, `import '../database/connection.ts';\n// see ${CONNECTION}\n`);
@@ -78,8 +96,8 @@ describe("argot_load / argot_unload tools", () => {
 	});
 
 	afterEach(() => {
-		if (originalHome === undefined) delete process.env.HOME;
-		else process.env.HOME = originalHome;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		refreshDirsFromEnv();
 		for (const dir of [repoDir, plainDir, tempHomeDir]) if (dir) removeSyncWithRetries(dir);
 	});
