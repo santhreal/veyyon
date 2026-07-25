@@ -31,6 +31,14 @@
  * Nothing is dropped silently. Every fold is replaced by a line stating how
  * many lines went and what they were, so a reader can see that bookkeeping was
  * removed and ask for it if it matters.
+ *
+ * WHERE IT IS APPLIED, and the one asymmetry worth knowing. In `eval` the fold
+ * sits on the model-facing accumulation only, and `cellResult.output` keeps the
+ * raw text, so the transcript renderer still shows the operator the full run.
+ * In `bash` there is a single owner for the result text and the operator reads
+ * the same string, so a folded bash run shows the operator the marker line
+ * instead of the bookkeeping. That is visible rather than silent, which is why
+ * it is acceptable, but it is a real difference between the two tools.
  */
 
 /** A line class this module recognises and may fold. */
