@@ -213,9 +213,19 @@ const CODE_PUNCTUATION = /[(){}[\]`'"$;,=<>!?*|&]/;
 /**
  * True when a token is worth encoding as a handle. A string a coding agent
  * literally retypes — and that is long enough to be worth a handle — is a path, an
- * import specifier, a URL, or a scoped (`::`) module path. Every one of those
- * carries a real separator: a slash/backslash, or a `::`. So the token must both
- * carry such a separator AND be free of {@link CODE_PUNCTUATION}.
+ * import specifier, or a scoped (`::`) module path. Every one of those carries a
+ * real separator: a slash/backslash, or a `::`. So the token must both carry such
+ * a separator AND be free of {@link CODE_PUNCTUATION}.
+ *
+ * A scheme-bearing URL (`https://docs.aws.amazon.com/...`, `http://apache.org/
+ * licenses/LICENSE-2.0`) is REJECTED. A full hyperlink to a docs / license / issue
+ * page is something an agent references in prose but never retypes inside an edit,
+ * so a handle for it is pure teach-cost: it rides in the system prompt every turn
+ * and is never emitted. Measured on a real budget-16000 dictionary (ytt corpus),
+ * scheme URLs were 97 of 524 handles (18.5%) with zero adoption potential. A
+ * scheme-LESS module path (`github.com/aws/aws-lambda-go/events`,
+ * `carvel.dev/ytt/pkg/yamlmeta`) is a genuine Go/JS import an agent DOES retype, so
+ * it is kept — the `://` scheme is exactly what separates the two.
  *
  * Note what this deliberately drops: a bare dotted identifier (`theme.fg`,
  * `state.results.length`). Those satisfy {@link isStructured}'s `\w\.\w` rule but
@@ -230,7 +240,33 @@ function isReusableToken(token: string): boolean {
 	if (CODE_PUNCTUATION.test(token)) {
 		return false;
 	}
+	if (/:\/\//.test(token)) {
+		return false;
+	}
 	return /[/\\]/.test(token) || /::/.test(token);
+}
+
+/**
+ * True when a whole line is REFERENCE NOISE — text whose payload is a hyperlink or
+ * a binary dump, which an agent reads but never retypes. Such lines slip past
+ * {@link looksLikeCommand} (they carry a structured token) and past
+ * {@link looksLikeSourceCode} (they are not code), so without this guard they win
+ * the budget as the longest strings in a repo while never being emitted.
+ *
+ *   - A markdown link/image/badge: `[![Go Reference](https://pkg.go.dev/badge/…)]`,
+ *     or any `](https://…` link target. On a real dictionary these were 19 of 524
+ *     handles (README badges), all unretyped.
+ *   - A hexdump / binary dump line: an 8-hex-digit offset followed by hex byte
+ *     columns (`00000010  21 22 23 24 …  |!"#$%&'()|`). Never retyped.
+ */
+function isReferenceNoiseLine(line: string): boolean {
+	if (/\[!\[/.test(line) || /\]\(\s*<?https?:\/\//.test(line)) {
+		return true;
+	}
+	if (/^[0-9a-fA-F]{8}\b(?:\s+[0-9a-fA-F]{2}\b){2,}/.test(line)) {
+		return true;
+	}
+	return false;
 }
 
 /** True when a token looks like a path, command, URL, or dotted identifier rather than prose. */
@@ -417,8 +453,10 @@ function isCommentLine(line: string): boolean {
  *     (see {@link isReusableToken}) is essential on a code corpus: without it, an
  *     expression fragment such as `${theme.fg('dim` or `parts.push(theme.fg('dim`
  *     satisfies the `\w\.\w` rule and floods the dictionary with strings no agent
- *     ever retypes. Only clean tokens (`packages/app/src/db.ts`, `@scope/pkg`,
- *     `https://host/path`) survive, and
+ *     ever retypes. Only clean scheme-less tokens (`packages/app/src/db.ts`,
+ *     `@scope/pkg`, `github.com/aws/aws-lambda-go/events`) survive — a scheme URL
+ *     (`https://host/path`) is a hyperlink and is dropped by {@link isReusableToken},
+ *     and
  *   - **command-like lines** — a whole trimmed line that contains a space and reads
  *     like a build/deploy command, captured intact. Source-code statements are
  *     NOT captured, even though they look "structured": a model never retypes an
@@ -441,7 +479,13 @@ export function extractCandidates(text: string): string[] {
 		// structured, worth encoding as one unit. Prose sentences are excluded, and
 		// so are source-code statements — a model never retypes an arbitrary full line
 		// of code, so capturing one only wastes budget (see looksLikeSourceCode).
-		if (/\s/.test(line) && !isCommentLine(line) && looksLikeCommand(rawTokens) && !looksLikeSourceCode(line)) {
+		if (
+			/\s/.test(line) &&
+			!isCommentLine(line) &&
+			!isReferenceNoiseLine(line) &&
+			looksLikeCommand(rawTokens) &&
+			!looksLikeSourceCode(line)
+		) {
 			out.push(line);
 		}
 		for (const rawToken of rawTokens) {
