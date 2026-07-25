@@ -7,9 +7,40 @@ If you need cross-language/process isolation, use RPC mode instead.
 
 ## Installation
 
+Veyyon ships through GitHub only. Its packages are not on npm or any other
+registry, and they cannot be: they depend on each other with Bun's
+`workspace:*` and `catalog:` protocols, which resolve only inside a checkout.
+`bun add @veyyon/coding-agent` fails, and so does every other registry install.
+
+You consume the SDK from a checkout, linked into your project.
+
+Clone the repository and install its dependencies:
+
 ```bash
-bun add @veyyon/coding-agent
+git clone https://github.com/santhreal/veyyon.git
+cd veyyon
+bun install
 ```
+
+If you already installed veyyon with `install.sh --source`, that checkout is at
+`~/.veyyon/src` and you can use it instead of cloning again.
+
+Register the package with Bun, from the checkout:
+
+```bash
+bun --cwd=packages/coding-agent link
+```
+
+Then link it into your own project:
+
+```bash
+cd /path/to/your-project
+bun link @veyyon/coding-agent
+```
+
+Your project now resolves `@veyyon/coding-agent` to the checkout. To move to a
+newer version, update the checkout (`git pull && bun install`); the link keeps
+pointing at it.
 
 ## Entry points
 

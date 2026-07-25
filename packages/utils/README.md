@@ -24,9 +24,27 @@ Import from the root barrel or per-module subpaths (`@veyyon/utils/<module>`).
 
 ## Install
 
+Veyyon ships through GitHub only, so `@veyyon/utils` is not on npm or any other
+registry. It depends on its sibling packages with Bun's `workspace:*` and
+`catalog:` protocols, which resolve only inside a checkout, so a registry
+install could not work even if one were published.
+
+Consume it from a checkout instead:
+
 ```sh
-bun add @veyyon/utils
+git clone https://github.com/santhreal/veyyon.git
+cd veyyon
+bun install
+bun --cwd=packages/utils link
 ```
+
+Then, in your own project:
+
+```sh
+bun link @veyyon/utils
+```
+
+See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
 
 Ships TypeScript source directly (no build step); requires Bun ≥ 1.3.14.
 

@@ -39,6 +39,20 @@ const removedNpmMachinery = [
 	"packages/natives/test/npm-packages.test.ts",
 ];
 
+/**
+ * Every tracked markdown file, repo-relative. Walks git's own file list so
+ * node_modules, build output, and untracked scratch files can never make the
+ * check pass or fail by accident.
+ */
+function markdownFiles(root: string): string[] {
+	const out = Bun.spawnSync(["git", "ls-files", "*.md"], { cwd: root });
+	expect(out.exitCode, "git ls-files must succeed").toBe(0);
+	return new TextDecoder()
+		.decode(out.stdout)
+		.split("\n")
+		.filter(line => line.length > 0);
+}
+
 describe("the release gate covers both shipped install channels", () => {
 	it("smokes the prebuilt binary a curl | sh install puts on PATH", () => {
 		expect(runCi).toContain("Binary install smoke");
@@ -100,6 +114,35 @@ describe("the npm/tarball topology stays deleted", () => {
 		// The two real channels keep their images.
 		expect(podman).toContain("binary.dockerfile");
 		expect(podman).toContain("source.dockerfile");
+	});
+
+	it("no document tells a user to install a veyyon package from a registry", () => {
+		// Five docs carried `bun add @veyyon/...` / `npm install @veyyon/...`.
+		// Every one of those commands fails at resolution: nothing is published,
+		// and the packages depend on each other through `workspace:*`/`catalog:`,
+		// which resolve only inside a checkout. A documented install method that
+		// cannot work is worse than none — the user blames their own setup.
+		const offenders: string[] = [];
+		for (const rel of markdownFiles(repoRoot)) {
+			// The changelog is a historical record; rewriting it would falsify it.
+			if (rel.endsWith("CHANGELOG.md")) continue;
+			const text = fs.readFileSync(path.join(repoRoot, rel), "utf8");
+			for (const [i, line] of text.split("\n").entries()) {
+				if (/^\s*(?:npm|bun|pnpm|yarn)\s+(?:i|add|install)\s+@veyyon\//.test(line)) {
+					offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+				}
+			}
+		}
+		expect(offenders, "these commands cannot resolve; document the checkout + `bun link` path").toEqual([]);
+	});
+
+	it("the SDK guide documents the checkout path that does work", () => {
+		// Removing the false instruction is only half the fix; the reader still
+		// needs a working one, and it lives in exactly one place.
+		const sdk = fs.readFileSync(path.join(repoRoot, "docs", "sdk.md"), "utf8");
+		expect(sdk).toContain("bun --cwd=packages/coding-agent link");
+		expect(sdk).toContain("bun link @veyyon/coding-agent");
+		expect(sdk).toContain("are not on npm");
 	});
 
 	it("npm appears in the gate only where it is being denied", () => {
