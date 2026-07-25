@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { resolveRetryKey } from "@veyyon/ai";
+import type { OAuthAccess, OAuthAccessSource } from "@veyyon/ai";
+import { resolveRetryKey, withOAuthAccess } from "@veyyon/ai";
 import { logger } from "@veyyon/utils";
 
 /**
@@ -113,6 +114,90 @@ describe("An auth retry that gives up says why", () => {
 		const resolved = await resolveRetryKey(() => Promise.resolve("sk-rotated"), false, authFailure());
 
 		expect(resolved).toBe("sk-rotated");
+		expect(warnings).toHaveLength(0);
+	});
+
+	/**
+	 * The second of the three sites: the forced refresh of the CURRENT credential.
+	 * When it throws, the loop falls through to rotation and the user eventually
+	 * sees the original 401, so this failure has nowhere else to appear.
+	 */
+	it("warns when the forced refresh of the current credential throws", async () => {
+		const storage: OAuthAccessSource = {
+			async getOAuthAccess(_provider, _sessionId, options) {
+				if (options?.forceRefresh) throw new Error("SQLITE_BUSY: refresh could not read the store");
+				return { accessToken: "t1" } satisfies OAuthAccess;
+			},
+			async rotateSessionCredential() {
+				return false;
+			},
+		};
+
+		const failed = await withOAuthAccess(storage, "prov", async () => {
+			throw authFailure();
+		}).then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+
+		// The caller still receives the ORIGINAL auth error, unchanged.
+		expect(String(failed)).toContain("401");
+		const refreshWarnings = warnings.filter(entry => entry.message.includes("could not force-refresh"));
+		expect(refreshWarnings).toHaveLength(1);
+		expect(refreshWarnings[0]?.fields.provider).toBe("prov");
+		expect(String(refreshWarnings[0]?.fields.error)).toContain("SQLITE_BUSY");
+	});
+
+	/**
+	 * The third site, and the one that matters most: it ENDS the retry loop, so it
+	 * is the last chance to say anything at all about why recovery stopped.
+	 */
+	it("warns when rotating to another credential throws, which ends the retry", async () => {
+		const storage: OAuthAccessSource = {
+			async getOAuthAccess() {
+				return { accessToken: "t1" } satisfies OAuthAccess;
+			},
+			async rotateSessionCredential() {
+				throw new Error("broker unreachable while rotating");
+			},
+		};
+
+		const failed = await withOAuthAccess(storage, "prov", async () => {
+			throw authFailure();
+		}).then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+
+		expect(String(failed)).toContain("401");
+		const rotateWarnings = warnings.filter(entry => entry.message.includes("could not rotate to another credential"));
+		expect(rotateWarnings).toHaveLength(1);
+		expect(String(rotateWarnings[0]?.fields.error)).toContain("broker unreachable");
+	});
+
+	/**
+	 * A retry that succeeds must say nothing. Without this the suite would pass
+	 * against an implementation that warned on every rotation, successful or not,
+	 * which is the ordinary multi-account path.
+	 */
+	it("stays silent when rotation actually works", async () => {
+		let rotated = false;
+		const storage: OAuthAccessSource = {
+			async getOAuthAccess() {
+				return { accessToken: rotated ? "t2" : "t1" } satisfies OAuthAccess;
+			},
+			async rotateSessionCredential() {
+				rotated = true;
+				return true;
+			},
+		};
+
+		const result = await withOAuthAccess(storage, "prov", async accessValue => {
+			if (accessValue.accessToken === "t1") throw authFailure();
+			return `ok:${accessValue.accessToken}`;
+		});
+
+		expect(result).toBe("ok:t2");
 		expect(warnings).toHaveLength(0);
 	});
 });
