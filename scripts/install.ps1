@@ -257,9 +257,11 @@ function Get-PathWithoutDir {
 # pointing at a directory veyyon no longer occupies. Only an EXACT entry match
 # is removed, so a different directory that merely shares a prefix stays.
 function Remove-FromPath {
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    # Raw, for the same reason Add-ToPath reads raw: taking our entry back out
+    # must not flatten the user's `%VAR%` entries on the way.
+    $userPath = (Get-RawUserPath).Value
     if (-not (Test-PathContainsDir $userPath $InstallDir)) { return $false }
-    [Environment]::SetEnvironmentVariable("Path", (Get-PathWithoutDir $userPath $InstallDir), "User")
+    Set-RawUserPath (Get-PathWithoutDir $userPath $InstallDir)
     $env:Path = Get-PathWithoutDir $env:Path $InstallDir
     return $true
 }
@@ -574,13 +576,99 @@ function Get-PathWithDir {
     return ((@($Dir) + @(Split-PathEntries $Raw)) -join ';')
 }
 
+# ---- reading and writing the user PATH without flattening it ----
+#
+# WHY THIS IS NOT [Environment]::GetEnvironmentVariable/SetEnvironmentVariable.
+# The user PATH in HKCU\Environment is normally REG_EXPAND_SZ, which is what lets
+# a person write `%JAVA_HOME%\bin` and have it follow the variable. The .NET
+# accessors do not preserve that: the getter EXPANDS the value, and the setter
+# writes a plain REG_SZ. Reading and writing that pair therefore froze every
+# `%VAR%` entry in the user's PATH to whatever it happened to expand to at
+# install time, permanently, and nothing on screen said so. Installing veyyon
+# damaged an environment veyyon does not own.
+#
+# So the raw value is read with DoNotExpandEnvironmentNames and written back with
+# the kind it already had.
+
+# The registry kind to write, given the kind the value already has (or $null when
+# there is no value yet) and the string about to be stored. Pure, so the decision
+# is testable without a registry.
+function Resolve-PathValueKind {
+    param([object]$ExistingKind, [string]$Value)
+    # Preserve what is there. A REG_SZ that happens to contain a literal `%FOO%`
+    # is not a mistake to correct: Windows will not expand it, and silently
+    # promoting it would change how that entry resolves.
+    if ($null -ne $ExistingKind -and "$ExistingKind" -ne "Unknown" -and "$ExistingKind" -ne "None") {
+        return $ExistingKind
+    }
+    # No value yet. Windows creates the user PATH as REG_EXPAND_SZ, so match it:
+    # anything the user adds later that references a variable will then work.
+    return [Microsoft.Win32.RegistryValueKind]::ExpandString
+}
+
+# The user PATH exactly as stored, with `%VAR%` tokens intact, plus the kind it
+# is stored under. Returns an empty value and a $null kind when the key or the
+# value does not exist yet (a fresh profile).
+function Get-RawUserPath {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $false)
+    if ($null -eq $key) { return @{ Value = ""; Kind = $null } }
+    try {
+        $value = $key.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        if ($null -eq $value) { return @{ Value = ""; Kind = $null } }
+        $kind = $null
+        try { $kind = $key.GetValueKind("Path") } catch { $kind = $null }
+        return @{ Value = [string]$value; Kind = $kind }
+    } finally {
+        $key.Dispose()
+    }
+}
+
+# Tell the running desktop that the environment changed.
+#
+# SetEnvironmentVariable did this for us; a raw registry write does not, so an
+# already-open Explorer or terminal would keep the old PATH until the next
+# logon. Best effort and LOUD: if the broadcast cannot be made, the PATH edit
+# still succeeded and the only cost is that a new terminal is needed, which is
+# said out loud rather than assumed.
+function Publish-EnvironmentChange {
+    try {
+        if (-not ("VeyyonEnvBroadcast" -as [type])) {
+            Add-Type -Namespace "" -Name "VeyyonEnvBroadcast" -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);
+"@
+        }
+        $HWND_BROADCAST = [System.IntPtr]0xffff
+        $WM_SETTINGCHANGE = 0x1a
+        $SMTO_ABORTIFHUNG = 0x2
+        $result = [System.UIntPtr]::Zero
+        [void][VeyyonEnvBroadcast]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [System.UIntPtr]::Zero, "Environment", $SMTO_ABORTIFHUNG, 5000, [ref]$result)
+    } catch {
+        Write-Host "!  could not announce the PATH change to running programs ($($_.Exception.Message)); open a new terminal to pick it up" -ForegroundColor Yellow
+    }
+}
+
+# Store the user PATH, keeping the kind it already had.
+function Set-RawUserPath {
+    param([string]$Value)
+    $current = Get-RawUserPath
+    $kind = Resolve-PathValueKind -ExistingKind $current.Kind -Value $Value
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Environment")
+    try {
+        $key.SetValue("Path", $Value, $kind)
+    } finally {
+        $key.Dispose()
+    }
+    Publish-EnvironmentChange
+}
+
 # Add the install dir to the user PATH if it is not already there. Returns $true
 # when a new entry was added (so the caller can tell the user to restart).
 function Add-ToPath {
-    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $UserPath = (Get-RawUserPath).Value
     if (-not (Test-PathContainsDir $UserPath $InstallDir)) {
         Write-Host "Adding $InstallDir to PATH..."
-        [Environment]::SetEnvironmentVariable("Path", (Get-PathWithDir $UserPath $InstallDir), "User")
+        Set-RawUserPath (Get-PathWithDir $UserPath $InstallDir)
         $env:Path = Get-PathWithDir $env:Path $InstallDir
         return $true
     }
