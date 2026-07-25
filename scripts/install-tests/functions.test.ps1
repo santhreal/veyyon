@@ -88,8 +88,7 @@ Remove-Item -Force $hashFile -ErrorAction SilentlyContinue
 if (Get-Command git -ErrorAction SilentlyContinue) {
     # Uninstall-Veyyon calls Test-BunInstalled/bun; stub it out so the src-handling
     # branch is exercised without touching a real global install.
-    function Test-BunInstalled { return $false }
-
+    
     $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-$PID"
     if (Test-Path $sandbox) { Remove-Item -Recurse -Force $sandbox }
     New-Item -ItemType Directory -Force -Path $sandbox | Out-Null
@@ -348,6 +347,93 @@ try {
     Remove-Item -Recurse -Force $nativesSandbox -ErrorAction SilentlyContinue
 }
 
+# --- Test-AliasPointsAtUs: the alias is ours only when it forwards to us ---
+# Install-Alias refuses to overwrite a vey.cmd the installer did not write, and
+# the doctor's shadow check must follow that decision: reporting that a user's
+# OWN vey "shadows the copy just installed" and telling them to remove it is
+# false, because no vey was installed at all. Mirrors alias_points_at_us in
+# install.sh. Pure filesystem, no install performed.
+$aliasSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-alias-$PID"
+if (Test-Path $aliasSandbox) { Remove-Item -Recurse -Force $aliasSandbox }
+try {
+    New-Item -ItemType Directory -Force -Path $aliasSandbox | Out-Null
+    $ourBin = Join-Path $aliasSandbox "veyyon.exe"
+    "BINARY" | Set-Content -NoNewline -Path $ourBin
+    $shim = Join-Path $aliasSandbox "vey.cmd"
+
+    Check "no alias file at all is not ours" (Test-AliasPointsAtUs -BinPath $ourBin) "False"
+
+    # A shim forwarding somewhere else is the user's, whatever it is called.
+    "@echo off`r`n`"C:\their\tool.exe`" %*" | Set-Content -Path $shim -Encoding ASCII
+    Check "a shim forwarding elsewhere is not ours" (Test-AliasPointsAtUs -BinPath $ourBin) "False"
+
+    # The shim Install-Alias itself writes.
+    "@echo off`r`n`"$ourBin`" %*" | Set-Content -Path $shim -Encoding ASCII
+    Check "a shim forwarding to our binary is ours" (Test-AliasPointsAtUs -BinPath $ourBin) "True"
+} finally {
+    Remove-Item -Recurse -Force $aliasSandbox -ErrorAction SilentlyContinue
+}
+
+# --- Get-LfsTrackedFile / Get-LfsAssets: LFS content is fetched or we stop ---
+# The old line was `if (Test-GitLfsInstalled) { git lfs pull | Out-Null }`: with
+# git-lfs absent the pull never ran, and with it present a failure was swallowed
+# by Out-Null and an unread $LASTEXITCODE. Either way LFS-tracked files stay
+# ~130-byte pointer TEXT files, the install reports success, and veyyon fails
+# later on a file that looks present. Mirrors fetch_lfs_assets in install.sh.
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $lfsSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-lfs-$PID"
+    if (Test-Path $lfsSandbox) { Remove-Item -Recurse -Force $lfsSandbox }
+    try {
+        New-Item -ItemType Directory -Force -Path $lfsSandbox | Out-Null
+        Push-Location $lfsSandbox
+        git init -q . 2>$null | Out-Null
+        git config user.email "t@t" | Out-Null
+        git config user.name "t" | Out-Null
+        "hi" | Set-Content -Path (Join-Path $lfsSandbox "a.txt")
+        git add a.txt | Out-Null
+        git commit -qm init 2>$null | Out-Null
+        Pop-Location
+
+        Check "a plain checkout tracks nothing through LFS" ([string]::IsNullOrEmpty((Get-LfsTrackedFile -SrcDir $lfsSandbox))) "True"
+
+        # Today's real repo state: .gitattributes DECLARES an LFS filter but no
+        # tracked file matches it. That must not block an install, or every
+        # source install without git-lfs breaks on a rule governing zero files.
+        Push-Location $lfsSandbox
+        "*.wasm filter=lfs diff=lfs merge=lfs -text" | Set-Content -Path (Join-Path $lfsSandbox ".gitattributes")
+        git add .gitattributes | Out-Null
+        git commit -qm attrs 2>$null | Out-Null
+        Pop-Location
+        Check "a declaration matching no file is not LFS content" ([string]::IsNullOrEmpty((Get-LfsTrackedFile -SrcDir $lfsSandbox))) "True"
+
+        # A file the filter actually matches: this checkout genuinely needs LFS.
+        Push-Location $lfsSandbox
+        "pointer" | Set-Content -Path (Join-Path $lfsSandbox "shipped.wasm")
+        git add shipped.wasm | Out-Null
+        git commit -qm wasm 2>$null | Out-Null
+        Pop-Location
+        Check "a matching file is reported as LFS-tracked" (Get-LfsTrackedFile -SrcDir $lfsSandbox) "shipped.wasm"
+
+        # With git-lfs unavailable, the install must stop and say why.
+        function Test-GitLfsInstalled { return $false }
+        $lfsError = ""
+        try { Get-LfsAssets -SrcDir $lfsSandbox } catch { $lfsError = $_.Exception.Message }
+        Check "a checkout needing LFS without git-lfs stops the install" ([bool]($lfsError -match "git-lfs is not installed")) "True"
+        Check "the stop explains pointer text, not a bare failure" ([bool]($lfsError -match "pointer text")) "True"
+        Check "the stop links where to get git-lfs" ([bool]($lfsError -match [regex]::Escape("https://git-lfs.com"))) "True"
+    } finally {
+        Remove-Item -Recurse -Force $lfsSandbox -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-Host "SKIP: git not available; Get-LfsAssets tests skipped"
+}
+
 Write-Host ""
+# A run that recorded nothing is a broken harness, not a pass: fail closed rather
+# than report "0 passed, 0 failed" and exit 0 (mirrors functions.test.sh).
+if (($script:Pass + $script:Fail) -eq 0) {
+    Write-Host "no assertions recorded - the harness did not run"
+    exit 1
+}
 Write-Host "$($script:Pass) passed, $($script:Fail) failed"
 if ($script:Fail -ne 0) { exit 1 }
