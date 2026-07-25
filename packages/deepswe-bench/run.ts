@@ -776,8 +776,12 @@ async function main(): Promise<void> {
 		}
 		results.push(result);
 		const mark = result.error ? "ERROR" : result.reward === 1 ? "pass" : `reward=${result.reward}`;
+		// Denominator is the STABLE total (`totalQueued`), not `queue.length`: the
+		// worker pool shifts items off `queue` as it drains, so `queue.length` is the
+		// REMAINING count and `[done/remaining]` reads as a shrinking, confusing ratio.
+		// `[done/total]` is the honest progress fraction.
 		console.log(
-			`[${results.length}/${queue.length}] ${jobName}: ${mark} out=${result.outputTokens ?? "?"}tok cost=$${result.costUsd?.toFixed(3) ?? "?"} (${((Date.now() - started) / 1000).toFixed(0)}s)`,
+			`[${results.length}/${totalQueued}] ${jobName}: ${mark} out=${result.outputTokens ?? "?"}tok cost=$${result.costUsd?.toFixed(3) ?? "?"} (${((Date.now() - started) / 1000).toFixed(0)}s)`,
 		);
 		// Fail-fast canary: a config that makes EVERY run error (an unservable model,
 		// a bad auth DB, a missing binary) otherwise burns the whole run — 120 jobs ×
