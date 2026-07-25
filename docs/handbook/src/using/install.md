@@ -143,6 +143,13 @@ ignores the pause entirely, so you can always ask to see the error again:
 $ veyyon update
 ```
 
+A binary update also rewrites the shell completion files you already have, so
+tab completion knows about the subcommands and flags the new version added. It
+rewrites only files that are already there. It never creates one, because
+choosing which shells get completions is the installer's job, not an update's.
+If a completion cannot be rewritten, Veyyon names the file and tells you it
+still describes the previous version; the update itself is unaffected.
+
 Running several sessions at once is safe. Only the first one to start installs;
 the others see that an install is under way and skip it rather than writing over
 the same binary at the same time.
