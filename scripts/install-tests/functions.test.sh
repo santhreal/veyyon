@@ -210,12 +210,14 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
 # launch with — with no tab completion at all.
 ( _h="$SANDBOX/comp-home"
   export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
-  mkdir -p "$_h"
-  fakebin="$_h/veyyon-fake"
+  mkdir -p "$_h/bin"
+  fakebin="$_h/bin/veyyon"
   # Stands in for the real binary: `completions --help` succeeds, and each shell
   # emits a marker line so the test can assert real content, not just a nonempty file.
   printf '#!/bin/sh\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon vey"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon vey"; exit 0 ;;\n  "completions fish") echo "complete -c vey -w veyyon"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
   chmod +x "$fakebin"
+  # link_alias runs before install_completions, so the alias is already ours here.
+  ln -s "$fakebin" "$_h/bin/vey"
   install_completions "$fakebin" >/dev/null 2>&1
 
   bashdir="$(completions_dir_for bash)"; zshdir="$(completions_dir_for zsh)"; fishdir="$(completions_dir_for fish)"
@@ -247,6 +249,50 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
   check "uninstall removed the zsh completion" "$( [ -e "$zshdir/_veyyon" ] && echo present || echo absent )" "absent"
   check "uninstall removed the fish completion" "$( [ -e "$fishdir/veyyon.fish" ] && echo present || echo absent )" "absent"
   check "uninstall removed the fish alias completion" "$( [ -e "$fishdir/vey.fish" ] && echo present || echo absent )" "absent" )
+
+# --- alias_points_at_us: the completion half of the no-clobber rule ---
+# link_alias refuses to overwrite a `vey` the user owns. install_completions ran
+# afterwards regardless, writing completions/vey — a file that both describes the
+# wrong command (it completes OUR subcommands for THEIR tool) and destroys the
+# completion script their tool shipped. Declining the alias has to decline its
+# completion too, or the no-clobber fix only half holds.
+( _h="$SANDBOX/comp-foreign"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  mkdir -p "$_h/bin"
+  fakebin="$_h/bin/veyyon"
+  printf '#!/bin/sh\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon vey"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon vey"; exit 0 ;;\n  "completions fish") echo "complete -c vey -w veyyon"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  chmod +x "$fakebin"
+
+  check "no alias present at all is not ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "not"
+
+  # Someone else's `vey`: a real file, exactly what link_alias leaves untouched.
+  printf '#!/bin/sh\necho other tool\n' > "$_h/bin/vey"; chmod +x "$_h/bin/vey"
+  check "a regular file named vey is not ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "not"
+
+  # A symlink, but to something else entirely — still not ours to replace.
+  rm -f "$_h/bin/vey"; ln -s "$_h/bin/somebody-else" "$_h/bin/vey"
+  check "a symlink to another target is not ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "not"
+
+  rm -f "$_h/bin/vey"; ln -s "$fakebin" "$_h/bin/vey"
+  check "a symlink to our binary is ours" "$(alias_points_at_us "$fakebin" && echo ours || echo not)" "ours"
+
+  # Now the behavior: restore the foreign `vey` plus the completion file its own
+  # installer wrote, and prove install_completions leaves both alone.
+  rm -f "$_h/bin/vey"; printf '#!/bin/sh\necho other tool\n' > "$_h/bin/vey"
+  bashdir="$(completions_dir_for bash)"; fishdir="$(completions_dir_for fish)"
+  mkdir -p "$bashdir" "$fishdir"
+  printf 'complete -F _their_tool vey\n' > "$bashdir/vey"
+  printf 'complete -c vey -a their-subcommand\n' > "$fishdir/vey.fish"
+  install_completions "$fakebin" >/dev/null 2>&1
+
+  check "our own bash completion is still installed" "$(cat "$bashdir/veyyon" 2>/dev/null)" "complete -F _veyyon veyyon vey"
+  check "a foreign vey keeps its bash completion" "$(cat "$bashdir/vey" 2>/dev/null)" "complete -F _their_tool vey"
+  check "a foreign vey keeps its fish completion" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c vey -a their-subcommand"
+
+  # And uninstall must not reclaim what install declined to write, either.
+  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  check "uninstall leaves a foreign vey bash completion" "$(cat "$bashdir/vey" 2>/dev/null)" "complete -F _their_tool vey"
+  check "uninstall leaves a foreign vey fish completion" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c vey -a their-subcommand" )
 unset XDG_DATA_HOME XDG_CONFIG_HOME
 export HOME="$SANDBOX/home"
 

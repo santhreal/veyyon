@@ -191,6 +191,19 @@ completion_file_for() {
     esac
 }
 
+# True when the alias next to $1 is one we created (a symlink to our binary).
+#
+# Completions for `vey` are only ours to write when `vey` actually launches
+# veyyon. If link_alias declined because the user has their own `vey`, writing
+# `completions/vey` would both describe the wrong command and overwrite that
+# tool's completion file — the same destruction link_alias just refused to do.
+alias_points_at_us() {
+    d=$(dir_of "$1")
+    l="$d/$ALIAS_NAME"
+    [ -L "$l" ] || return 1
+    [ "$(readlink "$l" 2>/dev/null)" = "$d/$BIN_NAME" ]
+}
+
 install_completions() {
     bin="$1"
     "$bin" completions --help >/dev/null 2>&1 || {
@@ -213,7 +226,7 @@ install_completions() {
             # completed, so the `vey` alias needs its own file or it gets nothing
             # (zsh needs none: the generated script's `#compdef` line names both).
             alias_name=$(completion_file_for "$sh" "$ALIAS_NAME")
-            if [ -n "$alias_name" ] && [ "$sh" != "zsh" ]; then
+            if [ -n "$alias_name" ] && [ "$sh" != "zsh" ] && alias_points_at_us "$bin"; then
                 if cp -f "$out/$name" "$out/$alias_name" 2>/dev/null; then
                     ok "installed $sh completions for '$ALIAS_NAME'"
                 else
@@ -413,10 +426,21 @@ do_uninstall() {
         [ -n "$out" ] || continue
         # Derive both filenames from the same owner install_completions writes
         # through, so an alias completion can never be orphaned by an uninstall.
-        for cmd in "$BIN_NAME" "$ALIAS_NAME"; do
-            name=$(completion_file_for "$sh" "$cmd")
-            [ -n "$name" ] && [ -e "$out/$name" ] && rm -f "$out/$name" && ok "removed $sh completion for '$cmd'"
-        done
+        name=$(completion_file_for "$sh" "$BIN_NAME")
+        alias_name=$(completion_file_for "$sh" "$ALIAS_NAME")
+        # The alias file is a byte copy of ours, so identical content is the only
+        # proof we wrote it. If the user has their own `vey`, install declined to
+        # write this file and uninstall has no business deleting it.
+        if [ -n "$alias_name" ] && [ -e "$out/$alias_name" ]; then
+            if [ -n "$name" ] && cmp -s "$out/$name" "$out/$alias_name" 2>/dev/null; then
+                rm -f "$out/$alias_name" && ok "removed $sh completion for '$ALIAS_NAME'"
+            else
+                ok "left $sh completion for '$ALIAS_NAME' alone (not written by this installer)"
+            fi
+        fi
+        if [ -n "$name" ] && [ -e "$out/$name" ]; then
+            rm -f "$out/$name" && ok "removed $sh completion for '$BIN_NAME'"
+        fi
     done
     # Remove the per-version native addon cache a binary install stages there
     # (~150MB per version). The path shape is owned by getNativesDir() in
