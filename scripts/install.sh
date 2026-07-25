@@ -176,9 +176,16 @@ ensure_on_path() {
     # user to "add $dir to your PATH" even though it was already configured and
     # all they needed was a new shell. The manual-action warning is now reserved
     # for the case where the installer genuinely could not do it.
+    #
+    # The "already configured" test matches the WHOLE LINE this installer writes,
+    # not the directory as a substring. `grep -Fq "$dir"` matched an rc holding
+    # `$HOME/.local/bin2`, or a comment that merely mentions the path, and the
+    # installer then skipped the add and reported the directory as configured —
+    # so a new shell never had it and "restart your shell" was advice that could
+    # not work. Same prefix-substring bug Test-PathContainsDir fixed on Windows.
     if [ -z "$rc" ]; then
         warn "add $dir to your PATH, then run '$ALIAS_NAME'"
-    elif [ -f "$rc" ] && grep -Fq "$dir" "$rc"; then
+    elif [ -f "$rc" ] && grep -Fqx "$line" "$rc"; then
         ok "$dir is already on PATH in $rc (restart your shell or: source $rc)"
     else
         mkdir -p "$(dir_of "$rc")" 2>/dev/null || true

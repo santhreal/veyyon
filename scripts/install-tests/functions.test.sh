@@ -192,6 +192,39 @@ check "a reinstall does NOT tell the user to add it manually" "$(printf '%s' "$o
 check "a reinstall points at the shell restart instead" "$(printf '%s' "$out" | grep -c 'restart your shell')" "1"
 check "a reinstall does not duplicate the PATH line" "$(grep -c 'already-bin' "$h/.bashrc")" "$first_lines"
 
+# --- ensure_on_path: "already configured" means OUR line, not a substring ---
+# The check was `grep -Fq "$dir" "$rc"`, so an rc that merely MENTIONED the path
+# counted as configured. A user with `$HOME/.local/bin2` on PATH, or a comment
+# naming the directory, got the add skipped and the directory reported as
+# already set up — so a new shell never had it and "restart your shell" was
+# advice that could not possibly work. Same prefix-substring bug that
+# Test-PathContainsDir already fixed on the Windows side.
+h="$(eop_home substring)"
+mkdir -p "$h"
+printf 'export PATH="/opt/sub-bin2:$PATH"\n' > "$h/.bashrc"
+out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/bin/bash; ensure_on_path "/opt/sub-bin" 2>&1 )
+check "a longer entry sharing the prefix does not count as configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "0"
+check "the PATH line is actually written" "$(grep -c 'export PATH="/opt/sub-bin:\$PATH"' "$h/.bashrc")" "1"
+check "the user's own prefix-sharing entry is untouched" "$(grep -c 'sub-bin2' "$h/.bashrc")" "1"
+
+# A comment naming the directory is not configuration either.
+h="$(eop_home comment)"
+mkdir -p "$h"
+printf '# remember to add /opt/comment-bin one day\n' > "$h/.bashrc"
+out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/bin/bash; ensure_on_path "/opt/comment-bin" 2>&1 )
+check "a comment mentioning the dir does not count as configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "0"
+check "the PATH line is written past the comment" "$(grep -c 'export PATH="/opt/comment-bin:\$PATH"' "$h/.bashrc")" "1"
+
+# And the fish form, whose line is a different shape entirely, matches exactly too.
+h="$(eop_home fishexact)"
+mkdir -p "$h/.config/fish"
+printf 'fish_add_path /opt/fish-bin2\n' > "$h/.config/fish/config.fish"
+out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/usr/bin/fish; ensure_on_path "/opt/fish-bin" 2>&1 )
+check "fish: a prefix-sharing fish_add_path does not count as configured" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "0"
+check "fish: the exact fish_add_path line is written" "$(grep -c '^fish_add_path /opt/fish-bin$' "$h/.config/fish/config.fish")" "1"
+out=$( uname() { printf 'Linux\n'; }; HOME="$h"; SHELL=/usr/bin/fish; ensure_on_path "/opt/fish-bin" 2>&1 )
+check "fish: a reinstall recognizes its own line" "$(printf '%s' "$out" | grep -c 'is already on PATH in')" "1"
+
 # --- completion_file_for: the one owner of per-shell completion filenames ---
 # install_completions writes through this and do_uninstall removes through it, so
 # a drift here used to mean an orphaned file surviving uninstall forever.
