@@ -178,4 +178,4 @@ Practical implication:
 
 This boundary is intentional in current implementation and explains why manifest discovery and executable module loading can diverge.
 
-*Verified against `ab977ca4` on 2026-07-24.*
+*Verified against `f9e2afed` on 2026-07-25.*

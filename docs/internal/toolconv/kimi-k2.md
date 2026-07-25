@@ -181,4 +181,4 @@ Moonshot's hosted API (`platform.moonshot.ai`) exposes both OpenAI- and Anthropi
 - vLLM PR adding the parser: https://github.com/vllm-project/vllm/pull/20789
 - vLLM tool-calling docs: https://docs.vllm.ai/en/latest/features/tool_calling/
 
-*Verified against `ab977ca4` on 2026-07-24.*
+*Verified against `f9e2afed` on 2026-07-25.*

@@ -275,4 +275,4 @@ Layout behavior:
 - **PTY session**: `core` is always cleared after `start()` finishes, including failure paths.
 - **No explicit JS finalizer-driven kill contract** is exposed by wrappers; cleanup is primarily tied to run completion/cancellation paths. Callers should use `timeoutMs`, `AbortSignal`, `shell.abort()`, or `pty.kill()` for deterministic teardown.
 
-*Verified against `ab977ca4` on 2026-07-24.*
+*Verified against `f9e2afed` on 2026-07-25.*

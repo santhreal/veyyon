@@ -52,4 +52,4 @@ The broker and gateway each authenticate every endpoint (except health) with a b
 - Confirm a test run of the affected system works with the new secret **before** revoking the old one.
 - If the rotation was triggered by a leak, also audit access logs for use of the leaked value.
 
-*Verified against `ab977ca4` on 2026-07-24.*
+*Verified against `f9e2afed` on 2026-07-25.*

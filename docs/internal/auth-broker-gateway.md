@@ -197,4 +197,4 @@ The broker only owns OAuth credentials and provider-API-key credentials that wer
 - [`models.md`](../models.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
 - [`environment-variables.md`](../environment-variables.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
 
-*Verified against `ab977ca4` on 2026-07-24.*
+*Verified against `f9e2afed` on 2026-07-25.*

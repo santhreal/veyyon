@@ -382,4 +382,4 @@ reuse the same fullwidth pipe (`｜`, U+FF5C), but the body is an Anthropic-styl
 - vLLM Tool Calling docs (`deepseek_v3`, `deepseek_v31` parser flags): <https://docs.vllm.ai/en/latest/features/tool_calling/>
 - vLLM Reasoning Outputs docs (`deepseek_r1` reasoning parser; V3.1 thinking default): <https://docs.vllm.ai/en/latest/features/reasoning_outputs/>
 
-*Verified against `ab977ca4` on 2026-07-24.*
+*Verified against `f9e2afed` on 2026-07-25.*
