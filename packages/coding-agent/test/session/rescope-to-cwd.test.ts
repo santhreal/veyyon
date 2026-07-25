@@ -8,7 +8,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 
 /**
  * Moving the working directory has to re-scope the session in EVERY mode.
@@ -34,9 +34,15 @@ import { getProjectDir, TempDir } from "@veyyon/utils";
 describe("AgentSession re-scopes to the destination directory", () => {
 	let tempDir: TempDir;
 	let session: AgentSession;
+	let originalProjectDir: string;
 	const authStorages: AuthStorage[] = [];
 
 	beforeEach(() => {
+		// Re-scoping calls `setProjectDir`, which really chdirs the process. Without
+		// putting it back, this suite leaves the process sitting inside a temp
+		// directory it is about to delete, and the NEXT suite to restore its own
+		// settings state fails with ENOENT on a directory it never created.
+		originalProjectDir = getProjectDir();
 		tempDir = TempDir.createSync("@pi-rescope-cwd-");
 	});
 
@@ -44,6 +50,7 @@ describe("AgentSession re-scopes to the destination directory", () => {
 		vi.restoreAllMocks();
 		if (session) await session.dispose();
 		for (const authStorage of authStorages.splice(0)) authStorage.close();
+		setProjectDir(originalProjectDir);
 		tempDir.removeSync();
 	});
 
