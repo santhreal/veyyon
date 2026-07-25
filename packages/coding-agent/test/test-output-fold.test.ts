@@ -54,9 +54,37 @@ describe("classifyLine", () => {
 	});
 
 	/**
+	 * Go is not the only runner an agent meets, and the others emit the same
+	 * per-test bookkeeping in their own shapes. Each is pinned by example so a
+	 * regex tweak for one runner cannot quietly stop folding another.
+	 */
+	it("recognises pytest, cargo, vitest and jest bookkeeping", () => {
+		expect(classifyLine("tests/test_x.py::test_y PASSED")).toBe("pass");
+		expect(classifyLine("tests/test_x.py::test_y PASSED [ 45%]")).toBe("pass");
+		expect(classifyLine("tests/test_x.py::test_y SKIPPED")).toBe("pass");
+		expect(classifyLine("test parser::handles_empty ... ok")).toBe("pass");
+		expect(classifyLine("test parser::slow_case ... ignored")).toBe("pass");
+		expect(classifyLine("   ✓ src/foo.test.ts > parses input")).toBe("pass");
+		expect(classifyLine("PASS  src/foo.test.ts")).toBe("packageOk");
+	});
+
+	/**
+	 * The failing counterparts for those same runners. These are the lines the
+	 * agent needs, and each is one small regex slip away from being folded.
+	 */
+	it("never classifies a failing line from any supported runner", () => {
+		expect(classifyLine("tests/test_x.py::test_y FAILED")).toBeNull();
+		expect(classifyLine("tests/test_x.py::test_y ERROR")).toBeNull();
+		expect(classifyLine("test parser::handles_empty ... FAILED")).toBeNull();
+		expect(classifyLine("   ✗ src/foo.test.ts > parses input")).toBeNull();
+		expect(classifyLine("   × src/foo.test.ts > parses input")).toBeNull();
+		expect(classifyLine("FAIL  src/foo.test.ts")).toBeNull();
+	});
+
+	/**
 	 * A test's own stdout can start with anything, including text that looks like
-	 * a verdict. The patterns require Go's exact shape, so ordinary output is not
-	 * mistaken for bookkeeping and deleted.
+	 * a verdict. The patterns require each runner's exact shape, so ordinary
+	 * output is not mistaken for bookkeeping and deleted.
 	 */
 	it("does not classify a test's own output that merely resembles a verdict", () => {
 		expect(classifyLine("ok, that worked")).toBeNull();
