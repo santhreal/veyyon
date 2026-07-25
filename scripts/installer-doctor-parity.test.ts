@@ -141,3 +141,60 @@ describe("the installer does not create the shadowing it then warns about", () =
 		expect(installSh).not.toContain(`printf 'export PATH="$PATH:%s"'`);
 	});
 });
+
+/**
+ * Both doctors must prove the native addon LOADS, not merely that the binary
+ * starts.
+ *
+ * `--version` is served entirely by the JS entry point, so it succeeds on an
+ * install whose addon is missing or was staged for the wrong architecture. Both
+ * installers printed "veyyon runs" for exactly that install and the user met
+ * the failure on their first real command. This is the one class of install
+ * breakage the musl preflight catches for a single cause and cannot catch for
+ * the rest, so it belongs in the self-test on both platforms or on neither.
+ */
+describe("doctor proves the native addon loads", () => {
+	it("both run a real search rather than trusting --version", () => {
+		expect(installSh).toContain("doctor_natives() {");
+		expect(installSh).toContain('_dn_out=$("$_dn_bin" grep veyyon-native-self-test "$_dn_dir" 2>&1)');
+		expect(installPs1).toContain("function Test-NativeAddon {");
+		expect(installPs1).toContain("& $Command grep veyyon-native-self-test $dir 2>&1");
+	});
+
+	it("both are called from doctor, before the shadow checks", () => {
+		// Ordering matters for the reader: an addon that cannot load makes a PATH
+		// warning beside the point.
+		expect(installSh.indexOf('doctor_natives "$bin"')).toBeGreaterThan(-1);
+		expect(installSh.indexOf('doctor_natives "$bin"')).toBeLessThan(
+			installSh.indexOf('check_not_shadowed "$BIN_NAME"'),
+		);
+		expect(installPs1.indexOf("Test-NativeAddon -Command $Command")).toBeLessThan(
+			installPs1.indexOf("Test-NotShadowed -Name $BinName"),
+		);
+	});
+
+	it("both check the RESULT, not only the exit status", () => {
+		// A walker that returns nothing exits 0 too, so the exit code alone would
+		// report a healthy install for a broken one.
+		expect(installSh).toContain("*probe.txt*)");
+		expect(installPs1).toContain("if ($out -notmatch 'probe\\.txt')");
+	});
+
+	it("both treat a build with no grep command as fine, not broken", () => {
+		// An older binary predating the subcommand is not a failed install.
+		expect(installSh).toContain("skipping the native addon self-test");
+		expect(installPs1).toContain("skipping the native addon self-test");
+	});
+
+	it("both name the platform remedy their own users can actually run", () => {
+		expect(installSh).toContain("sh -s -- --source");
+		expect(installPs1).toContain("install.ps1))) -Source");
+	});
+
+	it("both remove the directory they staged, on success and on failure", () => {
+		// It runs on every install, so a leak is a directory per install forever.
+		expect(installSh).toContain('rm -rf "$_dn_dir"');
+		expect(installPs1).toContain("} finally {");
+		expect(installPs1).toContain("Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue");
+	});
+});
