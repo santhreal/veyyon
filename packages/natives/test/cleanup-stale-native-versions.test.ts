@@ -1,25 +1,32 @@
 /**
- * The per-version native addon cache leaked one full copy per release.
+ * Pruning the per-version native addon cache, and — mostly — what it must
+ * refuse to touch.
  *
  * `~/.veyyon/natives/<version>/` holds the platform's addon variants, on the
- * order of 150MB. Every install and every `veyyon update` wrote a new one and
- * nothing ever removed the old, so a machine that had been through three
- * updates carried three full copies and only a complete uninstall reclaimed
- * them. An older version's cache can never be loaded again: the loader probes
- * only its own version's directory, and the addon carries a version sentinel
- * that a different release physically cannot expose. It is dead weight from the
- * moment the new one is staged.
+ * order of 150MB each. An older version's cache can never be loaded again: the
+ * loader probes only its own version's directory, and the addon carries a
+ * version sentinel a different release physically cannot expose.
  *
- * These tests exist because the function DELETES DIRECTORIES. Most of them are
- * about what it must refuse to touch.
+ * Three defects motivate this suite. The prune matched EVERY subdirectory that
+ * was not the current version, whatever it was, while deleting recursively
+ * under a root the user can relocate with `$XDG_DATA_HOME`. It swallowed every
+ * removal failure, so a cache that was stuck stayed stuck with the disk quietly
+ * never coming back. And it ran only from the loader, so a source install
+ * (`bun --cwd=packages/natives run ensure`) accumulated a full copy per release
+ * until the user uninstalled.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pruneOldNativeCaches } from "../native/loader-state.js";
+import { cleanupStaleNativeVersions } from "../native/loader-state.js";
 
-describe("pruneOldNativeCaches", () => {
+describe("cleanupStaleNativeVersions", () => {
+	/** Prune everything under `root` except `keep`. */
+	function prune(keep: string, nativesDir: string = root) {
+		return cleanupStaleNativeVersions({ nativesDir, currentVersion: keep });
+	}
+
 	let root: string;
 
 	/** Create a cache directory holding one addon-sized placeholder file. */
@@ -42,7 +49,7 @@ describe("pruneOldNativeCaches", () => {
 		const old2 = seedCache("1.0.36");
 		const keep = seedCache("1.0.37");
 
-		const result = pruneOldNativeCaches("1.0.37", root);
+		const result = prune("1.0.37", root);
 
 		expect(fs.existsSync(keep)).toBe(true);
 		expect(fs.existsSync(old1)).toBe(false);
@@ -55,14 +62,14 @@ describe("pruneOldNativeCaches", () => {
 		// The whole point is reclaiming the ~150MB inside; an rmdir that failed on
 		// a non-empty directory would report success and free nothing.
 		const old = seedCache("1.0.36");
-		pruneOldNativeCaches("1.0.37", root);
+		prune("1.0.37", root);
 		expect(fs.existsSync(path.join(old, "veyyon_natives.linux-x64.node"))).toBe(false);
 	});
 
 	it("keeps a prerelease cache that is the current version", () => {
 		const keep = seedCache("1.1.0-rc.2");
 		seedCache("1.0.37");
-		pruneOldNativeCaches("1.1.0-rc.2", root);
+		prune("1.1.0-rc.2", root);
 		expect(fs.existsSync(keep)).toBe(true);
 	});
 
@@ -70,7 +77,7 @@ describe("pruneOldNativeCaches", () => {
 		// A user who tried an rc and moved to the release keeps both otherwise.
 		const stale = seedCache("1.1.0-rc.2");
 		seedCache("1.1.0");
-		const result = pruneOldNativeCaches("1.1.0", root);
+		const result = prune("1.1.0", root);
 		expect(fs.existsSync(stale)).toBe(false);
 		expect(result.removed).toEqual([stale]);
 	});
@@ -84,7 +91,7 @@ describe("pruneOldNativeCaches", () => {
 		fs.mkdirSync(path.join(root, "v1.0.36"), { recursive: true });
 		fs.mkdirSync(path.join(root, ".tmp"), { recursive: true });
 
-		const result = pruneOldNativeCaches("1.0.37", root);
+		const result = prune("1.0.37", root);
 
 		expect(fs.existsSync(path.join(root, "sessions"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "1.0"))).toBe(true);
@@ -98,7 +105,7 @@ describe("pruneOldNativeCaches", () => {
 	it("leaves a plain file alone even when it is named like a version", () => {
 		const file = path.join(root, "1.0.36");
 		fs.writeFileSync(file, "not a cache");
-		const result = pruneOldNativeCaches("1.0.37", root);
+		const result = prune("1.0.37", root);
 		expect(fs.existsSync(file)).toBe(true);
 		expect(result.removed).toEqual([]);
 	});
@@ -107,7 +114,7 @@ describe("pruneOldNativeCaches", () => {
 		// The steady state after every boot. Reporting a reclaim here would print
 		// a line on every single run.
 		const keep = seedCache("1.0.37");
-		const result = pruneOldNativeCaches("1.0.37", root);
+		const result = prune("1.0.37", root);
 		expect(fs.existsSync(keep)).toBe(true);
 		expect(result).toEqual({ removed: [], failed: [] });
 	});
@@ -115,7 +122,7 @@ describe("pruneOldNativeCaches", () => {
 	it("treats a missing cache root as nothing to do, not as a failure", () => {
 		// A first install has no natives root yet. Reporting a failure there would
 		// print an error on the one run where everything is fine.
-		const result = pruneOldNativeCaches("1.0.37", path.join(root, "does-not-exist"));
+		const result = prune("1.0.37", path.join(root, "does-not-exist"));
 		expect(result).toEqual({ removed: [], failed: [] });
 	});
 
@@ -125,7 +132,7 @@ describe("pruneOldNativeCaches", () => {
 		seedCache("1.0.36");
 		fs.chmodSync(root, 0o500);
 		try {
-			const result = pruneOldNativeCaches("1.0.37", root);
+			const result = prune("1.0.37", root);
 			expect(result.removed).toEqual([]);
 			expect(result.failed).toHaveLength(1);
 			expect(result.failed[0]?.dir).toBe(path.join(root, "1.0.36"));
@@ -139,7 +146,7 @@ describe("pruneOldNativeCaches", () => {
 		// One stuck cache must not cost the user every other reclaim.
 		seedCache("1.0.34");
 		seedCache("1.0.35");
-		const result = pruneOldNativeCaches("1.0.37", root);
+		const result = prune("1.0.37", root);
 		expect(result.removed).toHaveLength(2);
 	});
 });

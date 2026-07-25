@@ -58,14 +58,8 @@ export function resolveLoaderCandidates(input: ResolveLoaderCandidatesInput): st
 /** The per-version native cache dir (`<natives root>/<version>/`); the single owner of that path shape. */
 export function versionedNativeCacheDir(version: string): string;
 
-/**
- * Delete every per-version native cache except `keepVersion`. Never throws;
- * directories that cannot be removed come back in `failed`.
- */
-export function pruneOldNativeCaches(
-	keepVersion: string,
-	rootDir?: string,
-): { removed: string[]; failed: { dir: string; reason: string }[] };
+/** The natives cache root, `<data home>/veyyon/natives`. */
+export function nativesRootDir(): string;
 
 /** Loader context fields {@link buildHelpMessage} reads to compose the load-failure remediation. */
 export interface BuildHelpMessageInput {
@@ -82,7 +76,14 @@ export interface CleanupStaleNativeVersionsInput {
 	currentVersion: string;
 }
 
-export function cleanupStaleNativeVersions(input: CleanupStaleNativeVersionsInput): string[];
+/**
+ * Remove every per-version native cache except the current one. Never throws;
+ * a directory that could not be removed comes back in `failed`.
+ */
+export function cleanupStaleNativeVersions(input: CleanupStaleNativeVersionsInput): {
+	removed: string[];
+	failed: { dir: string; reason: string }[];
+};
 
 export interface ExtractEmbeddedAddonArchiveInput {
 	archivePath: string;
