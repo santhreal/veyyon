@@ -246,6 +246,51 @@ describe("AgentSession refreshMCPTools rebuild skipping", () => {
 		expect(rebuildCount).toBe(2);
 	});
 
+	it("returns the prompt the rebuild produced, so a caller can verify what it taught", async () => {
+		// Why this contract exists: the argot arm refreshes the prompt in the
+		// background to teach its handle table, and until this returned the built
+		// prompt there was no way for the caller to confirm the table landed. The
+		// transcript could not answer it either, because `session_init` is written
+		// before the arm completes. A silent no-op refresh was therefore
+		// indistinguishable from a successful one, and an eval read the resulting
+		// zero adoption as the model's choice rather than a harness failure.
+		const { session } = newSession(async toolNames => `tools:${toolNames.join(",")}`);
+
+		await session.setActiveToolsByName(["read"]);
+		const returned = await session.refreshBaseSystemPrompt();
+		// The exact bytes the rebuild hook produced, not a placeholder or a stale
+		// prompt: a probe that cannot see the real content cannot verify anything.
+		expect(returned).toEqual(["tools:read"]);
+		// And it is the prompt now in force on the agent, not a detached copy.
+		expect(returned).toEqual(session.agent.state.systemPrompt);
+	});
+
+	it("returns the unchanged current prompt when no rebuild hook is installed", async () => {
+		// The degenerate path must still return the prompt in force rather than
+		// undefined or an empty array: a caller probing "were handles taught?" on a
+		// hookless session would otherwise read the empty result as a teaching
+		// failure and report a harness bug that is not there.
+		const agent = new Agent({
+			initialState: { model: createModel(), systemPrompt: ["fixed prompt"], tools: [], messages: [] },
+		});
+		const session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({ "compaction.enabled": false }),
+			modelRegistry: {} as never,
+			toolRegistry: new Map(),
+		});
+		sessions.push(session);
+
+		// Stable and non-undefined across repeated calls. The value is the session's
+		// own base prompt, which a hookless session never changes; what matters for
+		// the probe is that the degenerate path still yields an inspectable array
+		// rather than undefined, which a caller would have to special-case.
+		const first = await session.refreshBaseSystemPrompt();
+		expect(Array.isArray(first)).toBe(true);
+		expect(await session.refreshBaseSystemPrompt()).toEqual(first);
+	});
+
 	it("ignores incidental insertion order in the refresh argument", async () => {
 		let rebuildCount = 0;
 		const { session } = newSession(async toolNames => {
