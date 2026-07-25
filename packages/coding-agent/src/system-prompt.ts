@@ -22,7 +22,12 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
-import { RUNTIME_SECTIONS, type RuntimeSectionId, withSectionBanner } from "./system-prompt-builder/prompt-blocks";
+import {
+	OPTION_BACKED_RUNTIME_SECTIONS,
+	RUNTIME_SECTIONS,
+	type RuntimeSectionId,
+	withSectionBanner,
+} from "./system-prompt-builder/prompt-blocks";
 import { applyPromptSectionOrderToParts } from "./system-prompt-builder/prompt-sections";
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
@@ -40,6 +45,29 @@ export interface AlwaysApplyRule {
 	content: string;
 	path: string;
 }
+
+/**
+ * The runtime sections this module renders itself. Everything else is
+ * option-backed and read through the registry.
+ */
+type ComputedRuntimeSectionId = Exclude<RuntimeSectionId, "shorthand" | "shorthand-handles">;
+
+/**
+ * Compile-time proof that every option key the registry declares is a REAL
+ * `BuildSystemPromptOptions` field carrying string text.
+ *
+ * The registry cannot import this interface (that would be a cycle), so it
+ * declares keys as strings. This check is what stops that from being a typo
+ * channel: renaming or removing an option now fails the build here instead of
+ * leaving a section reading an undefined field forever.
+ */
+type StringOptionKeys = {
+	[K in keyof BuildSystemPromptOptions]-?: string extends BuildSystemPromptOptions[K] ? K : never;
+}[keyof BuildSystemPromptOptions];
+const _assertDeclaredOptionKeysExist: readonly StringOptionKeys[] = OPTION_BACKED_RUNTIME_SECTIONS.map(
+	section => section.input.key as StringOptionKeys,
+);
+void _assertDeclaredOptionKeysExist;
 
 function normalizePromptBlock(content: string): string {
 	return prompt.format(content, { renderPhase: "post-render" }).trim();
@@ -960,11 +988,16 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// so the model learns handles from these sections, not by reading a file. The
 	// caller decides per turn whether to teach (model allowlist + context cutoff);
 	// decoding is unconditional and runs at the seams.
-	const runtimeText: Record<RuntimeSectionId, string | undefined> = {
+	// Only COMPUTED sections are listed here — the ones this function produces
+	// itself. Option-backed sections are read through the registry below, so their
+	// text cannot be wired to the wrong option or silently left unwired.
+	const computedText: Record<ComputedRuntimeSectionId, string | undefined> = {
 		project: projectPrompt,
-		shorthand: argotPreamble,
-		"shorthand-handles": argotHandles,
 	};
+	const runtimeText = (section: (typeof RUNTIME_SECTIONS)[number]): string | undefined =>
+		section.input.kind === "option"
+			? (options[section.input.key as keyof BuildSystemPromptOptions] as string | undefined)
+			: computedText[section.id as ComputedRuntimeSectionId];
 
 	// Each runtime section is emitted as its own array entry, carrying the banner
 	// the registry owns. Separate entries are a CACHING contract, not a structural
@@ -974,7 +1007,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// addresses runtime and template sections identically.
 	const systemPrompt = [rendered];
 	for (const section of RUNTIME_SECTIONS) {
-		const text = withSectionBanner(section, runtimeText[section.id]);
+		const text = withSectionBanner(section, runtimeText(section));
 		if (text) systemPrompt.push(text);
 	}
 
