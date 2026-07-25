@@ -20,6 +20,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 
 /**
  * The shells whose completion file lives in a directory the shell autoloads.
@@ -78,10 +79,7 @@ export function completionsDirFor(shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[n
  * binds every name listed on the generated script's `#compdef` line, so it gets
  * exactly one file regardless of how many names it serves.
  */
-export function completionFileFor(
-	shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[number],
-	commandName: string,
-): string {
+export function completionFileFor(shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[number], commandName: string): string {
 	switch (shell) {
 		case "bash":
 			return commandName;
@@ -133,8 +131,34 @@ export function powershellCompletionPath(profilePath: string, binName: string): 
 	return path.join(path.dirname(profilePath), `${binName}-completions.ps1`);
 }
 
-/** Produces the completion script for a shell, or throws explaining why not. */
-export type CompletionGenerator = (shell: CompletionShell) => Promise<string>;
+/**
+ * Produces the completion script for a shell, or throws explaining why not.
+ *
+ * `noAlias` asks for a script that completes only the binary name. It is not a
+ * preference: on a machine where `vey` is the user's own command, binding it
+ * would hand our subcommands to their tool.
+ */
+export type CompletionGenerator = (shell: CompletionShell, noAlias: boolean) => Promise<string>;
+
+/**
+ * Whether the script on disk completes the launch alias.
+ *
+ * The installer decides this once, at install time, by checking whether the
+ * `vey` on PATH is the symlink it created. An update cannot repeat that check
+ * cheaply and must not guess: regenerating without `--no-alias` would silently
+ * reverse the installer's decision and start completing someone else's command
+ * on every update. The file the installer wrote is the record of that decision,
+ * so read it.
+ *
+ * Matched as a whole word: `vey` appears inside `veyyon` on almost every line.
+ */
+export function scriptBindsAlias(script: string, aliasName: string): boolean {
+	return new RegExp(`(^|[^A-Za-z0-9_.-])${escapeRegExp(aliasName)}([^A-Za-z0-9_.-]|$)`, "m").test(script);
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export interface CompletionRefreshResult {
 	/** Files that were rewritten with freshly generated content. */
@@ -177,19 +201,38 @@ export async function refreshInstalledCompletions(options: {
 		...completionTargets(options.env, options.binName, options.aliasName),
 		...(options.extraTargets ?? []),
 	];
-	for (const target of targets) {
-		if (!fs.existsSync(target.filePath)) {
+	const present = targets.filter(target => fs.existsSync(target.filePath));
+
+	// The alias decision is per shell, read back from what the installer wrote.
+	// A file named for the alias only exists because the installer created it, so
+	// its presence alone settles the question for the shells that use one.
+	const aliasBound = new Map<CompletionShell, boolean>();
+	for (const target of present) {
+		if (aliasBound.get(target.shell)) continue;
+		if (target.commandName === options.aliasName) {
+			aliasBound.set(target.shell, true);
 			continue;
 		}
+		let existing: string;
+		try {
+			existing = await fs.promises.readFile(target.filePath, "utf8");
+		} catch {
+			// Unreadable here means unwritable below, where it is reported properly.
+			continue;
+		}
+		aliasBound.set(target.shell, scriptBindsAlias(existing, options.aliasName));
+	}
+
+	for (const target of present) {
 		let script = scripts.get(target.shell);
 		if (script === undefined) {
 			try {
-				script = await options.generate(target.shell);
+				script = await options.generate(target.shell, aliasBound.get(target.shell) === false);
 				if (script.length === 0) {
 					script = { error: `${target.shell} completion script generated empty` };
 				}
 			} catch (err) {
-				script = { error: err instanceof Error ? err.message : String(err) };
+				script = { error: errorMessage(err) };
 			}
 			scripts.set(target.shell, script);
 		}
@@ -204,7 +247,7 @@ export async function refreshInstalledCompletions(options: {
 			result.refreshed.push(target.filePath);
 		} catch (err) {
 			await fs.promises.rm(tempPath, { force: true }).catch(() => {});
-			result.failed.push({ filePath: target.filePath, reason: err instanceof Error ? err.message : String(err) });
+			result.failed.push({ filePath: target.filePath, reason: errorMessage(err) });
 		}
 	}
 	return result;

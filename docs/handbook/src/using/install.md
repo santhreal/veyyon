@@ -208,6 +208,10 @@ yourself:
 $ veyyon completions zsh --no-alias
 ```
 
+Updates keep that decision. When Veyyon rewrites your completion files it reads
+the ones already there to see whether they bind `vey`, and regenerates them the
+same way, so an update never starts completing a command that is not ours.
+
 ## Uninstall
 
 The installer removes everything it added, and only what it added: the binary, the `vey` alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.

@@ -27,6 +27,7 @@ import {
 	completionTargets,
 	powershellCompletionPath,
 	refreshInstalledCompletions,
+	scriptBindsAlias,
 } from "../../src/cli/completion-refresh";
 
 const repoRoot = path.resolve(import.meta.dir, "..", "..", "..", "..");
@@ -334,5 +335,128 @@ describe("the PowerShell completion script", () => {
 		} finally {
 			fs.rmSync(home, { recursive: true, force: true });
 		}
+	});
+});
+
+/**
+ * An update must not reverse the installer's decision about the launch alias.
+ *
+ * The installer checks whether the `vey` on PATH is the symlink it created, and
+ * passes `--no-alias` when it is not: binding a name that belongs to someone
+ * else's tool would give that tool our subcommands. The refresh regenerated
+ * from the binary with no flag at all, so the first update after install bound
+ * `vey` anyway — silently, on exactly the machine where it must not.
+ *
+ * The refresh cannot repeat the PATH check cheaply and must not guess. The file
+ * the installer wrote IS the record of the decision, so it is read back.
+ */
+describe("refreshInstalledCompletions carries the alias decision forward", () => {
+	let home: string;
+
+	beforeEach(() => {
+		home = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-alias-decision-"));
+	});
+	afterEach(() => {
+		fs.rmSync(home, { recursive: true, force: true });
+	});
+
+	const env = () => ({ HOME: home, XDG_DATA_HOME: undefined, XDG_CONFIG_HOME: undefined });
+
+	function seed(relative: string[], body: string): string {
+		const file = path.join(home, ...relative);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, body);
+		return file;
+	}
+
+	/** Runs a refresh and records the (shell, noAlias) pairs the generator saw. */
+	async function refreshRecording(): Promise<{ shell: string; noAlias: boolean }[]> {
+		const calls: { shell: string; noAlias: boolean }[] = [];
+		await refreshInstalledCompletions({
+			env: env(),
+			binName: "veyyon",
+			aliasName: "vey",
+			generate: async (shell, noAlias) => {
+				calls.push({ shell, noAlias });
+				return `# regenerated ${shell}\n`;
+			},
+		});
+		return calls;
+	}
+
+	it("asks for --no-alias when the installed script does not bind the alias", async () => {
+		seed([".config", "fish", "completions", "veyyon.fish"], "complete -c veyyon -f -a 'commit'\n");
+		expect(await refreshRecording()).toEqual([{ shell: "fish", noAlias: true }]);
+	});
+
+	it("keeps the alias when the installed script binds it", async () => {
+		seed([".config", "fish", "completions", "veyyon.fish"], "complete -c veyyon -f\ncomplete -c vey -w veyyon\n");
+		expect(await refreshRecording()).toEqual([{ shell: "fish", noAlias: false }]);
+	});
+
+	it("treats an alias-named file as proof the alias is ours", async () => {
+		// bash and fish key a completion file on the command name, so a `vey` file
+		// exists only because the installer created it.
+		seed([".config", "fish", "completions", "vey.fish"], "# whatever\n");
+		expect(await refreshRecording()).toEqual([{ shell: "fish", noAlias: false }]);
+	});
+
+	it("does not read `vey` out of the word `veyyon`", async () => {
+		// Every line of every script contains the binary name, and the alias is a
+		// prefix of it. A substring test would report the alias bound always, which
+		// is the failure mode this whole check exists to avoid.
+		seed([".local", "share", "zsh", "site-functions", "_veyyon"], "#compdef veyyon\n_veyyon_cmd_veyyon() { : }\n");
+		expect(await refreshRecording()).toEqual([{ shell: "zsh", noAlias: true }]);
+	});
+
+	it("reads the zsh compdef line, which is where zsh binds both names", async () => {
+		seed([".local", "share", "zsh", "site-functions", "_veyyon"], "#compdef veyyon vey\n");
+		expect(await refreshRecording()).toEqual([{ shell: "zsh", noAlias: false }]);
+	});
+
+	it("decides per shell, because each file records its own install", async () => {
+		// The shells are installed independently and one can be edited by hand.
+		seed([".config", "fish", "completions", "veyyon.fish"], "complete -c vey -w veyyon\n");
+		seed([".local", "share", "zsh", "site-functions", "_veyyon"], "#compdef veyyon\n");
+		const calls = await refreshRecording();
+		expect(calls).toContainEqual({ shell: "fish", noAlias: false });
+		expect(calls).toContainEqual({ shell: "zsh", noAlias: true });
+	});
+
+	it("writes the regenerated script to every file of that shell", async () => {
+		// One generation per shell, reused across the binary's file and the alias's.
+		const binFile = seed([".local", "share", "bash-completion", "completions", "veyyon"], "# old\n");
+		const aliasFile = seed([".local", "share", "bash-completion", "completions", "vey"], "# old\n");
+		const result = await refreshInstalledCompletions({
+			env: env(),
+			binName: "veyyon",
+			aliasName: "vey",
+			generate: async () => "# fresh\n",
+		});
+		expect(result.failed).toEqual([]);
+		expect(new Set(result.refreshed)).toEqual(new Set([binFile, aliasFile]));
+		expect(fs.readFileSync(binFile, "utf8")).toBe("# fresh\n");
+		expect(fs.readFileSync(aliasFile, "utf8")).toBe("# fresh\n");
+	});
+});
+
+describe("scriptBindsAlias", () => {
+	it("matches the alias as a standalone word", () => {
+		expect(scriptBindsAlias("complete -F _veyyon veyyon vey", "vey")).toBe(true);
+		expect(scriptBindsAlias("#compdef veyyon vey", "vey")).toBe(true);
+		expect(scriptBindsAlias("complete -c vey -w veyyon", "vey")).toBe(true);
+	});
+
+	it("does not match the alias inside the binary name", () => {
+		// `vey` is a prefix of `veyyon`, which appears on nearly every line.
+		expect(scriptBindsAlias("complete -F _veyyon veyyon", "vey")).toBe(false);
+		expect(scriptBindsAlias("#compdef veyyon", "vey")).toBe(false);
+		expect(scriptBindsAlias("_veyyon_cmd_config() {", "vey")).toBe(false);
+	});
+
+	it("does not match the alias inside a longer hyphenated or dotted word", () => {
+		// `veyyon-completions.ps1` and `vey.old` are not bindings.
+		expect(scriptBindsAlias(". 'C:\\Users\\me\\vey-completions.ps1'", "vey")).toBe(false);
+		expect(scriptBindsAlias("source ~/vey.bak", "vey")).toBe(false);
 	});
 });

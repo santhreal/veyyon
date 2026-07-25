@@ -752,11 +752,16 @@ export async function refreshCompletionsForInstalledBinary(
 		extraTargets: await windowsCompletionTargets(),
 		generate:
 			generate ??
-			(async shell => {
-				const proc = await $`${binaryPath} completions ${shell}`.quiet().nothrow();
+			(async (shell, noAlias) => {
+				// `--no-alias` is carried forward from what the installer wrote, not
+				// chosen here: on a machine where `vey` is the user's own command the
+				// installer never bound it, and an update that bound it anyway would
+				// hand our subcommands to their tool.
+				const args = noAlias ? ["completions", shell, "--no-alias"] : ["completions", shell];
+				const proc = await $`${binaryPath} ${args}`.quiet().nothrow();
 				if (proc.exitCode !== 0) {
 					throw new Error(
-						`\`${binaryPath} completions ${shell}\` exited ${proc.exitCode}: ${proc.stderr.toString().trim()}`,
+						`\`${binaryPath} ${args.join(" ")}\` exited ${proc.exitCode}: ${proc.stderr.toString().trim()}`,
 					);
 				}
 				return proc.stdout.toString();
