@@ -88,6 +88,12 @@ export interface BinaryReplacementOptions {
 	tempPath: string;
 	backupPath: string;
 	expectedVersion: string;
+	/**
+	 * Proves the swapped-in file really is `expectedVersion`. Production passes a
+	 * verifier bound to `targetPath`; it must never re-resolve the command name
+	 * through PATH, which asks a different question than "is the file I just
+	 * wrote correct?" (see {@link verifyBinaryVersion}).
+	 */
 	verifyInstalledVersion: (expectedVersion: string) => Promise<InstalledVersionVerification>;
 }
 
@@ -402,21 +408,30 @@ function resolveVeyyonPath(): string | undefined {
 }
 
 /**
- * Run the resolved veyyon binary and check if it reports the expected version.
+ * Run the binary at `binPath` and check that it reports `expectedVersion`.
+ *
+ * The path is passed in, never re-resolved through PATH. An update writes one
+ * specific file, and that file is what has to be verified: resolving the name
+ * again asks a different question ("what does PATH pick right now?"), and its
+ * answer can differ from the file just written. An older copy earlier on PATH
+ * makes the check report the OLD version and the updater roll back a perfectly
+ * good binary; an already-current copy earlier on PATH makes it report the NEW
+ * version and pass a swap that never happened. Neither failure is visible.
  */
-async function verifyInstalledVersion(expectedVersion: string): Promise<InstalledVersionVerification> {
-	const veyyonPath = resolveVeyyonPath();
-	if (!veyyonPath) return { ok: false };
+export async function verifyBinaryVersion(
+	binPath: string,
+	expectedVersion: string,
+): Promise<InstalledVersionVerification> {
 	try {
-		const result = await $`${veyyonPath} --version`.quiet().nothrow();
-		if (result.exitCode !== 0) return { ok: false, path: veyyonPath };
+		const result = await $`${binPath} --version`.quiet().nothrow();
+		if (result.exitCode !== 0) return { ok: false, path: binPath };
 		const output = result.text().trim();
 		// Output format: "veyyon/X.Y.Z"
 		const match = output.match(/\/(\d+\.\d+\.\d+)/);
 		const actual = match?.[1];
-		return { ok: actual === expectedVersion, actual, path: veyyonPath };
+		return { ok: actual === expectedVersion, actual, path: binPath };
 	} catch {
-		return { ok: false, path: veyyonPath };
+		return { ok: false, path: binPath };
 	}
 }
 
@@ -577,7 +592,23 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 /**
  * Download a release binary to a target path, replacing an existing file.
  */
-async function updateViaBinaryAt(targetPath: string, expectedVersion: string, report: UpdateReporter): Promise<void> {
+/**
+ * Download release `expectedVersion` and swap it in at `targetPath`.
+ *
+ * Exported for the integrity tests rather than for callers: production code
+ * reaches this only through {@link installRelease}, which owns the binary vs
+ * source dispatch. The seam exists because the property that matters here is not
+ * "does the checksum function reject a bad digest" but "when anything in this
+ * sequence fails, is the binary the user already has still on disk and still
+ * runnable". That can only be observed by driving the whole download, verify and
+ * swap sequence against a real file, and `installRelease` resolves its target
+ * from PATH, which a test must not depend on or point at a real install.
+ */
+export async function updateViaBinaryAt(
+	targetPath: string,
+	expectedVersion: string,
+	report: UpdateReporter,
+): Promise<void> {
 	const binaryName = getBinaryName();
 	const tag = `v${expectedVersion}`;
 	const url = `https://github.com/${REPO}/releases/download/${tag}/${binaryName}`;
@@ -646,7 +677,8 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 		tempPath,
 		backupPath,
 		expectedVersion,
-		verifyInstalledVersion,
+		// Verify the file this update just wrote, not whatever PATH resolves now.
+		verifyInstalledVersion: version => verifyBinaryVersion(targetPath, version),
 	});
 	// Reclaim backups from earlier updates whose owning process has since exited.
 	await sweepStaleBackups(targetPath);
