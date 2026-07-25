@@ -283,3 +283,46 @@ describe("neither installer moves an empty staged file into place", () => {
 		expect(installPs1).toContain("retry or use -Source");
 	});
 });
+
+/**
+ * The closing verdict has to match what actually happened.
+ *
+ * `rc_candidates | while ...` ran the PATH-line loop in a SUBSHELL, so the
+ * `removed` flag set inside it was discarded: an uninstall whose only remaining
+ * artifact was the PATH line printed that it had removed the line and then
+ * "nothing to uninstall." on the very next line. The completion removals had
+ * the same visible defect for a different reason — they never set the flag at
+ * all. Both make the installer look like it did nothing when it did.
+ */
+describe("install.sh reports what it removed, in the shell that tracks it", () => {
+	it("the PATH-line loop does not run in a subshell", () => {
+		// The specific regression: a pipeline into `while` cannot set `removed`.
+		// Comments are stripped first — the one explaining this bug names it.
+		const code = installSh
+			.split("\n")
+			.filter(line => !line.trimStart().startsWith("#"))
+			.join("\n");
+		expect(code).not.toContain("rc_candidates | while");
+		expect(code).toContain("_rc_list=$(rc_candidates)");
+		expect(code).toContain("for rc in $_rc_list; do");
+	});
+
+	it("the loop pins IFS to a newline so a $HOME with a space still splits", () => {
+		// Unquoted expansion is what keeps the loop in this shell; default IFS
+		// would then split a path on its spaces, and the loop would try to remove
+		// the PATH line from two halves of one filename.
+		const from = installSh.indexOf("_rc_list=$(rc_candidates)");
+		const loop = installSh.slice(from, installSh.indexOf("for stale in", from));
+		expect(loop).toContain("_old_ifs=$IFS");
+		expect(loop).toContain("IFS=$_old_ifs");
+	});
+
+	it("removing the PATH line counts toward the verdict", () => {
+		expect(installSh).toContain('ok "removed the veyyon PATH line from $rc"\n            removed=1');
+	});
+
+	it("removing either completion file counts toward the verdict", () => {
+		expect(installSh).toContain(`{ ok "removed $sh completion for '$ALIAS_NAME'"; removed=1; }`);
+		expect(installSh).toContain(`{ ok "removed $sh completion for '$BIN_NAME'"; removed=1; }`);
+	});
+});

@@ -511,6 +511,46 @@ check "an unloaded completions dir never fails the install" "$?" "0"
 unset XDG_DATA_HOME XDG_CONFIG_HOME
 export HOME="$SANDBOX/home"
 
+# --- do_uninstall: the closing verdict must match what it actually removed ---
+# `rc_candidates | while ...` ran the PATH-line loop in a SUBSHELL, so the
+# `removed` flag set inside it was discarded: an uninstall whose only remaining
+# artifact was the PATH line printed "removed the veyyon PATH line from ..." and
+# then "nothing to uninstall." on the very next line. The completion removals had
+# the same defect for a different reason: they never set the flag at all.
+check "removing only the PATH line still counts as an uninstall" \
+    "$( ( _h="$SANDBOX/uninst-verdict-path"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  unset XDG_DATA_HOME XDG_CONFIG_HOME
+  mkdir -p "$INSTALL_DIR"
+  printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$INSTALL_DIR:\$PATH\"" > "$_h/.bashrc"
+  do_uninstall 2>&1 | tail -1 ) )" "veyyon uninstalled."
+
+check "removing only completions still counts as an uninstall" \
+    "$( ( _h="$SANDBOX/uninst-verdict-comp"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR" "$(completions_dir_for bash)"
+  printf 'complete -F _veyyon veyyon\n' > "$(completions_dir_for bash)/veyyon"
+  do_uninstall 2>&1 | tail -1 ) )" "veyyon uninstalled."
+
+# The negative twin: a home with nothing of ours in it must still say so, or the
+# verdict means nothing.
+check "an empty home still reports nothing to uninstall" \
+    "$( ( _h="$SANDBOX/uninst-verdict-empty"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR"
+  do_uninstall 2>&1 | tail -1 ) )" "nothing to uninstall."
+
+# A rc the user owns but that never held our line must not flip the verdict.
+check "an unrelated rc does not count as something removed" \
+    "$( ( _h="$SANDBOX/uninst-verdict-foreign-rc"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  export VEYYON_INSTALL_DIR="$_h/bin"; INSTALL_DIR="$_h/bin"
+  mkdir -p "$INSTALL_DIR"
+  printf 'alias ll=ls\n' > "$_h/.bashrc"
+  do_uninstall 2>&1 | tail -1 ) )" "nothing to uninstall."
+
 # --- print_next_steps: never tell the user to run a command that is not ours ---
 # The closing block was pasted into all three install modes and hardcoded the
 # alias, so an install that had just said "left 'vey' alone, launch with
