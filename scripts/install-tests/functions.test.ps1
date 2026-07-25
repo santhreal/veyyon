@@ -619,6 +619,71 @@ try {
     Remove-Item -Recurse -Force $completionSandbox -ErrorAction SilentlyContinue
 }
 
+# --- Test-NativeAddon: the phase label, and what it refuses ---
+# The preflight run probes the STAGED download so a release with no build for
+# this architecture never reaches the install dir, the alias, PATH or the
+# completion script. Both runs are the same function; only the wording moves.
+$nativeSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-natives-$PID"
+New-Item -ItemType Directory -Force -Path $nativeSandbox | Out-Null
+try {
+    # Stubs are .cmd files so `& $Command grep ...` runs them the way a real exe runs.
+    function New-StubBinary {
+        param([string]$Name, [string]$GrepBody)
+        $path = Join-Path $nativeSandbox "$Name.cmd"
+        Set-Content -LiteralPath $path -Value @"
+@echo off
+if "%1"=="grep" if "%2"=="--help" exit /b 0
+if "%1"=="grep" ( $GrepBody )
+echo veyyon/9.9.9
+"@
+        return $path
+    }
+
+    $good = New-StubBinary -Name "good" -GrepBody "echo %3\probe.txt:1: match & exit /b 0"
+    $noAddon = New-StubBinary -Name "noaddon" -GrepBody "echo dlopen failed 1>&2 & exit /b 127"
+    $empty = New-StubBinary -Name "empty" -GrepBody "echo Total matches: 0 & exit /b 0"
+
+    $ok = $true
+    try { Test-NativeAddon -Command $good *> $null } catch { $ok = $false }
+    Check "Test-NativeAddon accepts a binary whose search works" $ok "True"
+
+    # The failure this exists to catch: --version would have said this is fine.
+    $threw = $false
+    try { Test-NativeAddon -Command $noAddon *> $null } catch { $threw = $true }
+    Check "Test-NativeAddon fails closed when the addon did not load" $threw "True"
+
+    # Exit 0 with no match is the quieter half of the same breakage.
+    $threw = $false
+    try { Test-NativeAddon -Command $empty *> $null } catch { $threw = $true }
+    Check "Test-NativeAddon fails closed on a search that finds nothing" $threw "True"
+
+    # The phase word is what tells the user WHEN it broke: a rejected download
+    # left their machine untouched, a rejected install did not.
+    $msg = ""
+    try { Test-NativeAddon -Command $noAddon -Phase "downloaded" *> $null } catch { $msg = $_.Exception.Message }
+    Check "Test-NativeAddon names the downloaded phase" ($msg -like "*the downloaded veyyon starts but cannot run a search*") "True"
+
+    $msg = ""
+    try { Test-NativeAddon -Command $noAddon *> $null } catch { $msg = $_.Exception.Message }
+    Check "Test-NativeAddon defaults to the installed phase" ($msg -like "*the installed veyyon starts but cannot run a search*") "True"
+
+    # An older release with no grep subcommand is not a broken install.
+    $nogrep = Join-Path $nativeSandbox "nogrep.cmd"
+    Set-Content -LiteralPath $nogrep -Value "@echo off`r`nif `"%1`"==`"grep`" exit /b 1`r`necho veyyon/0.0.1"
+    $ok = $true
+    try { Test-NativeAddon -Command $nogrep *> $null } catch { $ok = $false }
+    Check "Test-NativeAddon skips a build with no grep command" $ok "True"
+
+    # The probe must not leave its scratch directory behind on either path.
+    $probeDir = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-doctor.$PID"
+    try { Test-NativeAddon -Command $noAddon *> $null } catch { }
+    Check "Test-NativeAddon removes its probe directory after a failure" (Test-Path $probeDir) "False"
+    try { Test-NativeAddon -Command $good *> $null } catch { }
+    Check "Test-NativeAddon removes its probe directory after a success" (Test-Path $probeDir) "False"
+} finally {
+    Remove-Item -Recurse -Force $nativeSandbox -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 # A run that recorded nothing is a broken harness, not a pass: fail closed rather
 # than report "0 passed, 0 failed" and exit 0 (mirrors functions.test.sh).
