@@ -15,6 +15,8 @@
  * asserted directly.
  */
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { type AssetFailure, formatProvisioningFailure } from "../scripts/ensure-native";
 
 const HOST = `${process.platform}-${process.arch}`;
@@ -75,5 +77,37 @@ describe("formatProvisioningFailure", () => {
 		);
 		expect(message).toContain("checksum mismatch");
 		expect(message).not.toContain("network is unreachable");
+	});
+});
+
+/**
+ * Both release fetches ran with no AbortSignal, so a captive portal or a
+ * black-holed connection hung the source launcher forever at boot: the last
+ * line on screen was "fetching the prebuilt..." with no way to tell whether it
+ * was working. install.sh bounds its download with --max-time and the
+ * self-updater arms an AbortSignal; this was the one path that did neither.
+ */
+describe("the prebuilt download is bounded", () => {
+	const source = fs.readFileSync(path.resolve(import.meta.dir, "..", "scripts", "ensure-native.ts"), "utf8");
+
+	it("arms a timeout signal on both the asset and its checksum sidecar", () => {
+		expect(source).toContain("signal: AbortSignal.timeout(ASSET_TIMEOUT_MS)");
+		expect(source).toContain("signal: AbortSignal.timeout(SIDECAR_TIMEOUT_MS)");
+	});
+
+	it("gives the tiny sidecar a much shorter budget than the addon", () => {
+		// A few dozen bytes taking minutes means broken, not busy; sharing the
+		// addon's budget would hide that for ten minutes.
+		const asset = /const ASSET_TIMEOUT_MS = ([^;]+);/.exec(source)?.[1];
+		const sidecar = /const SIDECAR_TIMEOUT_MS = ([^;]+);/.exec(source)?.[1];
+		expect(asset).toBe("10 * 60_000");
+		expect(sidecar).toBe("30_000");
+	});
+
+	it("reports a timeout as a timeout, not as a missing asset", () => {
+		// "no prebuilt for your platform" sends the user to install Rust; "timed
+		// out" sends them to their network. Collapsing them wastes an hour.
+		expect(source).toContain("timed out fetching it from");
+		expect(source).toContain('err.name === "TimeoutError"');
 	});
 });
