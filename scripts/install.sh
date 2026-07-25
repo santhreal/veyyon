@@ -665,13 +665,13 @@ do_uninstall() {
         # write this file and uninstall has no business deleting it.
         if [ -n "$alias_name" ] && [ -e "$out/$alias_name" ]; then
             if [ -n "$name" ] && cmp -s "$out/$name" "$out/$alias_name" 2>/dev/null; then
-                rm -f "$out/$alias_name" && ok "removed $sh completion for '$ALIAS_NAME'"
+                rm -f "$out/$alias_name" && { ok "removed $sh completion for '$ALIAS_NAME'"; removed=1; }
             else
                 ok "left $sh completion for '$ALIAS_NAME' alone (not written by this installer)"
             fi
         fi
         if [ -n "$name" ] && [ -e "$out/$name" ]; then
-            rm -f "$out/$name" && ok "removed $sh completion for '$BIN_NAME'"
+            rm -f "$out/$name" && { ok "removed $sh completion for '$BIN_NAME'"; removed=1; }
         fi
     done
     # Remove the per-version native addon cache a binary install stages there
@@ -692,11 +692,25 @@ do_uninstall() {
     # Take back the PATH line, in every rc a past install might have written it
     # to: a user who has changed shells since installing still carries the old
     # shell's line, pointing at a directory veyyon no longer occupies.
-    rc_candidates | while IFS= read -r rc; do
+    # NOT `rc_candidates | while ...`: a pipeline runs its loop in a SUBSHELL, so
+    # `removed=1` set inside was discarded and an uninstall whose only remaining
+    # artifact was the PATH line reported "nothing to uninstall" right after
+    # printing that it had removed it. IFS is pinned to a newline so a $HOME with
+    # a space in it still splits into one path per line.
+    _rc_list=$(rc_candidates)
+    _old_ifs=$IFS
+    IFS='
+'
+    for rc in $_rc_list; do
+        IFS=$_old_ifs
         if remove_path_line_from_rc "$rc" "$INSTALL_DIR"; then
             ok "removed the veyyon PATH line from $rc"
+            removed=1
         fi
+        IFS='
+'
     done
+    IFS=$_old_ifs
     # Staging files a killed install left behind are ours too (Windows sweeps
     # its equivalents in Uninstall-Veyyon).
     for stale in "$INSTALL_DIR/.$BIN_NAME".*; do
