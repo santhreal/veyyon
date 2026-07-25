@@ -1,3 +1,19 @@
+/**
+ * Git Checkpoint Hook
+ *
+ * Records a git checkpoint at each turn so `/branch` can offer to restore the
+ * code state from that point.
+ *
+ * It uses `git stash create`, NOT `git stash` or `git stash push`. `create`
+ * builds a commit object holding the current state and prints its hash; it does
+ * not touch your working tree and does not push onto the stash stack, so taking
+ * a checkpoint can never move your files.
+ *
+ * Restoring is the dangerous direction, because `git stash apply` writes to the
+ * working tree and merges into whatever is already there. So it asks first, it
+ * says plainly when you have uncommitted changes it could disturb, and it checks
+ * whether the apply actually succeeded instead of assuming it did.
+ */
 export default function (pi) {
     const checkpoints = new Map();
     let currentEntryId;
@@ -8,8 +24,12 @@ export default function (pi) {
             currentEntryId = leaf.id;
     });
     pi.on("turn_start", async () => {
-        // Create a git stash entry before LLM makes changes
-        const { stdout } = await pi.exec("git", ["stash", "create"]);
+        // `stash create` records the current state as a commit object and prints
+        // its hash, leaving the working tree and the stash stack alone.
+        const { stdout, code } = await pi.exec("git", ["stash", "create"]);
+        // A clean tree has nothing to record and prints nothing; not an error.
+        if (code !== 0)
+            return;
         const ref = stdout.trim();
         if (ref && currentEntryId) {
             checkpoints.set(currentEntryId, ref);
@@ -20,17 +40,27 @@ export default function (pi) {
         if (!ref)
             return;
         if (!ctx.hasUI) {
-            // In non-interactive mode, don't restore automatically
+            // Nobody can answer, so nothing is written.
             return;
         }
-        const choice = await ctx.ui.select("Restore code state?", [
-            "Yes, restore code to that point",
-            "No, keep current code",
-        ]);
-        if (choice?.startsWith("Yes")) {
-            await pi.exec("git", ["stash", "apply", ref]);
-            ctx.ui.notify("Code restored to checkpoint", "info");
+        // Applying merges into what is already in the working tree, so count what
+        // is at risk and name it in the question.
+        const status = await pi.exec("git", ["status", "--porcelain"]);
+        const dirtyCount = status.code === 0 ? status.stdout.split("\n").filter(line => line.trim()).length : 0;
+        const yes = dirtyCount > 0 ? `Yes, apply over my ${dirtyCount} uncommitted change(s)` : "Yes, restore code to that point";
+        const question = dirtyCount > 0
+            ? `Restore code state? You have ${dirtyCount} uncommitted change(s); restoring merges the checkpoint into them and may conflict.`
+            : "Restore code state?";
+        const choice = await ctx.ui.select(question, [yes, "No, keep current code"]);
+        if (!choice?.startsWith("Yes"))
+            return;
+        const result = await pi.exec("git", ["stash", "apply", ref]);
+        if (result.code !== 0) {
+            // Say what happened, rather than reporting success regardless.
+            ctx.ui.notify(`Could not restore checkpoint: ${result.stderr.trim() || `git exited ${result.code}`}`, "error");
+            return;
         }
+        ctx.ui.notify("Code restored to checkpoint", "info");
     });
     pi.on("agent_end", async () => {
         // Clear checkpoints after agent completes
