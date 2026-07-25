@@ -867,10 +867,25 @@ describe("TUI terminal-state regressions", () => {
 
 				const [finalWidth, finalHeight] = sizes[sizes.length - 1]!;
 				expect(visible(term)).toEqual(expectedViewport(finalWidth, finalHeight));
+				// A budget on the HARNESS's work, not on the clock. This case used
+				// to carry a 20-second wall-clock timeout because the virtual
+				// terminal threw its Ghostty instance away and replayed its whole
+				// log at every one of the 240 resizes: a `Bun.gc(true)`, a WASM
+				// module reload and a replay each, about 5.5ms, which is 99% of the
+				// runtime and none of the behaviour under test. A clock budget on a
+				// machine running 119 test files measures contention, so it failed
+				// intermittently and taught everyone to ignore a red suite.
+				//
+				// The rebuild now happens only when the trap state it guards
+				// against can actually form, and a storm over an empty scrollback
+				// needs none. Asserting the count keeps it that way: a change that
+				// puts the unconditional rebuild back fails here deterministically
+				// rather than by being slow on a loaded machine.
+				expect(term.engineRebuilds).toBeLessThanOrEqual(2);
 			} finally {
 				tui.stop();
 			}
-		}, 20_000);
+		});
 
 		it("height-only resize recovers from cursor drift without duplicate rows", async () => {
 			const term = new VirtualTerminal(80, 18);

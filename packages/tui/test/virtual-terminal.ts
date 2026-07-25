@@ -139,6 +139,17 @@ export class VirtualTerminal implements Terminal {
 	#inputHandler?: (data: string) => void;
 	#resizeHandler?: () => void;
 	#pendingEngineResize = false;
+	/**
+	 * How many times this terminal has thrown its Ghostty instance away and
+	 * replayed the log onto a fresh one.
+	 *
+	 * Exposed because the rebuild is by far the most expensive thing the harness
+	 * does (a `Bun.gc(true)`, a WASM module reload, and a full replay, about 5.5ms
+	 * each), so a test that cares about the harness doing too much work can assert
+	 * the COUNT instead of a wall-clock budget. A time budget on a machine running
+	 * 119 test files measures contention, not behaviour.
+	 */
+	#engineRebuilds = 0;
 	// Byte/resize event log since the last engine recreate. ghostty-web 0.4's
 	// allocator exhausts after enough cumulative write volume in one instance
 	// (recommit-heavy stress runs hit it); on an OOM trap the wrapper rebuilds
@@ -257,6 +268,11 @@ export class VirtualTerminal implements Terminal {
 
 	setProgress(active: boolean): void {
 		this.#engineWrite(active ? "\x1b]9;4;3\x07" : "\x1b]9;4;0;\x07");
+	}
+
+	/** How many times the Ghostty instance has been rebuilt. See `#engineRebuilds`. */
+	get engineRebuilds(): number {
+		return this.#engineRebuilds;
 	}
 
 	resize(columns: number, rows: number): void {
@@ -477,8 +493,21 @@ export class VirtualTerminal implements Terminal {
 				// history effectively single-width, so the trap state never forms.
 				// The read happens right after the healthy rewrap, exactly like the
 				// byte-budget rotation below.
-				this.#compactEventLog();
-				this.#rebuildEngineFromLog();
+				//
+				// Only when the trap state can actually form, which takes BOTH of
+				// its ingredients. The width has to differ from the one this
+				// instance's log was built at, because a resize that changes only
+				// the row count rewraps nothing and cannot introduce a second
+				// width. And there has to be history to be of two widths in the
+				// first place: an instance with an empty scrollback is holding
+				// nothing that a rewrap could poison. Rebuilding regardless cost a
+				// `Bun.gc(true)`, a WASM module reload and a full log replay at
+				// EVERY resize, which is what made a 240-resize storm take seconds.
+				const widthChanged = this.#columns !== this.#logBaseColumns;
+				if (widthChanged && this.#term.getScrollbackLength() > 0) {
+					this.#compactEventLog();
+					this.#rebuildEngineFromLog();
+				}
 			}
 			if (destructiveIndex >= 0 && this.#clearFollowsPaintBegin(data, destructiveIndex)) {
 				// ED3 renumbers scrollback offsets, so the offset-keyed history text
@@ -658,6 +687,7 @@ export class VirtualTerminal implements Terminal {
 	 * replay completes it against a fresh allocator.
 	 */
 	#rebuildEngineFromLog(): void {
+		this.#engineRebuilds++;
 		const log = this.#eventLog;
 		// Give JSC a chance to collect previously abandoned instances before
 		// allocating another one.
