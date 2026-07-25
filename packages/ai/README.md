@@ -85,9 +85,27 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 
 ## Installation
 
-```bash
-npm install @veyyon/ai
+Veyyon ships through GitHub only, so `@veyyon/ai` is not on npm or any other
+registry. It depends on its sibling packages with Bun's `workspace:*` and
+`catalog:` protocols, which resolve only inside a checkout, so a registry
+install could not work even if one were published.
+
+Consume it from a checkout instead:
+
+```sh
+git clone https://github.com/santhreal/veyyon.git
+cd veyyon
+bun install
+bun --cwd=packages/ai link
 ```
+
+Then, in your own project:
+
+```sh
+bun link @veyyon/ai
+```
+
+See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
 
 ## Quick Start
 
