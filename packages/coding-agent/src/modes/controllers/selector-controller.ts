@@ -5,7 +5,22 @@ import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
-import { errorMessage, getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import {
+	APP_NAME,
+	changelogUrlForVersion,
+	errorMessage,
+	getAgentDbPath,
+	getProjectDir,
+	normalizePathForComparison,
+	VERSION,
+} from "@veyyon/utils";
+import {
+	getAllReleases,
+	previousVersionFromHistory,
+	type ReleaseListing,
+	readUpdateHistory,
+	rollbackToVersion,
+} from "../../cli/update-cli";
 import type { KeyId } from "../../config/keybindings";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { getRoleInfo } from "../../config/model-roles";
@@ -60,6 +75,7 @@ import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
+import { RollbackPickerComponent } from "../components/rollback-picker";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
 import { SubagentInboxComponent } from "../components/subagent-inbox";
@@ -93,6 +109,7 @@ export type SelectorControllerContext = Pick<
 	| "keybindings"
 	| "mcpManager"
 	| "oauthManualInput"
+	| "openInBrowser"
 	| "planModeEnabled"
 	| "present"
 	| "proseOnlyThinking"
@@ -217,6 +234,70 @@ export class SelectorController {
 		}
 		this.ctx.ui.setFocus(focus);
 		this.ctx.ui.requestRender();
+	}
+
+	/**
+	 * In-session version rollback: the same searchable picker `veyyon rollback`
+	 * shows, opened over the transcript. Fetches every published version loudly
+	 * (a failed fetch reports and aborts — never an empty silent picker, Law 10),
+	 * annotates the current/previous versions from history, and on a pick installs
+	 * that version in the background. The running process keeps the old version
+	 * either way, so the notice tells the user to restart — mirroring how an
+	 * automatic update reports mid-session.
+	 */
+	async showRollbackPicker(): Promise<void> {
+		let releases: ReleaseListing[];
+		try {
+			releases = await getAllReleases();
+		} catch (error) {
+			this.ctx.showError(
+				`Could not fetch published versions: ${errorMessage(error)}. Check your connection and try again.`,
+			);
+			return;
+		}
+		if (releases.length === 0) {
+			this.ctx.showStatus("No published versions found.");
+			return;
+		}
+		const previousVersion = previousVersionFromHistory(await readUpdateHistory(), VERSION);
+
+		this.showModalSelector(done => {
+			const picker = new RollbackPickerComponent(
+				releases,
+				VERSION,
+				previousVersion,
+				version => {
+					done();
+					void this.#applyRollbackInSession(version);
+				},
+				() => done(),
+				version => this.ctx.openInBrowser(changelogUrlForVersion(version)),
+			);
+			return { component: picker, focus: picker };
+		});
+	}
+
+	/**
+	 * Install the chosen version in the background and report the outcome as a
+	 * status/notification, never behind the alternate screen. Rolling back to the
+	 * version already running is a no-op with a note, so an accidental pick of the
+	 * current row does nothing surprising.
+	 */
+	async #applyRollbackInSession(version: string): Promise<void> {
+		if (version === VERSION) {
+			this.ctx.showStatus(`Already on ${APP_NAME} ${version}.`);
+			return;
+		}
+		this.ctx.showStatus(`Rolling ${APP_NAME} back to ${version}…`);
+		try {
+			// Quiet reporter: the alternate screen owns the terminal, so installer
+			// chatter would paint into a frame the TUI immediately overwrites. The
+			// success/failure notice below is the operator-visible signal.
+			await rollbackToVersion(version, () => {});
+			this.ctx.showStatus(`Rolled back to ${APP_NAME} ${version} · restart to use it`);
+		} catch (error) {
+			this.ctx.showError(errorMessage(error));
+		}
 	}
 
 	showSettingsSelector(initialItemId?: string): void {

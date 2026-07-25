@@ -383,6 +383,7 @@ export interface InteractiveModeContext {
 	// Selector handling
 	/** Opens the settings overlay, optionally pre-selecting a setting path on the appearance tab (e.g. `/statusline`). */
 	showSettingsSelector(initialItemId?: string): void;
+	showRollbackPicker(): void;
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;

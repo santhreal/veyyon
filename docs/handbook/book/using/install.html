@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e0187a4c.js";
+            window.path_to_searchindex_js = "../searchindex-17634917.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-de67d70d.js"></script>
@@ -242,12 +242,14 @@ release, and if it finds one it installs it in the background:</p>
 <pre><code class="language-text">veyyon 1.2.0 installed · restart to use it
 </code></pre>
 <p>The running process keeps the version it started with, so the update takes
-effect the next time you launch. On that launch you get one line naming the new
-version:</p>
-<pre><code class="language-text">Updated to veyyon 1.2.0 · run /changelog for release notes
+effect the next time you launch. On that launch the welcome screen’s tip line
+names the new version and points at what you can do about it:</p>
+<pre><code class="language-text">Updated to veyyon v1.2.0 · /changelog for what's new · /rollback to go back · pause auto-updates in /settings
 </code></pre>
 <p><code>/changelog</code> opens the release notes on the web rather than printing them into
-your terminal.</p>
+your terminal. <code>/rollback</code> opens the version picker described below, and
+<code>/settings</code> is where you turn automatic updates off. The line shows once per
+update and clears when you start typing.</p>
 <p>Two settings control this, both on by default:</p>
 <div class="table-wrapper">
 <table>
@@ -281,6 +283,32 @@ ignores the pause entirely, so you can always ask to see the error again:</p>
 <p>Running several sessions at once is safe. Only the first one to start installs;
 the others see that an install is under way and skip it rather than writing over
 the same binary at the same time.</p>
+<h2 id="rolling-back"><a class="header" href="#rolling-back">Rolling back</a></h2>
+<p>If a release does not work for you, you can move the install back to an earlier
+version. Run <code>veyyon rollback</code> with no arguments to open an interactive picker:</p>
+<pre><code class="language-console">$ veyyon rollback
+</code></pre>
+<p>The picker lists every published version, newest first, with its publish date.
+The version you are running is marked <code>· current</code>, and the one you were on before
+the last update is marked <code>· previous</code>. Type to search the list, press <code>^O</code> to
+open the highlighted version’s changelog in your browser, and press Enter to pick
+one. Enter does not roll back straight away: it opens a short confirm step, so a
+stray keystroke while you are searching can never reinstall a different version.
+Confirm applies the change; it takes effect the next time you launch.</p>
+<p>You can also skip the picker. Pass a version to roll back to it directly, which
+is the form to use in a script:</p>
+<pre><code class="language-console">$ veyyon rollback 1.1.0
+</code></pre>
+<p>Pass <code>--list</code> to print every version without changing anything:</p>
+<pre><code class="language-console">$ veyyon rollback --list
+</code></pre>
+<p>Inside a session, <code>/rollback</code> opens the same picker over your transcript.</p>
+<p>Rollback uses the same installer as an update, so it works through bun, npm,
+mise, or a standalone binary. Homebrew is the one exception: a formula only ever
+installs its latest version, so a rollback under a Homebrew-managed install
+refuses rather than quietly reinstalling the latest. Install the version another
+way, for example <code>bun install -g @veyyon/coding-agent@1.1.0</code>, or pin it with
+Homebrew directly.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>The installer removes everything it added, including the <code>vey</code> alias, any shell completions, and a source checkout if you made one:</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall

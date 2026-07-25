@@ -34,6 +34,7 @@ import { ToolExecutionComponent } from "../../modes/components/tool-execution";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
 import { createUsageRowBlock } from "../../modes/components/usage-row";
 import { UserMessageComponent } from "../../modes/components/user-message";
+import { styleUpdateHint } from "../../modes/components/welcome";
 import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../modes/controllers/tool-args-reveal";
 import { materializeImageReferenceLinksSync } from "../../modes/image-references";
 import { theme } from "../../modes/theme/theme";
@@ -753,21 +754,15 @@ export class UiHelpers {
 
 	/**
 	 * One line confirming an update landed, shown on the first launch after it.
-	 * Deliberately not the release notes: `/changelog` opens them on the web,
-	 * which stays current without the terminal rendering or bounding anything.
+	 * This is the FALLBACK for when there is no welcome component to host the tip
+	 * slot (the preferred surface, `WelcomeComponent.setUpdateHint`); it carries
+	 * the exact same wording via {@link styleUpdateHint} so the two surfaces can
+	 * never drift. Deliberately not the release notes: `/changelog` opens them on
+	 * the web, which stays current without the terminal rendering or bounding it.
 	 */
 	showUpdateInstalledNotification(installedVersion: string): void {
 		const block = new TranscriptBlock();
-		block.addChild(
-			new Text(
-				theme.fg("accent", `Updated to ${APP_NAME} ${installedVersion}`) +
-					theme.fg("dim", " · run ") +
-					theme.fg("accent", "/changelog") +
-					theme.fg("dim", " for release notes"),
-				1,
-				0,
-			),
-		);
+		block.addChild(new Text(styleUpdateHint(installedVersion), 1, 0));
 		this.ctx.present(block);
 	}
 

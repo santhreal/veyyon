@@ -4386,7 +4386,19 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.setWorkingMessage(message);
 	}
 
+	/**
+	 * First-launch-after-update notice. The quiet home for it is the welcome tip
+	 * slot: a small hint pointing at `/changelog` and the `/settings` controls
+	 * (roll back, pause auto-updates), exactly where a tip would otherwise sit. On
+	 * a resume launch there is no welcome, so fall back to the one-line transcript
+	 * notice rather than drop the notice silently (Law 10).
+	 */
 	showUpdateInstalledNotification(installedVersion: string): void {
+		if (this.#welcomeComponent) {
+			this.#welcomeComponent.setUpdateHint(installedVersion);
+			this.ui.requestRender();
+			return;
+		}
 		this.#uiHelpers.showUpdateInstalledNotification(installedVersion);
 	}
 
@@ -4773,6 +4785,11 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	showSettingsSelector(initialItemId?: string): void {
 		this.#selectorController.showSettingsSelector(initialItemId);
+	}
+
+	/** Open the interactive version rollback picker over the transcript (`/rollback`). */
+	showRollbackPicker(): void {
+		void this.#selectorController.showRollbackPicker();
 	}
 
 	showAdvisorConfigure(): void {

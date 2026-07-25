@@ -16,6 +16,7 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
+	type ModalShortcut,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	withCompact,
@@ -37,6 +38,11 @@ export interface ModalSelectListOptions {
 	/** Override terminal rows (tests). */
 	getTerminalRows?: () => number;
 	tipCandidates?: readonly string[];
+	/** Footer shortcut chips. Defaults to the generic select-list set; pass a
+	 *  custom set to name list-specific actions (e.g. a per-row `^O changelog`).
+	 *  Keep the `confirm`/`close` ids on the primary/cancel chips so mouse clicks
+	 *  route the same as Enter/Esc. */
+	shortcuts?: readonly ModalShortcut[];
 }
 
 /**
@@ -47,6 +53,7 @@ export class ModalSelectListComponent implements Component {
 	#list: SelectList;
 	#title: string;
 	#tipCandidates: readonly string[] | undefined;
+	#shortcuts: readonly ModalShortcut[];
 	#getTerminalRows: () => number;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
@@ -56,6 +63,7 @@ export class ModalSelectListComponent implements Component {
 	constructor(options: ModalSelectListOptions, callbacks: ModalSelectListCallbacks) {
 		this.#title = options.title;
 		this.#tipCandidates = options.tipCandidates;
+		this.#shortcuts = options.shortcuts ?? SELECT_LIST_SHORTCUTS;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => process.stdout.rows || 40);
 		this.#onCancel = callbacks.onCancel;
 
@@ -73,6 +81,21 @@ export class ModalSelectListComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+	}
+
+	/** Swap the modal title (e.g. into a confirm question and back). */
+	setTitle(title: string): void {
+		this.#title = title;
+	}
+
+	/** Swap the footer shortcut chips (e.g. into a confirm/cancel pair and back). */
+	setShortcuts(shortcuts: readonly ModalShortcut[]): void {
+		this.#shortcuts = shortcuts;
+	}
+
+	/** Swap the rotating tip line (e.g. "type to search" ↔ a confirm caveat). */
+	setTipCandidates(tipCandidates: readonly string[] | undefined): void {
+		this.#tipCandidates = tipCandidates;
 	}
 
 	getSelectList(): SelectList {
@@ -158,7 +181,7 @@ export class ModalSelectListComponent implements Component {
 			areaHeight: termHeight,
 			body,
 			tipCandidates: this.#tipCandidates,
-			shortcuts: SELECT_LIST_SHORTCUTS,
+			shortcuts: this.#shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});

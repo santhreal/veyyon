@@ -203,6 +203,14 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
+		name: "rollback",
+		description: "Roll back to a previously published version",
+		handleTui: (_command, runtime) => {
+			runtime.ctx.showRollbackPicker();
+			runtime.ctx.editor.setText("");
+		},
+	},
+	{
 		name: "statusline",
 		description: "Configure the status line (opens Settings at the Status Line group)",
 		handleTui: (_command, runtime) => {

@@ -83,15 +83,17 @@ veyyon 1.2.0 installed · restart to use it
 ```
 
 The running process keeps the version it started with, so the update takes
-effect the next time you launch. On that launch you get one line naming the new
-version:
+effect the next time you launch. On that launch the welcome screen's tip line
+names the new version and points at what you can do about it:
 
 ```text
-Updated to veyyon 1.2.0 · run /changelog for release notes
+Updated to veyyon v1.2.0 · /changelog for what's new · /rollback to go back · pause auto-updates in /settings
 ```
 
 `/changelog` opens the release notes on the web rather than printing them into
-your terminal.
+your terminal. `/rollback` opens the version picker described below, and
+`/settings` is where you turn automatic updates off. The line shows once per
+update and clears when you start typing.
 
 Two settings control this, both on by default:
 
@@ -131,6 +133,45 @@ $ veyyon update
 Running several sessions at once is safe. Only the first one to start installs;
 the others see that an install is under way and skip it rather than writing over
 the same binary at the same time.
+
+## Rolling back
+
+If a release does not work for you, you can move the install back to an earlier
+version. Run `veyyon rollback` with no arguments to open an interactive picker:
+
+```console
+$ veyyon rollback
+```
+
+The picker lists every published version, newest first, with its publish date.
+The version you are running is marked `· current`, and the one you were on before
+the last update is marked `· previous`. Type to search the list, press `^O` to
+open the highlighted version's changelog in your browser, and press Enter to pick
+one. Enter does not roll back straight away: it opens a short confirm step, so a
+stray keystroke while you are searching can never reinstall a different version.
+Confirm applies the change; it takes effect the next time you launch.
+
+You can also skip the picker. Pass a version to roll back to it directly, which
+is the form to use in a script:
+
+```console
+$ veyyon rollback 1.1.0
+```
+
+Pass `--list` to print every version without changing anything:
+
+```console
+$ veyyon rollback --list
+```
+
+Inside a session, `/rollback` opens the same picker over your transcript.
+
+Rollback uses the same installer as an update, so it works through bun, npm,
+mise, or a standalone binary. Homebrew is the one exception: a formula only ever
+installs its latest version, so a rollback under a Homebrew-managed install
+refuses rather than quietly reinstalling the latest. Install the version another
+way, for example `bun install -g @veyyon/coding-agent@1.1.0`, or pin it with
+Homebrew directly.
 
 ## Uninstall
 

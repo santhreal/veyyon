@@ -51,6 +51,7 @@ Unknown first tokens route to `launch` as a prompt:
 | `models` | | List models and providers |
 | `plugin` | | Plugin lifecycle (`list`, `install`, …) |
 | `read` | | Read-tool CLI probe |
+| `rollback` | | Roll the install back to a published version (interactive picker, `--list`, or `<version>`) |
 | `say` | | Speak text with local TTS (`--voices` lists voices) |
 | `search` | `q` | Web search probe |
 | `session` | `sessions` | Study a stored session (`stats`: timing, tool cost, turn cadence) |

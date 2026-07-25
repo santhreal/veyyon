@@ -10,10 +10,10 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
+import { isSettingsInitialized, settings } from "../../config/settings";
 import { shimmerEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
 import { sunMark } from "./sun";
-import { isSettingsInitialized, settings } from "../../config/settings";
 import tipsText from "./tips.txt" with { type: "text" };
 
 /** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`.
@@ -101,6 +101,54 @@ function renderNewTag(): string {
 	return `\x1b[1m${silverEscape(1)}${NEW_TAG_TEXT}\x1b[0m`;
 }
 
+/**
+ * The one-shot post-update hint that takes the tip slot on the first launch
+ * after an upgrade. It is the ONLY owner of this wording — the standalone
+ * `veyyon update` path and any test must build it here, never re-spell it — so
+ * the three affordances the user needs after an update all read the same:
+ * `/changelog` for release notes, `/rollback` to return to a prior version, and
+ * `/settings` to pause automatic updates. `version` is bare (`1.0.12`); the `v`
+ * prefix is added here.
+ */
+export function buildUpdateHint(version: string): string {
+	const bare = version.startsWith("v") ? version.slice(1) : version;
+	return `Updated to ${APP_NAME} v${bare} · /changelog for what's new · /rollback to go back · pause auto-updates in /settings`;
+}
+
+/** The three slash commands the update hint makes discoverable. Single owner so
+ *  {@link styleUpdateHint} and any future consumer highlight the same tokens. */
+const UPDATE_HINT_COMMANDS = new Set(["/changelog", "/rollback", "/settings"]);
+
+/**
+ * Style {@link buildUpdateHint} into one inline ANSI string: a muted body with
+ * the three slash commands in bold accent, so the affordances the update moment
+ * exists for actually read. Splitting on the command tokens keeps each as its
+ * own segment. ONE owner of the wording-to-style mapping, shared by the tip-slot
+ * renderer and the transcript fallback so the two can never diverge.
+ */
+export function styleUpdateHint(version: string): string {
+	return buildUpdateHint(version)
+		.split(/(\/changelog|\/rollback|\/settings)/)
+		.map(seg => (UPDATE_HINT_COMMANDS.has(seg) ? theme.bold(theme.fg("accent", seg)) : theme.fg("muted", seg)))
+		.join("");
+}
+
+/**
+ * Render {@link buildUpdateHint} into the tip slot. Unlike an ordinary tip this
+ * is not muted decoration: the three slash commands paint in the accent so the
+ * discoverability the update moment exists for actually reads. Layout matches
+ * `renderWelcomeTip` (one leading indent space, italic, ANSI-aware wrap) so the
+ * centred tip block positions it identically to a normal tip.
+ */
+export function renderUpdateHint(version: string, boxWidth: number): string[] {
+	const bodyBudget = boxWidth - 1; // 1 = leading indent
+	if (bodyBudget < 8) return [];
+	// wrapTextWithAnsi is ANSI-aware, so the styled runs survive the wrap intact.
+	const wrapped = wrapTextWithAnsi(replaceTabs(styleUpdateHint(version)), bodyBudget);
+	if (wrapped.length === 0) return [];
+	return wrapped.map(line => ` ${theme.italic(line)}`);
+}
+
 export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): string[] {
 	const label = "Tip: ";
 	const labelWidth = visibleWidth(label);
@@ -159,6 +207,9 @@ export class WelcomeComponent implements Component {
 	#animStart: number | null = null;
 	#animTimer: Timer | null = null;
 	#selectedTip: string | undefined;
+	// The one-shot post-update hint. When set (first launch after an upgrade), it
+	// takes the tip slot in place of a random tip — see #renderTip.
+	#updateHint: string | undefined;
 	// Render cache: the welcome box is the first transcript-area component, so a
 	// stable array reference keeps the whole frame prefix stable. Bypassed while
 	// the intro animation runs (every frame differs).
@@ -248,6 +299,14 @@ export class WelcomeComponent implements Component {
 
 	setRecentSessions(sessions: RecentSession[]): void {
 		this.recentSessions = sessions;
+		this.invalidate();
+	}
+
+	/** Take the tip slot with the post-update hint for this launch (see
+	 *  {@link buildUpdateHint}). Called once on the first launch after an upgrade;
+	 *  overrides the random tip until cleared. */
+	setUpdateHint(version: string): void {
+		this.#updateHint = version;
 		this.invalidate();
 	}
 
@@ -403,6 +462,8 @@ export class WelcomeComponent implements Component {
 	}
 
 	#renderTip(boxWidth: number): string[] {
+		// The post-update hint, when present, wins the tip slot for this launch.
+		if (this.#updateHint !== undefined) return renderUpdateHint(this.#updateHint, boxWidth);
 		const tip = this.tip;
 		if (!tip) return [];
 		return renderWelcomeTip(tip, boxWidth);
