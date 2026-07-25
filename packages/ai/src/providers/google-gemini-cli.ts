@@ -178,6 +178,34 @@ function splitLeadingJsonObjectIgnoringQuotes(
 	return undefined;
 }
 
+/**
+ * Whether `text` carries a planning-leak signature, matched textually.
+ *
+ * The one owner of what a leak looks like when the JSON cannot be parsed. This
+ * predicate was written out three separate times inside `consumePlanningBuffer`
+ * — once for the EOF-with-no-closing-brace case, once for the unparseable-JSON
+ * case, and the key list again in each — as byte-identical copies. Byte-identical
+ * copies drift: adding a fifth signature to two of the three would leave the
+ * third quietly passing planning JSON through to the user, which is precisely the
+ * failure this function exists to prevent, and no test would have noticed because
+ * each path is reached by a different malformed input.
+ *
+ * `toolNames` is a parameter rather than a module constant because the leak keys
+ * are whatever tools the current request declared.
+ */
+function hasPlanningLeakSignature(text: string, toolNames: Set<string>): boolean {
+	if (text.includes('"thought"')) return true;
+	for (const name of toolNames) {
+		if (text.includes(`"${name}"`)) return true;
+	}
+	return (
+		text.includes('"_i"') ||
+		text.includes('"paths"') ||
+		text.includes('"command"') ||
+		(text.includes('"path"') && text.includes('"content"'))
+	);
+}
+
 function consumePlanningBuffer(text: string, toolNames: Set<string>, isFinal = false): BufferedPlanningResult {
 	if (!isPlanningLeakPrefix(text)) {
 		return { kind: "plain", visibleText: text };
@@ -194,15 +222,7 @@ function consumePlanningBuffer(text: string, toolNames: Set<string>, isFinal = f
 	if (!leading) {
 		if (isFinal) {
 			// At EOF, if the buffer has a leak signature but no closing brace at all, discard the whole buffer.
-			const trimmed = text.trim();
-			const hasThoughtKey = trimmed.includes('"thought"');
-			const hasToolKey = Array.from(toolNames).some(name => trimmed.includes(`"${name}"`));
-			const hasToolSignature =
-				trimmed.includes('"_i"') ||
-				trimmed.includes('"paths"') ||
-				trimmed.includes('"command"') ||
-				(trimmed.includes('"path"') && trimmed.includes('"content"'));
-			if (hasThoughtKey || hasToolKey || hasToolSignature) {
+			if (hasPlanningLeakSignature(text.trim(), toolNames)) {
 				return { kind: "leak", visibleText: "" };
 			}
 			return { kind: "plain", visibleText: text };
@@ -214,16 +234,10 @@ function consumePlanningBuffer(text: string, toolNames: Set<string>, isFinal = f
 	try {
 		parsed = JSON.parse(leading.jsonText);
 	} catch {
-		// Fallback to substring matching if JSON parsing fails due to unescaped quotes
-		const hasThoughtKey = leading.jsonText.includes('"thought"');
-		const hasToolKey = Array.from(toolNames).some(name => leading.jsonText.includes(`"${name}"`));
-		const hasToolSignature =
-			leading.jsonText.includes('"_i"') ||
-			leading.jsonText.includes('"paths"') ||
-			leading.jsonText.includes('"command"') ||
-			(leading.jsonText.includes('"path"') && leading.jsonText.includes('"content"'));
-		const isLeak = hasThoughtKey || hasToolKey || hasToolSignature;
-		if (isLeak) {
+		// Unescaped quotes inside the planning object defeat JSON.parse, so fall
+		// back to the textual signature. Same predicate as the EOF case above, one
+		// owner, so the two paths cannot disagree about what a leak is.
+		if (hasPlanningLeakSignature(leading.jsonText, toolNames)) {
 			return { kind: "leak", visibleText: leading.rest };
 		}
 		// Unparseable leading object is not safe to strip; release it as normal text.
