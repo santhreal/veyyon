@@ -326,3 +326,30 @@ describe("install.sh reports what it removed, in the shell that tracks it", () =
 		expect(installSh).toContain(`{ ok "removed $sh completion for '$BIN_NAME'"; removed=1; }`);
 	});
 });
+
+/**
+ * `cat "$tmp" > "$rc"` truncates the rc BEFORE cat runs, so a cat that fails
+ * partway (a full disk, an I/O error) leaves the rc empty with the temp file
+ * holding the only copy of the user's content. The failure branch deleted that
+ * temp, destroying a file the uninstall had just emptied.
+ */
+describe("a failed rc rewrite never destroys the rc", () => {
+	it("the temp file is kept when the rewrite fails", () => {
+		const fn = fnBody(installSh, "remove_path_line_from_rc() {", "\n}\n");
+		const failure = fn.slice(fn.indexOf("could not rewrite"));
+		expect(failure).not.toContain('rm -f "$tmp"');
+	});
+
+	it("the warning names the file and the command that restores it", () => {
+		// "could not rewrite your .bashrc" with an empty .bashrc and no next step
+		// is the worst possible message.
+		expect(installSh).toContain('its previous contents are in $tmp');
+		expect(installSh).toContain(`restore it with: cp '$tmp' '$rc'`);
+	});
+
+	it("the success path still removes the temp", () => {
+		// Keeping it there would litter the user's home on every uninstall.
+		const fn = fnBody(installSh, "remove_path_line_from_rc() {", "\n}\n");
+		expect(fn).toContain('if cat "$tmp" > "$rc"; then\n        rm -f "$tmp"');
+	});
+});
