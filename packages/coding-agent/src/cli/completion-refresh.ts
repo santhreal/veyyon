@@ -21,9 +21,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-/** The shells `veyyon completions` can emit a script for. */
-export const COMPLETION_SHELLS = ["bash", "zsh", "fish"] as const;
-export type CompletionShell = (typeof COMPLETION_SHELLS)[number];
+/**
+ * The shells whose completion file lives in a directory the shell autoloads.
+ * PowerShell is deliberately not here: it has no such directory, so its script
+ * is located a different way (see {@link powershellCompletionPath}).
+ */
+export const AUTOLOADED_COMPLETION_SHELLS = ["bash", "zsh", "fish"] as const;
+
+/** Every shell `veyyon completions` can emit a script for. */
+export type CompletionShell = (typeof AUTOLOADED_COMPLETION_SHELLS)[number] | "powershell";
 
 /** The subset of the environment that decides where completions live. */
 export interface CompletionEnv {
@@ -50,7 +56,7 @@ export function completionEnvFrom(env: Record<string, string | undefined>): Comp
  * Mirrors `completions_dir_for` in scripts/install.sh, including the XDG
  * defaults, so both sides resolve the same directory for the same environment.
  */
-export function completionsDirFor(shell: CompletionShell, env: CompletionEnv): string {
+export function completionsDirFor(shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[number], env: CompletionEnv): string {
 	const home = env.HOME ?? "";
 	const dataHome = env.XDG_DATA_HOME || path.join(home, ".local", "share");
 	const configHome = env.XDG_CONFIG_HOME || path.join(home, ".config");
@@ -72,7 +78,10 @@ export function completionsDirFor(shell: CompletionShell, env: CompletionEnv): s
  * binds every name listed on the generated script's `#compdef` line, so it gets
  * exactly one file regardless of how many names it serves.
  */
-export function completionFileFor(shell: CompletionShell, commandName: string): string {
+export function completionFileFor(
+	shell: (typeof AUTOLOADED_COMPLETION_SHELLS)[number],
+	commandName: string,
+): string {
 	switch (shell) {
 		case "bash":
 			return commandName;
@@ -100,7 +109,7 @@ export interface CompletionTarget {
  */
 export function completionTargets(env: CompletionEnv, binName: string, aliasName: string): CompletionTarget[] {
 	const targets: CompletionTarget[] = [];
-	for (const shell of COMPLETION_SHELLS) {
+	for (const shell of AUTOLOADED_COMPLETION_SHELLS) {
 		const dir = completionsDirFor(shell, env);
 		const names = shell === "zsh" ? [binName] : [binName, aliasName];
 		for (const commandName of names) {
@@ -108,6 +117,20 @@ export function completionTargets(env: CompletionEnv, binName: string, aliasName
 		}
 	}
 	return targets;
+}
+
+/**
+ * The file `install.ps1` writes the PowerShell completion script to: named for
+ * the binary, beside the profile that dot-sources it.
+ *
+ * Mirrors `Get-CompletionScriptPath` in scripts/install.ps1. The profile path
+ * itself is NOT derived here — Documents can be redirected (OneDrive), and 5.1
+ * and 7 use different folders, so guessing would put this file at odds with the
+ * installer. The caller asks PowerShell for it, the same authority install.ps1
+ * used when it wrote the file.
+ */
+export function powershellCompletionPath(profilePath: string, binName: string): string {
+	return path.join(path.dirname(profilePath), `${binName}-completions.ps1`);
 }
 
 /** Produces the completion script for a shell, or throws explaining why not. */
@@ -137,6 +160,12 @@ export async function refreshInstalledCompletions(options: {
 	binName: string;
 	aliasName: string;
 	generate: CompletionGenerator;
+	/**
+	 * Files outside the autoloaded directories, resolved by the caller. Today
+	 * that is the Windows PowerShell script, whose location only PowerShell can
+	 * answer for.
+	 */
+	extraTargets?: CompletionTarget[];
 }): Promise<CompletionRefreshResult> {
 	const result: CompletionRefreshResult = { refreshed: [], failed: [] };
 
@@ -144,7 +173,11 @@ export async function refreshInstalledCompletions(options: {
 	// write the same script under both the binary name and the alias.
 	const scripts = new Map<CompletionShell, string | { error: string }>();
 
-	for (const target of completionTargets(options.env, options.binName, options.aliasName)) {
+	const targets = [
+		...completionTargets(options.env, options.binName, options.aliasName),
+		...(options.extraTargets ?? []),
+	];
+	for (const target of targets) {
 		if (!fs.existsSync(target.filePath)) {
 			continue;
 		}

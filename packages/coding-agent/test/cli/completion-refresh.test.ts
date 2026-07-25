@@ -18,12 +18,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	type AUTOLOADED_COMPLETION_SHELLS,
 	type CompletionEnv,
 	type CompletionShell,
 	completionEnvFrom,
 	completionFileFor,
-	completionTargets,
 	completionsDirFor,
+	completionTargets,
+	powershellCompletionPath,
 	refreshInstalledCompletions,
 } from "../../src/cli/completion-refresh";
 
@@ -96,17 +98,20 @@ describe("completion paths mirror the installer that wrote the files", () => {
 	});
 });
 
+/** The three shells whose completion file lives in an autoloaded directory. */
+type AutoloadedShell = (typeof AUTOLOADED_COMPLETION_SHELLS)[number];
+
 describe("refreshInstalledCompletions", () => {
 	let home: string;
 	let env: CompletionEnv;
 
 	/** The path install.sh would have written for this shell and command name. */
-	function target(shell: CompletionShell, name: string): string {
+	function target(shell: AutoloadedShell, name: string): string {
 		return path.join(completionsDirFor(shell, env), completionFileFor(shell, name));
 	}
 
 	/** Seed a completion file as an earlier install would have left it. */
-	function seed(shell: CompletionShell, name: string, body = "# stale\n"): string {
+	function seed(shell: AutoloadedShell, name: string, body = "# stale\n"): string {
 		const file = target(shell, name);
 		fs.mkdirSync(path.dirname(file), { recursive: true });
 		fs.writeFileSync(file, body);
@@ -268,6 +273,66 @@ describe("refreshInstalledCompletions", () => {
 			expect(fs.readFileSync(file, "utf8")).toBe("# previous version\n");
 		} finally {
 			fs.chmodSync(dir, 0o700);
+		}
+	});
+});
+
+/**
+ * Windows has no directory a shell autoloads completions from, so install.ps1
+ * writes a script beside the profile and adds a dot-source line to it. That
+ * file goes stale on update exactly like the POSIX ones, and it is invisible to
+ * the directory walk above, so it is passed in as an extra target.
+ */
+describe("the PowerShell completion script", () => {
+	it("sits beside the profile, named for the binary, as install.ps1 writes it", () => {
+		// Built with the host's own separator: this runs on the development host
+		// as well as on Windows, and the production path is always native.
+		const profileDir = path.join("Documents", "PowerShell");
+		expect(powershellCompletionPath(path.join(profileDir, "profile.ps1"), "veyyon")).toBe(
+			path.join(profileDir, "veyyon-completions.ps1"),
+		);
+	});
+
+	it("uses the binary's own name, so a rename cannot orphan the file", () => {
+		expect(powershellCompletionPath(path.join("p", "profile.ps1"), "other")).toBe(
+			path.join("p", "other-completions.ps1"),
+		);
+	});
+
+	it("install.ps1 still derives the same filename", () => {
+		// The two implementations cannot share code, so the shell source is
+		// asserted directly: a rename on one side that is not mirrored would make
+		// the update rewrite a file the installer never wrote.
+		const installPs1 = fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8");
+		expect(installPs1).toContain('"$BinName-completions.ps1"');
+		expect(installPs1).toContain("Split-Path -Parent (Get-ProfilePath)");
+	});
+
+	it("is refreshed when it exists, and never created when it does not", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-ps-completions-"));
+		try {
+			const profileDir = path.join(home, "Documents", "PowerShell");
+			fs.mkdirSync(profileDir, { recursive: true });
+			const scriptPath = powershellCompletionPath(path.join(profileDir, "profile.ps1"), "veyyon");
+			const absent = powershellCompletionPath(path.join(home, "Other", "profile.ps1"), "veyyon");
+			fs.writeFileSync(scriptPath, "# from the previous version\n");
+
+			const result = await refreshInstalledCompletions({
+				env: { HOME: home },
+				binName: "veyyon",
+				aliasName: "vey",
+				generate: async shell => `# fresh ${shell}\n`,
+				extraTargets: [
+					{ shell: "powershell", commandName: "veyyon", filePath: scriptPath },
+					{ shell: "powershell", commandName: "veyyon", filePath: absent },
+				],
+			});
+
+			expect(fs.readFileSync(scriptPath, "utf8")).toBe("# fresh powershell\n");
+			expect(result.refreshed).toEqual([scriptPath]);
+			expect(fs.existsSync(absent)).toBe(false);
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
 		}
 	});
 });

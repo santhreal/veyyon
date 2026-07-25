@@ -29,6 +29,8 @@ import {
 	type CompletionGenerator,
 	completionEnvFrom,
 	type CompletionRefreshResult,
+	type CompletionTarget,
+	powershellCompletionPath,
 	refreshInstalledCompletions,
 } from "./completion-refresh";
 import {
@@ -699,6 +701,35 @@ export async function updateViaBinaryAt(
 }
 
 /**
+ * The PowerShell completion script `install.ps1` wrote, if this is Windows.
+ *
+ * PowerShell has no directory it autoloads completions from, so the installer
+ * writes a script beside the user's profile and adds a line that dot-sources it.
+ * Where that profile lives cannot be derived reliably from TypeScript: Documents
+ * can be redirected (OneDrive), and Windows PowerShell 5.1 and PowerShell 7 use
+ * different folders. Guessing would leave this refresh rewriting a path the
+ * installer never used, so PowerShell is asked directly — the same authority
+ * install.ps1 consulted when it chose the location.
+ *
+ * Returns nothing off Windows, and nothing when PowerShell cannot be reached:
+ * the file is only rewritten when it already exists, so a wrong or missing
+ * answer costs a stale completion, never a stray file.
+ */
+async function windowsCompletionTargets(): Promise<CompletionTarget[]> {
+	if (process.platform !== "win32") return [];
+	const proc = await $`powershell -NoProfile -Command "$PROFILE.CurrentUserAllHosts"`.quiet().nothrow();
+	const profilePath = proc.stdout.toString().trim();
+	if (proc.exitCode !== 0 || !profilePath) return [];
+	return [
+		{
+			shell: "powershell",
+			commandName: APP_NAME,
+			filePath: powershellCompletionPath(profilePath, APP_NAME),
+		},
+	];
+}
+
+/**
  * Regenerate the already-installed completion scripts from a freshly installed
  * binary.
  *
@@ -718,6 +749,7 @@ export async function refreshCompletionsForInstalledBinary(
 		env: completionEnvFrom(process.env),
 		binName: APP_NAME,
 		aliasName: APP_ALIAS,
+		extraTargets: await windowsCompletionTargets(),
 		generate:
 			generate ??
 			(async shell => {
