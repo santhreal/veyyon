@@ -14,7 +14,7 @@
  * — see `commands/complete.ts`. The flag→source mapping below is the only manual
  * knob and is keyed by flag name so it stays stable as flags are added.
  */
-import { APP_ALIAS } from "@veyyon/utils";
+import { APP_ALIAS, collapseWhitespace } from "@veyyon/utils";
 import type { ArgDescriptor, CliConfig, CommandCtor, FlagDescriptor } from "@veyyon/utils/cli";
 import { BUILTIN_TOOL_NAMES } from "../tools/builtin-names";
 
@@ -598,7 +598,7 @@ function psQuote(s: string): string {
 
 /** A one-line description, flattened for a PowerShell tooltip. */
 function psDesc(s: string): string {
-	return psQuote(s.replace(/\s+/g, " ").trim());
+	return psQuote(collapseWhitespace(s));
 }
 
 /** A PowerShell array literal of quoted strings. */
@@ -638,6 +638,12 @@ function psFlagTable(flags: CompletionFlag[], indent: string): string {
  * registers one completer bound to every name the binary answers to, which is
  * why `-CommandName` takes the full {@link binNames} list rather than just `bin`.
  *
+ * Every name it defines is written to the GLOBAL scope. Registering a completer
+ * outlives the script that registered it, so a user who RUNS this file instead
+ * of dot-sourcing it would otherwise get a completer whose tables and helper
+ * functions had already gone out of scope — tab completion that silently
+ * produces nothing, with the registration still in place to hide the cause.
+ *
  * The generated script is data plus one fixed completer, rather than generated
  * control flow: the tables below are the only part that changes as commands and
  * flags are added, so the logic can be read once and trusted.
@@ -649,7 +655,7 @@ function generatePowerShell(spec: CompletionSpec): string {
 	lines.push(`# Dot-source this from your $PROFILE, or write it to a file and dot-source that.`);
 	lines.push("");
 
-	lines.push("$__veyyonCommands = @{");
+	lines.push("$global:__veyyonCommands = @{");
 	for (const c of spec.commands) {
 		for (const token of commandTokens(c)) {
 			lines.push(`\t${psQuote(token)} = ${psDesc(c.description)}`);
@@ -658,12 +664,12 @@ function generatePowerShell(spec: CompletionSpec): string {
 	lines.push("}");
 	lines.push("");
 
-	lines.push("$__veyyonRootFlags = @{");
+	lines.push("$global:__veyyonRootFlags = @{");
 	lines.push(psFlagTable(spec.root.flags, "\t"));
 	lines.push("}");
 	lines.push("");
 
-	lines.push("$__veyyonCommandFlags = @{");
+	lines.push("$global:__veyyonCommandFlags = @{");
 	for (const c of spec.commands) {
 		for (const token of commandTokens(c)) {
 			lines.push(`\t${psQuote(token)} = @{`);
@@ -677,19 +683,21 @@ function generatePowerShell(spec: CompletionSpec): string {
 	// Positional candidates, one entry per subcommand that has completable ones.
 	// PowerShell cannot gate on argument position any more than fish can, so a
 	// subcommand's enum positionals are merged and offered together.
-	lines.push("$__veyyonCommandArgs = @{");
+	lines.push("$global:__veyyonCommandArgs = @{");
 	for (const c of spec.commands) {
 		const enums = c.args.flatMap(a => (a.value.kind === "enum" ? [...a.value.values] : []));
 		const kind = enums.length > 0 ? "enum" : c.args.some(a => a.value.kind === "file") ? "file" : undefined;
 		if (!kind) continue;
 		for (const token of commandTokens(c)) {
-			lines.push(`\t${psQuote(token)} = @{ Kind = ${psQuote(kind)}; Values = ${psArray(enums)}; Multiple = $false }`);
+			lines.push(
+				`\t${psQuote(token)} = @{ Kind = ${psQuote(kind)}; Values = ${psArray(enums)}; Multiple = $false }`,
+			);
 		}
 	}
 	lines.push("}");
 	lines.push("");
 
-	lines.push(`$__veyyonBin = ${psQuote(bin)}`);
+	lines.push(`$global:__veyyonBin = ${psQuote(bin)}`);
 	lines.push("");
 	lines.push(PS_COMPLETER_BODY);
 	lines.push("");
@@ -710,17 +718,20 @@ function generatePowerShell(spec: CompletionSpec): string {
  * the tables {@link generatePowerShell} emits above it. Keeping the logic in one
  * readable block is what makes the generated script auditable.
  */
-const PS_COMPLETER_BODY = String.raw`function __Veyyon-DynamicCandidates {
+const PS_COMPLETER_BODY =
+	String.raw`function global:__Veyyon-DynamicCandidates {
 	param([string]$Kind, [string]$WordToComplete)
 	# The live model catalog and on-disk sessions are only known to the running
 	# binary, so ask it. A failure here yields no candidates rather than an error
 	# in the middle of the user's prompt line.
 	$out = & $__veyyonBin __complete $Kind -- $WordToComplete 2>$null
 	if ($LASTEXITCODE -ne 0 -or -not $out) { return @() }
-	return @($out | ForEach-Object { ($_ -split "` + "`t" + String.raw`")[0] } | Where-Object { $_ })
+	return @($out | ForEach-Object { ($_ -split "` +
+	"`t" +
+	String.raw`")[0] } | Where-Object { $_ })
 }
 
-function __Veyyon-ValueCandidates {
+function global:__Veyyon-ValueCandidates {
 	param($Value, [string]$WordToComplete)
 	switch ($Value.Kind) {
 		'enum' { return $Value.Values }
@@ -734,7 +745,7 @@ function __Veyyon-ValueCandidates {
 	return @()
 }
 
-$__veyyonCompleter = {
+$global:__veyyonCompleter = {
 	param($wordToComplete, $commandAst, $cursorPosition)
 
 	$tokens = @($commandAst.CommandElements | ForEach-Object { $_.ToString() })
@@ -796,4 +807,4 @@ $__veyyonCompleter = {
 			if (-not $tip) { $tip = $_ }
 			[System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $tip)
 		}
-}`
+}`;
