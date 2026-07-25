@@ -3,7 +3,7 @@ import type { ToolExample } from "@veyyon/ai";
 import { MismatchError as HashlineMismatchError, HL_MOVE_KEYWORD } from "@veyyon/hashline";
 import hashlineGrammar from "@veyyon/hashline/grammar.lark" with { type: "text" };
 import hashlineDescription from "@veyyon/hashline/prompt.md" with { type: "text" };
-import { errorMessage, prompt } from "@veyyon/utils";
+import { errorMessage, isAbortError, prompt } from "@veyyon/utils";
 import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
@@ -12,6 +12,7 @@ import patchDescription from "../prompts/tools/patch.md" with { type: "text" };
 import replaceDescription from "../prompts/tools/replace.md" with { type: "text" };
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
+import { ToolAbortError } from "../tools/tool-errors";
 import { isInternalUrlPath } from "../tools/path-utils";
 import { type EditMode, normalizeEditMode, resolveEditMode } from "../utils/edit-mode";
 import { executeHashlineSingle, hashlineEditParamsSchema } from "./hashline";
@@ -117,6 +118,49 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
 		: writethroughNoop;
 }
 
+/**
+ * The error a multi-step edit throws when it is cancelled partway through.
+ *
+ * A multi-step edit is the one place where "was it aborted" and "what happened
+ * to my files" are the same question. Both loops below used to fold an abort
+ * into the ordinary error result, which lost two things at once. The caller
+ * could not tell a cancellation from a failed match, so the agent loop treated
+ * an interrupted edit as a mistake worth retrying rather than as the operator
+ * saying stop. And the partial-application summary, which is the only record of
+ * which files were already rewritten, was reachable only by reading the result
+ * text of something that looked like an ordinary failure.
+ *
+ * So the abort keeps its type AND carries the summary in its message. One
+ * helper, because the per-file loop and the per-entry loop must not word this
+ * differently: an operator reading the two should not have to work out whether
+ * they mean the same thing.
+ */
+function abortedPartway(unit: "file" | "entry", applied: readonly string[], pending: readonly string[], cause: unknown) {
+	const total = applied.length + pending.length;
+	// Spelled out rather than suffixed: `entry` + "s" is `entrys`, and a message
+	// that exists to be read at the worst moment of a session cannot be the place
+	// a reader trips over a typo.
+	const plural = unit === "file" ? "files" : "entries";
+	const parts = [`Edit cancelled after ${applied.length} of ${total} ${total === 1 ? unit : plural}`];
+	if (applied.length > 0) parts.push(`already applied: ${applied.join(", ")}`);
+	if (pending.length > 0) parts.push(`NOT applied: ${pending.join(", ")}`);
+	parts.push("re-read the affected files before re-issuing");
+	return new ToolAbortError(parts.join("; "), { cause });
+}
+
+/**
+ * Finalize the files a cancelled multi-step edit already wrote.
+ *
+ * Deliberately flushes WITHOUT the signal. The batch holds files that are
+ * already on disk, and flushing is what finalizes them; passing the signal that
+ * just fired would abort the flush and leave them in an unfinalized batch, which
+ * is the state this call exists to prevent.
+ */
+async function flushAfterAbort(batchRequest: LspBatchRequest | undefined, cwd: string): Promise<void> {
+	if (!batchRequest?.flush) return;
+	await flushLspWritethroughBatch(batchRequest.id, cwd);
+}
+
 /** Run apply_patch file operations and aggregate their multi-file result. */
 async function executeApplyPatchPerFile(
 	fileEntries: {
@@ -137,8 +181,18 @@ async function executeApplyPatchPerFile(
 	const contentTexts: string[] = [];
 	let hasError = false;
 
+	const filePaths = fileEntries.map(entry => entry.path);
 	for (let i = 0; i < fileEntries.length; i++) {
 		const { path, run } = fileEntries[i];
+		// Do not START another file once the operator has cancelled. Without this
+		// the loop relied on the innermost atomic write noticing the signal, which
+		// covers a content rewrite and nothing else: a delete or a move in the same
+		// patch does not go through that path and would have been carried out after
+		// the cancellation.
+		if (signal?.aborted) {
+			await flushAfterAbort(outerBatchRequest, cwd);
+			throw abortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), signal.reason);
+		}
 		const isLast = i === fileEntries.length - 1;
 		// Per-file writes join the outer LSP write batch; only the last entry
 		// flushes it, so cross-file writes coalesce into a single
@@ -167,6 +221,14 @@ async function executeApplyPatchPerFile(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
+			// A cancellation is not an edit failure and must not be reported as
+			// one: the caller has to be able to stop rather than re-issue. The
+			// applied/skipped summary travels in the abort's message so nothing is
+			// lost by keeping the type.
+			if (isAbortError(err)) {
+				await flushAfterAbort(outerBatchRequest, cwd);
+				throw abortedPartway("file", filePaths.slice(0, i), filePaths.slice(i), err);
+			}
 			const errorText = errorMessage(err);
 			const displayErrorText = err instanceof HashlineMismatchError ? err.displayMessage : undefined;
 			perFileResults.push({ path, diff: "", isError: true, errorText, displayErrorText });
@@ -263,7 +325,16 @@ async function executeSinglePathEntries(
 	// snapshots and stamp the marker so ACP/downstream can degrade cleanly.
 	let snapshotsPruned = false;
 
+	// Entries are numbered rather than named: they all target the same path, so a
+	// list of paths would say the same thing `runs.length` times.
+	const entryLabels = runs.map((_, index) => `entry ${index + 1}`);
 	for (let i = 0; i < runs.length; i++) {
+		// Same reason as the per-file loop: stop before starting the next entry,
+		// rather than trusting the innermost write to refuse.
+		if (signal?.aborted) {
+			await flushAfterAbort(outerBatchRequest, cwd);
+			throw abortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), signal.reason);
+		}
 		const isLast = i === runs.length - 1;
 		const batchRequest: LspBatchRequest | undefined = outerBatchRequest
 			? { id: outerBatchRequest.id, flush: isLast && outerBatchRequest.flush }
@@ -289,6 +360,10 @@ async function executeSinglePathEntries(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
+			if (isAbortError(err)) {
+				await flushAfterAbort(outerBatchRequest, cwd);
+				throw abortedPartway("entry", entryLabels.slice(0, i), entryLabels.slice(i), err);
+			}
 			const errorText = errorMessage(err);
 			contentTexts.push(`Error editing ${path} (entry ${i + 1} of ${runs.length}): ${errorText}`);
 			if (i > 0) {
