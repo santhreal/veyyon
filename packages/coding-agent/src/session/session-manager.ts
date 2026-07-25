@@ -444,12 +444,34 @@ export class SessionManager {
 	#sessionNameChangedCallbacks = new Set<() => void>();
 	#cwdChangedCallbacks = new Set<(previous: string, next: string) => void>();
 
-	private constructor(cwd: string, sessionDir: string, persist: boolean, storage: SessionStorage) {
+	/**
+	 * True when the caller passed an explicit `sessionDir` rather than letting one
+	 * be derived. {@link moveTo} honours a pinned directory instead of relocating
+	 * storage on a cwd change.
+	 *
+	 * This is recorded rather than inferred. `moveTo` used to guess at the same
+	 * question by checking whether the directory's basename was the encoded form
+	 * of the cwd, which cannot tell "the caller pinned this path" apart from "this
+	 * session was opened from a file that happens to live somewhere arbitrary".
+	 * The two want opposite things, and the guess silently gave the first one the
+	 * second one's answer: a pinned directory was abandoned for the global
+	 * sessions root.
+	 */
+	#sessionDirPinned: boolean;
+
+	private constructor(
+		cwd: string,
+		sessionDir: string,
+		persist: boolean,
+		storage: SessionStorage,
+		sessionDirPinned = false,
+	) {
 		// The session cwd is the single authority every tool resolves against, so it
 		// must be absolute from the start; a relative seed would make later
 		// `path.resolve(this.#cwd, target)` fall back to the OS process dir.
 		this.#cwd = path.resolve(cwd);
 		this.#sessionDir = sessionDir;
+		this.#sessionDirPinned = sessionDirPinned;
 		this.#persist = persist;
 		this.#storage = storage;
 		this.#blobs = new BlobStore(getBlobsDir());
@@ -985,7 +1007,10 @@ export class SessionManager {
 		const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
 		if (headerCwd && headerCwd !== path.resolve(this.#cwd) && (await directoryExists(headerCwd))) {
 			this.#cwd = headerCwd;
+			// The directory now follows the file rather than whatever was pinned at
+			// construction: the two have diverged, and the file is the truth.
 			this.#sessionDir = path.dirname(resolvedSessionFile);
+			this.#sessionDirPinned = false;
 			this.#rememberBreadcrumb(this.#cwd, resolvedSessionFile);
 		}
 
@@ -1077,12 +1102,32 @@ export class SessionManager {
 			return;
 		}
 
+		// Where the session's files live after the move, in three cases.
+		//
+		// An explicit `targetSessionDir` always wins.
+		//
+		// Otherwise a PINNED directory stays put. The caller passed an explicit
+		// `sessionDir` saying where this session's files go, and changing directory
+		// does not revoke that. This case used to fall through to
+		// `computeDefaultSessionDir(resolvedCwd, storage)` and redirect to the
+		// GLOBAL sessions root, so a caller that had deliberately pinned session
+		// storage silently had its data land somewhere else, with nothing logged.
+		//
+		// Everything else is derived storage, and follows the cwd. A MANAGED dir
+		// (basename is the encoded cwd, so it sits inside a sessions root) is
+		// re-derived under the SAME root, which keeps a session beside its siblings
+		// and is what the `--resume` re-root flow depends on. A session opened from
+		// an arbitrary file path re-roots into the default dir for the new cwd,
+		// which is what makes `--resume` able to adopt a session whose project
+		// directory was moved or renamed.
 		const managedRoot = resolveManagedSessionRoot(this.#sessionDir, this.#cwd);
 		const nextSessionDir =
 			resolvedTargetDir ??
-			(managedRoot
-				? computeDefaultSessionDir(resolvedCwd, this.#storage, managedRoot)
-				: computeDefaultSessionDir(resolvedCwd, this.#storage));
+			(this.#sessionDirPinned
+				? this.#sessionDir
+				: managedRoot
+					? computeDefaultSessionDir(resolvedCwd, this.#storage, managedRoot)
+					: computeDefaultSessionDir(resolvedCwd, this.#storage));
 
 		let sessionFileExisted = false;
 
@@ -1908,9 +1953,18 @@ export class SessionManager {
 	 * @param cwd Working directory (stored in the session header)
 	 * @param sessionDir Optional session directory; defaults to the cwd-derived dir.
 	 */
+	/**
+	 * Start a fresh session at `cwd`.
+	 *
+	 * `sessionDir` pins where this session's files live. It is honoured for the
+	 * life of the session: {@link moveTo} re-derives a cwd-encoded directory only
+	 * when the current one sits inside a sessions root, so a pinned directory
+	 * stays pinned across a cwd change rather than being redirected to the global
+	 * sessions root.
+	 */
 	static create(cwd: string, sessionDir?: string, storage: SessionStorage = new FileSessionStorage()): SessionManager {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
-		const manager = new SessionManager(cwd, dir, true, storage);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
 		manager.#resetToNewSession();
 		return manager;
 	}
@@ -1954,7 +2008,7 @@ export class SessionManager {
 		options?: { suppressBreadcrumb?: boolean; sessionFile?: string },
 	): Promise<SessionManager> {
 		const dir = sessionDir ?? SessionManager.getDefaultSessionDir(cwd, undefined, storage);
-		const manager = new SessionManager(cwd, dir, true, storage);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
 
 		const sourceEntries = structuredClone(await loadEntriesFromFile(sourcePath, storage)) as FileEntry[];
@@ -2010,7 +2064,7 @@ export class SessionManager {
 			(recordedCwd && !recordedCwdUsable
 				? SessionManager.getDefaultSessionDir(cwd, undefined, storage)
 				: path.dirname(path.resolve(filePath)));
-		const manager = new SessionManager(cwd, dir, true, storage);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
 		manager.#suppressBreadcrumb = options?.suppressBreadcrumb === true;
 		await manager.setSessionFile(filePath);
 		return manager;
@@ -2136,7 +2190,7 @@ export class SessionManager {
 
 		if (chosenSession === undefined) chosenSession = await findMostRecentSession(dir, storage);
 
-		const manager = new SessionManager(cwd, dir, true, storage);
+		const manager = new SessionManager(cwd, dir, true, storage, sessionDir !== undefined);
 		if (chosenSession) await manager.setSessionFile(chosenSession);
 		else manager.#resetToNewSession();
 		return manager;

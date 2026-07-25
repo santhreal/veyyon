@@ -282,6 +282,35 @@ If any step after the capture fails, `switchSession()` restores the captured sta
 
 No new session file is created by `switchSession()` itself.
 
+## Where session files live after a cwd move
+
+`SessionManager.moveTo(newCwd, targetSessionDir?)` changes the session cwd and,
+usually, relocates the session file and its artifacts. Where they land is
+decided in this order.
+
+1. An explicit `targetSessionDir` wins. The caller asked for a specific
+   destination and gets it.
+2. A **pinned** directory stays put. A directory is pinned when the caller
+   passed an explicit `sessionDir` to `create`, `forkFrom`, `open`, or
+   `continueRecent`. That is a statement about where this session's files go,
+   and changing directory does not revoke it.
+3. Anything else is derived storage and follows the cwd:
+   - a directory inside a sessions root (its basename is the encoded cwd) is
+     re-derived under that same root, so the session lands beside its siblings;
+   - a session opened from an arbitrary file path re-roots into the default
+     directory for the new cwd. This is what lets `--resume` adopt a session
+     whose project directory was moved or renamed.
+
+The pin is recorded at construction, not inferred from the path. An earlier
+version guessed at it by checking whether the directory's basename was the
+encoded cwd, which cannot tell case 2 from case 3, and the two want opposite
+things. Pinned directories lost that coin flip: their sessions were redirected
+to the global sessions root with nothing logged, which is how an SDK test ended
+up writing into the operator's real profile directory.
+
+Opening a session file that sits outside the pinned directory clears the pin.
+The two have diverged at that point and the file is the truth.
+
 ## Event emissions and cancellation points
 
 ### Switch/fork lifecycle hooks
