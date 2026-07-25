@@ -31,6 +31,19 @@ export interface HindsightApiOptions {
 	baseUrl: string;
 	apiKey?: string;
 	userAgent?: string;
+	/**
+	 * Per-operation request deadlines in milliseconds. Each falls back to the
+	 * constructor's own default when omitted. Reflect gets a far longer budget
+	 * than the rest because it runs a model server-side, and sharing one global
+	 * timeout with it would either abort reflects early or leave a dead recall
+	 * hanging for minutes.
+	 */
+	timeouts?: {
+		request?: number;
+		reflect?: number;
+		recall?: number;
+		retain?: number;
+	};
 }
 
 /** Caller cancellation shared by Hindsight request option bags. */
@@ -223,6 +236,8 @@ interface RequestOptions {
 	/** Return null instead of throwing on a 404 response. */
 	allow404?: boolean;
 	signal?: AbortSignal;
+	/** This call's deadline; defaults to the client's general request timeout. */
+	timeoutMs?: number;
 }
 
 export class HindsightApi {
@@ -652,5 +667,13 @@ export function createHindsightClient(config: HindsightConfig & { hindsightApiUr
 		baseUrl: config.hindsightApiUrl,
 		apiKey: config.hindsightApiToken ?? undefined,
 		userAgent: USER_AGENT,
+		// Without this the four hindsight.*TimeoutMs settings and their
+		// HINDSIGHT_*_TIMEOUT_MS env overrides parse and then do nothing.
+		timeouts: {
+			request: config.requestTimeoutMs,
+			reflect: config.reflectTimeoutMs,
+			recall: config.recallTimeoutMs,
+			retain: config.retainTimeoutMs,
+		},
 	});
 }

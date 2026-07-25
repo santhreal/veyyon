@@ -47,6 +47,10 @@ function makeConfig(overrides: Partial<HindsightConfig> = {}): HindsightConfig {
 	return {
 		hindsightApiUrl: "http://localhost:8888",
 		hindsightApiToken: null,
+		requestTimeoutMs: 30_000,
+		reflectTimeoutMs: 120_000,
+		recallTimeoutMs: 30_000,
+		retainTimeoutMs: 60_000,
 		bankId: null,
 		bankIdPrefix: "",
 		scoping: "global",
