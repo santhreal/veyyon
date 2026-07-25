@@ -32,6 +32,7 @@ import type { CheckpointState, CompletedRewindState } from "./checkpoint";
 import { resolveEvalBackends } from "./eval-backends";
 import { isIrcEnabled } from "./irc-enabled";
 import { wrapToolWithMetaNotice } from "./output-meta";
+import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
 
 // NOTE: tool implementation modules are intentionally NOT imported eagerly
@@ -636,17 +637,22 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		session.isToolActive = name => activeToolNames.has(name);
 	}
 
+	// One detector per session, so out-of-cwd activity is counted across the whole
+	// session rather than per tool, and a subagent starts from zero.
+	const rerootDetector = new RerootDetector();
+	const wrap = (tool: Tool): Tool => wrapToolWithRerootHint(wrapToolWithMetaNotice(tool), rerootDetector, session);
+
 	const baseResults = await Promise.all(
 		baseEntries.map(async ([name, factory]) => {
 			const tool = await logger.time(`createTools:${name}`, factory as ToolFactory, session);
-			return tool ? wrapToolWithMetaNotice(tool) : null;
+			return tool ? wrap(tool) : null;
 		}),
 	);
 	const tools = baseResults.filter((r): r is Tool => r !== null);
 	if (!tools.some(tool => tool.name === "resolve")) {
 		const resolveTool = await logger.time("createTools:resolve", HIDDEN_TOOLS.resolve, session);
 		if (resolveTool) {
-			tools.push(wrapToolWithMetaNotice(resolveTool));
+			tools.push(wrap(resolveTool));
 		}
 	}
 
@@ -664,7 +670,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 			.filter(name => (name in BUILTIN_TOOLS || name in HIDDEN_TOOLS) && name !== "report_tool_issue");
 		const qaTool = createReportToolIssueTool(session, activeBuiltinNames);
 		if (qaTool) {
-			tools.push(wrapToolWithMetaNotice(qaTool));
+			tools.push(wrap(qaTool));
 		}
 	}
 
