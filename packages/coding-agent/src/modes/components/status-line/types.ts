@@ -2,6 +2,7 @@ import type { CollabSessionState } from "../../../collab/protocol";
 import type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "../../../config/settings-schema";
 import type { AgentSession } from "../../../session/agent-session";
 import type { ActiveRepoContext } from "../../../utils/active-repo-context";
+import type { GitStatusSummary } from "../../../utils/git";
 
 export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
 
@@ -124,7 +125,7 @@ export interface SegmentContext {
 	activeMs: number;
 	git: {
 		branch: string | null;
-		status: { staged: number; unstaged: number; untracked: number } | null;
+		status: GitStatusSummary | null;
 		pr: { number: number; url: string } | null;
 	};
 	/**

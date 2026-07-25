@@ -35,6 +35,15 @@ export interface GitStatusSummary {
 	staged: number;
 	unstaged: number;
 	untracked: number;
+	/**
+	 * True when git's output was cut at the size cap, so the counts are LOWER
+	 * BOUNDS rather than totals.
+	 *
+	 * Present so the shortfall cannot be silent. A caller that renders these
+	 * numbers has to say the count is partial, because a repository with 400k
+	 * untracked files would otherwise show a confident, wrong, and stable figure.
+	 */
+	truncated: boolean;
 }
 
 export type HunkSelection = {
@@ -241,7 +250,17 @@ export const GIT_NETWORK_TIMEOUT_MS = 30 * 60 * 1000;
 export const GIT_COMMAND_OUTPUT_LIMIT_BYTES = 8 * 1024 * 1024;
 
 const GIT_COMMAND_TIMEOUT_EXIT_CODE = 124;
-const GIT_OUTPUT_TRUNCATED_MARKER = "\n[git subprocess output truncated after 8 MiB]\n";
+/**
+ * The line appended in place of output dropped at {@link GIT_COMMAND_OUTPUT_LIMIT_BYTES}.
+ *
+ * Split from the surrounding newlines so parsers can compare a whole line
+ * against it. Every parser that consumes capped git output MUST recognise it:
+ * it is prose in the middle of machine-readable text, and a parser that does not
+ * know it either mistakes it for a record or, worse, silently returns a short
+ * answer as if the output had ended naturally.
+ */
+const GIT_OUTPUT_TRUNCATED_NOTICE = "[git subprocess output truncated after 8 MiB]";
+const GIT_OUTPUT_TRUNCATED_MARKER = `\n${GIT_OUTPUT_TRUNCATED_NOTICE}\n`;
 const GIT_COMMAND_TERMINATE_GRACE_MS = 5_000;
 
 type CommandName = "git" | "gh";
@@ -1247,8 +1266,18 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 	let staged = 0;
 	let unstaged = 0;
 	let untracked = 0;
+	let truncated = false;
 	for (const line of text.split("\n")) {
 		if (!line) continue;
+		// The truncation notice is prose, not a status entry, and it was being
+		// counted as one: its first two characters are `[g`, neither a space nor a
+		// `?`, so the old loop scored it as both a staged AND an unstaged file. A
+		// repository big enough to hit the cap therefore reported one phantom
+		// change on top of counts that were already short.
+		if (line === GIT_OUTPUT_TRUNCATED_NOTICE) {
+			truncated = true;
+			continue;
+		}
 		const x = line[0];
 		const y = line[1];
 		if (x === "?" && y === "?") {
@@ -1258,7 +1287,7 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 		if (x && x !== " " && x !== "?") staged += 1;
 		if (y && y !== " ") unstaged += 1;
 	}
-	return { staged, unstaged, untracked };
+	return { staged, truncated, unstaged, untracked };
 }
 
 // ════════════════════════════════════════════════════════════════════════════

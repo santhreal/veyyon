@@ -214,7 +214,7 @@ describe("StatusLineComponent effective settings cache", () => {
 	});
 	it("skips git probes when git integration is disabled", async () => {
 		const headSpy = spyOn(git.head, "resolveSync").mockReturnValue(null);
-		const statusSpy = spyOn(git.status, "summary").mockResolvedValue({ staged: 0, unstaged: 0, untracked: 0 });
+		const statusSpy = spyOn(git.status, "summary").mockResolvedValue({ staged: 0, truncated: false, unstaged: 0, untracked: 0 });
 		const repoSpy = spyOn(git.repo, "resolveSync").mockReturnValue(null);
 		try {
 			Settings.instance.override("git.enabled", false);
@@ -243,7 +243,7 @@ describe("StatusLineComponent effective settings cache", () => {
 
 	it("skips git probes when no git-backed segment is visible", async () => {
 		const headSpy = spyOn(git.head, "resolveSync").mockReturnValue(null);
-		const statusSpy = spyOn(git.status, "summary").mockResolvedValue({ staged: 0, unstaged: 0, untracked: 0 });
+		const statusSpy = spyOn(git.status, "summary").mockResolvedValue({ staged: 0, truncated: false, unstaged: 0, untracked: 0 });
 		const repoSpy = spyOn(git.repo, "resolveSync").mockReturnValue(null);
 		try {
 			const component = makeComponent({
