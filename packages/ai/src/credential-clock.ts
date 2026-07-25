@@ -89,3 +89,18 @@ export function epochSecondsToMs(seconds: number | undefined): number | undefine
 	if (typeof seconds !== "number" || !Number.isFinite(seconds)) return undefined;
 	return seconds * 1000;
 }
+
+/**
+ * Converts epoch milliseconds to the whole seconds an `updated_at` column holds.
+ *
+ * The inverse of {@link epochSecondsToMs}, and it lives beside it so the
+ * thousand stays in one file rather than being spelled out at a write site.
+ *
+ * Rounds DOWN, matching SQLite's `strftime('%s','now')`, which truncates. That
+ * matters because these timestamps are compared against a cutoff that rounds up:
+ * rounding a write UP could place it a second in the future relative to a reader
+ * on the very same clock and make a live lease look stealable.
+ */
+export function msToEpochSeconds(ms: number): number {
+	return Math.floor(ms / 1000);
+}
