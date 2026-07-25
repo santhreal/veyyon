@@ -8,6 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getProjectDir, logger, readJsonl, Snowflake, truncate } from "@veyyon/utils";
+import { RingBuffer } from "@veyyon/utils/ring";
 import type { Subprocess } from "bun";
 import { hostHasInheritableConsole } from "../../eval/py/spawn-options";
 import type {
@@ -329,8 +330,50 @@ export function writeFrame(stdin: FrameSink, frame: string): boolean {
  * Stdio transport for MCP servers.
  * Spawns a subprocess and communicates via stdin/stdout.
  */
+/**
+ * How many recent stderr lines a server's tail keeps.
+ *
+ * Enough to carry a stack trace or a startup error, small enough that a chatty
+ * server cannot grow the transport's memory. Only the TAIL matters: a server
+ * that crashes explains itself in its last words, not its first.
+ */
+const STDERR_TAIL_LINES = 40;
+
+/** Longest single stderr line retained; a server can emit an arbitrarily long one. */
+const STDERR_TAIL_LINE_CHARS = 400;
+
 export class StdioTransport implements MCPTransport {
 	#process: Subprocess<"pipe", "pipe", "pipe"> | null = null;
+	/**
+	 * The server's most recent stderr lines.
+	 *
+	 * Ordinary stderr is diagnostic chatter and is logged at debug, because
+	 * servers use it for routine logging and promoting it would fill the log with
+	 * false alarms. But when the process DIES, those same lines stop being
+	 * chatter and become the only explanation of why: a missing environment
+	 * variable, a bad path, an unhandled exception. Keeping a bounded tail is
+	 * what lets {@link #handleClose} report a crash with its cause attached
+	 * instead of the bare "Transport closed" that told a caller nothing.
+	 */
+	#stderrTail = new RingBuffer<string>(STDERR_TAIL_LINES);
+	/**
+	 * The subprocess's exit status, once it is known.
+	 *
+	 * Stdout reaching EOF and Bun populating `exitCode` are separate events, and
+	 * EOF comes first, so the status is usually still `null` at the moment the
+	 * close is reported. Waiting for it is NOT an option: `exited` does not
+	 * settle until the pipes drain, and this transport is what drains them, so
+	 * awaiting it from the close path deadlocks, and delaying a rejection on a
+	 * process that may never exit is the exact wedge this reporting exists to
+	 * expose.
+	 *
+	 * So the status is recorded when it arrives and used by whichever messages
+	 * come after. The in-flight rejection may go out without it, which is the
+	 * right trade: it still carries the server's stderr, which is the part that
+	 * explains the failure. The commoner case, a tool called after the server is
+	 * already gone, gets the full account.
+	 */
+	#exitStatus: { code: number | null; signal: string | null } | null = null;
 	#pendingRequests = new Map<
 		string | number,
 		{
@@ -391,6 +434,14 @@ export class StdioTransport implements MCPTransport {
 		});
 
 		this.#connected = true;
+
+		// Record the exit status whenever it lands, without anything waiting on it.
+		void this.#process.exited.then(
+			code => {
+				this.#exitStatus = { code, signal: this.#process?.signalCode ?? null };
+			},
+			() => {},
+		);
 
 		// Start reading stdout
 		this.#readLoop = this.#startReadLoop();
@@ -454,6 +505,12 @@ export class StdioTransport implements MCPTransport {
 					// report of something wrong. The distinction matters because a
 					// chatty server would otherwise fill the log with false alarms.
 					logger.debug("MCP server stderr", { server: this.config.command, text: text.trimEnd() });
+					// Retained as well as logged: if this server dies, these lines are
+					// the only account of why, and debug-level logging is off by default.
+					for (const line of text.split("\n")) {
+						const trimmed = line.trim();
+						if (trimmed) this.#stderrTail.push(truncate(trimmed, STDERR_TAIL_LINE_CHARS));
+					}
 				}
 			}
 		} catch (error) {
@@ -524,13 +581,40 @@ export class StdioTransport implements MCPTransport {
 		writeFrame(this.#process.stdin, `${JSON.stringify(response)}\n`);
 	}
 
+	/**
+	 * Why the subprocess is gone, in one line a caller can act on.
+	 *
+	 * "Transport closed" was all a caller used to get, and it is true of a clean
+	 * shutdown and of a server that died on a missing API key alike. The three
+	 * facts that separate them are the server's name (a session runs several),
+	 * how it ended (an exit code or a signal), and what it last said. All three
+	 * are already available here and were simply not being used.
+	 */
+	#describeClose(): string {
+		const parts = [`MCP server "${this.config.command}" closed its connection`];
+		const exitCode = this.#exitStatus?.code ?? this.#process?.exitCode ?? null;
+		const signal = this.#exitStatus?.signal ?? this.#process?.signalCode ?? null;
+		if (signal) parts.push(`(killed by ${signal})`);
+		else if (exitCode !== null) parts.push(`(exit code ${exitCode})`);
+		const tail = this.#stderrTail.toArray();
+		if (tail.length > 0) {
+			parts.push(`Last output from the server:\n${tail.join("\n")}`);
+		} else {
+			parts.push("The server produced no output explaining why.");
+		}
+		return parts.join(" ");
+	}
+
 	#handleClose(): void {
 		if (!this.#connected) return;
 		this.#connected = false;
 
-		// Reject all pending requests
+		// Reject every in-flight request. The message carries the server's own
+		// last words, because a caller that only learns "closed" has to go read
+		// debug logs to find out that the server was missing an API key.
+		const reason = this.#describeClose();
 		for (const [, pending] of this.#pendingRequests) {
-			pending.reject(new Error("Transport closed"));
+			pending.reject(new Error(reason));
 		}
 		this.#pendingRequests.clear();
 
@@ -543,7 +627,11 @@ export class StdioTransport implements MCPTransport {
 		options?: MCPRequestOptions,
 	): Promise<T> {
 		if (!this.#connected || !this.#process?.stdin) {
-			throw new Error("Transport not connected");
+			// The common case is a call made AFTER the server already died, which is
+			// the one where a bare "not connected" is least useful: the reason is
+			// known, it is just in the past. Report it with the same detail an
+			// in-flight call gets, so the two orderings read the same.
+			throw new Error(this.#process ? this.#describeClose() : `MCP server "${this.config.command}" is not running.`);
 		}
 
 		const id = Snowflake.next();
