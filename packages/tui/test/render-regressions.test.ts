@@ -1025,6 +1025,12 @@ describe("TUI terminal-state regressions", () => {
 				tui.stop();
 			}
 		}, 15_000);
+		// 80 resize-and-settle rounds, each awaiting a real scheduler hop and a
+		// timer, so like the storm above the wall clock is work rather than a wait.
+		// This one failed on CI at 5046ms against the 5s default, which is a budget
+		// missed by 46ms, not a hang, and it took unrelated PRs down with it: the
+		// dependabot bumps open on 2026-07-24 were all red on these two cases and
+		// nothing else.
 		it("forced renders during resize storm stay stable under cursor relocation", async () => {
 			const term = new VirtualTerminal(80, 18);
 			const tui = new TUI(term);
@@ -1059,7 +1065,8 @@ describe("TUI terminal-state regressions", () => {
 			} finally {
 				tui.stop();
 			}
-		});
+		}, 20_000);
+
 		it("shrink then grow keeps tail anchored to latest rows", async () => {
 			const term = new VirtualTerminal(24, 6);
 			const tui = new TUI(term);
