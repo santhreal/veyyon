@@ -37,6 +37,7 @@ import {
 	resolveThinkingLevelForModel,
 } from "../thinking";
 import { isAuthenticated, kNoAuth, type ModelRegistry } from "./model-registry";
+import { modelResolutionFailureMessage } from "./model-resolution-failure";
 import {
 	DEFAULT_MODEL_ROLE_ALIAS,
 	formatModelRoleAlias,
@@ -486,7 +487,11 @@ export interface ModelMatchPreferences {
 
 export type ModelLookupRegistry = Pick<ModelRegistry, "getAvailable">;
 type CliModelRegistry = Pick<ModelRegistry, "getAll"> & Partial<Pick<ModelRegistry, "hasConfiguredAuth">>;
-type InitialModelRegistry = Pick<ModelRegistry, "getAvailable" | "find">;
+// Includes `getAll`/`getError` because a resolution FAILURE cannot be described
+// honestly without them: telling the two apart, "no model matches this id" and
+// "no model has a usable credential", needs the full catalog and any registry
+// error, not just the authenticated subset. See `model-resolution-failure.ts`.
+type InitialModelRegistry = Pick<ModelRegistry, "getAvailable" | "find" | "getAll" | "getError">;
 type RestorableModelRegistry = Pick<ModelRegistry, "getAvailable" | "find" | "getApiKey">;
 
 interface ModelPreferenceContext {
@@ -1779,7 +1784,7 @@ export async function findInitialModel(options: {
 	if (cliProvider && cliModel) {
 		const found = modelRegistry.find(cliProvider, cliModel);
 		if (!found) {
-			console.error(chalk.red(`Model ${cliProvider}/${cliModel} not found`));
+			console.error(chalk.red(modelResolutionFailureMessage([`${cliProvider}/${cliModel}`], modelRegistry)));
 			process.exit(1);
 		}
 		return { model: found, thinkingLevel: undefined, fallbackMessage: undefined };

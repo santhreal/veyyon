@@ -4,6 +4,7 @@
  * This file handles CLI argument parsing and translates them into
  * createAgentSession() options. The SDK does the heavy lifting.
  */
+
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
@@ -34,6 +35,7 @@ import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/s
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
 import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
+import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
 	expandRoleAlias,
 	fallbackForUnavailableDefault,
@@ -985,7 +987,7 @@ export async function buildSessionOptions(
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
 		if (resolved.error || !resolved.model) {
-			throw new Error(resolved.error ?? `Model "${parsed.prewalkInto ?? "@smol"}" not found`);
+			throw new Error(resolved.error ?? modelResolutionFailureMessage([rolePattern], modelRegistry));
 		}
 		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
 			throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
@@ -1003,7 +1005,7 @@ export async function buildSessionOptions(
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
 		if (resolved.error || !resolved.model) {
-			throw new Error(resolved.error ?? `Model "${parsed.planYoloInto ?? "@smol"}" not found`);
+			throw new Error(resolved.error ?? modelResolutionFailureMessage([rolePattern], modelRegistry));
 		}
 		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
 			throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
@@ -1245,7 +1247,9 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// extension flag would also be reported here; that run was about to die
 		// on this guard regardless, and the note names the possibility.
 		if (parsedArgs.unrecognizedFlags.length > 0 && reportUnrecognizedFlags(parsedArgs)) {
-			process.stderr.write("(If this is an extension flag, extensions were not loaded because stdin is not a TTY and no prompt was given.)\n");
+			process.stderr.write(
+				"(If this is an extension flag, extensions were not loaded because stdin is not a TTY and no prompt was given.)\n",
+			);
 			process.exit(2);
 		}
 		if (parsedArgs.messages.length > 0) {

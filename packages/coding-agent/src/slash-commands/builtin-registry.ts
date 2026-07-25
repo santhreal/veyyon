@@ -6,6 +6,7 @@ import { type AutocompleteItem, Spacer } from "@veyyon/tui";
 import { APP_NAME, CHANGELOG_URL, collapseWhitespace, getProjectDir, setProjectDir, truncate } from "@veyyon/utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
+import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import { settings } from "../config/settings";
@@ -661,7 +662,10 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				preferences: getModelMatchPreferences(runtime.settings),
 			});
 			if (resolved.error || !resolved.model) {
-				return usage(resolved.error ?? `Model "${rolePattern}" not found`, runtime);
+				return usage(
+					resolved.error ?? modelResolutionFailureMessage([rolePattern], runtime.session.modelRegistry),
+					runtime,
+				);
 			}
 			if (!runtime.session.modelRegistry.hasConfiguredAuth(resolved.model)) {
 				return usage(`No API key for ${resolved.model.provider}/${resolved.model.id}`, runtime);

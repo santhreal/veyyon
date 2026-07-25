@@ -185,3 +185,36 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 		nearMatches,
 	};
 }
+
+/**
+ * The part of `ModelRegistry` this diagnosis needs.
+ *
+ * Structural rather than the concrete class so the module stays a leaf: it must
+ * be importable by `main.ts`, the slash-command registry and the CLIs without
+ * dragging the registry implementation, and testable without constructing one.
+ */
+export interface ModelRegistryView {
+	getAll(): readonly { readonly provider: string; readonly id: string }[];
+	getAvailable(): readonly { readonly provider: string; readonly id: string }[];
+	getError?(): { readonly message: string } | undefined;
+}
+
+/**
+ * The operator-facing sentence for a resolution failure, read straight off a
+ * registry.
+ *
+ * THE single entry point every call site should use. Each site previously built
+ * its own `Model "<id>" not found` string, so the id was blamed for credential
+ * and registry failures in six different places, and fixing one left the other
+ * five. Taking the registry here also keeps the `provider/id` projection in one
+ * place instead of repeating it per call site.
+ */
+export function modelResolutionFailureMessage(requested: readonly string[], registry: ModelRegistryView): string {
+	const qualify = (entry: { provider: string; id: string }) => `${entry.provider}/${entry.id}`;
+	return describeModelResolutionFailure({
+		requested,
+		allModelIds: registry.getAll().map(qualify),
+		availableModelIds: registry.getAvailable().map(qualify),
+		registryError: registry.getError?.()?.message,
+	}).message;
+}
