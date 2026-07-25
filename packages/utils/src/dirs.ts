@@ -310,6 +310,41 @@ function readGlobalConfigRecord(): { record: Record<string, unknown>; filePath: 
 	return { record: {}, filePath: path.join(root, MAIN_CONFIG_FILENAMES[0]) };
 }
 
+/** A config file that exists but is ignored because a higher-precedence one does too. */
+export interface ShadowedConfigFile {
+	/** The file that is being ignored. */
+	ignored: string;
+	/** The file being used instead. */
+	using: string;
+}
+
+/**
+ * Config files in `root` that exist but are ignored because an earlier name in
+ * {@link MAIN_CONFIG_FILENAMES} also exists.
+ *
+ * The precedence itself is deliberate and must not change: the first name wins
+ * outright and the others are NOT merged, because merging two files that
+ * disagree would make the effective config depend on a rule nobody can see. But
+ * leaving the loser silent is its own trap. Someone who edits `config.yaml`
+ * while `config.yml` exists gets no error, no effect and no clue: their file is
+ * simply dead, and every symptom points at the setting they changed rather than
+ * at the file they changed it in.
+ *
+ * This returns the finding instead of logging it because `dirs` sits below the
+ * logger (logger imports this module for its own paths). The settings layer,
+ * which has both a logger and a user-visible surface, reports it. Precedence
+ * still has exactly one owner: the constant and this function live here.
+ */
+export function findShadowedGlobalConfigFiles(root: string = getBaseConfigRoot()): ShadowedConfigFile[] {
+	const present = MAIN_CONFIG_FILENAMES.filter(filename => fs.existsSync(path.join(root, filename)));
+	const winner = present[0];
+	if (winner === undefined) return [];
+	return present.slice(1).map(filename => ({
+		ignored: path.join(root, filename),
+		using: path.join(root, winner),
+	}));
+}
+
 /**
  * Serialized read-modify-write of a single GLOBAL config key, preserving every
  * other key. `mutate` receives the current record and returns the value to
