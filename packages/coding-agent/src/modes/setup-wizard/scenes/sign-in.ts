@@ -3,7 +3,7 @@ import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
-import { errorMessage, getAgentDbPath } from "@veyyon/utils";
+import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
 import { theme } from "../../theme/theme";
@@ -236,7 +236,7 @@ export class SignInTab implements SetupTab {
 			if (this.#disposed) return;
 			this.#statusLines = [
 				theme.fg("success", `${theme.status.success} Signed in to ${providerDisplayName(providerId)}`),
-				theme.fg("dim", `Credentials saved to ${getAgentDbPath()}`),
+				theme.fg("dim", `Credentials saved to ${getActiveAuthDbPath()}`),
 			];
 			this.#authUrl = undefined;
 			this.#authLaunchUrl = undefined;
