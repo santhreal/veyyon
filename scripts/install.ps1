@@ -173,6 +173,46 @@ function Install-Bun {
     Invoke-Expression $script
 }
 
+# Put a verified download in place of the installed binary, without ever leaving
+# the user with neither.
+#
+# Windows keeps a running executable's image locked, so overwriting or deleting
+# it fails while a session is open. Renaming it is permitted, so the previous
+# binary is moved aside first and the staged one renamed into the freed path;
+# if that second step fails the old one is put straight back. The moved-aside
+# copy cannot be deleted while it is still mapped, so it is swept on the next
+# run instead of failing an otherwise-good install.
+function Move-StagedBinaryIntoPlace {
+    param([string]$StagingPath, [string]$TargetPath)
+    if (-not (Test-Path $TargetPath)) {
+        Move-Item -Path $StagingPath -Destination $TargetPath -Force
+        return
+    }
+    $asideName = "$([System.IO.Path]::GetFileName($TargetPath)).$PID.old"
+    $aside = Join-Path ([System.IO.Path]::GetDirectoryName($TargetPath)) $asideName
+    Move-Item -Path $TargetPath -Destination $aside -Force
+    try {
+        Move-Item -Path $StagingPath -Destination $TargetPath -Force
+    } catch {
+        # Put the working binary back before reporting; a failed install must
+        # not be an uninstall.
+        Move-Item -Path $aside -Destination $TargetPath -Force
+        Remove-Item $StagingPath -ErrorAction SilentlyContinue
+        throw "could not replace $TargetPath ($($_.Exception.Message)); your previous $BinName is untouched"
+    }
+    Remove-Item $aside -ErrorAction SilentlyContinue
+}
+
+# Reclaim moved-aside binaries whose owning process has since exited. Deleting
+# one that is still mapped fails, which is fine: it is retried next run.
+function Clear-StaleBinaryBackups {
+    param([string]$Dir, [string]$BaseName)
+    if (-not (Test-Path $Dir)) { return }
+    foreach ($old in @(Get-ChildItem -Path $Dir -Filter "$BaseName.*.old" -File -ErrorAction SilentlyContinue)) {
+        Remove-Item $old.FullName -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Find-BashShell {
     # Check Git Bash first (most common on Windows)
     $gitBash = "C:\Program Files\Git\bin\bash.exe"
@@ -683,18 +723,25 @@ function Install-Binary {
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-    # Download binary. A mid-stream failure (network drop, timeout) leaves a
-    # partial file behind, so remove it before rethrowing — the install must never
-    # leave a truncated veyyon.exe in place (mirrors install.sh's EXIT/INT/TERM
-    # trap on its temp download). A same-run partial that still completes the
-    # request is caught afterwards by the checksum verification below.
     $BinaryUrl = "https://github.com/$Repo/releases/download/$Latest/$BinaryAsset"
     Write-Host "Downloading $BinaryAsset..."
     $OutPath = Join-Path $InstallDir "$BinName.exe"
+    # Stage the download beside the target and only move it into place once it
+    # has been verified (mirrors install.sh's staging_path + finalize_binary).
+    #
+    # This used to download STRAIGHT ONTO $OutPath, which made every failure
+    # destructive: a dropped connection, a missing sidecar, or a checksum
+    # mismatch each ran `Remove-Item $OutPath` and left the user with no veyyon
+    # at all, having started from a working one. On top of that Windows locks a
+    # running image, so upgrading from an open session failed at the download
+    # and then tried to delete the binary it could not write. The path is
+    # per-process so two installers cannot truncate each other's download.
+    Clear-StaleBinaryBackups -Dir $InstallDir -BaseName "$BinName.exe"
+    $StagingPath = Join-Path $InstallDir ".$BinName.$PID.download"
     try {
-        Invoke-WebRequest -Uri $BinaryUrl -OutFile $OutPath -TimeoutSec 900
+        Invoke-WebRequest -Uri $BinaryUrl -OutFile $StagingPath -TimeoutSec 900
     } catch {
-        Remove-Item $OutPath -ErrorAction SilentlyContinue
+        Remove-Item $StagingPath -ErrorAction SilentlyContinue
         throw "download failed ($BinaryAsset not published for this release, or the connection dropped) - try -Source. ($_)"
     }
 
@@ -708,20 +755,22 @@ function Install-Binary {
         try {
             $expected = ConvertFrom-Sha256Sidecar (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30)
         } catch {
-            Remove-Item $OutPath -ErrorAction SilentlyContinue
+            Remove-Item $StagingPath -ErrorAction SilentlyContinue
             throw "no published checksum for $BinaryAsset ($Latest) - refusing to install unverified. Current releases publish .sha256 sidecars; for an old pre-sidecar release, pass -NoVerify to override."
         }
         if (-not $expected) {
-            Remove-Item $OutPath -ErrorAction SilentlyContinue
+            Remove-Item $StagingPath -ErrorAction SilentlyContinue
             throw "published checksum for $BinaryAsset is empty/unparseable - refusing to install (pass -NoVerify to override)"
         }
-        if (-not (Test-FileSha256 -Path $OutPath -Expected $expected)) {
-            $actual = (Get-FileHash -Path $OutPath -Algorithm SHA256).Hash.ToLower()
-            Remove-Item $OutPath -ErrorAction SilentlyContinue
+        if (-not (Test-FileSha256 -Path $StagingPath -Expected $expected)) {
+            $actual = (Get-FileHash -Path $StagingPath -Algorithm SHA256).Hash.ToLower()
+            Remove-Item $StagingPath -ErrorAction SilentlyContinue
             throw "checksum mismatch for $BinaryAsset (expected $expected, got $actual)"
         }
         Write-Host "OK  checksum verified" -ForegroundColor Green
     }
+
+    Move-StagedBinaryIntoPlace -StagingPath $StagingPath -TargetPath $OutPath
 
     Install-Alias -Target $OutPath
 
@@ -747,6 +796,17 @@ function Uninstall-Veyyon {
         if (Test-Path $p) {
             Remove-Item -Force $p
             Write-Host "OK  removed $p" -ForegroundColor Green
+            $removed = $true
+        }
+    }
+    # Staged downloads and moved-aside previous binaries are ours too. A locked
+    # `.old` (still the running image) is left for the next sweep rather than
+    # failing the uninstall over a file the OS will release on exit.
+    foreach ($leftover in @(Get-ChildItem -Path $InstallDir -Filter "*.old" -File -ErrorAction SilentlyContinue) +
+                          @(Get-ChildItem -Path $InstallDir -Filter ".$BinName.*.download" -File -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -Force $leftover.FullName -ErrorAction SilentlyContinue
+        if (-not (Test-Path $leftover.FullName)) {
+            Write-Host "OK  removed $($leftover.FullName)" -ForegroundColor Green
             $removed = $true
         }
     }
