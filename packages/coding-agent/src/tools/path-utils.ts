@@ -60,6 +60,10 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 // tries the exact URI before interpreting any suffix as a read selector.
 const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
 const NARROW_NO_BREAK_SPACE = "\u202F";
+// Read once. `process.platform` is a getter, and resolving it per call was
+// measurably expensive on the hot path, so it is read once rather than as a
+// default argument evaluated on every `resolveToCwd`.
+const CURRENT_PLATFORM: NodeJS.Platform = process.platform;
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
 	"artifact://",
@@ -478,8 +482,10 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	// FAST PATH, and the reason this function is shaped the way it is. The exact
 	// check below splits the path and measures every component, which allocates an
 	// array plus a `Buffer.byteLength` call per component. On `resolveToCwd`, which
-	// every tool path goes through, that measured 332ns -> 688ns: a 2x
+	// every tool path goes through, that measured 312ns -> 688ns: a 2x
 	// pessimization of the hot path to catch an input almost nobody sends.
+	// (Timings are min-of-5 runs of 200k calls; single samples on this box swing
+	// by ~30%, so a one-shot measurement here is not trustworthy.)
 	//
 	// UTF-8 never uses more than 3 bytes per UTF-16 code unit (a BMP character is
 	// at most 3 bytes in one unit; a surrogate pair is 4 bytes across two, so 2
@@ -523,6 +529,91 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 			`Path is ${totalBytes} bytes, over the ${MAX_PATH_TOTAL_BYTES}-byte total path limit, ` +
 				`starting from ${JSON.stringify(original.slice(0, 60))}. Use a shorter directory or filename.`,
 		);
+	}
+}
+
+/**
+ * Win32 device names. Reserved in EVERY directory, not just the drive root, and
+ * reserved with any extension too: `CON`, `CON.txt` and `con.log` all name the
+ * console device rather than a file.
+ */
+const WINDOWS_RESERVED_NAMES: ReadonlySet<string> = new Set([
+	"con",
+	"prn",
+	"aux",
+	"nul",
+	"com1",
+	"com2",
+	"com3",
+	"com4",
+	"com5",
+	"com6",
+	"com7",
+	"com8",
+	"com9",
+	"lpt1",
+	"lpt2",
+	"lpt3",
+	"lpt4",
+	"lpt5",
+	"lpt6",
+	"lpt7",
+	"lpt8",
+	"lpt9",
+]);
+
+/**
+ * Reject Windows paths that do not mean what they say.
+ *
+ * TWO DISTINCT WIN32 BEHAVIOURS, both of which make a write land somewhere other
+ * than the named file:
+ *
+ *   1. DEVICE NAMES. Opening `CON` opens the console, `NUL` discards everything
+ *      written to it, and `LPT1` addresses a printer port. The call SUCCEEDS, so
+ *      a write reports success and no file appears. The reservation holds in
+ *      every directory and survives an extension, so `logs/CON.txt` is the
+ *      console too.
+ *
+ *   2. TRAILING DOTS AND SPACES. Win32 strips them before the filesystem sees
+ *      the name, so `report.` and `report ` both resolve to `report`. A tool
+ *      that believes it created three files has created one and overwritten it
+ *      twice, and a containment check performed on the pre-strip string
+ *      described a path that was never opened.
+ *
+ * Both are refused rather than silently accepted, because in each case the
+ * successful-looking outcome is the dangerous one. POSIX is unaffected: these
+ * are ordinary filenames there, and the check does not run.
+ */
+export function assertNoWindowsReservedName(
+	original: string,
+	resolved: string,
+	platform: NodeJS.Platform = CURRENT_PLATFORM,
+): void {
+	if (platform !== "win32") return;
+	for (const component of resolved.split(/[/\\]/)) {
+		// `.` and `..` are navigation, not names ending in a dot, and a drive
+		// letter is never a filename. Measuring any of them against these rules
+		// would refuse ordinary relative paths.
+		if (!component || component === "." || component === ".." || /^[a-zA-Z]:$/.test(component)) continue;
+
+		const trimmedTail = component.replace(/[. ]+$/, "");
+		if (trimmedTail !== component) {
+			throw new Error(
+				`Path component ${JSON.stringify(component)} ends with a dot or space, which Windows silently ` +
+					`strips, so it would open ${JSON.stringify(trimmedTail)} instead: ${JSON.stringify(original)}. ` +
+					"Remove the trailing dot or space so the path names the file it appears to name.",
+			);
+		}
+
+		// The reservation applies to the stem, so `CON.txt` is still the console.
+		const stem = component.includes(".") ? component.slice(0, component.indexOf(".")) : component;
+		if (WINDOWS_RESERVED_NAMES.has(stem.toLowerCase())) {
+			throw new Error(
+				`Path component ${JSON.stringify(component)} is a reserved Windows device name ` +
+					`(${stem.toUpperCase()}), not a file: ${JSON.stringify(original)}. Opening it succeeds and ` +
+					"writes to the device, so no file is created. Choose a different name.",
+			);
+		}
 	}
 }
 
@@ -628,6 +719,7 @@ export function resolveToCwd(filePath: string, cwd: string): string {
 	// total limit while looking fine on its own.
 	const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(cwd, expanded);
 	assertPathLengthWithinLimits(filePath, resolved);
+	assertNoWindowsReservedName(filePath, resolved);
 	return resolved;
 }
 
