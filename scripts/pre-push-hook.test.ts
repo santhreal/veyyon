@@ -16,7 +16,8 @@ import { TempDir } from "@veyyon/utils";
 
 const HOOK = path.join(import.meta.dir, "..", ".githooks", "pre-push");
 const ZERO = "0".repeat(40);
-const SHA = "a".repeat(40);
+/** Replaced with the temp repo's real HEAD, which the hook must be able to check out. */
+const SHA = "__SHA__";
 
 interface HookRun {
 	exitCode: number;
@@ -24,13 +25,28 @@ interface HookRun {
 	stdout: string;
 	/** Whether the stub recorded a `bun run check:ts` invocation. */
 	ranCheck: boolean;
+	/** True when the check ran somewhere other than the repo's own directory. */
+	checkedInWorktree: boolean;
+	/** Worktrees still registered after the hook exited; must always be empty. */
+	leftoverWorktrees: string[];
 }
 
 /**
  * Run the hook with a fake `bun` on PATH that exits with `bunExit`, feeding
  * `stdin` the ref lines git would supply.
+ *
+ * The temp repo gets one real commit, because the hook checks out each pushed
+ * sha into a throwaway worktree rather than reading the working tree. Callers
+ * that need a pushable sha use the `sha` handed to the stdin builder.
  */
-async function runHook(options: { stdin: string; bunExit?: number; withBun?: boolean; env?: Record<string, string> }): Promise<HookRun> {
+async function runHook(options: {
+	stdin: string;
+	bunExit?: number;
+	withBun?: boolean;
+	env?: Record<string, string>;
+	/** Leave uncommitted and untracked files behind before the hook runs. */
+	dirty?: boolean;
+}): Promise<HookRun> {
 	using dir = TempDir.createSync("veyyon-prepush-");
 	// TempDir.path() is relative to the process cwd. The hook runs as a child
 	// with its own cwd and reads PATH, and a relative PATH entry resolves against
@@ -42,16 +58,27 @@ async function runHook(options: { stdin: string; bunExit?: number; withBun?: boo
 	if (options.withBun !== false) {
 		await Bun.write(
 			path.join(binDir, "bun"),
-			`#!/usr/bin/env bash\nif [ "$1" = "run" ] && [ "$2" = "check:ts" ]; then echo ran > ${JSON.stringify(marker)}; fi\nexit ${options.bunExit ?? 0}\n`,
+			`#!/usr/bin/env bash\nif [ "$1" = "run" ] && [ "$2" = "check:ts" ]; then pwd > ${JSON.stringify(marker)}; fi\nexit ${options.bunExit ?? 0}\n`,
 		);
 		await Bun.$`chmod +x ${path.join(binDir, "bun")}`.quiet();
 	}
-	// A real repo so `git rev-parse --show-toplevel` resolves.
-	await Bun.$`git init -q ${root}`.quiet();
+	// A real repo with a real commit: the hook checks out the pushed sha, so
+	// there has to be something to check out.
+	await Bun.$`git init -q -b main ${root}`.quiet();
+	await Bun.write(path.join(root, "seed.txt"), "seed\n");
+	await Bun.$`git -C ${root} config user.email t@t`.quiet();
+	await Bun.$`git -C ${root} config user.name t`.quiet();
+	await Bun.$`git -C ${root} add seed.txt`.quiet();
+	await Bun.$`git -C ${root} commit -qm seed`.quiet();
+	const head = (await Bun.$`git -C ${root} rev-parse HEAD`.text()).trim();
+	if (options.dirty) {
+		await Bun.write(path.join(root, "seed.txt"), "locally edited, never committed\n");
+		await Bun.write(path.join(root, "untracked.ts"), "export const brokenWorkInProgress = 1;\n");
+	}
 
 	const proc = Bun.spawn(["/usr/bin/bash", HOOK], {
 		cwd: root,
-		stdin: new TextEncoder().encode(options.stdin),
+		stdin: new TextEncoder().encode(options.stdin.replaceAll("__SHA__", head)),
 		stdout: "pipe",
 		stderr: "pipe",
 		env: {
@@ -68,7 +95,21 @@ async function runHook(options: { stdin: string; bunExit?: number; withBun?: boo
 		new Response(proc.stderr).text(),
 		proc.exited,
 	]);
-	return { exitCode, stdout, stderr, ranCheck: await Bun.file(marker).exists() };
+	const ranCheck = await Bun.file(marker).exists();
+	const checkedIn = ranCheck ? (await Bun.file(marker).text()).trim() : "";
+	const worktrees = (await Bun.$`git -C ${root} worktree list`.text())
+		.split("\n")
+		.filter(Boolean)
+		.map(line => line.split(" ")[0] ?? "")
+		.filter(p => p !== root && p !== "");
+	return {
+		exitCode,
+		stdout,
+		stderr,
+		ranCheck,
+		checkedInWorktree: ranCheck && checkedIn !== root,
+		leftoverWorktrees: worktrees,
+	};
 }
 
 describe("pre-push hook", () => {
@@ -149,5 +190,33 @@ describe("pre-push hook", () => {
 		const run = await runHook({ stdin: "", bunExit: 1 });
 		expect(run.ranCheck).toBe(false);
 		expect(run.exitCode).toBe(0);
+	});
+	/**
+	 * The bug this hook shipped with, caught on its own first push. The canonical
+	 * tree here is dirty essentially all the time, and the first version
+	 * typechecked the WORKING TREE, so an untracked half-written test blocked a
+	 * push whose commits were perfectly sound. A hook that blocks pushes over
+	 * files that are not going anywhere gets disabled within a day, which is
+	 * worse than having none. The commit is what CI will judge, so the commit is
+	 * what this checks.
+	 */
+	it("ignores uncommitted and untracked work, checking the pushed commit instead", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			dirty: true,
+		});
+		expect(run.exitCode).toBe(0);
+		expect(run.ranCheck).toBe(true);
+		// The check ran somewhere other than the dirty tree.
+		expect(run.checkedInWorktree).toBe(true);
+	});
+
+	/** The throwaway checkout must not survive the hook, clean run or refusal. */
+	it("removes its temporary worktree afterwards, including when it refuses", async () => {
+		const pass = await runHook({ stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`, bunExit: 0 });
+		expect(pass.leftoverWorktrees).toEqual([]);
+		const fail = await runHook({ stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`, bunExit: 1 });
+		expect(fail.leftoverWorktrees).toEqual([]);
 	});
 });

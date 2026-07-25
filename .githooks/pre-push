@@ -1,35 +1,45 @@
 #!/usr/bin/env bash
 #
-# Refuse to push a tree that does not typecheck.
+# Refuse to push a commit that does not typecheck.
 #
 # Why this exists: main has gone red from a pushed commit four separate times,
-# every one of them a TypeScript error that `bun run check:ts` reports in under
-# a minute. The gate already runs in CI (.github/workflows/checks.yml), so the
-# breakage was always found -- after the push, on every open PR at once, which
-# is where a red base stops being one person's problem. The half-committed
-# argot -> lexpack rename left 64 errors on main and every port PR inherited
-# them, so no PR's own CI meant anything until it was fixed.
+# every one of them a TypeScript error that `bun run check:ts` reports in well
+# under a minute. The gate already runs in CI (.github/workflows/checks.yml),
+# so the breakage was always found -- after the push, on every open PR at once,
+# which is where a red base stops being one person's problem. The
+# half-committed argot -> lexpack rename left 64 errors on main and every port
+# PR inherited them, so no PR's own CI meant anything until it was fixed.
 #
-# It runs on the tree you are pushing, which is the same thing CI will check.
-# Roughly 40s on a warm cache. Bypass with `git push --no-verify` when you
-# genuinely need to, for instance pushing a WIP branch that is not main.
+# It checks the COMMIT being pushed, not the working tree. That distinction is
+# the whole design here: this repo's canonical tree is dirty essentially all the
+# time, and a hook that typechecks uncommitted work would block pushes over
+# half-finished files that are not going anywhere. Such a hook gets disabled
+# within a day, which is worse than not having one. So each pushed sha is
+# checked out into a throwaway worktree that shares the repo's node_modules,
+# which costs about half a second to create and gives the same answer CI will.
+#
+# Bypass with `git push --no-verify`, or `VEYYON_SKIP_PREPUSH=1` to skip only
+# this check.
 set -euo pipefail
-
-# Deleting a remote branch pushes the zero ref and has no tree to check.
-only_deletes=1
-while read -r _local_ref local_sha _remote_ref _remote_sha; do
-	[ -z "${local_sha:-}" ] && continue
-	case "$local_sha" in
-	0000000000000000000000000000000000000000) ;;
-	*) only_deletes=0 ;;
-	esac
-done
-[ "$only_deletes" -eq 1 ] && exit 0
 
 if [ "${VEYYON_SKIP_PREPUSH:-}" = "1" ]; then
 	echo "pre-push: skipped via VEYYON_SKIP_PREPUSH=1" >&2
 	exit 0
 fi
+
+# git feeds one `<local ref> <local sha> <remote ref> <remote sha>` line per ref.
+# A deletion pushes the all-zero sha and carries no tree to check.
+shas=""
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+	case "${local_sha:-}" in
+	"" | 0000000000000000000000000000000000000000) continue ;;
+	esac
+	case " $shas " in
+	*" $local_sha "*) ;;
+	*) shas="$shas $local_sha" ;;
+	esac
+done
+[ -z "$shas" ] && exit 0
 
 # Fail closed rather than waving the push through. A hook that silently does
 # nothing when its tool is missing is worse than no hook, because everyone
@@ -41,11 +51,33 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel)
-echo "pre-push: running check:ts (bypass: git push --no-verify)" >&2
-if ! (cd "$repo_root" && bun run check:ts); then
-	echo >&2
-	echo "pre-push: REFUSED. This tree does not typecheck, and pushing it turns every" >&2
-	echo "          open PR red against a broken base, not just this branch." >&2
-	echo "          Fix the errors above, or bypass with: git push --no-verify" >&2
-	exit 1
-fi
+checkout=""
+cleanup() {
+	[ -n "$checkout" ] && git -C "$repo_root" worktree remove --force "$checkout" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+for sha in $shas; do
+	short=$(git rev-parse --short "$sha")
+	checkout="${TMPDIR:-/tmp}/veyyon-prepush-$$-$short"
+	rm -rf "$checkout"
+	if ! git -C "$repo_root" worktree add -q --detach "$checkout" "$sha" 2>/dev/null; then
+		echo "pre-push: could not check out $short to verify it." >&2
+		echo "          Push with VEYYON_SKIP_PREPUSH=1 if you accept the risk." >&2
+		exit 1
+	fi
+	# Shared, not installed: `bun install` in a throwaway tree would cost more
+	# than the check. The pushed commit's own package.json is what tsgo reads.
+	[ -d "$repo_root/node_modules" ] && ln -s "$repo_root/node_modules" "$checkout/node_modules"
+
+	echo "pre-push: typechecking $short (bypass: git push --no-verify)" >&2
+	if ! (cd "$checkout" && bun run check:ts); then
+		echo >&2
+		echo "pre-push: REFUSED. Commit $short does not typecheck, and pushing it turns" >&2
+		echo "          every open PR red against a broken base, not just this branch." >&2
+		echo "          Fix the errors above, or bypass with: git push --no-verify" >&2
+		exit 1
+	fi
+	cleanup
+	checkout=""
+done
