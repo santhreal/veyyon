@@ -16,13 +16,14 @@ import * as path from "node:path";
 import { initTheme } from "../../src/modes/theme/theme";
 
 let refreshCompletionsForInstalledBinary: typeof import("../../src/cli/update-cli").refreshCompletionsForInstalledBinary;
+let updateViaSourceAt: typeof import("../../src/cli/update-cli").updateViaSourceAt;
 
 beforeAll(async () => {
 	// `theme` is a mutable global assigned by initTheme(); production initializes
 	// it long before any update runs, and importing update-cli without it throws
 	// on the first themed string.
 	await initTheme();
-	({ refreshCompletionsForInstalledBinary } = await import("../../src/cli/update-cli"));
+	({ refreshCompletionsForInstalledBinary, updateViaSourceAt } = await import("../../src/cli/update-cli"));
 });
 
 describe("refreshCompletionsForInstalledBinary", () => {
@@ -127,5 +128,51 @@ describe("refreshCompletionsForInstalledBinary", () => {
 		expect(generatorCalls).toBe(0);
 		expect(reported).toEqual([]);
 		expect(stderr).toBe("");
+	});
+});
+
+/**
+ * A source install goes stale exactly the same way a binary one does: the
+ * checkout advances and the completion scripts on disk still describe the
+ * version it left. Refreshing only the binary path would have fixed tab
+ * completion for one of the two shipped install channels.
+ */
+describe("a source update refreshes completions too", () => {
+	it("regenerates the installed completions after the checkout advances", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-source-update-"));
+		const originalHome = process.env.HOME;
+		let stderr = "";
+		const originalWrite = process.stderr.write.bind(process.stderr);
+		process.stderr.write = ((chunk: string | Uint8Array) => {
+			stderr += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+			return true;
+		}) as typeof process.stderr.write;
+		try {
+			process.env.HOME = home;
+			const completions = path.join(home, ".config", "fish", "completions");
+			fs.mkdirSync(completions, { recursive: true });
+			const stale = path.join(completions, "veyyon.fish");
+			fs.writeFileSync(stale, "# from the previous version\n");
+
+			const launcher = path.join(home, "src", "packages", "coding-agent", "scripts", "veyyon");
+			await updateViaSourceAt(
+				launcher,
+				"1.2.3",
+				() => {},
+				async () => ({ exitCode: 0, stderr: "" }),
+				async () => "1.2.3",
+			);
+
+			// The launcher does not exist in this sandbox, so generation fails — and
+			// that failure naming the stale file is the proof the refresh ran on this
+			// path at all. A source update that skipped it would print nothing.
+			expect(stderr).toContain(stale);
+			expect(stderr).toContain("still describes the previous version");
+		} finally {
+			process.stderr.write = originalWrite;
+			if (originalHome === undefined) delete process.env.HOME;
+			else process.env.HOME = originalHome;
+			fs.rmSync(home, { recursive: true, force: true });
+		}
 	});
 });
