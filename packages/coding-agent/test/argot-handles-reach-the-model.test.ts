@@ -42,7 +42,28 @@ import { useIsolatedConfigRoot } from "./helpers/isolated-agent-dir";
 
 useIsolatedConfigRoot();
 
-const HANDLES_SECTION = RUNTIME_SECTIONS.find(section => section.id === "shorthand-handles");
+/**
+ * The runtime section this whole suite is about, resolved once and required to
+ * exist.
+ *
+ * `find` returns `Section | undefined`, and letting that `undefined` travel is
+ * what made the suite lie. Every use site had to either optional-chain it, which
+ * turns "the section was deleted" into a comparison against `undefined` whose
+ * failure message says nothing about the real cause, or cast it with `as never`,
+ * which silences the checker and asserts nothing at all. Both appeared here.
+ * Resolving it once and throwing means a renamed or removed section fails
+ * immediately, by name, and the assertions below can speak about a real section.
+ */
+const HANDLES_SECTION = (() => {
+	const section = RUNTIME_SECTIONS.find(s => s.id === "shorthand-handles");
+	if (!section) {
+		throw new Error(
+			`RUNTIME_SECTIONS has no "shorthand-handles" section, so no argot handles can reach the model. ` +
+				`Available ids: ${RUNTIME_SECTIONS.map(s => s.id).join(", ")}`,
+		);
+	}
+	return section;
+})();
 
 /**
  * A repository whose repeated-token mass is the kind argot exists to compress:
@@ -144,8 +165,8 @@ describe("the argot handle table reaches the model after the background arm", ()
 		// carries the table as a real section. Asserted through `withSectionBanner`
 		// (the assembler's own owner) so it proves placement, not mere substring
 		// presence somewhere in 85kB of text.
-		expect(HANDLES_SECTION?.banner).toBe("SHORTHAND HANDLES\n==");
-		expect(armedPrompt).toContain(withSectionBanner(HANDLES_SECTION as never, argot.promptFragment()));
+		expect(HANDLES_SECTION.banner).toBe("SHORTHAND HANDLES\n==");
+		expect(armedPrompt).toContain(withSectionBanner(HANDLES_SECTION, argot.promptFragment()));
 	});
 
 	it("teaches at least one handle the fixture repository actually produced", () => {
@@ -172,7 +193,7 @@ describe("the argot handle table reaches the model after the background arm", ()
 		// "no handles taught" on a perfectly armed session and the bench blames the
 		// harness for nothing. This pins the constant to the section that owns it
 		// AND to the bytes that actually land in a real armed prompt.
-		expect(ARGOT_HANDLES_BANNER).toBe(HANDLES_SECTION?.banner);
+		expect(ARGOT_HANDLES_BANNER).toBe(HANDLES_SECTION.banner);
 		expect(armedPrompt.join("\n\n")).toContain(ARGOT_HANDLES_BANNER);
 	});
 
