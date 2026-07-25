@@ -9,6 +9,12 @@ import { formatResultOutputFallback } from "@veyyon/coding-agent/task";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
+// Spawning a task writes a session (and, for worktree runs, a checkout) under the
+// ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
+// developer's real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 /**
  * Contract: runaway-subagent guards.

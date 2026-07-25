@@ -172,6 +172,18 @@ function tryCoerceString(value: unknown, expectedTypes: string[]): { value: unkn
 		return { value, changed: false };
 	}
 
+	// A BOOLEAN is deliberately not repaired into a string. Every other coercion
+	// here recovers a value the model plainly meant: `"300"` for a number, a
+	// JSON-encoded object for a structured field. `true` in a string field means
+	// no such thing, and stringifying it produces something that reads as valid
+	// and does real work — `bash({command: true})` becomes `{command: "true"}` and
+	// runs the `true` binary, `read({path: true})` reads a file named "true".
+	// Both look like a successful call, so the model never learns it was wrong.
+	// Failing here costs one turn and returns a correction it can act on.
+	if (typeof value === "boolean") {
+		return { value, changed: false };
+	}
+
 	return { value: String(value), changed: true };
 }
 

@@ -20,9 +20,51 @@ import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildBlog } from "./tools/gen-blog.mjs";
+import { renderNav } from "./tools/nav.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..");
+
+// 0. Navigation. The hand-authored pages each carry two header navs (desktop plus
+// the mobile disclosure) and a footer nav, which used to be nine hand-copied
+// blocks that drifted: 404.html lost the Blog link and nobody noticed. The links
+// now live in tools/nav.mjs and get written into each page's <!--NAV:START--> /
+// <!--NAV:END--> region here, so adding a link is a one-line change and no page
+// can fall behind. `current` marks aria-current="page" for that page's own link.
+// A page whose markers are missing is a hard error: silently skipping it is how
+// the drift happened in the first place.
+const NAV_PAGES = [
+	{ file: "index.html", current: undefined },
+	{ file: "features.html", current: "features" },
+	{ file: "models.html", current: "models" },
+	{ file: "install.html", current: "install" },
+	{ file: "changelog.html", current: "changelog" },
+	{ file: "404.html", current: undefined },
+];
+for (const { file, current } of NAV_PAGES) {
+	const path = join(HERE, file);
+	const html = readFileSync(path, "utf8");
+	let regions = 0;
+	const next = html.replace(
+		/([ \t]*)<!--NAV:START-->[\s\S]*?<!--NAV:END-->/g,
+		(_match, indent, offset, whole) => {
+			regions++;
+			// The footer nav carries no Get-started button; the two header navs do.
+			// The footer is the last region on the page, inside <footer class="site">.
+			const cta = !whole.slice(0, offset).includes('<footer class="site">');
+			const body = renderNav({ prefix: "./", current, cta, indent: `${indent}  ` });
+			return `${indent}<!--NAV:START-->\n${body}\n${indent}<!--NAV:END-->`;
+		},
+	);
+	if (regions !== 3) {
+		console.error(
+			`${file}: expected 3 <!--NAV:START-->/<!--NAV:END--> regions (desktop, mobile, footer), found ${regions}`,
+		);
+		process.exit(1);
+	}
+	if (next !== html) writeFileSync(path, next);
+}
+console.log(`nav: wrote ${NAV_PAGES.length * 3} nav region(s) from tools/nav.mjs`);
 
 // 1. Changelog.
 execFileSync(process.execPath, [join(HERE, "tools", "gen-changelog.mjs")], { stdio: "inherit" });

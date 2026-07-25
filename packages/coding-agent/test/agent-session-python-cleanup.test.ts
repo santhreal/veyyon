@@ -9,7 +9,9 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { createAgentSession, type ExtensionFactory, type WorkspaceTree } from "@veyyon/coding-agent/sdk";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { Snowflake, TempDir } from "@veyyon/utils";
+import { Snowflake, setAgentDir, TempDir } from "@veyyon/utils";
+import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 const OK_EXECUTION = { status: "ok", cancelled: false, timedOut: false, stdinRequested: false } as const;
 
@@ -74,14 +76,21 @@ const createTempProject = () => {
 	return { tempDir, cwd };
 };
 
-// createAgentSession opens an AuthStorage at <agentDir>/auth.db that is not
-// closed when construction fails. Point agentDir at a separate dir so the
-// auth.db handle doesn't keep the per-test project temp dir locked on Windows.
+// createAgentSession opens an AuthStorage that is not closed when construction
+// fails. Point agentDir at a separate dir so the handle doesn't keep the per-test
+// project temp dir locked on Windows. The store is ALSO injected explicitly: left
+// to itself, `discoverAuthStorage` walks past agentDir to the machine-wide
+// `~/.veyyon/shared-auth/agent.db`, which is the operator's real credentials.
 const agentDirPool: TempDir[] = [];
 const createAgentDir = (): string => {
 	const dir = TempDir.createSync("@pi-python-cleanup-agentdir-");
 	agentDirPool.push(dir);
 	return dir.path();
+};
+/** A throwaway agent dir paired with an auth store rooted inside it. */
+const isolatedAgentOptions = async () => {
+	const dir = createAgentDir();
+	return { agentDir: dir, authStorage: await isolatedAuthStorage(dir) };
 };
 const emptyWorkspaceTree = (cwd: string): WorkspaceTree => ({
 	rootPath: cwd,
@@ -117,7 +126,7 @@ const createSession = async (
 	(
 		await createAgentSession({
 			cwd,
-			agentDir: createAgentDir(),
+			...(await isolatedAgentOptions()),
 			sessionManager: options.sessionManager ?? SessionManager.inMemory(cwd),
 			settings: Settings.isolated({ "python.kernelMode": "session" }),
 			model: getModel(),
@@ -154,12 +163,20 @@ describe("AgentSession python cleanup", () => {
 	const tempDirs: TempDir[] = [];
 	let originalNullPrompt: string | undefined;
 
+	let globals: SettingsTestState | undefined;
+
 	beforeEach(() => {
+		// `AgentStorage.open()` defaults its db path to the PROCESS-GLOBAL agent
+		// dir, which no per-session option overrides, so pin it at a temp root.
+		globals = beginSettingsTest();
+		setAgentDir(createAgentDir());
 		originalNullPrompt = Bun.env.NULL_PROMPT;
 		Bun.env.NULL_PROMPT = "true";
 	});
 
 	afterEach(async () => {
+		restoreSettingsTestState(globals);
+		globals = undefined;
 		if (originalNullPrompt === undefined) {
 			delete Bun.env.NULL_PROMPT;
 		} else {
@@ -202,7 +219,7 @@ describe("AgentSession python cleanup", () => {
 		await expect(
 			createAgentSession({
 				cwd,
-				agentDir: createAgentDir(),
+				...(await isolatedAgentOptions()),
 				sessionManager: SessionManager.inMemory(cwd),
 				settings: Settings.isolated({ "python.kernelMode": "session" }),
 				model: getModel(),
@@ -270,7 +287,7 @@ describe("AgentSession python cleanup", () => {
 		await expect(
 			createAgentSession({
 				cwd,
-				agentDir: createAgentDir(),
+				...(await isolatedAgentOptions()),
 				sessionManager: SessionManager.inMemory(cwd),
 				settings: Settings.isolated({ "python.kernelMode": "session", "memory.backend": "local" }),
 				model: getModel(),

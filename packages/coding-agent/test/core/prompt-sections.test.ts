@@ -295,7 +295,6 @@ describe("applyPromptSectionOrder: duplicate, partial, and unknown names", () =>
 	});
 });
 
-
 /**
  * Whole-prompt ordering: the capability the appended tier never had.
  *
@@ -313,11 +312,10 @@ describe("applyPromptSectionOrderToParts", () => {
 	const HANDLES = ["SHORTHAND HANDLES", "=".repeat(35), "", "handle table"].join("\n");
 
 	it("permutes runtime sections by their rank in the order list", () => {
-		const out = applyPromptSectionOrderToParts([TEMPLATE, PROJECT, SHORTHAND, HANDLES], [
-			"shorthand-handles",
-			"shorthand",
-			"project",
-		]);
+		const out = applyPromptSectionOrderToParts(
+			[TEMPLATE, PROJECT, SHORTHAND, HANDLES],
+			["shorthand-handles", "shorthand", "project"],
+		);
 		expect(out.slice(1)).toEqual([HANDLES, SHORTHAND, PROJECT]);
 	});
 

@@ -2,6 +2,11 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { useIsolatedGlobalSettings } from "../../helpers/isolated-global-settings";
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 function createContainer() {
 	return {

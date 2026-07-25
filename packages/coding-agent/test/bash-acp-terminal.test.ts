@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { ClientBridge, ClientBridgeTerminalHandle } from "@veyyon/coding-agent/session/client-bridge";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 import { makeToolSession } from "./helpers/tool-session";
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 function makeSession(bridge: ClientBridge): ToolSession {
 	return makeToolSession({

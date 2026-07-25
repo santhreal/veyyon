@@ -36,6 +36,7 @@ Every PR runs the full CI suite before a human looks at it:
 | **Checks** (`checks.yml`) | Biome lint + type check, TypeScript workspace tests |
 | **CI** (`ci.yml`) | Native addon builds, Rust + TS test matrix, install-method smoke tests |
 | **Security** (`security.yml`) | keyhog secret scan, `cargo deny`, `cargo audit`, `bun audit`, CodeQL SAST |
+| **Site** (`site.yml`) | Builds the website when a PR touches `website/**`, so a blog post or report with bad frontmatter fails here; deploys on merge to `main` |
 | **Autoreview** (`autoreview.yml`) | santh-bot (qodo pr-agent) posts an AI review, description, and improvement pass |
 | **veybot** | The in-repo review bot posts a deeper contextual review |
 

@@ -18,6 +18,12 @@ import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extens
 import * as git from "@veyyon/coding-agent/utils/git";
 import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
+import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
+
+// The experiment tools persist runs through `AgentStorage`, which opens
+// `agent.db` under the ACTIVE PROFILE's agent dir. Without this the suite writes
+// into the developer's own `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 afterEach(() => {
 	vi.restoreAllMocks();

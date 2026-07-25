@@ -1,10 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getBlobsDir, TempDir } from "@veyyon/utils";
+import { __resetDirsFromEnvForTests, getBlobsDir, setAgentDir, TempDir } from "@veyyon/utils";
 
 function isAssistantSessionEntry(entry: unknown): entry is SessionMessageEntry & { message: AssistantMessage } {
 	return (
@@ -27,6 +28,34 @@ function getAssistantMessage(session: SessionManager): AssistantMessage {
 }
 
 describe("SessionManager signature persistence", () => {
+	// Externalized image blobs go to `getBlobsDir()`, which hangs off the AGENT dir
+	// — not off the temp dir each test passes to `SessionManager.create`. Without
+	// moving that root these tests write real blobs into the developer's
+	// `~/.veyyon`; the runner's sandbox HOME hid it until the suite was run bare.
+	let savedAgentDirEnv: string | undefined;
+	let agentRoot: TempDir | undefined;
+
+	beforeEach(() => {
+		savedAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+		agentRoot = TempDir.createSync("@pi-session-signature-agent-");
+		setAgentDir(agentRoot.path());
+	});
+
+	afterEach(async () => {
+		if (savedAgentDirEnv === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
+		else process.env.VEYYON_CODING_AGENT_DIR = savedAgentDirEnv;
+		__resetDirsFromEnvForTests();
+		await agentRoot?.remove();
+		agentRoot = undefined;
+	});
+
+	it("writes externalized blobs inside a temp agent dir, never the real one", () => {
+		// Named per root rather than assumed from the temp dir the tests pass in:
+		// that argument governs the session file, and the blob store is a different
+		// root entirely, which is exactly how this suite came to write real data.
+		expect(getBlobsDir().startsWith(os.tmpdir())).toBe(true);
+	});
+
 	it("externalizes provider image data URLs and restores preserved history payloads across reload", async () => {
 		using tempDir = TempDir.createSync("@pi-session-provider-image-persistence-");
 		const session = SessionManager.create(tempDir.path(), tempDir.path());

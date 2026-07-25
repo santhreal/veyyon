@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-13f209aa.js";
+            window.path_to_searchindex_js = "searchindex-f3663b17.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-de67d70d.js"></script>
@@ -330,117 +330,6 @@ points you at.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="argot"><a class="header" href="#argot">Argot</a></h1>
-<p>Argot is experimental: off by default, gated to models you explicitly allow, and
-still being measured on live benches. The mechanism is fully wired and lossless;
-what is unproven is the economics (whether real sessions save enough output
-tokens to matter), which is why it ships behind a flag.</p>
-<p>Argot is a per-project shorthand that the model writes in. A project keeps a
-small table of handles, each one a short name that stands for a longer string it
-repeats a lot: a full path, an import root, a canonical build command. The model
-writes the handle, and Veyyon restores it to the full string before anything runs
-or is shown. This is the largest mechanism the fork adds on top of oh-my-pi.</p>
-<p>This chapter explains what Argot is and how the codec works. To turn it on, see
-<a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>.</p>
-<h2 id="the-idea-in-one-example"><a class="header" href="#the-idea-in-one-example">The idea in one example</a></h2>
-<p>Say a project’s build command is a long, exact string the agent types over and
-over:</p>
-<pre><code>node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci
-</code></pre>
-<p>With Argot, that string gets a handle, for example <code>§build</code>. The model writes
-<code>§build</code>, and by the time the command reaches the shell it is the full string
-again. The model carried a short token where it would have carried a long one,
-and nothing downstream ever saw the short form.</p>
-<p>A handle is a marker followed by a name. The default marker is the section sign
-<code>§</code>, so the handle is <code>§build</code>. A name is lowercase letters, digits, and
-underscores. The marker is configurable per project through the dictionary’s
-<code>sigil</code> field, and it may never contain a character that could blur into a name
-or into whitespace.</p>
-<h2 id="the-dictionary"><a class="header" href="#the-dictionary">The dictionary</a></h2>
-<p>The handles live in a file named <code>AGENTS.dict</code>. It is a small table mapping each
-name to its expansion:</p>
-<pre><code class="language-toml">sigil = "§"
-
-[handles]
-build = "node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci"
-dbconn = "src/server/db/connection.ts"
-</code></pre>
-<p>A handle stands for a recurring string, not a document, so an expansion has an
-upper bound and a longer one is rejected. The file also declares a format
-version. A file that targets a newer major version is refused loudly rather than
-read on a guess.</p>
-<p>You do not write or commit this file by hand, and Veyyon does not guess which
-project you mean. The agent decides: it calls the <code>argot_load</code> tool on the folder
-it is about to work in, and Veyyon generates the dictionary for that project from
-the strings it actually repeats, scores each candidate by how much output it
-would save, and keeps the result in a local cache under its own config
-directory. In a monorepo the agent loads the one package it is working in, not
-the repo root. Nothing is written into your working tree, so there is no file
-for a pull request to pick up, and a session where the agent never loads
-anything simply behaves as if Argot were off.</p>
-<h2 id="two-directions-two-rules"><a class="header" href="#two-directions-two-rules">Two directions, two rules</a></h2>
-<p>Argot has two directions, and they are gated differently on purpose.</p>
-<p><strong>Decoding</strong> is turning a handle back into its full text. It is unconditional.
-Once a dictionary is loaded, every handle expands, always, before the text
-reaches a tool, the disk, or your screen. A handle that arrived at a tool
-unexpanded would be a broken path, not merely worse text, so decoding is never
-something a setting can switch off.</p>
-<p><strong>Encoding</strong> is teaching the model the notation so it writes handles in the first
-place. This is a policy choice, and it has two levers:</p>
-<ul>
-<li>A model allowlist. Only the models you name are taught the shorthand. The list
-is empty by default, so turning Argot on without naming a model stays inert.
-This lets you keep shorthand on for a model you trust to recall the dictionary
-and off for one you are still measuring.</li>
-<li>A context-size cutoff. Recall of the dictionary degrades as a conversation
-grows, so past a token threshold Veyyon stops teaching new shorthand and the
-model writes in full.</li>
-</ul>
-<p>Because decoding never depends on either lever, it is always safe to stop
-encoding. The worst case is the model writing a full string it could have
-shortened, never a raw handle leaking through. Switching models mid-session is
-safe for the same reason: a handle already in the history expands whatever model
-is active now.</p>
-<h2 id="why-it-saves-tokens"><a class="header" href="#why-it-saves-tokens">Why it saves tokens</a></h2>
-<p>Output tokens cost several times more than input tokens. A handle pays off when
-the model would otherwise retype a long string many times across a session, since
-each repeat is output the model is charged for at the higher rate. The generator
-optimizes for exactly this: it fills the dictionary highest-value first, where
-value is how much output a handle removes across the project’s text, and it stops
-before the dictionary itself grows large enough to cost more to carry than it
-saves.</p>
-<h2 id="the-cache-is-immutable-and-content-keyed"><a class="header" href="#the-cache-is-immutable-and-content-keyed">The cache is immutable and content-keyed</a></h2>
-<p>Each cache entry is named by the content it was built from: the git commit for a
-git project, or a signature of the file listing for a project with a <code>.argot</code>
-marker. An entry is never rewritten once it exists. A new commit reads a new
-entry, built from the new tree; the old entry stays exactly as it was. Two agents
-on the same commit read one entry, agents on different commits read different
-entries, and a race to build the same entry produces byte-identical output, so
-the write is safe with no lock.</p>
-<p>Nothing depends on a handle keeping its name from one entry to the next. The
-expansion rule (see “Two directions, two rules” above) expands every handle
-before it reaches the saved transcript, so no stored transcript ever holds a raw
-handle. Because the history never references a handle, a rebuilt-from-empty cache
-would break nothing: the two directions stay correct whatever the dictionary
-holds. That is why the cache can be keyed on content and thrown away freely,
-rather than pinned and grown forever. To rebuild deliberately, delete the
-project’s cache directory and let the next session regenerate it.</p>
-<h2 id="subagents-each-expand-their-own-output"><a class="header" href="#subagents-each-expand-their-own-output">Subagents each expand their own output</a></h2>
-<p>A subagent veyyon spawns for a task follows the same two rules on its own. Every
-agent expands its output before it reaches a tool, the saved transcript, a prompt
-it hands to a child, or the result it returns to a parent, so a handle never
-crosses between a parent and a child in either direction. A subagent that starts
-with no dictionary is already correct: it reads the full text its parent wrote
-(the parent expanded it) and writes full text back (the child expands it).
-Sharing a dictionary between parent and child is only a way to save tokens, never
-a thing correctness rests on. The <code>argot.subagents</code> setting picks between no
-shorthand, a fresh dictionary from the child’s own project, and a copy of the
-parent’s; see <a href="#choose-how-subagents-start">the configuration
-page</a>.</p>
-<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
-<ul>
-<li><a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>: the settings and how to enable it</li>
-<li><a href="#mechanisms">Mechanisms</a>: the rest of what the fork adds</li>
-</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="harness-design-goals"><a class="header" href="#harness-design-goals">Harness design goals</a></h1>
 <p>Model quality depends on the agent harness: tool schemas, edit format, context handling, and control flow. The same weights can succeed or fail depending on those choices.</p>
@@ -456,7 +345,7 @@ page</a>.</p>
 <li>Engine-enforced modes: plan file + resolve path, goal continuation, approval tiers.</li>
 <li>Schema-based tool-call repair before argument validation (see <a href="#tool-call-repair">Repair</a>).</li>
 </ul>
-<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
+<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#tool-call-repair">Repair</a></li>
@@ -510,7 +399,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <p>CLI/TUI and session loop: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives. Streaming returns tokens as they arrive.</p>
 <h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
 <p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
-<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
+<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#getting-started">Getting started</a></li>
@@ -607,12 +496,13 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 </code></pre>
 <p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
 <p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p>On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a “not found” error from the dynamic loader about a file that is plainly there.</p>
 <h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
 <p>The installer takes a few options. Pass them after <code>-- </code> when you pipe the script:</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11   # a specific release
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --source        # build from a git checkout
 </code></pre>
-<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, and <code>-Uninstall</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>).</p>
+<p><code>--source</code> is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. On Windows the same options are <code>-Source</code>, <code>-Binary</code>, <code>-Ref</code>, and <code>-Uninstall</code>. Pass them with the scriptblock form, for example <code>&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source</code> (see the header of <code>install.ps1</code>).</p>
 <p>If you would rather clone and drive the workspace yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -670,7 +560,12 @@ with the newer one it fetches from veyyon.dev; veyyon.dev serves the signed
 release and propagates automatically from GitHub Releases, so that is the only
 place a binary ever comes from. A source checkout updates in its own terms:
 <code>veyyon update</code> fast-forwards the checkout, reinstalls dependencies, and
-regenerates build artifacts, and refreshes the native addon, all in one command. The background updater leaves
+regenerates build artifacts, and refreshes the native addon, all in one command.
+It then reads the checkout’s own version back and refuses to report success
+unless the checkout really is at the new release. A fast-forward only advances
+the branch you are on, so a checkout on a feature branch, or on a fork whose
+upstream lags, can merge cleanly and stay behind; Veyyon tells you that instead
+of claiming a version you do not have. The background updater leaves
 source checkouts alone (it never runs git against your working tree); it tells
 you a version exists and you run <code>veyyon update</code> when you want it. There is no
 npm, Homebrew, or other package-manager channel to go through. If an update
@@ -684,11 +579,46 @@ newer release is never held back by an older one’s failure, and <code>veyyon u
 ignores the pause entirely, so you can always ask to see the error again:</p>
 <pre><code class="language-console">$ veyyon update
 </code></pre>
+<p>An update also rewrites the shell completion files you already have, so
+tab completion knows about the subcommands and flags the new version added. It
+rewrites only files that are already there. It never creates one, because
+choosing which shells get completions is the installer’s job, not an update’s.
+If a completion cannot be rewritten, Veyyon names the file and tells you it
+still describes the previous version; the update itself is unaffected. Both
+install channels do this: a binary update regenerates from the new binary, a
+source update from the checkout’s launcher.</p>
+<p>The native addon is cached per version under <code>~/.veyyon/natives/&lt;version&gt;/</code>,
+around 150MB each. When a new version stages its own cache, the previous
+version’s copy is removed: it can never be loaded again, because Veyyon looks
+only under its own version. Only directories named like a version are touched,
+and a copy that cannot be removed is reported and retried on the next update.</p>
 <p>Running several sessions at once is safe. Only the first one to start installs;
 the others see that an install is under way and skip it rather than writing over
 the same binary at the same time.</p>
+<h2 id="tab-completion"><a class="header" href="#tab-completion">Tab completion</a></h2>
+<p>The installer sets up tab completion for you. On macOS and Linux it writes one
+file per shell into the directory bash, zsh, and fish each autoload from. If a
+shell will not load that directory (zsh’s <code>$fpath</code> often does not include it,
+and bash needs the <code>bash-completion</code> package), the installer says so and prints
+the exact line to add, rather than leaving you a file nothing reads.</p>
+<p>Windows works differently, because PowerShell has no directory it autoloads
+completions from. The installer writes <code>veyyon-completions.ps1</code> next to your
+profile and adds one line to the profile that loads it:</p>
+<pre><code class="language-powershell"># added by the veyyon installer
+. "C:\Users\you\Documents\PowerShell\veyyon-completions.ps1"
+</code></pre>
+<p>Uninstall removes that line and the script, and leaves the rest of your profile
+exactly as it was.</p>
+<p>If you already have your own <code>vey</code> command, the installer never creates that
+alias, and the completions it writes do not bind the name either. Every
+generated script normally completes both <code>veyyon</code> and <code>vey</code>, so binding it
+anyway would give your tool Veyyon’s subcommands. You can ask for that form
+yourself:</p>
+<pre><code class="language-console">$ veyyon completions zsh --no-alias
+</code></pre>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>The installer removes everything it added, including the <code>vey</code> alias, any shell completions, and a source checkout if you made one:</p>
+<p>The installer removes everything it added, and only what it added: the binary, the <code>vey</code> alias, the shell completions it wrote, the cached native addon, and a source checkout if you made one.</p>
+<p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
 <p>On Windows:</p>
@@ -1190,6 +1120,37 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the tests and fix failures"
 </code></pre>
 <p>The launch flags <code>--yolo</code> and <code>--plan-yolo</code> set <code>yolo</code> and a plan-mode variant of it.</p>
+<h2 id="the-working-directory-boundary"><a class="header" href="#the-working-directory-boundary">The working-directory boundary</a></h2>
+<p>A tier tells you what kind of thing a tool does. It does not tell you which file the
+tool is about to touch. In <code>auto-edit</code>, the <code>write</code> tier is approved, so <code>write</code> runs
+without asking whether the target is <code>src/main.ts</code> or a file in your home directory.</p>
+<p>The working-directory boundary is the second question, asked after the tier:</p>
+<blockquote>
+<p>Does this call touch a path outside the session working directory?</p>
+</blockquote>
+<p>If it does, the call asks for approval even though its tier would have allowed it. This
+holds in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>. It does not hold in <code>yolo</code>, which turns off
+permission entirely.</p>
+<p>Say you launched in <code>~/projects/api</code> and the model runs this:</p>
+<pre><code class="language-console">$ veyyon --approval-mode auto-edit "update the config"
+</code></pre>
+<p>Writing <code>~/projects/api/config.yml</code> runs without asking, because it is inside the
+working directory and <code>write</code> is an approved tier. Writing <code>~/.ssh/config</code> asks, because
+it is outside, even though the tier is the same.</p>
+<p>The check looks at where a path really leads, not at how it is spelled. A path written
+entirely inside the working directory that reaches outside it through a symlink counts
+as outside. A path that cannot be resolved at all also counts as outside, because
+treating an unreadable path as safe is the assumption you least want to be wrong about.</p>
+<p>These tools take part: <code>read</code>, <code>write</code>, <code>edit</code>, <code>ast_edit</code>, <code>grep</code>, <code>glob</code>, <code>ast_grep</code>,
+<code>inspect_image</code>, and <code>set_cwd</code>.</p>
+<p><code>set_cwd</code> is on that list because it changes the working directory itself. If it were
+not bound, you could move the boundary instead of obeying it: re-root to the parent
+directory, and every later write counts as inside. So re-rooting outward asks, the same
+as writing outward. Re-rooting into a subdirectory does not ask, because that narrows
+what the session can reach rather than widening it.</p>
+<p>When no interactive prompt is available, such as a headless or ACP run, a call that
+needs approval fails instead of proceeding. The error names the path that crossed the
+boundary, so you can see why the run stopped.</p>
 <h2 id="per-tool-overrides"><a class="header" href="#per-tool-overrides">Per-tool overrides</a></h2>
 <p>When you want one tool to behave differently from its tier, name it under
 <code>tools.approval</code>. Each entry maps a tool to <code>allow</code>, <code>deny</code>, or <code>prompt</code>, and that choice
@@ -1212,7 +1173,7 @@ trust the directory.</p>
 <p>When a tool is denied, or a policy check fails, Veyyon returns an error to the model. It
 does not retry with more permission. An error never escalates what the model is allowed to
 do.</p>
-<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
+<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -1500,7 +1461,7 @@ stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that d
 tiers you need. The process exit status follows the run.</p>
 <h2 id="execpolicy-1"><a class="header" href="#execpolicy-1">Execpolicy</a></h2>
 <p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
-<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
+<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
 <ul>
 <li><a href="#permission-model">Permission model</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -1528,7 +1489,7 @@ tiers you need. The process exit status follows the run.</p>
 </div>
 <h2 id="headless-1"><a class="header" href="#headless-1">Headless</a></h2>
 <p><code>veyyon --print</code> has no TTY for prompts. Set <code>--approval-mode</code> / <code>--yolo</code> explicitly for the job. Reserve full auto-approve for disposable runners. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
-<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
+<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
@@ -1977,7 +1938,7 @@ follows the print-mode run (<code>veyyon --help</code>).</p>
 <h2 id="approvals-2"><a class="header" href="#approvals-2">Approvals</a></h2>
 <p>Tool approvals use <code>tools.approvalMode</code> and per-tool policy. See <a href="#approvals">Approvals</a> and
 <a href="#safety-1">Safety</a>.</p>
-<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
+<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -2025,7 +1986,7 @@ EOF
 </table>
 </div>
 <p>Headless runs have no TTY for approval prompts: choose a mode that does not block (<code>--yolo</code> only on disposable runners) or expect the turn to stop when a prompt would be required. See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
+<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -2880,7 +2841,7 @@ export default function hook(pi: HookAPI): void {
 <p>Hook/extension paths are resolved as absolute, <code>~</code>-expanded, or relative to cwd. Discovery loads capability-registered modules, importable <code>.ts</code>/<code>.js</code> factories, plugin extension entry points, and explicit paths.</p>
 <h2 id="lifecycle-extension-bus"><a class="header" href="#lifecycle-extension-bus">Lifecycle (extension bus)</a></h2>
 <p>Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in <code>types.ts</code>). Exact event names and payloads are in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code> and <code>docs/hooks.md</code>.</p>
-<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
+<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
 <ul>
 <li><a href="#custom-hooks-guide">Custom hooks guide</a></li>
 <li>Repository <code>docs/hooks.md</code></li>
@@ -2914,7 +2875,7 @@ export default function (pi: HookAPI): void {
 </ul>
 <h2 id="events"><a class="header" href="#events">Events</a></h2>
 <p>Event names and payloads are defined in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code>. Common surfaces include tool call, permission-related gates (via the approval path), session lifecycle, and compaction. See <code>docs/hooks.md</code> for the typed list and return shapes (<code>block</code>, reasons, message injection).</p>
-<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
+<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
 <ul>
 <li><a href="#hooks">Hooks</a></li>
 <li><a href="#approvals">Approvals</a></li>
@@ -2952,7 +2913,7 @@ common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.<
 Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
 <li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
 <li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
@@ -3503,7 +3464,7 @@ compaction:
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="approvals-3"><a class="header" href="#approvals-3">Approvals</a></h2>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
+<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
@@ -3980,7 +3941,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 }
 </code></pre>
 <p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="#hooks">Hooks</a>, <a href="#task-guides">Task guides</a>. MCP: <a href="#mcp">MCP</a>.</p>
-<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
+<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
@@ -4019,7 +3980,7 @@ $ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
 $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
-<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
+<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -4034,7 +3995,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <p>External tools via Model Context Protocol: client config in <code>mcp.json</code> (user profile and/or project). See <a href="#mcp">MCP</a>.</p>
 <h2 id="hooks-1"><a class="header" href="#hooks-1">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
-<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
+<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
@@ -5124,7 +5085,7 @@ your own keys and choose models.</p>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, re-exports, and related repo checks (see project CI / <code>STANDARD.md</code> where applicable).</li>
 </ul>
-<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
+<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
 <li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
@@ -5151,7 +5112,7 @@ your own keys and choose models.</p>
 </table>
 </div>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
-<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
+<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
 <li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
@@ -5170,7 +5131,7 @@ your own keys and choose models.</p>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
-<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
+<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#tool-call-repair">Why repair exists</a></li>
 <li><a href="#repair-on-edits">Repair on edits</a></li>
@@ -5212,7 +5173,7 @@ your own keys and choose models.</p>
 </ul>
 <h2 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h2>
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>, …). Standard <code>OTEL_*</code> env vars apply (<code>OTEL_SERVICE_NAME</code>, headers, <code>OTEL_SDK_DISABLED</code>, <code>OTEL_TRACES_EXPORTER=none</code>). Transport is <code>http/protobuf</code> only. See <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
-<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
+<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#observability">Observability</a></li>
 <li><a href="#the-repair-cascade">Repair cascade</a></li>
@@ -5627,7 +5588,7 @@ veyyon plugin doctor
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code> (plus execpolicy <code>.rules</code>). There is no OS command sandbox. Schema default is <strong><code>yolo</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
-<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
+<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>
 <li><a href="#approvals-and-errors">Approvals and errors</a></li>
 <li><a href="#observability">Observability</a></li>

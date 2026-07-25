@@ -78,9 +78,14 @@ describe("settings-test-state isolation", () => {
 		// Track the profile dir that setProfile may have created under the real
 		// config root (Bun caches os.homedir at process start, so HOME mutation
 		// alone does not relocate it).
+		// `getAgentDir()` under a named profile is `<config>/profiles/<name>/agent`,
+		// so ONE `dirname` reaches the profile directory. Climbing a second level
+		// (which this did) lands on `<config>/profiles` and the cleanup below would
+		// delete EVERY profile the developer has. The tripwire caught it; the guard
+		// stays so a future edit to the layout cannot silently widen it again.
 		const profileDir = path.dirname(getAgentDir());
-		if (profileDir.includes("iso-profile-test")) {
-			profileCleanups.push(path.dirname(profileDir)); // profiles/iso-profile-test
+		if (path.basename(profileDir) === "iso-profile-test") {
+			profileCleanups.push(profileDir);
 		}
 		setProjectDir(project);
 		const leakedConfig = path.join(temp, "cfg-name");

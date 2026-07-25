@@ -407,6 +407,48 @@ export async function runCli(argv: string[]): Promise<void> {
 }
 
 /**
+ * The members of an `AggregateError`, one per line, or `""` for any other error.
+ *
+ * Without this, an aggregate prints as its message alone — and Bun's own message
+ * is a COUNT, not a description. A failed transpile surfaced to the operator as
+ * exactly `AggregateError: 5 errors building ".../auth-storage.ts"`, with all
+ * five real errors sitting unread in `err.errors`, reachable only by rerunning
+ * with `VEYYON_STACK=1`. An error surface that requires a second run and an
+ * undocumented env var to say what went wrong is not reporting the failure, it
+ * is announcing it.
+ *
+ * Members are capped, because a bundler can aggregate hundreds and a fatal
+ * handler that floods the terminal buries the summary line it just printed. The
+ * remainder is COUNTED rather than dropped silently, so the operator knows to
+ * reach for the full render.
+ *
+ * `seen` is shared with the cause walk so a member that is also a cause (or that
+ * points back at its own aggregate) cannot recurse forever while the process is
+ * trying to die.
+ */
+function formatAggregateMembers(err: Error, seen: Set<unknown>, indent: string): string {
+	const members = (err as { errors?: unknown }).errors;
+	if (!Array.isArray(members) || members.length === 0) return "";
+
+	const MAX_SHOWN = 10;
+	let out = "";
+	let shown = 0;
+	for (const member of members) {
+		if (shown >= MAX_SHOWN) break;
+		if (seen.has(member)) continue;
+		seen.add(member);
+		shown++;
+		out +=
+			member instanceof Error
+				? `\n${indent}- ${member.name && member.name !== "Error" ? `${member.name}: ` : ""}${member.message || "(no message)"}`
+				: `\n${indent}- ${String(member)}`;
+	}
+	const hidden = members.length - shown;
+	if (hidden > 0) out += `\n${indent}- (${hidden} more; set VEYYON_STACK=1 for all of them)`;
+	return out;
+}
+
+/**
  * Render an error escaping `runCli` for the operator. `Bun.inspect` on an
  * Error embeds source-context excerpts around each frame — in the compiled
  * binary those are raw minified lines from the 654k-line bundled cli.js,
@@ -418,6 +460,7 @@ export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boo
 	let out: string;
 	if (err instanceof Error) {
 		out = `${err.name && err.name !== "Error" ? err.name : "Error"}: ${err.message || "(no message)"}`;
+		out += formatAggregateMembers(err, new Set([err]), "  ");
 		// A wrapped error can form a cause cycle (`e.cause === e`, or A↔B), which
 		// would make this walk loop forever and hang the process at the exact moment
 		// it is trying to print a fatal error. Track visited errors and stop at the
@@ -432,6 +475,7 @@ export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boo
 			seen.add(cause);
 			if (cause instanceof Error) {
 				out += `\n  caused by: ${cause.name && cause.name !== "Error" ? `${cause.name}: ` : ""}${cause.message}`;
+				out += formatAggregateMembers(cause, seen, "    ");
 				cause = cause.cause;
 			} else {
 				out += `\n  caused by: ${String(cause)}`;

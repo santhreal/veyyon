@@ -5,12 +5,17 @@ import * as path from "node:path";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
 import { removeWithRetries } from "@veyyon/utils";
+import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * BashTool cwd fail-closed contracts: missing/non-directory cwd, async disabled,
  * and a successful command with exact stdout. Drives BashTool.execute.
  */
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 function bashSession(cwd: string) {
 	return makeToolSession({

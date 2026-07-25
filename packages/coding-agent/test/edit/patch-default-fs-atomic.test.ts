@@ -153,10 +153,7 @@ describe("patch defaultFileSystem crash-atomic writes", () => {
 	it("applyPatch create through the default filesystem writes the new file with no temp leak", async () => {
 		const file = path.join(dir, "added.txt");
 
-		const result = await applyPatch(
-			{ path: file, op: "create", diff: "brand new line\n" },
-			{ cwd: dir },
-		);
+		const result = await applyPatch({ path: file, op: "create", diff: "brand new line\n" }, { cwd: dir });
 
 		expect(result.change.type).toBe("create");
 		expect(await fsp.readFile(file, "utf8")).toBe("brand new line\n");

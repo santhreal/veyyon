@@ -11,6 +11,12 @@ import type {
 } from "@veyyon/coding-agent/eval/py/kernel";
 import * as pythonKernel from "@veyyon/coding-agent/eval/py/kernel";
 import { PythonKernel } from "@veyyon/coding-agent/eval/py/kernel";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 const OK_RESULT: KernelExecuteResult = {
 	status: "ok",

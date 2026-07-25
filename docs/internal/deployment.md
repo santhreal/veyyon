@@ -61,7 +61,65 @@ cd docs/handbook && mdbook build
 Use mdbook **v0.5.2**, the `docs.yml` book-freshness gate rebuilds with that pinned
 version and fails CI if the committed `docs/handbook/book/` doesn't match the sources.
 
-### Automatic deploy on release (primary path)
+### Technical reports and the blog
+
+A technical report is a Markdown file in `website/blog/`, and that file is the only
+copy of it. GitHub renders it as-is for anyone reading the repository, and the site
+build renders the same source into a styled page at `veyyon.dev/blog/<slug>`. There
+is no separate CMS, no pasted duplicate, and nothing to keep in sync by hand.
+
+Write one like this:
+
+```
+website/blog/hashline-anchors.md
+```
+
+```markdown
+---
+title: "Hashline: content-addressed edits"
+slug: hashline-anchors
+date: 2026-07-20
+summary: "Anchors from a prior read, verified before the write."
+draft: false
+---
+
+Edits carry an anchor.
+```
+
+The frontmatter rules are enforced, not advisory. `website/tools/gen-blog.mjs`
+throws (and so fails the build) when a slug is not URL-safe, when two reports
+resolve to the same slug, or when a published post has no ISO `date` or no
+`summary`. `draft: true` still renders the page so a direct link works for review,
+but the post is served `noindex`, stays off the blog index, and stays out of the
+sitemap. Flipping `draft` to `false` is what publishes it.
+
+Build and gate it locally:
+
+```
+bun run site:build        # renders every post, folds published ones into sitemap.xml
+bun run site:check-blog   # asserts the rendered tree matches the sources
+```
+
+`site:check-blog` is the coherence gate: every published post has a rendered page,
+a sitemap entry, an index card, its frontmatter title and date on the page, and no
+`noindex`; every draft has the mirror image of that; and every sitemap blog URL
+still has a source file. `website/tools/gen-blog.test.ts` pins the generator's rules.
+
+### Automatic sync: merge a report, it publishes itself
+
+`.github/workflows/site.yml` is what makes the repository and the site one thing.
+It builds the site on any pull request touching `website/**` (so a malformed report
+fails review, never production), and on push to `main` it builds again and deploys
+the `veyyon` Pages project. Merging a report to `main` publishes it; there is no
+manual deploy step and no waiting for a release.
+
+It runs on `website/**`, `docs/handbook/book/**`,
+`packages/coding-agent/CHANGELOG.md`, `scripts/install.*`, and its own file. It uses
+the same `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets as the release
+deploy below, and if the token is missing the job **fails loudly** rather than
+reporting a green publish that never happened.
+
+### Automatic deploy on release (secondary path)
 
 The site redeploys itself whenever a release publishes. `ci.yml`'s `release_site` job
 runs after `release_github`: it regenerates the changelog (now reconciled against the
@@ -163,7 +221,7 @@ still ships the GitHub binaries.
 | Name | Kind | Gates |
 | --- | --- | --- |
 | `RELEASE_PAT` | secret | **required.** Fine-grained PAT with Contents: read/write. The Release workflow pushes the version-bump commit and tag with it, because GitHub does not start workflow runs for pushes made with the built-in `GITHUB_TOKEN` — so without it a release would be tagged but never published. The workflow refuses to start when it is missing. Drives both the automatic (push) and manual release paths. |
-| `CLOUDFLARE_API_TOKEN` | secret | `release_site` auto-deploy of both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
+| `CLOUDFLARE_API_TOKEN` | secret | `site.yml`'s deploy of `veyyon.dev` on every push to `main`, and `release_site`'s deploy of both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | only if the token spans multiple Cloudflare accounts |
 | `APPLE_CERTIFICATE_P12` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER_ID` | secrets | macOS Developer-ID signing + notarization (all five or signing is skipped) |
 | `SITE_AUTODEPLOY` | repo var | set `off` to disable the release site auto-deploy |
@@ -189,9 +247,13 @@ to fix properly.
 
 ## Checklist for a normal site update
 
-A release ships the site automatically (see *Automatic deploy on release*), so the
-changelog stays current with zero manual steps. Use this only for out-of-band site
-edits between releases:
+Merging to `main` ships the site (see *Automatic sync*), and a release ships it again
+with the changelog reconciled. So the normal path is: edit under `website/`, run
+`bun run site:build` (plus `bun run site:check-blog` if you touched a post), open the
+pull request, merge. Nothing else.
+
+Deploy by hand only when the automation is off or you need the site live before the
+merge lands:
 
 1. Edit the page(s) under `website/` (or the changelog source, or `scripts/install.*`).
 2. `bun run site:build`: confirm the brand check passes and the changelog looks right.

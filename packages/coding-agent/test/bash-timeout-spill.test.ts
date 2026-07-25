@@ -6,6 +6,7 @@ import path from "node:path";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 import { makeToolSession } from "./helpers/tool-session";
 
 // TW-7: a command that emits more than the inline byte budget and then times
@@ -13,6 +14,10 @@ import { makeToolSession } from "./helpers/tool-session";
 // path a completed command uses. Before the fix the abort/timeout error carried
 // the full untruncated buffer, which then rode along in context for every later
 // turn (a measured 72KB timeout result cost ~7M token-turns of cacheRead).
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 const HEAD_SENTINEL = "SENTINEL_HEAD_7f3a";
 const TAIL_SENTINEL = "SENTINEL_TAIL_9c2b";

@@ -71,19 +71,127 @@ function isRenameClobberError(error: unknown): boolean {
 
 // Resolve the real file an atomic write should replace. If `filePath` is a
 // symlink (a dotfile manager pointing config.yml into a synced repo), return the
-// link's target so the link survives; renaming a temp over the link name would
-// silently turn the link into a regular file. A dangling link keeps `viaSymlink`
-// true so the caller skips mkdir and fails loudly on the missing directory.
+// file at the END of the link chain so every link survives; renaming a temp over
+// a link name would silently turn that link into a regular file. A dangling link
+// keeps `viaSymlink` true so the caller skips mkdir and fails loudly on the
+// missing directory.
+//
+// The whole chain matters, not just the first hop. Resolving one level with
+// `readlink` and stopping there is what a naive implementation does, and it is
+// wrong in the common dotfile-manager layout where `~/.config/app` points at a
+// link that points at the real file: the write lands on the INTERMEDIATE link,
+// destroying it, and the file the user actually keeps is never updated. That is
+// silent in both directions — no error, and a read afterwards returns the new
+// bytes from the replaced link. `realpath` follows the chain to its end.
+//
+// `resolveWriteTargetSync` below is the blocking twin; keep the two in step.
 async function resolveWriteTarget(filePath: string): Promise<{ target: string; viaSymlink: boolean }> {
 	try {
-		if ((await fsp.lstat(filePath)).isSymbolicLink()) {
-			return { target: path.resolve(path.dirname(filePath), await fsp.readlink(filePath)), viaSymlink: true };
+		const stats = await fsp.lstat(filePath);
+		if (!stats.isSymbolicLink()) {
+			assertRegularFileTarget(stats, filePath);
+			return { target: filePath, viaSymlink: false };
 		}
 	} catch (error) {
 		// ENOENT is the normal first-write case (the path does not exist yet).
 		if (!isEnoent(error)) throw error;
+		return { target: filePath, viaSymlink: false };
 	}
-	return { target: filePath, viaSymlink: false };
+	try {
+		const target = await fsp.realpath(filePath);
+		assertRegularFileTarget(await fsp.lstat(target), target);
+		return { target, viaSymlink: true };
+	} catch (error) {
+		// A dangling link (or a chain ending in one) has no real path. Fall back to
+		// the single hop so the caller reports the missing directory by name rather
+		// than reporting the link itself.
+		if (!isEnoent(error)) throw error;
+		return { target: path.resolve(path.dirname(filePath), await fsp.readlink(filePath)), viaSymlink: true };
+	}
+}
+
+/**
+ * Refuse to replace anything that is not a regular file.
+ *
+ * An atomic write finishes with `rename(temp, target)`, and rename does not care
+ * what the target is: pointed at a FIFO it DESTROYS the named pipe and leaves a
+ * regular file with the same name, silently breaking whatever process was
+ * reading the other end. The same goes for a socket or a device node. None of
+ * these can be written atomically by definition, so the only honest outcomes are
+ * to refuse or to destroy, and the refusal names the type so the operator can
+ * see what their path actually pointed at.
+ *
+ * Directories are included: rename would fail there anyway, with an `EISDIR`
+ * that says nothing about which path was wrong.
+ *
+ * A missing target is not an error — creating the file is the normal first write.
+ */
+function assertRegularFileTarget(stats: fs.Stats, target: string): void {
+	if (stats.isFile()) return;
+	const kind = stats.isDirectory()
+		? "a directory"
+		: stats.isFIFO()
+			? "a named pipe (FIFO)"
+			: stats.isSocket()
+				? "a socket"
+				: stats.isBlockDevice() || stats.isCharacterDevice()
+					? "a device node"
+					: "not a regular file";
+	throw new Error(
+		`Refusing to write ${target}: it is ${kind}, and an atomic write would replace it with a regular file. ` +
+			`Point the write at a regular file path instead.`,
+	);
+}
+
+/** Blocking twin of {@link resolveWriteTarget}; see that function for the reasoning. */
+function resolveWriteTargetSync(filePath: string): { target: string; viaSymlink: boolean } {
+	try {
+		const stats = fs.lstatSync(filePath);
+		if (!stats.isSymbolicLink()) {
+			assertRegularFileTarget(stats, filePath);
+			return { target: filePath, viaSymlink: false };
+		}
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+		return { target: filePath, viaSymlink: false };
+	}
+	try {
+		const target = fs.realpathSync(filePath);
+		assertRegularFileTarget(fs.lstatSync(target), target);
+		return { target, viaSymlink: true };
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+		return { target: path.resolve(path.dirname(filePath), fs.readlinkSync(filePath)), viaSymlink: true };
+	}
+}
+
+/**
+ * Restate a failure in terms of the file the caller asked to write.
+ *
+ * An atomic write does its work on a temp sibling, so the OS error names that
+ * temp: `EACCES: permission denied, open '/etc/veyyon/.config.yml.4711.1.tmp'`.
+ * That path never existed as far as the operator is concerned, it changes on
+ * every attempt, and it sends people looking for a stray temp file instead of at
+ * the read-only directory that actually stopped them. The rewrite keeps the OS
+ * reason and the failing syscall, swaps in the real target, and says why a temp
+ * was involved at all.
+ *
+ * `code` is copied onto the new error and the original travels as `cause`, so
+ * `isEnoent`, `isFsError` and any caller matching on a code keep working.
+ *
+ * Only a message that quotes THE TEMP PATH is rewritten. An error naming the
+ * target already reads correctly and is passed through untouched.
+ */
+function withTargetInMessage(error: unknown, target: string, tmpPath: string): unknown {
+	if (!(error instanceof Error) || !error.message.includes(tmpPath)) return error;
+	const restated = new Error(
+		`${error.message.replaceAll(tmpPath, target)} (the write is staged in a temporary file beside the target, ` +
+			`so it can replace it atomically; the temporary file is what the operating system named)`,
+		{ cause: error },
+	);
+	const code = (error as NodeJS.ErrnoException).code;
+	if (code !== undefined) (restated as NodeJS.ErrnoException).code = code;
+	return restated;
 }
 
 async function renameTempOverTarget(tmpPath: string, target: string): Promise<void> {
@@ -244,10 +352,14 @@ export async function atomicWriteFileWith(
 		}
 	} catch (error) {
 		await fsp.rm(tmpPath, { force: true }).catch(() => {});
-		throw error;
+		throw withTargetInMessage(error, target, tmpPath);
 	}
 
-	await renameTempOverTarget(tmpPath, target);
+	try {
+		await renameTempOverTarget(tmpPath, target);
+	} catch (error) {
+		throw withTargetInMessage(error, target, tmpPath);
+	}
 	if (fsync) await fsyncDirEntry(dir);
 }
 
@@ -263,16 +375,7 @@ export function atomicWriteFileSync(
 ): void {
 	const { mode = 0o600, fsync = true } = options;
 
-	let target = filePath;
-	let viaSymlink = false;
-	try {
-		if (fs.lstatSync(filePath).isSymbolicLink()) {
-			target = path.resolve(path.dirname(filePath), fs.readlinkSync(filePath));
-			viaSymlink = true;
-		}
-	} catch (error) {
-		if (!isEnoent(error)) throw error;
-	}
+	const { target, viaSymlink } = resolveWriteTargetSync(filePath);
 
 	const dir = path.dirname(target);
 	if (!viaSymlink) fs.mkdirSync(dir, { recursive: true });
@@ -297,7 +400,7 @@ export function atomicWriteFileSync(
 		} catch {
 			// temp never created
 		}
-		throw error;
+		throw withTargetInMessage(error, target, tmpPath);
 	}
 	fs.closeSync(fd);
 
@@ -313,7 +416,7 @@ export function atomicWriteFileSync(
 			} catch {
 				// best effort
 			}
-			throw error;
+			throw withTargetInMessage(error, target, tmpPath);
 		}
 	}
 

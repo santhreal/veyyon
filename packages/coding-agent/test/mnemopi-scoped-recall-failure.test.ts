@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { MnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
+import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 /**
  * Memory recall reads several banks and merges the results. A bank that threw

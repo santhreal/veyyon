@@ -68,4 +68,103 @@ describe("CLI fatal-error formatting", () => {
 		expect(out).toContain("at ");
 		expect(out).not.toContain("(set VEYYON_STACK=1");
 	});
+	describe("an AggregateError reports its members, not just its count", () => {
+		/**
+		 * The gap this closes, from a real sweep failure. A failed transpile reached
+		 * the operator as exactly:
+		 *
+		 *   AggregateError: 5 errors building ".../auth-storage.ts"
+		 *     (set VEYYON_STACK=1 for the full stack trace)
+		 *
+		 * Bun's aggregate message is a COUNT. All five real errors sat unread in
+		 * `err.errors`, which the formatter never looked at because it only walked
+		 * `.cause`. Telling someone their build produced five errors and then making
+		 * them rerun with an undocumented env var to learn what any of them said is
+		 * not reporting a failure, it is announcing one.
+		 */
+		it("lists each member error under the aggregate", () => {
+			const err = new AggregateError(
+				[new SyntaxError("Unexpected token at line 12"), new TypeError("cannot read property of undefined")],
+				"2 errors building auth-storage.ts",
+			);
+
+			const out = formatCliFatal(err, { stack: false, colors: false });
+
+			expect(out).toContain("AggregateError: 2 errors building auth-storage.ts");
+			expect(out).toContain("  - SyntaxError: Unexpected token at line 12");
+			expect(out).toContain("  - TypeError: cannot read property of undefined");
+		});
+
+		it("reports a non-Error member rather than skipping it", () => {
+			// A thrown string or object is legal and shows up in real bundler output.
+			// Dropping it would under-report the failure count the header promised.
+			const err = new AggregateError(["plain string failure", { code: "EBADF" }], "2 failures");
+
+			const out = formatCliFatal(err, { stack: false, colors: false });
+
+			expect(out).toContain("- plain string failure");
+			expect(out).toContain("- [object Object]");
+		});
+
+		it("caps a huge member list and COUNTS the remainder instead of dropping it", () => {
+			// A bundler can aggregate hundreds. Flooding the terminal buries the
+			// summary line, but silently truncating would misreport the scale, so the
+			// hidden count is stated and points at the full render.
+			const members = Array.from({ length: 25 }, (_, i) => new Error(`failure ${i}`));
+			const err = new AggregateError(members, "25 errors");
+
+			const out = formatCliFatal(err, { stack: false, colors: false });
+
+			expect(out).toContain("- failure 0");
+			expect(out).toContain("- failure 9");
+			expect(out).not.toContain("- failure 10");
+			expect(out).toContain("- (15 more; set VEYYON_STACK=1 for all of them)");
+		});
+
+		it("expands an aggregate that appears as a CAUSE, indented under it", () => {
+			// The realistic shape: a friendly wrapper error with the aggregate beneath.
+			// If only the head were expanded, the wrapper would hide every detail again.
+			const inner = new AggregateError([new Error("missing export foo")], "1 error building bar.ts");
+			const err = new Error("failed to start");
+			err.cause = inner;
+
+			const out = formatCliFatal(err, { stack: false, colors: false });
+
+			expect(out).toContain("Error: failed to start");
+			expect(out).toContain("  caused by: AggregateError: 1 error building bar.ts");
+			expect(out).toContain("    - missing export foo");
+		});
+
+		it("does not recurse when an aggregate member points back at the aggregate", () => {
+			// Same defensive posture as the cause-cycle case: this code runs while the
+			// process is already dying, so a hang here costs the operator the error
+			// entirely.
+			const err = new AggregateError([], "self-referential");
+			(err as unknown as { errors: unknown[] }).errors = [err, new Error("real one")];
+
+			const out = formatCliFatal(err, { stack: false, colors: false });
+
+			expect(out).toContain("- real one");
+			expect(out.match(/self-referential/g)?.length).toBe(1);
+		});
+
+		it("leaves an ordinary Error untouched", () => {
+			// The control: no stray bullet list appears for the overwhelmingly common
+			// single error.
+			const out = formatCliFatal(new Error("just one thing"), { stack: false, colors: false });
+
+			expect(out).toBe("Error: just one thing\n  (set VEYYON_STACK=1 for the full stack trace)\n");
+		});
+
+		it("leaves an error whose `errors` property is not an array untouched", () => {
+			// `errors` is not reserved; an unrelated error can carry a field by that
+			// name, and treating a string as a member list would print garbage.
+			const err = new Error("has a field named errors");
+			(err as unknown as { errors: unknown }).errors = "not a list";
+
+			const out = formatCliFatal(err, { stack: false, colors: false });
+
+			expect(out).toBe("Error: has a field named errors\n  (set VEYYON_STACK=1 for the full stack trace)\n");
+		});
+	});
 });

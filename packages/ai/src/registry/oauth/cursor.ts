@@ -2,6 +2,7 @@ import { decodeJwtPayload } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials } from "./types";
+import { credentialExpiryFromJwtExp } from "./expiry";
 
 const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";
@@ -142,7 +143,7 @@ export async function refreshCursorToken(apiKeyOrRefreshToken: string): Promise<
 function getTokenExpiry(token: string): number {
 	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
 	if (decoded && typeof decoded.exp === "number") {
-		return decoded.exp * 1000 - 5 * 60 * 1000;
+		return credentialExpiryFromJwtExp(decoded.exp, { provider: "cursor" });
 	}
 	return Date.now() + 3600 * 1000;
 }

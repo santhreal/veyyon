@@ -13,16 +13,13 @@ import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
 import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const XAI_OAUTH_ISSUER = "https://auth.x.ai";
 const XAI_OAUTH_DISCOVERY_URL = `${XAI_OAUTH_ISSUER}/.well-known/openid-configuration`;
 const XAI_OAUTH_DEVICE_CODE_URL = `${XAI_OAUTH_ISSUER}/oauth2/device/code`;
 const XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 const XAI_OAUTH_SCOPE = "openid profile email offline_access grok-cli:access api:access";
-
-// Mirrors the 5-min skew used by anthropic.ts:160 — keeps every provider on the
-// same conservative client-side expiry window.
-const ACCESS_TOKEN_CLIENT_SKEW_MS = 5 * 60 * 1000;
 
 const DISCOVERY_TIMEOUT_MS = 15_000;
 const TOKEN_REQUEST_TIMEOUT_MS = 20_000;
@@ -220,7 +217,7 @@ function parseXAITokenResponse(payload: unknown, label: string, refreshTokenFall
 	return {
 		access: accessToken,
 		refresh: refreshToken,
-		expires: Date.now() + expiresInSeconds * 1000 - ACCESS_TOKEN_CLIENT_SKEW_MS,
+		expires: credentialExpiryFromExpiresIn(expiresInSeconds, { provider: "xai" }),
 	};
 }
 

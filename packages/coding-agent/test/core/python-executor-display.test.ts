@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { executePythonWithKernel } from "@veyyon/coding-agent/eval/py/executor";
 import type { KernelDisplayOutput } from "@veyyon/coding-agent/eval/py/kernel";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { FakeKernel } from "./helpers";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 describe("executePythonWithKernel display outputs", () => {
 	it("aggregates display outputs in order", async () => {

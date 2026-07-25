@@ -19,7 +19,13 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/tools/yield";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { makeToolSession } from "../helpers/tool-session";
+
+// Spawning a task writes a session (and, for worktree runs, a checkout) under the
+// ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
+// developer's real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 const TEST_TASK: TaskParams = { agent: "task", name: "CheckLsp", task: "Inspect LSP tools." };
 

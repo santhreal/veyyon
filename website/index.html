@@ -15,17 +15,19 @@
 <title>Veyyon: terminal coding agent</title>
 <meta property="og:title" content="Veyyon: terminal coding agent" />
 <meta property="og:url" content="https://veyyon.dev/" />
+<link rel="canonical" href="https://veyyon.dev/" />
 <meta name="description" content="Local terminal coding agent. Your provider keys, hashline edits, Argot per-project shorthand, tool loop, approval modes, multi-provider catalog. CLI/TUI." />
+<link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="./fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
 
-<canvas id="sun" aria-hidden="true"></canvas>
-
-<header class="site" id="hdr">
+<header class="site">
   <div class="wrap nav">
     <a class="brand" href="./">veyyon</a>
     <nav>
+    <!--NAV:START-->
       <a href="./models.html">Models</a>
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
@@ -34,9 +36,11 @@
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
       <a href="./install.html" class="btn">Get started</a>
+    <!--NAV:END-->
     </nav>
     <details class="nav-menu"><summary>menu</summary>
       <nav>
+      <!--NAV:START-->
         <a href="./models.html">Models</a>
         <a href="./features.html">Features</a>
         <a href="./install.html">Install</a>
@@ -45,81 +49,42 @@
         <a href="./docs/">Docs</a>
         <a href="https://github.com/santhreal/veyyon">GitHub</a>
         <a href="./install.html" class="btn">Get started</a>
+      <!--NAV:END-->
       </nav>
     </details>
   </div>
   <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
 </header>
 
-<!-- cinematic scroll journey: sun -> the unique idea -> a walk through the product -> it working -->
-<section class="stage" id="stage">
-  <div class="stage-pin">
-    <div class="cue" id="cue"><span>scroll</span></div>
+<main>
 
-    <!-- act I: the idea, centered beneath the sun. leads with what makes veyyon different. -->
-    <div class="scene center" id="s1"><p class="scene-name">veyyon</p></div>
-    <div class="scene center" id="s2"><p class="scene-lead">Same model weights can succeed or fail depending on tools, edit format, and control flow.</p></div>
-    <div class="scene center" id="s3"><p class="scene-lead">The agent harness owns those layers: schemas, patches, approvals, context.</p></div>
-    <div class="scene center" id="s4"><p class="scene-lead">Veyyon is that harness as a local CLI/TUI on your machine.</p></div>
-
-    <!-- act II: the product, left-aligned with the sun docked to the right -->
-    <div class="scene left" id="s5"><div class="scene-inner hero-inner">
+  <!-- hero: the product first. the sun is atmosphere docked beside the copy
+       (sun.js), not a scroll journey — the install command is readable on load. -->
+  <section class="hero">
+    <canvas id="sun" aria-hidden="true"></canvas>
+    <div class="wrap hero-inner">
       <span class="eyebrow">Terminal coding agent</span>
-      <h1>CLI/TUI agent on your machine.</h1>
+      <h1>The harness, on your machine.</h1>
+      <p class="lede">Same model weights succeed or fail depending on the tools, the edit format, and the
+        control flow around them. Veyyon owns those layers as a local CLI/TUI: tool schemas, hashline
+        edits, approval modes, compaction, context. Your provider keys, your terminal.</p>
       <div class="cta">
         <a href="./install.html" class="btn primary">Install</a>
         <a href="./docs/" class="btn">Handbook</a>
       </div>
       <div class="install"><span class="p">$</span><code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code><button id="copy" aria-label="Copy install command">copy</button></div>
       <div class="run-hint">then <b>veyyon</b> or <b>vey</b> in a repository</div>
-    </div></div>
+    </div>
+  </section>
 
-    <div class="scene left" id="s6"><div class="scene-inner">
-      <span class="kicker">Plan mode</span>
-      <h2 class="scene-title">Plan file, then resolve.</h2>
-      <p class="scene-detail">Plan mode restricts mutation while the agent explores and writes a plan file. Implementation continues after <span class="mono">resolve</span> / approval paths complete. See handbook: Plan mode.</p>
-    </div></div>
-
-    <div class="scene left" id="s7"><div class="scene-inner">
-      <span class="kicker">Hashline</span>
-      <h2 class="scene-title">Content-addressed edits.</h2>
-      <p class="scene-detail"><span class="mono">edit</span> / <span class="mono">write</span> use hashline anchors from prior reads. The applier verifies before disk write; stale tags fail with recovery context. Tool-call JSON repair runs before validation.</p>
-    </div></div>
-
-    <div class="scene left" id="s8"><div class="scene-inner">
-      <span class="kicker">Models</span>
-      <h2 class="scene-title">Interactive model, roles, overrides.</h2>
-      <p class="scene-detail">Interactive model: <span class="mono">/model</span>, persisted as <span class="mono">modelRoles.default</span>. Optional roles (<span class="mono">smol</span>, <span class="mono">plan</span>, …). <span class="mono">subagent.model</span> and <span class="mono">compaction.model</span> override when set.</p>
-      <pre class="scene-code"><span class="k">modelRoles</span>:
-  <span class="k">default</span>: <span class="s">openai/gpt-5</span>
-  <span class="k">smol</span>: <span class="s">openai/gpt-4.1-mini</span>
-<span class="k">subagent.model</span>: <span class="s">anthropic/claude-haiku-4-5</span>
-<span class="k">compaction.model</span>: <span class="s">openai/gpt-5-mini</span></pre>
-    </div></div>
-
-    <div class="scene left" id="s9"><div class="scene-inner">
-      <span class="kicker">Sessions</span>
-      <h2 class="scene-title">Status line, tree, subagents.</h2>
-      <p class="scene-detail">Session JSONL trees support branch and fork. <span class="mono">/cockpit</span> lists agents; <span class="mono">task</span> can isolate workers. Status line segments are configurable.</p>
-    </div></div>
-
-    <div class="scene left" id="s10"><div class="scene-inner">
-      <span class="kicker">Extensions</span>
-      <h2 class="scene-title">MCP, skills, hooks.</h2>
-      <p class="scene-detail">MCP servers in <span class="mono">mcp.json</span>, filesystem skills, TypeScript hooks via <span class="mono">pi.on(...)</span>, browser and web_search tools, <span class="mono">veyyon --print</span> for scripts.</p>
-    </div></div>
-
-    <!-- terminal demo: real capture (assets/demo-hero.gif), not hand-coded HTML -->
-    <div class="scene" id="s11">
+  <!-- the product working: real capture (demo-hero.gif), not hand-coded HTML -->
+  <section class="demo-band">
+    <div class="wrap">
       <div class="showcase">
-        <img class="capture" src="./demo-hero.gif" width="660" alt="Veyyon documents the token-bucket rate limiter end to end on Gemini 3.6 Flash high" />
-        <a href="./install.html" class="btn primary" style="margin-top:34px">Get started</a>
+        <img class="capture" src="./demo-hero.gif" width="1400" height="800" decoding="async" alt="Veyyon documents the token-bucket rate limiter end to end on Gemini 3.6 Flash high" />
       </div>
     </div>
-  </div>
-</section>
-
-<main>
+  </section>
 
   <!-- mechanisms -->
   <section class="plain">
@@ -290,6 +255,7 @@
       <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
     </div>
     <nav>
+    <!--NAV:START-->
       <a href="./models.html">Models</a>
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
@@ -297,6 +263,7 @@
       <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    <!--NAV:END-->
     </nav>
   </div>
 </footer>

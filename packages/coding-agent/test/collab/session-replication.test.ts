@@ -4,6 +4,12 @@ import { isBlobRef } from "@veyyon/coding-agent/session/blob-store";
 import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 const tempDirs: TempDir[] = [];
 

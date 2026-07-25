@@ -36,17 +36,17 @@ import * as path from "node:path";
 import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
 import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
-import { expandToolArguments } from "@veyyon/coding-agent/lexpack-wire";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { createArgotSession } from "@veyyon/coding-agent/lexpack-cache";
+import { expandToolArguments } from "@veyyon/coding-agent/lexpack-wire";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/lexpack";
 import {
 	__resetDirsFromEnvForTests,
 	APP_NAME,

@@ -9,6 +9,7 @@ import {
 	TOOL_TIMEOUTS,
 	type ToolWithTimeout,
 } from "@veyyon/coding-agent/tools/tool-timeouts";
+import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 
 // Every tool's timeout is derived through `clampTimeout`, which is the single
 // guard between an agent-supplied (or defaulted) timeout and the abort that
@@ -17,6 +18,10 @@ import {
 // and a floor that does not hold lets a 0/negative timeout abort a tool the
 // instant it starts. None of this behavior had a test before this suite, so
 // each case below pins one concrete contract with real values.
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 const ALL_TOOLS = Object.keys(TOOL_TIMEOUTS) as ToolWithTimeout[];
 

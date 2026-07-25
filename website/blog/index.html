@@ -16,7 +16,9 @@
 <meta property="og:title" content="Blog | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/blog/" />
 <link rel="canonical" href="https://veyyon.dev/blog/" />
-<meta name="description" content="Design essays and engineering notes from building Veyyon." />
+<meta name="description" content="Technical reports and engineering notes from building Veyyon: the harness, the edit format, compaction, and the tools around them." />
+<link rel="preload" href="../fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="../fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="../site.css" />
 </head>
 <body>
@@ -25,25 +27,29 @@
   <div class="wrap nav">
     <a class="brand" href="../">veyyon</a>
     <nav>
-    <a href="../models.html">Models</a>
-    <a href="../features.html">Features</a>
-    <a href="../install.html">Install</a>
-    <a href="../changelog.html">Changelog</a>
-    <a href="../blog/">Blog</a>
-    <a href="../docs/">Docs</a>
-    <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    <!--NAV:START-->
+      <a href="../models.html">Models</a>
+      <a href="../features.html">Features</a>
+      <a href="../install.html">Install</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../blog/" aria-current="page">Blog</a>
+      <a href="../docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
       <a href="../install.html" class="btn">Get started</a>
+    <!--NAV:END-->
     </nav>
     <details class="nav-menu"><summary>menu</summary>
       <nav>
-    <a href="../models.html">Models</a>
-    <a href="../features.html">Features</a>
-    <a href="../install.html">Install</a>
-    <a href="../changelog.html">Changelog</a>
-    <a href="../blog/">Blog</a>
-    <a href="../docs/">Docs</a>
-    <a href="https://github.com/santhreal/veyyon">GitHub</a>
-        <a href="../install.html" class="btn">Get started</a>
+      <!--NAV:START-->
+      <a href="../models.html">Models</a>
+      <a href="../features.html">Features</a>
+      <a href="../install.html">Install</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../blog/" aria-current="page">Blog</a>
+      <a href="../docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="../install.html" class="btn">Get started</a>
+      <!--NAV:END-->
       </nav>
     </details>
   </div>
@@ -54,15 +60,17 @@
   <div class="page-head">
     <span class="kicker">Blog</span>
     <h1>Notes on the tools.</h1>
-    <p>Design essays and engineering notes from building Veyyon.</p>
+    <p>Technical reports and engineering notes from building Veyyon. Each one is a Markdown file in the repository, rendered here.</p>
   </div>
 
   <section>
-    <p class="post-empty">No posts published yet. Check back soon.</p>
+    <p class="post-empty">No reports published yet. Until the first one lands, the
+      <a href="../docs/">handbook</a> documents how veyyon works and the
+      <a href="../changelog.html">changelog</a> records what each release changed.</p>
   </section>
 </main>
 
-<div class="sunset tall" aria-hidden="true"><canvas data-sun="sunset"></canvas></div>
+<div class="sunset" aria-hidden="true"><canvas data-sun="sunset"></canvas></div>
 
 <footer class="site">
   <div class="wrap foot">
@@ -71,13 +79,16 @@
       <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
     </div>
     <nav>
-    <a href="../models.html">Models</a>
-    <a href="../features.html">Features</a>
-    <a href="../install.html">Install</a>
-    <a href="../changelog.html">Changelog</a>
-    <a href="../blog/">Blog</a>
-    <a href="../docs/">Docs</a>
-    <a href="https://github.com/santhreal/veyyon">GitHub</a></nav>
+    <!--NAV:START-->
+      <a href="../models.html">Models</a>
+      <a href="../features.html">Features</a>
+      <a href="../install.html">Install</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../blog/" aria-current="page">Blog</a>
+      <a href="../docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    <!--NAV:END-->
+    </nav>
   </div>
 </footer>
 

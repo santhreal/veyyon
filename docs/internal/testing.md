@@ -114,6 +114,161 @@ developer’s real `~/.veyyon`.
 Contract tests for the helper itself live in
 `packages/coding-agent/test/helpers/settings-test-state.test.ts`.
 
+### Assert every root, not the one you happened to redirect
+
+An isolation assertion only proves the one path it names. This has now caused
+three separate incidents, each with the same shape: a suite redirected one root,
+asserted that root, passed for months, and wrote real user data through a
+different root the whole time.
+
+There are three roots, and they move independently:
+
+| Root | What lives there | Lever that moves it |
+| --- | --- | --- |
+| Config root | settings, profiles, agent storage, `shared-auth/agent.db`, `gpu_cache.json` | `VEYYON_CONFIG_DIR` |
+| Cache root | argot dictionaries and other regenerable caches | `XDG_CACHE_HOME` |
+| Agent dir | one profile's storage inside the config root | `setAgentDir` |
+
+Two traps follow from that table:
+
+- `XDG_CACHE_HOME` moves the cache and nothing else. A suite that redirects only
+  the cache still writes settings and agent storage to the real config root.
+- `setProfile` and `setAgentDir` name a subdirectory of whichever config root is
+  active. They do not move the root, so on their own they only change where under
+  your real home the writes land.
+
+So redirect what the code under test actually resolves, then prove each one:
+
+```ts
+process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);
+process.env.XDG_CACHE_HOME = path.join(tempCache, "cache");
+__resetDirsFromEnvForTests();
+setProfile(TEST_PROFILE);
+
+// Proof, not intention. Check every root the code can reach, not just the first.
+for (const [label, resolved] of [
+  ["config root", path.resolve(getAgentDir())],
+  ["cache root", path.resolve(getArgotCacheDir())],
+] as const) {
+  if (path.relative(tempRoot, resolved).startsWith("..")) {
+    throw new Error(`${label} not isolated: ${resolved} is outside ${tempRoot}`);
+  }
+}
+```
+
+Run the suite bare (`bun test path/to/suite.test.ts`, without the runner) before
+you trust it. The runner hands every child a sandboxed `HOME`, which hides a
+missing redirect; running bare uses your real home and is the only way to see the
+isolation actually hold.
+
+## Real user data is off limits (three layers)
+
+Your tests must never write to the real `~/.veyyon`. That directory holds working
+OAuth credentials, settings, and session transcripts, and damaging it costs a real
+person real logins. Three layers enforce this, and none of them require you to
+remember anything.
+
+### Why the obvious approach does not work
+
+You will be tempted to isolate a suite like this:
+
+```ts
+beforeEach(() => {
+  process.env.HOME = temporaryDirectory; // does nothing
+});
+```
+
+Bun resolves `os.homedir()` once, when the process starts. Assigning
+`process.env.HOME` afterwards changes the environment variable and nothing else,
+so every config path still resolves under the real home. A suite that did exactly
+this opened the real credential store and wrote three fabricated rows into it, and
+every one of its assertions passed while it happened. `os.userInfo().homedir`
+follows `HOME` too, so there is no in-process way back to the real home once it
+has been redirected.
+
+The levers that do work are:
+
+- Set `HOME` in a **spawned** process's environment, which it reads before its own
+  resolver runs. Use `hermeticSpawnEnv()` for this.
+- Point the app's own override, `VEYYON_CONFIG_DIR`, at a temporary directory. It
+  is joined onto the home directory, so a relative path back out of the home lands
+  the whole config root in your temp directory.
+- Use `XDG_CACHE_HOME` and friends for cache and state paths.
+
+### Layer one: every test child gets a disposable home
+
+`scripts/ci-test-ts.ts` spawns each test process with `HOME` pointing at a fresh
+temporary directory, and passes the real config root down in
+`VEYYON_TEST_REAL_CONFIG_ROOT`. Because config, credential, and session paths are
+all built from `os.homedir()`, a child started this way cannot name real data at
+all. This applies to the whole suite without any suite opting in.
+
+### Layer two: the tripwire refuses the write
+
+`packages/utils/test/helpers/real-data-tripwire.ts` is loaded as a `preload`, so it
+runs in every test process before any test module. It throws on any attempt to
+modify a path inside the real config root, naming the path and explaining the trap
+above.
+
+Bun reads `bunfig.toml` from the current directory only, so the preload is
+delivered three ways: the root `bunfig.toml` for runs at the repository root, a
+one-line pointer in each package's `bunfig.toml` for runs inside a package, and an
+explicit `--preload` on every command the runner spawns. Only the pointer repeats;
+the tripwire itself has one home.
+
+It covers what prevention cannot: a hardcoded absolute path, a suite that restores
+the real `HOME` in `afterEach`, and a bare `bun test path/to/file`. It wraps
+mutating `node:fs` calls and also `bun:sqlite`, because the original damage went
+through SQLite's native file handling and never touched a single `fs` function.
+Reads are allowed, since reading real data is at worst untidy.
+
+If you trip it, fix your test. Do not weaken the tripwire.
+
+Note that the patch rewrites the `node:fs` exports, so it only binds for modules
+that import `fs` after it loads. If you write a test that deliberately probes a
+real path, check `__tripwire.isGuarded(fs.writeFileSync)` first and refuse to probe
+when it is false. Otherwise a late-loaded tripwire turns your probe into the very
+write it was meant to prevent.
+
+### Layer three: the runner proves nothing changed
+
+Before the suite runs, the runner records every file under the real config root
+with its size and modification time, and checks again afterwards. Any created,
+modified, or deleted file fails the run and names the paths, even when every test
+passed, because a green suite that damaged real credentials is the worst possible
+outcome to report as success.
+
+Logs, session transcripts, and caches are excluded, since a veyyon session you have
+open writes to them constantly and reporting that would train everyone to ignore
+the check. What stays watched is the surface whose loss is unrecoverable:
+credential stores, the global config, the install id, and the per-profile
+databases.
+
+### Writing a suite that touches app paths
+
+Isolate through `VEYYON_CONFIG_DIR`, then verify the path the app actually resolved
+before you write to it:
+
+```ts
+import { assertIsolatedAppPath } from "@veyyon/utils/test/helpers/destructive-guard";
+
+process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), temporaryRoot);
+__resetDirsFromEnvForTests();
+assertIsolatedAppPath(getAgentDir(), "my-suite");
+```
+
+Guard the resolved value, not the value you expected. The difference between those
+two is the entire incident.
+
+## Running the suite without melting the machine
+
+The runner is sequential by default: one chunk at a time. Each chunk is a
+`bun test` process that spawns children of its own, so fanning out to every core
+multiplies into hundreds of processes and drove the load average past 80 on a
+workstation, making it unusable while the run proceeded. If you want fanout, ask
+for it explicitly with `VEYYON_TEST_CONCURRENCY=8` (or `all`), and prefer that on a
+machine you are not using for anything else.
+
 ## Fixtures and regression corpus
 
 Prefer data-driven cases over copy-pasted `it` bodies. Closing a bug should add a

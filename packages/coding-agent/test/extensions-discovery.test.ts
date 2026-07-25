@@ -10,7 +10,13 @@ import {
 	loadExtensions,
 } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
+import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 import { filterUserScoped } from "./utils/filter-user-extensions";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 describe("extensions discovery", () => {
 	let tempDir: TempDir;

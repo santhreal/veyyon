@@ -42,6 +42,48 @@ $ veyyon --approval-mode auto-edit "run the tests and fix failures"
 
 The launch flags `--yolo` and `--plan-yolo` set `yolo` and a plan-mode variant of it.
 
+## The working-directory boundary
+
+A tier tells you what kind of thing a tool does. It does not tell you which file the
+tool is about to touch. In `auto-edit`, the `write` tier is approved, so `write` runs
+without asking whether the target is `src/main.ts` or a file in your home directory.
+
+The working-directory boundary is the second question, asked after the tier:
+
+> Does this call touch a path outside the session working directory?
+
+If it does, the call asks for approval even though its tier would have allowed it. This
+holds in `plan`, `ask`, and `auto-edit`. It does not hold in `yolo`, which turns off
+permission entirely.
+
+Say you launched in `~/projects/api` and the model runs this:
+
+```console
+$ veyyon --approval-mode auto-edit "update the config"
+```
+
+Writing `~/projects/api/config.yml` runs without asking, because it is inside the
+working directory and `write` is an approved tier. Writing `~/.ssh/config` asks, because
+it is outside, even though the tier is the same.
+
+The check looks at where a path really leads, not at how it is spelled. A path written
+entirely inside the working directory that reaches outside it through a symlink counts
+as outside. A path that cannot be resolved at all also counts as outside, because
+treating an unreadable path as safe is the assumption you least want to be wrong about.
+
+These tools take part: `read`, `write`, `edit`, `ast_edit`, `grep`, `glob`, `ast_grep`,
+`inspect_image`, and `set_cwd`.
+
+`set_cwd` is on that list because it changes the working directory itself. If it were
+not bound, you could move the boundary instead of obeying it: re-root to the parent
+directory, and every later write counts as inside. So re-rooting outward asks, the same
+as writing outward. Re-rooting into a subdirectory does not ask, because that narrows
+what the session can reach rather than widening it.
+
+When no interactive prompt is available, such as a headless or ACP run, a call that
+needs approval fails instead of proceeding. The error names the path that crossed the
+boundary, so you can see why the run stopped.
+
 ## Per-tool overrides
 
 When you want one tool to behave differently from its tier, name it under

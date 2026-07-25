@@ -21,7 +21,13 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, SingleResult, TaskParams } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { makeToolSession } from "../helpers/tool-session";
+
+// Spawning a task writes a session (and, for worktree runs, a checkout) under the
+// ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
+// developer's real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 const taskAgent: AgentDefinition = {
 	name: "task",

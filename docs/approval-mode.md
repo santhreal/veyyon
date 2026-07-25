@@ -25,6 +25,38 @@ Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`.
 
 `--auto-approve` and `--yolo` force `tools.approvalMode: yolo` for the session.
 
+## The working-directory boundary
+
+The table above sorts tools by tier, and a tier says nothing about which file a
+call touches. The `write` tier auto-approves `write` in `auto-edit` mode whether
+the target is `src/main.ts` or `/etc/hosts`. The working-directory boundary is
+the second question, asked after the tier:
+
+> Does this call touch a path outside the session working directory?
+
+If it does, the call needs approval even when its tier would have allowed it.
+This applies in `plan`, `ask` and `auto-edit`. It does not apply in `yolo`, which
+opts out of all permission and so opts out of this too.
+
+The boundary is physical, not textual. A path spelled entirely inside the working
+directory but reaching outside it through a symlink is still outside, and a path
+that cannot be resolved at all is treated as outside rather than assumed safe.
+
+Every tool that reads or writes files takes part: `read`, `write`, `edit`,
+`ast_edit`, `grep`, `glob`, `ast_grep`, `inspect_image`, and `set_cwd`.
+
+`set_cwd` is on that list for a reason worth stating. It changes the working
+directory, so an unbounded `set_cwd` would be a way to erase the boundary rather
+than obey it: re-root to the parent, and every later write is inside the new root
+by definition. Re-rooting outward therefore asks, exactly as a write outward
+does. Re-rooting to a subdirectory does not ask, because narrowing the working
+directory reduces what the session can reach.
+
+When there is no interactive UI, a call that needs approval fails rather than
+proceeding. The error leads with the specific path that crossed the boundary, so
+a headless or ACP run reports why it stopped and not merely that something needed
+a prompt.
+
 ## The `/yolo` command (full session bypass)
 
 The `yolo` mode above still honors your per-tool policies: `tools.approval.<tool>: prompt` and a tool's own safety `override` prompt both still stop the call. The `/yolo` command is stronger. It removes every approval prompt for the current session, including per-tool `prompt` overrides and safety `override` prompts.

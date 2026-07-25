@@ -10,41 +10,29 @@ import {
 	type TtsrTestArgs,
 } from "@veyyon/coding-agent/cli/ttsr-cli";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
-import {
-	__resetDirsFromEnvForTests,
-	getAgentDir,
-	getProjectAgentDir,
-	getProjectDir,
-	removeSyncWithRetries,
-	setProjectDir,
-} from "@veyyon/utils";
+import { getAgentDir, getProjectAgentDir, getProjectDir, removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
+import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 let testTmpDir: string;
-let configRoot: string;
-let originalConfigDirEnv: string | undefined;
+
+// THE ROOT THIS SUITE MISSED. `ttsr list` and `ttsr scan` both load Settings,
+// and `Settings.init()` opens the agent storage database under the CONFIG root.
+// Without moving that root the commands write into the developer's real
+// `~/.veyyon/profiles/<profile>/agent`, which is what the real-data tripwire
+// caught: three cases in this file failed on main for exactly that reason, and
+// before the tripwire existed they were silently writing there instead.
+//
+// The helper rather than a local snapshot because setting VEYYON_CONFIG_DIR is
+// not by itself enough: a leaked VEYYON_CODING_AGENT_DIR from any earlier suite
+// outranks it, which made the isolation assertion below pass alone and fail in a
+// full run. See `useIsolatedConfigRoot` for the precedence.
+const configRootPath = useIsolatedConfigRoot();
 
 beforeAll(() => {
 	testTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-ttsr-tests-"));
-	// THE ROOT THIS SUITE MISSED. `ttsr list` and `ttsr scan` both load Settings,
-	// and `Settings.init()` opens the agent storage database under the CONFIG
-	// root. Without moving that root the commands write into the developer's real
-	// `~/.veyyon/profiles/<profile>/agent`, which is what the real-data tripwire
-	// caught: three cases in this file failed on main for exactly that reason,
-	// and before the tripwire existed they were silently writing there instead.
-	//
-	// VEYYON_CONFIG_DIR is resolved RELATIVE to os.homedir(), and Bun fixes
-	// os.homedir() at process start, so assigning HOME here would do nothing.
-	configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-ttsr-config-"));
-	originalConfigDirEnv = process.env.VEYYON_CONFIG_DIR;
-	process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
-	__resetDirsFromEnvForTests();
 });
 
 afterAll(() => {
-	if (originalConfigDirEnv === undefined) delete process.env.VEYYON_CONFIG_DIR;
-	else process.env.VEYYON_CONFIG_DIR = originalConfigDirEnv;
-	__resetDirsFromEnvForTests();
-	if (configRoot && fs.existsSync(configRoot)) removeSyncWithRetries(configRoot);
 	if (testTmpDir && fs.existsSync(testTmpDir)) {
 		removeSyncWithRetries(testTmpDir);
 	}
@@ -144,8 +132,8 @@ describe("veyyon ttsr", () => {
 	 * agent dir the commands actually open, not a path that merely looks related.
 	 */
 	it("resolves the agent directory inside the temp config root, not the real one", () => {
-		expect(configRoot).not.toBe("");
-		expect(getAgentDir().startsWith(configRoot)).toBe(true);
+		expect(configRootPath()).not.toBe("");
+		expect(getAgentDir().startsWith(configRootPath())).toBe(true);
 		expect(getAgentDir()).not.toContain(path.join(os.homedir(), ".veyyon"));
 	});
 

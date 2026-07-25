@@ -13,6 +13,11 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { Snowflake } from "@veyyon/utils";
+import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 function createBtwAssistant(): AssistantMessage {
 	return {

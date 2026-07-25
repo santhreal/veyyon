@@ -503,9 +503,21 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 		console.log(`  sentinel: ${sentinelName}\n`);
 	}
 
-	// 4. Regenerate lockfiles
-	console.log("Regenerating lockfiles...");
-	await $`rm -f bun.lock`;
+	// 4. Refresh lockfiles.
+	//
+	// `bun install` records the workspace version bumps above; it does NOT delete
+	// bun.lock first. Deleting it re-resolves the ENTIRE third-party graph on every
+	// release, which makes each cut depend on what npm happens to allow that hour —
+	// and `install.minimumReleaseAge` (3 days) means a security pin newer than that
+	// window cannot resolve at all. That is not hypothetical: `brace-expansion`
+	// was pinned to `^5.0.8` for GHSA-mh99-v99m-4gvg (`abf6a224`) while 5.0.8 was
+	// ~40 hours old, so a fresh resolve died with "No version matching" and the
+	// release train was blocked for the rest of the age window. The lockfile is the
+	// pin CI consumes under `--frozen-lockfile`, so keeping it is also what makes
+	// the release build the graph that was tested. A deliberate full re-resolve is
+	// its own change (`rm bun.lock && bun install`, reviewed like any dependency
+	// bump), never a side effect of cutting a version.
+	console.log("Refreshing lockfiles...");
 	await $`bun install`;
 	await $`cargo generate-lockfile`;
 	console.log();

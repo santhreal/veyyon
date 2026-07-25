@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { transitionsEnabled } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { pickWeightedTip, WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
+import { transitionsEnabled } from "@veyyon/coding-agent/modes/theme/shimmer";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { TERMINAL } from "@veyyon/tui";
 import { setProfile } from "@veyyon/utils";

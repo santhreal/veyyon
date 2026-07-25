@@ -10,6 +10,8 @@ interface ProbeRunResult {
 	childElapsedMs: number;
 	cached: unknown;
 	count: number;
+	/** Everything the child logged, so a warning can be asserted by its bytes. */
+	log: string;
 }
 
 async function runProbeScenario(options: {
@@ -18,6 +20,10 @@ async function runProbeScenario(options: {
 	holdStdoutOpen?: boolean;
 	descendantHoldsStdout?: boolean;
 	validOutput?: string;
+	/** Exact bytes to plant at the cache path before the run (CACHE-1). */
+	seedCache?: string;
+	/** Make the cache directory read-only before the run, so the save must fail. */
+	readOnlyCacheDir?: boolean;
 }): Promise<ProbeRunResult> {
 	const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-gpu-probe-"));
 	try {
@@ -38,10 +44,25 @@ async function runProbeScenario(options: {
 		const scenarioPath = path.join(tempRoot, "scenario.ts");
 		await Bun.write(
 			scenarioPath,
-			`import { getGpuCachePath, refreshDirsFromEnv } from ${JSON.stringify(path.resolve(import.meta.dir, "../../utils/src/index.ts"))};
+			`import { getGpuCachePath, logger, refreshDirsFromEnv } from ${JSON.stringify(path.resolve(import.meta.dir, "../../utils/src/index.ts"))};
+import { mkdirSync, chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { buildSystemPrompt } from ${JSON.stringify(path.join(import.meta.dir, "system-prompt.ts"))};
 
 refreshDirsFromEnv();
+// Warnings go to the rotating log file, not the console, so point that file at a
+// path the parent can read: the test asserts the warning's bytes, not its absence.
+logger.setTransports({ file: process.env.VEYYON_GPU_LOG_DIR, console: false });
+// Plant the damaged/absent cache and its directory permissions BEFORE the build,
+// because both are read on the first probe.
+const seededPath = getGpuCachePath();
+mkdirSync(dirname(seededPath), { recursive: true });
+if (process.env.VEYYON_GPU_SEED_CACHE !== undefined) {
+	writeFileSync(seededPath, process.env.VEYYON_GPU_SEED_CACHE);
+}
+if (process.env.VEYYON_GPU_READONLY_CACHE_DIR === "true") {
+	chmodSync(dirname(seededPath), 0o500);
+}
 const buildOptions = {
 	contextFiles: [],
 	skills: [],
@@ -60,10 +81,26 @@ for (let index = 0; index < Number(process.env.VEYYON_GPU_PROBE_RUNS ?? "1"); in
 	await buildSystemPrompt(buildOptions);
 }
 const cacheFile = Bun.file(getGpuCachePath());
-const cached = await cacheFile.exists() ? await cacheFile.json() : null;
+// A damaged entry may still be damaged if repair failed, so read it as TEXT and
+// let the parent decide: parsing here would turn "not repaired" into a crash.
+const cachedText = await cacheFile.exists() ? await cacheFile.text() : null;
+let cached: unknown = null;
+try { cached = cachedText === null ? null : JSON.parse(cachedText); } catch { cached = { unparseable: cachedText }; }
 const countFile = Bun.file(process.env.VEYYON_GPU_PROBE_COUNT ?? "");
 const count = await countFile.exists() ? (await countFile.text()).length : 0;
-console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt), cached, count }));
+const elapsedMs = Math.round(performance.now() - startedAt);
+// Restore permissions so the parent's rm() can clean up a read-only dir.
+if (process.env.VEYYON_GPU_READONLY_CACHE_DIR === "true") chmodSync(dirname(seededPath), 0o700);
+// The file transport is a daily-rotate DIRECTORY, and its writes are buffered,
+// so give it a moment and then read whatever it produced. Reading one guessed
+// filename would silently return "" and turn every log assertion into a pass.
+await Bun.sleep(250);
+const logDir = process.env.VEYYON_GPU_LOG_DIR ?? "";
+let log = "";
+// The transport creates the directory lazily, so a run that logged nothing
+// leaves no directory at all; that is an empty log, not a failure.
+if (existsSync(logDir)) for (const name of readdirSync(logDir)) log += readFileSync(join(logDir, name), "utf8");
+console.log(JSON.stringify({ elapsedMs, cached, count, log }));
 `,
 		);
 
@@ -81,7 +118,12 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 			XDG_CACHE_HOME: cacheRoot,
 			VEYYON_GPU_PROBE_COUNT: probeCountPath,
 			VEYYON_GPU_PROBE_RUNS: String(options.runs),
+			VEYYON_GPU_LOG_DIR: path.join(tempRoot, "logs"),
 		};
+		if (options.seedCache === undefined) delete env.VEYYON_GPU_SEED_CACHE;
+		else env.VEYYON_GPU_SEED_CACHE = options.seedCache;
+		if (options.readOnlyCacheDir) env.VEYYON_GPU_READONLY_CACHE_DIR = "true";
+		else delete env.VEYYON_GPU_READONLY_CACHE_DIR;
 		// Strip inherited dirs-resolver overrides so XDG_CACHE_HOME above wins and
 		// the test cannot touch the developer/CI profile's real gpu_cache.json.
 		for (const key of DIR_OVERRIDE_ENV_KEYS) {
@@ -181,6 +223,133 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		// take at least the 8s sleep.
 		expect(result.childElapsedMs).toBeLessThan(5000);
 	}, 20_000);
+});
+
+/**
+ * CACHE-1: a damaged GPU cache entry must be ignored, regenerated, and REPORTED.
+ *
+ * `gpu_cache.json` is written on the way out of a launch, so a machine that
+ * loses power or is force-quit mid-write leaves a truncated file behind. Two
+ * outcomes are unacceptable and one is required:
+ *
+ *  - crashing on it would make an unrelated disposable file able to stop the
+ *    system prompt from being built at all;
+ *  - trusting it would put whatever survived the truncation into the prompt;
+ *  - so it must be discarded, re-probed, and the file rewritten — and the
+ *    discard must be recorded, because a file that fails to parse every launch
+ *    means the probe runs every launch, and that presents only as a slower
+ *    start that nobody attributes to a cache (Law 10).
+ *
+ * The one silence kept on purpose is a MISSING file, which is every first run.
+ * These run the real child process against an isolated cache root, so what is
+ * asserted is the shipped read-probe-write path, not a re-implementation of it.
+ */
+describe.skipIf(process.platform !== "linux")("system prompt GPU cache damage", () => {
+	/** The probe is stubbed to report nothing, so a repaired entry is exactly this. */
+	const REPAIRED = { gpu: null };
+
+	it("re-probes and repairs a truncated entry rather than trusting it", async () => {
+		// The canonical crash artifact: a write cut off mid-object. The old code
+		// caught this and returned null, which was right; what it did not do was say
+		// so, and this test pins both halves at once.
+		const result = await runProbeScenario({ runs: 1, seedCache: '{"gpu": "NVIDIA Half-Writt' });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.count).toBe(1);
+	}, 15_000);
+
+	it("records the unreadable entry with its path", async () => {
+		// The Law 10 half. Without this assertion the whole suite passes with a bare
+		// `catch { return null }`, which is the code this row exists to remove.
+		const result = await runProbeScenario({ runs: 1, seedCache: "not json at all" });
+
+		expect(result.log).toContain("GPU cache could not be read");
+		expect(result.log).toContain("gpu_cache.json");
+	}, 15_000);
+
+	it("treats a well-formed file with no `gpu` field as damaged, and says which kind", async () => {
+		// Parses cleanly, carries nothing usable. It has to be distinguishable in the
+		// log from a parse failure, because the two have different causes: this one
+		// is a schema change or a hand edit, not a torn write.
+		const result = await runProbeScenario({ runs: 1, seedCache: '{"model": "NVIDIA Something"}' });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.count).toBe(1);
+		expect(result.log).toContain("has no `gpu` field");
+	}, 15_000);
+
+	it("treats a JSON array as damaged instead of reading fields off it", async () => {
+		// `typeof [] === "object"`, so a bare `typeof content === "object"` check
+		// would accept this. The guard must be the `gpu` field, not the type.
+		const result = await runProbeScenario({ runs: 1, seedCache: "[1, 2, 3]" });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.count).toBe(1);
+	}, 15_000);
+
+	it("treats a non-string `gpu` as damage and rewrites the file", async () => {
+		// The serve-corrupt-data case, and the one that exposed a half-fix: the old
+		// code normalized this to `{ gpu: null }` and RETURNED it, which kept the
+		// number out of the prompt but also counted as a hit, so the bad file was
+		// never re-probed and never rewritten. It survived every launch.
+		const result = await runProbeScenario({ runs: 1, seedCache: '{"gpu": 42}' });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.count).toBe(1);
+		expect(result.log).toContain("non-string `gpu`");
+	}, 15_000);
+
+	it("a cached `null` is a real answer, not damage", async () => {
+		// The boundary on the rule above. "Probed, found no GPU" is exactly what the
+		// cache stores on a machine without one; treating it as damage would re-probe
+		// on every launch for every such machine, which is the cost this cache exists
+		// to avoid.
+		const result = await runProbeScenario({ runs: 1, seedCache: '{"gpu": null}' });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.count).toBe(0);
+		expect(result.log).not.toContain("GPU cache");
+	}, 15_000);
+
+	it("an empty file is damaged, not an empty cache", async () => {
+		// The zero-byte outcome of a crash between create and write. It is the case
+		// most easily mistaken for "no GPU found", which would suppress the probe.
+		const result = await runProbeScenario({ runs: 1, seedCache: "" });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.count).toBe(1);
+	}, 15_000);
+
+	it("stays quiet when the file is simply absent", async () => {
+		// The deliberate silence. Every first run takes this path, and a warning
+		// everyone sees once is a warning nobody reads the second time.
+		const result = await runProbeScenario({ runs: 1 });
+
+		expect(result.cached).toEqual(REPAIRED);
+		expect(result.log).not.toContain("GPU cache could not be read");
+		expect(result.log).not.toContain("has no `gpu` field");
+	}, 15_000);
+
+	it("reports a cache it cannot write, and still builds the prompt", async () => {
+		// The write side of the same rule. A read-only cache directory costs a probe
+		// per launch forever; unreported, that is invisible. The run must still
+		// succeed, because a cache failure may not take the prompt down.
+		const result = await runProbeScenario({ runs: 1, readOnlyCacheDir: true });
+
+		expect(result.count).toBe(1);
+		expect(result.log).toContain("GPU cache could not be written");
+	}, 15_000);
+
+	it("does not warn when the cache is healthy", async () => {
+		// The control. Every assertion above is satisfied by code that warns
+		// unconditionally, which would be its own defect.
+		const result = await runProbeScenario({ runs: 2, seedCache: '{"gpu": "NVIDIA TestGPU"}' });
+
+		expect(result.cached).toEqual({ gpu: "NVIDIA TestGPU" });
+		// A valid entry is a hit: the probe must not run at all.
+		expect(result.count).toBe(0);
+		expect(result.log).not.toContain("GPU cache could not be");
+	}, 15_000);
 });
 
 describe.skipIf(process.platform !== "linux")("system prompt CPU model", () => {

@@ -364,6 +364,63 @@ describe("provider in-flight slot release on failure", () => {
 		expect(mock.calls).toHaveLength(2);
 	});
 
+	/**
+	 * A timeout is an abort delivered while the provider is already streaming,
+	 * which is a different exit from the mid-dispatch throw above: the failure
+	 * arrives from OUTSIDE the dispatch, through the signal, rather than from the
+	 * handler returning. It has to release the slot on the same path.
+	 *
+	 * The lease is a directory on disk, so a leak here does not merely stall this
+	 * process: the slot stays taken for every future request against that provider
+	 * until the stale reaper reclaims it, and the symptom is requests that hang
+	 * with no error anywhere. A request-timeout is exactly the moment a user is
+	 * most likely to retry, so the leak would compound.
+	 */
+	test("releases the slot when a request is aborted mid-stream, and the retry succeeds", async () => {
+		registerMockApi();
+		const providerDir = limiterDir("tests");
+		const started = Promise.withResolvers<void>();
+		const neverResolves = Promise.withResolvers<void>();
+		let callIndex = 0;
+		const mock = createMockModel({
+			provider: "tests",
+			handler: async (_ctx, options?: { signal?: AbortSignal }) => {
+				callIndex++;
+				if (callIndex === 1) {
+					started.resolve();
+					// Hang like a stalled upstream so the abort lands mid-request.
+					await new Promise<void>((_resolve, reject) => {
+						options?.signal?.addEventListener("abort", () => reject(options.signal?.reason));
+						void neverResolves.promise;
+					});
+				}
+				return { content: [`reply ${callIndex}`] };
+			},
+		});
+
+		const controller = new AbortController();
+		const stalled = streamSimple(mock.model, context(), {
+			maxInFlightRequests: { tests: 1 },
+			signal: controller.signal,
+		});
+		const stalledResult = stalled.result().catch((error: unknown) => error);
+		await started.promise;
+
+		controller.abort(new Error("request timed out"));
+		await stalledResult;
+
+		// No lease is left on disk for the reaper to clean up later. `lock*` and the
+		// dot-prefixed waiter-wakeup file are limiter bookkeeping, not held slots.
+		const entries = await fs.readdir(providerDir).catch(() => [] as string[]);
+		expect(entries.filter(entry => !entry.startsWith("lock") && !entry.startsWith("."))).toEqual([]);
+
+		// And the slot is genuinely free, not merely unreferenced: a fresh request
+		// acquires it and completes.
+		const retry = streamSimple(mock.model, context(), { maxInFlightRequests: { tests: 1 } });
+		const message = await retry.result();
+		expect(message.content).toEqual([{ type: "text", text: "reply 2" }]);
+	});
+
 	test("does not leak slots across repeated mid-dispatch failures", async () => {
 		registerMockApi();
 		const FAILURES = 4;

@@ -23,8 +23,32 @@ import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/bas
 import { searchBrave } from "@veyyon/coding-agent/web/search/providers/brave";
 import { withHardTimeout } from "@veyyon/coding-agent/web/search/providers/utils";
 import type { SearchProviderId, SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import { useIsolatedAgentDir } from "../../helpers/isolated-agent-dir";
+import { makeToolSession } from "../../helpers/tool-session";
 
-const FAKE_SESSION = {} as ToolSession;
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
+
+/**
+ * A session carrying an auth storage the tool will never consult.
+ *
+ * `WebSearchTool.execute` reads `session.authStorage` and falls back to
+ * `discoverAuthStorage()` when it is absent, and that fallback opens the
+ * MACHINE-WIDE `~/.veyyon/shared-auth/agent.db` — an sqlite open that creates
+ * and writes the file, so it is refused by the real-data tripwire. The stub is
+ * honest here rather than a shortcut: every test in this file mocks the provider
+ * chain outright, so no credential is ever read, and the only thing the real
+ * lookup would contribute is the write to the developer's own store.
+ */
+const FAKE_SESSION: ToolSession = makeToolSession({
+	authStorage: {
+		getApiKey: async () => undefined,
+		resolver: () => async () => undefined,
+		getOAuthAccountId: () => undefined,
+	} as unknown as AuthStorage,
+});
 const fakeStorage = {
 	listAuthCredentials: () => [],
 	updateAuthCredential: () => undefined,

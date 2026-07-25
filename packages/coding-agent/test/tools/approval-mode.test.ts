@@ -10,6 +10,8 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
+import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 
 const BASE_SETTINGS = {
 	"async.enabled": false,
@@ -29,6 +31,11 @@ function textOf(result: { content?: ReadonlyArray<{ type: string; text?: string 
 	return "";
 }
 
+// `executeBash` calls `Settings.init()` itself, reaching past the session stub to
+// the real config root and its agent.db. One line isolates the singleton for the
+// whole file; see the helper for why a session `settings` object is not enough.
+useIsolatedGlobalSettings();
+
 describe("tools.approvalMode setting", () => {
 	// The per-tool approval gate (ExtensionToolWrapper) reads approvalMode / tools.approval /
 	// autoApprove exclusively from the execute-time AgentToolContext, never from the session's
@@ -37,16 +44,22 @@ describe("tools.approvalMode setting", () => {
 	// auth-storage discovery, settings init) nine times over.
 	let tempDir: string;
 	let session: AgentSession;
+	// Hoisted so every `execute` context can carry it. A context WITHOUT a
+	// sessionManager makes tools fall back to the process-global agent dir, which
+	// is the operator's real `~/.veyyon/profiles/<profile>/agent` — the bash tool
+	// then tries to create storage there and the real-data guard fails the suite.
+	let sessionManager: SessionManager;
 
 	beforeAll(async () => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-approval-mode-${Snowflake.next()}-`));
 		const cwd = path.join(tempDir, "cwd");
 		fs.mkdirSync(cwd, { recursive: true });
-		const sessionManager = SessionManager.create(cwd, path.join(tempDir, "sessions"));
+		sessionManager = SessionManager.create(cwd, path.join(tempDir, "sessions"));
 		const created = await createAgentSession({
 			cwd,
 			agentDir: tempDir,
 			sessionManager,
+			authStorage: await isolatedAuthStorage(tempDir),
 			settings: Settings.isolated(BASE_SETTINGS),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,
@@ -92,7 +105,8 @@ describe("tools.approvalMode setting", () => {
 		const settings = approvalSettings();
 		const result = await bashTool().execute("yolo", { command: "echo ok" }, undefined, undefined, {
 			settings,
-		} as AgentToolContext);
+			sessionManager,
+		} as Partial<AgentToolContext> as AgentToolContext);
 		expect(textOf(result)).toContain("ok");
 	});
 
@@ -101,7 +115,8 @@ describe("tools.approvalMode setting", () => {
 		await expect(
 			bashTool().execute("always-ask", { command: "echo blocked" }, undefined, undefined, {
 				settings,
-			} as AgentToolContext),
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext),
 		).rejects.toThrow(/requires approval but no interactive UI available/);
 	});
 
@@ -112,7 +127,8 @@ describe("tools.approvalMode setting", () => {
 		});
 		const result = await bashTool().execute("always-ask-allow", { command: "echo allowed" }, undefined, undefined, {
 			settings,
-		} as AgentToolContext);
+			sessionManager,
+		} as Partial<AgentToolContext> as AgentToolContext);
 		expect(textOf(result)).toContain("allowed");
 	});
 
@@ -124,7 +140,8 @@ describe("tools.approvalMode setting", () => {
 		await expect(
 			bashTool().execute("yolo-prompt", { command: "echo blocked" }, undefined, undefined, {
 				settings,
-			} as AgentToolContext),
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext),
 		).rejects.toThrow(/requires approval but no interactive UI available/);
 	});
 
@@ -136,7 +153,8 @@ describe("tools.approvalMode setting", () => {
 		await expect(
 			bashTool().execute("write-mode", { command: "echo unconfigured" }, undefined, undefined, {
 				settings,
-			} as AgentToolContext),
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext),
 		).rejects.toThrow(/requires approval but no interactive UI available/);
 	});
 
@@ -152,7 +170,8 @@ describe("tools.approvalMode setting", () => {
 			undefined,
 			{
 				settings,
-			} as AgentToolContext,
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext,
 		);
 		expect(textOf(result)).toContain("(no output)");
 	});
@@ -162,7 +181,7 @@ describe("tools.approvalMode setting", () => {
 		const result = await bashTool().execute("cli-override", { command: "echo override" }, undefined, undefined, {
 			settings,
 			autoApprove: true,
-		} as AgentToolContext);
+		} as Partial<AgentToolContext> as AgentToolContext);
 		expect(textOf(result)).toContain("override");
 	});
 
@@ -176,7 +195,7 @@ describe("tools.approvalMode setting", () => {
 			{
 				settings,
 				autoApprove: true,
-			} as AgentToolContext,
+			} as Partial<AgentToolContext> as AgentToolContext,
 		);
 		expect(textOf(result)).toContain("(no output)");
 	});
@@ -195,7 +214,8 @@ describe("tools.approvalMode setting", () => {
 		await expect(
 			bashTool().execute("plan-blocked", { command: "echo no" }, undefined, undefined, {
 				settings,
-			} as AgentToolContext),
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext),
 		).rejects.toThrow(/Plan autonomy: non-mutating tools only/);
 	});
 

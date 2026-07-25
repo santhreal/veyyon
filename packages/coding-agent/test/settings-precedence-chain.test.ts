@@ -85,7 +85,9 @@ describe("Tier-A settings precedence", () => {
 		const tree: Record<string, Record<string, unknown>> = {};
 		for (const [dotted, value] of entries) {
 			const [group, leaf] = dotted.split(".") as [string, string];
-			(tree[group] ??= {})[leaf] = value;
+			const groupTree = tree[group] ?? {};
+			groupTree[leaf] = value;
+			tree[group] = groupTree;
 		}
 		fs.mkdirSync(path.dirname(file), { recursive: true });
 		fs.writeFileSync(

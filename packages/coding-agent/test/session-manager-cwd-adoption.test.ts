@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import * as os from "node:os";
 import * as path from "node:path";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { removeWithRetries, TempDir } from "@veyyon/utils";
+import { __resetDirsFromEnvForTests, getAgentDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
 
 const tempDirs: TempDir[] = [];
 
@@ -11,7 +12,26 @@ function makeTempDir(prefix: string): string {
 	return dir.path();
 }
 
+// The DEFAULT session dir resolves under the agent dir, not under any temp dir a
+// test passes in. `SessionManager.open` and `getDefaultSessionDir` both go there,
+// so without moving that root this suite creates
+// `~/.veyyon/profiles/<profile>/agent/sessions/<slug>` in the developer's real
+// data directory. It passed for a long time because the test runner sandboxes
+// HOME; run bare, the tripwire catches it immediately.
+let savedAgentDirEnv: string | undefined;
+let agentRoot: string | undefined;
+
+beforeEach(() => {
+	savedAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+	agentRoot = makeTempDir("@pi-cwd-agent-");
+	setAgentDir(agentRoot);
+});
+
 afterEach(async () => {
+	if (savedAgentDirEnv === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
+	else process.env.VEYYON_CODING_AGENT_DIR = savedAgentDirEnv;
+	__resetDirsFromEnvForTests();
+	agentRoot = undefined;
 	await Promise.all(tempDirs.splice(0).map(dir => dir.remove()));
 });
 
@@ -29,6 +49,14 @@ async function writeSession(cwd: string, sessionDir: string): Promise<string> {
 }
 
 describe("SessionManager cwd adoption on resume", () => {
+	it("resolves the default session dir inside a temp agent dir, never the real one", () => {
+		// The guard that keeps this suite safe to run on a developer machine, stated
+		// against the two roots it actually reaches: the agent dir itself and the
+		// default session dir derived from it.
+		expect(getAgentDir().startsWith(os.tmpdir())).toBe(true);
+		expect(SessionManager.getDefaultSessionDir(makeTempDir("@pi-cwd-probe-")).startsWith(os.tmpdir())).toBe(true);
+	});
+
 	it("adopts the resumed session's own cwd and session directory", async () => {
 		const projectA = makeTempDir("@pi-cwd-a-");
 		const projectB = makeTempDir("@pi-cwd-b-");

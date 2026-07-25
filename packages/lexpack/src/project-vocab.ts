@@ -7,7 +7,7 @@
 // is keyed, when it regenerates — lives here so every harness behaves identically.
 
 import { createHash } from "node:crypto";
-import { cacheDictPath, listingSignature, readDictFile, resolveProjectCache } from "./cache.js";
+import { cacheDictPath, listingSignature, type ResolvedCache, readDictFile, resolveProjectCache } from "./cache.js";
 import { DEFAULT_TOKEN_BUDGET } from "./constants.js";
 import { type CorpusNotice, gatherRepoFiles, walkProjectTree } from "./corpus.js";
 import { projectCacheId, resolveProjectRoot } from "./project.js";
@@ -33,6 +33,11 @@ export type ProjectVocabNotice =
 			code: "invalid-token-budget";
 			message: string;
 			data: { configured: unknown; using: number };
+	  }
+	| {
+			code: "cache-write-failed";
+			message: string;
+			data: { path: string; error: string };
 	  };
 
 export interface ResolveProjectVocabOptions {
@@ -77,6 +82,24 @@ export function resolveTokenBudget(raw: number | undefined, onNotice?: (n: Proje
 		data: { configured: raw, using: DEFAULT_TOKEN_BUDGET },
 	});
 	return DEFAULT_TOKEN_BUDGET;
+}
+
+/**
+ * Turn a cache entry that could not be saved into a notice, so a state directory
+ * that has stopped being writable is loud instead of showing up only as a
+ * mysteriously slow start. Both cache paths (git and non-git) funnel through
+ * here, so there is one message and one code rather than two that drift.
+ *
+ * Nothing is reported on success, and nothing is reported for a read failure:
+ * that one throws instead, deliberately.
+ */
+function reportCacheWriteFailure(result: ResolvedCache, onNotice?: (n: ProjectVocabNotice) => void): void {
+	if (result.writeError === undefined) return;
+	onNotice?.({
+		code: "cache-write-failed",
+		message: result.writeError,
+		data: { path: result.path, error: result.writeError },
+	});
 }
 
 /**
@@ -139,6 +162,7 @@ export async function resolveProjectVocab(
 			files,
 			options: { tokenBudget },
 		});
+		reportCacheWriteFailure(result, options.onNotice);
 		return { root, vocab: result.vocab };
 	}
 
@@ -152,5 +176,6 @@ export async function resolveProjectVocab(
 		files,
 		options: { tokenBudget },
 	});
+	reportCacheWriteFailure(result, options.onNotice);
 	return { root, vocab: result.vocab };
 }
