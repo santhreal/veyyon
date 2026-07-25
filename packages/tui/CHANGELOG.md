@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the pinned composer scrolling off screen when reading history back: scroll isolation held the wheel only while the composed frame overflowed the viewport, and a virtualized transcript (the coding agent's) drops committed rows from its frame on every quiet frame, so the gate closed, the wheel went to the terminal, and the whole window scrolled with the prompt in it. Wheel capture now arms while anything sits above the window, including rows already on the new scroll tape.
+- Fixed scroll-back depth being limited to the commit lag (a few rows) rather than the session. The engine records every prepared row it lets scroll off on a bounded scroll tape (`scrollTapeRows`, `setScrollTapeCap`, default 20k rows) and scrolls a snapshot of the tape plus the live frame, so a frozen view reaches the first row of the session and cannot be shifted by a transcript dropping rows underneath it.
+
+### Added
+
+- Added the scroll position to the right edge of a frozen transcript region: a dim one-column groove with a bright thumb, composited through the same cell-accurate path overlays use. It sits in the region that scrolled, so a host's pinned footer renders byte-identically whether the view is frozen or following.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

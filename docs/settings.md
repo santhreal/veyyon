@@ -620,7 +620,7 @@ tui:
 | `images.autoResize` | boolean | `true` | Resize large images for model compatibility. |
 | `images.blockImages` | boolean | `false` | Never send images to providers. |
 | `tui.hyperlinks` | enum | `auto` | `off`, `auto`, `always`. |
-| `tui.scrollIsolation` | boolean | `true` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window (`/settings` → Appearance → Display, Advanced). When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it. While on, plain drag-select becomes Shift+drag. |
+| `tui.scrollIsolation` | boolean | `true` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (`/settings` → Appearance → Display, Advanced). Scrolling back reaches the whole session, not just what is on screen. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so plain drag-select becomes Shift+drag. |
 
 For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. See the [status line reference](./handbook/src/features/cockpit.md#status-line) for the full list of segment IDs.
 

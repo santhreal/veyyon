@@ -379,22 +379,69 @@ bottom.
   footer's row span from the compose segment ledger after every frame, so a
   zone height change never needs a host-side sync and the zone is never
   re-rendered for measurement (render side effects stay single-counted).
-- **Frozen view**: wheel-up anchors `#virtualScrollTop` (absolute frame
-  row). The window becomes `frame[viewTop, viewTop + height − footerRows)`
-  plus the live footer slice `frame[L − footerRows, L)`. Commits freeze
-  (`chunkTo = committedRows`) because a chunk's scroll would tear the
-  frozen view; the held rows backfill exactly once through the ordinary
+- **The scroll tape**: the composed frame is NOT the scroll-back source. A
+  virtualized root (the coding agent's `TranscriptContainer`) drops rows from
+  its render output once the engine reports them committed, which holds the
+  frame near the viewport height however long the session runs. Every prepared
+  row the engine lets scroll off is therefore recorded on `#scrollTape`
+  (`scrollTapeRows`, bounded by `setScrollTapeCap`, default 20k rows), the
+  engine's own mirror of terminal scrollback. The **scroll space** is the tape
+  followed by the frame's uncommitted rows; the frame's row 0 sits at
+  `tape.length − committedRows`, because those rows are on both.
+- **Frozen view**: wheel-up anchors `#virtualScrollTop` in scroll-space rows.
+  On the first frozen frame the engine snapshots the whole scroll space, so
+  nothing under the reader can move: a quiet frame still compacts, and a
+  live-frame-sourced view would slide by the dropped row count on every
+  repaint. The transcript region reads the snapshot, the footer always reads
+  the live frame, so the composer keeps typing and spinning while history holds
+  still. Commits freeze (`chunkTo = committedRows`) because a chunk's scroll
+  would tear the view; the held rows backfill exactly once through the ordinary
   seam rewrite on resume.
+- **Position**: while frozen, the engine composites a one-column track into the
+  right edge of the transcript region (dim groove, bright thumb, through the
+  same cell-accurate compositor overlays use). It lives in the region that
+  moved, which is what keeps the pinned footer byte-identical between the
+  frozen and following states — the host's composer must never become a scroll
+  readout (see the 2026-07-24 report below).
 - **Resume conditions**: wheel-down to the live tail, `scrollToLiveTail()`
-  (the host calls it on submit), any resize or full paint, and visible
-  overlays (overlays own the window while shown).
+  (the host calls it on submit), a left click anywhere in the pinned footer,
+  any resize or full paint, and visible overlays (overlays own the window while
+  shown). A rebuild that erases scrollback (`tui.scrollbackRebuild`, off by
+  default) resets the tape with it: the tape mirrors the terminal and must
+  never show rows the terminal no longer holds.
 - **Input**: the engine captures SGR mouse reports with 1000h+1006h (button
   + extended coordinates), never 1003h, so idle pointer motion does not
   flood the input queue. Non-wheel reports are swallowed while isolation is
   active so clicks never leak raw SGR bytes into the focused component. The
   tracking set is re-armed after alt-screen exits and torn down on stop.
+- **Capture gate**: tracking arms while anything sits above the window — the
+  frame overflows the viewport, **or** the tape is non-empty. Gating on frame
+  overflow alone (`d79cb7ee`, which traded it for drag-select on short screens)
+  is what broke the model in practice: with a virtualized transcript the frame
+  trims back to about the viewport on every quiet frame, so the gate closed,
+  the wheel went to the terminal, and the composer scrolled off screen
+  ("the composer doesn't come with you", operator report 2026-07-24). A fresh
+  session with no history still releases the mouse, so drag-select works until
+  the first row scrolls off.
 - **Tradeoff**: with the mouse captured, plain drag-select becomes
   Shift+drag (the standard convention in mouse-capturing TUIs). The setting
   documents this and can be switched off to return to native scrollback.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+Regression coverage lives in two suites, and the split matters:
+`test/scroll-isolation.test.ts` drives a transcript that returns its whole
+history every frame, and `test/scroll-isolation-history.test.ts` drives one that
+drops committed rows the way the real container does. Only the second one can
+see this class of bug. Both state `setScrollbackRebuild(false)` explicitly,
+because the constructor reads `VEYYON_TUI_SCROLLBACK_REBUILD` and another suite
+in the same process sets it at module scope. A third suite,
+`packages/coding-agent/test/modes/components/transcript-scrollback-pinned-composer.test.ts`,
+mounts the real container and the real shortcut bar together, so the host side of
+the contract is proven too.
+
+The track's dim groove is asserted two ways, because either alone can pass on a
+broken render: the emitted bytes (`\x1b[0;2m│\x1b[22;0m`, and no dim on the
+thumb) and the attributes the terminal presents, through
+`VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
+pass if a later reset in the same row cancelled the dim.
+
+*Verified against the scroll-tape change on 2026-07-24.*
