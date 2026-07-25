@@ -35,7 +35,6 @@ import {
 	formatActiveRepoWatchdogPrompt,
 	formatAdvisorContextPrompt,
 } from "./advisor";
-import { armArgotAfterStartup } from "./lexpack-cache";
 import { type AsyncJob, AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
@@ -44,6 +43,7 @@ import { bucketRules } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
 import { isAuthenticated, kNoAuth, ModelRegistry } from "./config/model-registry";
+import { describeModelResolutionFailure } from "./config/model-resolution-failure";
 import {
 	formatModelSelectorValue,
 	formatModelString,
@@ -60,10 +60,9 @@ import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";
+import { armArgotAfterStartup } from "./lexpack-cache";
 import "./discovery";
 import { type ArgotGate, type ArgotSession, renderPreamble, shouldEncode } from "argot";
-import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./lexpack-cache";
-import { buildArgotGate, expandToolArguments } from "./lexpack-wire";
 import { initializeWithSettings } from "./discovery";
 import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
 import { disposeAllVmContexts, disposeVmContextsByOwner } from "./eval/js/context-manager";
@@ -102,6 +101,8 @@ import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal }
 import { filterToolsByHarnessProfile, resolvePromptSectionOrderForModel } from "./harness/model-profile";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
+import { collectArgotLoadedRoots, createArgotSession, rearmArgotForDecode } from "./lexpack-cache";
+import { buildArgotGate, expandToolArguments } from "./lexpack-wire";
 import type { LspStartupServerInfo } from "./lsp";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
 import {
@@ -2218,11 +2219,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				break;
 			}
 			if (!model) {
-				const requested =
-					deferredModelPatterns.length === 1
-						? `"${deferredModelPatterns[0]}"`
-						: `one of ${deferredModelPatterns.map(pattern => `"${pattern}"`).join(", ")}`;
-				modelFallbackMessage = `Model ${requested} not found`;
+				// Never assume the id is at fault. An empty registry, or one whose
+				// credentials can no longer serve a token, is an AUTH failure, and
+				// reporting it as an unknown model id is what sent a real
+				// investigation into model allowlists for a day (BACKLOG
+				// AUTH-FAILURE-BLAMES-MODEL-ID). The classification is
+				// `describeModelResolutionFailure`, under test.
+				modelFallbackMessage = describeModelResolutionFailure({
+					requested: deferredModelPatterns,
+					allModelIds: modelRegistry.getAll().map(entry => `${entry.provider}/${entry.id}`),
+					availableModelIds: modelRegistry.getAvailable().map(entry => `${entry.provider}/${entry.id}`),
+					registryError: modelRegistry.getError()?.message,
+				}).message;
 			}
 		}
 
@@ -2324,10 +2332,18 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			} else {
 				const patterns = settings.get("enabledModels");
+				// The `enabledModels` case already names its real cause. The general
+				// case must not: "set an API key" is right only when there is no
+				// credential, and it hid a broken registry behind advice about keys.
 				modelFallbackMessage =
 					patterns && patterns.length > 0
 						? `No model available matching enabledModels (${patterns.join(", ")}) with usable credentials. Configure auth for an allowed provider or adjust enabledModels.`
-						: "No models available. Set an API key environment variable, or sign in with /login in an interactive session. Then pick a model with /model (interactive) or --model.";
+						: describeModelResolutionFailure({
+								requested: [],
+								allModelIds: modelRegistry.getAll().map(entry => `${entry.provider}/${entry.id}`),
+								availableModelIds: modelRegistry.getAvailable().map(entry => `${entry.provider}/${entry.id}`),
+								registryError: modelRegistry.getError()?.message,
+							}).message;
 			}
 		}
 

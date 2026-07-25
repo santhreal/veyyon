@@ -149,6 +149,7 @@
       "name": "@veyyon/deepswe-bench",
       "version": "0.1.0",
       "dependencies": {
+        "@veyyon/ai": "workspace:*",
         "argot": "workspace:*",
       },
     },

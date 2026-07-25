@@ -39,12 +39,14 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import YAML from "yaml";
 import {
 	type ArmResult,
 	collectEmittedText,
 	type EncodeHeadroom,
 	effectiveTemperature,
+	emptyArmResult,
 	encodeHeadroom,
 	isHardError,
 	jobNameOf,
@@ -64,6 +66,7 @@ import {
 	tallyUsage,
 } from "./aggregate";
 import { type ArmInputs, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
+import { type CredentialProbe, decideAuthPreflight, describeAuthPreflightFailure } from "./auth-preflight";
 import { decideAuthSeed } from "./auth-seed";
 import { encodeArmModelMismatch, encodePreambleSilentlyDropped, isEncodeArm } from "./treatment-guard";
 
@@ -180,6 +183,50 @@ function ensureAuthDbSeeded(): void {
 	fs.copyFileSync(decision.source, AUTH_DB);
 }
 
+/**
+ * Prove the STAGED store can serve a token before a single container starts.
+ *
+ * Seeding it fresh is not the same as it working: a token can be revoked, a
+ * subscription exhausted, a refresh rejected. Without this, that was discovered
+ * one container at a time, and the resulting message blamed the model id
+ * (BACKLOG AUTH-FAILURE-BLAMES-MODEL-ID), which is how a 40-trial run was burned
+ * and then misdiagnosed as an unservable model.
+ *
+ * Probes the same file the containers mount, through
+ * `AuthStorage.checkCredentials`, which performs OAuth refresh-on-expiry and
+ * then the provider's auth-verifying request per credential without swallowing
+ * errors. The verdict logic is `auth-preflight.ts`, under test.
+ */
+async function requireStagedAuthCanServeToken(): Promise<void> {
+	const store = await SqliteAuthCredentialStore.open(AUTH_DB);
+	let probes: CredentialProbe[];
+	try {
+		const storage = new AuthStorage(store);
+		await storage.reload();
+		probes = await storage.checkCredentials();
+	} finally {
+		store.close();
+	}
+
+	const verdict = decideAuthPreflight(probes);
+	if (verdict.kind === "ok") {
+		console.log(`deepswe-bench: staged auth DB serves a token (${verdict.usable} usable credential(s))`);
+		return;
+	}
+	if (verdict.kind === "unverifiable") {
+		// Loud on purpose. Proceeding is right (some providers have no probe), but
+		// a quiet pass here would claim a check that never ran, which is the exact
+		// silence this preflight exists to remove.
+		console.warn(
+			`deepswe-bench: WARNING the staged auth DB could NOT be verified. No probe is configured for: ` +
+				`${verdict.providers.join(", ")}. Proceeding UNVERIFIED; an auth failure will now surface per trial.`,
+		);
+		return;
+	}
+	console.error(describeAuthPreflightFailure(verdict, AUTH_DB));
+	process.exit(1);
+}
+
 function sha256File(p: string): string {
 	return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 }
@@ -269,26 +316,7 @@ function parseSessionsUsage(trialDir: string): {
 }
 
 function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
-	const result: ArmResult = {
-		arm,
-		task,
-		repeat,
-		reward: null,
-		partial: null,
-		f2p: null,
-		p2p: null,
-		inputTokens: null,
-		outputTokens: null,
-		cacheTokens: null,
-		costUsd: null,
-		agentSeconds: null,
-		argotLoadCalls: null,
-		assistantMsgsWithSigil: null,
-		argotPreamblePresent: null,
-		argotHandlesLoaded: null,
-		encodeHeadroom: null,
-		toolCalls: null,
-	};
+	const result: ArmResult = emptyArmResult(arm, task, repeat);
 	// Pier truncates long task names in trial dir names, and a job has exactly
 	// one trial, so match the single subdirectory.
 	const trialDir = fs.readdirSync(jobDir, { withFileTypes: true }).find(d => d.isDirectory());
@@ -368,25 +396,7 @@ function reaggregate(runDir: string): void {
 		try {
 			results.push(parseTrialResult(arm, task, repeat, path.join(jobsRoot, jobName)));
 		} catch (err) {
-			results.push({
-				arm,
-				task,
-				repeat,
-				reward: null,
-				partial: null,
-				f2p: null,
-				p2p: null,
-				inputTokens: null,
-				outputTokens: null,
-				cacheTokens: null,
-				costUsd: null,
-				agentSeconds: null,
-				argotLoadCalls: null,
-				assistantMsgsWithSigil: null,
-				argotPreamblePresent: null,
-				toolCalls: null,
-				error: String(err),
-			});
+			results.push({ ...emptyArmResult(arm, task, repeat), error: String(err) });
 		}
 	}
 	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
@@ -547,6 +557,7 @@ async function main(): Promise<void> {
 
 	await ensureBinaryUpToDate();
 	ensureAuthDbSeeded();
+	await requireStagedAuthCanServeToken();
 	requireFile(VEY_BINARY, "build it: cd ../coding-agent && bun scripts/build-binary.ts");
 	for (const arm of arms) {
 		requireFile(path.join(BENCH_DIR, "arms", `${arm}.yml`), `create arms/${arm}.yml`);
@@ -786,27 +797,7 @@ async function main(): Promise<void> {
 				);
 				return await runOne(arm, task, repeat, 2);
 			}
-			result = {
-				arm,
-				task,
-				repeat,
-				reward: null,
-				partial: null,
-				f2p: null,
-				p2p: null,
-				inputTokens: null,
-				outputTokens: null,
-				cacheTokens: null,
-				costUsd: null,
-				agentSeconds: null,
-				argotLoadCalls: null,
-				assistantMsgsWithSigil: null,
-				argotPreamblePresent: null,
-				argotHandlesLoaded: null,
-				encodeHeadroom: null,
-				toolCalls: null,
-				error: errStr,
-			};
+			result = { ...emptyArmResult(arm, task, repeat), error: errStr };
 		}
 		results.push(result);
 		const mark = result.error ? "ERROR" : result.reward === 1 ? "pass" : `reward=${result.reward}`;

@@ -444,6 +444,48 @@ export interface ArmResult {
 }
 
 /**
+ * A trial result with every measurement still unknown, which is the honest
+ * starting point for both a trial about to be parsed and a trial that failed
+ * before it could be.
+ *
+ * THE ONE OWNER of that shape. It used to be written out by hand in two places
+ * in `run.ts`, and the copies had already drifted apart in opposite directions:
+ * the parse path omitted `error`, and the reaggregate error path omitted
+ * `argotHandlesLoaded` and `encodeHeadroom`. That second omission is not
+ * cosmetic. Those two fields are what make a `0 encoded` run interpretable at
+ * all (how many handles the model actually had, and the headroom it could have
+ * used), so re-aggregating a finished run silently degraded its results.json to
+ * the older, uninterpretable format. Neither drift was caught because the package
+ * had no `check:types` script and was skipped by the workspace typecheck.
+ *
+ * `null` throughout means "not measured", never zero. Zero is a real, different
+ * answer: a dictionary that loaded no handles is a corpus fact, not missing data.
+ */
+export function emptyArmResult(arm: string, task: string, repeat: number): ArmResult {
+	return {
+		arm,
+		task,
+		repeat,
+		reward: null,
+		partial: null,
+		f2p: null,
+		p2p: null,
+		inputTokens: null,
+		outputTokens: null,
+		cacheTokens: null,
+		costUsd: null,
+		agentSeconds: null,
+		argotLoadCalls: null,
+		assistantMsgsWithSigil: null,
+		argotPreamblePresent: null,
+		argotHandlesLoaded: null,
+		encodeHeadroom: null,
+		toolCalls: null,
+		error: null,
+	};
+}
+
+/**
  * The summary of one group of samples (a whole arm, or a single (arm, task) cell).
  * Every mean is over the OK samples only (errors are excluded from reward/token
  * math but counted in {@link errors}), because a container that never produced a

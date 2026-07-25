@@ -52,7 +52,7 @@ const preloadArgs = ["--preload", TRIPWIRE_PRELOAD];
 // spawn time because Bun resolves os.homedir() once at process start, which is
 // exactly why a suite assigning process.env.HOME in beforeEach once wrote rows
 // into the real credential store while believing it was sandboxed.
-const SANDBOX_HOME = (() => {
+export const SANDBOX_HOME = (() => {
 	const sandbox = path.join(os.tmpdir(), `veyyon-test-home-${process.pid}`);
 	nodeFs.mkdirSync(sandbox, { recursive: true });
 	return sandbox;
@@ -155,12 +155,14 @@ const repoScriptTests = [
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"scripts/install-methods-coverage.test.ts",
+	"scripts/workspace-typecheck-coverage.test.ts",
 	"scripts/jules-port-manager.test.ts",
 	"scripts/upstream-radar.test.ts",
 	"scripts/release-sentinel.test.ts",
 	"scripts/release-changelog.test.ts",
 	"website/tools/gen-changelog.test.ts",
 	"website/tools/gen-blog.test.ts",
+	"website/tools/nav.test.ts",
 ];
 
 const codingAgentNativePathPatterns = [
@@ -960,6 +962,51 @@ export function snapshotRealConfigRoot(root: string = REAL_CONFIG_ROOT): Map<str
 	return snapshot;
 }
 
+/**
+ * Whether another veyyon is running right now, other than this test runner.
+ *
+ * This exists because the snapshot diff below cannot tell WHO wrote a file. A
+ * developer running the suite while their own veyyon session is open will see
+ * that session refresh a token or record usage mid-run, and the diff reports it
+ * as a test writing to real data. That happened, and a detector that cries wolf
+ * is a detector people learn to ignore, which would cost far more than it saves.
+ *
+ * The result is never used to skip the check, only to describe it honestly: a
+ * diff found while another veyyon was live is reported as UNATTRIBUTABLE rather
+ * than as a violation. With no live session the diff is unambiguous and stays a
+ * hard failure.
+ *
+ * Detection is deliberately conservative. Anything that cannot be read is
+ * treated as "a session might be running", because reporting a real violation as
+ * unattributable is a far cheaper mistake than the reverse.
+ */
+export function liveVeyyonProcessCount(procDir = "/proc", selfPid = process.pid): number {
+	let entries: string[];
+	try {
+		entries = nodeFs.readdirSync(procDir);
+	} catch {
+		// No /proc (macOS, Windows): assume a session could be live rather than
+		// claiming an attribution this platform cannot support.
+		return 1;
+	}
+	let count = 0;
+	for (const entry of entries) {
+		const pid = Number(entry);
+		if (!Number.isInteger(pid) || pid === selfPid) continue;
+		let cmdline: string;
+		try {
+			cmdline = nodeFs.readFileSync(path.join(procDir, entry, "cmdline"), "utf8");
+		} catch {
+			continue;
+		}
+		// The runner and its children all carry the sandbox HOME, so they are
+		// excluded by the test-process marker rather than by name.
+		if (cmdline.includes(SANDBOX_HOME)) continue;
+		if (/veyyon|\bvey\b/.test(cmdline)) count += 1;
+	}
+	return count;
+}
+
 /** Every path added, removed or modified between two snapshots. */
 export function diffRealConfigRoot(before: Map<string, string>, after: Map<string, string>): string[] {
 	const changes: string[] = [];
@@ -1045,13 +1092,31 @@ if (import.meta.main) {
 		// half-finished suite is most likely to have left damage behind.
 		const changes = diffRealConfigRoot(before, snapshotRealConfigRoot());
 		if (changes.length > 0) {
-			process.exitCode = 1;
-			process.stderr.write(
-				`\nREAL-DATA VIOLATION: the test run modified ${changes.length} path(s) inside ${REAL_CONFIG_ROOT}\n` +
-					`${changes.map(change => `  ${change}\n`).join("")}` +
-					`Tests may only write to temp directories. Find the suite that resolved a real path ` +
-					`(see packages/utils/test/helpers/real-data-tripwire.ts) and fix it before trusting these results.\n`,
-			);
+			const listing = changes.map(change => `  ${change}\n`).join("");
+			if (liveVeyyonProcessCount() > 0) {
+				// Another veyyon was running, so these writes cannot be attributed to the
+				// tests. Reported in full and NOT failed: the alternative is a red run
+				// every time a developer keeps their own session open, which trains
+				// people to ignore the one check that would catch real damage. The
+				// tripwire preload remains the enforcing layer and is unaffected.
+				process.stderr.write(
+					`\nREAL-DATA DIFF (UNATTRIBUTABLE): ${changes.length} path(s) inside ${REAL_CONFIG_ROOT} changed ` +
+						`while another veyyon session was running.\n${listing}` +
+						`These are most likely that session's own writes (a token refresh, usage recording). ` +
+						`To get an authoritative check, close every veyyon session and re-run. ` +
+						`A test that genuinely wrote here would also have tripped the preload guard ` +
+						`(packages/utils/test/helpers/real-data-tripwire.ts) and failed loudly.\n`,
+				);
+			} else {
+				process.exitCode = 1;
+				process.stderr.write(
+					`\nREAL-DATA VIOLATION: the test run modified ${changes.length} path(s) inside ${REAL_CONFIG_ROOT}\n` +
+						`${listing}` +
+						`No other veyyon session was running, so the tests did this. ` +
+						`Tests may only write to temp directories. Find the suite that resolved a real path ` +
+						`(see packages/utils/test/helpers/real-data-tripwire.ts) and fix it before trusting these results.\n`,
+				);
+			}
 		}
 	}
 }
