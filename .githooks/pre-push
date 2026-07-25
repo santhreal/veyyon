@@ -51,6 +51,46 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel)
+
+# Give the throwaway checkout a node_modules WITHOUT dragging the dirty tree in.
+#
+# The obvious `ln -s "$repo_root/node_modules" "$checkout/node_modules"` is
+# wrong, and wrong in the one way that defeats the entire hook. Workspace
+# packages are linked as `node_modules/@veyyon/ai -> ../../packages/ai`, a
+# RELATIVE link, and a relative link resolves against the directory it really
+# lives in. Through a symlinked node_modules that is the main repo, so every
+# cross-package import typechecked the WORKING TREE while the hook reported it
+# was checking the commit. A half-finished edit in one package could fail the
+# push, and a broken commit could pass it because the fix was sitting uncommitted
+# on disk. That is worse than no hook: it reports a check it did not perform.
+#
+# So third-party packages are linked entry by entry (they are identical in both
+# trees and reinstalling them would cost far more than the check itself), and the
+# workspace links are rebuilt to point INSIDE the worktree.
+link_node_modules() {
+	src="$repo_root/node_modules"
+	dst="$1/node_modules"
+	[ -d "$src" ] || return 0
+	mkdir -p "$dst"
+	for entry in "$src"/* "$src"/.[!.]*; do
+		[ -e "$entry" ] || continue
+		name=${entry##*/}
+		[ "$name" = "@veyyon" ] && continue
+		ln -sfn "$entry" "$dst/$name"
+	done
+	[ -d "$src/@veyyon" ] || return 0
+	mkdir -p "$dst/@veyyon"
+	for entry in "$src/@veyyon"/*; do
+		[ -e "$entry" ] || continue
+		name=${entry##*/}
+		target=$(readlink "$entry" 2>/dev/null || true)
+		case "$target" in
+		../../packages/*) ln -sfn "$1/${target#../../}" "$dst/@veyyon/$name" ;;
+		*) ln -sfn "$entry" "$dst/@veyyon/$name" ;;
+		esac
+	done
+}
+
 checkout=""
 cleanup() {
 	[ -n "$checkout" ] && git -C "$repo_root" worktree remove --force "$checkout" >/dev/null 2>&1 || true
@@ -66,9 +106,7 @@ for sha in $shas; do
 		echo "          Push with VEYYON_SKIP_PREPUSH=1 if you accept the risk." >&2
 		exit 1
 	fi
-	# Shared, not installed: `bun install` in a throwaway tree would cost more
-	# than the check. The pushed commit's own package.json is what tsgo reads.
-	[ -d "$repo_root/node_modules" ] && ln -s "$repo_root/node_modules" "$checkout/node_modules"
+	link_node_modules "$checkout"
 
 	echo "pre-push: typechecking $short (bypass: git push --no-verify)" >&2
 	if ! (cd "$checkout" && bun run check:ts); then
