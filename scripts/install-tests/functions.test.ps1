@@ -450,6 +450,43 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "SKIP: git not available; Get-LfsAssets tests skipped"
 }
 
+# --- Move-StagedBinaryIntoPlace: an empty download never becomes the binary ---
+# install.sh has refused a zero-byte staged file since finalize_binary existed;
+# the Windows side had no such guard. Invoke-WebRequest writes the file before it
+# knows the body is empty, and -NoVerify skips the checksum entirely, so an empty
+# asset installed cleanly and left the user with a veyyon that could not start.
+$stageSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-staging-$PID"
+New-Item -ItemType Directory -Force -Path $stageSandbox | Out-Null
+try {
+    $target = Join-Path $stageSandbox "veyyon.exe"
+    $staging = Join-Path $stageSandbox ".veyyon.download"
+
+    # An existing working binary must survive a failed install: that is the whole
+    # reason the download is staged rather than written onto the target.
+    Set-Content -LiteralPath $target -Value "previous working binary"
+    New-Item -ItemType File -Force -Path $staging | Out-Null
+    $stageError = ""
+    try { Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target } catch { $stageError = $_.Exception.Message }
+    Check "an empty staged file is refused" ([bool]($stageError -match "is empty")) "True"
+    Check "the refusal names the staged path" ([bool]($stageError -match [regex]::Escape($staging))) "True"
+    Check "the refusal tells the user to retry the download" ([bool]($stageError -match "retry or use -Source")) "True"
+    Check "the previous binary is untouched" (Get-Content -Raw $target).Trim() "previous working binary"
+    Check "the empty staged file is cleaned up" (Test-Path $staging) "False"
+
+    # A missing staged file is the same failure, not a crash on a null length.
+    $stageError = ""
+    try { Move-StagedBinaryIntoPlace -StagingPath (Join-Path $stageSandbox "absent") -TargetPath $target } catch { $stageError = $_.Exception.Message }
+    Check "a missing staged file is refused too" ([bool]($stageError -match "is empty")) "True"
+
+    # The good path still works: a non-empty staged file replaces the target.
+    Set-Content -LiteralPath $staging -Value "new binary"
+    Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target
+    Check "a non-empty staged file replaces the target" (Get-Content -Raw $target).Trim() "new binary"
+    Check "the staged file is gone after a successful move" (Test-Path $staging) "False"
+} finally {
+    Remove-Item -Recurse -Force $stageSandbox -ErrorAction SilentlyContinue
+}
+
 # --- PowerShell completions: the profile edit is surgical and reversible ---
 # Windows had no tab completion at all. PowerShell registers completion at
 # runtime instead of autoloading a file, so the installer writes a script and
