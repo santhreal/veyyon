@@ -71,12 +71,7 @@ export type BracketedPasteHandlerOptions = {
 	byteLimit?: number;
 };
 
-/**
- * Default cap on a single buffered paste (64 MiB). ONE owner for every paste
- * bound: `BracketedPasteHandler` and `StdinBuffer#abortPaste` both consult
- * this symbol, so the two defense-in-depth layers can never drift apart.
- */
-export const PASTE_MAX_BYTES = 64 * 1024 * 1024;
+const DEFAULT_BYTE_LIMIT = 64 * 1024 * 1024;
 
 /**
  * Handles bracketed paste mode buffering for terminal input components.
@@ -91,7 +86,7 @@ export class BracketedPasteHandler {
 	readonly #byteLimit: number;
 
 	constructor(options: BracketedPasteHandlerOptions = {}) {
-		this.#byteLimit = options.byteLimit ?? PASTE_MAX_BYTES;
+		this.#byteLimit = options.byteLimit ?? DEFAULT_BYTE_LIMIT;
 	}
 
 	/**

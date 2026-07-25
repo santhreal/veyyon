@@ -278,16 +278,7 @@ function geminiFlashFamily(mode: "budget" | "google-level"): EffortVariantFamily
 		suppressWhenOff: true,
 		// Retired bare id; the alias only fires when no live model holds it
 		// (exact match wins in every resolver).
-		//
-		// `gemini-3.6-flash` here is a DISPLAY-vs-LOGICAL split, not a stale
-		// copy of the CCA family below: Antigravity brands its flash as 3.6
-		// while serving the 3.5-family deployments, so requesting
-		// `google-antigravity/gemini-3.6-flash` intentionally resolves to this
-		// 3.5 logical family. Cloud Code Assist providers have their own real
-		// `gemini-3.6-flash` family (gemini36FlashFamily); the two never meet
-		// on one provider, so the same bare name means different logical
-		// models on different providers by design.
-		extraAliases: ["gemini-3-flash", "gemini-3.6-flash"],
+		extraAliases: ["gemini-3-flash"],
 	};
 }
 

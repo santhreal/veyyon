@@ -5,20 +5,10 @@
  *
  * For each task this clones the task's repository at its base commit (shallow,
  * cached under repo-cache/), runs the argot SDK's generateDictFromRepo over
- * the tree, and writes the dictionary to dicts/<task>.AGENTS.dict.
- *
- * Those .AGENTS.dict files are an INSPECTION ARTIFACT, not an input to a run.
- * Nothing stages them into a container and no arm reads them. A run gets its
- * dictionary from the agent itself: at startup the launch project is resolved
- * and generateDictFromRepo runs over the checked-out tree into the agent's own
- * cache, outside the repository. Keep the files because reading them is the
- * quickest way to see what the generator actually chose for a repo, and delete
- * them freely; the next run regenerates its own.
- *
- * The report is the part a run depends on, because it is the task-selection
- * instrument. It is trustworthy for that purpose precisely because it calls the
- * SAME generateDictFromRepo over the SAME tree the agent will, so a task's score
- * here predicts the vocabulary the agent will really be given.
+ * the tree, and writes the dictionary to dicts/<task>.AGENTS.dict. run.ts
+ * stages that file into the task container at /app/AGENTS.dict so the full
+ * arm has a real dictionary to load (none/decode run with the same file
+ * present but without teaching; see README).
  *
  * The savings table (dicts/report.md) is also the task-selection instrument,
  * and it ranks on TYPEABLE savings, not the SDK's raw estimate. The raw estimate

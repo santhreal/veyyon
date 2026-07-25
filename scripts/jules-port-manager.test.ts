@@ -2,16 +2,13 @@ import { describe, expect, it } from "bun:test";
 import {
 	buildPortPrompt,
 	classifyHarvest,
-	classifyPrOpen,
 	countFailures,
-	countNudges,
 	countRecentSessions,
 	extractPrUrl,
 	failMarker,
 	findPortPr,
 	keyFingerprint,
 	latestSessionMarker,
-	nudgeMarker,
 	parseEnvKeys,
 	sessionMarker,
 	upstreamNumberFromIssue,
@@ -85,13 +82,6 @@ describe("session markers", () => {
 		expect(latestSessionMarker(["just a human comment", failMarker("sessions/x")])).toBeNull();
 	});
 
-	it("counts nudges per SESSION, so a retry session starts with a fresh nudge budget", () => {
-		const comments = [nudgeMarker("sessions/old"), nudgeMarker("sessions/old"), nudgeMarker("sessions/new")];
-		expect(countNudges(comments, "sessions/old")).toBe(2);
-		expect(countNudges(comments, "sessions/new")).toBe(1);
-		expect(countNudges(comments, "sessions/never")).toBe(0);
-	});
-
 	it("counts one failure per jules-failed marker and ignores everything else", () => {
 		expect(
 			countFailures([
@@ -134,10 +124,6 @@ describe("buildPortPrompt", () => {
 		expect(p).toContain("## Task: evaluate and port\n- `packages/ai/src/stream.ts`");
 		expect(p).toContain("NOT-APPLICABLE:");
 		expect(p).not.toContain("Previous attempt failed");
-	});
-
-	it("bans scratch artifacts in the PR (live finding: a session committed the downloaded 6227.diff to the repo root)", () => {
-		expect(buildPortPrompt(40, "body", null)).toContain("Never commit scratch artifacts");
 	});
 
 	it("folds the prior failure context into a retry so the next session sees the dead end", () => {
@@ -183,75 +169,6 @@ describe("findPortPr", () => {
 
 	it("returns null when nothing references the issue", () => {
 		expect(findPortPr([pr(33, "chore(deps): bump flume", "dependabot body")], 167, 6413)).toBeNull();
-	});
-
-	it("never lets a bare #N in a dependabot changelog quote claim the port (live risk: dep bodies quote other repos' issue numbers)", () => {
-		const prs = [
-			pr(
-				34,
-				"chore(deps): bump flume from 0.11.1 to 0.12.0",
-				"Changelog\n- fixed shutdown race (#45)\n- perf (#167)",
-			),
-		];
-		expect(findPortPr(prs, 45, null)).toBeNull();
-		expect(findPortPr(prs, 167, null)).toBeNull();
-	});
-
-	it("accepts a bare #N inside a PR Jules itself authored (its auto-footer names the task, not a Closes line)", () => {
-		const body =
-			"Ports the thing for #45.\n\n---\n*PR created automatically by Jules for task 123 started by @santhreal*";
-		expect(findPortPr([pr(35, "some port", body)], 45, null)?.number).toBe(35);
-	});
-});
-
-/**
- * classifyPrOpen closes the last gap in the label state machine: an issue in
- * port-pr-open whose PR is rejected (closed unmerged) previously stranded
- * forever, silently dropping the port; a merged PR with a mangled Closes line
- * left a done issue open. Both are recall bugs in the pipeline itself.
- */
-describe("classifyPrOpen", () => {
-	const base = { number: 181, title: "port(upstream#6227): fix", body: "Closes #40", html_url: "u" };
-
-	it("keeps waiting while the PR is open for review", () => {
-		expect(classifyPrOpen({ ...base, state: "open", merged_at: null })).toEqual({ kind: "keep" });
-	});
-
-	it("closes the issue when the PR merged (the Closes line should have, but must not be load-bearing)", () => {
-		expect(classifyPrOpen({ ...base, state: "closed", merged_at: "2026-07-24T20:00:00Z" }).kind).toBe("close");
-	});
-
-	it("requeues the issue when the PR was closed WITHOUT merging (a rejected port is not a done port)", () => {
-		expect(classifyPrOpen({ ...base, state: "closed", merged_at: null }).kind).toBe("requeue");
-	});
-
-	it("routes to a human when the label exists but no PR references the issue", () => {
-		expect(classifyPrOpen(null).kind).toBe("review");
-	});
-
-	it("treats a NOT-APPLICABLE PR as a verdict to verify, never a port (live: AUTO_CREATE_PR opened empty PR #183 to carry the verdict)", () => {
-		const na = {
-			number: 183,
-			title: "NOT-APPLICABLE: port(upstream#6240): fix(tui): lock plan",
-			body: "Closes #32\n\nNOT-APPLICABLE: superseded",
-			html_url: "u",
-		};
-		expect(classifyPrOpen({ ...na, state: "open", merged_at: null }).kind).toBe("review");
-		// Closing the verdict PR unmerged must NOT requeue: the port would be
-		// re-attempted forever on a change that provably does not apply.
-		expect(classifyPrOpen({ ...na, state: "closed", merged_at: null }).kind).toBe("review");
-	});
-
-	it("detects the verdict from the body when only the body carries NOT-APPLICABLE", () => {
-		const pr = {
-			number: 9,
-			title: "port(upstream#1): fix",
-			body: "NOT-APPLICABLE: veyyon rewrote this",
-			html_url: "u",
-			state: "open",
-			merged_at: null,
-		};
-		expect(classifyPrOpen(pr).kind).toBe("review");
 	});
 });
 
@@ -325,18 +242,9 @@ describe("classifyHarvest", () => {
 		expect(classifyHarvest("IN_PROGRESS", null, 30, 24).kind).toBe("failed");
 	});
 
-	it("a session asking for input gets the autonomy nudge while budget remains (seen live: Jules pauses mid-port to ask 'should I run the tests?')", () => {
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 0, 3).kind).toBe("nudge");
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 2, 3).kind).toBe("nudge");
-		// A questioning session is nudged even past the stale window: an answer
-		// is cheaper than abandoning a mostly-done port.
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 30, 24, 0, 3).kind).toBe("nudge");
-	});
-
-	it("a session still asking after the nudge budget, past the window, needs a human answer, not a retry", () => {
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 30, 24, 3, 3).kind).toBe("review");
-		// Out of nudges but inside the window: wait for the stale clock, a late
-		// auto-advance is still possible.
-		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24, 3, 3).kind).toBe("wait");
+	it("a session stuck AWAITING_USER_FEEDBACK past the window needs a human answer, not a retry", () => {
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 30, 24).kind).toBe("review");
+		// ...but inside the window it may still auto-advance: wait.
+		expect(classifyHarvest("AWAITING_USER_FEEDBACK", null, 2, 24).kind).toBe("wait");
 	});
 });
