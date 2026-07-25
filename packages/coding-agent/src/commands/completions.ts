@@ -39,11 +39,27 @@ export default class Completions extends Command {
 	];
 
 	async run(): Promise<void> {
-		const shell = this.argv.find(a => !a.startsWith("-"));
+		// Parse through the declared `args`/`flags` rather than scanning argv by
+		// hand. The hand-rolled scan was a second parser that disagreed with the
+		// declaration it sat next to: `--no-alias=true` never matched its
+		// `argv.includes("--no-alias")` test, so the alias was bound anyway, and a
+		// stray trailing token was silently dropped.
+		let shell: string | undefined;
+		let noAlias = false;
+		try {
+			const parsed = await this.parse(Completions);
+			shell = parsed.args.shell;
+			noAlias = parsed.flags["no-alias"];
+		} catch (error) {
+			process.stderr.write(`Error: ${error instanceof Error ? error.message : String(error)}\n`);
+			process.stderr.write(`Usage: ${APP_NAME} completions <${SHELLS.join("|")}>\n`);
+			process.exitCode = 1;
+			return;
+		}
 		if (!isShell(shell)) {
-			if (shell) {
-				process.stderr.write(`Error: unsupported shell "${shell}"\n`);
-			}
+			// Unreachable while `options` is declared above, which is the point: the
+			// narrowing below is a type guard, not a second validation.
+			process.stderr.write(`Error: unsupported shell "${shell}"\n`);
 			process.stderr.write(`Usage: ${APP_NAME} completions <${SHELLS.join("|")}>\n`);
 			process.exitCode = 1;
 			return;
@@ -65,7 +81,6 @@ export default class Completions extends Command {
 		// name. An installer that declined to create `vey` (because the user
 		// already had one) must also decline to complete it, or our subcommands
 		// complete their tool.
-		const noAlias = this.argv.includes("--no-alias");
 		const spec = buildSpec(config, ROOT_COMMAND, aliasMap, { includeLaunchAlias: !noAlias });
 		await Bun.write(Bun.stdout, generateCompletion(shell, spec));
 	}

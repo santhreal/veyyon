@@ -329,7 +329,82 @@ describe("veyyon completions (integration / drift)", () => {
 			cleanup();
 		}
 		expect(exitCode).toBe(1);
-		expect(stderr).toContain('Error: unsupported shell "tcsh"');
+		// The message names the shell that was rejected AND the ones that work, so
+		// the reader does not have to go looking for the list.
+		expect(stderr).toContain('Expected shell to be one of: bash, zsh, fish, powershell; got "tcsh"');
+		expect(stderr).toContain("Usage: veyyon completions <bash|zsh|fish|powershell>");
+	}, 30000);
+});
+
+/**
+ * `completions` parses through its own declaration, not a second scan of argv.
+ *
+ * It used to find the shell with `argv.find(a => !a.startsWith("-"))` and read
+ * the flag with `argv.includes("--no-alias")`, next to a `static args`/`static
+ * flags` declaration that said the same thing more precisely. The two
+ * disagreed: `--no-alias=true` is not the string `--no-alias`, so the flag read
+ * as false and the alias was bound anyway — the exact case the flag exists to
+ * prevent, on an install where `vey` is someone else's command.
+ */
+describe("veyyon completions argument handling", () => {
+	async function run(...args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+		const { env, cleanup } = hermeticSpawnEnv();
+		try {
+			const proc = Bun.spawn([process.execPath, cliEntry, "completions", ...args], {
+				env,
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [stdout, stderr, exitCode] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+			return { stdout, stderr, exitCode };
+		} finally {
+			cleanup();
+		}
+	}
+
+	it("omits the alias when --no-alias is given", async () => {
+		const { stdout, exitCode } = await run("bash", "--no-alias");
+		expect(exitCode).toBe(0);
+		expect(stdout.split("\n")).toContain("complete -F _veyyon veyyon");
+	}, 30000);
+
+	it("refuses --no-alias=true rather than quietly ignoring it", async () => {
+		// This is the shape that broke: `argv.includes("--no-alias")` never matched
+		// it, so the flag read as false and the alias was bound on an install where
+		// `vey` belongs to someone else. Refusing is the honest answer for a
+		// boolean flag that takes no argument; silently doing the opposite is not.
+		const { stdout, stderr, exitCode } = await run("bash", "--no-alias=true");
+		expect(exitCode).toBe(1);
+		expect(stdout).toBe("");
+		expect(stderr).toContain("does not take an argument");
+	}, 30000);
+
+	it("binds the alias when the flag is absent", async () => {
+		const { stdout } = await run("bash");
+		expect(stdout.split("\n")).toContain(`complete -F _veyyon veyyon ${APP_ALIAS}`);
+	}, 30000);
+
+	it("refuses a stray extra argument instead of ignoring it", async () => {
+		// Dropping it would run a command the user did not write, at exit 0.
+        const { stderr, exitCode } = await run("bash", "zsh");
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain('Unexpected argument: "zsh"');
+	}, 30000);
+
+	it("refuses an unknown flag", async () => {
+		const { stderr, exitCode } = await run("bash", "--nope");
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("--nope");
+	}, 30000);
+
+	it("names the missing shell rather than printing an empty error", async () => {
+		const { stderr, exitCode } = await run();
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("Missing required argument: shell");
 		expect(stderr).toContain("Usage: veyyon completions <bash|zsh|fish|powershell>");
 	}, 30000);
 });
@@ -414,7 +489,10 @@ describe("generateCompletion('powershell')", () => {
 	});
 
 	it("scopes a subcommand's flags to that subcommand", () => {
-		const table = out.slice(out.indexOf("$global:__veyyonCommandFlags = @{"), out.indexOf("$global:__veyyonCommandArgs = @{"));
+		const table = out.slice(
+			out.indexOf("$global:__veyyonCommandFlags = @{"),
+			out.indexOf("$global:__veyyonCommandArgs = @{"),
+		);
 		expect(table).toContain("'commit' = @{");
 		expect(table).toContain(
 			"'--push' = @{ Desc = 'Push'; Value = @{ Kind = 'flag'; Values = @(); Multiple = $false } }",
@@ -762,8 +840,12 @@ describe("generateCompletion — fish subcommand detection", () => {
 	});
 
 	it("skips the token after a value-taking root flag", () => {
-		expect(lines).toContain("if contains -- $i --model --models --thinking --tools --resume -r --extension -e --session-dir");
-		const guard = lines.indexOf("if contains -- $i --model --models --thinking --tools --resume -r --extension -e --session-dir");
+		expect(lines).toContain(
+			"if contains -- $i --model --models --thinking --tools --resume -r --extension -e --session-dir",
+		);
+		const guard = lines.indexOf(
+			"if contains -- $i --model --models --thinking --tools --resume -r --extension -e --session-dir",
+		);
 		expect(lines[guard + 1]).toBe("set skip 1");
 	});
 
@@ -1090,7 +1172,7 @@ describe("settings completion reaches every shell", () => {
 		expect(out).toContain("':key:_veyyon_call settings'");
 		expect(out).toContain("':value:_veyyon_setting_values'");
 		expect(out).not.toContain("_files");
-		expect(out).toContain('_veyyon_setting_values() {');
+		expect(out).toContain("_veyyon_setting_values() {");
 		expect(out).toContain('"${words[CURRENT-1]}"');
 	});
 
@@ -1167,7 +1249,7 @@ describe("the generated bash settings completion, executed", () => {
 		'  elif [ "$2" = "setting-values" ]; then printf "%s.true\\tv\\n%s.false\\tv\\n" "$3" "$3";',
 		"  fi",
 		"}",
-		"command() { shift; veyyon \"$@\"; }",
+		'command() { shift; veyyon "$@"; }',
 	].join("\n");
 
 	function complete(...words: string[]): string[] {
