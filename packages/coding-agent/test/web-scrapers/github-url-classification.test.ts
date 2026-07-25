@@ -129,11 +129,13 @@ describe("numbered URLs", () => {
 	 * The LIST pages are their own types, and this is the distinction that decides which reader runs: an
 	 * issue reader given the list URL would have no issue to read.
 	 */
+	// `as const` keeps each `type` a literal. Widened to `string` it no longer
+	// matches the classifier's union, and the assertion below stops compiling.
 	it.each([
 		["https://github.com/o/r/issues", "issues"],
 		["https://github.com/o/r/pulls", "pulls"],
 		["https://github.com/o/r/discussions", "discussions"],
-	])("classifies %p as the %s list", (url, type) => {
+	] as const)("classifies %p as the %s list", (url, type) => {
 		expect(parseGitHubUrl(url)).toEqual({ type, owner: "o", repo: "r" });
 	});
 
@@ -145,7 +147,7 @@ describe("numbered URLs", () => {
 		["https://github.com/o/r/issues/new", "issues"],
 		["https://github.com/o/r/pull/new", "pulls"],
 		["https://github.com/o/r/issues/12abc", "issues"],
-	])("falls back to the list for %p", (url, type) => {
+	] as const)("falls back to the list for %p", (url, type) => {
 		expect(parseGitHubUrl(url)).toEqual({ type, owner: "o", repo: "r" });
 	});
 });

@@ -11,6 +11,16 @@
 // per-workspace checks. Before that wiring existed nothing typechecked `scripts/`
 // at all, and a `Record<SettingTab, string>` missing six of its keys shipped a
 // settings reference with six `## undefined` headings.
+//
+// DO NOT ADD "DOM" TO `lib` HERE. It looks like the fix when a script imports a
+// browser package, and `scripts/tool-renderer-coverage.test.ts` does exactly that:
+// it checks every agent tool against the web registry, so this program holds
+// `packages/tool-render` source next to `packages/coding-agent` source. Those two
+// cannot share one library. Adding DOM turned one error into 69, all in the
+// agent's node code, because the DOM's `Response`, `Headers` and `NodeList`
+// disagree with Bun's. The browser package compiles here without DOM instead: see
+// `openInNewTab` in `packages/tool-render/src/parts.tsx`, which was the only thing
+// in it that named a DOM-only global.
 {
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {

@@ -7,6 +7,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { CustomMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 
@@ -226,7 +227,12 @@ describe("AgentSession re-scopes to the destination directory", () => {
 		await agentSession.setCwd(destination);
 
 		const entries = agentSession.sessionManager.getEntries();
-		const moved = entries.filter(entry => entry.type === "custom_message" && entry.customType === "cwd_changed");
+		// A type predicate, because a plain boolean filter leaves the array as the
+		// whole `SessionEntry` union and `content` belongs to one member of it. The
+		// assertion below is on that exact field, so this has to narrow.
+		const moved = entries.filter(
+			(entry): entry is CustomMessageEntry => entry.type === "custom_message" && entry.customType === "cwd_changed",
+		);
 		expect(moved).toHaveLength(1);
 		expect(moved[0]?.content).toBe(`Session working directory changed: ${origin} → ${destination}`);
 	});

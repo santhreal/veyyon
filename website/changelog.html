@@ -76,9 +76,37 @@
 			<div class="sec">
 				<span class="tag add">Added</span>
 				<ul class="notes">
+				<li>The auto-compaction threshold is now a two-level picker in <span class="inline">/settings</span>: **Auto-Compaction Threshold** opens to three modes (Auto, Percent, Tokens) with a green check and the current amount on the active one, and each mode drills into its own presets plus a Custom entry. The flat list it replaces mixed all 19 auto/percent/token options in one list, so the three semantics were invisible until you read every description, and a hand-edited value like <span class="inline">170000</span> showed as nothing selected. Custom values are validated and normalized on entry (<span class="inline">92</span> stores as <span class="inline">92%</span>, <span class="inline">170_000</span> as <span class="inline">170000</span>), and a stored value the parser cannot read is shown as a warning with Auto in effect instead of presenting Auto as your choice. The stored value is unchanged (<span class="inline">auto</span>, <span class="inline">85%</span>, <span class="inline">200000</span>), so existing configs, the legacy <span class="inline">thresholdTokens</span>/<span class="inline">thresholdPercent</span> fold-in, and the clamp warnings all keep working.</li>
+				<li>Added an **Experimental** settings tab: every experimental feature now lives in one place — Argot shorthand (five settings, moved from the Context tab's Experimental group), Tool Calling Mode, Auto-Learn (moved from the Memory tab), and the Subagent Inbox layout (moved from Appearance's Advanced fold). The tab's name says "experimental" for everything on it, so labels no longer need an "(experimental)" suffix and the features stop pretending to be regular settings on three different tabs.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li>A <span class="inline">git status</span> autoresearch cannot read is no longer reported as a clean worktree. <span class="inline">tryGitStatus</span> answered any failure with <span class="inline">""</span>, which parses to "no dirty paths", and three things acted on that: a <span class="inline">discard</span> reported "nothing to revert" while the experiment's changes sat in the tree, <span class="inline">log_experiment</span> recorded an empty modified-path list so the scope-deviation check passed vacuously against <span class="inline">off_limits</span>, and <span class="inline">run_experiment</span> recorded an empty PRE-RUN dirty set, which claims the tree was clean and would attribute the user's own uncommitted files to the experiment. The probes now propagate and each caller reports through the error channel it already had. A cwd outside a repository is still answered with <span class="inline">""</span>, decided by resolving the repository rather than by a failed command, because autoresearch may run there and then has no tracked changes.</li>
+				<li><span class="inline">init_experiment</span> treats an unreadable <span class="inline">git status</span> as dirty rather than clean. False took the branch that skips committing harness changes, which is the branch whose own warning says "discard may not preserve uncommitted harness files".</li>
+				<li>A debug adapter config that exists and cannot be read or parsed is reported. Six filenames are probed per directory, so absence is silent, but a <span class="inline">dap.json</span> with a trailing comma used to be indistinguishable from no <span class="inline">dap.json</span>: the configured adapters simply were not there and the debugger fell back to its defaults without a word. Same for an unparseable lspmux <span class="inline">config.toml</span>, where a typo silently reverted every language server to the direct, unmultiplexed path.</li>
+				<li>Detecting a repository inside the working directory says when it could not look. An unreadable cwd produced the same empty listing as one with no repository in it, so the prompt and the status line both showed nothing with no sign the check never ran. The "exactly one direct child" rule also has one owner now instead of a copy in each of the asynchronous and synchronous paths.</li>
+				<li>A mistyped <span class="inline">--system-prompt</span> path is now an error instead of becoming the system prompt. The option takes either a path or the prompt text, and any read failure returned the input unchanged with <span class="inline">ENOENT</span> explicitly excluded from the warning, so <span class="inline">--system-prompt ./promtps/main.md</span> handed the model a system prompt whose entire content was that string: every rule, tool policy and workflow gone, the session behaving nothing like it should, and nothing on screen connecting it to a misspelled directory. <span class="inline">--append-system-prompt</span> and <span class="inline">TITLE_SYSTEM.md</span> resolved the same way. A value that fails to read is now refused when it has no spaces and either contains a path separator or ends in a prompt-file extension, naming the option, the path and the error. Prose is untouched: a one-line prompt containing a slash or ending in a dotted word is still used as written.</li>
+				<li><span class="inline">looksLikeFilePath</span> is one function in <span class="inline">@veyyon/utils</span> rather than a private copy in the Anthropic provider. It decides whether an option that accepts "a path or the value itself" was written as a path, and the provider's copy was the only place asking; prompt resolution had no shape check at all, so the same class of typo was an error for a certificate and silent for a system prompt. The extension list is passed by the caller, since <span class="inline">.md</span> names a prompt file and means nothing in a certificate option.</li>
+				<li>A <span class="inline">PROMPT_SECTIONS/</span> directory that exists and cannot be read is now refused instead of read as having no overrides. Any error from listing it returned the same empty list a missing directory does, so a directory that became root-owned after a <span class="inline">sudo</span> edit, a broken symlink, or a path that is a file dropped every section override the user wrote and the agent ran the shipped prompt with nothing logged. Absence is now <span class="inline">ENOENT</span>/<span class="inline">ENOTDIR</span> alone, through the shared <span class="inline">isMissingPath</span>, and anything else names the directory, the underlying error, and what would have happened. A file the listing just reported and the reader cannot open is refused the same way: it used to be skipped silently, which left a file on disk that had quietly stopped doing anything. Both judgements moved to the loader itself, so a reader injected by a test or an embedder is held to the same contract.</li>
+				<li>The error refusing a <span class="inline">PROMPT_SECTIONS/&lt;section&gt;.md</span> replacement now says how long the underline has to be. It named the banner, so a file refused for its underline read as though the section name were wrong, and the width it did mention was prose written by hand at the throw site rather than the constant the check applies — a change to the accepted width would have left it telling you to write the length that no longer works.</li>
+				<li>A plugin directory that cannot be read is reported instead of loading as a plugin with nothing in it. <span class="inline">resolveDirectoryEntries</span> answered a failed <span class="inline">readdirSync</span> with <span class="inline">[]</span>, which is also what a directory holding no loadable files gives, so an unreadable one registered no tools, hooks or commands and said nothing. The empty list is still returned, because one unreadable directory must not stop the rest of the plugin from loading.</li>
+				<li>A plugin <span class="inline">package.json</span> that exists and cannot be parsed is reported. It used to reach the same <span class="inline">null</span> an absent one does, so dependency resolution gave up and the import failed with "cannot resolve &lt;specifier&gt;", which sends the reader hunting a missing dependency rather than the malformed manifest in front of them.</li>
+				<li><span class="inline">doctor --fix</span> says why reinstalling plugins failed. The exit code and <span class="inline">bun install</span>'s output were drained and discarded, so a network failure, a lockfile conflict and a missing <span class="inline">bun</span> on PATH all showed up as the same red check.</li>
+				<li><span class="inline">/review</span> no longer presents a git failure as an empty repository. Listing branches or commits answered any failure with an empty list, so the command reported "No git branches found"; worse, an unreadable repository made the status probe return <span class="inline">""</span> and the review ran on an EMPTY diff and reported no findings, which is a false clean bill of health rather than an admission that git could not be read. Each failure now names its reason through the same notice the command already used for a failed diff.</li>
+				<li>Search providers say when stored credentials cannot be read. <span class="inline">findCredential</span> answered any failure from the credential store with <span class="inline">null</span>, which is also "no credential configured", so a search key the user configured silently dropped out of the provider chain and the search quietly ran on whatever was left. Reported once per provider set, since the failure belongs to the store rather than to the query.</li>
+				<li>The result-anchor rule for HTML search providers has one owner, <span class="inline">resolveExternalResultUrl</span>. Ecosia, Mojeek and Startpage each had a copy, and the three had already drifted in the part that matters: one rejected the engine's host and its <span class="inline">www.</span> spelling, one rejected every subdomain, one did both for a single domain. Ecosia's copy would have returned <span class="inline">images.ecosia.org</span> as an outbound result. Subdomain matching is now the rule everywhere.</li>
+				<li>The GitHub, GitLab, Hugging Face, Sourcegraph and Vimeo URL classifiers no longer wrap their whole body in a catch that returns <span class="inline">null</span>. The parse verdict already belongs to <span class="inline">tryParseUrl</span>, so that catch could only swallow a bug inside the classifier, and it surfaced as "this is not a URL I handle": the structured reader was skipped and the page came back as anonymous HTML with the issue, PR and Actions handling silently gone.</li>
+				<li>A prompt part is now identified as a section only when it actually carries a banner. <span class="inline">applyPromptSectionOrderToParts</span> read the part's first line and looked it up, with no check for the <span class="inline">====</span> underline beneath it, while the splitter cutting the same document required one. So any part whose first line happens to read like a banner name was ranked as that section: it could be ordered ahead of the real one, and a <span class="inline">promptSectionOrder</span> naming a section no part carries was reported as known instead of warned about. Both sides ask <span class="inline">leadingBannerName</span> now, which is also what <span class="inline">startsWithBanner</span> is written in terms of.</li>
+				<li>Failing to save a tool's full output as an artifact is reported. <span class="inline">saveOutputArtifact</span> is the one owner of the <span class="inline">artifact://&lt;id&gt;</span> spill, and it answered a failed write with the same silent <span class="inline">undefined</span> a session with no artifact store gives, so the caller printed its bounded head/tail window with no footer and no trace that the full bytes had existed. The window is all there is: the raw text is kept nowhere else. <span class="inline">undefined</span> is still returned, since the visible result is correct without the artifact, and the session's own <span class="inline">bash-original</span> save now reports through the same <span class="inline">reportLostOutputArtifact</span> owner instead of swallowing the failure privately.</li>
+				<li><span class="inline">AgentSession</span>'s plan-file listing is the shared <span class="inline">listLocalPlanFileUrls</span> rather than a third copy of the same readdir-filter-stat-sort walk. All three copies ended in <span class="inline">catch { return [] }</span>, so an unreadable session-local root looked like a session with no plans in each of them, and the fix had to be made in each of them.</li>
+				<li>Settings search now treats a multi-word query as an AND of its words: every word must match the label, path, group, description, or declared keywords, and word order carries no weight. The one-needle scorer it replaces looked for the words as a literal pair, space included, so <span class="inline">auto compaction</span> matched nothing — the label reads "Auto-Compaction Threshold" and contains neither the space nor the pair — which is exactly the query you type after reading the label. Stray punctuation between words is ignored, so <span class="inline">auto - compaction</span> is still the two-word query.</li>
 				<li>Added a **Subagents** settings area: a tab of its own (Delegation, Agents, Models, Limits, Isolation) that owns every question about a spawned agent. Everything about subagents used to be spread across fifteen <span class="inline">task.*</span> keys, a <span class="inline">subagent.model</span> field on the Model tab, a <span class="inline">task</span> model role in the role table, and two agent-keyed maps with no UI at all (<span class="inline">task.disabledAgents</span>, <span class="inline">task.agentModelOverrides</span>), so "is this agent on" and "what model does it run" each had two owners that could disagree. The Agents group lists every agent the project has, with the model each resolves to and the setting that decided, and opens one agent at a time to set whether it is offered, its model and its effort — the two agent-keyed maps it replaces could only be edited by hand, and nothing showed what a spawned agent would actually run. <span class="inline">/agents</span> edits the same rows through the same resolver. Your config is folded onto the new keys on load, including <span class="inline">modelRoles.task</span> becoming <span class="inline">subagent.model</span>, and the old keys are dropped from the file. Handbook: [Subagents](docs/handbook/src/features/subagents.md).</li>
 				<li>Added <span class="inline">docs/settings-reference.md</span>: every setting that appears in <span class="inline">/settings</span>, with its key, type, default, and what it does, grouped exactly as the tabs are. 201 of the 313 settings a user can see and change had no documentation anywhere, and nothing failed when a new one shipped undocumented. The page is generated from the schema by <span class="inline">scripts/gen-settings-reference.ts</span>, and CI fails when the committed file and the generator disagree, so it cannot fall behind the code. <span class="inline">docs/settings.md</span> keeps the hand-written narrative and links to it.</li>
 				<li>Ruby and Julia eval cells can now run on a kernel of their own: <span class="inline">ruby.kernelMode</span> and <span class="inline">julia.kernelMode</span>, with the same <span class="inline">session</span> and <span class="inline">per-call</span> values as <span class="inline">python.kernelMode</span> and the same <span class="inline">session</span> default. <span class="inline">per-call</span> starts a kernel for the cell and shuts it down when the cell finishes, including when it fails, so nothing the cell defined survives it. Python has had that choice since the setting existed while both other runtimes always kept one kernel per session, so a run that needed a clean slate could only get one in Python. A fresh Julia kernel recompiles, so <span class="inline">per-call</span> costs more there than anywhere else.</li>
+				<li><span class="inline">veyyon prompt --sections</span> now lists the sections that are NOT in the prompt, each marked optional or REQUIRED, and exits 1 when a required one is missing. The breakdown could only show what rendered, so a prompt missing a section for a good reason (a feature is off) and one missing it because assembly broke produced the same output and the same zero exit. The subagent prompt has always had that distinction; the system prompt, which is larger and where 86 of 272 template lines are conditional, did not. <span class="inline">--json</span> carries the same information in a <span class="inline">missing</span> array, present even when empty.</li>
+				<li>Added a build-time guard on the system prompt's cached prefix. Block 0 is the byte-stable text a provider serves from its prefix cache, and nothing failed when an edit changed it, so a wording change shipped a one-time full re-read of every user's conversation with no sign of it in the diff. <span class="inline">system-prompt-cached-prefix-stability.test.ts</span> records the digest, so moving those bytes is now a deliberate line in a review, and separately fails if a runtime section lands inside the prefix, if arming a feature perturbs it, or if two builds of the same inputs differ.</li>
 				</ul>
 			</div>
 			<div class="sec">
@@ -90,6 +118,20 @@
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
 				<ul class="notes">
+				<li>Plan approval now reports a session-local plan directory it cannot read, instead of behaving as though you had written no plans. The interactive path and the ACP path each had their own copy of that listing and both answered any failure with an empty list; there is now one owner, <span class="inline">listLocalPlanFileUrls</span>, and an unreadable root is named while the empty list is still returned so approval keeps working.</li>
+				<li>A theme that fails to load is now reported with its name and the underlying error. <span class="inline">getThemeByName</span> returned nothing for both a name that does not exist and a custom theme file with a syntax error, so a broken theme sent you looking for a typo.</li>
+				<li>Code that cannot be highlighted is now reported once per language rather than silently rendered plain, which is also what an unsupported language looks like.</li>
+				<li>A harness <span class="inline">promptSectionOrder</span> that asks a runtime section to come before a template section is now reported instead of quietly half-applied. Runtime sections always follow the cached prefix, so the request cannot be honoured; the warning names the section and the reason. Only a name matching no section at all was reported before, so an order naming two real sections produced a prompt in a different order from the one asked for with nothing logged, and an eval arm testing whether teaching the shorthand notation first changes behaviour would have run the control and recorded it as the treatment.</li>
+				<li>Prompt sections are now described by one type instead of two. <span class="inline">system-prompt-builder/section-registry.ts</span> (then named <span class="inline">prompt-blocks.ts</span>) and <span class="inline">prompts/registry.ts</span> each exported an interface named <span class="inline">PromptSection</span>, so importing "the" one gave you whichever your editor offered, and each had grown a field the other lacked. They share one declaration now, which is how the system prompt gained <span class="inline">optional</span>.</li>
+				<li>Every banner in every prompt is now underlined the same way. Three widths shipped at once: the system prompt's template sections used 14 <span class="inline">=</span>, its runtime sections used 35, and the subagent prompt used 35, so one prompt showed the model two different banner styles. The width had no owner, being split between a two-character stub in the registry and a <span class="inline">"=".repeat(33)</span> in the assembler. Registry rows declare only the banner NAME now and one function renders it, so a section cannot ship a width of its own. The system prompt's cached prefix is byte-identical; the subagent prompt's banners changed once.</li>
+				<li>A <span class="inline">PROMPT_SECTIONS/&lt;section&gt;.md</span> replacement whose underline is too short is now refused instead of accepted and then ignored. The validator required only that the text start with the registry's banner field, which ended in two <span class="inline">=</span>, while the splitter needs four to cut on a banner. A replacement underlined with two or three <span class="inline">=</span> therefore passed validation and landed in the prompt as ordinary text: the section stopped appearing in <span class="inline">veyyon prompt --sections</span>, <span class="inline">promptSectionOrder</span> could no longer move it, and a later override addressed the wrong span. Both sides ask one function now. Underlines of four or more are accepted, so a hand-written file that does not match the shipped fourteen still works.</li>
+				<li>Adding a prompt section that arrives as a builder option no longer demands an entry in the map of sections the builder computes itself. The type keying that map named the option-backed sections by hand (<span class="inline">Exclude&lt;RuntimeSectionId, "shorthand" | "shorthand-handles"&gt;</span>), so a new option-backed section failed the build asking for text that has no source, and the two ways to silence it — a bogus entry, or widening the map — both bring back the failure the map exists to prevent. The type is derived from each section's own declared input now, so it tracks the registry.</li>
+				<li>A prompt section pointing at an option that does not exist is now a compile error naming the key. The check meant to prove it cast its own input (<span class="inline">section.input.key as StringOptionKeys</span>), and a cast asserts rather than checks, so the check passed for every key: a mistyped option read <span class="inline">undefined</span>, the section rendered nothing, and nothing failed. The assembler's two text lookups were cast as well and are not now, so a section reclassified as computed without a matching entry is also caught at the index. Contributor guide: [System Prompt Customization §10](docs/system-prompt-customization.md).</li>
+				<li>An MCP authorization-server metadata document whose <span class="inline">issuer</span> is not a URL is now refused instead of trusted. The check that keeps a grant from being routed to an unverified <span class="inline">/authorize</span> endpoint compared the issuer against the URL the document was found at, and accepted the document whenever either value failed to parse, so a junk <span class="inline">issuer</span> skipped the check that a well-formed mismatching one had to pass. An unverifiable issuer is now treated as a mismatch: discovery moves on to the next well-known path, exactly as it already did for a mismatch.</li>
+				<li>Protected-resource metadata that cannot be read is now reported. It carries the scopes the grant should ask for, and a failed fetch produced the same "no scopes advertised" answer as a document that lists none, so the authorization request went out without them and came back as an opaque <span class="inline">invalid_scope</span> or <span class="inline">server_error</span> with nothing pointing at the cause.</li>
+				<li><span class="inline">veyyon grievances</span> no longer tells you to enable auto-QA when the database is there and cannot be opened. The two cases produced the same message, so advice that could not help hid the fact that your reported tool issues were being dropped. The message now names the path, <span class="inline">push --json</span> reports <span class="inline">reason: "unreadable_db"</span> rather than <span class="inline">"no_db"</span>, and the explanation goes to stderr in <span class="inline">--json</span> mode so piped stdout stays parseable.</li>
+				<li>An unreadable artifact directory no longer presents as an <span class="inline">artifact://</span> reference that does not exist. Following the recovery link under a truncated tool output said the artifact was missing when the directory holding it could not be listed; the failure is now reported with the directory and the artifact id.</li>
+				<li>A read that could not be summarized now says so. Failing to build the outline returned the same value as a file with nothing worth folding, so you got the whole file with no indication that an outline was attempted and lost. Cancelling a read stays quiet, because that is not a summarize failure.</li>
 				<li>A session file that exists and cannot be read no longer presents as a session that is not there. <span class="inline">peekSessionInit</span>, the lock-free peek a cold subagent revives from, caught every failure and returned <span class="inline">null</span>, which is also its answer for a path that was never written, so an unreadable transcript was reported to you as a missing one. It still returns <span class="inline">null</span>, because that is the caller's contract, and it now warns first with the path unless the file is simply absent.</li>
 				<li>An unreadable artifact directory is now reported instead of reading as a session with no artifacts. Artifacts are what an <span class="inline">artifact://</span> URL resolves against, so an empty listing made every truncated tool output in the session unreachable with no error to explain it. The listing still returns empty, since a session has to keep running when its artifacts are unreachable, and the warning names the directory.</li>
 				<li>A tool call whose arguments cannot be serialized now renders its argument names in the <span class="inline">history://</span> transcript. A circular reference or a <span class="inline">BigInt</span> makes <span class="inline">JSON.stringify</span> throw, and the summary fell back to an empty string, so <span class="inline">→ write()</span> was printed for a <span class="inline">write</span> that had a path and a body. It now reads <span class="inline">→ write({unserializable: path, content})</span>.</li>
@@ -109,6 +151,7 @@
 			<div class="sec">
 				<span class="tag chg">Changed</span>
 				<ul class="notes">
+				<li>The prompt banner grammar is its own module, and the file that held it is named for what it contains. <span class="inline">prompt-blocks.ts</span> owned two unrelated things: how a banner is written and recognised in EVERY prompt, and the system prompt's own list of sections. The universal half is now <span class="inline">system-prompt-builder/banner-grammar.ts</span>, a leaf that knows no prompt, so <span class="inline">prompts/registry.ts</span> no longer reaches into the system prompt's module to ask what a banner looks like. The remaining half is <span class="inline">section-registry.ts</span>, since a "block" in that subsystem already means an entry of the <span class="inline">string[]</span> <span class="inline">buildSystemPrompt</span> returns, and the file contained none. <span class="inline">PROMPT_SECTIONS</span> became <span class="inline">SYSTEM_PROMPT_SECTIONS</span> for the same reason: it lists the system prompt's sections, not every prompt's, and the <span class="inline">PROMPT_SECTIONS/</span> override directory shares the old spelling.</li>
 				<li>Collapsed seventeen helpers that existed as byte-identical copies into one definition each: the project resolution that decides which launch daemon a directory uses (two copies, so the client and the presence file could have disagreed about a symlinked project), the "YAML if <span class="inline">.yaml</span>, otherwise JSON" decision the LSP and DAP config readers each made privately, the provider-name rendering three user-visible surfaces each had their own version of, and the patch check that refuses two hashline sections resolving to one file, which now lives in the package that defines the section type. Three more followed: the DAP files' private error renderer, which the shared <span class="inline">errorMessage</span> already did better (an error with an empty message now shows its class name instead of nothing), the commit an experiment records, and the current-branch-or-<span class="inline">HEAD</span> spelling two bundled commands each rolled themselves. Then four whose copies could disagree across a boundary: the diagnostic text sanitizer two rendering surfaces stated separately (a diagnostic containing a tab would have rendered differently depending on where you saw it), the browser tab id the supervisor and its worker each derived (a tab addressed under two ids takes commands on neither), the collab wire envelope the host and the browser guest each coded, which now lives in <span class="inline">@veyyon/wire</span> beside the header length it reads, and the WebCrypto byte coercion four packages needed, now <span class="inline">asStrictBytes</span> in <span class="inline">@veyyon/utils</span>. The <span class="inline">token</span> subcommand followed, which the auth gateway and the auth broker offer identically and each implemented separately, down to the JSON shape it prints. The envelope is the one that fails most quietly: the payload still decrypts, because the room key is untouched, so a host and a guest that disagreed about the byte order would deliver a frame to the wrong peer without an error anywhere. Four more after that: the tree indentation three renderers drew (the JSON tree's copy had drifted to the OPPOSITE argument order, so the same nesting could draw different rules in two panes of one screen), the thenable guard the IPC and MCP stdio send paths each carried (the surviving copy's own comment justified the other as "battle-tested there", though only one of the two was tested at all, and those tests moved to <span class="inline">@veyyon/utils</span> with the function), the <span class="inline">token</span> subcommand described above, and the bootstrap <span class="inline">veyyon bench</span> and <span class="inline">veyyon dry-balance</span> share, where the part that matters is the failure path: if settings or the extension providers throw, the credential store opened a line earlier is closed before the error propagates, or a SQLite handle leaks on every failed invocation. The last two: the log replay both worker supervisors performed (a worker has no logger of its own, so it ships the level with the message and the supervisor replays it, and a copy that mapped a level to the wrong method would move a class of worker diagnostics out of the log an operator is reading), and the runtime installer's pipe reader, which moved to <span class="inline">@veyyon/utils</span> as <span class="inline">readPipeText</span>.</li>
 				<li>Fixed two ways an eval kernel could be started twice for the same work. The key a retained kernel is stored under, <span class="inline">(session, cwd, interpreter)</span>, had three copies, one per managed runtime, and the Julia copy had drifted: it resolved the interpreter path without following symlinks, so reaching the same Julia through a link (<span class="inline">/usr/local/bin/julia</span> and the versioned binary behind it) started a second kernel that shared no state with the first, and it joined the key's parts with <span class="inline">::</span>, a sequence that can occur inside a session id or a path. All three now use one builder that canonicalises the path and separates the parts with a byte that cannot appear in either.</li>
 				<li>Tool-output folding now recognises six more shapes an agent meets constantly: <span class="inline">python -m unittest -v</span> per-test lines, cmake/make progress (<span class="inline">[ 42%] Building C object ...</span>), make's directory recursion, gradle tasks that did no work, docker layer ids, and maven artifact fetches. Measured on runs captured on a real machine rather than on fixtures: a 41-test unittest run goes from 2,473 to 170 characters (93.1% smaller) and a 41-file cmake build from 2,556 to 60 (97.7%), both keeping every diagnostic and the summary verbatim. Only the shapes that state no work was done are folded, so a gradle task that ran, a docker <span class="inline">Step 4/12</span> line, and every <span class="inline">[ERROR]</span>/<span class="inline">[WARNING]</span> maven line stay.</li>
@@ -175,7 +218,6 @@
 				<h2 id="v1-0-37"><a href="#v1-0-37">1.0.37</a></h2>
 				<span class="date">2026-07-24</span>
 				<span class="pill">latest</span>
-				<a class="gh-link" href="https://github.com/santhreal/veyyon/releases/tag/v1.0.37">View on GitHub ↗</a>
 			</div>
 			<div class="sec">
 				<span class="tag fix">Fixed</span>
@@ -184,6 +226,260 @@
 				<li>A source checkout missing its generated tool-views bundle (any freshly pulled or cloned checkout) no longer dies at launch with a raw module-resolution error: the launcher regenerates the bundle before starting, and fails with the exact fix command if it cannot.</li>
 				<li>The setup wizard now paints its own pure-black ground across the full frame (splash, scene transitions, and outro), so the launch sequence looks the same on every terminal background instead of inheriting the terminal's color.</li>
 				<li>The Windows binary is now built as a modern (AVX2) Bun target instead of baseline. Baseline Windows standalone builds crash in the Bun runtime at startup before any Veyyon code runs (oven-sh/bun#32684), which made every published <span class="inline">veyyon-windows-x64.exe</span> exit with a segmentation fault on launch. The modern target requires a CPU with AVX2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-36"><a href="#v1-0-36">1.0.36</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">plugin-cli</span>: stop doubling the 'Error:' prefix in plugin command errors.</li>
+				<li><span class="inline">errors</span>: remove remaining doubled 'Error:' prefixes; generalize the source-lock.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-35"><a href="#v1-0-35">1.0.35</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag add">Added</span>
+				<ul class="notes">
+				<li><span class="inline">update</span>: confirm 'Checksum verified' on a successful self-update.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">slash-commands</span>: drop unnecessary 'as SettingPath' casts.</li>
+				<li><span class="inline">atomic-write</span>: allowlist hashline's deliberate node:fs-only temp+rename.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-34"><a href="#v1-0-34">1.0.34</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">update</span>: rich release-binary download-failure message.</li>
+				<li><span class="inline">update</span>: verify self-update binary checksum, fail closed (parity with installers).</li>
+				<li><span class="inline">update</span>: honest --check --force message when already up to date.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-33"><a href="#v1-0-33">1.0.33</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">ai</span>: give heavy idempotence property tests explicit timeouts.</li>
+				<li><span class="inline">test</span>: give packages/ai a 20s per-test timeout floor.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">settings</span>: quarantine wrong-shape settings files instead of dropping them silently.</li>
+				<li><span class="inline">keybindings</span>: quarantine wrong-shape keybindings files instead of corrupting the map.</li>
+				<li><span class="inline">mnemopi</span>: validate the source name in renameBank to close a traversal.</li>
+				<li><span class="inline">settings-test</span>: drop wrong SettingPath cast that broke the release typecheck.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-32"><a href="#v1-0-32">1.0.32</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li>Verify the published Windows binary runs (install channel had no release verification).</li>
+				<li>Verify get.veyyon.dev serves the install script post-deploy (curl|sh regression guard).</li>
+				<li>Assert the published binary reports the release version (all platforms).</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">mnemopi</span>: migrate the legacy triples database crash-atomically.</li>
+				<li><span class="inline">hashline</span>: crash-atomic NodeFilesystem writes.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-31"><a href="#v1-0-31">1.0.31</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">ai</span>: cover in-flight slot release when a provider request fails.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">coding-agent</span>: make apply_patch default filesystem crash-atomic.</li>
+				<li><span class="inline">mnemopi</span>: write content-addressed blobs crash-atomically.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-30"><a href="#v1-0-30">1.0.30</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">coding-agent</span>: commit edits and writes crash-atomically.</li>
+				<li><span class="inline">coding-agent</span>: make file moves crash-atomic; hoist mode-preserving atomic write.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-29"><a href="#v1-0-29">1.0.29</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">utils</span>: one owner for the read-tool selector grammar.</li>
+				<li><span class="inline">install</span>: extract + cover the Windows checksum verification path.</li>
+				<li><span class="inline">ai</span>: lock global idempotence of validateToolArguments on valid input.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">install</span>: remove a partial binary download on failure (Windows).</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-28"><a href="#v1-0-28">1.0.28</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">install</span>: fix ps1 backup-branch discovery (scalar-index bug) and make it robust.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">install</span>: preserve local src edits on Windows update/uninstall (parity with install.sh).</li>
+				<li><span class="inline">ai</span>: stop over-coercing string|number tool args to numbers.</li>
+				<li><span class="inline">cli</span>: guard fatal-error cause walk against circular cause chains.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-27"><a href="#v1-0-27">1.0.27</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">catalog</span>: lock anthropic models.dev outage fallback; document the swallow.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">install</span>: write PATH to the login-shell rc on macOS, not ~/.bashrc.</li>
+				<li><span class="inline">install</span>: compare whole PATH entries on Windows, add gated ps1 function tests.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-26"><a href="#v1-0-26">1.0.26</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li>Rebuild handbook book to match sources.</li>
+				<li><span class="inline">utils</span>: differential property suite for the JSON repair/parse path.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">utils</span>: stop normalizeBaseUrl leaking a trailing space behind a stripped slash.</li>
+				<li><span class="inline">install</span>: warn instead of silently skipping a failed shell completion.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-25"><a href="#v1-0-25">1.0.25</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag add">Added</span>
+				<ul class="notes">
+				<li><span class="inline">tui</span>: accelerate repeated wheel ticks in scroll isolation.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">coding-agent</span>: never block session startup on argot dictionary generation.</li>
+				<li><span class="inline">ai</span>: hoist duplicated OpenAI SSE event-name resolver into one owner.</li>
+				<li><span class="inline">tui</span>: update the EIO write-failure test to the fatal/transient contract.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">tui</span>: don't brick rendering on a single transient write failure.</li>
+				<li><span class="inline">edit</span>: preserve a UTF-8 BOM through an old_text/new_text edit.</li>
+				<li><span class="inline">lsp</span>: don't silently swallow format-on-write failures.</li>
+				</ul>
+			</div>
+		</article>
+		<article class="release">
+			<div class="release-head">
+				<h2 id="v1-0-24"><a href="#v1-0-24">1.0.24</a></h2>
+				<span class="date">2026-07-24</span>
+			</div>
+			<div class="sec">
+				<span class="tag add">Added</span>
+				<ul class="notes">
+				<li><span class="inline">coding-agent</span>: present only alabaster while the light-theme slab class is unfixed.</li>
+				<li><span class="inline">release</span>: derive commit-history notes + gate the generator on CI.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">coding-agent</span>: lock the argot mid-session prompt-refresh contract.</li>
+				<li><span class="inline">changelog</span>: backfill the undocumented veyyon changes across all packages.</li>
+				</ul>
+			</div>
+			<div class="sec">
+				<span class="tag fix">Fixed</span>
+				<ul class="notes">
+				<li><span class="inline">coding-agent</span>: teach argot handles after a mid-session load.</li>
 				</ul>
 			</div>
 		</article>

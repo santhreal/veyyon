@@ -565,30 +565,21 @@ export function resolveRepo(argv = process.argv) {
 /**
  * Published releases that predate this gate and have no CHANGELOG entry.
  *
- * A warning was not enough. Every build printed one, exited 0, and the gap grew
- * until a user could install eight versions the changelog did not describe —
- * "600 commits and it mentions almost nothing", reported 2026-07-25.
+ * EMPTY, so the gate is unconditional: any published release without an entry
+ * fails the build. Keep it that way. The list may only shrink, never grow, and
+ * `reportUndocumentedReleases` says so in the message it throws.
  *
- * A blanket "fail on any gap" would break the site deploy today over a backlog
- * that predates the check, and a blanket "--allow" flag would be ignored the
- * same way the warning was. So this is a RATCHET: these exact versions are
- * grandfathered and the build still passes, but a release outside the list
- * fails immediately. The list can only shrink. Delete a version from it as its
- * entry lands, and the day it is empty the gate is unconditional with no code
- * change.
- *
- * See CHANGELOG-28-RELEASES-UNDOCUMENTED in BACKLOG.md for the backfill.
+ * It held eight versions until 2026-07-25. A warning had not been enough: every
+ * build printed one, exited 0, and the gap grew until a user could install eight
+ * versions the changelog did not describe, reported as "600 commits and it
+ * mentions almost nothing". Failing outright would have broken the site deploy
+ * over a backlog that predated the check, so the list grandfathered exactly
+ * those versions while a release outside it failed immediately. It emptied when
+ * the backfill landed: `## [1.0.0]` through `## [1.0.36]` were reconstructed from
+ * git history, one section per version, each dated by the `chore: bump version`
+ * commit that cut it.
  */
-export const UNDOCUMENTED_RELEASE_BASELINE = Object.freeze([
-	"1.0.36",
-	"1.0.27",
-	"1.0.26",
-	"1.0.25",
-	"1.0.24",
-	"1.0.23",
-	"1.0.22",
-	"1.0.21",
-]);
+export const UNDOCUMENTED_RELEASE_BASELINE = Object.freeze([]);
 
 /**
  * Fail on a published release the CHANGELOG does not describe, unless it is one
