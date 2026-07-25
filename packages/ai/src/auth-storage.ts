@@ -369,6 +369,16 @@ export interface AuthCredentialStore {
 	 * that can see it.
 	 */
 	readAuthCredentialById?(id: number): StoredAuthCredential | undefined;
+	/**
+	 * List the DISABLED rows for a provider, newest disable first.
+	 *
+	 * `listAuthCredentials` hides them, which is right for resolution: a disabled
+	 * credential must never be handed out. It is wrong for reporting. A user whose
+	 * only credential was disabled by a failed refresh has the same view as a user
+	 * who never signed in, so they are told "no API key found" and sent to log in
+	 * again with nothing saying what happened to the login they had.
+	 */
+	listDisabledAuthCredentials?(provider?: string): StoredAuthCredential[];
 	deleteAuthCredential(id: number, disabledCause: string): void;
 	tryDisableAuthCredentialIfMatches(
 		id: number,
@@ -2527,6 +2537,32 @@ export class AuthStorage {
 	 */
 	has(provider: string): boolean {
 		return this.#getCredentialsForProvider(provider).length > 0;
+	}
+
+	/**
+	 * Why this provider's credential was disabled, if a failed refresh disabled it.
+	 *
+	 * Returns `undefined` when the provider has no disabled credential, or when the
+	 * most recent one was disabled for a reason the user already knows about: a
+	 * logout, or being superseded by a newer login. Only a refresh failure is
+	 * something they did not do and have not been told about.
+	 *
+	 * This exists because a disabled credential is invisible everywhere else.
+	 * `listAuthCredentials` filters disabled rows, so `hasAuth` reports false and a
+	 * user whose login was torn down by a failed refresh gets the same message as
+	 * one who never signed in. Telling someone to log in, without saying that the
+	 * login they had was thrown away or why, is the silent logout in its final
+	 * form: everything worked, nothing was reported, and the account is gone.
+	 */
+	disabledCredentialCause(provider: string): string | undefined {
+		const listDisabled = this.#store.listDisabledAuthCredentials?.bind(this.#store);
+		if (!listDisabled) return undefined;
+		// Newest first, so the first row is the disable that is actually current.
+		// An account that was removed and re-added leaves older disabled rows whose
+		// causes the user already resolved.
+		const [latest] = listDisabled(provider);
+		if (!latest?.disabledCause) return undefined;
+		return isRefreshFailureDisableCause(latest.disabledCause) ? latest.disabledCause : undefined;
 	}
 
 	/**
@@ -7057,6 +7093,33 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			const credential = deserializeCredential(row);
 			if (!credential) return undefined;
 			return toStoredAuthCredential(row, credential);
+		} finally {
+			stmt.finalize();
+		}
+	}
+
+	/**
+	 * List disabled rows, newest first. See
+	 * {@link AuthCredentialStore.listDisabledAuthCredentials}.
+	 *
+	 * Ordered by id descending because the row that matters is the one disabled
+	 * most recently: an account that was replaced and then re-added leaves older
+	 * disabled rows behind, and reporting one of those would name a cause the user
+	 * already resolved.
+	 */
+	listDisabledAuthCredentials(provider?: string): StoredAuthCredential[] {
+		const sql = provider
+			? "SELECT * FROM auth_credentials WHERE disabled_cause IS NOT NULL AND provider = ? ORDER BY id DESC"
+			: "SELECT * FROM auth_credentials WHERE disabled_cause IS NOT NULL ORDER BY id DESC";
+		const stmt = this.#db.prepare(sql);
+		try {
+			const rows = (provider ? stmt.all(provider) : stmt.all()) as AuthRow[];
+			const stored: StoredAuthCredential[] = [];
+			for (const row of rows) {
+				const credential = deserializeCredential(row);
+				if (credential) stored.push(toStoredAuthCredential(row, credential));
+			}
+			return stored;
 		} finally {
 			stmt.finalize();
 		}
