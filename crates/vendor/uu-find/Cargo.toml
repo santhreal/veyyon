@@ -19,7 +19,7 @@ regex = "1.11"
 onig = { version = "6.4", default-features = false }
 uucore = { version = "0.0.30", features = ["entries", "fs", "fsext", "mode"] }
 nix = { version = "0.29", features = ["fs", "user"] }
-argmax = "0.3.1"
+argmax = "0.4.0"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 veyyon-walker = { path = "../../veyyon-walker" }
 
