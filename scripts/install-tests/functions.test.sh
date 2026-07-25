@@ -18,10 +18,22 @@ mkdir -p "$VEYYON_INSTALL_DIR" "$HOME"
 VEYYON_INSTALL_SOURCED=1 . "$ROOT/scripts/install.sh"
 set +e # install.sh sets -e; tests intentionally exercise failing paths
 
-PASS=0
-FAIL=0
+# Results are tallied through a file, NOT shell variables. Many tests below run
+# inside `( ... )` subshells to sandbox $HOME/$XDG_*; a variable incremented in a
+# subshell is discarded when it exits, so an in-subshell failure used to print
+# "FAIL:" and still leave the suite reporting "0 failed" with exit 0 — a green CI
+# run hiding a real regression. Appending one line per assertion survives the
+# subshell boundary, and single-line appends from concurrent subshells interleave
+# safely.
+RESULTS="$SANDBOX/.results"
+: > "$RESULTS"
 check() { # desc, actual, expected
-    if [ "$2" = "$3" ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); printf 'FAIL: %s\n  expected [%s]\n  got      [%s]\n' "$1" "$3" "$2"; fi
+    if [ "$2" = "$3" ]; then
+        printf 'P\n' >> "$RESULTS"
+    else
+        printf 'F\n' >> "$RESULTS"
+        printf 'FAIL: %s\n  expected [%s]\n  got      [%s]\n' "$1" "$3" "$2"
+    fi
 }
 
 # --- verify_sha256: correct hash passes, wrong hash fails closed ---
@@ -116,15 +128,201 @@ h="$(eop_home zsh)"
 run_eop Darwin /bin/zsh "/opt/zsh-bin" "$h"
 check "zsh writes PATH to ~/.zshrc on any OS" "$(rc_has_dir "$h/.zshrc" /opt/zsh-bin)" "yes"
 
+# --- completion_file_for: the one owner of per-shell completion filenames ---
+# install_completions writes through this and do_uninstall removes through it, so
+# a drift here used to mean an orphaned file surviving uninstall forever.
+check "bash completion filename is the bare command name" "$(completion_file_for bash veyyon)" "veyyon"
+check "zsh completion filename is underscore-prefixed" "$(completion_file_for zsh veyyon)" "_veyyon"
+check "fish completion filename carries the .fish suffix" "$(completion_file_for fish veyyon)" "veyyon.fish"
+check "the alias uses the same per-shell convention (bash)" "$(completion_file_for bash vey)" "vey"
+check "the alias uses the same per-shell convention (fish)" "$(completion_file_for fish vey)" "vey.fish"
+
+# --- install_completions: writes atomically, and covers the `vey` alias ---
+# Two bugs locked out here. (1) The generated script was redirected straight onto
+# its final path, so a half-written file (disk full, install killed) was left for
+# the shell to source at next startup, breaking every new shell. (2) bash and fish
+# autoload a completion file by the command name being completed, so binding only
+# `veyyon` left `vey` — the alias the installer creates and the docs tell users to
+# launch with — with no tab completion at all.
+( _h="$SANDBOX/comp-home"
+  export HOME="$_h"; export XDG_DATA_HOME="$_h/share"; export XDG_CONFIG_HOME="$_h/config"
+  mkdir -p "$_h"
+  fakebin="$_h/veyyon-fake"
+  # Stands in for the real binary: `completions --help` succeeds, and each shell
+  # emits a marker line so the test can assert real content, not just a nonempty file.
+  printf '#!/bin/sh\ncase "$1 $2" in\n  "completions --help") exit 0 ;;\n  "completions bash") echo "complete -F _veyyon veyyon vey"; exit 0 ;;\n  "completions zsh") echo "#compdef veyyon vey"; exit 0 ;;\n  "completions fish") echo "complete -c vey -w veyyon"; exit 0 ;;\nesac\nexit 1\n' > "$fakebin"
+  chmod +x "$fakebin"
+  install_completions "$fakebin" >/dev/null 2>&1
+
+  bashdir="$(completions_dir_for bash)"; zshdir="$(completions_dir_for zsh)"; fishdir="$(completions_dir_for fish)"
+  check "bash completion installed for veyyon" "$(cat "$bashdir/veyyon" 2>/dev/null)" "complete -F _veyyon veyyon vey"
+  check "bash completion installed for the vey alias" "$(cat "$bashdir/vey" 2>/dev/null)" "complete -F _veyyon veyyon vey"
+  check "zsh completion installed as _veyyon" "$(cat "$zshdir/_veyyon" 2>/dev/null)" "#compdef veyyon vey"
+  # zsh binds both names from the one autoloaded file's #compdef line, so a second
+  # file would be dead weight — assert it is deliberately NOT written.
+  check "zsh gets no redundant alias file (#compdef names both)" "$( [ -e "$zshdir/_vey" ] && echo present || echo absent )" "absent"
+  check "fish completion installed for veyyon" "$(cat "$fishdir/veyyon.fish" 2>/dev/null)" "complete -c vey -w veyyon"
+  check "fish completion installed for the vey alias" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c vey -w veyyon"
+  check "no temp completion files were left behind" "$(ls -A "$bashdir" | grep -c '^\.')" "0"
+
+  # A failing generator must leave NO file at the final path — not an empty one,
+  # and not a stale partial. This is the atomic-write half of the contract.
+  failbin="$_h/veyyon-failing"
+  printf '#!/bin/sh\n[ "$1 $2" = "completions --help" ] && exit 0\nexit 7\n' > "$failbin"
+  chmod +x "$failbin"
+  rm -f "$bashdir/veyyon" "$bashdir/vey"
+  install_completions "$failbin" >/dev/null 2>&1
+  check "a failing generator installs no bash completion" "$( [ -e "$bashdir/veyyon" ] && echo present || echo absent )" "absent"
+  check "a failing generator leaves no temp file" "$(ls -A "$bashdir" | wc -l | tr -d ' ')" "0"
+
+  # Uninstall reclaims every file install wrote, alias included.
+  install_completions "$fakebin" >/dev/null 2>&1
+  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  check "uninstall removed the bash completion" "$( [ -e "$bashdir/veyyon" ] && echo present || echo absent )" "absent"
+  check "uninstall removed the bash alias completion" "$( [ -e "$bashdir/vey" ] && echo present || echo absent )" "absent"
+  check "uninstall removed the zsh completion" "$( [ -e "$zshdir/_veyyon" ] && echo present || echo absent )" "absent"
+  check "uninstall removed the fish completion" "$( [ -e "$fishdir/veyyon.fish" ] && echo present || echo absent )" "absent"
+  check "uninstall removed the fish alias completion" "$( [ -e "$fishdir/vey.fish" ] && echo present || echo absent )" "absent" )
+unset XDG_DATA_HOME XDG_CONFIG_HOME
+export HOME="$SANDBOX/home"
+
+# --- ensure_on_path: writes the PATH line to the rc a NEW shell actually reads ---
+# Locks the macOS login-shell bug: Terminal.app opens *login* bash shells, which
+# read ~/.bash_profile (then ~/.bash_login, ~/.profile) and NOT ~/.bashrc, so a
+# PATH line written only to ~/.bashrc never took effect and `veyyon` stayed
+# off PATH after a fresh install. `uname` is shadowed to pin the OS, and SHELL
+# selects the login shell; each case uses a dir that is NOT already on PATH so
+# the early return does not short-circuit the rc-selection logic under test.
+eop_home() { printf '%s' "$SANDBOX/eop-$1"; } # a fresh, empty HOME per case
+run_eop() { # os, shell, dir  — returns nothing; writes into a per-case HOME
+    _os="$1"; _shell="$2"; _dir="$3"; _h="$4"
+    rm -rf "$_h"; mkdir -p "$_h"
+    ( uname() { [ "$1" = "-s" ] && printf '%s\n' "$_os" || command uname "$@"; }
+      HOME="$_h"; SHELL="$_shell"
+      ensure_on_path "$_dir" >/dev/null 2>&1 )
+}
+rc_has_dir() { [ -f "$1" ] && grep -Fq "$2" "$1" && echo yes || echo no; }
+
+h="$(eop_home mac-bash)"
+run_eop Darwin /bin/bash "/opt/mac-bash-bin" "$h"
+check "macOS bash writes PATH to ~/.bash_profile, not ~/.bashrc" "$(rc_has_dir "$h/.bash_profile" /opt/mac-bash-bin)" "yes"
+check "macOS bash did NOT write to ~/.bashrc" "$(rc_has_dir "$h/.bashrc" /opt/mac-bash-bin)" "no"
+
+# macOS with a pre-existing ~/.profile: honor it (login bash reads it) rather
+# than creating a second ~/.bash_profile that would then shadow ~/.profile.
+h="$(eop_home mac-profile)"; mkdir -p "$h"; printf '# existing\n' > "$h/.profile"
+run_eop Darwin /bin/bash "/opt/mac-profile-bin" "$h"
+check "macOS bash appends to an existing ~/.profile" "$(rc_has_dir "$h/.profile" /opt/mac-profile-bin)" "yes"
+check "macOS bash did not create a shadowing ~/.bash_profile" "$( [ -f "$h/.bash_profile" ] && echo present || echo absent )" "absent"
+
+h="$(eop_home linux-bash)"
+run_eop Linux /bin/bash "/opt/linux-bash-bin" "$h"
+check "Linux bash writes PATH to ~/.bashrc" "$(rc_has_dir "$h/.bashrc" /opt/linux-bash-bin)" "yes"
+check "Linux bash did NOT write to ~/.bash_profile" "$(rc_has_dir "$h/.bash_profile" /opt/linux-bash-bin)" "no"
+
+h="$(eop_home zsh)"
+run_eop Darwin /bin/zsh "/opt/zsh-bin" "$h"
+check "zsh writes PATH to ~/.zshrc on any OS" "$(rc_has_dir "$h/.zshrc" /opt/zsh-bin)" "yes"
+
 # --- do_uninstall: removes veyyon + vey from the sandboxed install dir only ---
 do_uninstall >/dev/null 2>&1
 check "uninstall removed veyyon" "$( [ -e "$VEYYON_INSTALL_DIR/veyyon" ] && echo present || echo gone )" "gone"
 check "uninstall removed vey" "$( [ -e "$VEYYON_INSTALL_DIR/vey" ] && echo present || echo gone )" "gone"
 
+# --- do_uninstall: reclaims the native addon cache but never user data ---
+# A binary install stages ~150MB per version under getNativesDir()
+# (~/.veyyon/natives/<version>/*.node). Uninstall must reclaim that cache, or a
+# reinstall silently inherits stale addons and the disk is never freed. It must
+# do so surgically: sibling auth/config/sessions under ~/.veyyon are the user's
+# data and survive an uninstall. This locks both halves.
+( _h="$SANDBOX/uninst-natives-home"
+  export HOME="$_h"; unset XDG_DATA_HOME
+  mkdir -p "$_h/.veyyon/natives/1.0.37" "$_h/.veyyon/sessions"
+  printf 'STAGED-ADDON' > "$_h/.veyyon/natives/1.0.37/veyyon_natives.linux-x64-modern.node"
+  printf '{"token":"keep-me"}' > "$_h/.veyyon/auth.json"
+  printf 'session-data' > "$_h/.veyyon/sessions/a.json"
+  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  check "uninstall removed the native addon cache (~/.veyyon/natives)" "$( [ -e "$_h/.veyyon/natives" ] && echo present || echo gone )" "gone"
+  check "uninstall preserved ~/.veyyon/auth.json (user credentials)" "$(cat "$_h/.veyyon/auth.json" 2>/dev/null)" '{"token":"keep-me"}'
+  check "uninstall preserved ~/.veyyon/sessions (user data)" "$( [ -d "$_h/.veyyon/sessions" ] && echo present || echo gone )" "present" )
+
+# --- do_uninstall: honors XDG_DATA_HOME exactly as getNativesDir() does ---
+# getNativesDir() uses $XDG_DATA_HOME/veyyon/natives ONLY when $XDG_DATA_HOME/veyyon
+# already exists; uninstall must remove the same path it would have written, and
+# must NOT invent an XDG cache when the loader would have fallen back to ~/.veyyon.
+( _h="$SANDBOX/uninst-xdg-home"; _x="$SANDBOX/uninst-xdg-data"
+  export HOME="$_h" XDG_DATA_HOME="$_x"
+  mkdir -p "$_x/veyyon/natives/1.0.37" "$_h/.veyyon/natives/1.0.37"
+  printf 'XDG-ADDON' > "$_x/veyyon/natives/1.0.37/veyyon_natives.linux-x64-modern.node"
+  printf 'HOME-ADDON' > "$_h/.veyyon/natives/1.0.37/veyyon_natives.linux-x64-modern.node"
+  ( INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+  check "uninstall removed the XDG native cache when \$XDG_DATA_HOME/veyyon exists" "$( [ -e "$_x/veyyon/natives" ] && echo present || echo gone )" "gone"
+  # The loader would resolve to the XDG path here, so ~/.veyyon/natives is NOT the
+  # active cache and uninstall leaves it (only the active getNativesDir cache is
+  # reclaimed — matching the loader's single-location contract, never both).
+  check "uninstall left the inactive ~/.veyyon/natives when XDG is active" "$( [ -e "$_h/.veyyon/natives" ] && echo present || echo gone )" "present" )
+
+# --- do_uninstall: sweeps an addon staged beside the binary ---
+# A compiled binary probes for a sibling addon, so one left behind by the version
+# being removed would be loaded by whatever binary lands there next.
+( _d="$SANDBOX/sibling-addon-bin"
+  mkdir -p "$_d"
+  printf 'ADDON' > "$_d/veyyon_natives.linux-x64-modern.node"
+  printf 'BIN' > "$_d/veyyon"
+  ( INSTALL_DIR="$_d" do_uninstall >/dev/null 2>&1 )
+  check "uninstall swept the addon staged beside the binary" "$( [ -e "$_d/veyyon_natives.linux-x64-modern.node" ] && echo present || echo gone )" "gone" )
+unset XDG_DATA_HOME
+export HOME="$SANDBOX/home"
+
 # --- doctor: fails loudly when the binary does not run ---
 printf '#!/bin/sh\nexit 3\n' > "$VEYYON_INSTALL_DIR/veyyon"
 chmod +x "$VEYYON_INSTALL_DIR/veyyon"
 ( doctor "$VEYYON_INSTALL_DIR/veyyon" >/dev/null 2>&1 ); check "doctor dies when the binary fails --version" "$?" "1"
+
+# --- dir_of: pure-shell dirname, so doctor survives a broken PATH ---
+# doctor exists to diagnose PATH problems, so it cannot depend on forking an
+# external `dirname` that a broken PATH would fail to resolve. These pin the
+# edge cases that separate parameter expansion from real dirname.
+check "dir_of returns the parent of a normal path" "$(dir_of /home/u/.local/bin/veyyon)" "/home/u/.local/bin"
+check "dir_of returns / for a path directly under root" "$(dir_of /veyyon)" "/"
+check "dir_of returns . for a bare name with no slash" "$(dir_of veyyon)" "."
+check "dir_of handles a relative path" "$(dir_of ./dist/vey)" "./dist"
+check "dir_of handles a path containing spaces" "$(dir_of "/opt/my apps/bin/veyyon")" "/opt/my apps/bin"
+
+# --- doctor: detects a stale copy shadowing the fresh install ---
+# The classic silent install failure: an older veyyon/vey earlier on PATH (a
+# previous `bun add -g`, a distro package, a manual copy) keeps winning every
+# invocation while the installer reports success, so the user "upgrades" and
+# nothing changes. doctor used to check only that the name existed SOMEWHERE on
+# PATH, which is exactly the state a shadowed install is in. It must now compare
+# where the name actually resolves against where the binary was just installed.
+( _d="$SANDBOX/shadow"
+  mine="$_d/mine"; older="$_d/older"
+  mkdir -p "$mine" "$older"
+  printf '#!/bin/sh\necho veyyon/9.9.9\n' > "$mine/veyyon"; chmod +x "$mine/veyyon"
+  ln -sf "$mine/veyyon" "$mine/vey"
+  printf '#!/bin/sh\necho veyyon/0.0.1\n' > "$older/veyyon"; chmod +x "$older/veyyon"
+  ln -sf "$older/veyyon" "$older/vey"
+
+  # Healthy: the install dir wins PATH, so both names resolve to it.
+  out=$( PATH="$mine:$PATH" doctor "$mine/veyyon" 2>&1 )
+  check "doctor confirms veyyon resolves to the fresh install" "$(printf '%s' "$out" | grep -c "'veyyon' on PATH resolves to this install")" "1"
+  check "doctor confirms the vey alias resolves to the fresh install" "$(printf '%s' "$out" | grep -c "'vey' on PATH resolves to this install")" "1"
+  check "a healthy doctor warns about nothing" "$(printf '%s' "$out" | grep -c '!!')" "0"
+
+  # Shadowed: an older copy earlier on PATH wins. doctor must name the offender.
+  out=$( PATH="$older:$mine:$PATH" doctor "$mine/veyyon" 2>&1 )
+  check "doctor reports veyyon is shadowed" "$(printf '%s' "$out" | grep -c "'veyyon' on PATH resolves to $older/veyyon")" "1"
+  check "doctor reports the vey alias is shadowed" "$(printf '%s' "$out" | grep -c "'vey' on PATH resolves to $older/vey")" "1"
+  check "the shadow warning names the install dir that lost" "$(printf '%s' "$out" | grep -c "just installed in $mine")" "2"
+  check "shadowing is surfaced as a warning, not swallowed" "$(printf '%s' "$out" | grep -c '!!')" "2"
+  # Shadowing must not be fatal: the binary itself is fine and the user can fix
+  # PATH, so doctor reports and exits 0 rather than failing the whole install.
+  ( PATH="$older:$mine:$PATH" doctor "$mine/veyyon" >/dev/null 2>&1 ); check "a shadowed install is reported but not fatal" "$?" "0"
+
+  # Not on PATH at all: a distinct message telling the user what to add.
+  out=$( PATH="/nonexistent-dir-for-test" doctor "$mine/veyyon" 2>&1 )
+  check "doctor tells the user to add the dir when the name is absent from PATH" "$(printf '%s' "$out" | grep -c "add $mine to PATH")" "2" )
 
 # --- finalize_binary: refuses an empty download, installs a good one atomically ---
 # Locks the robustness fixes: a 0-byte download must NOT be installed (a wrong
@@ -306,5 +504,15 @@ else
     printf 'SKIP: git not available; src_has_local_work/uninstall tests skipped\n' >&2
 fi
 
+# `grep -c` already prints 0 when nothing matches (and exits 1); a `|| echo 0`
+# fallback would append a SECOND zero and make the arithmetic below choke.
+PASS=$(grep -c '^P$' "$RESULTS" 2>/dev/null); PASS=${PASS:-0}
+FAIL=$(grep -c '^F$' "$RESULTS" 2>/dev/null); FAIL=${FAIL:-0}
+# A run that recorded nothing is a broken harness, not a pass: fail closed rather
+# than report "0 passed, 0 failed" and exit 0.
+if [ "$((PASS + FAIL))" -eq 0 ]; then
+    printf '\nno assertions recorded — the harness did not run (%s missing?)\n' "$RESULTS" >&2
+    exit 1
+fi
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

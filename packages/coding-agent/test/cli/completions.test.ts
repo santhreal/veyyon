@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { buildSpec, type CompletionSpec, generateCompletion } from "@veyyon/coding-agent/cli/completion-gen";
+import { APP_ALIAS } from "@veyyon/utils";
 import type { CliConfig, CommandCtor } from "@veyyon/utils/cli";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
@@ -12,6 +13,7 @@ const cliEntry = path.join(repoRoot, "packages", "coding-agent", "src", "cli.ts"
 // output here defends the exact bytes each shell parses without booting the CLI.
 const spec: CompletionSpec = {
 	bin: "veyyon",
+	binAliases: ["vey"],
 	root: {
 		flags: [
 			{ name: "model", description: "Model to use", value: { kind: "models", multiple: false }, repeatable: false },
@@ -47,6 +49,69 @@ const spec: CompletionSpec = {
 		},
 	],
 };
+
+/**
+ * The `vey` alias must complete exactly like `veyyon`.
+ *
+ * Why this suite exists: both installers link `vey` next to the binary and every
+ * doc and in-app tip tells users to launch with it, but the generators bound
+ * completions to `spec.bin` alone. Tab completion therefore worked only for the
+ * name almost nobody types, and the documented entry point silently offered
+ * nothing in all three shells. Each shell needs a different binding mechanism, so
+ * each is asserted separately rather than through one shared substring check.
+ */
+describe("generated completions bind the launch alias, not just the binary name", () => {
+	it("bash registers the dispatcher for the binary AND the alias in one complete call", () => {
+		// bash binds by command name; `complete -F` accepts several names at once,
+		// so one generated file serves both once the file itself is loaded.
+		expect(generateCompletion("bash", spec)).toContain("complete -F _veyyon veyyon vey");
+	});
+
+	it("zsh names both commands on #compdef so one autoloaded file serves both", () => {
+		// compinit reads `#compdef` from the file in $fpath and binds every name it
+		// lists — this is what makes a second `_vey` file unnecessary.
+		const out = generateCompletion("zsh", spec);
+		expect(out.split("\n")[0]).toBe("#compdef veyyon vey");
+	});
+
+	it("zsh also passes both names to compdef on the sourced/eval'd path", () => {
+		// The generated script works two ways (autoloaded or eval'd from a startup
+		// file). The eval'd branch registers with `compdef`, and it must bind the
+		// alias too or `eval "$(veyyon completions zsh)"` regresses to binary-only.
+		expect(generateCompletion("zsh", spec)).toContain("compdef _veyyon veyyon vey");
+	});
+
+	it("fish wraps the alias onto the binary instead of re-emitting every rule", () => {
+		// fish has no multi-name binding, so the alias reuses all ~800 rules via
+		// `-w` (wraps). Re-emitting them under a second name would double the file
+		// and let the two copies drift.
+		const out = generateCompletion("fish", spec);
+		expect(out).toContain("complete -c vey -w veyyon");
+		// The wrap is the ONLY alias-specific line: no duplicated rule set.
+		const veyRules = out.split("\n").filter(l => l.startsWith("complete -c vey "));
+		expect(veyRules).toEqual(["complete -c vey -w veyyon"]);
+	});
+
+	it("emits no alias binding when the spec declares none", () => {
+		// A consumer building a spec without aliases must get clean single-command
+		// output, not a stray empty name in `complete -F _veyyon veyyon `.
+		const solo: CompletionSpec = { ...spec, binAliases: [] };
+		expect(generateCompletion("bash", solo)).toContain("complete -F _veyyon veyyon\n");
+		expect(generateCompletion("zsh", solo).split("\n")[0]).toBe("#compdef veyyon");
+		// Matched on the word boundary, not a substring: `complete -c veyyon ...`
+		// also starts with "complete -c vey".
+		expect(generateCompletion("fish", solo).split("\n").filter(l => l.startsWith("complete -c vey "))).toEqual([]);
+	});
+
+	it("ignores an alias that merely repeats the binary name", () => {
+		// Guards the degenerate config: `complete -F _veyyon veyyon veyyon` is not a
+		// hard error in bash but it is nonsense, and `#compdef veyyon veyyon` makes
+		// compinit warn about a duplicate binding.
+		const dup: CompletionSpec = { ...spec, binAliases: ["veyyon"] };
+		expect(generateCompletion("bash", dup)).toContain("complete -F _veyyon veyyon\n");
+		expect(generateCompletion("zsh", dup).split("\n")[0]).toBe("#compdef veyyon");
+	});
+});
 
 describe("generateCompletion — bash", () => {
 	const out = generateCompletion("bash", spec);
@@ -155,6 +220,11 @@ describe("buildSpec", () => {
 			]),
 		};
 		const result = buildSpec(config, "launch", new Map([["config", ["c"]]]));
+		// The alias comes from the shared APP_ALIAS constant, never a literal here:
+		// the installers link that exact name, so a second hardcoded copy would let
+		// completions bind a name no installer creates.
+		expect(result.binAliases).toEqual([APP_ALIAS]);
+		expect(result.bin).toBe("veyyon");
 
 		expect(result.root.flags.map(f => f.name)).toContain("model");
 		// hidden (__complete) and the root entry (launch) are both dropped
