@@ -4,7 +4,7 @@
  * The script is derived entirely from the declarative command/flag metadata
  * (see `cli/completion-gen.ts`), so it never drifts from the actual CLI surface.
  */
-import { APP_ALIAS, APP_NAME, VERSION } from "@veyyon/utils";
+import { APP_ALIAS, APP_NAME, errorMessage, VERSION } from "@veyyon/utils";
 import { Args, type CliConfig, Command, type CommandCtor, Flags } from "@veyyon/utils/cli";
 import { buildSpec, generateCompletion, type Shell } from "../cli/completion-gen";
 import { commands } from "../cli-commands";
@@ -51,7 +51,7 @@ export default class Completions extends Command {
 			shell = parsed.args.shell;
 			noAlias = parsed.flags["no-alias"];
 		} catch (error) {
-			process.stderr.write(`Error: ${error instanceof Error ? error.message : String(error)}\n`);
+			process.stderr.write(`Error: ${errorMessage(error)}\n`);
 			process.stderr.write(`Usage: ${APP_NAME} completions <${SHELLS.join("|")}>\n`);
 			process.exitCode = 1;
 			return;

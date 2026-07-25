@@ -17,8 +17,8 @@ import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 // The command styles its output through the global theme, which the CLI
 // initializes before dispatching any subcommand. Tests have to do the same or

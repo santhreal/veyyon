@@ -3,6 +3,12 @@ import { disposeAllKernelSessions, executePython } from "@veyyon/coding-agent/ev
 import type { KernelExecuteResult } from "@veyyon/coding-agent/eval/py/kernel";
 import * as pythonKernel from "@veyyon/coding-agent/eval/py/kernel";
 import { getProjectDir } from "@veyyon/utils";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 class FakeKernel {
 	execute = vi.fn(async () => this.result);

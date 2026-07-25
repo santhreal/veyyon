@@ -365,8 +365,9 @@ cache](#project-resolution-and-the-runtime-cache).
   budget helpers (**`resolveTokenBudget`**, **`budgetKeyedSignature`**) are exported
   for a harness driving one stage directly, but the whole flow is the single call.
   Notices it must not swallow (a reached content budget, a truncated or
-  partially-unreadable non-git tree, an invalid budget) are surfaced through
-  `onNotice` as a **`ProjectVocabNotice`**, never dropped.
+  partially-unreadable non-git tree, an invalid budget, a cache entry that could
+  not be saved) are surfaced through `onNotice` as a **`ProjectVocabNotice`**,
+  never dropped.
 
 ```ts
 class ArgotSession {
@@ -740,6 +741,18 @@ A malformed cache is never silently discarded and rebuilt from empty:
 `readDictFile` and `resolveProjectCache` throw `ArgotParseError` instead, so a
 corrupt cache surfaces to the operator rather than stripping every handle already
 written into live transcripts.
+
+A cache that cannot be **written** is treated differently from one that cannot be
+**read**, because the two mean different things. A failed read means the data on
+disk is untrustworthy, so it throws. A failed write (a read-only state directory,
+a full disk, root-owned entries left by a `sudo` run) means only that an
+optimisation was lost: the dictionary was already generated in memory and is
+exactly the one a successful write would have stored. So `resolveProjectCache`
+returns that vocabulary and reports the failure on
+`ResolvedCache.writeError` instead of throwing, and `resolveProjectVocab` turns
+it into a `cache-write-failed` notice. The result is slower, never wrong, and
+never quiet: with no report, a permanently unwritable cache would present only as
+"it regenerates every session", which nobody diagnoses.
 
 A harness does not run those stages itself. `resolveProjectVocab({ folder,
 cacheDir, io, tokenBudget?, onNotice? })` composes the whole flow — resolve the

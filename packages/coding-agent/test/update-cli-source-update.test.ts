@@ -101,10 +101,16 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 	it("reads the version back from the checkout after the steps run", async () => {
 		const seen: string[] = [];
 		const { exec } = recordingExec();
-		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, async root => {
-			seen.push(root);
-			return "2.0.0";
-		});
+		await updateViaSourceAt(
+			LAUNCHER,
+			"2.0.0",
+			() => {},
+			exec,
+			async root => {
+				seen.push(root);
+				return "2.0.0";
+			},
+		);
 		// It must read the checkout it just updated, not the running process's own
 		// installation directory.
 		expect(seen).toHaveLength(1);
@@ -137,7 +143,7 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 		// door, on the checkouts most likely to be broken.
 		const { exec } = recordingExec();
 		await expect(updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion(undefined))).rejects.toThrow(
-			new RegExp(`Could not read ${SOURCE_VERSION_FILE.replace(/[.\/]/g, "\\$&")}.*unverified`, "s"),
+			new RegExp(`Could not read ${SOURCE_VERSION_FILE.replace(/[./]/g, "\\$&")}.*unverified`, "s"),
 		);
 	});
 
@@ -149,10 +155,16 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 			order.push(step.label);
 			return { exitCode: 0, stderr: "" };
 		};
-		await updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, async () => {
-			order.push("version-read");
-			return "2.0.0";
-		});
+		await updateViaSourceAt(
+			LAUNCHER,
+			"2.0.0",
+			() => {},
+			exec,
+			async () => {
+				order.push("version-read");
+				return "2.0.0";
+			},
+		);
 		expect(order[order.length - 1]).toBe("version-read");
 	});
 
@@ -162,10 +174,16 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 		let reads = 0;
 		const { exec } = recordingExec("Fast-forwarding checkout");
 		await expect(
-			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, async () => {
-				reads += 1;
-				return "1.9.3";
-			}),
+			updateViaSourceAt(
+				LAUNCHER,
+				"2.0.0",
+				() => {},
+				exec,
+				async () => {
+					reads += 1;
+					return "1.9.3";
+				},
+			),
 		).rejects.toThrow(/git merge --ff-only/);
 		expect(reads).toBe(0);
 	});

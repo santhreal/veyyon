@@ -6,7 +6,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
+import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 function textContent(result: { content?: Array<{ type: string; text?: string }> }): string {
 	return (
@@ -22,7 +24,12 @@ function textContent(result: { content?: Array<{ type: string; text?: string }> 
 describe("createAgentSession cwd after /move", () => {
 	const tempDirs: string[] = [];
 
+	let globals: SettingsTestState | undefined;
+
 	afterEach(() => {
+		// Before the rm: the restore chdirs into the snapshotted dir.
+		restoreSettingsTestState(globals);
+		globals = undefined;
 		for (const tempDir of tempDirs.splice(0)) {
 			removeSyncWithRetries(tempDir);
 		}
@@ -36,11 +43,19 @@ describe("createAgentSession cwd after /move", () => {
 		fs.mkdirSync(cwdA, { recursive: true });
 		fs.mkdirSync(cwdB, { recursive: true });
 
+		// `moveTo` only keeps an explicitly-pinned session dir when that dir's
+		// basename is the ENCODED cwd name (`resolveManagedSessionRoot`); a literal
+		// path like this one is treated as unmanaged and the move falls back to the
+		// GLOBAL sessions root. A real run has that root inside the agent dir, so
+		// pin the agent dir at a temp root rather than the operator's real one.
+		globals = beginSettingsTest();
+		setAgentDir(tempDir);
 		const sessionManager = SessionManager.create(cwdA, path.join(tempDir, "sessions"));
 		const { session } = await createAgentSession({
 			cwd: cwdA,
 			agentDir: tempDir,
 			sessionManager,
+			authStorage: await isolatedAuthStorage(tempDir),
 			settings: Settings.isolated({
 				"async.enabled": false,
 				"bash.autoBackground.enabled": false,

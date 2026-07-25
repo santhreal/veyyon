@@ -9,6 +9,7 @@ import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow } from "./callback-server";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const decode = (s: string) => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
@@ -286,7 +287,7 @@ export class AnthropicOAuthFlow extends OAuthCallbackFlow {
 		return {
 			refresh: tokenData.refresh_token,
 			access: tokenData.access_token,
-			expires: Date.now() + tokenData.expires_in * 1000 - 5 * 60 * 1000,
+			expires: credentialExpiryFromExpiresIn(tokenData.expires_in, { provider: "anthropic" }),
 			accountId,
 			email,
 			orgId,
@@ -347,7 +348,7 @@ export async function refreshAnthropicToken(
 	return {
 		refresh: data.refresh_token || refreshToken,
 		access: data.access_token,
-		expires: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
+		expires: credentialExpiryFromExpiresIn(data.expires_in, { provider: "anthropic" }),
 		accountId,
 		email,
 	};

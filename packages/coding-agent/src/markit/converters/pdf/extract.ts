@@ -34,7 +34,30 @@ import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
 // sibling is never read from disk.
 let mupdfModule: typeof mupdf | undefined;
 
-function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
+/**
+ * Materialize the embedded mupdf JS modules into a version-keyed cache dir and
+ * return the entry point to import.
+ *
+ * Two properties are required and neither is optional, because what gets
+ * imported here is executable code:
+ *
+ *  - the write is ATOMIC (temp file plus rename), so a process killed mid-write
+ *    can never leave a half-written module for the next run to import;
+ *  - an existing cache file is reused only when its bytes are IDENTICAL to the
+ *    embedded asset. Matching sizes are not identity. A file whose data blocks
+ *    were lost to an unclean shutdown keeps its size in the inode while its
+ *    contents come back as NULs, and a same-size mismatch also covers anything
+ *    left by an older build that wrote this dir non-atomically. Either way the
+ *    file imports as broken JavaScript, from a cache that looks correct, and it
+ *    never repairs itself because nothing rewrites a file it believes is fine.
+ *
+ * The comparison costs one read of a file already read on this path, and it runs
+ * once per process before a ~10MB wasm load, so exactness is free here.
+ *
+ * Exported for tests: it is otherwise reachable only from compiled binaries,
+ * where the embed is non-empty.
+ */
+export function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
 	const cacheDir = path.join(getAgentDir(), "cache", "mupdf", embedded.version);
 	const targets = [
 		{ asset: embedded.mupdfJs, name: "mupdf.js" },
@@ -43,11 +66,25 @@ function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
 	for (const { asset, name } of targets) {
 		const target = path.join(cacheDir, name);
 		const bytes = fs.readFileSync(asset);
-		if (fs.existsSync(target) && fs.statSync(target).size === bytes.byteLength) continue;
+		if (cachedFileMatches(target, bytes)) continue;
 		// Atomic so a concurrent process never imports a torn cache asset.
 		atomicWriteFileSync(target, bytes);
 	}
 	return path.join(cacheDir, "mupdf.js");
+}
+
+/** Whether the cache file at `target` is byte-for-byte the asset it stands in for. */
+function cachedFileMatches(target: string, bytes: Buffer): boolean {
+	let existing: Buffer;
+	try {
+		existing = fs.readFileSync(target);
+	} catch {
+		// Absent, or unreadable for any other reason: rewrite it. A read failure
+		// here is not swallowed, it is answered — the atomic write that follows
+		// either fixes the file or throws with the cache-dir guidance in loadMupdf.
+		return false;
+	}
+	return existing.length === bytes.length && existing.equals(bytes);
 }
 
 async function loadMupdf(): Promise<typeof mupdf> {

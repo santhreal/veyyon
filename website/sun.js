@@ -1,60 +1,48 @@
-/* Veyyon — the sun journey.
-   veyyōn is Tamil for the sun. A giant round sun fills the screen on load, alive
-   and interactive. Scrolling is one long scripted walk: the sun settles to a
-   parked disc while the idea is told in centered beats (engine -> harness -> what
-   ours does), then it docks to the right and the product is walked through scene
-   by scene (plan mode, sandbox, models, cockpit, extensibility). Everything is a
-   fixed overlay driven purely by scroll position, so each scene stays dead-centre
-   and readable; scroll only advances the crossfade. The sun is a dense field of
-   monospace cells with stepped ember bands + per-cell dither — sharp, cell-native,
-   no smooth gradient — a true circle (distance from each cell centre in pixels).
-   Ripples follow the cursor; a click flares. Reduced motion => static page.
-   Dev: append ?p=0.6 to freeze the journey at a scroll fraction. */
+/* Veyyon — the hero sun (sun.js).
+   veyyōn is Tamil for the sun, so the sun stays as the brand's one piece of
+   atmosphere. It does NOT own the page: it is a modest disc living inside the
+   hero box, beside the product copy, drawn in the same monospace cell field as
+   the rest of the sun marks (stepped ember bands + per-cell dither, a true
+   circle from each cell centre). Ripples follow the cursor and a click flares.
+
+   Deliberately not a scroll journey. The earlier version pinned a 750vh runway
+   and cross-faded eleven scenes over a fullscreen sun, which made the sun the
+   subject and the harness the footnote. The canvas is now a normal element in
+   the hero's flow, so scrolling just scrolls: nothing is hijacked, nothing can
+   ghost over later sections, and the install command is visible on load.
+   Rendering stops whenever the hero leaves the viewport. Reduced motion draws
+   one static frame instead of animating. */
 (function () {
   var cv = document.getElementById("sun");
   if (!cv) return;
+  var host = cv.parentElement;
   var ctx = cv.getContext("2d", { alpha: true });
-  var stage = document.getElementById("stage");
-  var hdr = document.getElementById("hdr");
-  var cue = document.getElementById("cue");
-  var pin = document.querySelector(".stage-pin");
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  // scene [fadeInStart, fadeOutEnd] windows, in document order. Non-overlapping
-  // with clear gaps so two scenes never share the screen. Front-loaded: the name
-  // lands almost immediately so there's no dead scroll at the top. The last window
-  // is the terminal itself, so the walk *ends on the product working* — no fragile
-  // hand-off to a separate page.
-  var WIN = [
-    [0.03, 0.1], [0.115, 0.185], [0.2, 0.27], [0.285, 0.35], // act I — the idea, centered
-    [0.425, 0.495], [0.51, 0.575], [0.59, 0.655], [0.67, 0.73], [0.745, 0.8], [0.815, 0.865], // act II — product
-    [0.885, 1.2], // terminal demo dwell
-  ];
-  var scenes = document.querySelectorAll(".scene");
-  var FADE = 0.022;
-  var DOCK_START = 0.36,
-    DOCK_END = 0.42;
 
   // Sun material comes from the single source of truth (sun-field.js, loaded
   // first): one ramp, one glyph vocabulary, one dither, shared with sunmark.js.
   var COLORS = window.veyyonSun.COLORS;
   var GLYPH = window.veyyonSun.GLYPH;
+  var hash = window.veyyonSun.hash;
+  var GAIN = 0.84; // brightness scale for the hero disc (see the note in draw())
 
-  var W, H, dpr, cellW, cellH, cols, rows, fontPx, mono, mn;
-  var cxPx, cyPx, Rpx;
+  var W = 0, H = 0, dpr = 1, cellW = 6, cellH = 12, cols = 0, rows = 0, fontPx = 11, mono = "monospace";
+  var cxPx = 0, cyPx = 0, Rpx = 0;
   var ripples = [];
   var t0 = performance.now();
+  var visible = true;
 
-  var force = null;
-  (function () {
-    var m = location.search.match(/[?&]p=([0-9.]+)/);
-    if (m) force = Math.min(1, Math.max(0, parseFloat(m[1])));
-  })();
+  function clamp01(x) {
+    return x < 0 ? 0 : x > 1 ? 1 : x;
+  }
+  function smooth(e0, e1, x) {
+    var t = clamp01((x - e0) / (e1 - e0));
+    return t * t * (3 - 2 * t);
+  }
 
   function layout() {
-    W = window.innerWidth;
-    H = window.innerHeight;
-    mn = Math.min(W, H);
+    W = host.clientWidth;
+    H = host.clientHeight;
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     cv.width = Math.floor(W * dpr);
     cv.height = Math.floor(H * dpr);
@@ -67,42 +55,29 @@
     cellH = Math.max(9, Math.round(fontPx * 1.15));
     cols = Math.ceil(W / cellW);
     rows = Math.ceil(H / cellH);
+    place();
   }
 
-  function clamp01(x) {
-    return x < 0 ? 0 : x > 1 ? 1 : x;
-  }
-  function smooth(e0, e1, x) {
-    var t = clamp01((x - e0) / (e1 - e0));
-    return t * t * (3 - 2 * t);
-  }
-  function ease(p) {
-    return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; // easeInOutCubic
-  }
-  function lerp(a, b, t) {
-    return a + (b - a) * t;
-  }
-  var hash = window.veyyonSun.hash; // per-cell ordered dither, shared source
-
-  // sun path: fullscreen -> parked centre (act I) -> docked right (act II).
-  // On narrow screens there is no room beside the text, so the dock is top-centre
-  // and act II scenes centre beneath it (see the mobile rules in site.css).
-  function sunAt(p) {
+  // Where the disc sits inside the hero box. Wide screens: docked right of the
+  // copy column. Narrow screens: the copy is full width, so the sun goes up top
+  // behind the eyebrow and site.css dims it — it must never fight the text.
+  function place() {
     var narrow = W < 860;
-    var fullR = mn * 0.45,
-      parkR = mn * 0.19,
-      dockR = narrow ? mn * 0.24 : mn * 0.26;
-    var parkCx = W / 2,
-      parkCy = H * 0.34,
-      dockCx = narrow ? W / 2 : W * 0.8,
-      dockCy = narrow ? H * 0.21 : H * 0.34;
-    if (p < 0.05) {
-      var t = ease(p / 0.05);
-      return { cx: parkCx, cy: lerp(H / 2, parkCy, t), R: lerp(fullR, parkR, t) };
+    if (narrow) {
+      // Clipped into the top-right corner, above the eyebrow. It sat lower and
+      // larger at first and washed out the middle of the h1, which is exactly the
+      // "sun over the product" problem the hero was rebuilt to end.
+      cxPx = W * 0.93;
+      cyPx = H * 0.015;
+      Rpx = Math.min(W * 0.2, H * 0.13);
+    } else {
+      cxPx = W * 0.8;
+      cyPx = H * 0.44;
+      // Deliberately small. A disc big enough to fill the right half of the hero
+      // reads as the subject of the page; this one is scaled to sit beside the
+      // copy as atmosphere. site.css dims it further with #sun{opacity}.
+      Rpx = Math.min(W * 0.13, H * 0.32);
     }
-    if (p < DOCK_START) return { cx: parkCx, cy: parkCy, R: parkR };
-    var u = ease(clamp01((p - DOCK_START) / (DOCK_END - DOCK_START)));
-    return { cx: lerp(parkCx, dockCx, u), cy: lerp(parkCy, dockCy, u), R: lerp(parkR, dockR, u) };
   }
 
   function spawn(px, py, amp) {
@@ -116,6 +91,7 @@
   }
   var lastEmit = 0;
   window.addEventListener("mousemove", function (e) {
+    if (reduce || !visible) return;
     var q = at(e);
     if (!q) return;
     var now = performance.now();
@@ -124,49 +100,14 @@
     spawn(q.x, q.y, 0.3);
   });
   window.addEventListener("click", function (e) {
+    if (reduce || !visible) return;
     var q = at(e);
     if (q) spawn(q.x, q.y, 1.0);
   });
 
-  var activeScene = -1;
-  function chrome(p) {
-    var top = 0,
-      topI = -1;
-    for (var i = 0; i < scenes.length; i++) {
-      var w = WIN[i];
-      if (!w) continue;
-      var op = smooth(w[0], w[0] + FADE, p) * (1 - smooth(w[1] - FADE, w[1], p));
-      var lp = clamp01((p - w[0]) / (w[1] - w[0]));
-      scenes[i].style.opacity = op;
-      scenes[i].style.transform = "translateY(calc(-50% + " + lerp(15, -15, lp).toFixed(1) + "px))";
-      scenes[i].style.pointerEvents = op > 0.6 ? "auto" : "none";
-      if (op > top) {
-        top = op;
-        topI = i;
-      }
-    }
-    // flare the sun each time a new beat takes over — the sun lives with the story
-    if (top > 0.5 && topI !== activeScene) {
-      activeScene = topI;
-      spawn(cxPx, cyPx, 0.7);
-    }
-    if (hdr) {
-      var gp = smooth(DOCK_START + 0.01, DOCK_END, p);
-      hdr.style.opacity = gp;
-      hdr.style.display = gp < 0.02 ? "none" : "";
-      hdr.style.pointerEvents = gp < 0.1 ? "none" : "";
-    }
-    if (cue) cue.style.opacity = 1 - smooth(0, 0.06, p);
-  }
-
   var lastPulse = -99;
-  function draw(time, p) {
-    var s = sunAt(p);
-    cxPx = s.cx;
-    cyPx = s.cy;
-    Rpx = s.R * (1 + Math.sin(time * 0.6) * 0.02);
-    chrome(p);
-
+  function draw(time) {
+    var R = Rpx * (1 + Math.sin(time * 0.6) * 0.02);
     if (time - lastPulse > 3.4) {
       lastPulse = time;
       spawn(cxPx, cyPx, 0.32);
@@ -176,8 +117,7 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    var R = Rpx,
-      pad = R * 0.28;
+    var pad = R * 0.28;
     var gx0 = Math.max(0, Math.floor((cxPx - R - pad) / cellW));
     var gx1 = Math.min(cols, Math.ceil((cxPx + R + pad) / cellW));
     var gy0 = Math.max(0, Math.floor((cyPx - R - pad) / cellH));
@@ -210,7 +150,14 @@
 
         if (val <= 0.12) continue;
         if (val > 1) val = 1;
-        var bi = Math.min(7, Math.floor(val * 8));
+        // GAIN pulls the whole brightness field down so the core lands in the
+        // ember bands and only the dither reaches the near-white COLORS[7]. Two
+        // rejected alternatives, both worse: CSS opacity desaturates the warm
+        // core to grey-beige on black, and clamping the band index to 5 collapses
+        // the core into one flat brown slab with no cell structure left. Scaling
+        // the field keeps all eight steps (so the disc still reads as stepped
+        // bands) at a luminance the h1 wins against.
+        var bi = Math.min(7, Math.floor(val * GAIN * 8));
         ctx.fillStyle = COLORS[bi];
         ctx.fillText(GLYPH[bi], px, py);
       }
@@ -219,45 +166,31 @@
 
   var last = 0;
   function loop(now) {
-    if (now - last > 30) {
-      last = now;
-      var p = 1,
-        e = 0;
-      if (force !== null) p = force;
-      else if (stage) {
-        var r = stage.getBoundingClientRect();
-        var travel = stage.offsetHeight - H;
-        p = travel > 0 ? clamp01(-r.top / travel) : 1;
-        // Fade the journey out over the last stretch of the runway itself. The pin
-        // and canvas are fixed overlays: fading only after the runway leaves (the old
-        // (H - r.bottom) term) can never complete when the following content is
-        // shorter than the fade distance, so the sun ghosted over the page forever.
-        e = smooth(0.96, 0.99, p);
-      }
-      var gone = e >= 1;
-      if (pin) {
-        pin.style.opacity = String(1 - e);
-        pin.style.visibility = gone ? "hidden" : "";
-      }
-      cv.style.opacity = String(1 - e);
-      cv.style.visibility = gone ? "hidden" : "";
-      if (!gone) draw((now - t0) / 1000, p); // skip the cell field entirely once the journey is over
-    }
     requestAnimationFrame(loop);
+    if (!visible) return; // hero is off-screen: no cell field, no cost
+    if (now - last < 30) return;
+    last = now;
+    draw((now - t0) / 1000);
   }
-  function boot() {
-    if (reduce) {
-      cv.style.display = "none"; // static page handles layout under reduced motion
-      return;
-    }
-    layout();
-    requestAnimationFrame(loop);
-  }
+
   var rz;
   window.addEventListener("resize", function () {
-    if (reduce) return;
     clearTimeout(rz);
-    rz = setTimeout(layout, 120);
+    rz = setTimeout(function () {
+      layout();
+      if (reduce) draw(0.6);
+    }, 120);
   });
-  boot();
+
+  layout();
+  if (reduce) {
+    draw(0.6); // one still frame; the disc is decoration, so it stays visible
+    return;
+  }
+  if (typeof IntersectionObserver === "function") {
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+    }, { rootMargin: "80px" }).observe(host);
+  }
+  requestAnimationFrame(loop);
 })();

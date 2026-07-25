@@ -98,7 +98,6 @@ describe("a wrong-typed setting is reported rather than silently obeyed", () => 
 			// so strict that legitimate values are rejected.
 			const offenders: string[] = [];
 			for (const path of Object.keys(SETTINGS_SCHEMA)) {
-				// biome-ignore lint/suspicious/noExplicitAny: walking the schema generically
 				const reason = describeSettingTypeMismatch(path, getDefault(path as any));
 				if (reason !== undefined) offenders.push(reason);
 			}

@@ -143,6 +143,19 @@ export interface ResolvedCache {
 	path: string;
 	/** `true` when read from an existing entry, `false` when freshly generated. */
 	hit: boolean;
+	/**
+	 * Set when the freshly generated entry could not be persisted (a read-only or
+	 * full state directory, a permission change, a vanished parent). The
+	 * vocabulary in {@link vocab} is complete and correct regardless: only the
+	 * saving of it failed, so the session is armed identically and just pays the
+	 * generation cost again next time.
+	 *
+	 * This is never `undefined` for a silent reason. Argot has no logger of its
+	 * own (it publishes standalone, so it cannot depend on a harness), so the
+	 * failure travels back on the value and the caller is responsible for
+	 * surfacing it. `resolveProjectVocab` does that through its notice sink.
+	 */
+	writeError?: string;
 }
 
 /**
@@ -159,6 +172,15 @@ export interface ResolvedCache {
  * A malformed existing entry throws `ArgotParseError` (via {@link readDictFile})
  * rather than being silently rebuilt, so a corrupt cache surfaces to the operator
  * instead of stripping handles already written into live transcripts.
+ *
+ * The two disk failures are deliberately handled differently, because they mean
+ * different things. A failed READ is a fault: the entry exists and cannot be
+ * trusted, so it throws. A failed WRITE is only a lost optimisation: the
+ * dictionary was generated in memory and is already correct, and a cache that
+ * cannot save is supposed to be slower, not wrong. So the write failure is
+ * caught, the correct vocabulary is returned, and the failure is reported on
+ * {@link ResolvedCache.writeError} for the caller to surface. It is never
+ * swallowed.
  */
 export async function resolveProjectCache(params: ResolveCacheOptions): Promise<ResolvedCache> {
 	const path = cacheDictPath(params.baseDir, params.cacheId, params.contentSig);
@@ -169,8 +191,25 @@ export async function resolveProjectCache(params: ResolveCacheOptions): Promise<
 	}
 
 	const result = generateDictFromRepo(params.files, { naming: "mnemonic", ...params.options });
-	if (result.toml !== "") {
+	if (result.toml === "") {
+		return { vocab: result.vocab, path, hit: false };
+	}
+
+	try {
 		await writeDictFileAtomic(path, result.toml);
+	} catch (err) {
+		return { vocab: result.vocab, path, hit: false, writeError: describeWriteFailure(path, err) };
 	}
 	return { vocab: result.vocab, path, hit: false };
+}
+
+/**
+ * The write-failure message: what could not be saved, where, why, and what it
+ * costs. The consequence is stated because it is the part an operator cannot
+ * infer, and because it is the part that makes the line safe to ignore under
+ * time pressure without fearing a wrong dictionary.
+ */
+function describeWriteFailure(path: string, err: unknown): string {
+	const reason = err instanceof Error ? err.message : String(err);
+	return `argot: could not save the generated dictionary to ${path} (${reason}); the dictionary itself is correct and in use, but it will be regenerated on every session until this directory is writable`;
 }

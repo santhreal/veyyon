@@ -10,6 +10,7 @@ import * as AIError from "../../error";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../../utils/google-validation";
 import { OAuthCallbackFlow } from "./callback-server";
 import type { OAuthController, OAuthCredentials } from "./types";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 
 export interface GoogleOAuthFlowConfig {
 	clientId: string;
@@ -111,7 +112,7 @@ export class GoogleOAuthFlow extends OAuthCallbackFlow {
 		return {
 			refresh: tokenData.refresh_token,
 			access: tokenData.access_token,
-			expires: Date.now() + tokenData.expires_in * 1000 - 5 * 60 * 1000,
+			expires: credentialExpiryFromExpiresIn(tokenData.expires_in, { provider: "google" }),
 			projectId,
 			email,
 		};

@@ -43,7 +43,7 @@ img{max-width:100%;display:block}
 /* kicker — mono, spaced, leading diamond */
 .kicker{display:inline-flex;align-items:center;gap:12px;font-family:var(--mono);font-weight:500;
   font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--silver)}
-.kicker::before{content:"";width:6px;height:6px;background:var(--ember);transform:rotate(45deg);
+.kicker::before{content:"";width:6px;height:6px;background:var(--sun);transform:rotate(45deg);
   box-shadow:0 0 9px rgba(240,134,46,.45);flex:none}
 
 /* ---------- header ---------- */
@@ -64,53 +64,30 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 .btn.primary:hover{background:#fff;border-color:#fff;color:#08090b}
 .btn.arrow::after{content:"→";color:currentColor;opacity:.8}
 
-/* ---------- home — cinematic sun journey ----------
-   .stage is a long scroll runway; .stage-pin pins one viewport while sun.js
-   drives the sun (fullscreen -> parked -> docked) and cross-fades the narrative
-   beats, then the product hero. Beats + hero are absolutely stacked in the pin. */
-/* .stage is a pure scroll runway; .stage-pin is a fixed viewport overlay so the
-   beats/hero stay dead-centre while scroll only advances the crossfade (sticky
-   is fragile — a fixed overlay is guaranteed pinned). */
-.stage{position:relative;height:750vh}
-.stage-pin{position:fixed;inset:0;z-index:2;pointer-events:none}
-.stage-pin .btn,.stage-pin a,.stage-pin button{pointer-events:auto}
-#sun{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
-
-/* scenes — each is absolutely stacked in the pin, cross-faded + slid by scroll.
-   .center sits below the parked sun (act I); .left sits beside the docked sun. */
-.scene{position:absolute;left:0;right:0;z-index:2;opacity:0;pointer-events:none;padding:0 var(--pad)}
-.scene.center{top:66%;transform:translateY(-50%);text-align:center}
-.scene.left{top:50%;transform:translateY(-50%)}
-/* terminal demo section */
-#s11{top:50%;transform:translateY(-50%);text-align:center}
-#s11 .showcase{margin:0 auto;max-width:660px;width:100%;text-align:left}
-.scene-inner{width:100%;max-width:var(--maxw);margin:0 auto}
-
-.scene-name{margin:0;font-family:var(--mono);font-weight:700;font-size:clamp(52px,10vw,132px);
-  letter-spacing:-.05em;color:var(--silver-hi)}
-.scene-lead{margin:0 auto;max-width:24ch;font-family:var(--mono);font-weight:500;
-  font-size:clamp(21px,3.2vw,38px);line-height:1.26;letter-spacing:-.02em;color:var(--silver);text-wrap:balance}
-
-.scene-title{margin:16px 0 18px;max-width:17ch;font-family:var(--mono);font-weight:700;
-  font-size:clamp(30px,4.6vw,56px);line-height:1.05;letter-spacing:-.03em;color:var(--silver-hi);text-wrap:balance}
-.scene-detail{margin:0;max-width:46ch;font-size:clamp(16px,1.7vw,19px);line-height:1.62;color:var(--fg-2);text-wrap:pretty}
-.scene-code{margin:28px 0 0;max-width:46ch;font-family:var(--mono);font-size:13.5px;line-height:1.95;
-  color:var(--fg-2);border-left:1px solid var(--line-2);padding-left:20px;white-space:pre;overflow-x:auto}
-.scene-code .k{color:var(--sun-hi)} .scene-code .s{color:var(--silver)}
-
-/* product hero content (lives inside scene #s5) */
-.hero-inner{width:100%;max-width:var(--maxw);margin:0 auto}
+/* ---------- home hero ----------
+   A normal section, not a scroll runway. The sun canvas (sun.js) is absolutely
+   positioned inside it and sized to the section box, so it scrolls away with the
+   hero and can never ghost over later content. Copy sits in a column on the left
+   at the wide breakpoint; the sun docks to the right of it. */
+.hero{position:relative;overflow:hidden;padding:104px 0 96px;border-top:none}
+/* the disc is atmosphere, so it renders under the copy and at partial opacity —
+   the ember bands still read on black, but nothing here outshines the h1 */
+#sun{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.hero-inner{position:relative;z-index:1;max-width:var(--maxw)}
 .hero-inner .eyebrow{display:inline-flex;font-family:var(--mono);font-weight:500;
   font-size:12px;letter-spacing:.04em;color:var(--fg-2);margin-bottom:26px}
-.hero-inner h1{font-family:var(--mono);font-weight:700;font-size:clamp(40px,6.4vw,80px);line-height:1.02;
-  letter-spacing:-.045em;margin:0 0 30px;max-width:15ch;text-wrap:balance}
+.hero-inner h1{font-family:var(--mono);font-weight:700;font-size:clamp(40px,6.4vw,76px);line-height:1.02;
+  letter-spacing:-.045em;margin:0 0 26px;max-width:14ch;text-wrap:balance}
+.hero-inner .lede{max-width:52ch}
 
-/* tiny scroll prompt at the top */
-.cue{position:absolute;left:50%;bottom:40px;z-index:2;transform:translateX(-50%);display:flex;flex-direction:column;
-  align-items:center;gap:11px;font-family:var(--mono);font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;color:var(--silver)}
-.cue span{animation:cuePulse 2.6s ease-in-out infinite}
-.cue::after{content:"";width:1px;height:30px;background:var(--muted)}
-@keyframes cuePulse{0%,100%{opacity:.4}50%{opacity:1}}
+/* the demo capture sits directly under the hero. The band closes with the page's
+   hairline so the next section starts on a rule instead of floating in the void
+   (section.plain has no top border, since elsewhere it follows a .page-head). */
+.demo-band{padding:0 0 88px;border-top:none;border-bottom:1px solid var(--line)}
+/* the capture fills the reading column: at 720px it left a third of the row
+   empty next to it, which read like a broken layout rather than a choice */
+.demo-band .showcase{margin:0;max-width:none}
+
 .lede{font-size:clamp(17px,1.8vw,20px);color:var(--fg-2);margin:0 0 36px;max-width:48ch;line-height:1.55;text-wrap:pretty}
 .cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:40px}
 .cta .btn{padding:12px 22px;font-size:14.5px}
@@ -295,7 +272,7 @@ html{scrollbar-color:#232327 #000}
 .ledger-row{display:grid;grid-template-columns:72px 1fr;gap:28px;padding:36px 0;border-bottom:1px solid var(--line);
   transition:background .25s ease}
 .ledger-row:hover{background:#060607}
-.ledger-row:hover .ledger-idx{color:var(--ember)}
+.ledger-row:hover .ledger-idx{color:var(--sun-hi)}
 .ledger-row:hover h3{color:var(--silver-hi)}
 .ledger-idx{font-family:var(--mono);font-weight:500;font-size:12px;color:var(--silver);letter-spacing:.1em;padding-top:6px}
 .ledger-row h3{margin:0 0 10px;font-size:19px;font-weight:600;color:var(--fg);letter-spacing:-.015em}
@@ -346,19 +323,19 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   .nav > nav{display:none}
   .nav-menu{display:block}
   section{padding:64px 0}
-  .hero{padding:72px 0 40px}
+  .hero{padding:64px 0 48px}
+  .demo-band{padding:0 0 64px}
   .showcase{margin-top:44px}
-  #sun{opacity:.55}
-  /* the journey on small screens: the sun docks top-centre (sun.js), so act II
-     scenes centre beneath it instead of sitting beside it */
-  .scene.left{text-align:center}
-  .scene.left .scene-title,.scene.left .scene-detail{margin-left:auto;margin-right:auto}
-  .scene.left .scene-code{width:auto;max-width:100%;margin-left:auto;margin-right:auto;text-align:left;
-    font-size:11.5px;overflow-x:auto}
+  /* no room beside the copy: sun.js clips the disc into the top-right corner and
+     it fades back so it reads as texture above the eyebrow, never as a subject */
+  #sun{opacity:.34}
+  /* the install command is one long unbreakable token, so the row has to be a
+     shrinkable flex line with the code scrolling inside it — an inline-flex box
+     with a nowrap child pushed the whole row past the viewport edge on phones */
+  .install{display:flex;width:100%;gap:12px}
+  .install code{flex:1;min-width:0;overflow-x:auto;font-size:13px}
+  .install button{flex:none}
   .term .body{font-size:11px}
-  .hero-inner h1{margin-left:auto;margin-right:auto}
-  .hero-inner .cta{justify-content:center}
-  .hero-inner .lede{margin-left:auto;margin-right:auto}
 }
 
 /* motion — silky reveals + interactions. reveal is added by motion.js only, so
@@ -371,14 +348,8 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
 .card{transition:border-color .25s var(--ease),background .25s var(--ease)}
 .card:hover{background:#050506}
 
-/* reduced motion: collapse the scroll stage into a normal, static hero */
-@media (prefers-reduced-motion:reduce){
-  .stage{height:auto}
-  .stage-pin{position:static;padding:80px 0 40px}
-  .scene{position:static;opacity:1;transform:none;pointer-events:auto;padding:56px var(--pad)}
-  .cue{display:none}
-  #sun{display:none}
-}
+/* reduced motion: the hero is already a static section, so only the sun's
+   animation stops (sun.js draws a single frame). Nothing to collapse. */
 
 /* ---- blog ---------------------------------------------------------------
    A reading column for design essays. Mono headings (the brand voice), Inter
@@ -426,4 +397,4 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
 .post-card h2{font-family:var(--mono);font-weight:700;color:var(--fg);font-size:clamp(20px,2.4vw,26px);
   letter-spacing:-.024em;margin:0 0 12px;line-height:1.16;text-wrap:balance}
 .post-card p{margin:0;color:var(--fg-2);max-width:62ch;font-size:16px;line-height:1.55;text-wrap:pretty}
-.post-empty{color:var(--muted);font-family:var(--mono);font-size:15px}
+.post-empty{color:var(--muted);font-family:var(--mono);font-size:15px;max-width:62ch;line-height:1.75}

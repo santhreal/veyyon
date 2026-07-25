@@ -189,7 +189,14 @@ describe("managed AGENTS.md seeding surfaces genuine write failures loudly (no s
 	// Capture the real logger output by routing it to a console transport and
 	// intercepting the process streams for the duration of one call. This tests
 	// the actual winston emission end to end (not a spy on a binding), then puts
-	// the default file transport and the streams back exactly as they were.
+	// the streams back exactly as they were.
+	//
+	// The restore turns BOTH transports off rather than re-enabling the file one.
+	// The file transport is a winston DailyRotateFile rooted at the real profile's
+	// logs directory, so switching it back on inside a test run opens a write
+	// stream on the developer's own `~/.veyyon/profiles/<profile>/logs` — which is
+	// exactly what the real-data tripwire refuses. Nothing after the capture reads
+	// the log file, so off is both correct and the only safe restore.
 	async function captureLoggerOutput(run: () => Promise<void>): Promise<string> {
 		const chunks: string[] = [];
 		const origOut = process.stdout.write.bind(process.stdout);
@@ -206,7 +213,7 @@ describe("managed AGENTS.md seeding surfaces genuine write failures loudly (no s
 		} finally {
 			(process.stdout.write as unknown) = origOut;
 			(process.stderr.write as unknown) = origErr;
-			logger.setTransports({ file: true });
+			logger.setTransports({ console: false, file: false });
 		}
 		return chunks.join("");
 	}

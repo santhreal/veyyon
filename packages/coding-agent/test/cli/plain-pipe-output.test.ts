@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __resetDirsFromEnvForTests, getAgentDir } from "@veyyon/utils";
+import { getAgentDir } from "@veyyon/utils";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
+import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 // Piped/redirected stdout must degrade to plain text: the theme renderer
 // emits truecolor SGR escapes unconditionally, so commands that print themed
@@ -68,26 +69,17 @@ describe("`veyyon search` output on a pipe (unit)", () => {
 	// when this case started failing on main; before the tripwire it passed while
 	// mutating real data. VEYYON_CONFIG_DIR resolves relative to os.homedir(),
 	// which Bun fixes at process start, so assigning HOME here would do nothing.
-	let configRoot = "";
-	let originalConfigDirEnv: string | undefined;
-
-	beforeAll(() => {
-		configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-plain-pipe-config-"));
-		originalConfigDirEnv = process.env.VEYYON_CONFIG_DIR;
-		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
-		__resetDirsFromEnvForTests();
-	});
-
-	afterAll(() => {
-		if (originalConfigDirEnv === undefined) delete process.env.VEYYON_CONFIG_DIR;
-		else process.env.VEYYON_CONFIG_DIR = originalConfigDirEnv;
-		__resetDirsFromEnvForTests();
-		fs.rmSync(configRoot, { recursive: true, force: true });
-	});
+	//
+	// The helper rather than a local snapshot because moving VEYYON_CONFIG_DIR is
+	// not by itself enough: a leaked VEYYON_CODING_AGENT_DIR from any earlier suite
+	// outranks it, which made the isolation assertion below pass alone and fail in
+	// a full run. See `useIsolatedConfigRoot` for the precedence.
+	const configRootPath = useIsolatedConfigRoot();
 
 	/** Isolation is asserted, not assumed: it only proves the path it names. */
 	it("resolves the agent directory inside the temp config root, not the real one", () => {
-		expect(getAgentDir().startsWith(configRoot)).toBe(true);
+		expect(configRootPath()).not.toBe("");
+		expect(getAgentDir().startsWith(configRootPath())).toBe(true);
 		expect(getAgentDir()).not.toContain(path.join(os.homedir(), ".veyyon"));
 	});
 

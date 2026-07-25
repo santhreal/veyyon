@@ -12,13 +12,13 @@ import packageJson from "../../../package.json" with { type: "json" };
 import * as AIError from "../../error";
 import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
 const DEFAULT_OAUTH_HOST = "https://auth.kimi.com";
 const DEVICE_ID_FILENAME = "kimi-device-id";
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const DEFAULT_DEVICE_FLOW_TTL_MS = 15 * 60 * 1000;
-const OAUTH_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 
 interface DeviceAuthorizationResponse {
 	user_code?: string;
@@ -176,7 +176,7 @@ function parseTokenPayload(payload: TokenResponse, refreshTokenFallback?: string
 	return {
 		access: payload.access_token,
 		refresh,
-		expires: Date.now() + payload.expires_in * 1000 - OAUTH_EXPIRY_SKEW_MS,
+		expires: credentialExpiryFromExpiresIn(payload.expires_in, { provider: "kimi" }),
 	};
 }
 

@@ -6,7 +6,7 @@ import * as os from "node:os";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { ToolExample, TSchema } from "@veyyon/ai";
 import { renderToolInventory } from "@veyyon/ai/dialect";
-import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@veyyon/utils";
+import { $env, errorMessage, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@veyyon/utils";
 import { contextFileCapability } from "./capability/context-file";
 import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
@@ -22,6 +22,9 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
+import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
+import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
+import { assembleDefaultTemplate, parseSectionOverridesJson } from "./system-prompt-builder/default-template";
 import {
 	OPTION_BACKED_RUNTIME_SECTIONS,
 	RUNTIME_SECTIONS,
@@ -29,9 +32,6 @@ import {
 	withSectionBanner,
 } from "./system-prompt-builder/prompt-blocks";
 import { applyPromptSectionOrderToParts } from "./system-prompt-builder/prompt-sections";
-import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
-import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
-import { assembleDefaultTemplate, parseSectionOverridesJson } from "./system-prompt-builder/default-template";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import { shortenPath } from "./tools/render-utils";
@@ -275,26 +275,64 @@ interface GpuCache {
 	gpu: string | null;
 }
 
+/**
+ * Read the GPU probe result cached on disk, or `null` to probe again.
+ *
+ * A damaged file (truncated by a crash mid-write, hand-edited, replaced with a
+ * JSON value that is not an object) must never take the prompt down and must
+ * never be trusted: the caller re-probes and overwrites it, so the cache repairs
+ * itself on the next launch. But it is reported, because a file that fails to
+ * parse on every launch means the probe runs on every launch, and the only
+ * symptom of that is a slower start that nobody attributes to a cache.
+ *
+ * The one silence kept on purpose is a missing file. That is every first run, and
+ * a warning that fires for everyone once is a warning people learn to skip.
+ */
 async function loadGpuCache(): Promise<GpuCache | null> {
+	const cachePath = getGpuCachePath();
+	let content: unknown;
 	try {
-		const cachePath = getGpuCachePath();
-		const content = await Bun.file(cachePath).json();
-		if (content && typeof content === "object" && "gpu" in content) {
-			const gpu = content.gpu;
-			return { gpu: typeof gpu === "string" ? gpu : null };
+		content = await Bun.file(cachePath).json();
+	} catch (err) {
+		if (!isEnoent(err)) {
+			logger.warn("GPU cache could not be read; re-probing and rewriting it", {
+				path: cachePath,
+				error: errorMessage(err),
+			});
 		}
 		return null;
-	} catch {
+	}
+	if (content && typeof content === "object" && "gpu" in content) {
+		const gpu = (content as { gpu: unknown }).gpu;
+		// `null` is a real cached answer ("probed, found nothing"), so it is a hit.
+		// Anything else that is not a string is damage: normalizing it to `null` and
+		// returning it would leave the bad file on disk forever, because the caller
+		// only rewrites the cache when it re-probes.
+		if (typeof gpu === "string" || gpu === null) return { gpu };
+		logger.warn("GPU cache has a non-string `gpu`; re-probing and rewriting it", {
+			path: cachePath,
+			type: typeof gpu,
+		});
 		return null;
 	}
+	logger.warn("GPU cache parsed but has no `gpu` field; re-probing and rewriting it", { path: cachePath });
+	return null;
 }
 
+/**
+ * Persist the probe result. A failed write costs only speed (the probe reruns
+ * next launch), so it must not throw, but it is reported for the same reason the
+ * read failure is: an unwritable cache directory is otherwise invisible.
+ */
 async function saveGpuCache(info: GpuCache): Promise<void> {
+	const cachePath = getGpuCachePath();
 	try {
-		const cachePath = getGpuCachePath();
 		await Bun.write(cachePath, JSON.stringify(info, null, "\t"));
-	} catch {
-		// Silently ignore cache write failures
+	} catch (err) {
+		logger.warn("GPU cache could not be written; the GPU will be probed again on every launch", {
+			path: cachePath,
+			error: errorMessage(err),
+		});
 	}
 }
 
@@ -962,7 +1000,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		);
 	}
 	const baseTemplate = resolvedCustomPrompt ? customSystemPromptTemplate : assembleDefaultTemplate(sectionOverrides);
-	let rendered = prompt.render(baseTemplate, data);
+	const rendered = prompt.render(baseTemplate, data);
 	const reorderSections = Boolean(sectionOrder && sectionOrder.length > 0);
 	if (reorderSections && resolvedCustomPrompt) {
 		logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");

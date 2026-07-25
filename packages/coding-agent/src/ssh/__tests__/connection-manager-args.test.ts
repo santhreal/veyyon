@@ -15,6 +15,12 @@ import {
 	TRANSFER_PROBE_MARKER,
 } from "../connection-manager";
 import { buildSshTarget, sanitizeHostName } from "../utils";
+import { useIsolatedConfigRoot } from "../../../test/helpers/isolated-agent-dir";
+
+// The shell-classification test writes a host record into `getRemoteHostDir()`,
+// which resolves under the CONFIG root — so without this it creates and then
+// deletes files inside the developer's real `~/.veyyon/profiles/<profile>/remote-host`.
+useIsolatedConfigRoot();
 
 const TARGET: SSHConnectionTarget = { name: "h", host: "h" };
 

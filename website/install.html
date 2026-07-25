@@ -15,7 +15,10 @@
 <title>Install | Veyyon</title>
 <meta property="og:title" content="Install | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/install.html" />
+<link rel="canonical" href="https://veyyon.dev/install.html" />
 <meta name="description" content="Install Veyyon: one-line curl installer (Linux/macOS), PowerShell installer (Windows), or a GitHub release binary." />
+<link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="./fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -24,6 +27,7 @@
   <div class="wrap nav">
     <a class="brand" href="./">veyyon</a>
     <nav>
+    <!--NAV:START-->
       <a href="./models.html">Models</a>
       <a href="./features.html">Features</a>
       <a href="./install.html" aria-current="page">Install</a>
@@ -32,17 +36,20 @@
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
       <a href="./install.html" class="btn">Get started</a>
+    <!--NAV:END-->
     </nav>
     <details class="nav-menu"><summary>menu</summary>
       <nav>
+      <!--NAV:START-->
         <a href="./models.html">Models</a>
         <a href="./features.html">Features</a>
-        <a href="./install.html">Install</a>
+        <a href="./install.html" aria-current="page">Install</a>
         <a href="./changelog.html">Changelog</a>
         <a href="./blog/">Blog</a>
         <a href="./docs/">Docs</a>
         <a href="https://github.com/santhreal/veyyon">GitHub</a>
         <a href="./install.html" class="btn">Get started</a>
+      <!--NAV:END-->
       </nav>
     </details>
   </div>
@@ -63,6 +70,10 @@
   </div>
 
   <section class="plain">
+    <!-- the steps grid used to sit here with no heading, which left the page
+         jumping h1 -> h3 and the three cells floating with no introduction -->
+    <div class="lead"><span class="kicker">Three steps</span><h2>Install, auth, run</h2>
+      <p class="sub">Each step in one line. The detail for every platform and provider is below.</p></div>
     <div class="steps">
       <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> · or <span class="inline">irm https://veyyon.dev/install.ps1 | iex</span> on Windows · or a release asset from GitHub.</p></div>
       <div class="step"><h3>Auth</h3><p><span class="inline">/login &lt;provider&gt;</span>, provider env key, or OpenAI-compatible <span class="inline">models.yml</span> entry under the profile agent dir.</p></div>
@@ -109,13 +120,15 @@
       <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
     </div>
     <nav>
+    <!--NAV:START-->
       <a href="./models.html">Models</a>
       <a href="./features.html">Features</a>
-      <a href="./install.html">Install</a>
+      <a href="./install.html" aria-current="page">Install</a>
       <a href="./changelog.html">Changelog</a>
       <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    <!--NAV:END-->
     </nav>
   </div>
 </footer>

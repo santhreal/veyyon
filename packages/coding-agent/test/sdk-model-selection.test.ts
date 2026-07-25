@@ -161,8 +161,31 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			await buildSessionOptions("missing-provider/missing-model"),
 		);
 
+		// The behaviour under test is the absence of a silent fallback: an
+		// unresolvable explicit `--model` must leave the session with NO model rather
+		// than quietly substituting a working one (Law 10).
 		expect(session.model).toBeUndefined();
-		expect(modelFallbackMessage).toBe('Model "missing-provider/missing-model" not found');
+
+		// The message is asserted by its parts, not as one frozen string, for two
+		// reasons that both bit here.
+		//
+		// It used to be pinned to the bare `Model "<id>" not found`. That sentence was
+		// deliberately replaced (see model-resolution-failure.ts: blaming the id when
+		// the real cause was an expired credential once cost a bench run, a false code
+		// comment, and a whole sandbox model gate built against a model that worked),
+		// and the equality assertion was left behind, so an improvement to the message
+		// read as a regression.
+		//
+		// It also embeds a COUNT of models with usable credentials, which is derived
+		// from whatever credentials the machine running the test happens to have. Any
+		// exact-match assertion on this sentence is therefore environment-dependent
+		// and would fail on a different developer's box for reasons unrelated to the
+		// code.
+		expect(modelFallbackMessage).toContain('Model "missing-provider/missing-model" not found');
+		expect(modelFallbackMessage).toMatch(/\d+ model\(s\) with usable credentials/);
+		// The remedy: a denial that does not say what to do next is what sends people
+		// debugging the id they typed.
+		expect(modelFallbackMessage).toContain("/model");
 	});
 
 	test("uses auth fallback when deferred subagent modelPattern resolves without working credentials", async () => {

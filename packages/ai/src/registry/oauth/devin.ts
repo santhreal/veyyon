@@ -3,6 +3,7 @@ import * as AIError from "../../error";
 import { OAuthCallbackFlow } from "./callback-server";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
+import { credentialExpiryFromJwtExp } from "./expiry";
 
 type FetchFunction = NonNullable<OAuthController["fetch"]>;
 
@@ -112,7 +113,7 @@ export async function exchangeDevinCliToken(
 function getTokenExpiry(token: string): number {
 	const decoded = decodeJwtPayload<{ exp?: unknown }>(token);
 	if (decoded && typeof decoded.exp === "number" && Number.isFinite(decoded.exp)) {
-		return decoded.exp * 1000 - 5 * 60 * 1000;
+		return credentialExpiryFromJwtExp(decoded.exp, { provider: "devin" });
 	}
 	// Malformed / non-JWT tokens use a conservative long-lived fallback.
 	return Date.now() + FALLBACK_EXPIRES_MS;

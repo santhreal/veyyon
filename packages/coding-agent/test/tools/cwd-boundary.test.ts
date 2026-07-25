@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolContext } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { editFilesystemTargets } from "@veyyon/coding-agent/edit";
@@ -326,6 +327,10 @@ describe("filesystem cwd boundary through the approval gate", () => {
 			cwd,
 			agentDir: tempDir,
 			sessionManager,
+			// Isolated store, or session creation falls through to
+			// `discoverAuthStorage`, which opens the operator's real machine-wide
+			// `~/.veyyon/shared-auth/agent.db` and trips the real-data guard.
+			authStorage: await AuthStorage.create(path.join(tempDir, "auth.db")),
 			settings: Settings.isolated(BASE_SETTINGS),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,

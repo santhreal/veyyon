@@ -11,6 +11,7 @@ type Mode =
 	| "local"
 	| "local-ts"
 	| "workspace"
+	| "scripts"
 	| "native"
 	| "coding-agent-singleton"
 	| "coding-agent-ui"
@@ -81,6 +82,7 @@ const validModes: Record<Mode, true> = {
 	local: true,
 	"local-ts": true,
 	workspace: true,
+	scripts: true,
 	native: true,
 	"coding-agent-singleton": true,
 	"coding-agent-ui": true,
@@ -150,6 +152,7 @@ const repoScriptTests = [
 	"scripts/release-train-contracts.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/ci-release-notes.test.ts",
+	"scripts/ci-release-build-binaries.test.ts",
 	"scripts/release-watch.test.ts",
 	"scripts/release-version.test.ts",
 	"scripts/has-releasable-changes.test.ts",
@@ -158,6 +161,7 @@ const repoScriptTests = [
 	"scripts/install-methods-coverage.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
 	"scripts/installer-alias-parity.test.ts",
+	"scripts/installer-completions-parity.test.ts",
 	"scripts/installer-doctor-parity.test.ts",
 	"scripts/installer-lfs-parity.test.ts",
 	"scripts/installer-no-clobber.test.ts",
@@ -181,6 +185,19 @@ const repoScriptTests = [
 	"website/tools/gen-blog.test.ts",
 	"website/tools/nav.test.ts",
 ];
+
+/**
+ * The one command that runs every repo-level script suite. Both `local-ts` (the
+ * full local run) and `scripts` (that set alone) call this, so `repoScriptTests`
+ * has exactly one consumer and cannot be half-updated.
+ */
+function scriptTestCommand(): TestCommand {
+	return {
+		label: "scripts",
+		cwd: ".",
+		command: ["bun", "test", ...preloadArgs, "--parallel=4", ...onlyFailuresArgs, ...repoScriptTests],
+	};
+}
 
 const codingAgentNativePathPatterns = [
 	/(^|\/)[^/]*(bash|native|browser|cmux|mnemopi|hindsight|memory)[^/]*\.test\.ts$/i,
@@ -484,6 +501,12 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 		// `all` set PLUS mnemopi and veybot-web, which CI omits) and every repo
 		// script test, routed through this one quiet runner so the whole suite
 		// shares one progress stream and one failure report.
+		// `scripts` runs only the repo-level script suites. Root `test:scripts`
+		// delegates here rather than repeating the file list: two hand-maintained
+		// lists of which script tests to run is how one of them goes stale, and the
+		// stale one had 7 of the 32 entries.
+		case "scripts":
+			return [scriptTestCommand()];
 		case "local-ts":
 			return [
 				...fastWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 8, { extraArgs: onlyFailuresArgs })),
@@ -492,11 +515,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 				),
 				...localOnlyWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 4, { extraArgs: onlyFailuresArgs })),
 				...(await commandsForMode("coding-agent-heavy")),
-				{
-					label: "scripts",
-					cwd: ".",
-					command: ["bun", "test", ...preloadArgs, "--parallel=4", ...onlyFailuresArgs, ...repoScriptTests],
-				},
+				scriptTestCommand(),
 			];
 		// `local` is what root `bun run test` drives: the full TS suite plus the
 		// Rust task, so a single invocation reports TS and Rust together. The Rust
@@ -1037,7 +1056,6 @@ export function diffRealConfigRoot(before: Map<string, string>, after: Map<strin
 	}
 	return changes.sort();
 }
-
 
 // Skipped when imported (e.g. by the runner's own unit tests), where
 // `process.argv` carries test-file paths rather than a mode/flags.

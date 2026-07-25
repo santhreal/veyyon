@@ -31,7 +31,12 @@ import type { BashToolDetails } from "@veyyon/coding-agent/tools/bash";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import { hasForegroundBashWait, requestManualBackground } from "@veyyon/coding-agent/tools/bash-foreground-registry";
 import { removeSyncWithRetries } from "@veyyon/utils";
+import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 import { makeToolSession } from "./helpers/tool-session";
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 let artifactCounter = 0;
 

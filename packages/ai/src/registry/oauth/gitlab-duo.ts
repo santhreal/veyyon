@@ -4,6 +4,7 @@ import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const GITLAB_COM_URL = "https://gitlab.com";
 /**
@@ -109,7 +110,7 @@ function mapTokenResponse(payload: {
 	return {
 		access: payload.access_token,
 		refresh: payload.refresh_token,
-		expires: createdAtMs + payload.expires_in * 1000 - 5 * 60 * 1000,
+		expires: credentialExpiryFromExpiresIn(payload.expires_in, { issuedAtMs: createdAtMs, provider: "gitlab-duo" }),
 	};
 }
 

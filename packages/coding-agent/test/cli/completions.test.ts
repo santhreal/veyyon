@@ -1,5 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { join as pathJoin } from "node:path";
 import { buildSpec, type CompletionSpec, generateCompletion } from "@veyyon/coding-agent/cli/completion-gen";
 import { APP_ALIAS } from "@veyyon/utils";
 import type { CliConfig, CommandCtor } from "@veyyon/utils/cli";
@@ -833,6 +836,76 @@ describe("the generated bash dispatcher, executed", () => {
 });
 
 /**
+ * The @file completion, RUN against a real directory.
+ *
+ * Reading the emitted script cannot tell you whether the candidates come back
+ * carrying their `@`, and a candidate that does not carry it is filtered out by
+ * bash before the user ever sees it — the failure looks exactly like no
+ * completion at all.
+ */
+describe("the generated bash @file completion, executed", () => {
+	const atSpec: CompletionSpec = {
+		bin: "veyyon",
+		binAliases: [],
+		root: {
+			flags: [{ name: "print", char: "p", description: "Print", value: { kind: "flag" }, repeatable: false }],
+			args: [{ name: "messages", description: "Messages", value: { kind: "at-file" } }],
+		},
+		commands: [{ name: "commit", aliases: [], description: "Commit", flags: [], args: [] }],
+	};
+	const script = generateCompletion("bash", atSpec);
+
+	function completeIn(dir: string, ...words: string[]): string[] {
+		const driver = [
+			script,
+			"compopt() { :; }",
+			`cd ${JSON.stringify(dir)}`,
+			`COMP_WORDS=(${words.map(w => JSON.stringify(w)).join(" ")})`,
+			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
+			"COMPREPLY=()",
+			"_veyyon",
+			'printf "%s\\n" "${COMPREPLY[@]}"',
+		].join("\n");
+		const out = Bun.spawnSync(["bash", "-c", driver]);
+		expect(out.exitCode, new TextDecoder().decode(out.stderr)).toBe(0);
+		return new TextDecoder()
+			.decode(out.stdout)
+			.split("\n")
+			.filter(line => line.length > 0)
+			.sort();
+	}
+
+	let dir: string;
+	beforeAll(() => {
+		dir = mkdtempSync(pathJoin(tmpdir(), "veyyon-atfile-"));
+		mkdirSync(pathJoin(dir, "src"));
+		writeFileSync(pathJoin(dir, "src", "main.ts"), "");
+		writeFileSync(pathJoin(dir, "readme.md"), "");
+	});
+	afterAll(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("offers @-prefixed paths for a bare @", () => {
+		expect(completeIn(dir, "veyyon", "@")).toEqual(["@readme.md", "@src"]);
+	});
+
+	it("keeps the @ on a candidate inside a subdirectory", () => {
+		// bash filters COMPREPLY against the typed word; a bare `main.ts` here
+		// matches nothing and the user sees no completion at all.
+		expect(completeIn(dir, "veyyon", "@src/m")).toEqual(["@src/main.ts"]);
+	});
+
+	it("still offers subcommands when the word has no @", () => {
+		expect(completeIn(dir, "veyyon", "")).toContain("commit");
+	});
+
+	it("does not offer paths for a flag word", () => {
+		expect(completeIn(dir, "veyyon", "--")).toEqual(["--print", "-p"].sort());
+	});
+});
+
+/**
  * fish had the same defect the bash dispatcher did, arriving by a different
  * route: fish's own `__fish_seen_subcommand_from` matches any earlier token
  * against a name list, so `veyyon --model commit <Tab>` read as the `commit`
@@ -1303,5 +1376,125 @@ describe("the generated bash settings completion, executed", () => {
 		// The double-filter regression, executed: the stub returns dotted keys, and
 		// a prefix match against `up` would drop both.
 		expect(complete("veyyon", "config", "set", "up")).toEqual(["startup.autoUpdate", "startup.quiet"]);
+	});
+});
+
+/**
+ * `veyyon @src/main.ts explain this` is a documented way to launch: the launch
+ * positional is free text, except that a word starting with `@` names a file to
+ * attach. Completion never knew that, so the one part of that line a shell
+ * could have completed was the part it left alone.
+ *
+ * The `@` is not part of the path, and it IS part of the word a candidate
+ * replaces, so every shell has to strip it for the lookup and put it back on
+ * the result. Getting that backwards produces no candidates at all, which is
+ * indistinguishable from the bug being unfixed.
+ */
+describe("the @file launch positional", () => {
+	const atSpec: CompletionSpec = {
+		bin: "veyyon",
+		binAliases: [],
+		root: {
+			flags: [{ name: "print", char: "p", description: "Print", value: { kind: "flag" }, repeatable: false }],
+			args: [{ name: "messages", description: "Messages to send (prefix files with @)", value: { kind: "at-file" } }],
+		},
+		commands: [{ name: "commit", aliases: [], description: "Commit", flags: [], args: [] }],
+	};
+
+	it("buildSpec classifies the launch messages positional as @file", () => {
+		const commands = new Map<string, CommandCtor>([
+			["launch", { flags: {}, args: { messages: { description: "Messages", multiple: true } } } as unknown as CommandCtor],
+		]);
+		const built = buildSpec({ bin: "veyyon", version: "0", commands } as CliConfig, "launch", new Map(), {});
+		expect(built.root.args[0].value.kind).toBe("at-file");
+	});
+
+	it("bash strips the @ for the lookup and puts it back on every candidate", () => {
+		const out = generateCompletion("bash", atSpec);
+		expect(out).toContain("_veyyon_at_file() {");
+		expect(out).toContain('local realcur="${cur#@}"');
+		expect(out).toContain('matches[i]="@${matches[i]}"');
+	});
+
+	it("bash routes to it only when the word already starts with @", () => {
+		// Without the guard the root would offer paths instead of subcommands.
+		expect(generateCompletion("bash", atSpec)).toContain('if [[ "$cur" == @* ]]; then');
+	});
+
+	it("zsh moves the @ out of the way with compset so _files still matches", () => {
+		const out = generateCompletion("zsh", atSpec);
+		expect(out).toContain("compset -P '@'");
+		expect(out).toContain("'1: :_veyyon_first_word'");
+	});
+
+	it("fish returns nothing unless the word starts with @", () => {
+		const out = generateCompletion("fish", atSpec);
+		expect(out).toContain("function __veyyon_at_file_candidates");
+		expect(out).toContain("string match -q '@*' -- $cur; or return");
+		expect(out).toContain("-a '(__veyyon_at_file_candidates)'");
+	});
+
+	it("powershell declines a word with no @ and re-prefixes the rest", () => {
+		const out = generateCompletion("powershell", atSpec);
+		expect(out).toContain("if (-not $WordToComplete.StartsWith('@')) { return @() }");
+		expect(out).toContain('ForEach-Object { "@$_" }');
+	});
+
+	it("emits none of it for a CLI whose root takes no @file positional", () => {
+		// Dead helpers in a script every shell sources at startup are not free.
+		const plain: CompletionSpec = { ...atSpec, root: { flags: atSpec.root.flags, args: [] } };
+		expect(generateCompletion("bash", plain)).not.toContain("_veyyon_at_file");
+		expect(generateCompletion("zsh", plain)).not.toContain("_veyyon_at_file");
+		expect(generateCompletion("zsh", plain)).toContain("'1: :_veyyon_commands'");
+		expect(generateCompletion("fish", plain)).not.toContain("__veyyon_at_file_candidates");
+	});
+});
+
+/**
+ * A positional with no candidates must emit no fish rule at all.
+ *
+ * fishValue returns a bare `-x` for such a value. On a FLAG that reads "this
+ * flag takes a value, do not offer files for it". On a POSITIONAL there is no
+ * flag to attach it to, so it becomes an unconditional rule that turns file
+ * completion off for the whole subcommand — `grep <pattern>` would have
+ * cancelled the file completion `grep <path>` asks for on the next line.
+ */
+describe("fish positionals with nothing to offer", () => {
+	const grepLike: CompletionSpec = {
+		bin: "veyyon",
+		binAliases: [],
+		root: { flags: [], args: [] },
+		commands: [
+			{
+				name: "grep",
+				aliases: [],
+				description: "Grep",
+				flags: [],
+				args: [
+					{ name: "pattern", description: "Regex pattern", value: { kind: "value" } },
+					{ name: "path", description: "Directory or file", value: { kind: "file" } },
+				],
+			},
+		],
+	};
+
+	it("emits the file positional and not the free-text one", () => {
+		const lines = generateCompletion("fish", grepLike)
+			.split("\n")
+			.filter(l => l.includes("__veyyon_using grep"));
+		expect(lines).toEqual(["complete -c veyyon -n '__veyyon_using grep' -r -F -d 'Directory or file'"]);
+	});
+
+	it("keeps emitting the bare -x for FLAGS, where it means something", () => {
+		const withFlag: CompletionSpec = {
+			...grepLike,
+			commands: [
+				{
+					...grepLike.commands[0],
+					flags: [{ name: "glob", description: "Glob", value: { kind: "value" }, repeatable: false }],
+				},
+			],
+		};
+		expect(generateCompletion("fish", withFlag)).toContain("-l glob -d 'Glob' -x");
 	});
 });

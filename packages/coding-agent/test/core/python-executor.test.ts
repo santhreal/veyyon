@@ -3,7 +3,13 @@ import * as path from "node:path";
 import { disposeAllKernelSessions, executePythonWithKernel } from "@veyyon/coding-agent/eval/py/executor";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import { TempDir } from "@veyyon/utils";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { FakeKernel } from "./helpers";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 describe("executePythonWithKernel", () => {
 	it("captures text and display outputs", async () => {

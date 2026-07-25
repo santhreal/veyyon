@@ -4,7 +4,12 @@ import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "@veyyon/coding-agent/config/settings-schema";
 import { BashTool, type BashToolInput } from "@veyyon/coding-agent/tools/bash";
 import { checkBashInterception } from "@veyyon/coding-agent/tools/bash-interceptor";
+import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 function createBashTool(rules: BashInterceptorRule[]): BashTool {
 	const session = makeToolSession({

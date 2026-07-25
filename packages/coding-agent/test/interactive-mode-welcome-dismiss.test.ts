@@ -113,8 +113,37 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		// The menu card is on screen…
 		expect(joined).toContain("Resume session");
 		expect(joined).toContain("/settings");
-		// …and exactly ONE hero: a second wordmark means the home hero survived.
-		const wordmarks = lines.filter(line => line.includes("v e y y o n"));
+		// …and exactly ONE hero.
+		//
+		// Counted by the wordmark's FIRST letter, not the whole spaced wordmark,
+		// because `/welcome` plays an intro whose shine sweeps the wordmark in from
+		// the left. This frame is captured at t≈0, so only the leading letter has
+		// been revealed and a full-string match finds nothing — which is the reveal
+		// working, not the hero missing. (The home hero above passes
+		// `suppressWelcomeIntro`, so it never had the same behaviour to reveal.)
+		//
+		// The letter still discriminates: a surviving home hero would put a second
+		// wordmark line on screen, and the count catches that regardless of how far
+		// either one has swept.
+		const wordmarks = lines.filter(line => /^\s*v(?: e y y o n)?\s*$/.test(line));
+		expect(wordmarks).toHaveLength(1);
+	});
+
+	it("the /welcome wordmark finishes its reveal, rather than staying a single letter", async () => {
+		// The twin the case above needs. Matching a prefix would also pass if the
+		// wordmark were permanently truncated to "v", so this pins the finished
+		// state: with transitions off the intro short-circuits to its final frame,
+		// which is exactly what a non-truecolor terminal renders.
+		// Set on the live singleton the shimmer module actually reads. Re-running
+		// `Settings.init` would not do it: the proxy captured the instance created
+		// in `beforeEach`, so a second init leaves the old object in place.
+		Settings.instance.set("display.transitions", "off");
+		await mode.init({ suppressWelcomeIntro: true });
+		await mode.showFullWelcome();
+
+		const lines = frame().split("\n");
+		const wordmarks = lines.filter(line => line.trim() === "v e y y o n");
+
 		expect(wordmarks).toHaveLength(1);
 	});
 

@@ -88,7 +88,8 @@ describe("loadArgotFolder", () => {
 		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		__resetDirsFromEnvForTests();
-		setProfile(TEST_PROFILE);		setProfile(TEST_PROFILE);
+		setProfile(TEST_PROFILE);
+		setProfile(TEST_PROFILE);
 		// Prove the redirect actually took, so a silent fallback to the real cache
 		// cannot let these tests pass while polluting the developer's machine.
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
@@ -461,7 +462,8 @@ describe("rearmArgotForDecode", () => {
 		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		__resetDirsFromEnvForTests();
-		setProfile(TEST_PROFILE);		setProfile(TEST_PROFILE);
+		setProfile(TEST_PROFILE);
+		setProfile(TEST_PROFILE);
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
 			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
 		}
@@ -664,7 +666,8 @@ describe("armArgotAfterStartup", () => {
 		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		__resetDirsFromEnvForTests();
-		setProfile(TEST_PROFILE);		setProfile(TEST_PROFILE);
+		setProfile(TEST_PROFILE);
+		setProfile(TEST_PROFILE);
 		if (!getArgotCacheDir().startsWith(cacheRoot)) {
 			throw new Error(`cache root not isolated: ${getArgotCacheDir()}`);
 		}

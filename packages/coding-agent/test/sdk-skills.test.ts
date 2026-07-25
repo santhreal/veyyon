@@ -10,6 +10,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 
 // Skills load only from the active profile's agent dir, so the master switch is
@@ -41,12 +42,24 @@ describe("createAgentSession skills option", () => {
 		sharedModelRegistry = new ModelRegistry(sharedAuthStorage, path.join(sharedDir, "models.yml"));
 	});
 
+	let globals: SettingsTestState | undefined;
+
+	/** Sessions built by the tests below, disposed in `afterEach`. */
+	const createdSessions: Array<{ dispose: () => Promise<void> }> = [];
+
 	afterAll(() => {
 		sharedAuthStorage.close();
 		removeSyncWithRetries(sharedDir);
 	});
 
 	beforeEach(() => {
+		// Snapshot every process-global this suite is about to move. Restoring HOME
+		// and the agent dir by hand is NOT enough: `setAgentDir` also writes
+		// VEYYON_CODING_AGENT_DIR, so a hand-rolled restore re-pins the agent dir
+		// for every later suite in the process and defeats their own temp config
+		// root. `restoreSettingsTestState` re-applies the snapshotted env, rebuilds
+		// the cached DirResolver, and re-pins those keys to their original values.
+		globals = beginSettingsTest();
 		tempDir = path.join(os.tmpdir(), `pi-sdk-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		fs.mkdirSync(tempDir, { recursive: true });
 		originalHome = process.env.HOME;
@@ -90,9 +103,20 @@ Loaded via symbolic link.
 		fs.symlinkSync(externalSkillDir, path.join(nativeUserSkillsDir, "symlinked-skill-link"), "dir");
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		// Dispose every session this test built. `createAgentSession` installs a
+		// process-wide AsyncJobManager, so a session left undisposed keeps its
+		// manager installed for whatever suite runs next in the same process, and
+		// `sdk-async-job-manager-singleton.test.ts` then sees the wrong manager
+		// and fails. The suites land in different CI buckets today, which is why
+		// this stayed hidden; a suite that only passes in isolation is broken.
+		for (const session of createdSessions.splice(0)) {
+			await session.dispose();
+		}
 		setAgentDir(originalAgentDir);
 		cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome }))();
+		restoreSettingsTestState(globals);
+		globals = undefined;
 	});
 
 	it("should discover skills by default and expose them on session.skills", async () => {
@@ -103,6 +127,7 @@ Loaded via symbolic link.
 			modelRegistry: sharedModelRegistry,
 			settings: createIsolatedSkillsSettings(),
 		});
+		createdSessions.push(session);
 
 		// Skills should be discovered and exposed on the session
 		expect(session.skills.length).toBeGreaterThan(0);
@@ -117,6 +142,7 @@ Loaded via symbolic link.
 			modelRegistry: sharedModelRegistry,
 			settings: createIsolatedSkillsSettings(),
 		});
+		createdSessions.push(session);
 
 		expect(session.skills.some((s: Skill) => s.name === "symlinked-skill")).toBe(true);
 	});
@@ -145,6 +171,7 @@ Loaded via symbolic link.
 			modelRegistry: sharedModelRegistry,
 			settings: createIsolatedSkillsSettings(),
 		});
+		createdSessions.push(session);
 
 		expect(session.skills.some((s: Skill) => s.name === "foreign-claude-skill")).toBe(false);
 		expect(session.skills.some((s: Skill) => s.name === "project-skill")).toBe(false);
@@ -160,6 +187,7 @@ Loaded via symbolic link.
 			skills: [], // Explicitly empty - like --no-skills
 			settings: createIsolatedSkillsSettings(),
 		});
+		createdSessions.push(session);
 
 		// session.skills should be empty
 		expect(session.skills).toEqual([]);
@@ -184,6 +212,7 @@ Loaded via symbolic link.
 			skills: [customSkill],
 			settings: createIsolatedSkillsSettings(),
 		});
+		createdSessions.push(session);
 
 		// session.skills should contain only the provided skill
 		expect(session.skills).toEqual([customSkill]);

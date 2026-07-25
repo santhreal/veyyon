@@ -1,7 +1,15 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@veyyon/ai";
-import { DAY_MS, getAgentDir as getDefaultAgentDir, HOUR_MS, logger, parseJsonlLenient, toError } from "@veyyon/utils";
+import {
+	DAY_MS,
+	getAgentDir as getDefaultAgentDir,
+	HOUR_MS,
+	isEnoent,
+	logger,
+	parseJsonlLenient,
+	toError,
+} from "@veyyon/utils";
 import { contentText } from "./content-text";
 import { computeDefaultSessionDir } from "./session-paths";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
@@ -382,6 +390,67 @@ function walkListEntries(entries: Record<string, unknown>[]): {
 }
 
 /**
+ * A session file, or a whole session directory, that could not be read during
+ * the last listing.
+ *
+ * WHY THIS EXISTS. Listing is deliberately fail-soft: one damaged file must not
+ * hide every other session, and a listing that throws would break `/resume` and
+ * the welcome shortlist for someone whose only route to fixing it is the tool
+ * that no longer starts. But fail-soft was implemented as fail-SILENT, and the
+ * two are very different products. A session that disappears with no message is
+ * indistinguishable from one the user never created, so the damage presents as
+ * their own faulty memory rather than as a file to go and look at.
+ *
+ * So the drop is recorded. `logger.warn` fires for whoever reads a session log
+ * afterwards, and the list below is for a surface that can put it in front of
+ * the person whose session it was — the same split the settings quarantine path
+ * arrived at, for the same reason: the log alone is not somewhere anyone looks.
+ */
+export interface UnreadableSession {
+	/** The session file, or the directory when the whole scan failed. */
+	readonly path: string;
+	/** What went wrong, from the underlying error. */
+	readonly reason: string;
+	/** `file` when one session was skipped, `directory` when the scan failed. */
+	readonly kind: "file" | "directory";
+}
+
+let unreadableSessions: UnreadableSession[] = [];
+
+function recordUnreadableSession(file: string, reason: string): void {
+	unreadableSessions.push({ path: file, reason, kind: "file" });
+	logger.warn("Session file could not be read and was left out of the list", { sessionFile: file, error: reason });
+}
+
+function recordUnreadableSessionDir(sessionDir: string, reason: string): void {
+	unreadableSessions.push({ path: sessionDir, reason, kind: "directory" });
+	logger.warn("Session directory could not be scanned; the list is EMPTY, not empty of sessions", {
+		sessionDir,
+		error: reason,
+	});
+}
+
+/**
+ * What the last listing could not read. Empty in the normal case.
+ *
+ * Deduplicated by path, because a directory is rescanned on every `/resume` and
+ * an ever-growing list of the same broken file is noise, not information.
+ */
+export function getUnreadableSessions(): readonly UnreadableSession[] {
+	const seen = new Set<string>();
+	return unreadableSessions.filter(entry => {
+		if (seen.has(entry.path)) return false;
+		seen.add(entry.path);
+		return true;
+	});
+}
+
+/** Clear the record. Used between tests, and by a surface that has reported it. */
+export function clearUnreadableSessions(): void {
+	unreadableSessions = [];
+}
+
+/**
  * Scan a single session file into a {@link SessionInfo}. Always reads the 4 KB
  * header/first-message prefix; only reads the 32 KB tail window (and derives
  * {@link SessionStatus}) when `withStatus` is set — the recent/most-recent
@@ -404,7 +473,19 @@ async function scanSessionFile(
 		const { size, mtime } = stat;
 		const entries = parseJsonlLenient<Record<string, unknown>>(content);
 		const header = parseSessionListHeader(content, entries);
-		if (!header) return undefined;
+		if (!header) {
+			// The COMMON corruption, and the one the catch below never sees: the JSONL
+			// parse is lenient, so a mangled file does not throw, it just yields no
+			// readable header. Listing it would put a row in `/resume` with no id and
+			// nothing to resume, so it is still left out — but a `.jsonl` sitting in
+			// the sessions directory with no header is damage (or a foreign file), and
+			// either is worth the one line that says so.
+			recordUnreadableSession(
+				file,
+				"no readable session header (file is empty, truncated at the start, or corrupt)",
+			);
+			return undefined;
+		}
 
 		let walked = walkListEntries(entries);
 		let scanned = content;
@@ -433,7 +514,18 @@ async function scanSessionFile(
 			allMessagesText: allMessages.length > 0 ? allMessages.join(" ") : firstMessage,
 			status: withStatus ? deriveSessionStatus(suffix) : undefined,
 		};
-	} catch {
+	} catch (error) {
+		// Dropping the file is right — one damaged session must not take the list
+		// down with it — but dropping it SILENTLY is not (Law 10). A session that
+		// vanishes from `/resume` with no message is indistinguishable from one the
+		// user never created, so the damage reads as their own faulty memory.
+		//
+		// ENOENT is excluded deliberately: a file listed and then removed between
+		// the scan and the read is a race, not damage, and warning about it every
+		// time would train people to ignore this line.
+		if (!isEnoent(error)) {
+			recordUnreadableSession(file, toError(error).message);
+		}
 		return undefined;
 	}
 }
@@ -576,7 +668,14 @@ async function scanSessionDir(
 		await recoverOrphanedBackups(sessionDir, storage);
 		const files = storage.listFilesSync(sessionDir, "*.jsonl");
 		return await collectSessionsFromFiles(files, storage, withStatus);
-	} catch {
+	} catch (error) {
+		// The whole-directory version of the same rule, and the worse one: this path
+		// turns "your sessions are unreadable" into "you have no sessions", which is
+		// a plausible, calm, completely wrong answer. A missing directory really does
+		// mean no sessions yet (first run), so only that stays quiet.
+		if (!isEnoent(error)) {
+			recordUnreadableSessionDir(sessionDir, toError(error).message);
+		}
 		return [];
 	}
 }
@@ -589,7 +688,10 @@ async function scanSessionDirReadOnly(
 	try {
 		const files = storage.listFilesSync(sessionDir, "*.jsonl");
 		return await collectSessionsFromFiles(files, storage, withStatus);
-	} catch {
+	} catch (error) {
+		if (!isEnoent(error)) {
+			recordUnreadableSessionDir(sessionDir, toError(error).message);
+		}
 		return [];
 	}
 }

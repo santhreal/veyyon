@@ -9,6 +9,8 @@
 
   // Selectors revealed in document order, grouped so siblings stagger together.
   var GROUPS = [
+    ".hero-inner > *",
+    ".demo-band .showcase",
     ".page-head > *",
     ".values > div",
     ".lead",

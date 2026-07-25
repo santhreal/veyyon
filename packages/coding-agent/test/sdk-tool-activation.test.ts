@@ -5,16 +5,12 @@ import * as path from "node:path";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import {
-	type CreateAgentSessionOptions,
-	createAgentSession,
-	discoverAuthStorage,
-	type ExtensionFactory,
-} from "@veyyon/coding-agent/sdk";
+import { type CreateAgentSessionOptions, createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { VIBE_TOOL_NAMES } from "@veyyon/coding-agent/tools/vibe";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
+import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";
 
 const toolActivationExtension: ExtensionFactory = pi => {
 	pi.registerTool({
@@ -60,7 +56,10 @@ describe("createAgentSession defaultInactive tool activation", () => {
 	beforeAll(async () => {
 		registryAuthDir = path.join(os.tmpdir(), `pi-sdk-tool-activation-auth-${Snowflake.next()}`);
 		fs.mkdirSync(registryAuthDir, { recursive: true });
-		modelRegistry = new ModelRegistry(await discoverAuthStorage(registryAuthDir));
+		// NOT `discoverAuthStorage(registryAuthDir)`: that argument only sets the
+		// per-profile dir, while credential sharing (on by default) sends the store
+		// to the machine-wide `~/.veyyon/shared-auth`, so the temp dir buys nothing.
+		modelRegistry = new ModelRegistry(await isolatedAuthStorage(registryAuthDir));
 	});
 
 	// Shared options for every session. `rules: []` and `workspaceTree` short-circuit

@@ -197,8 +197,79 @@ function resolveStartupProfileSafe(): string | undefined {
 	return readGlobalDefaultProfileSafe();
 }
 
+/**
+ * Whether an `XDG_*_HOME` value may be used as a base directory.
+ *
+ * The XDG base-directory spec is explicit that these variables must hold
+ * ABSOLUTE paths and that a relative one is invalid and must be ignored. That
+ * matters here beyond spec compliance: a relative value would be joined and then
+ * `existsSync`-tested against the CURRENT WORKING DIRECTORY, so the same session
+ * would resolve its cache, state, and data roots differently after any `cd`, and
+ * veyyon would scatter directories through whatever tree the user happened to be
+ * standing in.
+ *
+ * Ignoring is the spec's remedy, but ignoring in silence is not: the user set the
+ * variable and would otherwise get the default root with no indication their
+ * configuration was discarded. So the value is dropped AND announced. This uses
+ * `process.emitWarning` rather than the logger for the reason given elsewhere in
+ * this file: the logger imports this module for its own paths, so importing it
+ * back would close a cycle in the module that resolves every path.
+ */
+function isUsableXdgBase(envVar: string, value: string): boolean {
+	if (path.isAbsolute(value)) return true;
+	process.emitWarning(
+		`${envVar} is set to the relative path "${value}"; the XDG base-directory spec requires an absolute path, ` +
+			`so it is being ignored and veyyon is using its default location instead. ` +
+			`Set ${envVar} to an absolute path (for example "${path.join(os.homedir(), value)}") to use it.`,
+		{ code: "VEYYON_XDG_RELATIVE_PATH" },
+	);
+	return false;
+}
+
+/**
+ * The user's home directory, refused rather than guessed when it is unusable.
+ *
+ * Every path veyyon owns hangs off this one value, so a bad answer here is not a
+ * bad path, it is every path. Two answers are bad in ways that do not announce
+ * themselves:
+ *
+ *  - EMPTY (`HOME=` with no usable passwd entry, common in a stripped container
+ *    or a `env -i` invocation). `path.join("", ".veyyon")` is `.veyyon`, a
+ *    RELATIVE path, so config, sessions, and credentials would be created in
+ *    whatever directory the process happened to start in, and a second run from
+ *    a different directory would silently see a different, empty veyyon.
+ *  - the filesystem ROOT (`HOME=/`). Every write then lands in `/.veyyon`,
+ *    outside the user's control and usually not writable, and on the occasions
+ *    it IS writable (a root shell) it litters the root of the filesystem.
+ *
+ * Both are configuration faults with a one-line fix, so this throws and names
+ * the fix rather than proceeding somewhere arbitrary.
+ *
+ * Exported so the refusal can be tested directly: `os.homedir()` is resolved
+ * once per process, so a test cannot reach the empty case by assigning `HOME`.
+ */
+export function resolveHomeDirOrThrow(): string {
+	const home = os.homedir();
+	if (!home || !path.isAbsolute(home)) {
+		throw new Error(
+			`Cannot determine your home directory: HOME is unset or empty (os.homedir() returned ${JSON.stringify(home)}). ` +
+				`Every veyyon path is resolved from it, and without it settings and credentials would be written to a ` +
+				`relative path that changes with the working directory. Set HOME to an absolute path, or set ` +
+				`VEYYON_CONFIG_DIR to place the config root explicitly.`,
+		);
+	}
+	if (path.parse(home).root === home) {
+		throw new Error(
+			`HOME is set to the filesystem root (${home}), so veyyon would create ${path.join(home, getConfigDirName())} ` +
+				`at the top of the filesystem. Set HOME to a real home directory, or set VEYYON_CONFIG_DIR to place the ` +
+				`config root explicitly.`,
+		);
+	}
+	return home;
+}
+
 function getBaseConfigRoot(): string {
-	return path.join(os.homedir(), getConfigDirName());
+	return path.join(resolveHomeDirOrThrow(), getConfigDirName());
 }
 
 /** The default profile's directory name under `profiles/`. */
@@ -758,6 +829,7 @@ class DirResolver {
 			const resolveIf = (envVar: string) => {
 				const value = process.env[envVar];
 				if (!value) return undefined;
+				if (!isUsableXdgBase(envVar, value)) return undefined;
 				try {
 					const appRoot = path.join(value, APP_NAME);
 					if (profile) {

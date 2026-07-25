@@ -20,8 +20,13 @@ import { unzip } from "@veyyon/coding-agent/utils/zip";
 import { $which, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { GlobTool } from "../src/tools/glob";
 import { DEFAULT_FILE_LIMIT, GrepTool, MULTI_FILE_PER_FILE_MATCHES } from "../src/tools/grep";
+import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 
 // Helper to extract text from content blocks
+// `executeBash` initializes the GLOBAL Settings singleton itself, so the session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
+
 function getTextOutput(result: any): string {
 	return (
 		result.content

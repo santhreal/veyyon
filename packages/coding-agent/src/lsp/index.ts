@@ -1053,7 +1053,15 @@ export type WritethroughCallback = (
  *    off preserves the prior latency while adding crash-atomicity.
  */
 async function commitFileContentAtomic(dst: string, content: string): Promise<void> {
-	await atomicWriteFilePreservingMode(dst, content, { fsync: false });
+	try {
+		await atomicWriteFilePreservingMode(dst, content, { fsync: false });
+	} catch (error) {
+		// The temp-path rewrite that used to live here now belongs to
+		// `atomicWriteFile` itself, so EVERY caller gets a message naming the file
+		// it asked to write rather than a hidden staging path. All this adds is the
+		// "which operation failed" prefix; the original travels as `cause`.
+		throw new Error(`Failed to write ${dst}: ${errorMessage(error)}`, { cause: error });
+	}
 }
 
 /** No-op writethrough callback */

@@ -90,6 +90,9 @@ describe("the generated dictionary declares the version the loader expects", () 
 		// literal on the returned Vocabulary.
 		expect(generate).not.toMatch(/version\s*=\s*\d/);
 		expect(generate).not.toMatch(/version\s*:\s*\d/);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: asserting on the SOURCE
+		// text of the generator, where this really is a template placeholder and not an
+		// unintended one in this string.
 		expect(generate).toContain("version = ${SUPPORTED_VERSION}");
 		expect(generate).toContain("version: SUPPORTED_VERSION");
 	});

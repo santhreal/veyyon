@@ -7,6 +7,7 @@ import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { runGoogleOAuthLogin } from "./google-oauth-shared";
 import type { OAuthController, OAuthCredentials } from "./types";
+import { credentialExpiryFromExpiresIn } from "./expiry";
 
 const decode = (s: string) => atob(s);
 const CLIENT_ID = decode(
@@ -204,7 +205,7 @@ export async function refreshAntigravityToken(refreshToken: string, projectId: s
 	return {
 		refresh: data.refresh_token || refreshToken,
 		access: data.access_token,
-		expires: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
+		expires: credentialExpiryFromExpiresIn(data.expires_in, { provider: "google-antigravity" }),
 		projectId,
 	};
 }

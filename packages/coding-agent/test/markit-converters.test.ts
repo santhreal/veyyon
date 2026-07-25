@@ -232,7 +232,11 @@ describe("markit converters", () => {
 			}
 
 			const [out, err] = await Promise.all([stdout, stderr]);
-			expect(outcome.exitCode).toBe(0);
+			// Attach the child's own output to the failure. A bare "expected 0, got 1"
+			// from a spawned CLI is undiagnosable after the temp home is gone, which is
+			// exactly what happened when this exited 1 once under load and passed on
+			// every re-run (FLAKE-MARKIT-INLINE-IMAGE).
+			expect(outcome.exitCode, `read exited ${outcome.exitCode}\nstderr:\n${err}\nstdout:\n${out}`).toBe(0);
 			expect(err).toBe("");
 			expect(out).toContain("Inline image tokenizer repro issue");
 			expect(out).toContain("| Name | Qty |");

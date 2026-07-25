@@ -58,7 +58,6 @@ describe("writing a setting preserves everything else in the file", () => {
 	/** Load a persisted instance pointed at the temp dir, change one setting, flush. */
 	async function setAndFlush(settingPath: string, value: unknown): Promise<void> {
 		const settings = await Settings.loadIsolated({ agentDir, cwd: agentDir });
-		// biome-ignore lint/suspicious/noExplicitAny: the test drives arbitrary paths by design
 		settings.set(settingPath as any, value as any);
 		await settings.flush();
 	}
@@ -119,7 +118,6 @@ describe("writing a setting preserves everything else in the file", () => {
 			// Another process writes a DIFFERENT setting after we loaded.
 			writeConfig(YAML.stringify({ theme: "titanium", externalKey: "written-by-someone-else" }));
 
-			// biome-ignore lint/suspicious/noExplicitAny: driving a path literal
 			settings.set("startup.autoUpdate" as any, false as any);
 			await settings.flush();
 
@@ -137,7 +135,6 @@ describe("writing a setting preserves everything else in the file", () => {
 
 			writeConfig(YAML.stringify({ theme: "ember" }));
 
-			// biome-ignore lint/suspicious/noExplicitAny: driving a path literal
 			settings.set("startup.autoUpdate" as any, false as any);
 			await settings.flush();
 

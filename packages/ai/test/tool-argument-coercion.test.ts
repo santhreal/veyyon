@@ -42,6 +42,74 @@ describe("Tool argument coercion", () => {
 		expect(typeof result.label).toBe("string");
 	});
 
+	/**
+	 * The boundary of the stringify repair, and why it has one.
+	 *
+	 * Coercing an object or a number into a string field recovers a value the
+	 * model plainly meant. A boolean does not: `true` has no string form anyone
+	 * intended, and the coerced result does real work rather than failing —
+	 * `bash({command: true})` became `{command: "true"}` and ran the `true`
+	 * binary, `read({path: true})` read a file named "true". Both presented as a
+	 * successful call, so the model never learned it had emitted the wrong type.
+	 * Rejecting costs one turn and hands back a correction.
+	 */
+	it("rejects a boolean when the schema expects a string, instead of stringifying it", () => {
+		const tool: Tool = {
+			name: "bool-string",
+			description: "",
+			parameters: z.object({ command: z.string() }),
+		};
+
+		expect(() =>
+			validateToolArguments(tool, {
+				type: "toolCall",
+				id: "call-bool-string",
+				name: "bool-string",
+				arguments: { command: true },
+			}),
+		).toThrow('Validation failed for tool "bool-string"');
+	});
+
+	it("rejects `false` the same way, so the refusal is about the TYPE and not the value", () => {
+		// `String(false)` is "false", which is just as executable and just as wrong.
+		// Pinned separately because a fix written as a truthiness check would let
+		// this one through.
+		const tool: Tool = {
+			name: "bool-string-false",
+			description: "",
+			parameters: z.object({ path: z.string() }),
+		};
+
+		expect(() =>
+			validateToolArguments(tool, {
+				type: "toolCall",
+				id: "call-bool-string-false",
+				name: "bool-string-false",
+				arguments: { path: false },
+			}),
+		).toThrow('Validation failed for tool "bool-string-false"');
+	});
+
+	it("still coerces a boolean into a BOOLEAN field, which is not the same repair", () => {
+		// Guards against over-correcting: the boolean coercions this file already
+		// tests (0/1 to boolean, boolean to 0/1) must keep working. Only the
+		// boolean-into-string path is refused.
+		const tool: Tool = {
+			name: "bool-passthrough",
+			description: "",
+			parameters: z.object({ enabled: z.boolean() }),
+		};
+
+		const result = validateToolArguments(tool, {
+			type: "toolCall",
+			id: "call-bool-passthrough",
+			name: "bool-passthrough",
+			arguments: { enabled: true },
+		}) as { enabled: boolean };
+
+		expect(result.enabled).toBe(true);
+	});
+
 	it("stringifies object values when schema expects string", () => {
 		const tool: Tool = {
 			name: "object-string",

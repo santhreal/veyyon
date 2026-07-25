@@ -166,7 +166,9 @@ describe("a corrupt auto-update state never crashes a launch nor stops updates",
 		test("the ordinary in-window backoff is unaffected by any of the above", () => {
 			// The guard must not have widened into "always attempt", which would restore
 			// the every-launch red error the cooldown exists to prevent.
-			expect(shouldAttemptAutoUpdate({ failedVersion: "1.2.3", failedAtMs: NOW - 60_000 }, "1.2.3", NOW)).toBe(false);
+			expect(shouldAttemptAutoUpdate({ failedVersion: "1.2.3", failedAtMs: NOW - 60_000 }, "1.2.3", NOW)).toBe(
+				false,
+			);
 			expect(
 				shouldAttemptAutoUpdate(
 					{ failedVersion: "1.2.3", failedAtMs: NOW - AUTO_UPDATE_FAILURE_COOLDOWN_MS },

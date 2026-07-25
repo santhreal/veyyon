@@ -10,6 +10,12 @@ import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getAgentDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 import { MANY_TOOL_COUNT } from "./fixtures/many-tools-mcp";
+import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
+
+// The code under test opens `AgentStorage`, which resolves `agent.db` under the
+// ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's
+// real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
 
 // Contracts for deferred (hasUI) MCP discovery follow-ups:
 //

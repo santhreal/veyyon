@@ -15,8 +15,13 @@ import type {
 	RpcHostToolCancelRequest,
 	RpcResponse,
 } from "@veyyon/coding-agent/modes/rpc/rpc-types";
+import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 
 type OutputFrame = RpcResponse | object;
+
+// `executeBash` initializes the GLOBAL Settings singleton itself, so a session
+// stub alone leaves it loading the developer's real ~/.veyyon agent.db.
+useIsolatedGlobalSettings();
 
 const makeDeps = (
 	handleCommand: RpcInputFrameDeps["handleCommand"],

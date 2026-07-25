@@ -34,7 +34,10 @@ export type ValueSource =
 	// bookkeeping.
 	| { kind: "setting-values" }
 	| { kind: "file" }
-	| { kind: "dir" };
+	| { kind: "dir" }
+	// A positional that is free text EXCEPT when it starts with `@`, which names
+	// a file to attach. Only the `@…` form has candidates.
+	| { kind: "at-file" };
 
 export interface CompletionFlag {
 	/** Long name without the leading `--`. */
@@ -152,6 +155,12 @@ const FILE_ARGS: Record<string, true> = {
 	"read.path": true,
 	"ttsr.snippet": true,
 };
+/**
+ * Positionals that are free text until they start with `@`, which attaches a
+ * file. `veyyon @src/main.ts explain this` is a documented way to launch, and
+ * the `@…` half is a path the shell can complete.
+ */
+const AT_FILE_ARGS: Record<string, true> = { "launch.messages": true };
 /** Positionals resolved against the live model catalog, keyed `<command>.<arg>`. */
 const MODEL_ARGS: Record<string, true> = {
 	"bench.models": true,
@@ -171,6 +180,7 @@ function argValue(command: string, name: string, desc: ArgDescriptor): ValueSour
 	if (SETTING_ARGS[key]) return SETTING_ARGS[key];
 	if (MODEL_ARGS[key]) return { kind: "models", multiple: false };
 	if (FILE_ARGS[key]) return { kind: "file" };
+	if (AT_FILE_ARGS[key]) return { kind: "at-file" };
 	return { kind: "value" };
 }
 
@@ -304,6 +314,8 @@ function bashValueBranch(bin: string, v: ValueSource): string {
 			return `COMPREPLY=( $(compgen -f -- "$cur") ); compopt -o filenames; return 0`;
 		case "dir":
 			return `COMPREPLY=( $(compgen -d -- "$cur") ); compopt -o filenames; return 0`;
+		case "at-file":
+			return "_veyyon_at_file; return 0";
 	}
 }
 
@@ -378,13 +390,29 @@ function generateBash(spec: CompletionSpec): string {
 }`);
 	parts.push("");
 
-	// Root handler: top-level flags + subcommand names.
+	// Root handler: top-level flags + subcommand names, plus the `@file` form of
+	// the root positional. `@` is not a path yet, so the candidates have to carry
+	// it back or bash filters every one of them out against the typed word.
 	const subTokens = spec.commands.flatMap(commandTokens).sort();
+	const rootAtFile = spec.root.args.some(a => a.value.kind === "at-file");
+	if (rootAtFile) {
+		parts.push(`_veyyon_at_file() {
+	local realcur="\${cur#@}"
+	local -a matches
+	matches=( $(compgen -f -- "$realcur") )
+	local i
+	for (( i=0; i < \${#matches[@]}; i++ )); do matches[i]="@\${matches[i]}"; done
+	COMPREPLY=( "\${matches[@]}" )
+	compopt -o filenames 2>/dev/null
+}`);
+		parts.push("");
+	}
+	const atFileBranch = rootAtFile ? '\tif [[ "$cur" == @* ]]; then\n\t\t_veyyon_at_file\n\t\treturn 0\n\tfi\n' : "";
 	parts.push(`_veyyon_root() {
 	case "$prev" in
 ${bashFlagCase(bin, spec.root.flags)}
 	esac
-	if [[ "$cur" == -* ]]; then
+${atFileBranch}	if [[ "$cur" == -* ]]; then
 		COMPREPLY=( $(compgen -W "${bashFlagWords(spec.root.flags)}" -- "$cur") )
 	else
 		COMPREPLY=( $(compgen -W "${bashWords(subTokens)} ${bashFlagWords(spec.root.flags)}" -- "$cur") )
@@ -515,6 +543,8 @@ function zshCompleter(v: ValueSource): string {
 			return "_files";
 		case "dir":
 			return "_files -/";
+		case "at-file":
+			return "_veyyon_at_file";
 	}
 }
 
@@ -534,6 +564,8 @@ function zshTag(v: ValueSource): string {
 			return "file";
 		case "dir":
 			return "dir";
+		case "at-file":
+			return "file";
 		default:
 			return "value";
 	}
@@ -590,7 +622,28 @@ _veyyon_models_list() {
 	done
 	_values -s , 'models' $items
 }
-_veyyon_tools() { _values -s , 'tools' ${toolNames} }
+_veyyon_tools() { _values -s , 'tools' ${toolNames} }${
+		spec.root.args.some(a => a.value.kind === "at-file")
+			? `
+# \`@\` attaches a file. _files is given the path without it, and compset moves
+# the prefix out of the way so the candidates it produces still complete.
+_veyyon_at_file() {
+	if [[ $PREFIX == @* ]]; then
+		compset -P '@'
+		_files
+	fi
+}
+# The first word is a subcommand unless it starts with \`@\`, which is a file to
+# attach and not a command name.
+_veyyon_first_word() {
+	if [[ $PREFIX == @* ]]; then
+		_veyyon_at_file
+	else
+		_veyyon_commands
+	fi
+}`
+			: ""
+	}
 # The setting whose values to offer is the word before the cursor, which is the
 # key the user just typed (\`config set startup.autoUpdate <TAB>\`).
 _veyyon_setting_values() {
@@ -633,7 +686,7 @@ ${cmdRows}
 		"'(-h --help)'{-h,--help}'[Show help]'",
 		"'(-v --version)'{-v,--version}'[Show version]'",
 		...spec.root.flags.map(zshFlagSpec),
-		"'1: :_veyyon_commands'",
+		spec.root.args.some(a => a.value.kind === "at-file") ? "'1: :_veyyon_first_word'" : "'1: :_veyyon_commands'",
 		"'*::arg:->args'",
 	];
 	parts.push(`_veyyon() {
@@ -670,6 +723,20 @@ function fishDesc(s: string): string {
 		.trim();
 }
 
+/**
+ * Whether a value has candidates to offer.
+ *
+ * Only meaningful for POSITIONALS. On a flag, the bare `-x` fishValue returns
+ * for a candidate-less value is the useful statement "this flag takes a value,
+ * do not offer files for it". On a positional there is no flag to attach it to,
+ * so the same `-x` becomes an unconditional rule that suppresses file
+ * completion for the whole subcommand: emitting it for `grep <pattern>` would
+ * cancel the file completion `grep <path>` asks for on the very next line.
+ */
+function fishValueHasCandidates(v: ValueSource): boolean {
+	return v.kind !== "flag" && v.kind !== "value";
+}
+
 function fishValue(bin: string, v: ValueSource): string {
 	switch (v.kind) {
 		case "flag":
@@ -693,6 +760,8 @@ function fishValue(bin: string, v: ValueSource): string {
 			return `-x -a '(command ${bin} __complete settings -- (commandline -ct))'`;
 		case "setting-values":
 			return `-x -a '(command ${bin} __complete setting-values (__veyyon_prev_word) -- (commandline -ct))'`;
+		case "at-file":
+			return `-x -a '(__veyyon_at_file_candidates)'`;
 		case "file":
 			return "-r -F";
 		case "dir":
@@ -788,6 +857,22 @@ function generateFish(spec: CompletionSpec): string {
 	lines.push(`end`);
 	lines.push("");
 
+	if (spec.root.args.some(a => a.value.kind === "at-file")) {
+		// `@` attaches a file. It is not part of the path, so it is stripped before
+		// the lookup and put back on every candidate: a candidate replaces the
+		// whole token, and fish matches candidates against it.
+		lines.push(`function __veyyon_at_file_candidates`);
+		lines.push(`\tset -l cur (commandline -ct)`);
+		lines.push(`\tstring match -q '@*' -- $cur; or return`);
+		// __fish_complete_path emits `path<TAB>description`; only the path is a
+		// candidate. `\\t` is unquoted so fish reads it as a tab.
+		lines.push(`\tfor p in (__fish_complete_path (string sub -s 2 -- $cur))`);
+		lines.push(`\t\techo "@"(string split -m1 \\t -- $p)[1]`);
+		lines.push(`\tend`);
+		lines.push(`end`);
+		lines.push("");
+	}
+
 	lines.push(`function __veyyon_using`);
 	lines.push(`\tcontains -- (__veyyon_subcommand) $argv`);
 	lines.push(`end`);
@@ -807,6 +892,17 @@ function generateFish(spec: CompletionSpec): string {
 	for (const f of spec.root.flags) {
 		lines.push(fishFlagLine(bin, rootCond, f));
 	}
+	// Root positionals. Only `@file` has candidates today, but routing them
+	// through the same mapping the flags use means a future one is not forgotten
+	// here the way subcommand positionals were.
+	const seenRootArgs = new Set<string>();
+	for (const a of spec.root.args) {
+		if (!fishValueHasCandidates(a.value)) continue;
+		const arg = fishValue(bin, a.value);
+		if (!arg || seenRootArgs.has(arg)) continue;
+		seenRootArgs.add(arg);
+		lines.push(`complete -c ${bin} -n '${rootCond}' ${arg} -d '${fishDesc(a.description)}'`);
+	}
 	lines.push("");
 
 	// Per-subcommand flags and positional args.
@@ -822,6 +918,7 @@ function generateFish(spec: CompletionSpec): string {
 		// with nothing in fish while bash and zsh answered both.
 		const seenValueArgs = new Set<string>();
 		for (const a of c.args) {
+			if (!fishValueHasCandidates(a.value)) continue;
 			const arg = fishValue(bin, a.value);
 			if (!arg || seenValueArgs.has(arg)) continue;
 			seenValueArgs.add(arg);
@@ -1032,6 +1129,13 @@ function global:__Veyyon-ValueCandidates {
 			return __Veyyon-DynamicCandidates 'setting-values' $WordToComplete $Previous
 		}
 		'file' { return __Veyyon-PrefixedPaths $WordToComplete }
+		'at-file' {
+			# Free text unless it starts with @, which names a file to attach. The
+			# @ must come back on every candidate: it is part of the word being
+			# replaced, and the caller filters candidates against that word.
+			if (-not $WordToComplete.StartsWith('@')) { return @() }
+			return @(__Veyyon-PrefixedPaths $WordToComplete.Substring(1) | ForEach-Object { "@$_" })
+		}
 		'dir' { return __Veyyon-PrefixedPaths $WordToComplete -DirectoriesOnly }
 	}
 	# 'flag' takes no value and 'value' has no completable candidates.

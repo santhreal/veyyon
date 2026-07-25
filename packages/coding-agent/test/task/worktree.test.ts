@@ -18,6 +18,16 @@ import * as git from "@veyyon/coding-agent/utils/git";
 import * as jj from "@veyyon/coding-agent/utils/jj";
 import * as natives from "@veyyon/natives";
 import { removeWithRetries, setWorktreesDir } from "@veyyon/utils";
+import { useIsolatedAgentDir, useIsolatedWorktreesDir } from "../helpers/isolated-agent-dir";
+
+// Spawning a task writes a session (and, for worktree runs, a checkout) under the
+// ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
+// developer's real `~/.veyyon/profiles/<profile>/agent`.
+useIsolatedAgentDir();
+// Worktrees resolve through their own chain rooted at the CONFIG dir, not the
+// agent dir, so they need their own redirect or a cleanup `fs.rm` lands on the
+// real `~/.veyyon/profiles/<profile>/wt`.
+useIsolatedWorktreesDir();
 
 const tempDirs: string[] = [];
 

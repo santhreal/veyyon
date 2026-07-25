@@ -9,6 +9,7 @@ import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { Snowflake } from "@veyyon/utils";
+import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 
 // Exercises the real per-tool approval gate (ExtensionToolWrapper) for read/grep/write,
 // proving an `ssh://` target is exec-tier (prompts / is denied without a UI) while the
@@ -36,6 +37,7 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 			cwd,
 			agentDir: tempDir,
 			sessionManager,
+			authStorage: await isolatedAuthStorage(tempDir),
 			settings: Settings.isolated(BASE_SETTINGS),
 			model: getBundledModel("openai", "gpt-4o-mini"),
 			disableExtensionDiscovery: true,

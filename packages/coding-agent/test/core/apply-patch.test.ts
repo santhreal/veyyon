@@ -9,9 +9,9 @@ import {
 	applyPatch,
 	EditTool,
 	ParseError,
+	PartialApplyPatchError,
 	parseApplyPatch,
 	parseDiffHunks,
-	PartialApplyPatchError,
 	seekSequence,
 } from "@veyyon/coding-agent/edit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";

@@ -3,7 +3,9 @@
  *
  * Mutates the live session cwd only — never writes profile `session.workdir`.
  * Write-tier approval: prompts in ask mode, allowed under yolo/bypassAllApprovals,
- * hard deny always blocks.
+ * hard deny always blocks. It is also bound by the cwd boundary like any other
+ * filesystem tool, so re-rooting OUT of the current cwd asks even in auto-edit,
+ * where the write tier alone would have allowed it. See setCwdFilesystemTargets.
  */
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
@@ -24,6 +26,30 @@ const setCwdSchema = type({
 });
 
 export type SetCwdToolInput = typeof setCwdSchema.infer;
+
+/**
+ * The directory this call would re-root the session to, so the cwd boundary
+ * applies to `set_cwd` itself.
+ *
+ * Without this, `set_cwd` was the one write-tier tool that could DEFEAT the
+ * boundary rather than be bound by it. In `auto-edit`, the rung whose whole
+ * contract is "workspace writes are free, everything else asks", the write tier
+ * auto-approves, so `set_cwd <parent-of-cwd>` needed no prompt and every
+ * subsequent write was then trivially "inside cwd". One unremarkable call turned
+ * a confined session into an unconfined one, and nothing in the transcript read
+ * as an escape. (A bare `/` was never the escape it looks like: `resolveToCwd`
+ * treats it as the workspace-root alias, so it resolves back to cwd.)
+ *
+ * Declaring the target routes the re-root through the same single chokepoint as
+ * every other filesystem call, which gives exactly the right asymmetry for free:
+ * NARROWING to a subdirectory stays inside cwd and never prompts, while moving
+ * to a parent or a sibling escapes and asks. yolo bypasses this as it bypasses
+ * all permission.
+ */
+export function setCwdFilesystemTargets(args: unknown): string[] {
+	const raw = (args as Partial<SetCwdToolInput> | null)?.path;
+	return typeof raw === "string" && raw.trim().length > 0 ? [raw.trim()] : [];
+}
 
 export interface SetCwdToolDetails {
 	previous: string;
@@ -49,6 +75,7 @@ export class SetCwdTool implements AgentTool<typeof setCwdSchema, SetCwdToolDeta
 	// listing. Both halves of that were wrong for this tool.
 	readonly loadMode = "discoverable";
 	readonly summary = "Change the session's working directory for the rest of the session";
+	readonly filesystemTargets = (args: unknown): string[] => setCwdFilesystemTargets(args);
 	readonly #session: ToolSession;
 
 	constructor(session: ToolSession) {
