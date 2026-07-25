@@ -796,6 +796,12 @@ describe("TUI terminal-state regressions", () => {
 				tui.stop();
 			}
 		});
+		// 240 real resizes against the real renderer, so the wall clock here is
+		// dominated by work rather than by any wait: it runs in about 2s alone and
+		// past the 5s default inside a full `bun test` (119 files in parallel),
+		// where it failed intermittently and taught everyone to ignore a red run.
+		// The budget is the only thing widened; every assertion below is unchanged,
+		// and a genuine hang still fails well inside 20s.
 		it("aggressive resize storm does not duplicate viewport content", async () => {
 			const term = new VirtualTerminal(80, 18);
 			const tui = new TUI(term);
@@ -864,7 +870,8 @@ describe("TUI terminal-state regressions", () => {
 			} finally {
 				tui.stop();
 			}
-		});
+		}, 20_000);
+
 		it("height-only resize recovers from cursor drift without duplicate rows", async () => {
 			const term = new VirtualTerminal(80, 18);
 			const tui = new TUI(term);
