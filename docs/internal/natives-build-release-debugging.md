@@ -26,7 +26,6 @@ It follows the architecture terms from [`natives-architecture.md`](./natives-arc
 
 - `bun scripts/build-native.ts` (`build`) → N-API build, addon install, generated declarations install, explicit ESM export and enum runtime patch.
 - `bun scripts/embed-native.ts` (`gen:native`) → generate `native/embedded-addon.js` plus `native/embedded-addons.<tag>.tar.gz` from built files.
-- `bun scripts/gen-npm-packages.ts` (`gen:npm`) → generate per-platform npm leaf packages (`@veyyon/natives-<platform>-<arch>`, installed as optional dependencies of the core package) under `npm/` from built addon files.
 
 Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 
@@ -292,4 +291,4 @@ Workspaces that hardlinked a `.node` before GC retain access via the kernel inod
 
 Trigger an automatic miss by editing any path in the key set: a single touched byte under `crates/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `707a0016` on 2026-07-24.*

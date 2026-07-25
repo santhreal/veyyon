@@ -11,8 +11,4 @@ echo "=== Testing source install ==="
 podman build -f scripts/install-tests/source.dockerfile -t veyyon-test-source .
 
 echo ""
-echo "=== Testing tarball install (publish simulation) ==="
-podman build -f scripts/install-tests/tarball.dockerfile -t veyyon-test-tarball .
-
-echo ""
 echo "=== All tests passed ==="
