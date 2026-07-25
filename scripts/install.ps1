@@ -354,10 +354,18 @@ function Test-PathContainsDir {
 # or empty existing PATH used to yield ";C:\...\bin", i.e. an empty "current
 # directory" entry). Extracted so it can be unit-tested without touching the
 # machine's real environment.
+# PATH with $Dir at the FRONT, or unchanged when it is already an entry.
+#
+# It used to append. PATH order decides which copy of a name actually runs, so
+# appending put the fresh install behind every older veyyon already on PATH (a
+# previous manual copy, a leftover from another install location) — which meant
+# the installer created the shadowing it then warned about in its own doctor
+# step, on every single install. install.sh has always prepended
+# (`export PATH="$dir:$PATH"`); this is the same rule.
 function Get-PathWithDir {
     param([string]$Raw, [string]$Dir)
     if (Test-PathContainsDir $Raw $Dir) { return $Raw }
-    return ((@(Split-PathEntries $Raw) + $Dir) -join ';')
+    return ((@($Dir) + @(Split-PathEntries $Raw)) -join ';')
 }
 
 # Add the install dir to the user PATH if it is not already there. Returns $true

@@ -50,14 +50,20 @@ Check "null PATH contains nothing" `
 Check "bracket metachar in dir is a literal, not a wildcard" `
     (Test-PathContainsDir "C:\proj[1];C:\z" "C:\proj[1]") "True"
 
-# --- Get-PathWithDir: appends distinctly, never a leading/duplicate ';' ---
-Check "append to a null PATH has no leading ';'" (Get-PathWithDir $null "C:\a\bin") "C:\a\bin"
-Check "append to an empty PATH has no leading ';'" (Get-PathWithDir "" "C:\a\bin") "C:\a\bin"
-Check "append to a normal PATH" (Get-PathWithDir "C:\x;C:\y" "C:\a\bin") "C:\x;C:\y;C:\a\bin"
+# --- Get-PathWithDir: PREPENDS distinctly, never a leading/duplicate ';' ---
+# PATH order decides which copy of a name runs. Appending put the fresh install
+# behind every older veyyon already on PATH, so the installer created the
+# shadowing it then warned about in its own doctor step. install.sh has always
+# prepended; these pin the same rule here.
+Check "prepend to a null PATH has no trailing ';'" (Get-PathWithDir $null "C:\a\bin") "C:\a\bin"
+Check "prepend to an empty PATH has no trailing ';'" (Get-PathWithDir "" "C:\a\bin") "C:\a\bin"
+Check "the install dir goes at the FRONT of a normal PATH" (Get-PathWithDir "C:\x;C:\y" "C:\a\bin") "C:\a\bin;C:\x;C:\y"
+Check "an older copy on PATH no longer shadows the fresh install" `
+    (Get-PathWithDir "C:\old\veyyon;C:\y" "C:\a\bin") "C:\a\bin;C:\old\veyyon;C:\y"
 Check "already-present dir leaves PATH unchanged" (Get-PathWithDir "C:\x;C:\a\bin" "C:\a\bin") "C:\x;C:\a\bin"
 Check "a prefix-substring entry does NOT block the add" `
-    (Get-PathWithDir "C:\a\bin2" "C:\a\bin") "C:\a\bin2;C:\a\bin"
-Check "empty entries are cleaned out on append" (Get-PathWithDir "C:\x;;C:\y" "C:\a\bin") "C:\x;C:\y;C:\a\bin"
+    (Get-PathWithDir "C:\a\bin2" "C:\a\bin") "C:\a\bin;C:\a\bin2"
+Check "empty entries are cleaned out" (Get-PathWithDir "C:\x;;C:\y" "C:\a\bin") "C:\a\bin;C:\x;C:\y"
 
 # --- checksum verification (mirrors install.sh verify_sha256) ---
 # The binary install fails closed on a missing/empty/unparseable sidecar and on a
