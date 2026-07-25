@@ -163,10 +163,58 @@ function matchesFastModeUnsupported(message: string, errorStatus: number | undef
 	);
 }
 
-/** Whether an OAuth refresh error message means the grant is definitively dead. */
+/**
+ * Strip an appended stack trace from an error string before classifying it.
+ *
+ * Callers reach the classifier with `String(error)`, and this codebase's errors
+ * embed their cause chain AND their stack, so the string that arrives is not a
+ * message: it carries source paths and frame names. Matching failure keywords
+ * against that is matching against the names of our own files.
+ *
+ * It was not theoretical. A real dead grant
+ * (`400 {"error":"invalid_grant","error_description":"Refresh token not found
+ * or invalid"}`) arrived with `at async withScopedTimeoutSignal
+ * (…/utils/src/scoped-timeout.ts:53:16)` in its stack, and `scoped-timeout`
+ * matches the transient pattern's `timeout`. Every OAuth failure refreshed
+ * through that helper carried the word, so the transient guard was reading a
+ * frame name rather than anything the provider said.
+ *
+ * The old ordering hid it, because the definitive check returned before the
+ * transient guard was ever consulted. Making the guard authoritative surfaced
+ * it immediately, which is the useful kind of regression: the guard was always
+ * wrong, it just never got to be wrong about anything that mattered.
+ */
+function withoutStackTrace(errorMessage: string): string {
+	const stackMarker = errorMessage.indexOf("stack=");
+	const withoutAppendedStack = stackMarker === -1 ? errorMessage : errorMessage.slice(0, stackMarker);
+	return withoutAppendedStack
+		.split("\n")
+		.filter(line => !/^\s+at\s/.test(line))
+		.join("\n");
+}
+
+/**
+ * Whether an OAuth refresh error message means the grant is definitively dead.
+ *
+ * Saying yes DISABLES the credential, which forces the user through a re-login,
+ * so the two answers are not symmetric. A wrong "yes" destroys a working account
+ * over a blip; a wrong "no" costs one more retry. Anything ambiguous therefore
+ * resolves to no.
+ *
+ * That is why the transient check comes FIRST and applies to every message, not
+ * just to a bare 401. A message can carry both signals: a gateway 502 whose body
+ * echoes a `WWW-Authenticate: Bearer error="invalid_token"` header, a 429 whose
+ * payload repeats the request it throttled, a 5xx error page containing the word
+ * "revoked". Those used to disable the credential outright, because a definitive
+ * token matched and returned before the transient guard was ever consulted, and
+ * the guard was only ever reached on the 401 branch. A throttled auth endpoint
+ * could permanently tear down a healthy account.
+ */
 export function isOAuthExpiry(errorMessage: string): boolean {
-	if (OAUTH_DEFINITIVE_FAILURE_PATTERN.test(errorMessage)) return true;
-	return OAUTH_HTTP_AUTH_PATTERN.test(errorMessage) && !OAUTH_TRANSIENT_FAILURE_PATTERN.test(errorMessage);
+	const diagnostic = withoutStackTrace(errorMessage);
+	if (OAUTH_TRANSIENT_FAILURE_PATTERN.test(diagnostic)) return false;
+	if (OAUTH_DEFINITIVE_FAILURE_PATTERN.test(diagnostic)) return true;
+	return OAUTH_HTTP_AUTH_PATTERN.test(diagnostic);
 }
 
 const ERROR_KIND_LABELS: readonly [Flag, string][] = [
