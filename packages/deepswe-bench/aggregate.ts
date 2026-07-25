@@ -237,6 +237,48 @@ export function shouldTripCanary(
 	return results.length >= canarySize && results.length > 0 && results.every(isHardError);
 }
 
+/**
+ * The per-ARM half of the fail-fast canary, as a pure predicate. Returns the
+ * name of the first arm (in the order its trials completed) that has finished
+ * at least `canarySize` trials and whose completed trials are ALL hard errors,
+ * or `undefined` when no arm qualifies.
+ *
+ * {@link shouldTripCanary} alone is blind to exactly the failure this bench
+ * exists to catch. It trips only when EVERY completed trial is a hard error, so
+ * one success anywhere disarms it for the rest of the run, permanently. An arm
+ * that is 100% dead beside a healthy control therefore never trips it: the run
+ * burns the entire queue and then reports a comparison against an arm that
+ * produced nothing at all. That is not hypothetical, it is the argot failure
+ * already seen once, where an encode arm degraded silently while its control ran
+ * clean.
+ *
+ * The queue is arm-major, so an arm's window fills sequentially and a per-arm
+ * count is well defined. Both predicates are kept: the global one trips sooner
+ * when the first wave spans arms, and this one catches the case the global one
+ * structurally cannot see.
+ *
+ * A partial mix never trips, for the same reason as the global predicate: a real
+ * workload has flaky tasks, and a scored fail among successes is data rather
+ * than a config bug.
+ */
+export function armCanaryFailure(
+	results: ReadonlyArray<{ arm: string; error: string | null; outputTokens: number | null }>,
+	canarySize: number,
+): string | undefined {
+	if (canarySize <= 0) return undefined;
+	const completed = new Map<string, { total: number; hard: number }>();
+	for (const result of results) {
+		const entry = completed.get(result.arm) ?? { total: 0, hard: 0 };
+		entry.total += 1;
+		if (isHardError(result)) entry.hard += 1;
+		completed.set(result.arm, entry);
+	}
+	for (const [arm, { total, hard }] of completed) {
+		if (total >= canarySize && total === hard) return arm;
+	}
+	return undefined;
+}
+
 export function mostCommonAgentReason(reasons: readonly string[]): string {
 	const counts = new Map<string, number>();
 	for (const raw of reasons) {
