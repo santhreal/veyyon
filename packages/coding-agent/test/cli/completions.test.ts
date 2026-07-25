@@ -196,7 +196,9 @@ describe("generateCompletion — fish", () => {
 			"-l model -d 'Model to use' -x -a '(command veyyon __complete models -- (commandline -ct))'",
 		);
 		expect(out).toContain("-l thinking -d 'Effort' -x -a 'low high'");
-		expect(out).toContain("-l tools -d 'Tools' -x -a 'read bash'");
+		// A list value is comma-separated, so it goes through the comma helper
+		// rather than being offered as a single value.
+		expect(out).toContain("-l tools -d 'Tools' -x -a '(__veyyon_comma_candidates read bash)'");
 		expect(out).toContain("-s r -l resume -d 'Resume' -x -a '(command veyyon __complete sessions");
 		// a bare boolean flag takes no value
 		expect(out).toContain("-s p -l print -d 'Print'");
@@ -567,5 +569,43 @@ describe("--no-alias omits the launch alias from every shell", () => {
 			expect(out, `${shell} must still complete subcommands`).toContain("commit");
 			expect(out, `${shell} must still complete flags`).toContain("thinking");
 		}
+	});
+});
+
+/**
+ * A comma-separated flag value (`--tools read,bash`) completes only its LAST
+ * element: a candidate replaces the whole token, so offering the bare value
+ * turns `--tools read,ba<Tab>` into `--tools bash` and silently drops what the
+ * user had already chosen.
+ *
+ * bash has `_veyyon_comma` and zsh has `_veyyon_tools`. fish was completing a
+ * list flag as if it took a single value, and PowerShell had the same defect
+ * when it was written.
+ */
+describe("comma-separated values complete one element at a time", () => {
+	it("fish routes list values through a comma helper, not a bare value list", () => {
+		const out = generateCompletion("fish", spec);
+		expect(out).toContain("function __veyyon_comma_candidates");
+		expect(out).toContain("-a '(__veyyon_comma_candidates read bash)'");
+		// The enum flag next to it must stay a plain value list: only `list` is
+		// comma-separated, and routing `enum` through the helper would offer
+		// nonsense like `low,high`.
+		expect(out).toContain("-a 'low high'");
+	});
+
+	it("fish carries the chosen elements through and does not repeat them", () => {
+		const out = generateCompletion("fish", spec);
+		expect(out).toContain("set -l prefix (string replace -r '[^,]*$' '' -- $cur)");
+		expect(out).toContain("if not contains -- $v $chosen");
+		expect(out).toContain("echo $prefix$v");
+	});
+
+	it("every shell has a comma-aware path for list values", () => {
+		// The point of this test is coverage across shells: one of them silently
+		// treating a list as a single value is exactly how this went unnoticed.
+		expect(generateCompletion("bash", spec)).toContain('_veyyon_comma "read bash"');
+		expect(generateCompletion("zsh", spec)).toContain("_veyyon_tools");
+		expect(generateCompletion("fish", spec)).toContain("__veyyon_comma_candidates");
+		expect(generateCompletion("powershell", spec)).toContain("__Veyyon-CommaCandidates");
 	});
 });
