@@ -124,3 +124,18 @@ describe("doctor does not depend on tools a broken PATH would hide", () => {
 		expect(doctorBody).not.toContain("dirname");
 	});
 });
+
+describe("the installer does not create the shadowing it then warns about", () => {
+	it("both put the install dir at the FRONT of PATH", () => {
+		// PATH order decides which copy of a name runs. install.ps1 appended, so
+		// any older veyyon already on PATH kept winning and doctor reported a
+		// shadow on every single install — one the installer had just caused.
+		expect(installSh).toContain('line="export PATH=\\"$dir:\\$PATH\\""');
+		expect(installPs1).toContain("return ((@($Dir) + @(Split-PathEntries $Raw)) -join ';')");
+	});
+
+	it("neither appends the install dir behind the existing entries", () => {
+		expect(installPs1).not.toContain("(@(Split-PathEntries $Raw) + $Dir)");
+		expect(installSh).not.toContain('export PATH="$PATH:$dir"');
+	});
+});
