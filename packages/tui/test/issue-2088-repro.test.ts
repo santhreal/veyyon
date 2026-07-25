@@ -71,16 +71,29 @@ async function settle(term: VirtualTerminal): Promise<void> {
 	await term.flush();
 }
 
-// Pad the non-multiplexer resize viewport settle window (120 ms) so the test
-// reliably observes the deferred authoritative full paint. These are
-// integration tests against the real render scheduler (process.nextTick
-// immediates interleaved with setTimeout debounces), so the settle window is
-// driven with a real delay rather than fake timers.
-const RESIZE_VIEWPORT_SETTLE_WAIT_MS = 160;
-
-async function settleResize(term: VirtualTerminal): Promise<void> {
-	await Bun.sleep(RESIZE_VIEWPORT_SETTLE_WAIT_MS);
-	await settle(term);
+/**
+ * Wait until `condition` holds, polling the real scheduler, then settle the term.
+ *
+ * This replaces `await Bun.sleep(FIXED_MS)` in front of an assertion about work
+ * the render scheduler is about to do. A fixed sleep encodes a guess about how
+ * fast the machine is, and on a loaded CI runner too short is not a slow test,
+ * it is a WRONG WAIT: the behaviour under test is perfectly correct and the test
+ * fails anyway. That is exactly how this suite's "paints the viewport
+ * immediately on resize" case failed on CI across several unrelated dependabot
+ * PRs while passing 12 of 12 locally, which cost every one of those PRs its CI
+ * signal.
+ *
+ * Polling waits precisely as long as the machine needs and no longer, so the
+ * test stays fast locally and correct under contention. The deadline exists only
+ * so a genuine regression fails as a test failure instead of hanging, and it
+ * names what it was waiting for so the failure is diagnosable.
+ */
+async function waitUntil(label: string, condition: () => boolean, timeoutMs = 5_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!condition()) {
+		if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs}ms waiting for ${label}`);
+		await Bun.sleep(1);
+	}
 }
 
 function captureWrites(term: VirtualTerminal): string[] {
@@ -198,17 +211,26 @@ describe("issue #2088: tmux pane-resize race produces viewport flash", () => {
 				const baselinePaints = tui.resizeViewportPaints;
 				const expectedViewport = Array.from({ length: 10 }, (_v, i) => `line-${i + 10}`);
 				term.resize(80, 10);
-				await settle(term);
 
 				// In flight: a cheap viewport-only paint lands at once (no native
 				// scrollback replay), and the authoritative full paint is deferred.
-				expect(tui.resizeViewportPaints).toBeGreaterThan(baselinePaints);
-				expect(tui.fullRedraws).toBe(baselineRedraws);
+				//
+				// `fullRedraws` is sampled the instant the viewport paint is observed
+				// rather than after a fixed wait. The claim is an ORDERING one (cheap
+				// paint first, authoritative paint after), and reading the counter at
+				// the moment the first event lands tests that ordering directly. A
+				// fixed wait tested something else entirely: whether the machine
+				// happened to stay under the 120 ms deferral window while the test
+				// slept, which a loaded runner does not.
+				await waitUntil("the cheap viewport-only paint", () => tui.resizeViewportPaints > baselinePaints);
+				const fullRedrawsWhenViewportPainted = tui.fullRedraws;
+				await term.flush();
+				expect(fullRedrawsWhenViewportPainted).toBe(baselineRedraws);
 				expect(visible(term)).toEqual(expectedViewport);
 
-				// Once the drag goes quiet the full replay fires exactly once.
-				await settleResize(term);
-				expect(tui.fullRedraws).toBeGreaterThan(baselineRedraws);
+				// Once the drag goes quiet the full replay fires.
+				await waitUntil("the deferred authoritative full paint", () => tui.fullRedraws > baselineRedraws);
+				await settle(term);
 				expect(visible(term)).toEqual(expectedViewport);
 			} finally {
 				tui.stop();
@@ -471,7 +493,11 @@ describe("multiplexer detection gates ED3 on resize", () => {
 
 				const writes = captureWrites(term);
 				term.resize(80, 10);
-				await settleResize(term);
+				// Poll for the scrollback clear rather than sleeping past the deferral
+				// window: the assertion is that ED3 is emitted at all, and a fixed sleep
+				// that lands early on a loaded runner fails a correct implementation.
+				await waitUntil("the deferred scrollback clear (ED3)", () => writes.join("").includes(ED3));
+				await settle(term);
 				const out = writes.join("");
 				expect(out).toContain(ED3);
 			} finally {
@@ -495,7 +521,8 @@ describe("multiplexer detection gates ED3 on resize", () => {
 				// `requestRender(true, { clearScrollback: true })` is what emits ED3.
 				const writes = captureWrites(term);
 				term.resize(80, 10);
-				await settleResize(term);
+				await waitUntil("the deferred scrollback clear (ED3)", () => writes.join("").includes(ED3));
+				await settle(term);
 				const out = writes.join("");
 				expect(out).toContain(ED3);
 				expect(visible(term)).toEqual(Array.from({ length: 10 }, (_v, i) => `line-${i + 10}`));
