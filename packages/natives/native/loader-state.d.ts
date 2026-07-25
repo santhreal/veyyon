@@ -58,6 +58,15 @@ export function resolveLoaderCandidates(input: ResolveLoaderCandidatesInput): st
 /** The per-version native cache dir (`<natives root>/<version>/`); the single owner of that path shape. */
 export function versionedNativeCacheDir(version: string): string;
 
+/**
+ * Delete every per-version native cache except `keepVersion`. Never throws;
+ * directories that cannot be removed come back in `failed`.
+ */
+export function pruneOldNativeCaches(
+	keepVersion: string,
+	rootDir?: string,
+): { removed: string[]; failed: { dir: string; reason: string }[] };
+
 /** Loader context fields {@link buildHelpMessage} reads to compose the load-failure remediation. */
 export interface BuildHelpMessageInput {
 	isCompiledBinary: boolean;

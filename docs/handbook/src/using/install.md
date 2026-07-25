@@ -150,6 +150,12 @@ choosing which shells get completions is the installer's job, not an update's.
 If a completion cannot be rewritten, Veyyon names the file and tells you it
 still describes the previous version; the update itself is unaffected.
 
+The native addon is cached per version under `~/.veyyon/natives/<version>/`,
+around 150MB each. When a new version stages its own cache, the previous
+version's copy is removed: it can never be loaded again, because Veyyon looks
+only under its own version. Only directories named like a version are touched,
+and a copy that cannot be removed is reported and retried on the next update.
+
 Running several sessions at once is safe. Only the first one to start installs;
 the others see that an install is under way and skip it rather than writing over
 the same binary at the same time.
