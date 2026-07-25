@@ -216,7 +216,8 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Automatic Updates",
-			description: "Install a newer version in the background; it takes effect on the next launch",
+			description:
+				"Install a newer version in the background; it takes effect on the next launch. Off: only notify, and install yourself with `veyyon update`",
 		},
 	},
 
@@ -227,7 +228,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Update Notice",
-			description: "Show a one-line notice on the first launch after an update",
+			description: "On the first launch after an update, show a tip pointing at /changelog and rollback",
 		},
 	},
 

@@ -14,6 +14,7 @@ import {
 	compareSemver,
 	errorMessage,
 	getAutoUpdateStatePath,
+	getUpdateHistoryPath,
 	isEnoent,
 	isNewerVersion,
 	isValidSemver,
@@ -50,6 +51,23 @@ const MISE_TOOL = "github:santhreal/veyyon";
  * See #1686.
  */
 const NPM_REGISTRY = "https://registry.npmjs.org/";
+
+/**
+ * Resolve the npm registry origin, honoring a `VEYYON_NPM_REGISTRY` override.
+ *
+ * The override is a real operational knob: a corporate mirror, an air-gapped
+ * proxy, or a local fixture (the rollback picker's version list is read from
+ * here, so a test or a demo can serve a deterministic packument). When unset,
+ * the official registry is used. The same resolved origin pins BOTH the version
+ * lookups AND the `--registry=` on the install step, so the catalog the picker
+ * lists and the catalog the install pulls from can never disagree (#1686). A
+ * trailing slash is normalized so callers can append `${PACKAGE}` directly.
+ */
+export function resolveNpmRegistry(): string {
+	const override = process.env.VEYYON_NPM_REGISTRY?.trim();
+	const base = override && override.length > 0 ? override : NPM_REGISTRY;
+	return base.endsWith("/") ? base : `${base}/`;
+}
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
@@ -287,9 +305,10 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
  * an explicit `veyyon update` is worth waiting on.
  */
 export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIMEOUT_MS): Promise<ReleaseInfo> {
+	const registry = resolveNpmRegistry();
 	let response: Response;
 	try {
-		response = await fetch(`${NPM_REGISTRY}${PACKAGE}/latest`, {
+		response = await fetch(`${registry}${PACKAGE}/latest`, {
 			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
@@ -306,7 +325,7 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 					? " — the npm registry is rate-limiting this address; retry in a few minutes"
 					: "";
 		throw new Error(
-			`Failed to fetch release info from ${NPM_REGISTRY}${PACKAGE}/latest: HTTP ${response.status} ${response.statusText}${hint}`,
+			`Failed to fetch release info from ${registry}${PACKAGE}/latest: HTTP ${response.status} ${response.statusText}${hint}`,
 		);
 	}
 
@@ -318,6 +337,88 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 		tag,
 		version,
 	};
+}
+
+/** One published release: its version, tag, and (when the registry reports it) publish time. */
+export interface ReleaseListing {
+	version: string;
+	tag: string;
+	/** ISO-8601 publish timestamp from the registry `time` map, or undefined if absent. */
+	publishedAt?: string;
+}
+
+/**
+ * List every published release, newest first.
+ *
+ * The rollback picker needs the whole catalog, not just `latest`, so this
+ * fetches the full npm packument (`${NPM_REGISTRY}${PACKAGE}`) and reads its
+ * `versions` map (the authoritative set of installable versions) and `time` map
+ * (publish timestamps). The `created`/`modified` pseudo-keys in `time` are not
+ * versions and are dropped; anything that is not valid semver is dropped too, so
+ * a malformed key can never masquerade as an installable version. Sorting is by
+ * semver via {@link isNewerVersion}, so `1.10.0` correctly sorts above `1.9.0`.
+ *
+ * Like {@link getLatestRelease} this hits the registry directly (never the
+ * GitHub API) to avoid unauthenticated rate limiting, and it fails LOUDLY: a
+ * non-200 or a network error throws with a hint. It never returns an empty list
+ * on failure, because an empty picker would look like "no versions exist"
+ * rather than "the lookup failed" (Law 10).
+ */
+export async function getAllReleases(timeoutMs: number = RELEASE_METADATA_TIMEOUT_MS): Promise<ReleaseListing[]> {
+	const registry = resolveNpmRegistry();
+	let response: Response;
+	try {
+		response = await fetch(`${registry}${PACKAGE}`, {
+			signal: withTimeoutSignal(timeoutMs),
+		});
+	} catch (err) {
+		if (isTimeoutError(err)) {
+			throw new Error(`Timed out fetching the release list after ${Math.round(timeoutMs / 1000)}s`, { cause: err });
+		}
+		throw err;
+	}
+	if (!response.ok) {
+		const hint =
+			response.status === 404
+				? ` — ${PACKAGE} has no published releases on the npm registry yet`
+				: response.status === 429
+					? " — the npm registry is rate-limiting this address; retry in a few minutes"
+					: "";
+		throw new Error(
+			`Failed to fetch the release list from ${registry}${PACKAGE}: HTTP ${response.status} ${response.statusText}${hint}`,
+		);
+	}
+
+	return parseReleaseListings((await response.json()) as PackumentShape);
+}
+
+/** The subset of an npm packument the release list reads. */
+export interface PackumentShape {
+	versions?: Record<string, unknown>;
+	time?: Record<string, string>;
+}
+
+/**
+ * Turn an npm packument into the version list, newest first. Pure (no network)
+ * so the parse/sort/filter rules are unit-testable against a fixture:
+ *
+ *  - only keys of `versions` are considered installable versions;
+ *  - the `created`/`modified` pseudo-keys in `time` are never versions, and
+ *    anything that is not valid semver is dropped, so a malformed key cannot
+ *    masquerade as a version;
+ *  - order is semver-descending (`1.10.0` above `1.9.0`), not lexicographic.
+ */
+export function parseReleaseListings(data: PackumentShape): ReleaseListing[] {
+	const times = data.time ?? {};
+	const listings: ReleaseListing[] = [];
+	for (const version of Object.keys(data.versions ?? {})) {
+		if (!isValidSemver(version)) continue;
+		listings.push({ version, tag: `v${version}`, publishedAt: times[version] });
+	}
+	// Newest first. `isNewerVersion(a, b)` is true when a > b, so returning
+	// negative when a is newer puts newer versions ahead in ascending sort.
+	listings.sort((a, b) => (isNewerVersion(a.version, b.version) ? -1 : isNewerVersion(b.version, a.version) ? 1 : 0));
+	return listings;
 }
 
 interface BunInstallCachePruneResult {
@@ -655,28 +756,55 @@ export const CONSOLE_UPDATE_REPORTER: UpdateReporter = line => {
 
 export const SILENT_UPDATE_REPORTER: UpdateReporter = () => {};
 
-function printVerifiedVersion(expectedVersion: string, report: UpdateReporter): void {
-	report(chalk.green(`\n${theme.status.success} Updated to ${expectedVersion}`));
+/** What kind of install just completed, so the completion line uses the verb the
+ *  user asked for: an update moves forward, a rollback moves back. */
+export type InstallAction = "update" | "rollback";
+
+/**
+ * The two lines a finished install prints: a success line whose verb matches the
+ * action (`Updated to`/`Rolled back to`, never "Updated to" on a rollback), and
+ * the reminder that the running process still holds the old version until a
+ * restart. Pure and exported so the wording is unit-testable without running an
+ * install, and so both flows and every method share one wording owner.
+ */
+export function formatInstallCompletion(version: string, action: InstallAction): { success: string; restart: string } {
+	const verb = action === "rollback" ? "Rolled back to" : "Updated to";
+	return {
+		success: `${verb} ${APP_NAME} ${version}`,
+		restart: `Restart ${APP_NAME} to use it`,
+	};
 }
 
 function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
 	if (result.actual) {
 		return `${APP_NAME} at ${result.path} still reports ${result.actual} (expected ${expectedVersion})`;
 	}
-	return `could not verify updated version${result.path ? ` at ${result.path}` : ""}`;
+	return `could not verify installed version${result.path ? ` at ${result.path}` : ""}`;
 }
 
 /**
- * Print post-update verification result.
+ * Verify the on-disk version and print the single post-install completion
+ * message. ONE owner of that ending so every method (bun/npm/brew/mise/binary)
+ * and both flows finish identically: a version check, then either a loud
+ * mismatch warning or a green line whose verb matches the action
+ * (`Updated to`/`Rolled back to`), then the reminder that the running process
+ * still holds the old version until a restart — a reminder every method now
+ * gives, not only the binary path.
  */
-async function printVerification(expectedVersion: string, report: UpdateReporter): Promise<void> {
+async function reportInstallComplete(
+	expectedVersion: string,
+	action: InstallAction,
+	report: UpdateReporter,
+): Promise<void> {
 	const result = await verifyInstalledVersion(expectedVersion);
-	if (result.ok) {
-		printVerifiedVersion(expectedVersion, report);
+	if (!result.ok) {
+		report(chalk.yellow(`\nWarning: ${formatVerificationFailure(result, expectedVersion)}`));
+		report(chalk.yellow(`You may need to reinstall: bun install -g ${PACKAGE}`));
 		return;
 	}
-	report(chalk.yellow(`\nWarning: ${formatVerificationFailure(result, expectedVersion)}`));
-	report(chalk.yellow(`You may need to reinstall: bun install -g @veyyon/coding-agent`));
+	const { success, restart } = formatInstallCompletion(expectedVersion, action);
+	report(chalk.green(`\n${theme.status.success} ${success}`));
+	report(chalk.dim(restart));
 }
 
 async function unlinkIfExists(filePath: string): Promise<void> {
@@ -832,7 +960,7 @@ export function buildBunInstallArgs(expectedVersion: string, nativeTag: string =
 		"install",
 		"-g",
 		"--no-cache",
-		`--registry=${NPM_REGISTRY}`,
+		`--registry=${resolveNpmRegistry()}`,
 		...buildVersionedPackageInstallArgs(expectedVersion, nativeTag),
 	];
 }
@@ -842,7 +970,7 @@ export function buildNpmInstallArgs(expectedVersion: string, nativeTag: string =
 	const args = [
 		"install",
 		"-g",
-		`--registry=${NPM_REGISTRY}`,
+		`--registry=${resolveNpmRegistry()}`,
 		...buildVersionedPackageInstallArgs(expectedVersion, nativeTag),
 	];
 	return args;
@@ -871,7 +999,6 @@ async function updateViaBun(expectedVersion: string, report: UpdateReporter): Pr
 		throw new Error(`bun install failed with exit code ${result.exitCode}`);
 	}
 
-	await printVerification(expectedVersion, report);
 	try {
 		const pruneResult = await pruneBunCacheAfterGlobalInstall();
 		if (pruneResult && pruneResult.removedEntries > 0) {
@@ -889,11 +1016,9 @@ async function updateViaNpm(expectedVersion: string, report: UpdateReporter): Pr
 	if (result.exitCode !== 0) {
 		throw new Error(`npm install failed with exit code ${result.exitCode}`);
 	}
-
-	await printVerification(expectedVersion, report);
 }
 
-async function updateViaHomebrew(expectedVersion: string, force: boolean, report: UpdateReporter): Promise<void> {
+async function updateViaHomebrew(force: boolean, report: UpdateReporter): Promise<void> {
 	report(chalk.dim("Updating Homebrew formulae..."));
 	const update = await $`brew update`.nothrow();
 	if (update.exitCode !== 0) {
@@ -906,8 +1031,6 @@ async function updateViaHomebrew(expectedVersion: string, force: boolean, report
 	if (result.exitCode !== 0) {
 		throw new Error(`brew ${args[0]} failed with exit code ${result.exitCode}`);
 	}
-
-	await printVerification(expectedVersion, report);
 }
 
 async function updateViaMise(expectedVersion: string, force: boolean, report: UpdateReporter): Promise<void> {
@@ -925,8 +1048,6 @@ async function updateViaMise(expectedVersion: string, force: boolean, report: Up
 			throw new Error(`mise install --force failed with exit code ${forceResult.exitCode}`);
 		}
 	}
-
-	await printVerification(expectedVersion, report);
 }
 
 /**
@@ -982,8 +1103,6 @@ async function updateViaBinaryAt(targetPath: string, expectedVersion: string, re
 	});
 	// Reclaim backups from earlier updates whose owning process has since exited.
 	await sweepStaleBackups(targetPath);
-	printVerifiedVersion(expectedVersion, report);
-	report(chalk.dim(`Restart ${APP_NAME} to use the new version`));
 }
 
 /**
@@ -1000,8 +1119,28 @@ export async function installRelease(
 	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
 ): Promise<void> {
 	const target = await resolveUpdateTarget();
+	await installReleaseVia(target, version, force, report);
+}
+
+/**
+ * Dispatch a versioned install to the method that owns the resolved target.
+ *
+ * Single owner of the method switch so `installRelease` (which resolves the
+ * target itself) and `rollbackToVersion` (which resolves it once to guard brew
+ * before installing) can never dispatch by different rules. On success it
+ * records the version transition for the rollback picker's markers; a failed
+ * install throws before reaching the record, so history never claims a
+ * transition that did not happen.
+ */
+async function installReleaseVia(
+	target: UpdateTarget,
+	version: string,
+	force: boolean,
+	report: UpdateReporter,
+	action: InstallAction = "update",
+): Promise<void> {
 	if (target.method === "brew") {
-		await updateViaHomebrew(version, force, report);
+		await updateViaHomebrew(force, report);
 	} else if (target.method === "mise") {
 		await updateViaMise(version, force, report);
 	} else if (target.method === "bun") {
@@ -1011,6 +1150,132 @@ export async function installRelease(
 	} else {
 		await updateViaBinaryAt(target.path, version, report);
 	}
+	if (version !== VERSION) {
+		await recordUpdateHistory(VERSION, version);
+	}
+	// Single owner of the completion message: verify the on-disk version and
+	// print the action-correct success line plus the restart reminder, so every
+	// method and both flows end the same way.
+	await reportInstallComplete(version, action, report);
+}
+
+/**
+ * Whether the install method can be pinned to an arbitrary earlier version.
+ *
+ * Every method except Homebrew can install a specific version: bun/npm pin
+ * `pkg@version`, mise force-installs `tool@version`, and the bare-binary swap
+ * downloads the exact `v<version>` release asset. Homebrew only ever installs
+ * the current formula version (`brew upgrade`/`reinstall`), so a rollback under
+ * a brew-managed install cannot honor the requested version and must refuse
+ * loudly rather than silently reinstall latest (Law 10).
+ */
+export function canRollbackVia(method: UpdateMethod): boolean {
+	return method !== "brew";
+}
+
+/** One recorded version transition performed by an update or a rollback. */
+export interface UpdateHistoryEntry {
+	from: string;
+	to: string;
+	/** ISO-8601 timestamp of the transition. */
+	at: string;
+}
+
+/**
+ * Read the recorded version-transition history, newest last. Missing history is
+ * an empty list (a fresh install has none); a corrupt file is logged and
+ * treated as empty rather than crashing a rollback, because history is only
+ * annotation for the picker's markers and never gates an install.
+ */
+export async function readUpdateHistory(statePath: string = getUpdateHistoryPath()): Promise<UpdateHistoryEntry[]> {
+	try {
+		const raw = await Bun.file(statePath).text();
+		const parsed = JSON.parse(raw) as unknown;
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter(
+			(e): e is UpdateHistoryEntry =>
+				typeof e === "object" &&
+				e !== null &&
+				typeof (e as UpdateHistoryEntry).from === "string" &&
+				typeof (e as UpdateHistoryEntry).to === "string" &&
+				typeof (e as UpdateHistoryEntry).at === "string",
+		);
+	} catch (err) {
+		if (isEnoent(err)) return [];
+		logger.warn("Could not read update history; treating as empty", { statePath, error: errorMessage(err) });
+		return [];
+	}
+}
+
+/**
+ * The version the install was on immediately before it reached `current`, from
+ * the recorded history — the natural "roll back one step" target the picker
+ * marks as `previous`. It is the `from` of the newest transition that landed on
+ * `current`; if history has no such transition (fresh install, or `current` was
+ * never recorded), there is no previous version and this returns undefined.
+ * Pure so the marker is unit-testable without a history file. Single owner: the
+ * picker host and any settings surface read the "previous" version from here.
+ */
+export function previousVersionFromHistory(
+	history: readonly UpdateHistoryEntry[],
+	current: string,
+): string | undefined {
+	for (let i = history.length - 1; i >= 0; i--) {
+		const entry = history[i];
+		if (entry && entry.to === current && entry.from !== current) return entry.from;
+	}
+	return undefined;
+}
+
+/**
+ * Append a version transition to the history file (kept to the most recent 50).
+ * Best-effort and LOUD on failure: a write error is logged, not swallowed, but
+ * it does not fail the install/rollback the caller just performed, since the
+ * binary swap already succeeded and losing an annotation must not undo it.
+ */
+async function recordUpdateHistory(
+	from: string,
+	to: string,
+	statePath: string = getUpdateHistoryPath(),
+): Promise<void> {
+	try {
+		const entries = await readUpdateHistory(statePath);
+		entries.push({ from, to, at: new Date().toISOString() });
+		await Bun.write(statePath, `${JSON.stringify(entries.slice(-50), null, 2)}\n`);
+	} catch (err) {
+		logger.warn("Could not record update history", { statePath, from, to, error: errorMessage(err) });
+	}
+}
+
+/**
+ * Roll the install back (or forward) to a specific published version.
+ *
+ * Reuses the same {@link installReleaseVia} dispatch as an update, with
+ * `force = true` so installing an OLDER version than the current one still
+ * proceeds. Guards before touching anything: an invalid version, rolling back
+ * to the version already running, or a Homebrew-managed install (which cannot
+ * pin an arbitrary version) each throw with an explanation instead of doing
+ * something surprising.
+ */
+export async function rollbackToVersion(
+	version: string,
+	report: UpdateReporter = CONSOLE_UPDATE_REPORTER,
+): Promise<void> {
+	if (!isValidSemver(version)) {
+		throw new Error(`Not a valid version to roll back to: ${version}`);
+	}
+	if (compareSemver(version, VERSION) === 0) {
+		throw new Error(`Already on ${APP_NAME} ${version}; nothing to roll back to.`);
+	}
+	const target = await resolveUpdateTarget();
+	if (!canRollbackVia(target.method)) {
+		throw new Error(
+			`Rollback is not supported for Homebrew-managed installs: brew installs the latest formula version, not ${version}. ` +
+				`Install the version another way (for example \`bun install -g ${PACKAGE}@${version}\`) or pin it with Homebrew directly.`,
+		);
+	}
+	report(chalk.dim(`Rolling ${APP_NAME} back to ${version}…`));
+	await installReleaseVia(target, version, true, report, "rollback");
 }
 
 /**

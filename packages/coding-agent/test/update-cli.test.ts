@@ -518,6 +518,55 @@ describe("update-cli release-info errors", () => {
 	});
 });
 
+describe("getAllReleases (the rollback picker's version source)", () => {
+	// The picker and `veyyon rollback --list` must fail LOUDLY on any fetch
+	// problem, never return an empty list — an empty picker would read as "there
+	// are no other versions" when the truth is "we could not reach the registry"
+	// (Law 10, no silent fallback). These lock that contract on the fetch path
+	// that the pure parseReleaseListings tests cannot reach.
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("throws on a non-200, naming the URL and status, rather than returning []", async () => {
+		spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("nope", { status: 503, statusText: "Service Unavailable" }),
+		);
+		const promise = updateCli.getAllReleases();
+		await expect(promise).rejects.toThrow(/HTTP 503/);
+		await expect(promise).rejects.toThrow(/registry\.npmjs\.org/);
+	});
+
+	it("throws with the unpublished-package hint on a 404", async () => {
+		spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404, statusText: "Not Found" }));
+		await expect(updateCli.getAllReleases()).rejects.toThrow(/no published releases/);
+	});
+
+	it("propagates a transport error (offline) as a throw, not an empty list", async () => {
+		spyOn(globalThis, "fetch").mockImplementation((() => {
+			throw new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
+		}) as never);
+		await expect(updateCli.getAllReleases()).rejects.toThrow(/ENOTFOUND/);
+	});
+
+	it("parses a 200 packument into semver-desc listings with dates and tags", async () => {
+		spyOn(globalThis, "fetch").mockResolvedValue(
+			Response.json({
+				versions: { "1.0.9": {}, "1.10.0": {}, "1.9.0": {} },
+				time: {
+					created: "2024-01-01T00:00:00.000Z",
+					"1.0.9": "2026-04-01T00:00:00.000Z",
+					"1.10.0": "2026-07-01T00:00:00.000Z",
+					"1.9.0": "2026-06-01T00:00:00.000Z",
+				},
+			}),
+		);
+		const releases = await updateCli.getAllReleases();
+		expect(releases.map(r => r.version)).toEqual(["1.10.0", "1.9.0", "1.0.9"]);
+		expect(releases[0]).toEqual({ version: "1.10.0", tag: "v1.10.0", publishedAt: "2026-07-01T00:00:00.000Z" });
+	});
+});
+
 describe("runUpdateCommand fetch cancellation", () => {
 	// The release-metadata check must never be able to hang forever: runUpdateCommand
 	// has to arm the fetch with a timeout AbortSignal so a stalled registry connection

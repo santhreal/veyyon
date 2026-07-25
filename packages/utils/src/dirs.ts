@@ -30,6 +30,23 @@ export const SITE_URL: string = "https://veyyon.dev";
 /** Public changelog/releases page. Where `/changelog` and the update notice point. */
 export const CHANGELOG_URL: string = "https://veyyon.dev/changelog";
 
+/**
+ * Deep link to a specific version's entry on the changelog page.
+ *
+ * The site emits one `<h2 id="v<major>-<minor>-<patch>">` anchor per released
+ * version (see `website/tools/gen-changelog.mjs`, which slugs the version by
+ * replacing every `.` with `-`), so `1.0.12` becomes `#v1-0-12`. This is the
+ * single owner of that slug rule: the rollback picker, the post-update tip
+ * hint, and any "changelog for vX" affordance all build their URL here so they
+ * cannot drift from the anchor the site actually renders. A caller that already
+ * has a bare version (no leading `v`) passes it as-is; a leading `v` is
+ * tolerated and stripped so both `1.0.12` and `v1.0.12` resolve identically.
+ */
+export function changelogUrlForVersion(version: string): string {
+	const bare = version.startsWith("v") ? version.slice(1) : version;
+	return `${CHANGELOG_URL}#v${bare.replace(/\./g, "-")}`;
+}
+
 /** Config directory name (e.g. ".veyyon") */
 export const CONFIG_DIR_NAME: string = ".veyyon";
 
@@ -1287,6 +1304,20 @@ export function getLastChangelogVersionPath(agentDir?: string): string {
  */
 export function getAutoUpdateStatePath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "auto-update-state.json", "state");
+}
+
+/**
+ * Get the update-history file (~/.veyyon/agent/update-history.json).
+ *
+ * Records each version transition (`from` → `to`, plus a timestamp) that an
+ * update or a rollback performed, so the rollback picker can mark the version
+ * you were on before the last change ("you were here") alongside the version
+ * you are on now. This is annotation only: the authoritative list of available
+ * versions always comes from the registry, never from this file, so a missing
+ * or corrupt history never hides a version or blocks a rollback.
+ */
+export function getUpdateHistoryPath(agentDir?: string): string {
+	return dirs.agentSubdir(agentDir, "update-history.json", "state");
 }
 
 /** Get the path to history.db (SQLite database for session history). */

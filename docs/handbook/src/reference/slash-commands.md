@@ -62,6 +62,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/logout [provider]` | Log out |
 | `/usage show\|reset` | Provider rate limits |
 | `/changelog` | Open the release notes on the web |
+| `/rollback` | Open the interactive version picker to roll the install back |
 
 ## Extensions
 
