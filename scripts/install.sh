@@ -602,8 +602,12 @@ remove_path_line_from_rc() {
         rm -f "$tmp"
         return 0
     fi
-    rm -f "$tmp"
-    warn "could not rewrite $rc — remove the '$dir' PATH line yourself"
+    # The redirection TRUNCATES $rc before cat runs, so by the time cat fails
+    # (a full disk, an I/O error) the temp file is the ONLY copy of the user's
+    # rc left. Deleting it here destroyed a file we had just emptied. Keep it,
+    # and say exactly how to put it back.
+    warn "could not rewrite $rc — its previous contents are in $tmp"
+    warn "    restore it with: cp '$tmp' '$rc'"
     return 1
 }
 

@@ -511,6 +511,66 @@ check "an unloaded completions dir never fails the install" "$?" "0"
 unset XDG_DATA_HOME XDG_CONFIG_HOME
 export HOME="$SANDBOX/home"
 
+# --- remove_path_line_from_rc: a failed rewrite must not destroy the rc ---
+# `cat "$tmp" > "$rc"` TRUNCATES the rc before cat runs, so a cat that fails
+# partway (full disk, I/O error) leaves the rc empty and the temp file holding
+# the only copy of the user's content. The failure branch then deleted that temp,
+# destroying a file the uninstall had just emptied. It is kept now, and named.
+# Shadow cat inside each subshell so the rewrite fails exactly where the real
+# hazard is: after the redirection has already emptied the rc.
+check "a failed rewrite keeps the only copy of the rc" \
+    "$( ( _h="$SANDBOX/rc-rewrite-fail"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n%s\n%s\n' "alias ll=ls" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  cat() { return 1; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  ls "$_h"/.bashrc.veyyon-uninstall.* >/dev/null 2>&1 && echo kept || echo lost ) )" "kept"
+
+# And the kept copy really holds what the rc had, not an empty file.
+check "the kept copy holds the user's own rc content" \
+    "$( ( _h="$SANDBOX/rc-rewrite-content"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n%s\n%s\n' "alias ll=ls" "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  cat() { return 1; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  command cat "$_h"/.bashrc.veyyon-uninstall.* ) )" "alias ll=ls"
+
+check "the warning tells the user how to restore it" \
+    "$( ( _h="$SANDBOX/rc-rewrite-fail2"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  cat() { return 1; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" 2>&1 | grep -c "restore it with: cp" ) )" "1"
+
+check "the warning names the file that holds the contents" \
+    "$( ( _h="$SANDBOX/rc-rewrite-fail3"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  cat() { return 1; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" 2>&1 | grep -c "veyyon-uninstall" ) )" "2"
+
+check "a failed rewrite still reports failure to the caller" \
+    "$( ( _h="$SANDBOX/rc-rewrite-fail4"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n' 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  cat() { return 1; }
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1; echo $? ) )" "1"
+
+# The success path must still clean up after itself: a kept temp there would
+# litter the user's home on every uninstall.
+check "a successful rewrite leaves no temp file behind" \
+    "$( ( _h="$SANDBOX/rc-rewrite-ok"; mkdir -p "$_h"
+  export HOME="$_h"
+  rc="$_h/.bashrc"
+  printf '%s\n%s\n' "# added by the veyyon installer" 'export PATH="/opt/veyyon:$PATH"' > "$rc"
+  remove_path_line_from_rc "$rc" "/opt/veyyon" >/dev/null 2>&1
+  ls -A "$_h" | tr '\n' ' ' ) )" ".bashrc "
+
 # --- do_uninstall: the closing verdict must match what it actually removed ---
 # `rc_candidates | while ...` ran the PATH-line loop in a SUBSHELL, so the
 # `removed` flag set inside it was discarded: an uninstall whose only remaining
