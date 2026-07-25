@@ -145,6 +145,20 @@ describe("the npm/tarball topology stays deleted", () => {
 		expect(sdk).toContain("are not on npm");
 	});
 
+	it("neither installer carries a registry package name to uninstall", () => {
+		// Both ended uninstall with `bun remove -g @veyyon/coding-agent`. Nothing
+		// was ever published under that name, so the step could never remove
+		// anything; all it did was keep a registry package name alive in the one
+		// place a reader looks to learn how veyyon is distributed.
+		for (const [name, body] of [
+			["install.sh", fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8")],
+			["install.ps1", fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8")],
+		] as const) {
+			expect(body, `${name} must not name a registry package`).not.toContain("@veyyon/coding-agent");
+			expect(body, `${name} must not uninstall a global registry package`).not.toContain("bun remove -g");
+		}
+	});
+
 	it("npm appears in the gate only where it is being denied", () => {
 		// A stray `npm` mention would signal the topology creeping back; the only
 		// allowed use is prose explaining why there is no registry channel.

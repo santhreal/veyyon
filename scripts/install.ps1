@@ -26,7 +26,6 @@ $ErrorActionPreference = "Stop"
 
 $Repo = "santhreal/veyyon"
 $RepoUrl = "https://github.com/$Repo.git"
-$Package = "@veyyon/coding-agent"
 $InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }
 $SrcDir = if ($env:VEYYON_SRC_DIR) { $env:VEYYON_SRC_DIR } else { "$env:USERPROFILE\.veyyon\src" }
 $BinName = "veyyon"
@@ -718,9 +717,6 @@ function Uninstall-Veyyon {
         Remove-Item -Force $n.FullName
         Write-Host "OK  removed $($n.FullName)" -ForegroundColor Green
         $removed = $true
-    }
-    if (Test-BunInstalled) {
-        bun remove -g $Package 2>$null | Out-Null
     }
     if (Test-Path $SrcDir) {
         # Never delete a checkout that holds uncommitted edits or unpushed local
