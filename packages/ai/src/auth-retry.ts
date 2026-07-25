@@ -1,3 +1,4 @@
+import { logger } from "@veyyon/utils";
 import type { OAuthAccess } from "./auth-storage";
 import * as AIError from "./error";
 import { isAuthRetryableError } from "./error/auth-classify";
@@ -107,7 +108,16 @@ export async function resolveRetryKey(
 	try {
 		const rotateSibling = lastChance || (!lastChance && isDirectCredentialRotationError(error));
 		return (await resolver({ lastChance: rotateSibling, error, signal, previousKey })) || undefined;
-	} catch {
+	} catch (resolveError) {
+		// Returning undefined here abandons the retry, and the caller then reports
+		// the ORIGINAL auth error to the user. So without this line the reason the
+		// retry gave up — a locked store, a broken broker, no sibling credential —
+		// is destroyed, and every one of those presents as the same 401 (Law 10).
+		logger.warn("Auth retry could not resolve a replacement key; reporting the original auth failure instead", {
+			lastChance,
+			originalError: String(error),
+			resolveError: String(resolveError),
+		});
 		return undefined;
 	}
 }
@@ -336,7 +346,14 @@ export async function withOAuthAccess<T>(
 				refreshedCurrent = true;
 				try {
 					next = await storage.getOAuthAccess(provider, sessionId, { forceRefresh: true, signal });
-				} catch {
+				} catch (refreshError) {
+					// Same trap as above: the retry falls through to rotation and the
+					// user eventually sees the original 401, so the refresh's own
+					// failure has to be said out loud or it is gone.
+					logger.warn("Auth retry could not force-refresh the current credential; falling through to rotation", {
+						provider,
+						error: String(refreshError),
+					});
 					next = undefined;
 				}
 				if (signal?.aborted) break;
@@ -366,7 +383,14 @@ export async function withOAuthAccess<T>(
 			});
 			if (!rotated) break;
 			next = await storage.getOAuthAccess(provider, sessionId, { signal });
-		} catch {
+		} catch (rotateError) {
+			// This one ENDS the retry loop, so it is the last chance to say why. The
+			// caller reports `lastError`, the original 401, and the actual blocker
+			// (the rotation itself failing) would otherwise never appear anywhere.
+			logger.warn("Auth retry could not rotate to another credential; giving up and reporting the auth failure", {
+				provider,
+				error: String(rotateError),
+			});
 			next = undefined;
 		}
 		if (signal?.aborted || !next) break;
