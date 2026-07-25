@@ -633,7 +633,7 @@ export interface BuildSystemPromptOptions {
 	/** Pre-resolved nested active repo context. Undefined resolves from cwd. */
 	activeRepoContext?: ActiveRepoContext | null;
 	/**
-	 * Reorder the default template's banner sections (see {@link PROMPT_SECTION_NAMES}).
+	 * Reorder the default template's banner sections (see {@link promptSectionNames}).
 	 * Resolved from the model's harness profile `promptSectionOrder`. Ignored (loudly)
 	 * for custom prompt templates, which have no banner sections.
 	 */

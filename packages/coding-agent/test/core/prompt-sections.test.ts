@@ -1,18 +1,19 @@
 import { describe, expect, it } from "bun:test";
+// These cases drive `applyPromptSectionOrder`, which reorders ONE rendered
+// document, so they name the sections that live in the template file, which is
+// what `templateSectionNames()` returns. The wider `promptSectionNames()` also
+// covers runtime sections (shorthand, project), which are separate parts of the
+// assembled prompt and are ordered by `applyPromptSectionOrderToParts` instead;
+// naming one here would correctly be reported as missing from this document.
+import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import {
 	applyPromptSectionOrder,
 	applyPromptSectionOrderToParts,
 	splitPromptSections,
-	TEMPLATE_SECTION_NAMES,
+	templateSectionNames,
 } from "@veyyon/coding-agent/system-prompt-builder/prompt-sections";
 
-// These cases drive `applyPromptSectionOrder`, which reorders ONE rendered
-// document, so they name the sections that live in the template file. The wider
-// `TEMPLATE_SECTION_NAMES` also covers runtime sections (shorthand, project), which
-// are separate parts of the assembled prompt and are ordered by
-// `applyPromptSectionOrderToParts` instead; naming one here would correctly be
-// reported as missing from this document.
-import systemPromptTemplate from "../../src/prompts/system/system-prompt.md" with { type: "text" };
+const systemPromptTemplate = PROMPTS["system/system-prompt"].text;
 
 // A miniature render with the same banner grammar as the real template.
 const RENDERED = [
@@ -55,7 +56,7 @@ describe("splitPromptSections", () => {
 
 	it("finds every canonical section in the real shipped template", () => {
 		const names = splitPromptSections(systemPromptTemplate).map(s => s.name);
-		for (const name of TEMPLATE_SECTION_NAMES) {
+		for (const name of templateSectionNames()) {
 			expect(names).toContain(name);
 		}
 	});
@@ -82,7 +83,7 @@ describe("applyPromptSectionOrder", () => {
 	});
 
 	it("a full-identity order reproduces the input", () => {
-		expect(applyPromptSectionOrder(RENDERED, [...TEMPLATE_SECTION_NAMES])).toBe(RENDERED);
+		expect(applyPromptSectionOrder(RENDERED, [...templateSectionNames()])).toBe(RENDERED);
 	});
 
 	it("skips names missing from the render instead of corrupting the prompt", () => {
@@ -188,21 +189,21 @@ describe("applyPromptSectionOrder: reorder is a content-preserving permutation",
 	const baseline = sectionMultiset(RENDERED);
 
 	it("preserves the exact section multiset under every permutation of the order", () => {
-		for (const order of permutations([...TEMPLATE_SECTION_NAMES])) {
+		for (const order of permutations([...templateSectionNames()])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
 			expect(sectionMultiset(result)).toEqual(baseline);
 		}
 	});
 
 	it("keeps the preamble first under every permutation of the order", () => {
-		for (const order of permutations([...TEMPLATE_SECTION_NAMES])) {
+		for (const order of permutations([...templateSectionNames()])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
 			expect(result.startsWith("<system-conventions>preamble</system-conventions>")).toBe(true);
 		}
 	});
 
 	it("emits each listed section exactly at its ordered rank", () => {
-		for (const order of permutations([...TEMPLATE_SECTION_NAMES])) {
+		for (const order of permutations([...templateSectionNames()])) {
 			const result = applyPromptSectionOrder(RENDERED, order);
 			const banners = {
 				role: "ROLE",

@@ -30,7 +30,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { kebabToCamel } from "@veyyon/utils";
-import systemPromptTemplate from "../prompts/system/system-prompt.md" with { type: "text" };
+import { PROMPTS } from "../prompts/registry";
 import { assembleDefaultTemplate, DEFAULT_TEMPLATE_SECTION_ORDER } from "./default-template";
 import {
 	BANNERED_SECTIONS,
@@ -42,7 +42,7 @@ import {
 	TEMPLATE_SECTIONS,
 	withSectionBanner,
 } from "./prompt-blocks";
-import { PROMPT_SECTION_NAMES, splitPromptSections } from "./prompt-sections";
+import { promptSectionNames, splitPromptSections } from "./prompt-sections";
 
 describe("prompt-section registry: structural invariants", () => {
 	/** Ids are the join key for every derived table, so a duplicate would make one
@@ -88,7 +88,7 @@ describe("prompt-section registry: the shipped template agrees with the registry
 	it("finds every registered template banner in the shipped template, in order", () => {
 		let from = 0;
 		for (const section of BANNERED_TEMPLATE_SECTIONS) {
-			const at = systemPromptTemplate.indexOf(section.banner, from);
+			const at = PROMPTS["system/system-prompt"].text.indexOf(section.banner, from);
 			expect({ id: section.id, found: at >= 0 }).toEqual({ id: section.id, found: true });
 			from = at + section.banner.length;
 		}
@@ -96,7 +96,7 @@ describe("prompt-section registry: the shipped template agrees with the registry
 
 	/** The whole override mechanism rests on reassembly being lossless. */
 	it("reassembles the template byte-for-byte from its registered sections", () => {
-		expect(assembleDefaultTemplate()).toBe(systemPromptTemplate);
+		expect(assembleDefaultTemplate()).toBe(PROMPTS["system/system-prompt"].text);
 	});
 
 	/** The template splitter must look for exactly the banners the .md contains. A
@@ -117,8 +117,8 @@ describe("prompt-section registry: derived tables cannot drift apart", () => {
 	/** The reorderer must see EVERY bannered section, runtime included. This is the
 	 * unification in one assertion: before it, the list stopped at the template. */
 	it("makes every bannered section reorderable, runtime sections included", () => {
-		expect([...PROMPT_SECTION_NAMES]).toEqual(BANNERED_SECTIONS.map(s => s.id));
-		for (const id of RUNTIME_SECTION_IDS) expect(PROMPT_SECTION_NAMES).toContain(id);
+		expect([...promptSectionNames()]).toEqual(BANNERED_SECTIONS.map(s => s.id));
+		for (const id of RUNTIME_SECTION_IDS) expect(promptSectionNames()).toContain(id);
 	});
 });
 
