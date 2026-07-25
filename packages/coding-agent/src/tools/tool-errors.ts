@@ -37,14 +37,48 @@ export class ToolAbortError extends Error {
 }
 
 /**
- * Throw ToolAbortError if the signal is aborted.
- * Use this instead of signal?.throwIfAborted() to get consistent error types.
+ * The sentence to show for an abort, given whatever the signal was aborted with.
+ *
+ * `AbortSignal.reason` is `any`: a string from `controller.abort("deadline")`, a
+ * `DOMException` from the platform, a `TimeoutError`, or `undefined` from a bare
+ * `controller.abort()`. Each of those has something to say, and this is the one
+ * place that decides how to say it. `what` names the operation, for the case
+ * where the signal itself carries nothing.
  */
-export function throwIfAborted(signal?: AbortSignal): void {
-	if (signal?.aborted) {
-		const reason = signal.reason instanceof Error ? signal.reason : undefined;
-		throw reason instanceof ToolAbortError ? reason : new ToolAbortError(undefined, { cause: signal.reason });
-	}
+function abortMessage(reason: unknown, what?: string): string {
+	const detail =
+		typeof reason === "string" && reason.length > 0
+			? reason
+			: reason instanceof Error && reason.message.length > 0
+				? reason.message
+				: undefined;
+	if (detail !== undefined) return what === undefined ? detail : `${what}: ${detail}`;
+	return what === undefined ? ToolAbortError.MESSAGE : `${what} was aborted`;
+}
+
+/**
+ * Throw {@link ToolAbortError} when `signal` has already been aborted.
+ *
+ * Use this rather than `signal.throwIfAborted()`. The platform method throws
+ * whatever `signal.reason` happens to hold, which is a different type for every
+ * caller, and the twenty-odd places that handle an abort in this codebase test
+ * `instanceof ToolAbortError`. One type means one catch.
+ *
+ * The reason travels in the MESSAGE, not only in `cause`. It used to be put in
+ * `cause` alone, so every abort read "Operation aborted" whatever had happened:
+ * a user pressing Escape, a deadline expiring, and a parent tool cancelling a
+ * child all produced the same sentence, and nothing downstream could tell them
+ * apart. `session/messages.ts` renders `errorMessage` verbatim unless it is
+ * generic, so a reason that reaches the message reaches the operator, and the
+ * banner stops saying nothing for the aborts that had something to say.
+ *
+ * @param what Names the operation, used when the signal carries no reason.
+ */
+export function throwIfAborted(signal?: AbortSignal, what?: string): void {
+	if (!signal?.aborted) return;
+	const { reason } = signal;
+	if (reason instanceof ToolAbortError) throw reason;
+	throw new ToolAbortError(abortMessage(reason, what), { cause: reason });
 }
 
 /**
