@@ -881,6 +881,10 @@ export const CONTEXT_SETTINGS = {
 	"hindsight.recallContextTurns": { type: "number", default: 1 },
 	"hindsight.recallMaxQueryChars": { type: "number", default: 800 },
 	"hindsight.recallTypes": { type: "array", default: HINDSIGHT_RECALL_TYPES_DEFAULT },
+	"hindsight.requestTimeoutMs": { type: "number", default: 30_000 },
+	"hindsight.reflectTimeoutMs": { type: "number", default: 120_000 },
+	"hindsight.recallTimeoutMs": { type: "number", default: 30_000 },
+	"hindsight.retainTimeoutMs": { type: "number", default: 60_000 },
 
 	"hindsight.debug": { type: "boolean", default: false },
 
