@@ -186,7 +186,23 @@ function Install-Alias {
     param([string]$Target)
     try {
         $shim = Join-Path $InstallDir "$AliasName.cmd"
-        Set-Content -Path $shim -Value "@echo off`r`n`"$Target`" %*" -Encoding ASCII
+        $wanted = "@echo off`r`n`"$Target`" %*"
+        # Set-Content overwrote whatever was at the alias path, so a user's own
+        # vey.cmd was silently destroyed. Only rewrite a shim this installer
+        # could have written — one that already forwards to our binary (mirrors
+        # link_alias in install.sh).
+        if (Test-Path $shim) {
+            $existing = (Get-Content -Raw -Path $shim -ErrorAction SilentlyContinue)
+            if ($existing -and $existing.Trim() -eq $wanted.Trim()) {
+                Write-Host "OK  '$AliasName' already points at $BinName" -ForegroundColor Green
+                return
+            }
+            if (-not ($existing -and $existing.Contains($Target))) {
+                Write-Host "!  left '$AliasName' alone: $shim already exists and was not created by this installer. Remove it yourself if you want '$AliasName' to launch $BinName; meanwhile launch with '$BinName'." -ForegroundColor Yellow
+                return
+            }
+        }
+        Set-Content -Path $shim -Value $wanted -Encoding ASCII
         Write-Host "OK  linked '$AliasName' -> $BinName" -ForegroundColor Green
     } catch {
         Write-Host "!  could not create '$AliasName' shim (launch with '$BinName')" -ForegroundColor Yellow
