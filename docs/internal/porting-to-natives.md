@@ -172,4 +172,4 @@ bench("feature/native", () => {
 - If native is slower, do not switch callsites. Keep or remove the export based on whether it has a near-term owner.
 - If native is faster and behavior-compatible, switch callsites and keep a benchmark to catch regressions.
 
-*Verified against `b2e79db9` on 2026-07-24.*
+*Verified against `ab977ca4` on 2026-07-24.*

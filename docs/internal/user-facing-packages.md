@@ -49,4 +49,4 @@ There is no package README at this path today; the manifest and source headers a
 - Outputs: JSON result snapshots written to the adapter's `--output` path, plus conversation dumps in a sibling `result.dump/` directory.
 - Side effects/limits: extracts fixture archives to temp space and runs agent sessions against copied fixture inputs.
 
-*Verified against `b2e79db9` on 2026-07-24.*
+*Verified against `ab977ca4` on 2026-07-24.*

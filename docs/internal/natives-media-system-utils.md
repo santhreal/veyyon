@@ -157,4 +157,4 @@ Failure transitions:
 - macOS appearance and power helpers intentionally return no-op/null behavior on unsupported platforms.
 - ProjFS is not exposed by this media/system native utility surface. Isolation backend selection, including any ProjFS support, lives in the separate `iso` subsystem.
 
-*Verified against `b2e79db9` on 2026-07-24.*
+*Verified against `ab977ca4` on 2026-07-24.*
