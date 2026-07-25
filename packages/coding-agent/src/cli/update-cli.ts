@@ -68,7 +68,7 @@ const CHECKSUM_TIMEOUT_MS = 30_000;
  * ending in this suffix is how we tell the two apart; see
  * {@link resolveUpdateMethod}.
  */
-const SOURCE_LAUNCHER_SUFFIX = path.join("packages", "coding-agent", "scripts", APP_NAME);
+const SOURCE_LAUNCHER_TAIL = ["packages", "coding-agent", "scripts", APP_NAME].join("/");
 
 export interface ReleaseInfo {
 	tag: string;
@@ -117,14 +117,61 @@ type UpdateTarget = { method: "binary"; path: string } | { method: "source"; pat
 /**
  * Classify an on-PATH veyyon path as a binary or source install.
  *
- * A source install links PATH's veyyon to `<checkout>/<SOURCE_LAUNCHER_SUFFIX>`,
+ * A source install links PATH's veyyon to `<checkout>/<SOURCE_LAUNCHER_TAIL>`,
  * so following the symlink (realpath) and matching that suffix is what tells the
  * two apart. Everything else is a standalone binary the updater can swap.
  * Exported for direct unit testing without a real install on disk.
  */
-export function resolveUpdateMethod(veyyonPath: string): UpdateMethod {
+/**
+ * Does this path end at the in-checkout launcher, on either platform?
+ *
+ * Separators are normalized because the Windows shim stores a `\`-separated
+ * target while the tail is written `/`-separated, and `.cmd` is accepted because
+ * the Windows launcher is `scripts\veyyon.cmd` while POSIX is `scripts/veyyon`.
+ */
+function endsWithSourceLauncher(p: string): boolean {
+	const normalized = p.replace(/\\/g, "/");
+	return normalized.endsWith(SOURCE_LAUNCHER_TAIL) || normalized.endsWith(`${SOURCE_LAUNCHER_TAIL}.cmd`);
+}
+
+/**
+ * Read a shim file. Fails closed: an unreadable shim yields "", which classifies
+ * as `binary` only after the launcher checks below have already missed, so a
+ * misread can never silently upgrade a path to `source`.
+ */
+function defaultReadShim(p: string): string {
+	try {
+		return fs.readFileSync(p, "utf8");
+	} catch {
+		return "";
+	}
+}
+
+/** The forwarded target inside a generated `.cmd` shim: its first quoted token. */
+function defaultReadShimForward(shimBody: string): string | undefined {
+	return /"([^"]+)"/.exec(shimBody)?.[1];
+}
+
+export function resolveUpdateMethod(
+	veyyonPath: string,
+	readShim: (p: string) => string = defaultReadShim,
+): UpdateMethod {
 	const resolved = tryRealpath(veyyonPath) ?? veyyonPath;
-	return resolved.endsWith(SOURCE_LAUNCHER_SUFFIX) ? "source" : "binary";
+	if (endsWithSourceLauncher(resolved)) return "source";
+	// A Windows source install puts a `.cmd` shim on PATH that FORWARDS to the
+	// in-checkout launcher. It is a real file, not a symlink, so realpath stops at
+	// the shim and the tail never matches — the install used to be classified
+	// `binary`, and `veyyon update` would then overwrite the shim with a
+	// downloaded .exe, silently converting a source install into a binary one and
+	// orphaning the checkout. Read the shim and classify by what it forwards to.
+	if (resolved.toLowerCase().endsWith(".cmd")) {
+		const forwarded = defaultReadShimForward(readShim(resolved));
+		if (forwarded) {
+			const forwardedResolved = tryRealpath(forwarded) ?? forwarded;
+			if (endsWithSourceLauncher(forwardedResolved)) return "source";
+		}
+	}
+	return "binary";
 }
 
 async function resolveUpdateTarget(): Promise<UpdateTarget> {

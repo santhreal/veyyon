@@ -165,6 +165,61 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 		expect(resolveUpdateMethod(link)).toBe("binary");
 	});
 
+	/**
+	 * A Windows source install puts a `.cmd` shim on PATH that forwards to the
+	 * in-checkout launcher. The shim is a real file, not a symlink, so realpath
+	 * stops at it and the launcher tail never matched: the install classified as
+	 * `binary`, and `veyyon update` would overwrite the shim with a downloaded
+	 * .exe, converting a source install into a binary one and orphaning the
+	 * checkout the user was running from. The shim's forwarded target is read
+	 * instead. Separator- and extension-agnostic, and fail-closed: anything that
+	 * cannot be read or parsed stays `binary` rather than guessing `source`.
+	 */
+	it("classifies a Windows .cmd shim forwarding to the launcher as source", () => {
+		const shim = "C:\\Users\\u\\AppData\\Local\\veyyon\\veyyon.cmd";
+		const launcher = "C:\\Users\\u\\.veyyon\\src\\packages\\coding-agent\\scripts\\veyyon.cmd";
+		expect(resolveUpdateMethod(shim, () => `@echo off\r\n"${launcher}" %*`)).toBe("source");
+	});
+
+	it("classifies a .cmd shim forwarding to a standalone .exe as binary", () => {
+		const shim = "C:\\Users\\u\\AppData\\Local\\veyyon\\veyyon.cmd";
+		const exe = "C:\\Users\\u\\AppData\\Local\\veyyon\\veyyon.exe";
+		expect(resolveUpdateMethod(shim, () => `@echo off\r\n"${exe}" %*`)).toBe("binary");
+	});
+
+	it("classifies the launcher .cmd itself as source without reading anything", () => {
+		// When PATH points straight at the in-checkout launcher there is no shim to
+		// read; the tail match alone must decide, so the reader is never called.
+		const launcher = "C:\\Users\\u\\.veyyon\\src\\packages\\coding-agent\\scripts\\veyyon.cmd";
+		let reads = 0;
+		expect(
+			resolveUpdateMethod(launcher, () => {
+				reads += 1;
+				return "";
+			}),
+		).toBe("source");
+		expect(reads).toBe(0);
+	});
+
+	it("falls back to binary when the shim cannot be read or holds no target", () => {
+		const shim = "C:\\Users\\u\\AppData\\Local\\veyyon\\veyyon.cmd";
+		// Unreadable (permissions, deleted mid-check) and unparseable (no quoted
+		// token) must both stay `binary`: guessing `source` would make the updater
+		// try to git-pull a checkout that may not exist.
+		expect(resolveUpdateMethod(shim, () => "")).toBe("binary");
+		expect(resolveUpdateMethod(shim, () => "@echo off\r\nveyyon.exe %*")).toBe("binary");
+	});
+
+	it("reads a real on-disk .cmd shim, not just an injected reader", () => {
+		// Proves the default reader is wired correctly, so the production path is
+		// covered and not only the injected-seam tests above.
+		const dir = nodeFs.mkdtempSync(path.join(os.tmpdir(), "veyyon-cmd-shim-"));
+		const launcher = path.join(dir, "src", "packages", "coding-agent", "scripts", "veyyon.cmd");
+		const shim = path.join(dir, "veyyon.cmd");
+		nodeFs.writeFileSync(shim, `@echo off\r\n"${launcher}" %*`);
+		expect(resolveUpdateMethod(shim)).toBe("source");
+	});
+
 	it("guidance for a source install names the launcher and the git-pull remedy", () => {
 		const launcher = "/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon";
 		const msg = updateCli.sourceInstallUpdateGuidance(launcher);
