@@ -56,6 +56,20 @@ function getNativesDir() {
 	return path.join(os.homedir(), ".veyyon", "natives");
 }
 
+/**
+ * The per-version native cache directory, `<natives root>/<version>/` (e.g.
+ * `~/.veyyon/natives/1.0.37/`). The SINGLE owner of that path shape: the loader
+ * probes it (see {@link resolveLoaderCandidates}) and `scripts/ensure-native.ts`
+ * mirrors provisioned addons into it, so the writer and the reader must derive
+ * the location the same way or they would disagree on where the cache lives.
+ * Honors `XDG_DATA_HOME` exactly as {@link getNativesDir} does.
+ * @param {string} version
+ * @returns {string}
+ */
+export function versionedNativeCacheDir(version) {
+	return path.join(getNativesDir(), version);
+}
+
 function resolveLeafPackageDir(platformTag) {
 	try {
 		const require_ = createRequire(import.meta.url);
@@ -947,7 +961,7 @@ function initLoaderContext() {
 	const nativeDir = path.join(import.meta.dir, "..", "native");
 	const execDir = path.dirname(process.execPath);
 	const nativesDir = getNativesDir();
-	const versionedDir = path.join(nativesDir, packageVersion);
+	const versionedDir = versionedNativeCacheDir(packageVersion);
 	const userDataDir =
 		process.platform === "win32"
 			? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "veyyon")

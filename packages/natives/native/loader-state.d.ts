@@ -55,6 +55,9 @@ export interface ResolveLoaderCandidatesInput {
 
 export function resolveLoaderCandidates(input: ResolveLoaderCandidatesInput): string[];
 
+/** The per-version native cache dir (`<natives root>/<version>/`); the single owner of that path shape. */
+export function versionedNativeCacheDir(version: string): string;
+
 /** Loader context fields {@link buildHelpMessage} reads to compose the load-failure remediation. */
 export interface BuildHelpMessageInput {
 	isCompiledBinary: boolean;

@@ -13,9 +13,9 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { versionSentinelExportFor } from "../native/loader-state.js";
+import { versionedNativeCacheDir, versionSentinelExportFor } from "../native/loader-state.js";
 import packageJson from "../package.json" with { type: "json" };
-import { addonIsCurrent, hostAddonFilenames } from "../scripts/ensure-native";
+import { addonIsCurrent, cacheMirrorPlan, hostAddonFilenames } from "../scripts/ensure-native";
 
 const version: string = packageJson.version;
 
@@ -52,7 +52,13 @@ describe("hostAddonFilenames", () => {
 
 describe("addonIsCurrent", () => {
 	test("accepts a file embedding this checkout's version sentinel", () => {
-		const file = tmpFile(Buffer.concat([Buffer.from("\x00binary\x00"), Buffer.from(versionSentinelExportFor(version)), Buffer.from("\x00tail")]));
+		const file = tmpFile(
+			Buffer.concat([
+				Buffer.from("\x00binary\x00"),
+				Buffer.from(versionSentinelExportFor(version)),
+				Buffer.from("\x00tail"),
+			]),
+		);
 		expect(addonIsCurrent(file)).toBe(true);
 	});
 
@@ -74,5 +80,79 @@ describe("addonIsCurrent", () => {
 	test("rejects an empty or corrupt download remnant", () => {
 		expect(addonIsCurrent(tmpFile(""))).toBe(false);
 		expect(addonIsCurrent(tmpFile("veyyon_natives but no sentinel"))).toBe(false);
+	});
+});
+
+describe("cacheMirrorPlan", () => {
+	// Why this suite exists: after INSTALL-NATIVE-CACHE-NOT-CONSULTED the loader
+	// reads the per-version cache as a source-path fallback, but that cache is
+	// EMPTY for a user who only ever source-installs. ensure must mirror the
+	// provisioned addon into the cache so a later sync that drops native/*.node
+	// still boots. This plan is the decision of exactly WHAT to copy.
+	const nativeDir = "/repo/packages/natives/native";
+	const cacheDir = "/home/u/.veyyon/natives/1.0.37";
+	const names = ["veyyon_natives.linux-x64-modern.node", "veyyon_natives.linux-x64-baseline.node"];
+
+	test("mirrors a current in-tree addon whose cache copy is missing", () => {
+		const plan = cacheMirrorPlan({
+			filenames: names,
+			nativeDir,
+			cacheDir,
+			srcIsCurrent: () => true,
+			destIsCurrent: () => false,
+		});
+		expect(plan).toEqual([
+			{ src: path.join(nativeDir, names[0]), dest: path.join(cacheDir, names[0]) },
+			{ src: path.join(nativeDir, names[1]), dest: path.join(cacheDir, names[1]) },
+		]);
+	});
+
+	test("skips a filename whose cache copy is already current (no redundant copy)", () => {
+		// The steady state on every launch: the cache is already populated, so the
+		// plan must be empty — ensure must not re-copy 150MB binaries each boot.
+		const plan = cacheMirrorPlan({
+			filenames: names,
+			nativeDir,
+			cacheDir,
+			srcIsCurrent: () => true,
+			destIsCurrent: () => true,
+		});
+		expect(plan).toEqual([]);
+	});
+
+	test("skips a filename whose in-tree copy is missing or stale (nothing valid to mirror)", () => {
+		// Only the modern variant is built in-tree; the baseline must not be
+		// mirrored from a source that is not current, or the cache would gain a
+		// stale/absent file the loader's sentinel check would later reject.
+		const plan = cacheMirrorPlan({
+			filenames: names,
+			nativeDir,
+			cacheDir,
+			srcIsCurrent: file => file.endsWith(names[0]),
+			destIsCurrent: () => false,
+		});
+		expect(plan).toEqual([{ src: path.join(nativeDir, names[0]), dest: path.join(cacheDir, names[0]) }]);
+	});
+
+	test("preserves the filename as the cache basename so the loader finds it by the same name", () => {
+		const plan = cacheMirrorPlan({
+			filenames: [names[0]],
+			nativeDir,
+			cacheDir,
+			srcIsCurrent: () => true,
+			destIsCurrent: () => false,
+		});
+		expect(path.basename(plan[0]?.dest ?? "")).toBe(names[0]);
+		expect(path.dirname(plan[0]?.dest ?? "")).toBe(cacheDir);
+	});
+});
+
+describe("versionedNativeCacheDir", () => {
+	test("is the natives root joined with the exact version, so writer and reader agree on one path", () => {
+		// The loader probes this dir and ensure mirrors into it; if the two derived
+		// the path differently the mirror would land where the loader never looks.
+		const dir = versionedNativeCacheDir(version);
+		expect(path.basename(dir)).toBe(version);
+		expect(path.basename(path.dirname(dir))).toBe("natives");
 	});
 });
