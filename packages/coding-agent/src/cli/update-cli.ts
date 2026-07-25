@@ -549,8 +549,25 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 		return verification;
 	} catch (err) {
 		if (backupReady) {
-			await unlinkIfExists(options.targetPath);
-			await fs.promises.rename(options.backupPath, options.targetPath);
+			try {
+				await unlinkIfExists(options.targetPath);
+				await fs.promises.rename(options.backupPath, options.targetPath);
+			} catch (rollbackErr) {
+				// The worst case: the update failed AND the automatic restore failed
+				// too (permissions, a locked destination, the backup vanished). Left
+				// alone, the rollback error would replace the original failure, the
+				// temp would leak, and the user would be staring at a missing binary
+				// with no idea their previous one is intact one path over. Clean the
+				// temp, then fail loud with the exact recovery move and the original
+				// cause preserved.
+				await unlinkIfExists(options.tempPath);
+				throw new Error(
+					`${APP_NAME} update failed and the automatic rollback could not restore the previous binary ` +
+						`(${errorMessage(rollbackErr)}). Your previous ${APP_NAME} is intact at ${options.backupPath} — ` +
+						`move it back to ${options.targetPath} to recover.`,
+					{ cause: err },
+				);
+			}
 		}
 		await unlinkIfExists(options.tempPath);
 		throw err;
