@@ -6,7 +6,7 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
 import { htmlToMarkdown } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
-import { $which, errorMessage, formatCount, ptree, trimTrailingSlashes, truncate } from "@veyyon/utils";
+import { $which, errorMessage, formatCount, isCancellation, ptree, trimTrailingSlashes, truncate } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -41,7 +41,7 @@ import { formatStyledArtifactReference, type OutputMeta } from "./output-meta";
 import { isReadableUrlPath, type LineRange, parseLineRanges } from "./path-utils";
 import { formatBytes, formatExpandHint, getDomain, replaceTabs } from "./render-utils";
 import { listTables, looksLikeSqlite, renderTableList } from "./sqlite-reader";
-import { ToolAbortError, ToolError } from "./tool-errors";
+import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout } from "./tool-timeouts";
 
@@ -1147,25 +1147,44 @@ export async function handleSpecialUrls(
 ): Promise<FetchRenderResult | null> {
 	const specialHandlers = handlers ?? (await loadSpecialHandlers());
 	for (const handler of specialHandlers) {
-		if (signal?.aborted) {
-			throw new ToolAbortError();
-		}
+		throwIfAborted(signal, "fetch");
 		let result: Awaited<ReturnType<SpecialHandler>>;
 		try {
 			result = await handler(url, timeout, signal, storage);
 		} catch (error) {
-			if (signal?.aborted || error instanceof ToolAbortError) {
-				throw new ToolAbortError();
-			}
+			// STOP, DO NOT DEGRADE. `isCancellation` is the repo-wide owner of this
+			// test and it covers both halves: the user aborting, AND a deadline
+			// expiring. The deadline half is the one this guard used to miss, and it
+			// is the half that actually fires here. A handler receives `timeout` and
+			// builds its own `scopedTimeoutSignal` from it, so when a slow site
+			// exhausts the budget the rejection is a `TimeoutError` while the USER's
+			// signal is still unaborted. The old condition asked only
+			// `signal?.aborted || error instanceof ToolAbortError`, so a timeout fell
+			// through to the note-and-continue below and the generic fetch then made
+			// the very request that had just run out of time, against the same site,
+			// with the budget already spent. `scraperDegrade` in
+			// `web/scrapers/types.ts` exists to prevent exactly that and rethrows a
+			// cancellation for exactly this reason; the dispatcher's own catch, one
+			// layer above it, never got the same guard, so a handler that threw
+			// rather than returning a degrade bypassed the protection entirely.
+			//
+			// The error is rethrown AS IS rather than replaced with a bare
+			// `new ToolAbortError()`. A minted one carries no reason and no `cause`,
+			// which is what makes a timeout indistinguishable from an abort by the
+			// time it reaches the agent loop -- and those mean different things to a
+			// user: work they stopped, versus work worth retrying with a longer limit.
+			if (isCancellation(error)) throw error;
+			// The signal aborted but the handler threw something else, so it swallowed
+			// the cancellation on the way out. Report the cancellation, keeping the
+			// signal's own reason as the cause.
+			throwIfAborted(signal, "fetch");
 			// A handler must never take the whole fetch down: record the failure
 			// loudly and keep going so the generic fetch still runs.
 			const detail = errorMessage(error);
 			notes.push(`${handler.name || "site"} scraper threw (${detail}); fell back to a generic fetch`);
 			continue;
 		}
-		if (signal?.aborted) {
-			throw new ToolAbortError();
-		}
+		throwIfAborted(signal, "fetch");
 		if (!result) continue;
 		if (isScraperDegrade(result)) {
 			// The handler matched the URL but could not scrape it. Surface the
@@ -1198,9 +1217,7 @@ async function renderUrl(
 ): Promise<FetchRenderResult> {
 	const notes: string[] = [];
 	const fetchedAt = new Date().toISOString();
-	if (signal?.aborted) {
-		throw new ToolAbortError();
-	}
+	throwIfAborted(signal, "fetch");
 
 	// Handle internal protocol URLs (e.g., pi-internal://) - return empty
 	if (url.startsWith("pi-internal://")) {
@@ -1227,9 +1244,7 @@ async function renderUrl(
 
 	// Step 2: Fetch page
 	const response = await loadPage(url, { timeout, signal, skipBodyForContentType: shouldSkipBodyDownload });
-	if (signal?.aborted) {
-		throw new ToolAbortError();
-	}
+	throwIfAborted(signal, "fetch");
 	if (!response.ok) {
 		return {
 			url,
@@ -1549,9 +1564,7 @@ async function renderUrl(
 			}
 		}
 
-		if (signal?.aborted) {
-			throw new ToolAbortError();
-		}
+		throwIfAborted(signal, "fetch");
 
 		// 5E: Render HTML via the reader-backend chain (native/trafilatura/lynx/parallel/jina)
 		const htmlResult = await renderHtmlToText(
@@ -1810,9 +1823,7 @@ async function buildReadUrlCacheEntry(
 	// that silently diverged from the config's `default`.
 	const effectiveTimeout = clampTimeout("fetch", undefined, session.settings.get("tools.maxTimeout"));
 
-	if (signal?.aborted) {
-		throw new ToolAbortError();
-	}
+	throwIfAborted(signal, "fetch");
 
 	const storage = session.settings.getStorage();
 	const result = await renderUrl(
