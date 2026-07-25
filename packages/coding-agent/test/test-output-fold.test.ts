@@ -160,6 +160,43 @@ describe("foldPassingTestOutput", () => {
 		expect(result.folded).toEqual({});
 	});
 
+	/**
+	 * The threshold boundary, both sides, asserted exactly.
+	 *
+	 * `MIN_FOLDABLE_LINES` decides whether the fold does anything at all, and an
+	 * off-by-one here is invisible: the fold would simply stop firing on the small
+	 * runs, cost would drift back up, and every test above would still pass
+	 * because they all use comfortably large inputs. Pinning both sides means a
+	 * change to the constant has to be deliberate.
+	 */
+	it("folds at exactly the threshold and not one line below it", () => {
+		// The literal matters as much as the relative check. Asserting only
+		// `runLines(MIN_FOLDABLE_LINES)` against `MIN_FOLDABLE_LINES` is
+		// self-referential: the test moves with the constant, so raising the
+		// threshold until the fold stops firing on real output passes cleanly.
+		// Verified by mutation, which is how that hole was found.
+		expect(MIN_FOLDABLE_LINES).toBe(12);
+		expect(foldPassingTestOutput(runLines(12).join("\n")).folded.run).toBe(12);
+		expect(foldPassingTestOutput(runLines(11).join("\n")).folded).toEqual({});
+	});
+
+	/**
+	 * The threshold counts foldable lines across ALL classes, not per class. A
+	 * `go test ./...` run over many packages emits a handful of each kind and
+	 * would never clear a per-class threshold, which is exactly the output that
+	 * cost 4.7% of a session bill.
+	 */
+	it("counts foldable lines across classes, not per class", () => {
+		const text = [
+			...runLines(5),
+			...Array.from({ length: 4 }, (_, i) => `?   \tpkg/${i}\t[no test files]`),
+			...Array.from({ length: 4 }, (_, i) => `ok  \tpkg/ok${i}\t0.0${i}s`),
+		].join("\n");
+		const result = foldPassingTestOutput(text);
+		expect(result.skippedReason).toBeUndefined();
+		expect(result.folded).toEqual({ run: 5, noTestFiles: 4, packageOk: 4 });
+	});
+
 	/** Text with no test output at all is returned identically, so the fold is safe to apply to any tool result. */
 	it("returns unrelated output unchanged", () => {
 		const text = "hello\nworld\nno tests here";
